@@ -143,7 +143,9 @@ async function genFrameViaReplicate(framePrompt: string, aspect: string): Promis
 }
 
 export async function POST(req: NextRequest) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  // STORYBOARD tier (not EXPENSIVE): one board fans out into plan + 6 per-scene
+  // frame calls + retries, which tripped the 5/min EXPENSIVE limit (blank frames).
+  const rl = await checkRateLimit(req, RATE_LIMITS.STORYBOARD);
   if (rl) return rl;
 
   const body = (await req.json().catch(() => ({}))) as {

@@ -128,8 +128,11 @@ describe('deriveFilmStages', () => {
   test('the score leg reflects its own terminal status during rendering', () => {
     const done = deriveFilmStages(progress({ phase: 'rendering', matrix: matrix({ audio: 'succeeded' }) }), ROLE);
     expect(done.find((s) => s.key === 'score')?.state).toBe('done');
+    // A FAILED Udio leg mid-run must NOT render red 'failed': the assembler
+    // guarantees a MusicGen fallback score at stitch, so the delivered film is
+    // never silent. It shows a calm 'pending' dot until the master is assembled.
     const failed = deriveFilmStages(progress({ phase: 'rendering', matrix: matrix({ audio: 'failed' }) }), ROLE);
-    expect(failed.find((s) => s.key === 'score')?.state).toBe('failed');
+    expect(failed.find((s) => s.key === 'score')?.state).toBe('pending');
   });
 
   test('terminal:true downgrades lingering active legs to pending (no stuck spinners)', () => {

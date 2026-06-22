@@ -51,7 +51,7 @@ async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string 
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
-  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string;
+  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string; remix: string; remixPlaceholder: string; remixGenerating: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string; lyricsBlocked: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
@@ -68,7 +68,7 @@ const COPY: Record<Lang, {
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
-    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა',
+    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა', remix: 'რემიქსი', remixPlaceholder: 'შეცვალე სცენა — მაგ. „გახადე მე-2 სცენა უფრო თბილი და ნათელი“…', remixGenerating: 'რემიქსი მუშავდება — მხოლოდ შეცვლილი სცენა გადაირენდერება…',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
@@ -88,7 +88,7 @@ const COPY: Record<Lang, {
     placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything, or generate an image or music — by text, voice or file.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Chat', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
-    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied',
+    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied', remix: 'Remix', remixPlaceholder: 'Edit a scene — e.g. “make scene 2 warmer and brighter”…', remixGenerating: 'Remixing — re-rendering only the edited scene…',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
@@ -108,7 +108,7 @@ const COPY: Record<Lang, {
     placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно или создайте изображение или музыку — текстом, голосом или файлом.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Чат', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
-    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована',
+    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована', remix: 'Ремикс', remixPlaceholder: 'Измените сцену — напр. «сделай 2-ю сцену теплее и ярче»…', remixGenerating: 'Ремикс — перерисовывается только изменённая сцена…',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
@@ -395,7 +395,10 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
+  /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
+   *  film bubble can offer a "remix" box (re-render only the edited scenes). */
+  filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -673,6 +676,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
   // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
   const [speakPhase, setSpeakPhase] = useState<'loading' | 'playing' | null>(null);
+  // Remix: per-film-bubble edit draft + which film is currently remixing.
+  const [remixDrafts, setRemixDrafts] = useState<Record<number, string>>({});
+  const [remixBusyIdx, setRemixBusyIdx] = useState<number | null>(null);
   // Inline edit-&-resend of a user turn: which message is being edited + its draft.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -929,8 +935,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
+          // Capture the landed per-scene clips so the film bubble can offer Remix
+          // (re-render only the edited scene, reuse the rest via /api/pipeline/remix).
+          const landed = (res.matrix?.clips ?? [])
+            .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
+            .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
           next[next.length - 1] = res.ok && res.masterUrl
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl }
+            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, ...(landed.length >= 2 ? { filmClips: landed, filmPrompt } : {}) }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
         }
         return next;
@@ -947,6 +958,47 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       if (mine()) setBusy(false);
     }
   }, [locale, videoTransition, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+
+  // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
+  // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
+  // remixed result carries the same clips/brief so it can be remixed again.
+  const remixFilm = useCallback(async (i: number) => {
+    const src = messages[i];
+    const edit = (remixDrafts[i] ?? '').trim();
+    if (!src?.filmClips?.length || !src.filmPrompt || !edit || remixBusyIdx !== null) return;
+    setRemixBusyIdx(i);
+    setMessages((prev) => [...prev, { role: 'user', text: edit }, { role: 'assistant', text: t.remixGenerating, genKind: 'video' }]);
+    setRemixDrafts((d) => ({ ...d, [i]: '' }));
+    const clips = src.filmClips;
+    const prompt = src.filmPrompt;
+    try {
+      const r = await fetch('/api/pipeline/remix', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string };
+      const url = j.success ? (j.masterUrl || j.url || null) : null;
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') {
+          next[next.length - 1] = url
+            ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt }
+            : { role: 'assistant', text: `⚠️ ${j.message || t.videoFailed}` };
+        }
+        return next;
+      });
+    } catch {
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
+        return next;
+      });
+    } finally {
+      setRemixBusyIdx(null);
+    }
+  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
@@ -2155,6 +2207,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Share2 size={13} /> {t.share}
                     </button>
                   </div>
+                  {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
+                      shown once the film captured its landed clips + brief. */}
+                  {m.filmClips && m.filmClips.length > 0 && (
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <input
+                        type="text"
+                        value={remixDrafts[i] ?? ''}
+                        onChange={(e) => setRemixDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void remixFilm(i); } }}
+                        placeholder={t.remixPlaceholder}
+                        disabled={remixBusyIdx !== null}
+                        className="min-w-0 flex-1 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void remixFilm(i)}
+                        disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+                      >
+                        {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {(() => {

@@ -269,12 +269,13 @@ export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise
  */
 export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean }): Promise<string | null> {
   if (!videoUrl || !audioUrl) return null;
-  // Prefer HeyGen (the "Avatar" engine) when enabled (LIPSYNC_HEYGEN=1) — a reliable,
-  // professional talking-photo render driven by OUR ElevenLabs audio. Fail-open: if the
-  // HeyGen create path misses, fall straight through to the proven SadTalker pass.
-  // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed, so
-  // the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
-  if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN === '1') {
+  // Prefer HeyGen (the "Avatar" engine) by DEFAULT whenever a key is present — a
+  // reliable, professional talking-photo render driven by OUR ElevenLabs (cloned
+  // Georgian) audio. Set LIPSYNC_HEYGEN=0 to force the SadTalker fallback. Fail-open:
+  // if the HeyGen create path misses, we fall straight through to SadTalker.
+  // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed,
+  // so the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
+  if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN !== '0') {
     const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl);
     if (heygenId) return heygenId;
   }
