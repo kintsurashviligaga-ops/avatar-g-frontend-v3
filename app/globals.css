@@ -3820,7 +3820,9 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
   .um-modal {
     border-radius: 20px 20px 0 0;
     padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    max-height: 92vh;
+    /* dvh, not vh: on mobile, 92vh measures against the largest viewport (toolbars
+       collapsed), so the bottom of a tall modal hides behind the browser chrome. */
+    max-height: 92dvh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }

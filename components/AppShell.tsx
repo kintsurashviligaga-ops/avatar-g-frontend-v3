@@ -170,7 +170,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </ClientErrorBoundary>
       </main>
       {!hideShellChrome && <BottomNavigation />}
-      {!hideShellChrome && <FloatingChatButton />}
+      {!hideShellChrome && <FloatingChatButton hidden={sidebarOpen} />}
       {!isEmbed && <CookieConsent />}
     </div>
   );

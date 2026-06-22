@@ -399,7 +399,9 @@ interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
-  filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string }
+  filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
+  /** Orientation of a video result, so the player uses the right aspect box on reload. */
+  orientation?: 'landscape' | 'vertical' }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -805,6 +807,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const sttFinalRef = useRef('');
   const feedRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Composer wrapper height → anchors the scroll-to-bottom FAB just above it, so the
+  // FAB never overlaps a grown composer (multi-line draft, attachments, open options).
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const [composerH, setComposerH] = useState(96);
   // Stop / cancel plumbing. `abortRef` aborts the in-flight fetch; `genIdRef` is a
   // monotonic generation token — every finalizer checks it so a STOPPED or
   // superseded request can never clobber a newer message (or re-clear `busy`).
@@ -988,6 +994,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
   }, [mode]);
+  // Track the composer's live height so the scroll-to-bottom FAB always floats just
+  // above it (a fixed 104px offset overlapped a multi-line / attachments / open-options composer).
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setComposerH(el.offsetHeight));
+    ro.observe(el);
+    setComposerH(el.offsetHeight);
+    return () => ro.disconnect();
+  }, []);
 
   // Close the full-screen lightbox on Escape (desktop affordance; the backdrop tap
   // and the X button cover touch).
@@ -1091,7 +1107,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
             .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
           next[next.length - 1] = res.ok && res.masterUrl
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, ...(landed.length >= 2 ? { filmClips: landed, filmPrompt } : {}) }
+            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, ...(landed.length >= 2 ? { filmClips: landed, filmPrompt } : {}) }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
         }
         return next;
@@ -1752,7 +1768,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync' } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
+            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync', orientation: videoOrientation } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
             return next;
           });
         } catch {
@@ -1815,7 +1831,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
-              ? { role: 'assistant', text: '', videoUrl: resultUrl }
+              ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: videoOrientation }
               : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
@@ -2327,27 +2343,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <button
                       type="button"
                       onClick={() => void dl(m.imageUrl!, 'myavatar-image.png')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
                     <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
                     <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Sparkles size={13} /> {t.upscaleBtn}
                     </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
                     {/* Edit → load this image as the img2img source. */}
                     <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Pencil size={13} /> {t.editImage}
                     </button>
                   </div>
@@ -2373,7 +2389,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                   {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
                     <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <RotateCcw size={13} /> {t.regenerate}
                     </button>
                   )}
@@ -2387,17 +2403,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <button
                       type="button"
                       onClick={() => void dl(m.audioUrl!, 'myavatar-track.mp3')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
                     <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
@@ -2409,17 +2425,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   {/* #t=0.1 makes the browser paint a real frame as the poster (not a
                       black box); preload=metadata forces that frame to load up front. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
+                  {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
+                      pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className={`${(m.orientation ?? videoOrientation) === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : 'aspect-video w-full'} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
                     <button type="button" onClick={() => void share(m.videoUrl!, 'myavatar-video.mp4')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
                   </div>
@@ -2434,13 +2452,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void remixFilm(i); } }}
                         placeholder={t.remixPlaceholder}
                         disabled={remixBusyIdx !== null}
-                        className="min-w-0 flex-1 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
+                        className="min-w-0 flex-1 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
                       />
                       <button
                         type="button"
                         onClick={() => void remixFilm(i)}
                         disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
                       >
                         {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
                       </button>
@@ -2501,7 +2519,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       />
                       <div className="flex items-center justify-end gap-1.5">
                         <button type="button" onClick={cancelEdit} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text">{locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}</button>
-                        <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
+                        <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
                       </div>
                     </div>
                   );
@@ -2538,13 +2556,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
               {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
-                <div className="mt-1 flex items-center gap-0.5 text-app-muted">
+                <div className="mt-1 flex items-center gap-1.5 text-app-muted">
                   <button
                     type="button"
                     onClick={() => void speakMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
                     title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {speakingIdx === i
                       ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
@@ -2555,7 +2573,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void copyMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
                     title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -2564,7 +2582,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'up', m.text)}
                     aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
                     title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsUp size={13} />
                   </button>
@@ -2573,7 +2591,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'down', m.text)}
                     aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
                     title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsDown size={13} />
                   </button>
@@ -2583,7 +2601,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       onClick={() => regenerateChat()}
                       aria-label={t.regenerate}
                       title={t.regenerate}
-                      className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent"
+                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent"
                     >
                       <RotateCcw size={13} />
                     </button>
@@ -2613,7 +2631,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           aria-label={t.scrollDown}
           title={t.scrollDown}
           className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 104px)' }}
+          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${composerH + 12}px)` }}
         >
           <ChevronDown size={18} />
         </button>
@@ -2621,10 +2639,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div className="shrink-0 pt-1">
+      <div ref={composerRef} className="shrink-0 pt-1">
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
             never covered and the input stays reachable; on desktop (sm:) they're always
-            open. When open on mobile they're capped to 45vh and scroll internally. */}
+            open. When open on mobile they're capped to 58dvh (keyboard-aware) and scroll internally. */}
         {mode !== 'chat' && (
           <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
             className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/12 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition active:scale-[0.99] sm:hidden">
@@ -2632,7 +2650,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        <div className={`${optionsOpen ? 'max-h-[58vh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -3040,6 +3058,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+            onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}

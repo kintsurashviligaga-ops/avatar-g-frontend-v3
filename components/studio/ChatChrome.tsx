@@ -24,6 +24,7 @@ import AuthModal from '@/components/chat/AuthModal';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -77,6 +78,10 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
+  // iOS Safari leaves 100dvh full-height when the keyboard opens, sliding the composer
+  // under it. Subtract the measured keyboard height from the shell so the input stays
+  // visible (the same fix the sibling chat surface already uses).
+  const { keyboardOffset } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
   // Active composer service, mirrored from OmniStudio (for the hamburger highlight).
   const [activeService, setActiveService] = useState<string>('chat');
@@ -212,7 +217,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
 
   return (
-    <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
       {/* Mobile backdrop for the slide-over sidebar. */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} aria-hidden />
@@ -291,7 +296,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
             <div className="flex min-w-0 items-center gap-1.5">
               {/* Mobile: open the sidebar drawer. Desktop: sidebar is persistent. */}
-              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
+              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
               <span className="truncate text-[15px] font-semibold tracking-tight text-app-text md:hidden">
@@ -302,7 +307,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
             <div className="flex shrink-0 items-center gap-0.5">
               <span className="px-1.5 text-[13px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</span>
-              <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-8 w-8 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
+              <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-10 w-10 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
                 <Plus className="h-4 w-4" />
               </button>
             </div>

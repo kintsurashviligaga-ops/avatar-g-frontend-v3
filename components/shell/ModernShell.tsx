@@ -320,6 +320,15 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
     return pathname === full || pathname.startsWith(full + '/')
   }
 
+  // Lock body scroll while the drawer is open so the page behind it doesn't
+  // scroll under a swipe on the panel/backdrop (a common mobile drawer bug).
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   return (
     <>
       {/* Backdrop */}
