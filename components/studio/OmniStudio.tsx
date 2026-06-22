@@ -969,6 +969,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
+  // v330 — bridge with the ChatChrome hamburger's Services list. The hamburger
+  // dispatches 'omni:set-mode' to switch the active service; we mirror back the current
+  // mode via 'omni:mode-changed' so the hamburger can highlight it. Switching also opens
+  // the options drawer so the chosen service's controls are immediately visible.
+  useEffect(() => {
+    const onSet = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync') {
+        setMode(d);
+        if (d !== 'chat') setOptionsOpen(true);
+        setModeMenuOpen(false);
+      }
+    };
+    window.addEventListener('omni:set-mode', onSet);
+    return () => window.removeEventListener('omni:set-mode', onSet);
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
+  }, [mode]);
+
   // Close the full-screen lightbox on Escape (desktop affordance; the backdrop tap
   // and the X button cover touch).
   useEffect(() => {

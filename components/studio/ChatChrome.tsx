@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
+  MessageSquare, Image as ImageIcon, Music2, Film, Volume2, Check,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -61,11 +62,34 @@ interface ChatChromeProps {
   children: React.ReactNode;
 }
 
+// The 5 in-composer services (OmniStudio modes). The hamburger lists them so a mobile
+// user can jump straight to a service; selecting one bridges to OmniStudio via a window
+// CustomEvent (low coupling — no prop threading through ServiceHub).
+const SERVICES: Array<{ id: 'chat' | 'image' | 'music' | 'video' | 'lipsync'; Icon: typeof MessageSquare; ka: string; en: string; ru: string }> = [
+  { id: 'chat', Icon: MessageSquare, ka: 'ჩატი', en: 'Chat', ru: 'Чат' },
+  { id: 'image', Icon: ImageIcon, ka: 'სურათი', en: 'Image', ru: 'Изображение' },
+  { id: 'music', Icon: Music2, ka: 'მუსიკა', en: 'Music', ru: 'Музыка' },
+  { id: 'video', Icon: Film, ka: 'ვიდეო', en: 'Video', ru: 'Видео' },
+  { id: 'lipsync', Icon: Volume2, ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
+];
+
 export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
   const [menuOpen, setMenuOpen] = useState(false);
+  // Active composer service, mirrored from OmniStudio (for the hamburger highlight).
+  const [activeService, setActiveService] = useState<string>('chat');
+  useEffect(() => {
+    const onMode = (e: Event) => { const d = (e as CustomEvent).detail; if (typeof d === 'string') setActiveService(d); };
+    window.addEventListener('omni:mode-changed', onMode);
+    return () => window.removeEventListener('omni:mode-changed', onMode);
+  }, []);
+  const selectService = useCallback((id: string) => {
+    window.dispatchEvent(new CustomEvent('omni:set-mode', { detail: id }));
+    setActiveService(id);
+    setSidebarOpen(false);
+  }, []);
   const [walletOpen, setWalletOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -209,6 +233,29 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           <button type="button" onClick={handleNewChat} className="flex w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/12 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
             <MessageSquarePlus className="h-[17px] w-[17px] text-app-accent" /> {t.newChat}
           </button>
+        </div>
+
+        {/* Services — jump straight to any composer service (mirrors the in-chat mode). */}
+        <div className="mt-3 px-2">
+          <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.services}</p>
+          <div className="space-y-0.5">
+            {SERVICES.map(({ id, Icon, ka, en, ru }) => {
+              const on = activeService === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => selectService(id)}
+                  aria-current={on ? 'true' : undefined}
+                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[13.5px] font-medium transition-colors active:scale-[0.99] ${on ? 'bg-app-accent/12 text-app-accent' : 'text-app-text/90 hover:bg-app-elevated'}`}
+                >
+                  <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} />
+                  {lang === 'en' ? en : lang === 'ru' ? ru : ka}
+                  {on && <Check className="ml-auto h-3.5 w-3.5" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Chat history list */}
