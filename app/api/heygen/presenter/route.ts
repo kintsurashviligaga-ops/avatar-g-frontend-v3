@@ -129,7 +129,31 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) return NextResponse.json({ done: true, error: 'HeyGen not configured' }, { status: 503 });
-  const id = new URL(req.url).searchParams.get('id');
+
+  // DIAG: ?probe=1 — probe candidate HeyGen list endpoints; report status + a
+  // truncated body so we can see which one actually returns existing talking_photo
+  // IDs on this account. Sanitized: only first 400 chars of each body.
+  const url = new URL(req.url);
+  if (url.searchParams.get('probe') === '1') {
+    const candidates = [
+      'https://api.heygen.com/v1/talking_photo.list',
+      'https://api.heygen.com/v2/talking_photos',
+      'https://api.heygen.com/v2/talking_photo',
+      'https://api.heygen.com/v1/talking_photo_avatar.list',
+      'https://api.heygen.com/v2/photo_avatar/list',
+      'https://api.heygen.com/v2/avatar_group.list',
+    ];
+    const results = await Promise.all(candidates.map(async (u) => {
+      try {
+        const r = await fetch(u, { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
+        const t = await r.text().catch(() => '');
+        return { url: u, status: r.status, body: t.slice(0, 400) };
+      } catch (e) { return { url: u, status: 'error', body: String(e).slice(0, 200) }; }
+    }));
+    return NextResponse.json({ probe: true, results });
+  }
+
+  const id = url.searchParams.get('id');
   if (!id) return NextResponse.json({ done: true, error: 'id required' }, { status: 400 });
   try {
     const st = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(id)}`, { headers: { 'X-Api-Key': apiKey } });
