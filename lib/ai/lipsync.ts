@@ -145,8 +145,10 @@ async function faceUrlToBase64(url: string): Promise<{ base64: string; mime: str
   }
 }
 
-/** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null). */
-async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<string | null> {
+/** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null).
+ *  Exported so the presenter route can drive a DEFAULT face through the same fast
+ *  talking_photo path (the /v2/avatars list is unusably slow on our account). */
+export async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<string | null> {
   const key = heygenKey();
   if (!key) return null;
   try {
