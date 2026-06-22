@@ -176,6 +176,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       brandPngPath = undefined;
     }
 
+    // MUSIC-VIDEO / SONG-MASTER audio mode — the song rules, the standalone narrator
+    // is omitted, and any SFX is sidechain-ducked under the song. Driven by the
+    // explicit Music Video Mode flag threaded through globalRender (the voice-overlap fix).
+    const musicVideo = g.musicVideo === true || String(g.musicVideo) === 'true';
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
@@ -188,6 +193,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       clipSec,
       lut3dPath,
       hasBrandOverlay: Boolean(brandPngPath),
+      musicVideo,
     });
 
     const out = join(dir, 'master.mp4');

@@ -67,6 +67,11 @@ const orchestrateSchema = z.object({
   sceneScripts: z.array(z.string().min(1).max(2000)).max(8).optional(),
   // Verbatim dialogue the user typed in the video panel → spoken as the film's voice.
   narrationScript: z.string().max(2000).optional(),
+  // v330 — a user-uploaded soundtrack URL. When present the film's audio leg SKIPS
+  // ambient music generation (Udio) entirely and the upload becomes the master bed.
+  soundtrackUrl: z.string().min(1).max(2048).optional(),
+  // v330 — explicit Music Video mode (implied by a soundtrack) → sung song + song-master mix.
+  musicVideoMode: z.boolean().optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -176,7 +181,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.soundtrackUrl || data.musicVideoMode)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -184,6 +189,9 @@ export async function POST(req: NextRequest) {
             ...(data.sceneFrames?.length ? { sceneFrames: data.sceneFrames } : {}),
             ...(data.sceneScripts?.length ? { sceneScripts: data.sceneScripts } : {}),
             ...(data.narrationScript ? { narrationScript: data.narrationScript } : {}),
+            // v330 — Music Video signals: a soundtrack skips ambient gen; the flag forces a sung song.
+            ...(data.soundtrackUrl ? { soundtrackUrl: data.soundtrackUrl } : {}),
+            ...(data.musicVideoMode ? { musicVideoMode: true } : {}),
           }
         : data.metadata,
       customInstructions: effectiveInstructions,

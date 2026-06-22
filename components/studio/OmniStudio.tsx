@@ -780,6 +780,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // doesn't let the orphaned fetch start playing after the user moved on.
   const ttsTokenRef = useRef(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // v330 — dedicated hidden inputs for the Video panel's asset slots: a single
+  // Character Reference image and a custom Audio Track (beat/song), each kept
+  // separate from the shared attachment picker so they read as their own slots.
+  const charFileRef = useRef<HTMLInputElement | null>(null);
+  const audioFileRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
@@ -854,8 +859,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [videoSpeech, setVideoSpeech] = useState('');
   // Film length: 10s (2 scenes) or 30s (6 scenes). Drives the storyboard scene count.
   const [videoDuration, setVideoDuration] = useState<10 | 30>(30);
-  // Background score on/off (off → voice-only film).
+  // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
+  // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
+  // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
+  // 'documentary' → narration-forward (voice on top, music ducked under it).
+  const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>('documentary');
+  // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
+  // separate from the generic attachment tray so it reads as its own asset slot.
+  const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
+  // v330 — dedicated AUDIO INGEST slot: a user-uploaded beat/song. Once uploaded
+  // (uploadBigFile → storage path) it becomes the master bed, bypassing ambient music
+  // generation. `videoSoundtrackBusy` is true while the upload is in flight.
+  const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string } | null>(null);
+  const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -969,14 +986,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
     setBusy(true);
     try {
+      // v330 — Music Video mode: the song rules, so the standalone narrator is
+      // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
+      // mode keeps narration-forward behaviour (voice-over + ducked score).
+      const isMusicVideo = videoMode === 'musicvideo';
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,
         orientation,
         transition: videoTransition,
-        myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
-        ...(videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
-        ...(videoMusic ? {} : { noMusic: true }),
+        musicVideoMode: isMusicVideo,
+        ...(videoSoundtrack?.url ? { soundtrackUrl: videoSoundtrack.url } : {}),
+        // Narration only in documentary mode — a music video has no spoken narrator.
+        myVoiceNarration: !isMusicVideo && videoMyVoiceNarration && hasTrainedVoice,
+        ...(!isMusicVideo && videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
+        // Music can only be turned OFF in documentary mode; a music video always has its song.
+        ...(!isMusicVideo && !videoMusic ? { noMusic: true } : {}),
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
@@ -1050,7 +1075,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoSoundtrack, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -1626,8 +1651,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // streams its live status into the assistant bubble, then renders the master
     // inline — so the full film service lives in this one chatbox.
     if (mode === 'video' && text) {
-      const refs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl);
-      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${(videoNarration || (videoMyVoiceNarration && hasTrainedVoice)) ? t.narrationCue : ''}`;
+      // v330 — the dedicated Character Reference slot leads the identity-lock refs,
+      // followed by any generic image attachments (back-compat).
+      const refs = [
+        ...(videoCharacterRef ? [videoCharacterRef] : []),
+        ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
+      ];
+      // A music video has no spoken narrator → never append the narration cue in that mode.
+      const wantNarration = videoMode === 'documentary' && (videoNarration || (videoMyVoiceNarration && hasTrainedVoice));
+      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${wantNarration ? t.narrationCue : ''}`;
       setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
       setInput(''); setAttachments([]);
       // Storyboard-FIRST: plan the 6 scenes + a frame each for the user to review;
@@ -1768,7 +1800,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, lipMyVoice, hasTrainedVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -2638,27 +2670,76 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* VIDEO — a clear, labeled control panel so every setting has an obvious place:
-            character · what they say · length · music · voice · effects · format. */}
+        {/* VIDEO — v330 elite, responsive multi-slot panel: master audio MODE,
+            Character Reference + Audio Track ingest slots, length/format, mode-aware
+            audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
-            {/* 1 · Character */}
+            {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
             <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🧑 {locale === 'en' ? 'Character' : locale === 'ru' ? 'Персонаж' : 'პერსონაჟი'}</span>
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
-                  <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
-                </button>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {([
+                  ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'song leads · no narrator' : locale === 'ru' ? 'песня ведёт · без диктора' : 'სიმღერა წამყვანი · დიქტორის გარეშე'],
+                  ['documentary', Mic, locale === 'en' ? 'Documentary' : locale === 'ru' ? 'Документальный' : 'დოკუმენტური', locale === 'en' ? 'narrator leads · music ducked' : locale === 'ru' ? 'диктор ведёт · музыка тише' : 'დიქტორი წამყვანი · მუსიკა ჩაწეული'],
+                ] as const).map(([id, Icon, label, sub]) => {
+                  const on = videoMode === id;
+                  return (
+                    <button key={id} type="button" onClick={() => setVideoMode(id)}
+                      className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${on ? 'border-app-accent/60 bg-app-accent/12 ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 hover:bg-app-bg/60'}`}>
+                      <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${on ? 'text-app-accent' : 'text-app-text'}`}><Icon size={14} /> {label}</span>
+                      <span className="text-[10.5px] leading-tight text-app-muted">{sub}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* 2 · Dialogue */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
-              <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
-                placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
-                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            {/* 2 · ASSET SLOTS — Character Reference + Audio Track ingest (responsive 2-up) */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Character Reference slot */}
+              <div role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charFileRef.current?.click(); } }}
+                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                {videoCharacterRef ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={videoCharacterRef} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Character locked' : locale === 'ru' ? 'Персонаж зафиксирован' : 'პერსონაჟი ჩაკეტილია'}</span>
+                    <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={16} /></span>
+                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Character ref' : locale === 'ru' ? 'Реф. персонажа' : 'პერსონაჟის რეფ.'}</span>
+                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'lock the identity' : locale === 'ru' ? 'зафиксировать лицо' : 'ჩაკეტე ვინაობა'}</span>
+                  </>
+                )}
+              </div>
+
+              {/* Audio Track ingest slot */}
+              <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoSoundtrackBusy) { e.preventDefault(); audioFileRef.current?.click(); } }}
+                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoSoundtrack ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                {videoSoundtrackBusy ? (
+                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…'}</span></>
+                ) : videoSoundtrack ? (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
+                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
+                    <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack(null); }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
+                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Audio track' : locale === 'ru' ? 'Аудиодорожка' : 'აუდიო ტრეკი'}</span>
+                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload a beat/song' : locale === 'ru' ? 'загрузить бит/песню' : 'ატვირთე ბიტი/სიმღერა'}</span>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* 3 · Length + Format, side by side */}
@@ -2685,19 +2766,41 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* 4 · Music & voice */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
-                <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
-                <span className="mx-1 h-4 w-px bg-app-border/15" />
-                <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
-                {hasTrainedVoice && (
-                  <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
-                )}
+            {/* 4 · Audio mix — adapts to the chosen mode (the voice-overlap fix made visible) */}
+            {videoMode === 'documentary' ? (
+              <>
+                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
+                    <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
+                    <span className="mx-1 h-4 w-px bg-app-border/15" />
+                    <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
+                    {hasTrainedVoice && (
+                      <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                    )}
+                  </div>
+                </div>
+                {/* Dialogue — spoken verbatim as the narrator (documentary only). */}
+                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
+                  <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
+                    placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
+                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/8 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">🎤 {locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
+                <p className="text-[11px] leading-relaxed text-app-muted">
+                  {locale === 'en'
+                    ? 'The song rules the master — no narrator, and any backing is ducked −12 dB under the vocal. Upload a beat/song in the Audio Track slot above, or one is generated for you.'
+                    : locale === 'ru'
+                      ? 'Песня — мастер: без диктора, фоновые дорожки приглушаются на −12 дБ под вокал. Загрузите бит/песню в слот «Аудиодорожка» выше — или она будет сгенерирована.'
+                      : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონური ტრეკი ჩაიწევა −12 dB-ით ვოკალის ქვეშ. ატვირთე ბიტი/სიმღერა ზემოთ „აუდიო ტრეკის“ სლოტში, ან დაგენერირდება ავტომატურად.'}
+                </p>
               </div>
-            </div>
+            )}
 
             {/* 5 · Effect & transition */}
             <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
@@ -2811,6 +2914,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             });
           }
           e.target.value = '';
+        }} />
+        {/* v330 — dedicated Character Reference picker (single image, downscaled + locked). */}
+        <input ref={charFileRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const dataUrl = await fileToDataUrl(f);
+            setVideoCharacterRef(await downscaleDataUrl(dataUrl));
+          } catch { /* ignore unreadable file */ }
+        }} />
+        {/* v330 — dedicated Audio Track ingest (single beat/song → uploadBigFile → master bed). */}
+        <input ref={audioFileRef} type="file" accept="audio/*" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          setVideoSoundtrackBusy(true);
+          try {
+            const dataUrl = await fileToDataUrl(f);
+            const url = await uploadBigFile(dataUrl, f.type || 'audio/mpeg');
+            if (url) {
+              setVideoSoundtrack({ name: f.name, url });
+              setVideoMode('musicvideo'); // an uploaded soundtrack implies music-video intent
+            }
+          } catch { /* ignore */ } finally {
+            setVideoSoundtrackBusy(false);
+          }
         }} />
         <div className="rounded-[24px] bg-app-elevated px-3 py-2">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a

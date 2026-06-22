@@ -136,4 +136,42 @@ describe('buildFilterComplex', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: false, hasMusic: false, hasSfx: false, fps: 60, duckPct: 30 });
     expect(g.filter).not.toContain('minterpolate');
   });
+
+  // ── MUSIC VIDEO / SONG-MASTER MODE (v330) ──────────────────────────────────
+  test('music video mode → song rules the master, narrator OMITTED entirely', () => {
+    // The classic clash: a narrator over a song. In music-video mode the voice is
+    // dropped from the mix even though it is present (and its input index reserved).
+    const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true });
+    // music is index 6 (5 clips 0-4, voice 5, music 6) → song is the master at unity
+    expect(g.filter).not.toContain('volume=1.25'); // NO voice lift — voice is gone
+    expect(g.filter).not.toContain('[vkey]');       // voice never split into the mix
+    expect(g.filter).not.toContain('[vraw]');
+    expect(g.filter).not.toContain('sidechaincompress'); // no SFX → no duck needed
+    expect(g.amap).toBe('[aout]'); // the song still flows through the master chain
+  });
+
+  test('music video mode + SFX → secondary bed sidechain-ducked under the SONG (~−12dB)', () => {
+    const g = buildFilterComplex({ nClips: 4, hasVoice: true, hasMusic: true, hasSfx: true, fps: 24, duckPct: 30, musicVideo: true });
+    expect(g.filter).toContain('asplit=2[songkey][songmaster]'); // song keys the duck
+    expect(g.filter).toContain('[songkey]sidechaincompress');     // SFX ducked under the song
+    expect(g.filter).toContain('ratio=20');                       // deep, ~−12dB duck
+    expect(g.filter).toContain('[songmaster][sfxduck]amix=inputs=2'); // song stays on top
+    expect(g.filter).not.toContain('volume=1.25'); // narrator still omitted
+    expect(g.amap).toBe('[aout]');
+  });
+
+  test('music video mode reserves the voice input index → brand overlay index unshifted', () => {
+    // 3 clips (0-2) + voice (3, reserved/omitted) + music (4) → brand PNG = index 5.
+    const g = buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true });
+    expect(g.filter).toContain('[5:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.vmap).toBe('[vbrand]');
+  });
+
+  test('default (no musicVideo flag) → unchanged narration-forward mix', () => {
+    // Regression guard: without the flag the documentary mix is byte-for-byte intact.
+    const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).toContain('volume=1.25'); // voice still lifted on top
+    expect(g.filter).toContain('sidechaincompress');
+    expect(g.filter).not.toContain('songmaster');
+  });
 });

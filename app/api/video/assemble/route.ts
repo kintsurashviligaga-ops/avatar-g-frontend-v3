@@ -26,8 +26,9 @@ import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orc
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
-import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
@@ -92,6 +93,19 @@ interface AssembleBody {
   /** B2B commercials only — the director's marketing copy. When present, the finished
    *  master gets animated lower-third / price / CTA overlays burned in (fail-open). */
   marketing?: MarketingOverlay | null;
+  /** v330 — explicit MUSIC VIDEO MODE (vs documentary/commercial). When true the
+   *  song rules the master stream (narrator omitted, SFX ducked −12 dB under the
+   *  song) and the branded music-video lower-third is burned in. When false the
+   *  narration-forward documentary mix is used. Overrides the legacy brief-keyword
+   *  heuristic; omitted → fall back to isMusicVideoBrief(scorePrompt). */
+  musicVideoMode?: boolean;
+  /** v330 — a user-supplied soundtrack (uploaded beat/song). When present it BECOMES
+   *  the master music bed, bypassing BOTH the Udio score and the MusicGen fallback,
+   *  and the LTX/compositing pipeline anchors onto it. */
+  customAudioUrl?: string | null;
+  /** v330 — caption language for the burned-in lower-third (ka/en/ru). Drives the
+   *  FiraGO script + casing. Omitted → auto-detected from the brief. */
+  captionLang?: 'ka' | 'en' | 'ru';
 }
 
 export async function POST(req: NextRequest) {
@@ -157,14 +171,70 @@ export async function POST(req: NextRequest) {
       render: s.render ?? {},
     })),
   );
+
+  // v330 — resolve the master mode ONCE (used by both the audio layer and the
+  // burned lower-third). The explicit Music Video Mode flag wins; the legacy
+  // brief-keyword heuristic is the fallback. B2B marketing films are always
+  // documentary-style (their own overlay), so they never take music-video mode.
+  const musicVideoMode =
+    (typeof body.musicVideoMode === 'boolean' ? body.musicVideoMode : isMusicVideoBrief(body.scorePrompt)) &&
+    !body.marketing;
+  // Caption language for the burned lower-third: explicit, else auto-detected from the brief.
+  const captionLang: 'ka' | 'en' | 'ru' =
+    body.captionLang ?? (/[Ⴀ-ჿᲐ-Ჿ]/.test(body.scorePrompt ?? '') ? 'ka' : 'en');
+  const brandText =
+    captionLang === 'ka' ? 'მუსიკალური ვიდეო' : captionLang === 'ru' ? 'Музыкальное видео' : 'AI Music Video';
+
   // PHASE 55 §2 — Cochlear score fallback. When the upstream Udio score failed
   // under credit exhaustion the client sends no musicUrl, and the stitched 30s
   // master would play completely silent. Synthesize a cohesive cinematic score
   // on the funded Replicate MusicGen module and overlay it across the whole
   // timeline so the film is never mute. Best-effort: a fallback miss degrades
   // gracefully to silent — it never fails the stitch.
-  let resolvedMusicUrl = body.musicUrl ? await reSignIfInternal(body.musicUrl) : null;
-  let scoreFallback: 'udio->musicgen' | null = null;
+  // v330 — a user-uploaded soundtrack is the master bed and wins over everything:
+  // it short-circuits the Udio score (already skipped upstream) AND the MusicGen
+  // fallback below (because resolvedMusicUrl is now non-null), and the compositing
+  // pipeline anchors strictly onto this file.
+  let resolvedMusicUrl = body.customAudioUrl
+    ? await reSignIfInternal(body.customAudioUrl)
+    : body.musicUrl
+      ? await reSignIfInternal(body.musicUrl)
+      : null;
+  if (body.customAudioUrl) {
+    // eslint-disable-next-line no-console
+    console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
+  }
+  let scoreFallback: 'udio->musicgen' | 'elevenlabs-music' | null = null;
+
+  // v330 — ElevenLabs Music is the MASTER audio layer. Synthesize the full track
+  // SYNCHRONOUSLY (sung vocals + backing for a music video, or an instrumental score)
+  // and host it. This is the primary source, replacing the async Udio leg; MusicGen
+  // below stays as the graceful fallback if EL Music is unavailable or the account
+  // lacks Music access, so the film is never silently mute.
+  if (!resolvedMusicUrl && !body.noMusic && hasElevenLabsMusicKey()) {
+    const totalSec = Math.min(30, Math.max(8, Math.round(signedSegments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0))));
+    const { prompt, instrumental } = buildElevenMusicPrompt({
+      brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
+      totalSec,
+      musicVideoMode,
+    });
+    try {
+      const EL_MUSIC_BUDGET_MS = 120_000; // synchronous, before saga dispatch — leave the stitch its window
+      const { audio, contentType } = await Promise.race([
+        composeElevenLabsMusic({ prompt, lengthMs: totalSec * 1000, instrumental }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
+      ]);
+      const path = `films/elmusic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+      resolvedMusicUrl = (await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800)) ?? null;
+      if (resolvedMusicUrl) scoreFallback = 'elevenlabs-music';
+      // eslint-disable-next-line no-console
+      console.log('[assemble] ElevenLabs Music track ready:', resolvedMusicUrl ? `yes (${instrumental ? 'instrumental' : 'sung'})` : 'no');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+    }
+  }
+
   if (!resolvedMusicUrl && !body.noMusic && process.env.REPLICATE_API_TOKEN) {
     // Match the score length to the assembled timeline so MusicGen returns a
     // track that spans every compiled clip rather than looping a short stub.
@@ -213,13 +283,17 @@ export async function POST(req: NextRequest) {
       // purple-gold, golden-hour → warm amber, else neutral teal-orange).
       ...(typeof body.scorePrompt === 'string' && body.scorePrompt.trim() ? { brief: body.scorePrompt.trim() } : {}),
       // MUSIC-VIDEO BRAND LOWER-THIRD — burned INTO the stitch (reliable, no
-      // post-pass round-trip). Gated on music-video intent so narrative films never
-      // get a music-video label; B2B marketing (below) still uses its own overlay.
-      ...(isMusicVideoBrief(body.scorePrompt) && !body.marketing
-        ? { brandLowerThird: JSON.stringify({ overlayText: 'AI Music Video', website: 'MyAvatar.ge' }) }
+      // post-pass round-trip). Gated on the resolved Music Video Mode so narrative
+      // films never get a music-video label; B2B marketing uses its own overlay.
+      // Language-tagged so the FiraGO overlay renders Georgian/Russian, not tofu.
+      ...(musicVideoMode
+        ? { brandLowerThird: JSON.stringify({ overlayText: brandText, website: 'MyAvatar.ge', lang: captionLang }) }
         : {}),
       ...(body.globalRender ?? {}),
       ...(body.orientation ? { orientation: String(body.orientation) } : {}),
+      // SONG-MASTER audio mix (narrator omitted, SFX ducked −12 dB) — asserted AFTER
+      // the client globalRender spread so the resolved mode is authoritative.
+      musicVideo: musicVideoMode,
     },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),

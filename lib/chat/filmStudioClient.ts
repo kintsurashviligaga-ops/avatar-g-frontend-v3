@@ -111,6 +111,13 @@ export interface DriveFilmOptions {
    * music. Absent → the pipeline composes a score as before.
    */
   soundtrackUrl?: string | null;
+  /**
+   * v330 — explicit MUSIC VIDEO mode (vs documentary/commercial). Drives the
+   * song-master audio mix (narrator omitted, SFX ducked −12 dB under the song)
+   * and the branded music-video lower-third. When a soundtrackUrl is supplied this
+   * is implied true. Absent/false → narration-forward documentary mix.
+   */
+  musicVideoMode?: boolean;
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
@@ -431,6 +438,9 @@ async function assembleMaster(
   transition?: 'crossfade' | 'cut',
   myVoiceNarration?: boolean,
   noMusic?: boolean,
+  musicVideoMode?: boolean,
+  customAudioUrl?: string | null,
+  captionLang?: 'ka' | 'en' | 'ru',
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -463,6 +473,14 @@ async function assembleMaster(
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
       ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
+      // v330 — explicit Music Video mode → song-master mix + branded lower-third.
+      // A supplied soundtrack implies music-video intent.
+      ...(musicVideoMode || customAudioUrl ? { musicVideoMode: true } : {}),
+      // v330 — a user-uploaded soundtrack: the route anchors onto it, bypassing
+      // both the Udio score and the MusicGen fallback.
+      ...(customAudioUrl ? { customAudioUrl } : {}),
+      // v330 — caption language for the FiraGO lower-third (ka/en/ru).
+      ...(captionLang ? { captionLang } : {}),
       // Scene transition (crossfade/cut). globalRender wins over the route's
       // film-token default ('cut'), so the user's choice is honoured.
       ...(transition ? { globalRender: { transition } } : {}),
@@ -572,6 +590,12 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.sceneScripts?.length ? { sceneScripts: opts.sceneScripts } : {}),
           // Verbatim dialogue the user typed → spoken as the film's voice-over.
           ...(opts.narrationScript?.trim() ? { narrationScript: opts.narrationScript.trim() } : {}),
+          // v330 — a user-uploaded soundtrack: tell the orchestrator to SKIP the
+          // ambient music-generation (Udio) leg entirely (no generation, no charge);
+          // the upload becomes the master bed at assemble time.
+          ...(opts.soundtrackUrl ? { soundtrackUrl: opts.soundtrackUrl } : {}),
+          // v330 — explicit Music Video mode (implied by a soundtrack) → sung song.
+          ...(opts.musicVideoMode || opts.soundtrackUrl ? { musicVideoMode: true } : {}),
         },
         signal,
       );
@@ -682,7 +706,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const voiceBed = matrix.voiceUrl ?? null;
     // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
     const sfxBed = matrix.sfxUrl ?? null;
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic);
+    // v330 — Music Video mode (explicit, or implied by an uploaded soundtrack) +
+    // the caption language for the burned-in lower-third (the app locale).
+    const musicVideoMode = Boolean(opts.musicVideoMode || opts.soundtrackUrl);
+    const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {

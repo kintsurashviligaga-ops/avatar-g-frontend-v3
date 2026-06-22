@@ -36,6 +36,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { startUdioGeneration, type UdioGenerationInput } from '@/lib/udio/client';
+import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
@@ -73,10 +74,13 @@ const serviceManager = new ServiceManager();
  * approximate — the REQUEST faithfully asks for Georgian vocals; fidelity is
  * provider-dependent.
  */
-export function buildMusicRequest(o: { brief: string; totalSec: number; style?: string | null }): UdioGenerationInput {
+export function buildMusicRequest(o: { brief: string; totalSec: number; style?: string | null; musicVideoMode?: boolean }): UdioGenerationInput {
   const brief = o.brief || '';
   const lower = brief.toLowerCase();
+  // The explicit Music Video Mode flag from the composer forces a SUNG song; the
+  // brief-keyword heuristic remains the fallback for callers that don't set it.
   const isMusicVideo =
+    o.musicVideoMode === true ||
     /\bmusic video\b/.test(lower) ||
     (/\bmusic\b|\bsong\b|\bbeat\b|\bvocal|\br&b\b|\brnb\b|\bpop\b|\bhip[- ]?hop\b/.test(lower) && /\bsing|\bsinger\b|\bvocal|\blyric/.test(lower)) ||
     /მუსიკალური ვიდეო|სიმღერ|მომღერ/.test(brief);
@@ -642,8 +646,24 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
   // (Past the 38% guard above, at least one clip is guaranteed queued.)
+  // v330 — read the explicit Music Video signals the composer threads through
+  // metadata. A user-uploaded soundtrack BYPASSES the ambient music-generation
+  // loop entirely (we never call — or bill — Udio); the explicit mode flag forces
+  // a sung song when the brief keywords would otherwise miss.
+  const filmMeta = (input.metadata ?? {}) as { soundtrackUrl?: unknown; musicVideoMode?: unknown };
+  const hasCustomSoundtrack = typeof filmMeta.soundtrackUrl === 'string' && filmMeta.soundtrackUrl.trim().length > 0;
+  const explicitMusicVideo = filmMeta.musicVideoMode === true;
   let musicWorkId: string | null = null;
-  if (hasUdioApiKey()) {
+  if (hasCustomSoundtrack) {
+    // eslint-disable-next-line no-console
+    console.log('[film] custom soundtrack supplied → skipping the Udio audio leg (no generation, no charge)');
+  } else if (hasElevenLabsMusicKey()) {
+    // v330 — ElevenLabs Music is the master audio layer and runs SYNCHRONOUSLY at the
+    // assemble step, so the async Udio leg is skipped entirely (no workId, no charge).
+    // Udio remains the fallback only when no ElevenLabs key is configured.
+    // eslint-disable-next-line no-console
+    console.log('[film] ElevenLabs Music configured → song synthesized at assemble; skipping the Udio leg');
+  } else if (hasUdioApiKey()) {
     try {
       const audioForecast = forecastMarginForAction('voice_tts');
       musicWorkId = await withTrace(
@@ -664,6 +684,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
             brief: input.message,
             totalSec: plan.shared.totalSec,
             style,
+            musicVideoMode: explicitMusicVideo,
           })),
       ).then((r) => r.workId);
     } catch (err) {
