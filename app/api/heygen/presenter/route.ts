@@ -44,7 +44,10 @@ const avatarCache: Record<string, string> = {};
 async function firstStockAvatar(apiKey: string, gender: 'male' | 'female'): Promise<string | null> {
   if (avatarCache[gender]) return avatarCache[gender];
   try {
-    const res = await fetchT(`${HEYGEN_BASE}/v2/avatars`, { headers: { 'X-Api-Key': apiKey } }, 15_000);
+    // The avatar list is a LARGE payload and slow (this untimed call was the main
+    // cause of the original 504). Resolved in Phase A in parallel with synthesis,
+    // so it has room — 40s, then cached per gender for instant reuse.
+    const res = await fetchT(`${HEYGEN_BASE}/v2/avatars`, { headers: { 'X-Api-Key': apiKey } }, 40_000);
     if (!res.ok) return null;
     const data = (await res.json()) as { data?: { avatars?: Array<{ avatar_id: string; gender?: string }> } };
     const avatars = data.data?.avatars ?? [];
@@ -69,20 +72,25 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { text?: string; audioUrl?: string; gender?: 'male' | 'female'; orientation?: 'landscape' | 'vertical'; avatarId?: string };
   const gender: 'male' | 'female' = body.gender === 'male' ? 'male' : 'female';
 
-  // ── PHASE A — synthesize the line in the CLONED Georgian voice → public mp3 url.
-  // Bounded by synthesizeVoiceover's own 30s ElevenLabs timeout (+ fallbacks +
-  // upload), comfortably under 60s. Returns the hosted audio for Phase B.
+  // ── PHASE A — synthesize the cloned-voice audio AND resolve the avatar, in
+  // PARALLEL. Synthesis is fast (~4s); the avatar list is the slow leg, so running
+  // it here (with room under 60s) keeps it off Phase B's critical path. Returns
+  // both so Phase B is a pure, fast HeyGen submit.
   if (!body.audioUrl) {
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     if (!text) return NextResponse.json({ success: false, error: 'text is required' }, { status: 400 });
-    const audioUrl = await textToHostedSpeech(text.slice(0, 1500), null).catch(() => null);
+    const [audioUrl, avatarId] = await Promise.all([
+      textToHostedSpeech(text.slice(0, 1500), null).catch(() => null),
+      firstStockAvatar(apiKey, gender).catch(() => null),
+    ]);
     if (!audioUrl) return NextResponse.json({ success: false, error: 'voice synthesis failed (no cloned-voice audio)' }, { status: 502 });
-    return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
+    if (!avatarId) return NextResponse.json({ success: false, error: 'no HeyGen avatar available' }, { status: 502 });
+    return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, avatarId, voiceProvider: 'elevenlabs:cloned-ka' });
   }
 
   // ── PHASE B — kick off the AUDIO-DRIVEN avatar video with the hosted audio.
-  // Avatar lookup (cached) + HeyGen submit, both timeout-bounded → fast, returns
-  // the videoId for the client to poll. No long synthesis here.
+  // Pure HeyGen submit (avatarId already resolved in Phase A, or cached) → fast,
+  // returns the videoId for the client to poll. No long synthesis or list here.
   const audioUrl = body.audioUrl;
   const vertical = body.orientation === 'vertical';
   const dimension = vertical ? { width: 720, height: 1280 } : { width: 1280, height: 720 };

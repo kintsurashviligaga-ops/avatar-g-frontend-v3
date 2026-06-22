@@ -1523,12 +1523,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             body: JSON.stringify({ text, orientation: videoOrientation, gender: 'female' }),
           });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; avatarId?: string };
           let sj: { success?: boolean; videoId?: string } = {};
           if (syn.success && syn.audioUrl) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: videoOrientation, gender: 'female' }),
+              body: JSON.stringify({ audioUrl: syn.audioUrl, ...(syn.avatarId ? { avatarId: syn.avatarId } : {}), orientation: videoOrientation, gender: 'female' }),
             });
             sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
           }
