@@ -1083,9 +1083,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // its own frame lands, and the N/M counter ticks up. A failed frame settles to
       // a graceful icon (removed from `pending`) — never an endless spinner.
       const fetchFrame = async (ordinal: number) => {
-        // Up to 2 attempts — a transient provider miss shouldn't leave a permanent
-        // graceful-icon gap when a quick retry would land the frame.
-        for (let attempt = 0; attempt < 2; attempt++) {
+        // Up to 3 attempts with BACKOFF — under heavy image-provider load the frame
+        // endpoint can return 503; retrying immediately just hammers it. Backing off
+        // (3s, 6s) lets the provider recover so a transient 503 still lands the frame
+        // instead of leaving a permanent graceful-icon gap.
+        const MAX = 3;
+        const backoff = (attempt: number) => new Promise((res) => setTimeout(res, 3000 * (attempt + 1)));
+        for (let attempt = 0; attempt < MAX; attempt++) {
           try {
             const r = await fetch('/api/film/storyboard', {
               method: 'POST',
@@ -1096,7 +1100,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             });
             const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
-            if (url || attempt === 1) {
+            if (url || attempt === MAX - 1) {
               setStoryboard((prev) => prev ? {
                 ...prev,
                 scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
@@ -1104,12 +1108,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               } : prev);
               return;
             }
+            await backoff(attempt); // 503 / transient miss → wait before retrying
           } catch {
             if (ac.signal.aborted) return;
-            if (attempt === 1) {
+            if (attempt === MAX - 1) {
               setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
               return;
             }
+            await backoff(attempt);
           }
         }
       };
