@@ -7,6 +7,7 @@ import { i18n } from "@/i18n.config";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { PageTransitionWrapper } from "@/components/layout/PageTransitionWrapper";
 import { AppProviders } from "@/components/providers/AppProviders";
+import { MobileSidebar } from "@/components/layout/MobileSidebar";
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
 
@@ -110,6 +111,10 @@ export default async function LocaleLayout({
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
         <QueryProvider>
           <AppProviders>
+            {/* Mobile-only hamburger + slide-in drawer (xl:hidden) — global nav
+                for narrow viewports. Never renders on desktop, so it can't
+                conflict with page-specific sidebars (OmniStudio, etc.). */}
+            <MobileSidebar />
             <PageTransitionWrapper>{children}</PageTransitionWrapper>
           </AppProviders>
         </QueryProvider>
