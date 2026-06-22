@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
-import { heygenLipsyncCreate } from '@/lib/ai/lipsync';
 
 /**
  * /api/heygen/presenter — "Presenter mode"
@@ -56,14 +55,33 @@ export async function POST(req: NextRequest) {
   const audioUrl = body.audioUrl;
   const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;
 
-  // Reachability check first, so a face-fetch failure is reported distinctly from a
-  // HeyGen rejection (otherwise both collapse to one opaque "submit failed").
-  const faceOk = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).then((r) => r.ok).catch(() => false);
-  if (!faceOk) return NextResponse.json({ success: false, error: 'presenter face unreachable', detail: faceUrl.slice(0, 140) }, { status: 502 });
+  // Fetch the face bytes (distinct, reported error if this fails).
+  const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  if (!faceRes || !faceRes.ok) return NextResponse.json({ success: false, error: 'presenter face unreachable', detail: `${faceUrl.slice(0, 100)} → ${faceRes?.status ?? 'fetch error'}` }, { status: 502 });
+  const faceMime = faceRes.headers.get('content-type') || 'image/jpeg';
+  const faceBytes = new Uint8Array(await faceRes.arrayBuffer());
 
-  const handle = await heygenLipsyncCreate(faceUrl, audioUrl).catch(() => null);
-  const videoId = handle?.startsWith('heygen:') ? handle.slice('heygen:'.length) : null;
-  if (!videoId) return NextResponse.json({ success: false, error: 'HeyGen rejected talking_photo (face reachable)' }, { status: 502 });
+  // 1) Upload as a talking_photo (fast upload host). Capture HeyGen's actual reply.
+  const tpRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
+    method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': faceMime }, body: faceBytes, signal: AbortSignal.timeout(30_000),
+  }).catch(() => null);
+  const tpText = tpRes ? await tpRes.text().catch(() => '') : '';
+  if (!tpRes || !tpRes.ok) return NextResponse.json({ success: false, error: `HeyGen talking_photo ${tpRes?.status ?? 'timeout'}`, detail: tpText.slice(0, 300) }, { status: 502 });
+  const talkingPhotoId = (() => { try { return JSON.parse(tpText)?.data?.talking_photo_id ?? null; } catch { return null; } })();
+  if (!talkingPhotoId) return NextResponse.json({ success: false, error: 'HeyGen talking_photo: no id', detail: tpText.slice(0, 300) }, { status: 502 });
+
+  // 2) Generate the audio-driven video. Capture HeyGen's actual reply.
+  const vertical = body.orientation === 'vertical';
+  const dimension = vertical ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
+  const genRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+    method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_inputs: [{ character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' }, voice: { type: 'audio', audio_url: audioUrl } }], dimension }),
+    signal: AbortSignal.timeout(20_000),
+  }).catch(() => null);
+  const genText = genRes ? await genRes.text().catch(() => '') : '';
+  if (!genRes || !genRes.ok) return NextResponse.json({ success: false, error: `HeyGen generate ${genRes?.status ?? 'timeout'}`, detail: genText.slice(0, 300) }, { status: 502 });
+  const videoId = (() => { try { const j = JSON.parse(genText); return j?.data?.video_id ?? j?.video_id ?? null; } catch { return null; } })();
+  if (!videoId) return NextResponse.json({ success: false, error: 'HeyGen generate: no video_id', detail: genText.slice(0, 300) }, { status: 502 });
 
   return NextResponse.json({ success: true, videoId, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
 }
