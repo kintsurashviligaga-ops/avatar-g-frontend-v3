@@ -270,7 +270,11 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // caller in this exact order: brand lower-third PNG, then the music info-bug PNG.
   let overlayIdx = ai;
   if (opts.hasBrandOverlay) {
-    parts.push(`${vmap}[${overlayIdx}:v]overlay=0:0:format=auto[vbrand]`);
+    // The brand lower-third and the MTV info bug both live bottom-left. When BOTH are
+    // present, hold the brand back until the bug has faded out (~4.4s) so they never
+    // collide/overprint; otherwise show the brand for the whole film.
+    const brandEnable = opts.hasMusicBug ? `:enable='gte(t,4.4)'` : '';
+    parts.push(`${vmap}[${overlayIdx}:v]overlay=0:0:format=auto${brandEnable}[vbrand]`);
     vmap = '[vbrand]';
     overlayIdx++;
   }

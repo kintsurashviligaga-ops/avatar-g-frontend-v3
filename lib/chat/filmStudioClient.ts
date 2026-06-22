@@ -599,8 +599,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // ambient music-generation (Udio) leg entirely (no generation, no charge);
           // the upload becomes the master bed at assemble time.
           ...(opts.soundtrackUrl ? { soundtrackUrl: opts.soundtrackUrl } : {}),
-          // v330 — explicit Music Video mode (implied by a soundtrack) → sung song.
-          ...(opts.musicVideoMode || opts.soundtrackUrl ? { musicVideoMode: true } : {}),
+          // v330 — Music Video mode is driven by the EXPLICIT flag only (not inferred from a
+          // soundtrack), so a documentary with a custom bed is never silently turned into a
+          // narrator-less music video.
+          ...(opts.musicVideoMode ? { musicVideoMode: true } : {}),
         },
         signal,
       );
@@ -713,7 +715,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const sfxBed = matrix.sfxUrl ?? null;
     // v330 — Music Video mode (explicit, or implied by an uploaded soundtrack) +
     // the caption language for the burned-in lower-third (the app locale).
-    const musicVideoMode = Boolean(opts.musicVideoMode || opts.soundtrackUrl);
+    const musicVideoMode = Boolean(opts.musicVideoMode);
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
     let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
 

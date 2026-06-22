@@ -22,6 +22,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFilmStatus, filmStatusPersistenceEnabled, type FilmStatusRecord } from '@/lib/chat/filmStatusStore';
+import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +38,13 @@ export async function GET(
 
   const record = await getFilmStatus(tokenId);
   if (record) {
-    return NextResponse.json({ ...record, durable: filmStatusPersistenceEnabled() });
+    // v330 — re-sign the persisted master URL on every recovery so a reload / second
+    // device / returning session always gets a LIVE link. The stored URL can be a
+    // short-lived signed URL that has since expired (→ blank player / MEDIA_ERR 4);
+    // reSignIfInternal mints a fresh 7-day token for our bucket objects and passes
+    // external/provider URLs through unchanged.
+    const masterUrl = record.masterUrl ? await reSignIfInternal(record.masterUrl, 604_800) : record.masterUrl;
+    return NextResponse.json({ ...record, masterUrl, durable: filmStatusPersistenceEnabled() });
   }
 
   // No record yet — honest "unknown" so the client keeps polling rather than

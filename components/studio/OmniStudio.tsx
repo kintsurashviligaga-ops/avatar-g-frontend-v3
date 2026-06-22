@@ -1002,7 +1002,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         transition: videoTransition,
         musicVideoMode: isMusicVideo,
         ...(isMusicVideo ? { vocalGender: videoVocalGender } : {}),
-        ...(videoSoundtrack?.url ? { soundtrackUrl: videoSoundtrack.url } : {}),
+        // Only a music video uses the uploaded soundtrack — never let a leftover track
+        // silently turn Documentary mode into a narrator-less music video.
+        ...(isMusicVideo && videoSoundtrack?.url ? { soundtrackUrl: videoSoundtrack.url } : {}),
         // Narration only in documentary mode — a music video has no spoken narrator.
         myVoiceNarration: !isMusicVideo && videoMyVoiceNarration && hasTrainedVoice,
         ...(!isMusicVideo && videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
@@ -1081,7 +1083,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoVocalGender, videoSoundtrack, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoVocalGender, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -2760,15 +2762,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               </div>
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
-                <div className="flex items-end gap-3">
-                  <button type="button" onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${videoOrientation === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
-                    <span className={`text-[10.5px] font-medium ${videoOrientation === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}{videoMode === 'musicvideo' && <span className="ml-1 text-[10px] font-normal text-app-muted">· {locale === 'en' ? '9:16 locked' : locale === 'ru' ? '9:16 фикс.' : '9:16 ფიქს.'}</span>}</span>
+                <div className={`flex items-end gap-3 ${videoMode === 'musicvideo' ? 'opacity-70' : ''}`}>
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
+                    <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
                   </button>
-                  <button type="button" onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex flex-col items-center gap-1 transition active:scale-95">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${videoOrientation === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
-                    <span className={`text-[10.5px] font-medium ${videoOrientation === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
+                    <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
                   </button>
                 </div>
               </div>

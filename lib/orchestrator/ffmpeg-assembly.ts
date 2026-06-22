@@ -280,7 +280,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     }
 
     const objectPath = `${m.pipelineId || 'render'}/${Date.now()}.mp4`;
-    const url = await uploadAndSign(RENDER_BUCKET, objectPath, data.toString('base64'), 'video/mp4');
+    // v330 — host the user-facing master with a 7-day signed URL (matching the audio-bed
+    // + overlay convention). The default 15-min TTL expired while the film sat in chat
+    // history, producing a blank player (MEDIA_ERR 4) on revisit. The status route also
+    // re-signs on read-back as a second layer of defence.
+    const url = await uploadAndSign(RENDER_BUCKET, objectPath, data.toString('base64'), 'video/mp4', 604_800);
     if (!url) throw new Error('master upload failed (Supabase Storage not configured)');
     return { url, qa };
   } finally {

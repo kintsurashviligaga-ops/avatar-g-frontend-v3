@@ -179,9 +179,10 @@ describe('buildFilterComplex', () => {
   test('music bug → faded, time-gated overlay composited AFTER the brand PNG', () => {
     // 5 clips (0-4) + music (5) → brand PNG = index 6, music-bug PNG = index 7.
     const g = buildFilterComplex({ nClips: 5, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true, hasMusicBug: true });
-    expect(g.filter).toContain('[6:v]overlay=0:0:format=auto[vbrand]'); // brand first
+    // brand waits until the bug fades (~4.4s) so they never collide bottom-left
+    expect(g.filter).toContain("[6:v]overlay=0:0:format=auto:enable='gte(t,4.4)'[vbrand]");
     expect(g.filter).toContain('[7:v]format=rgba,fade=t=in'); // bug PNG alpha-faded
-    expect(g.filter).toContain("[vbrand][mbug]overlay=0:0:enable='between(t,0,4.4)'"); // time-gated, over the brand
+    expect(g.filter).toContain("[vbrand][mbug]overlay=0:0:enable='between(t,0,4.4)'"); // bug over the opening
     expect(g.vmap).toBe('[vmbug]');
   });
 

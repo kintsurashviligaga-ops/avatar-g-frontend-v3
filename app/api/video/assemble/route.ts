@@ -138,6 +138,12 @@ interface AssembleBody {
 }
 
 export async function POST(req: NextRequest) {
+  // v330 — function-entry timestamp so the synchronous audio legs + the dispatch
+  // deadline stay collectively under maxDuration (300s). The dispatch timeout below is
+  // made RELATIVE to time already consumed so it fires inside the function (→ saga
+  // compensate releases credits) rather than letting the platform hard-kill the request.
+  const fnT0 = Date.now();
+  const MAX_FN_MS = 300_000;
   let body: AssembleBody;
   try {
     body = (await req.json()) as AssembleBody;
@@ -236,11 +242,6 @@ export async function POST(req: NextRequest) {
     console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
   }
   let scoreFallback: 'udio->musicgen' | 'elevenlabs-music' | null = null;
-  // Wall-time the ElevenLabs Music attempt so the MusicGen fallback below can refuse
-  // to STACK after a slow EL gen/timeout (two long synchronous gens would blow the
-  // 300s function ceiling — the exact failure mode to avoid). A FAST EL failure
-  // (e.g. a 403 with no Music-tier access) leaves ample time, so MusicGen still rescues.
-  let elMusicElapsedMs = 0;
 
   // v330 — ElevenLabs Music is the MASTER audio layer. Synthesize the full track
   // SYNCHRONOUSLY (sung vocals + backing for a music video, or an instrumental score)
@@ -255,7 +256,6 @@ export async function POST(req: NextRequest) {
       musicVideoMode,
       vocalGender: body.vocalGender,
     });
-    const elT0 = Date.now();
     try {
       // Tight budget: this runs SYNCHRONOUSLY before the stitch, inside the same 300s
       // function. EL Music is normally ~20–45s for 30s of audio; 60s caps a slow gen so
@@ -274,13 +274,16 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
     }
-    elMusicElapsedMs = Date.now() - elT0;
   }
 
-  // MusicGen fallback — runs when EL Music didn't already burn most of its budget.
-  // Skipping after a slow EL attempt prevents two long synchronous gens from stacking
-  // past the 300s ceiling (which would hard-kill the stitch → "could not host master").
-  if (!resolvedMusicUrl && !body.noMusic && elMusicElapsedMs < 30_000 && process.env.REPLICATE_API_TOKEN) {
+  // MusicGen fallback — rescues the film when EL Music produced nothing. Gate on the
+  // REMAINING function budget (not how long EL took): it still rescues after a slow EL
+  // failure/timeout (the old elapsed<30s gate left those silent), yet never stacks two
+  // long gens past the 300s ceiling because it only runs when there's room for the
+  // MusicGen cap PLUS a stitch reserve.
+  const SCORE_BUDGET_MS = 120_000;
+  const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
+  if (!resolvedMusicUrl && !body.noMusic && (MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
     // Match the score length to the assembled timeline so MusicGen returns a
     // track that spans every compiled clip rather than looping a short stub.
     const totalSec = Math.min(
@@ -297,8 +300,7 @@ export async function POST(req: NextRequest) {
       // headroom for the CPU stitch, hard-killing the request and stranding the
       // reserved credits. Cap the score at 120s: long enough for a warm/cold render,
       // short enough to leave the stitch its full window. A timeout degrades to a
-      // silent film (never a failed render).
-      const SCORE_BUDGET_MS = 120_000;
+      // silent film (never a failed render). (SCORE_BUDGET_MS hoisted to the gate above.)
       const score = await Promise.race([
         generateMusic(`${brief}, ${totalSec}-second continuous film score, instrumental`, totalSec),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('musicgen score timed out')), SCORE_BUDGET_MS)),
@@ -340,8 +342,11 @@ export async function POST(req: NextRequest) {
       ...(body.globalRender ?? {}),
       ...(body.orientation ? { orientation: String(body.orientation) } : {}),
       // SONG-MASTER audio mix (narrator omitted, SFX ducked −12 dB) — asserted AFTER
-      // the client globalRender spread so the resolved mode is authoritative.
-      musicVideo: musicVideoMode,
+      // the client globalRender spread so the resolved mode is authoritative. Gated on a
+      // resolved song: if BOTH score providers failed (no music bed), don't claim
+      // song-master — that would drop the narrator AND have no song, leaving the film
+      // silent / promoting the narrator via fall-through. Fall back to the normal mix.
+      musicVideo: musicVideoMode && Boolean(resolvedMusicUrl),
     },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
@@ -417,11 +422,17 @@ export async function POST(req: NextRequest) {
           else ctx.signal.addEventListener('abort', abort, { once: true });
         }
         let timer: ReturnType<typeof setTimeout> | null = null;
+        // v330 — make the deadline RELATIVE to time already spent on the synchronous
+        // audio legs (EL Music / MusicGen). A fixed 270s deadline could push total past
+        // maxDuration (300s) → platform hard-kill BEFORE this timer fires → saga compensate
+        // skipped → stranded credits. Cap it to the remaining budget (minus a response/
+        // compensate reserve) so the timer always fires inside the function.
+        const effectiveDeadlineMs = Math.max(30_000, Math.min(DISPATCH_TIMEOUT_MS, MAX_FN_MS - (Date.now() - fnT0) - 15_000));
         const deadline = new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             ac.abort();
-            reject(new Error(`dispatch stalled — aborted after ${DISPATCH_TIMEOUT_MS}ms`));
-          }, DISPATCH_TIMEOUT_MS);
+            reject(new Error(`dispatch stalled — aborted after ${effectiveDeadlineMs}ms (budget-aware)`));
+          }, effectiveDeadlineMs);
         });
         try {
           // GPU worker when configured; else stitch on this node with CPU FFmpeg.
