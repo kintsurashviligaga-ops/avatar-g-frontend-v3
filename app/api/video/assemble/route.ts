@@ -368,8 +368,20 @@ export async function POST(req: NextRequest) {
     marketing = { overlayText: 'AI Music Video', website: 'MyAvatar.ge' };
   }
   if (resultUrl && marketing && hasOverlayContent(marketing)) {
-    const overlaid = await overlayMasterUrl(resultUrl, marketing);
-    if (overlaid) resultUrl = overlaid;
+    // BOUND the overlay burn-in: it runs AFTER the saga (download master → burn SVG
+    // → re-upload), so an unbounded hang here can push the route past maxDuration
+    // (300s) and HARD-KILL it — losing the already-rendered master ("could not host
+    // the final master"). Race it against a 45s budget; on timeout/failure keep the
+    // clean (un-overlaid) master. The overlay can only ever improve the film.
+    try {
+      const overlaid = await Promise.race([
+        overlayMasterUrl(resultUrl, marketing),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 45_000)),
+      ]);
+      if (overlaid) resultUrl = overlaid;
+    } catch {
+      /* keep the clean master */
+    }
   }
 
   // PHASE 47 §1 — stamp the finished hosted master onto the unified tracker so a
