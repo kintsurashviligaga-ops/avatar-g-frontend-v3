@@ -30,6 +30,40 @@ const HEYGEN_BASE = 'https://api.heygen.com';
  *  deployment host, which 401s the self-fetch). Overridable via env. */
 const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || 'https://myavatar.ge/presenter/default-female.jpg';
 
+// HeyGen caps photo avatars (talking_photos) at 3 on this plan. Uploading a NEW one
+// per call exhausts that cap (error 401028) — so REUSE: resolve a talking_photo_id
+// from the account's existing photos and cache it; only upload the default face if
+// none exist. Cached for the life of the (warm) instance.
+let cachedTalkingPhotoId: string | null = null;
+
+/** Pull the first existing talking_photo_id from the account (tries the known list
+ *  endpoints; tolerant of either response shape). Returns null if none/none-found. */
+async function firstExistingTalkingPhoto(apiKey: string): Promise<string | null> {
+  const endpoints = ['https://api.heygen.com/v1/talking_photo.list', 'https://api.heygen.com/v2/talking_photos'];
+  for (const url of endpoints) {
+    try {
+      const r = await fetch(url, { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
+      if (!r.ok) continue;
+      const j = (await r.json().catch(() => ({}))) as unknown;
+      // Find the first talking_photo_id anywhere in the payload (shape varies by version).
+      const id = findTalkingPhotoId(j);
+      if (id) return id;
+    } catch { /* try next endpoint */ }
+  }
+  return null;
+}
+
+function findTalkingPhotoId(node: unknown): string | null {
+  if (!node || typeof node !== 'object') return null;
+  const obj = node as Record<string, unknown>;
+  if (typeof obj.talking_photo_id === 'string' && obj.talking_photo_id) return obj.talking_photo_id;
+  for (const v of Object.values(obj)) {
+    if (Array.isArray(v)) { for (const item of v) { const id = findTalkingPhotoId(item); if (id) return id; } }
+    else if (v && typeof v === 'object') { const id = findTalkingPhotoId(v); if (id) return id; }
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   // Two POSTs per generation (synthesize + submit), so use the AI tier (10/min)
   // rather than EXPENSIVE (5/min) which a couple of generations would exhaust.
@@ -55,20 +89,26 @@ export async function POST(req: NextRequest) {
   const audioUrl = body.audioUrl;
   const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;
 
-  // Fetch the face bytes (distinct, reported error if this fails).
-  const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
-  if (!faceRes || !faceRes.ok) return NextResponse.json({ success: false, error: 'presenter face unreachable', detail: `${faceUrl.slice(0, 100)} → ${faceRes?.status ?? 'fetch error'}` }, { status: 502 });
-  const faceMime = faceRes.headers.get('content-type') || 'image/jpeg';
-  const faceBytes = new Uint8Array(await faceRes.arrayBuffer());
-
-  // 1) Upload as a talking_photo (fast upload host). Capture HeyGen's actual reply.
-  const tpRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
-    method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': faceMime }, body: faceBytes, signal: AbortSignal.timeout(30_000),
-  }).catch(() => null);
-  const tpText = tpRes ? await tpRes.text().catch(() => '') : '';
-  if (!tpRes || !tpRes.ok) return NextResponse.json({ success: false, error: `HeyGen talking_photo ${tpRes?.status ?? 'timeout'}`, detail: tpText.slice(0, 300) }, { status: 502 });
-  const talkingPhotoId = (() => { try { return JSON.parse(tpText)?.data?.talking_photo_id ?? null; } catch { return null; } })();
-  if (!talkingPhotoId) return NextResponse.json({ success: false, error: 'HeyGen talking_photo: no id', detail: tpText.slice(0, 300) }, { status: 502 });
+  // Resolve a talking_photo_id WITHOUT creating new assets when possible:
+  //   1) cached → use it
+  //   2) reuse an existing account talking_photo (no new upload → no cap hit)
+  //   3) only if the account has none, upload the default face
+  let talkingPhotoId = cachedTalkingPhotoId;
+  if (!talkingPhotoId) talkingPhotoId = await firstExistingTalkingPhoto(apiKey);
+  if (!talkingPhotoId) {
+    const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (!faceRes || !faceRes.ok) return NextResponse.json({ success: false, error: 'presenter face unreachable', detail: `${faceUrl.slice(0, 100)} → ${faceRes?.status ?? 'fetch error'}` }, { status: 502 });
+    const faceMime = faceRes.headers.get('content-type') || 'image/jpeg';
+    const faceBytes = new Uint8Array(await faceRes.arrayBuffer());
+    const tpRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
+      method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': faceMime }, body: faceBytes, signal: AbortSignal.timeout(30_000),
+    }).catch(() => null);
+    const tpText = tpRes ? await tpRes.text().catch(() => '') : '';
+    if (!tpRes || !tpRes.ok) return NextResponse.json({ success: false, error: `HeyGen talking_photo ${tpRes?.status ?? 'timeout'}`, detail: tpText.slice(0, 300) }, { status: 502 });
+    try { talkingPhotoId = JSON.parse(tpText)?.data?.talking_photo_id ?? null; } catch { talkingPhotoId = null; }
+  }
+  if (!talkingPhotoId) return NextResponse.json({ success: false, error: 'no talking_photo available (account photo-avatar cap reached and none reusable)' }, { status: 502 });
+  cachedTalkingPhotoId = talkingPhotoId;
 
   // 2) Generate the audio-driven video. Capture HeyGen's actual reply.
   const vertical = body.orientation === 'vertical';
