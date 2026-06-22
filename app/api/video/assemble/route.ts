@@ -205,6 +205,11 @@ export async function POST(req: NextRequest) {
     console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
   }
   let scoreFallback: 'udio->musicgen' | 'elevenlabs-music' | null = null;
+  // Wall-time the ElevenLabs Music attempt so the MusicGen fallback below can refuse
+  // to STACK after a slow EL gen/timeout (two long synchronous gens would blow the
+  // 300s function ceiling — the exact failure mode to avoid). A FAST EL failure
+  // (e.g. a 403 with no Music-tier access) leaves ample time, so MusicGen still rescues.
+  let elMusicElapsedMs = 0;
 
   // v330 — ElevenLabs Music is the MASTER audio layer. Synthesize the full track
   // SYNCHRONOUSLY (sung vocals + backing for a music video, or an instrumental score)
@@ -218,8 +223,12 @@ export async function POST(req: NextRequest) {
       totalSec,
       musicVideoMode,
     });
+    const elT0 = Date.now();
     try {
-      const EL_MUSIC_BUDGET_MS = 120_000; // synchronous, before saga dispatch — leave the stitch its window
+      // Tight budget: this runs SYNCHRONOUSLY before the stitch, inside the same 300s
+      // function. EL Music is normally ~20–45s for 30s of audio; 60s caps a slow gen so
+      // the stitch keeps its window.
+      const EL_MUSIC_BUDGET_MS = 60_000;
       const { audio, contentType } = await Promise.race([
         composeElevenLabsMusic({ prompt, lengthMs: totalSec * 1000, instrumental }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
@@ -233,9 +242,13 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
     }
+    elMusicElapsedMs = Date.now() - elT0;
   }
 
-  if (!resolvedMusicUrl && !body.noMusic && process.env.REPLICATE_API_TOKEN) {
+  // MusicGen fallback — runs when EL Music didn't already burn most of its budget.
+  // Skipping after a slow EL attempt prevents two long synchronous gens from stacking
+  // past the 300s ceiling (which would hard-kill the stitch → "could not host master").
+  if (!resolvedMusicUrl && !body.noMusic && elMusicElapsedMs < 30_000 && process.env.REPLICATE_API_TOKEN) {
     // Match the score length to the assembled timeline so MusicGen returns a
     // track that spans every compiled clip rather than looping a short stub.
     const totalSec = Math.min(
