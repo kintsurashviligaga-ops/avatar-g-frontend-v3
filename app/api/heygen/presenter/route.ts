@@ -26,8 +26,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
-/** Bundled default presenter portrait (public asset) — front-facing, neutral. */
-const DEFAULT_FACE_PATH = '/presenter/default-female.jpg';
+/** Bundled default presenter portrait — pin to the CANONICAL public domain, never
+ *  req.nextUrl.origin (on Vercel that can be the auth-protected *.vercel.app
+ *  deployment host, which 401s the self-fetch). Overridable via env. */
+const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || 'https://myavatar.ge/presenter/default-female.jpg';
 
 export async function POST(req: NextRequest) {
   // Two POSTs per generation (synthesize + submit), so use the AI tier (10/min)
@@ -52,13 +54,16 @@ export async function POST(req: NextRequest) {
   // ── PHASE B — drive the default presenter face with the hosted audio via HeyGen's
   // talking_photo path (upload + submit, both internally timeout-bounded → fast).
   const audioUrl = body.audioUrl;
-  const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl)
-    ? body.faceUrl
-    : new URL(DEFAULT_FACE_PATH, req.nextUrl.origin).toString();
+  const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;
+
+  // Reachability check first, so a face-fetch failure is reported distinctly from a
+  // HeyGen rejection (otherwise both collapse to one opaque "submit failed").
+  const faceOk = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).then((r) => r.ok).catch(() => false);
+  if (!faceOk) return NextResponse.json({ success: false, error: 'presenter face unreachable', detail: faceUrl.slice(0, 140) }, { status: 502 });
 
   const handle = await heygenLipsyncCreate(faceUrl, audioUrl).catch(() => null);
   const videoId = handle?.startsWith('heygen:') ? handle.slice('heygen:'.length) : null;
-  if (!videoId) return NextResponse.json({ success: false, error: 'HeyGen talking_photo submit failed' }, { status: 502 });
+  if (!videoId) return NextResponse.json({ success: false, error: 'HeyGen rejected talking_photo (face reachable)' }, { status: 502 });
 
   return NextResponse.json({ success: true, videoId, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
 }
