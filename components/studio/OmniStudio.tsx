@@ -1699,7 +1699,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // A) synthesize the cloned-voice audio, B) submit it to HeyGen → videoId.
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ text, orientation: videoOrientation, gender: 'female' }),
+            // The presenter voice is auto-derived from the script persona server-side;
+            // there is no gender param on the route (it was a dead field).
+            body: JSON.stringify({ text, orientation: videoOrientation }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string };
           let sj: { success?: boolean; videoId?: string } = {};
@@ -1711,20 +1713,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
           }
           let url: string | null = null;
+          let failReason: string | null = null;
           if (sj.success && sj.videoId) {
-            for (let i = 0; i < 60 && !url; i++) { // ~6 min of quick polls
+            for (let i = 0; i < 90 && !url && !failReason; i++) { // ~9 min of quick polls
               if (!mine()) return;
               await new Promise((r) => setTimeout(r, 6000));
               const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(sj.videoId)}`, { credentials: 'include', signal: ac.signal });
-              const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-              if (pj.done) { url = pj.url ?? null; break; }
+              const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+              // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
+              if (pj.done) { if (pj.url) url = pj.url; else failReason = pj.error || t.lipsyncFailed; break; }
             }
           }
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync' } : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
+            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync' } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
             return next;
           });
         } catch {

@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     let hosted = url;
     try {
       const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 30_000);
+      const to = setTimeout(() => ac.abort(), 45_000); // route has 300s headroom; fewer fail-opens to the expiring URL
       const r = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
       if (r.ok) {
         const buf = Buffer.from(await r.arrayBuffer());
@@ -114,19 +114,21 @@ export async function POST(req: NextRequest) {
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
   if (text) {
     const ttsUrl = await textToHostedSpeech(text);
-    if (ttsUrl) {
-      audioUrl = ttsUrl;
-      if (body.useMyVoice === true) {
-        try {
-          const { user } = await authedClientFromRequest(req);
-          const model = await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID);
-          if (model) {
-            const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
-            if (converted) audioUrl = converted;
-          }
-        } catch {
-          /* keep the TTS voice */
+    // If TTS failed, FAIL CLEANLY instead of falling through with audioUrl===videoUrl
+    // (the face image) — that would lip-sync the photo to itself and waste a provider
+    // job before surfacing a generic failure minutes later.
+    if (!ttsUrl) return NextResponse.json({ jobId: null, error: 'tts-failed' });
+    audioUrl = ttsUrl;
+    if (body.useMyVoice === true) {
+      try {
+        const { user } = await authedClientFromRequest(req);
+        const model = await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID);
+        if (model) {
+          const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
+          if (converted) audioUrl = converted;
         }
+      } catch {
+        /* keep the TTS voice */
       }
     }
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /**
  * /api/heygen/presenter — "Presenter mode"
@@ -22,7 +23,7 @@ import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
  */
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120; // headroom for the final-poll re-host (fetch + Supabase upload)
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 /** Bundled default presenter portrait — pin to the CANONICAL public domain, never
@@ -53,6 +54,22 @@ async function firstExistingTalkingPhoto(apiKey: string): Promise<string | null>
     return null;
   } catch {
     return null;
+  }
+}
+
+/** Re-host a finished HeyGen presenter video to a stable 7-day Supabase URL. HeyGen's
+ *  result URL expires (~1h) → blank player on revisit (the same issue the photo lip-sync
+ *  path already re-hosts to avoid). Fail-open: any miss returns the raw provider URL. */
+async function rehostPresenterVideo(providerUrl: string): Promise<string> {
+  try {
+    const r = await fetch(providerUrl, { signal: AbortSignal.timeout(45_000) });
+    if (!r.ok) return providerUrl;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.byteLength < 1024 || buf.byteLength > 80 * 1024 * 1024) return providerUrl;
+    const path = `presenter/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
+  } catch {
+    return providerUrl;
   }
 }
 
@@ -124,12 +141,23 @@ export async function GET(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ done: true, error: 'id required' }, { status: 400 });
   try {
-    const st = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(id)}`, { headers: { 'X-Api-Key': apiKey } });
+    // 10s timeout so a stalled HeyGen status call fails fast (→ {done:false}, client
+    // re-polls on its next tick) instead of holding the function until maxDuration.
+    const st = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(id)}`, { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(10_000) });
     if (!st.ok) return NextResponse.json({ done: false });
     const sj = (await st.json()) as { data?: { status?: string; video_url?: string; error?: unknown } };
     const status = sj.data?.status;
-    if (status === 'completed' && sj.data?.video_url) return NextResponse.json({ done: true, url: sj.data.video_url });
-    if (status === 'failed') return NextResponse.json({ done: true, error: JSON.stringify(sj.data?.error).slice(0, 300) });
+    if (status === 'completed' && sj.data?.video_url) {
+      // Re-host so the player URL survives past HeyGen's ~1h expiry.
+      return NextResponse.json({ done: true, url: await rehostPresenterVideo(sj.data.video_url) });
+    }
+    if (status === 'failed') {
+      // Guard against a missing/non-string error — JSON.stringify(undefined) is `undefined`
+      // and .slice() on it throws, which would mask the failure as "still processing".
+      const e = sj.data?.error;
+      const reason = e ? (typeof e === 'string' ? e : JSON.stringify(e)) : 'render failed';
+      return NextResponse.json({ done: true, error: reason.slice(0, 300) });
+    }
     return NextResponse.json({ done: false });
   } catch {
     return NextResponse.json({ done: false });
