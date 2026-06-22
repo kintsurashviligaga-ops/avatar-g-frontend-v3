@@ -230,8 +230,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // filtergraph (after every video + audio input).
     if (brandPngPath) args.push('-i', brandPngPath);
     // Music info-bug PNG is the LAST input (after the brand PNG) — matches the
-    // filtergraph's overlay-index order (brand, then bug).
-    if (musicBugPath) args.push('-i', musicBugPath);
+    // filtergraph's overlay-index order (brand, then bug). It MUST be looped into a
+    // short stream (`-loop 1 -t`): a plain single-frame image sits at t=0, so the
+    // filtergraph's alpha fade (st=0.3s …) would never resolve and the bug would
+    // render fully transparent. A 5s looped clip gives the fade in/out a timeline.
+    if (musicBugPath) args.push('-loop', '1', '-t', '5', '-i', musicBugPath);
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
     args.push(
