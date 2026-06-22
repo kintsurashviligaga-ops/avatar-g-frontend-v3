@@ -42,6 +42,10 @@ export interface FilterGraphOpts {
    *  narration-forward documentary mix. The voice input index is still RESERVED
    *  when hasVoice is true, so the brand-overlay input index is unaffected. */
   musicVideo?: boolean;
+  /** MTV-style music info bug. When true, a SECOND overlay PNG (added by the caller as
+   *  the LAST -i input, AFTER the brand PNG) is composited over the opening of the film
+   *  with a timed opacity fade in/out (appears ~0–4.4s, then disappears). */
+  hasMusicBug?: boolean;
 }
 
 const XFADE: Record<string, string> = {
@@ -262,9 +266,21 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // Brand lower-third — composited over the final graded video in THIS pass. The
   // PNG is the LAST input (index `ai`, after every video + audio input the caller
   // added). overlay=0:0 since the PNG is rendered at the exact canvas size.
+  // Overlays are the LAST -i inputs (after every video + audio input), added by the
+  // caller in this exact order: brand lower-third PNG, then the music info-bug PNG.
+  let overlayIdx = ai;
   if (opts.hasBrandOverlay) {
-    parts.push(`${vmap}[${ai}:v]overlay=0:0:format=auto[vbrand]`);
+    parts.push(`${vmap}[${overlayIdx}:v]overlay=0:0:format=auto[vbrand]`);
     vmap = '[vbrand]';
+    overlayIdx++;
+  }
+  if (opts.hasMusicBug) {
+    // Fade the bug PNG's alpha up then down, and composite it ONLY over the opening
+    // window so it appears for the first ~4s and gracefully fades out (MTV "now playing").
+    parts.push(`[${overlayIdx}:v]format=rgba,fade=t=in:st=0.3:d=0.5:alpha=1,fade=t=out:st=3.6:d=0.6:alpha=1[mbug]`);
+    parts.push(`${vmap}[mbug]overlay=0:0:enable='between(t,0,4.4)'[vmbug]`);
+    vmap = '[vmbug]';
+    overlayIdx++;
   }
 
   return { filter: parts.join(';'), vmap, amap };

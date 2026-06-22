@@ -174,4 +174,22 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('sidechaincompress');
     expect(g.filter).not.toContain('songmaster');
   });
+
+  // ── MTV-STYLE MUSIC INFO BUG (v330) ────────────────────────────────────────
+  test('music bug → faded, time-gated overlay composited AFTER the brand PNG', () => {
+    // 5 clips (0-4) + music (5) → brand PNG = index 6, music-bug PNG = index 7.
+    const g = buildFilterComplex({ nClips: 5, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true, hasMusicBug: true });
+    expect(g.filter).toContain('[6:v]overlay=0:0:format=auto[vbrand]'); // brand first
+    expect(g.filter).toContain('[7:v]format=rgba,fade=t=in'); // bug PNG alpha-faded
+    expect(g.filter).toContain("[vbrand][mbug]overlay=0:0:enable='between(t,0,4.4)'"); // time-gated, over the brand
+    expect(g.vmap).toBe('[vmbug]');
+  });
+
+  test('music bug without a brand overlay → bug takes the first overlay input index', () => {
+    // 3 clips (0-2) + music (3) → music-bug PNG = index 4 (no brand PNG before it).
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasMusicBug: true });
+    expect(g.filter).toContain('[4:v]format=rgba,fade=t=in');
+    expect(g.filter).not.toContain('[vbrand]');
+    expect(g.vmap).toBe('[vmbug]');
+  });
 });

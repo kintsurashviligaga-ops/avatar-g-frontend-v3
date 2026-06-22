@@ -63,7 +63,7 @@ export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<
  * genre / vocalist / lyric-language / mood detection used for the legacy Udio request
  * so a music video gets a real sung song and a narrative film gets a cohesive score.
  */
-export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; musicVideoMode?: boolean }): {
+export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; musicVideoMode?: boolean; vocalGender?: 'male' | 'female' }): {
   prompt: string;
   instrumental: boolean;
 } {
@@ -92,8 +92,9 @@ export function buildElevenMusicPrompt(o: { brief: string; totalSec: number; mus
     /\bpop\b/.test(lower) ? 'pop' :
     /\brock\b/.test(lower) ? 'rock' :
     /\belectronic|\bedm\b|\bsynth/.test(lower) ? 'electronic' : 'pop';
-  const female = /\bwoman\b|\bfemale\b|\bgirl\b|\bher\b|\bshe\b/.test(lower) || /ქალ|გოგო/.test(brief);
-  const vocalist = female ? 'a female lead vocalist' : 'a lead vocalist';
+  // Explicit selector wins; otherwise infer from the brief (default male tenor).
+  const female = o.vocalGender ? o.vocalGender === 'female' : (/\bwoman\b|\bfemale\b|\bgirl\b|\bher\b|\bshe\b/.test(lower) || /ქალ|გოგო/.test(brief));
+  const vocalist = female ? 'a powerful female lead vocalist' : 'a powerful male tenor lead vocalist';
   const georgian = /\bgeorgian\b/.test(lower) || /ქართ/.test(brief);
   const lyricLang = georgian ? 'sung in Georgian' : 'sung lyrics';
   const moody = /\bmoody\b|\bnight\b|\bneon\b|atmospheric|\bdark\b/.test(lower) || /ღამ|ნეონ/.test(brief);

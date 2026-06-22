@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
-import { renderOverlayPng, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
+import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadAndSign } from './storage-adapter';
 
@@ -176,6 +176,31 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       brandPngPath = undefined;
     }
 
+    // MTV-style music info bug — a "now playing" card (artist / track / theme /
+    // MyAvatar.ge Originals) faded in over the first ~4s. Rendered to a PNG and added
+    // as the LAST -i input (after the brand PNG); the filtergraph fades + time-gates it.
+    let musicBugPath: string | undefined;
+    try {
+      const raw = typeof g.musicBug === 'string' ? g.musicBug : '';
+      if (raw) {
+        const spec = JSON.parse(raw) as MusicBug;
+        const W = orientation === 'vertical' ? 1080 : 1920;
+        const H = orientation === 'vertical' ? 1920 : 1080;
+        const png = await renderMusicBugPng(spec, W, H);
+        if (png) {
+          const p = join(dir, 'music-bug.png');
+          await writeFile(p, png);
+          musicBugPath = p;
+          // eslint-disable-next-line no-console
+          console.log('[assemble] music info bug burned into the opening:', spec.track, '/', spec.artist);
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] music bug skipped:', e instanceof Error ? e.message : e);
+      musicBugPath = undefined;
+    }
+
     // MUSIC-VIDEO / SONG-MASTER audio mode — the song rules, the standalone narrator
     // is omitted, and any SFX is sidechain-ducked under the song. Driven by the
     // explicit Music Video Mode flag threaded through globalRender (the voice-overlap fix).
@@ -194,6 +219,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       lut3dPath,
       hasBrandOverlay: Boolean(brandPngPath),
       musicVideo,
+      hasMusicBug: Boolean(musicBugPath),
     });
 
     const out = join(dir, 'master.mp4');
@@ -203,6 +229,9 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // Brand lower-third PNG is the LAST input → its index matches `ai` in the
     // filtergraph (after every video + audio input).
     if (brandPngPath) args.push('-i', brandPngPath);
+    // Music info-bug PNG is the LAST input (after the brand PNG) — matches the
+    // filtergraph's overlay-index order (brand, then bug).
+    if (musicBugPath) args.push('-i', musicBugPath);
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
     args.push(

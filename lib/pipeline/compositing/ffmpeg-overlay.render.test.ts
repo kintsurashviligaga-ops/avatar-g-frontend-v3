@@ -6,7 +6,7 @@ import { writeFileSync } from 'fs';
 jest.mock('../../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
 
 // eslint-disable-next-line import/first
-import { buildOverlaySvg, renderOverlayPng } from './ffmpeg-overlay';
+import { buildOverlaySvg, renderOverlayPng, renderMusicBugPng } from './ffmpeg-overlay';
 
 // Smoke test: prove the cinematic caption framework renders real glyphs (not tofu)
 // for Georgian + English, in both aspect ratios, and writes PNGs for visual review.
@@ -27,5 +27,16 @@ describe('cinematic overlay render (v330)', () => {
     expect(png).not.toBeNull();
     expect(png!.length).toBeGreaterThan(2000); // a real rasterised layer, not empty
     try { writeFileSync(`/tmp/ovl_${name}.png`, png!); } catch { /* artifact write is best-effort */ }
+  });
+
+  const bugCases = [
+    { name: 'bug-ka-9x16', m: { artist: 'ავატარი · მამრობითი ვოკალი', track: 'ჩემო თბილისო', theme: 'თბილისის ღამეები', lang: 'ka' as const }, w: 1080, h: 1920 },
+    { name: 'bug-en-9x16', m: { artist: 'MyAvatar · Male Vocal', track: 'My Tbilisi', theme: 'Tbilisi City Nights', lang: 'en' as const }, w: 1080, h: 1920 },
+  ];
+  test.each(bugCases)('music info bug %s renders without tofu', async ({ name, m, w, h }) => {
+    const png = await renderMusicBugPng(m, w, h);
+    expect(png).not.toBeNull();
+    expect(png!.length).toBeGreaterThan(2000);
+    try { writeFileSync(`/tmp/${name}.png`, png!); } catch { /* best-effort */ }
   });
 });

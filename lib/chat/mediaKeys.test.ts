@@ -5,7 +5,7 @@ import {
   resolveAliasName,
 } from './mediaKeys';
 
-describe('resolveUdioApiKey — alias-tolerant Udio credential resolution', () => {
+describe('resolveUdioApiKey — alias-tolerant Udio credential resolution (legacy)', () => {
   it('prefers UDIO_API_KEY, then walks the fallback chain', () => {
     expect(resolveUdioApiKey({ UDIO_API_KEY: 'canonical', UDIO_KEY: 'a' })).toBe('canonical');
     expect(resolveUdioApiKey({ UDIO_KEY: 'a', UDIOAPI_KEY: 'b' })).toBe('a');

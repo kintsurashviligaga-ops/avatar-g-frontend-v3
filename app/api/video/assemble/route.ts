@@ -51,6 +51,33 @@ function isMusicVideoBrief(brief: string | null | undefined): boolean {
     || /მუსიკალური ვიდეო|სიმღერ|მომღერ/.test(brief ?? '');
 }
 
+/** Derive MTV-style music-bug content (artist / track / theme) from the brief. */
+function deriveMusicBug(
+  brief: string,
+  gender: 'male' | 'female' | undefined,
+  lang: 'ka' | 'en' | 'ru',
+): { artist: string; track: string; theme: string; producer: string; lang: 'ka' | 'en' | 'ru' } {
+  const b = (brief || '').toLowerCase();
+  const ka = lang === 'ka';
+  // Contextual theme detection.
+  let theme: string;
+  if (/tbilisi|თბილის/.test(b)) theme = ka ? 'თბილისის ღამეები' : 'Tbilisi City Nights';
+  else if (/\blove\b|სიყვარ/.test(b)) theme = ka ? 'სიყვარულზე' : 'About Love';
+  else if (/\bnight\b|ღამ/.test(b)) theme = ka ? 'ღამის განწყობა' : 'Night Vibes';
+  else if (/r&b|rnb/.test(b)) theme = 'R&B';
+  else if (/folk|ფოლკ/.test(b)) theme = ka ? 'პოპ-ფოლკი' : 'Pop-Folk';
+  else theme = ka ? 'ორიგინალური ტრეკი' : 'Original Track';
+  // Track title — evocative, theme-anchored.
+  const track = /tbilisi|თბილის/.test(b)
+    ? (ka ? 'ჩემო თბილისო' : 'My Tbilisi')
+    : (ka ? 'ცოცხალი შესრულება' : 'Live Session');
+  // Artist — the platform avatar performer, gendered.
+  const artist = ka
+    ? (gender === 'female' ? 'ავატარი · ქალი ვოკალი' : 'ავატარი · მამრობითი ვოკალი')
+    : `MyAvatar · ${gender === 'female' ? 'Female' : 'Male'} Vocal`;
+  return { artist, track, theme, producer: 'MyAvatar.ge Originals', lang };
+}
+
 // Atomic dispatch deadline. A render that stalls mid-stitch (a clip URL that
 // never resolves, a render-node stream that hangs at ~38%) must NOT be allowed
 // to pin the function until the platform hard-kills it at maxDuration — a hard
@@ -106,6 +133,8 @@ interface AssembleBody {
   /** v330 — caption language for the burned-in lower-third (ka/en/ru). Drives the
    *  FiraGO script + casing. Omitted → auto-detected from the brief. */
   captionLang?: 'ka' | 'en' | 'ru';
+  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer). */
+  vocalGender?: 'male' | 'female';
 }
 
 export async function POST(req: NextRequest) {
@@ -184,6 +213,8 @@ export async function POST(req: NextRequest) {
     body.captionLang ?? (/[Ⴀ-ჿᲐ-Ჿ]/.test(body.scorePrompt ?? '') ? 'ka' : 'en');
   const brandText =
     captionLang === 'ka' ? 'მუსიკალური ვიდეო' : captionLang === 'ru' ? 'Музыкальное видео' : 'AI Music Video';
+  // v330 — MTV-style music info bug content, derived from the brief + vocal gender.
+  const musicBugSpec = musicVideoMode ? deriveMusicBug(body.scorePrompt ?? '', body.vocalGender, captionLang) : null;
 
   // PHASE 55 §2 — Cochlear score fallback. When the upstream Udio score failed
   // under credit exhaustion the client sends no musicUrl, and the stitched 30s
@@ -222,6 +253,7 @@ export async function POST(req: NextRequest) {
       brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
       totalSec,
       musicVideoMode,
+      vocalGender: body.vocalGender,
     });
     const elT0 = Date.now();
     try {
@@ -302,6 +334,9 @@ export async function POST(req: NextRequest) {
       ...(musicVideoMode
         ? { brandLowerThird: JSON.stringify({ overlayText: brandText, website: 'MyAvatar.ge', lang: captionLang }) }
         : {}),
+      // MTV-style music info bug (artist / track / theme / MyAvatar.ge Originals) —
+      // faded over the opening ~4s by the assembler.
+      ...(musicBugSpec ? { musicBug: JSON.stringify(musicBugSpec) } : {}),
       ...(body.globalRender ?? {}),
       ...(body.orientation ? { orientation: String(body.orientation) } : {}),
       // SONG-MASTER audio mix (narrator omitted, SFX ducked −12 dB) — asserted AFTER

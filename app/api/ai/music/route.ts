@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateUdioTrack } from '@/lib/udio/client';
-import { generateMusicCover, generateVoiceSong } from '@/lib/ai/replicate';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
+import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
@@ -76,6 +76,30 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
   }
 }
 
+// v330 — standalone music composition via ElevenLabs Music (the master audio engine,
+// replacing Udio), with Replicate MusicGen as the graceful fallback. EL Music returns
+// audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
+async function composeTrackUrl(prompt: string, style: string, instrumental: boolean): Promise<string> {
+  if (hasElevenLabsMusicKey()) {
+    try {
+      const { audio, contentType } = await composeElevenLabsMusic({
+        prompt: style ? `${prompt}. Style: ${style}.` : prompt,
+        lengthMs: 30_000,
+        instrumental,
+      });
+      const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+      const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604800);
+      if (url) return url;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[ai/music] ElevenLabs Music failed → MusicGen fallback:', e instanceof Error ? e.message : e);
+    }
+  }
+  const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, 30);
+  if (!score.audioUrl) throw new Error('Music generation did not complete in time.');
+  return score.audioUrl;
+}
+
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
@@ -125,23 +149,14 @@ export async function POST(req: NextRequest) {
     let providerAudioUrl = '';
     const trainedModel = useMyVoice ? await (async () => { try { const { user } = await authedClientFromRequest(req); return await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID); } catch { return null; } })() : null;
     if (trainedModel) {
-      // FAITHFUL "sing in my voice": Udio composes a song WITH vocals (it needs no
-      // reference, unlike MiniMax), then realistic-voice-cloning swaps those vocals for
-      // the user's TRAINED RVC model. Udio is budgeted ~150s to leave room for the
-      // ~90s convert inside the 300s ceiling. Fail-open: if the convert misses, return
-      // the composed song so the user still gets a track.
-      const composed = await generateUdioTrack(
-        { prompt: capped, style, makeInstrumental: false, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
-        // ~125s Udio budget so the ~120–150s RVC convert still fits under the 300s ceiling.
-        { maxAttempts: 25, pollIntervalMs: 5000 },
-      );
-      if (composed.status !== 'succeeded' || !composed.audioUrl) {
-        return NextResponse.json({ success: false, error: composed.message || 'Could not compose the base song.' }, { status: 502 });
-      }
+      // FAITHFUL "sing in my voice": ElevenLabs Music composes a song WITH vocals, then
+      // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
+      // Fail-open: if the convert misses, return the composed song so the user still gets a track.
+      const composedUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, false);
       try {
-        providerAudioUrl = await convertSongWithRvc(composed.audioUrl, trainedModel.modelUrl);
+        providerAudioUrl = await convertSongWithRvc(composedUrl, trainedModel.modelUrl);
       } catch {
-        providerAudioUrl = composed.audioUrl;
+        providerAudioUrl = composedUrl;
       }
     } else if (voiceReference) {
       // "Create a song in MY voice" — resolve the user's uploaded voice sample to an
@@ -181,19 +196,9 @@ export async function POST(req: NextRequest) {
       const cover = await generateMusicCover(styledPrompt, melodyUrl, 30);
       providerAudioUrl = cover.audioUrl;
     } else {
-      const result = await generateUdioTrack(
-        { prompt: capped, style, makeInstrumental, title: capped.slice(0, 60), ...(lyrics ? { lyrics } : {}) },
-        // ~230s ceiling (46 × 5s) — safely under the 300s maxDuration, leaving room
-        // for the re-host + response. Udio chirp typically lands in 60–180s.
-        { maxAttempts: 46, pollIntervalMs: 5000 },
-      );
-      if (result.status !== 'succeeded' || !result.audioUrl) {
-        return NextResponse.json(
-          { success: false, error: result.message || 'Music generation did not complete in time.' },
-          { status: 502 },
-        );
-      }
-      providerAudioUrl = result.audioUrl;
+      // Compose a fresh track from the brief — ElevenLabs Music (sung when not
+      // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt.
+      providerAudioUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, makeInstrumental);
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.

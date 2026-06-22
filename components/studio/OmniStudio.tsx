@@ -842,7 +842,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Auto-write lyrics from a theme (removes the "I don't have lyrics" friction).
   const [writingLyrics, setWritingLyrics] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
-  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
+  // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
+  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('vertical');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // Spoken voice for the film — ON by default so the character actually TALKS (and,
   // with the lip-sync pass, the lips move with it). When on, a localized cue is
@@ -873,6 +874,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // generation. `videoSoundtrackBusy` is true while the upload is in flight.
   const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string } | null>(null);
   const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
+  // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
+  // + selects the cloned Georgian voice for any narration). Default male tenor.
+  const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female'>('male');
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -993,9 +997,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,
-        orientation,
+        // v330 — Music Video Mode is full-screen mobile-first: force 9:16 vertical.
+        orientation: isMusicVideo ? 'vertical' : orientation,
         transition: videoTransition,
         musicVideoMode: isMusicVideo,
+        ...(isMusicVideo ? { vocalGender: videoVocalGender } : {}),
         ...(videoSoundtrack?.url ? { soundtrackUrl: videoSoundtrack.url } : {}),
         // Narration only in documentary mode — a music video has no spoken narrator.
         myVoiceNarration: !isMusicVideo && videoMyVoiceNarration && hasTrainedVoice,
@@ -1075,7 +1081,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoSoundtrack, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoVocalGender, videoSoundtrack, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -1662,9 +1668,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${wantNarration ? t.narrationCue : ''}`;
       setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
       setInput(''); setAttachments([]);
-      // Storyboard-FIRST: plan the 6 scenes + a frame each for the user to review;
-      // the approved frames then anchor the full render (createStoryboard → renderFilm).
-      await createStoryboard(filmPrompt, refs, videoOrientation);
+      // Storyboard-FIRST: plan the scenes + a frame each for the user to review; the
+      // approved frames then anchor the full render. Music Video Mode is forced 9:16
+      // vertical so the storyboard frames match the full-screen mobile render.
+      const sbOrientation = videoMode === 'musicvideo' ? 'vertical' : videoOrientation;
+      await createStoryboard(filmPrompt, refs, sbOrientation);
       return;
     }
 
@@ -2594,7 +2602,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        <div className={`${optionsOpen ? 'max-h-[45vh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        <div className={`${optionsOpen ? 'max-h-[58vh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -2790,16 +2798,37 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               </>
             ) : (
-              <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/8 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">🎤 {locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
-                <p className="text-[11px] leading-relaxed text-app-muted">
-                  {locale === 'en'
-                    ? 'The song rules the master — no narrator, and any backing is ducked −12 dB under the vocal. Upload a beat/song in the Audio Track slot above, or one is generated for you.'
-                    : locale === 'ru'
-                      ? 'Песня — мастер: без диктора, фоновые дорожки приглушаются на −12 дБ под вокал. Загрузите бит/песню в слот «Аудиодорожка» выше — или она будет сгенерирована.'
-                      : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონური ტრეკი ჩაიწევა −12 dB-ით ვოკალის ქვეშ. ატვირთე ბიტი/სიმღერა ზემოთ „აუდიო ტრეკის“ სლოტში, ან დაგენერირდება ავტომატურად.'}
-                </p>
-              </div>
+              <>
+                {/* Vocal gender — steers the ElevenLabs Music singer (big touch targets) */}
+                <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {([
+                      ['female', '👩‍🎤', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
+                      ['male', '👨‍🎤', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'მამრობითი'],
+                    ] as const).map(([id, emoji, label]) => {
+                      const on = videoVocalGender === id;
+                      return (
+                        <button key={id} type="button" onClick={() => setVideoVocalGender(id)}
+                          className={`flex min-h-[52px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-[14px] font-semibold transition active:scale-[0.98] ${on ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-text hover:bg-app-bg/60'}`}>
+                          <span className="text-[19px] leading-none">{emoji}</span> {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Song-master info */}
+                <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/8 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">🎚 {locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
+                  <p className="text-[11px] leading-relaxed text-app-muted">
+                    {locale === 'en'
+                      ? 'The song rules the master — no narrator, backing ducked −12 dB under the vocal, forced 9:16 vertical. Upload a beat in the Audio Track slot, or one is generated for you.'
+                      : locale === 'ru'
+                        ? 'Песня — мастер: без диктора, фон −12 дБ под вокал, вертикаль 9:16. Загрузите бит в слот «Аудиодорожка» — или он сгенерируется.'
+                        : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონი −12 dB ვოკალის ქვეშ, 9:16 ვერტიკალური. ატვირთე ბიტი „აუდიო ტრეკში“, ან დაგენერირდება.'}
+                  </p>
+                </div>
+              </>
             )}
 
             {/* 5 · Effect & transition */}

@@ -198,6 +198,78 @@ export async function renderOverlayPng(m: MarketingOverlay, w: number, h: number
   }
 }
 
+// ── MTV-style music info bug (v330) ────────────────────────────────────────
+// A stylized lower-left "now playing" card baked over the first few seconds of a
+// music video, inspired by classic music-network on-screen graphics. Composited with
+// a timed opacity fade in/out by the filtergraph (see buildFilterComplex hasMusicBug).
+export interface MusicBug {
+  artist?: string;   // Selected avatar / cloned-voice character
+  track?: string;    // Generation title / user theme
+  theme?: string;    // Contextual theme/genre (e.g. "Tbilisi City Nights" / "სიყვარულზე")
+  producer?: string; // Production identity, defaults to "MyAvatar.ge Originals"
+  lang?: 'ka' | 'en' | 'ru';
+}
+
+export function hasMusicBugContent(m: MusicBug): boolean {
+  return Boolean(m.artist || m.track || m.theme);
+}
+
+/** Build the MTV-style music info-bug SVG (lower-left), language-aware like the lower-third. */
+export function buildMusicBugSvg(m: MusicBug, w: number, h: number): string {
+  const base = Math.min(w, h);
+  const s = (px: number) => Math.round(px * (base / 1080));
+  const safeX = Math.round(w * 0.05);
+  const safeY = Math.round(h * 0.055);
+  const ka = m.lang ? m.lang === 'ka' : hasGeorgian(m.artist, m.track, m.theme);
+  const lang = ka ? 'ka' : m.lang === 'ru' ? 'ru' : 'en';
+  const cap = (t: string) => (ka ? t : t.toUpperCase());
+
+  // Stack: TRACK (big) · Artist (accent) · Theme (muted) · producer tag.
+  const rows: Array<{ size: number; family: string; fill: string; ls: number; text: string; lang: string }> = [];
+  if (m.track) rows.push({ size: s(34), family: FONT_TITLE, fill: '#ffffff', ls: ka ? s(1) : s(2), text: cap(m.track), lang });
+  if (m.artist) rows.push({ size: s(24), family: FONT_BODY, fill: ACCENT, ls: s(1), text: m.artist, lang });
+  if (m.theme) rows.push({ size: s(21), family: FONT_BODY, fill: '#d7e3ec', ls: ka ? 0 : s(1), text: m.theme, lang });
+  rows.push({ size: s(16), family: FONT_TITLE, fill: ACCENT, ls: s(2), text: (m.producer || 'MyAvatar.ge Originals').toUpperCase(), lang: 'en' });
+
+  const gap = s(14);
+  const heights = rows.map((r) => r.size + gap);
+  const blockH = heights.reduce((a, b) => a + b, 0);
+  const barW = s(5);
+  const textX = safeX + barW + s(16);
+  const top = h - safeY - blockH;
+
+  const els: string[] = [];
+  els.push(
+    `<defs>` +
+      `<linearGradient id="bugAccent" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ACCENT}"/><stop offset="1" stop-color="#0077B6"/></linearGradient>` +
+      `<linearGradient id="bugScrim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#05070D" stop-opacity="0.66"/><stop offset="1" stop-color="#05070D" stop-opacity="0"/></linearGradient>` +
+    `</defs>`,
+  );
+  // soft scrim + accent bar
+  els.push(`<rect x="0" y="${top - s(14)}" width="${Math.round(w * 0.62)}" height="${blockH + s(26)}" fill="url(#bugScrim)"/>`);
+  els.push(`<rect x="${safeX}" y="${top}" width="${barW}" height="${blockH - gap}" rx="${Math.round(barW / 2)}" fill="url(#bugAccent)"/>`);
+  let y = top;
+  for (const r of rows) {
+    y += r.size;
+    els.push(cinematicText({ x: textX, y, size: r.size, family: r.family, fill: r.fill, ls: r.ls, lang: r.lang, content: esc(r.text) }));
+    y += gap;
+  }
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${els.join('')}</svg>`;
+}
+
+/** Rasterise the music info bug to a transparent PNG (resvg), or null if empty. */
+export async function renderMusicBugPng(m: MusicBug, w: number, h: number): Promise<Buffer | null> {
+  if (!hasMusicBugContent(m)) return null;
+  try {
+    const resvg = new Resvg(buildMusicBugSvg(m, w, h), {
+      font: { fontFiles: overlayFontFiles(), loadSystemFonts: false, defaultFontFamily: 'FiraGO' },
+    });
+    return Buffer.from(resvg.render().asPng());
+  } catch {
+    return null;
+  }
+}
+
 export interface OverlayResult {
   ok: boolean;
   error?: string;

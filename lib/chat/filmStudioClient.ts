@@ -118,6 +118,8 @@ export interface DriveFilmOptions {
    * is implied true. Absent/false → narration-forward documentary mix.
    */
   musicVideoMode?: boolean;
+  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer). */
+  vocalGender?: 'male' | 'female';
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
@@ -441,6 +443,7 @@ async function assembleMaster(
   musicVideoMode?: boolean,
   customAudioUrl?: string | null,
   captionLang?: 'ka' | 'en' | 'ru',
+  vocalGender?: 'male' | 'female',
 ): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -481,6 +484,8 @@ async function assembleMaster(
       ...(customAudioUrl ? { customAudioUrl } : {}),
       // v330 — caption language for the FiraGO lower-third (ka/en/ru).
       ...(captionLang ? { captionLang } : {}),
+      // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
+      ...(vocalGender ? { vocalGender } : {}),
       // Scene transition (crossfade/cut). globalRender wins over the route's
       // film-token default ('cut'), so the user's choice is honoured.
       ...(transition ? { globalRender: { transition } } : {}),
@@ -710,7 +715,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // the caption language for the burned-in lower-third (the app locale).
     const musicVideoMode = Boolean(opts.musicVideoMode || opts.soundtrackUrl);
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang);
+    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {

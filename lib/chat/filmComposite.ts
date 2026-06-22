@@ -28,14 +28,12 @@
 
 import 'server-only';
 import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
-import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
-import { startUdioGeneration, type UdioGenerationInput } from '@/lib/udio/client';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
@@ -62,72 +60,9 @@ import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-q
 
 const serviceManager = new ServiceManager();
 
-/**
- * Build the Udio request for a film/video's audio leg.
- *
- * A NARRATIVE film gets an instrumental cinematic score (no vocals). A MUSIC
- * VIDEO gets a SUNG song — `makeInstrumental:false` with a genre/vocalist/
- * lyric-language brief derived from the user's prompt (so an "R&B, Georgian
- * lyrics, female singer" brief becomes a real sung R&B request, not a bed).
- *
- * Honest caveat: Udio is English-centric, so sung Georgian lyrics are
- * approximate — the REQUEST faithfully asks for Georgian vocals; fidelity is
- * provider-dependent.
- */
-export function buildMusicRequest(o: { brief: string; totalSec: number; style?: string | null; musicVideoMode?: boolean }): UdioGenerationInput {
-  const brief = o.brief || '';
-  const lower = brief.toLowerCase();
-  // The explicit Music Video Mode flag from the composer forces a SUNG song; the
-  // brief-keyword heuristic remains the fallback for callers that don't set it.
-  const isMusicVideo =
-    o.musicVideoMode === true ||
-    /\bmusic video\b/.test(lower) ||
-    (/\bmusic\b|\bsong\b|\bbeat\b|\bvocal|\br&b\b|\brnb\b|\bpop\b|\bhip[- ]?hop\b/.test(lower) && /\bsing|\bsinger\b|\bvocal|\blyric/.test(lower)) ||
-    /მუსიკალური ვიდეო|სიმღერ|მომღერ/.test(brief);
-
-  if (!isMusicVideo) {
-    // INSTRUMENTAL cinematic film score (unchanged behaviour for narrative films).
-    return {
-      prompt:
-        `Professional, fully-instrumental cinematic FILM SCORE for a ${o.totalSec}-second short film. ` +
-        `Match the era, mood, location and intensity of this story: "${brief.slice(0, 400)}". ` +
-        `Emotional and orchestral with a clear dynamic arc — a quiet build that swells through the middle and resolves at the end, ` +
-        `composed to underscore the on-screen action moment-to-moment. No vocals, no lyrics, no spoken word.`,
-      style: o.style || 'cinematic',
-      genre: o.style || 'cinematic',
-      makeInstrumental: true,
-    };
-  }
-
-  // SUNG SONG for a music video — detect genre, vocalist gender, lyric language, mood.
-  const genre =
-    /\br&b\b|\brnb\b/.test(lower) ? 'R&B' :
-    /hip[- ]?hop|\brap\b/.test(lower) ? 'hip-hop' :
-    /\bfolk[- ]?pop\b/.test(lower) ? 'folk-pop' :
-    /\bpop\b/.test(lower) ? 'pop' :
-    /\brock\b/.test(lower) ? 'rock' :
-    /\belectronic|\bedm\b|\bsynth/.test(lower) ? 'electronic' :
-    (o.style && o.style !== 'cinematic' ? o.style : 'pop');
-  const female = /\bwoman\b|\bfemale\b|\bgirl\b|\bher\b|\bshe\b/.test(lower) || /ქალ|გოგო/.test(brief);
-  const vocalist = female ? 'female vocalist' : 'vocalist';
-  const georgian = /\bgeorgian\b/.test(lower) || /ქართ/.test(brief);
-  const lyricLang = georgian ? 'Georgian lyrics' : 'lyrics';
-  const moody = /\bmoody\b|\bnight\b|\bneon\b|atmospheric|\bdark\b/.test(lower) || /ღამ|ნეონ/.test(brief);
-
-  const styleTags = [genre, vocalist, georgian ? 'Georgian' : null, moody ? 'moody atmospheric' : null].filter((x): x is string => Boolean(x));
-
-  return {
-    // Leads with the exact spec terms (e.g. "smooth R&B, Georgian lyrics, female
-    // vocalist, moody atmospheric beat, 30 seconds") so the request is unambiguous.
-    prompt:
-      `smooth ${genre}, ${lyricLang}, ${vocalist}, moody atmospheric beat, ${o.totalSec} seconds. ` +
-      `An original ${genre} song for a music video — catchy hook, modern production, a clear lead vocal sung in ${georgian ? 'Georgian' : 'the brief language'}.`,
-    style: genre,
-    genre,
-    styleTags,
-    makeInstrumental: false, // a music video needs SUNG VOCALS, not an instrumental bed
-  };
-}
+// v330 — buildMusicRequest (the Udio request builder) was removed with the Udio
+// retirement. Music is now generated at the assemble step: ElevenLabs Music
+// (buildElevenMusicPrompt in lib/elevenlabs/music.ts) primary, MusicGen fallback.
 
 export { isThirtySecondFilm } from './filmPipeline';
 
@@ -650,10 +585,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // metadata. A user-uploaded soundtrack BYPASSES the ambient music-generation
   // loop entirely (we never call — or bill — Udio); the explicit mode flag forces
   // a sung song when the brief keywords would otherwise miss.
-  const filmMeta = (input.metadata ?? {}) as { soundtrackUrl?: unknown; musicVideoMode?: unknown };
+  const filmMeta = (input.metadata ?? {}) as { soundtrackUrl?: unknown };
   const hasCustomSoundtrack = typeof filmMeta.soundtrackUrl === 'string' && filmMeta.soundtrackUrl.trim().length > 0;
-  const explicitMusicVideo = filmMeta.musicVideoMode === true;
-  let musicWorkId: string | null = null;
+  const musicWorkId: string | null = null;
   if (hasCustomSoundtrack) {
     // eslint-disable-next-line no-console
     console.log('[film] custom soundtrack supplied → skipping the Udio audio leg (no generation, no charge)');
@@ -662,37 +596,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // assemble step, so the async Udio leg is skipped entirely (no workId, no charge).
     // Udio remains the fallback only when no ElevenLabs key is configured.
     // eslint-disable-next-line no-console
-    console.log('[film] ElevenLabs Music configured → song synthesized at assemble; skipping the Udio leg');
-  } else if (hasUdioApiKey()) {
-    try {
-      const audioForecast = forecastMarginForAction('voice_tts');
-      musicWorkId = await withTrace(
-        {
-          userId: input.userId || null,
-          agentId: 'music-agent',
-          workerKind: 'udio',
-          action: 'generate_track',
-          promptSummary: input.message,
-          costWholesaleGel: audioForecast.wholesaleGel,
-          costRetailGel: audioForecast.retailGel,
-          metadata: { composite: true, leg: 'film-audio', durationSec: plan.shared.totalSec },
-          deduct: true,
-          deductRef: `${compositeId}:audio`,
-        },
-        () =>
-          startUdioGeneration(buildMusicRequest({
-            brief: input.message,
-            totalSec: plan.shared.totalSec,
-            style,
-            musicVideoMode: explicitMusicVideo,
-          })),
-      ).then((r) => r.workId);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[film] audio leg failed:', err instanceof Error ? err.message : err);
-      musicWorkId = null;
-    }
+    console.log('[film] ElevenLabs Music configured → song synthesized at assemble; skipping the legacy audio leg');
   }
+  // v330 — Udio is fully retired. Music is generated at the ASSEMBLE step (ElevenLabs
+  // Music primary, Replicate MusicGen fallback), so the film's async audio leg no longer
+  // mints a workId — `musicWorkId` stays null and the union poll reports audio 'skipped'.
 
   // ── Legs 4b + 4c: narration voice-over (PHASE 48 §2) + cinematic SFX (§49.7) ─
   // These two are INDEPENDENT (both derive from the brief, not from each other or
