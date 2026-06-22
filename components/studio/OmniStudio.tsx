@@ -306,7 +306,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${active ? 'bg-app-accent/15 text-app-accent' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors active:scale-95 ${active ? 'bg-app-accent/15 text-app-accent' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+      style={{ minHeight: 36 }}
     >
       {children}
     </button>
@@ -785,6 +786,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // separate from the shared attachment picker so they read as their own slots.
   const charFileRef = useRef<HTMLInputElement | null>(null);
   const audioFileRef = useRef<HTMLInputElement | null>(null);
+  // v330 — Avatar/lip-sync face: a scoped single-IMAGE picker (the slot can't ingest
+  // PDFs/audio/multiples the way the shared attach button could).
+  const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
@@ -2658,16 +2662,35 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
         {mode === 'lipsync' && (
           <div className="mb-2 space-y-2">
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🧑 {locale === 'en' ? 'Character photo' : locale === 'ru' ? 'Фото персонажа' : 'პერსონაჟის ფოტო'}</span>
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
-                  <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? (locale === 'en' ? 'Photo ✓' : locale === 'ru' ? 'Фото ✓' : 'ფოტო ✓') : (locale === 'en' ? 'Attach' : locale === 'ru' ? 'Прикрепить' : 'მიამაგრე')}
-                </button>
-              </div>
-              <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Attach a face photo, then type what it should say below — the photo speaks it.' : locale === 'ru' ? 'Прикрепите фото лица, затем введите текст ниже — фото это произнесёт.' : 'მიამაგრე სახის ფოტო და ქვემოთ ჩაწერე ტექსტი — ფოტო ალაპარაკდება.'}</span>
-            </div>
+            {(() => {
+              const face = attachments.find((a) => isImage(a.mimeType) || isVideo(a.mimeType));
+              return (
+                <div role="button" tabIndex={0} onClick={() => lipsyncFaceRef.current?.click()}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lipsyncFaceRef.current?.click(); } }}
+                  className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${face ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                  {face ? (
+                    <>
+                      {isImage(face.mimeType) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={face.dataUrl} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                      ) : (
+                        <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-app-bg/60 text-app-accent ring-1 ring-app-accent/40"><Film size={18} /></span>
+                      )}
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა'}</span>
+                      <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={16} /></span>
+                      <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Character photo' : locale === 'ru' ? 'Фото персонажа' : 'პერსონაჟის ფოტო'}</span>
+                      <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'a face to make it talk' : locale === 'ru' ? 'лицо, которое заговорит' : 'სახე, რომ ალაპარაკდეს'}</span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+            <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Attach a face → type what it says (the photo speaks it). Or leave it empty — an AI presenter speaks your script in the cloned voice.' : locale === 'ru' ? 'Прикрепите лицо → введите текст (фото произнесёт). Или оставьте пустым — AI-ведущий озвучит ваш текст клонированным голосом.' : 'მიამაგრე სახე → ჩაწერე ტექსტი (ფოტო ალაპარაკდება). ან დატოვე ცარიელი — AI წამყვანი წაიკითხავს კლონირებული ხმით.'}</span>
             {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
@@ -2862,6 +2885,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
                 <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
               </div>
+              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Genre' : locale === 'ru' ? 'Жанр' : 'ჟანრი'}</span>
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
               </div>
@@ -2893,26 +2917,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* Custom lyrics — the exact sung words. Shown for vocal tracks AND when singing
-            with the trained voice (the lyrics are what your voice will sing). */}
-        {mode === 'music' && (() => {
-          const trained = useMyVoice && hasTrainedVoice;
-          if (musicInstrumental && !trained) return null;
-          return (
-            <div className="mb-2 space-y-1.5">
-              <textarea
-                value={musicLyrics}
-                onChange={(e) => setMusicLyrics(e.target.value)}
-                rows={2}
-                placeholder={trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
-                className="w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
-              />
-              <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/15 px-3 py-1 text-[11px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
-                {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
-              </button>
-            </div>
-          );
-        })()}
+        {/* Custom lyrics — the exact sung words. Only for vocal tracks WITHOUT a trained
+            voice; the trained-voice card above owns lyrics in that flow (no duplicate editor). */}
+        {mode === 'music' && !musicInstrumental && !hasTrainedVoice && (
+          <div className="mb-2 space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ტექსტი'}</span>
+            <textarea
+              value={musicLyrics}
+              onChange={(e) => setMusicLyrics(e.target.value)}
+              rows={2}
+              placeholder={t.lyricsPlaceholder}
+              className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
+            />
+            <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/15 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
+              {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
+            </button>
+          </div>
+        )}
 
         </div>{/* /collapsible options */}
 
@@ -2976,6 +2997,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           } catch { /* ignore */ } finally {
             setVideoSoundtrackBusy(false);
           }
+        }} />
+        {/* v330 — Avatar/lip-sync face: scoped single-image picker → replaces any prior
+            face image in the attachment tray (the talking-photo flow reads attachments). */}
+        <input ref={lipsyncFaceRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const small = await downscaleDataUrl(await fileToDataUrl(f));
+            setAttachments((prev) => [
+              ...prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)),
+              { dataUrl: small, mimeType: f.type || 'image/jpeg' },
+            ]);
+          } catch { /* ignore unreadable file */ }
         }} />
         <div className="rounded-[24px] bg-app-elevated px-3 py-2">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
