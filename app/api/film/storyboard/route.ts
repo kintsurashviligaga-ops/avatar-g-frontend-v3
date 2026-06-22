@@ -168,6 +168,9 @@ export async function POST(req: NextRequest) {
      *  opens, then threads the scripts into the render. Keeps the LLM off the
      *  board-open hot-path. */
     scriptsOnly?: boolean;
+    /** Character-anchor: generate ONE protagonist portrait from the brief → returned
+     *  as `anchorUrl` so the client can lock every scene frame to the same person. */
+    characterAnchor?: boolean;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -227,6 +230,22 @@ export async function POST(req: NextRequest) {
       return null;
     }
   };
+
+  // CHARACTER ANCHOR — generate ONE clean head-and-shoulders portrait of the film's
+  // protagonist from the brief, returned as a reference URL. The client then feeds
+  // this as the reference image to EVERY scene frame, so a text-only brief (no
+  // uploaded selfie) still produces ONE locked character across all 6 scenes — the
+  // frames anchor the LTX clips, so the whole 30s video keeps the same face / hair /
+  // wardrobe. Fail-open: a miss returns null and the board falls back to per-scene
+  // text generation (the prior, drift-prone behaviour).
+  if (body.characterAnchor) {
+    const anchorPrompt =
+      `Character reference portrait — a clean, evenly-lit head-and-shoulders close-up of the SINGLE main character in this story: "${prompt.slice(0, 600)}". ` +
+      `Looking toward camera, neutral softly-blurred background, photorealistic, sharp focus on the face. ` +
+      `This is the DEFINITIVE identity reference for the entire film — one consistent person, exact same face, hair and wardrobe in every shot.`;
+    const anchorUrl = await genFrame(anchorPrompt);
+    return NextResponse.json({ success: true, anchorUrl });
+  }
 
   // Single-scene regeneration — the user asked to re-roll just one frame.
   const sceneOrdinal = typeof body.sceneOrdinal === 'number' ? Math.floor(body.sceneOrdinal) : null;

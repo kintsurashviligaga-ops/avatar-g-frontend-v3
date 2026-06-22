@@ -1056,6 +1056,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         } catch { /* best-effort; render falls back to deterministic beats */ }
       })();
 
+      // STEP 2.6 — CHARACTER LOCK. Derive ONE protagonist anchor portrait from the
+      // brief, then condition EVERY scene frame on it so the character stays identical
+      // across all 6 scenes — the frames anchor the LTX clips, so the whole 30s video
+      // keeps the same face, hair and wardrobe. Skipped when the user uploaded their
+      // own reference (that selfie already anchors identity). Fail-open: a miss falls
+      // back to per-scene text frames (the prior, drift-prone behaviour).
+      let anchorRefs = refs;
+      if (!refs.length) {
+        try {
+          const ar = await fetch('/api/film/storyboard', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ prompt: filmPrompt, orientation, style: videoStyle, locale, sceneCount, characterAnchor: true }),
+          });
+          const aj = (await ar.json().catch(() => ({}))) as { success?: boolean; anchorUrl?: string | null };
+          if (aj.success && typeof aj.anchorUrl === 'string' && aj.anchorUrl) {
+            anchorRefs = [aj.anchorUrl];
+            // Thread the anchor into the stored refs so the RENDER and single-scene
+            // re-rolls also lock to the same character.
+            setStoryboard((prev) => (prev ? { ...prev, refs: anchorRefs } : prev));
+          }
+        } catch { /* fall back to unanchored per-scene frames */ }
+      }
+
       // STEP 3 — stream each frame in (concurrency 3); each tile fades in the moment
       // its own frame lands, and the N/M counter ticks up. A failed frame settles to
       // a graceful icon (removed from `pending`) — never an endless spinner.
@@ -1069,7 +1092,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal: ac.signal,
-              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
             });
             const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
