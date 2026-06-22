@@ -59,7 +59,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -79,7 +79,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -99,7 +99,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -119,7 +119,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -505,7 +505,7 @@ function deleteConversation(id: string): void {
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
-interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean }
+interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean; /** Per-scene base image (data URL) the user supplied to override this scene's identity reference. */ baseImage?: string }
 interface StoryboardState {
   filmPrompt: string;
   refs: string[];
@@ -521,6 +521,132 @@ interface StoryboardState {
   pending?: number[];
 }
 
+/** Read a picked File into a data: URL (for the per-scene "Change Base Image"). */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('read failed'));
+    fr.readAsDataURL(file);
+  });
+}
+
+/**
+ * SceneTile — one storyboard scene as a SMART, interactive skeleton (Master Prompt
+ * v329 placeholder upgrade):
+ *   • Loading/empty state is a shimmer-swept container, not a flat gray box.
+ *   • Hover (or focus) over a placeholder reveals inline asset-override triggers —
+ *     "Edit prompt" (focuses the shot field) and "Change base image" (per-scene
+ *     identity upload). Clicking either INTERCEPTS this scene mid-generation and
+ *     hot-reloads just its own agent thread; the rest of the board keeps streaming.
+ *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
+ *     an agent's delivery glides in with no layout pop (fixed-aspect container).
+ */
+function SceneTile({ s, t, portrait, pending, regenning, busy, onRegenScene, onEditScene, onView }: {
+  s: StoryboardScene;
+  t: (typeof COPY)[Lang];
+  portrait: boolean;
+  pending: boolean;
+  regenning: boolean;
+  busy: boolean;
+  onRegenScene: (ordinal: number, baseImage?: string) => void;
+  onEditScene: (ordinal: number, text: string) => void;
+  onView: (url: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const pickBase = useCallback(() => fileRef.current?.click(), []);
+  const focusPrompt = useCallback(() => {
+    const el = taRef.current;
+    if (el) { el.focus(); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  }, []);
+  const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try { onRegenScene(s.ordinal, await fileToDataUrl(f)); } catch { /* ignore unreadable file */ }
+  }, [onRegenScene, s.ordinal]);
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-app-border/12 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
+      <div className={`group/media relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
+        {s.frameUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={s.frameUrl}
+            alt={`${t.sbScene} ${s.ordinal}`}
+            onClick={() => s.frameUrl && onView(s.frameUrl)}
+            // BLUR-UP morph: mounts blurred + slightly scaled, resolves sharp on load.
+            className="h-full w-full cursor-zoom-in object-cover opacity-0 blur-md scale-[1.04] [transition:opacity_.6s_ease,filter_.7s_ease,transform_.7s_ease]"
+            onLoad={(e) => { const el = e.currentTarget; el.style.opacity = '1'; el.style.filter = 'blur(0)'; el.style.transform = 'scale(1)'; }}
+          />
+        ) : (
+          // SMART SKELETON — shimmer-swept, not a flat gray box.
+          <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-app-elevated to-app-surface">
+            <div className="pointer-events-none absolute inset-0 animate-[tile-shimmer_1.6s_linear_infinite] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+            {pending ? (
+              <>
+                <Loader2 size={18} className="animate-spin text-app-accent/70" />
+                <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal} · {t.sbGenerating}…</span>
+              </>
+            ) : (
+              <>
+                <ImageIcon size={18} className="text-app-muted/40" />
+                <span className="text-[10px] text-app-muted/40">{t.sbEmpty}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* INTERACTIVE HOVER / MID-GENERATION INTERCEPT — only over a placeholder. */}
+        {!s.frameUrl && !regenning && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/media:opacity-100 focus-within:opacity-100">
+            <button type="button" onClick={focusPrompt} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/92 px-3 py-1.5 text-[11px] font-semibold text-black shadow transition-transform active:scale-95 disabled:opacity-50">
+              <Pencil size={12} /> {t.sbEditPromptAction}
+            </button>
+            <button type="button" onClick={pickBase} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[11px] font-semibold text-app-bg shadow transition-transform active:scale-95 disabled:opacity-50">
+              <Upload size={12} /> {t.sbChangeBaseAction}
+            </button>
+          </div>
+        )}
+
+        <span className="absolute left-1.5 top-1.5 z-20 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
+        <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy} aria-label={t.sbReroll} title={t.sbReroll}
+          className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40">
+          <RotateCcw size={13} />
+        </button>
+        {s.baseImage && (
+          <span className="absolute bottom-1.5 left-1.5 z-20 inline-flex items-center gap-1 rounded-full bg-app-accent/85 px-2 py-0.5 text-[9px] font-semibold text-app-bg" title={t.sbChangeBaseAction}>
+            <ImageIcon size={9} /> base
+          </span>
+        )}
+        {regenning && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1 bg-black/60"><Loader2 size={20} className="animate-spin text-white" /><span className="text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+      </div>
+      <div className="flex flex-1 flex-col gap-1.5 p-2">
+        <p className="text-[11.5px] font-semibold leading-snug text-app-text">{s.beat}</p>
+        <textarea
+          ref={taRef}
+          value={s.prompt}
+          onChange={(e) => onEditScene(s.ordinal, e.target.value)}
+          rows={4}
+          placeholder={t.sbEditHint}
+          aria-label={`${t.sbScene} ${s.ordinal}`}
+          className="min-h-[72px] w-full flex-1 resize-y rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
+        />
+        <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy}
+          className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
+          <RotateCcw size={11} /> {t.sbRegen}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
 function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel }: {
@@ -531,7 +657,7 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
   regenningOrdinal: number | null;
   onGenerate: () => void;
   onRegenerate: () => void;
-  onRegenScene: (ordinal: number) => void;
+  onRegenScene: (ordinal: number, baseImage?: string) => void;
   onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
   onCancel: () => void;
@@ -569,51 +695,18 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s) => (
-              <div key={s.ordinal} className="flex flex-col overflow-hidden rounded-xl border border-app-border/12 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
-                <div className={`relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
-                  {s.frameUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && onView(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover opacity-0 transition-opacity duration-500 hover:opacity-90" onLoad={(e) => { e.currentTarget.style.opacity = '1'; }} />
-                  ) : pending.includes(s.ordinal) ? (
-                    // Generating — a pulsing skeleton with a spinner + the scene number,
-                    // so it reads as "creating scene N", never a broken-image box.
-                    <div className="flex h-full w-full animate-pulse flex-col items-center justify-center gap-2 bg-gradient-to-br from-app-elevated to-app-surface">
-                      <Loader2 size={18} className="animate-spin text-app-accent/70" />
-                      <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal}</span>
-                    </div>
-                  ) : (
-                    // Frame settled with no image (provider miss) — graceful icon + a
-                    // re-roll hint, never an endless spinner or broken-image glyph.
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-app-surface text-app-muted/40">
-                      <ImageIcon size={18} />
-                      <RotateCcw size={12} className="opacity-70" />
-                    </div>
-                  )}
-                  <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
-                  <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} aria-label={t.sbReroll} title={t.sbReroll} className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40">
-                    <RotateCcw size={13} />
-                  </button>
-                  {regenningOrdinal === s.ordinal && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55"><Loader2 size={20} className="animate-spin text-white" /><span className="text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col gap-1.5 p-2">
-                  <p className="text-[11.5px] font-semibold leading-snug text-app-text">{s.beat}</p>
-                  {/* Editable shot description — bordered + placeholder so it's obviously
-                      a field you can type into; your words drive the re-roll + the render. */}
-                  <textarea
-                    value={s.prompt}
-                    onChange={(e) => onEditScene(s.ordinal, e.target.value)}
-                    rows={4}
-                    placeholder={t.sbEditHint}
-                    aria-label={`${t.sbScene} ${s.ordinal}`}
-                    className="min-h-[72px] w-full flex-1 resize-y rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
-                  />
-                  <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
-                    <RotateCcw size={11} /> {t.sbRegen}
-                  </button>
-                </div>
-              </div>
+              <SceneTile
+                key={s.ordinal}
+                s={s}
+                t={t}
+                portrait={portrait}
+                pending={pending.includes(s.ordinal)}
+                regenning={regenningOrdinal === s.ordinal}
+                busy={busy || regenningOrdinal !== null}
+                onRegenScene={onRegenScene}
+                onEditScene={onEditScene}
+                onView={onView}
+              />
             ))}
           </div>
         </div>
@@ -1134,17 +1227,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [videoStyle, locale, videoDuration, renderFilm]);
 
-  // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in.
-  const regenScene = useCallback(async (ordinal: number) => {
+  // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
+  // a hot-reload of just this one scene's agent thread, never the master loop. An
+  // optional `baseImage` (a data URL the user dropped on this scene via "Change Base
+  // Image") becomes THIS scene's identity reference, overriding the film anchor; it's
+  // downscaled + persisted on the scene so a later re-roll keeps it.
+  const regenScene = useCallback(async (ordinal: number, baseImage?: string) => {
     if (!storyboard || regenningOrdinal !== null) return;
     setRegenningOrdinal(ordinal);
     const scene = storyboard.scenes.find((s) => s.ordinal === ordinal);
+    let newBase: string | undefined;
+    if (baseImage) {
+      try { newBase = await downscaleDataUrl(baseImage, 1280); } catch { newBase = baseImage; }
+      setStoryboard((prev) => prev ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, baseImage: newBase } : s)) } : prev);
+    }
+    // Per-scene base image (just-supplied or previously stored) wins as the
+    // reference; otherwise the film's locked character anchor.
+    const refsForScene = newBase ?? scene?.baseImage
+      ? [String(newBase ?? scene?.baseImage)]
+      : storyboard.refs;
     try {
       const res = await fetch('/api/film/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
       if (j.success && typeof j.frameUrl === 'string') {
@@ -2925,7 +3032,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           t={t}
           busy={busy}
           regenningOrdinal={regenningOrdinal}
-          onRegenScene={(ordinal) => void regenScene(ordinal)}
+          onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}
           onView={(url) => setLightbox(url)}
           onGenerate={() => {
