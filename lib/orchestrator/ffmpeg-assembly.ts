@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
+import { renderOverlayPng, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadAndSign } from './storage-adapter';
 
@@ -150,6 +151,31 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       lut3dPath = undefined;
     }
 
+    // Brand lower-third (music videos) — burned IN THIS pass, not a fragile
+    // post-stitch round-trip. Render the SVG→PNG at the exact canvas size and add
+    // it as the LAST input so the filtergraph composites it over the graded video.
+    let brandPngPath: string | undefined;
+    try {
+      const raw = typeof g.brandLowerThird === 'string' ? g.brandLowerThird : '';
+      if (raw) {
+        const spec = JSON.parse(raw) as MarketingOverlay;
+        const W = orientation === 'vertical' ? 1080 : 1920;
+        const H = orientation === 'vertical' ? 1920 : 1080;
+        const png = await renderOverlayPng(spec, W, H);
+        if (png) {
+          const p = join(dir, 'brand-lowerthird.png');
+          await writeFile(p, png);
+          brandPngPath = p;
+          // eslint-disable-next-line no-console
+          console.log('[assemble] brand lower-third burned into the stitch:', spec.overlayText, '/', spec.website);
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] brand overlay skipped:', e instanceof Error ? e.message : e);
+      brandPngPath = undefined;
+    }
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
@@ -161,12 +187,16 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       transition,
       clipSec,
       lut3dPath,
+      hasBrandOverlay: Boolean(brandPngPath),
     });
 
     const out = join(dir, 'master.mp4');
     const args: string[] = ['-y'];
     for (const p of inputs) args.push('-i', p);
     for (const a of [voice, music, sfx]) if (a) args.push('-i', a);
+    // Brand lower-third PNG is the LAST input → its index matches `ai` in the
+    // filtergraph (after every video + audio input).
+    if (brandPngPath) args.push('-i', brandPngPath);
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
     args.push(

@@ -58,6 +58,26 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain("lut3d=file='C\\:/tmp/grade.cube'"); // ':' escaped
   });
 
+  test('brand overlay composites at the LAST input index (after video + audio)', () => {
+    // 5 clips (0-4) + voice (5) + music (6) → brand PNG is the next input = index 7.
+    const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasBrandOverlay: true });
+    expect(g.filter).toContain('[7:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.vmap).toBe('[vbrand]'); // final map is the brand-composited video
+  });
+
+  test('brand overlay index tracks the present audio inputs (no voice → lower index)', () => {
+    // 3 clips (0-2) + music only (3) → brand PNG = index 4 (voice/sfx absent).
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasBrandOverlay: true });
+    expect(g.filter).toContain('[4:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.vmap).toBe('[vbrand]');
+  });
+
+  test('no brand overlay → no overlay filter, vmap stays the graded video', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).not.toContain('overlay=0:0');
+    expect(g.vmap).toBe('[vfinal]');
+  });
+
   test('voice + music → narration-forward: lifted voice, lowered + hard-ducked bed', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
     expect(g.filter).toContain('sidechaincompress');

@@ -26,6 +26,11 @@ export interface FilterGraphOpts {
    *  in the master grade (after the colorbalance/eq/vignette base). The caller
    *  writes the .cube to a temp file and passes its path. */
   lut3dPath?: string;
+  /** When true, a brand lower-third PNG is composited over the final graded video
+   *  IN THIS SAME PASS (no separate re-encode). The caller adds the PNG as the
+   *  LAST `-i` input (after all video + audio inputs); the filtergraph references
+   *  it at that index. Reliable by construction — no post-stitch round-trip. */
+  hasBrandOverlay?: boolean;
 }
 
 const XFADE: Record<string, string> = {
@@ -212,6 +217,14 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
         `loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
     );
     amap = '[aout]';
+  }
+
+  // Brand lower-third — composited over the final graded video in THIS pass. The
+  // PNG is the LAST input (index `ai`, after every video + audio input the caller
+  // added). overlay=0:0 since the PNG is rendered at the exact canvas size.
+  if (opts.hasBrandOverlay) {
+    parts.push(`${vmap}[${ai}:v]overlay=0:0:format=auto[vbrand]`);
+    vmap = '[vbrand]';
   }
 
   return { filter: parts.join(';'), vmap, amap };

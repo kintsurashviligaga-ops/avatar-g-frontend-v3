@@ -212,6 +212,12 @@ export async function POST(req: NextRequest) {
       // The brief drives the cinematic 3D LUT look in the assembler (night/neon →
       // purple-gold, golden-hour → warm amber, else neutral teal-orange).
       ...(typeof body.scorePrompt === 'string' && body.scorePrompt.trim() ? { brief: body.scorePrompt.trim() } : {}),
+      // MUSIC-VIDEO BRAND LOWER-THIRD — burned INTO the stitch (reliable, no
+      // post-pass round-trip). Gated on music-video intent so narrative films never
+      // get a music-video label; B2B marketing (below) still uses its own overlay.
+      ...(isMusicVideoBrief(body.scorePrompt) && !body.marketing
+        ? { brandLowerThird: JSON.stringify({ overlayText: 'AI Music Video', website: 'MyAvatar.ge' }) }
+        : {}),
       ...(body.globalRender ?? {}),
       ...(body.orientation ? { orientation: String(body.orientation) } : {}),
     },
@@ -356,27 +362,19 @@ export async function POST(req: NextRequest) {
   // B2B commercials — use the marketing copy the client passed, or AUTO-derive it from the
   // film brief (intent classified by the director). Burn the overlays into the finished
   // master before it is recorded/delivered. Fail-open at every step: a miss keeps the master.
+  // The music-video brand lower-third is now burned IN the stitch (see
+  // globalRender.brandLowerThird above) — reliable, no post-pass. This block is
+  // ONLY the B2B commercial overlay (price/CTA/spec lower-thirds), which still uses
+  // the post-stitch burn. Bounded so it can never push the route past maxDuration.
   let marketing: MarketingOverlay | null = body.marketing ?? null;
   if (!marketing && resultUrl && typeof body.scorePrompt === 'string') {
     marketing = await deriveMarketingFromBrief(body.scorePrompt);
   }
-  // MUSIC-VIDEO BRANDING — when the brief is a music video (and no B2B marketing
-  // applies), burn a neon-cyan branded lower-third: "AI Music Video" (white) over
-  // "MyAvatar.ge" (accent #00D2FF). Gated on music-video intent so a narrative film
-  // never gets a music-video label. Fail-open like every overlay.
-  if (!marketing && resultUrl && isMusicVideoBrief(body.scorePrompt)) {
-    marketing = { overlayText: 'AI Music Video', website: 'MyAvatar.ge' };
-  }
   if (resultUrl && marketing && hasOverlayContent(marketing)) {
-    // BOUND the overlay burn-in: it runs AFTER the saga (download master → burn SVG
-    // → re-upload), so an unbounded hang here can push the route past maxDuration
-    // (300s) and HARD-KILL it — losing the already-rendered master ("could not host
-    // the final master"). Race it against a 45s budget; on timeout/failure keep the
-    // clean (un-overlaid) master. The overlay can only ever improve the film.
     try {
       const overlaid = await Promise.race([
         overlayMasterUrl(resultUrl, marketing),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 45_000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000)),
       ]);
       if (overlaid) resultUrl = overlaid;
     } catch {
