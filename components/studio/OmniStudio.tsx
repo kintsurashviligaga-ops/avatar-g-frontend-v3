@@ -1517,11 +1517,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: t.generatingLipsync, genKind: 'lipsync' }]);
         setInput(''); setAttachments([]); setBusy(true);
         try {
-          const startRes = await fetch('/api/heygen/presenter', {
+          // Two-phase START (each request stays well under the gateway timeout):
+          // A) synthesize the cloned-voice audio, B) submit it to HeyGen → videoId.
+          const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             body: JSON.stringify({ text, orientation: videoOrientation, gender: 'female' }),
           });
-          const sj = (await startRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string };
+          let sj: { success?: boolean; videoId?: string } = {};
+          if (syn.success && syn.audioUrl) {
+            const genRes = await fetch('/api/heygen/presenter', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: videoOrientation, gender: 'female' }),
+            });
+            sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
+          }
           let url: string | null = null;
           if (sj.success && sj.videoId) {
             for (let i = 0; i < 60 && !url; i++) { // ~6 min of quick polls
