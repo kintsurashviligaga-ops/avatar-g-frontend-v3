@@ -36,32 +36,24 @@ const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || 'https://myavatar.ge/
 // none exist. Cached for the life of the (warm) instance.
 let cachedTalkingPhotoId: string | null = null;
 
-/** Pull the first existing talking_photo_id from the account (tries the known list
- *  endpoints; tolerant of either response shape). Returns null if none/none-found. */
+/** Pull the first existing talking_photo_id from the account.
+ *  Endpoint: GET /v1/talking_photo.list → { data: [{ id, image_url, … }, …] }.
+ *  The field is `id` (not `talking_photo_id`) on the list shape — a HeyGen quirk
+ *  that previously missed the available IDs and fell through to a new upload. */
 async function firstExistingTalkingPhoto(apiKey: string): Promise<string | null> {
-  const endpoints = ['https://api.heygen.com/v1/talking_photo.list', 'https://api.heygen.com/v2/talking_photos'];
-  for (const url of endpoints) {
-    try {
-      const r = await fetch(url, { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
-      if (!r.ok) continue;
-      const j = (await r.json().catch(() => ({}))) as unknown;
-      // Find the first talking_photo_id anywhere in the payload (shape varies by version).
-      const id = findTalkingPhotoId(j);
+  try {
+    const r = await fetch('https://api.heygen.com/v1/talking_photo.list', { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) return null;
+    const j = (await r.json().catch(() => null)) as { data?: Array<{ id?: string; talking_photo_id?: string }> } | null;
+    const list = j?.data ?? [];
+    for (const item of list) {
+      const id = item?.id || item?.talking_photo_id;
       if (id) return id;
-    } catch { /* try next endpoint */ }
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
-}
-
-function findTalkingPhotoId(node: unknown): string | null {
-  if (!node || typeof node !== 'object') return null;
-  const obj = node as Record<string, unknown>;
-  if (typeof obj.talking_photo_id === 'string' && obj.talking_photo_id) return obj.talking_photo_id;
-  for (const v of Object.values(obj)) {
-    if (Array.isArray(v)) { for (const item of v) { const id = findTalkingPhotoId(item); if (id) return id; } }
-    else if (v && typeof v === 'object') { const id = findTalkingPhotoId(v); if (id) return id; }
-  }
-  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -129,31 +121,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) return NextResponse.json({ done: true, error: 'HeyGen not configured' }, { status: 503 });
-
-  // DIAG: ?probe=1 — probe candidate HeyGen list endpoints; report status + a
-  // truncated body so we can see which one actually returns existing talking_photo
-  // IDs on this account. Sanitized: only first 400 chars of each body.
-  const url = new URL(req.url);
-  if (url.searchParams.get('probe') === '1') {
-    const candidates = [
-      'https://api.heygen.com/v1/talking_photo.list',
-      'https://api.heygen.com/v2/talking_photos',
-      'https://api.heygen.com/v2/talking_photo',
-      'https://api.heygen.com/v1/talking_photo_avatar.list',
-      'https://api.heygen.com/v2/photo_avatar/list',
-      'https://api.heygen.com/v2/avatar_group.list',
-    ];
-    const results = await Promise.all(candidates.map(async (u) => {
-      try {
-        const r = await fetch(u, { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
-        const t = await r.text().catch(() => '');
-        return { url: u, status: r.status, body: t.slice(0, 400) };
-      } catch (e) { return { url: u, status: 'error', body: String(e).slice(0, 200) }; }
-    }));
-    return NextResponse.json({ probe: true, results });
-  }
-
-  const id = url.searchParams.get('id');
+  const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ done: true, error: 'id required' }, { status: 400 });
   try {
     const st = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(id)}`, { headers: { 'X-Api-Key': apiKey } });
