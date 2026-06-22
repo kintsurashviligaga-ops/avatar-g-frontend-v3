@@ -135,9 +135,22 @@ export function deriveFilmRoster(p: FilmStudioProgress | null | undefined): Film
     pct: montageStatus === 'completed' ? 100 : montageStatus === 'processing' ? 90 : 0,
   });
 
-  // dormant specialists — light up in talking-avatar / B2B-overlay / remix flows.
+  // GRAPHICS (overlay agent) — the cinematic colour grade + 3D LUT, plus any
+  // branded lower-third, are applied during the stitch/assemble stage, so the
+  // Graphics agent genuinely lights up then and completes with the master. (Not
+  // faked: this is the real grade+overlay pass in assembleWithFfmpeg.)
+  const overlay = a(
+    'overlay',
+    failedFilm ? 'error'
+      : done ? 'completed'
+      : phase === 'stitching' ? 'processing'
+      : phase === 'idle' ? 'idle'   // nothing started yet
+      : 'queued',                    // rendering → graphics queued behind the clips
+    { pct: done ? 100 : phase === 'stitching' ? 80 : 0 },
+  );
+  // Lip-sync + remix stay dormant during a plain film render — they light up in
+  // the talking-avatar (companion hero clip) and remix flows respectively.
   const lipsync = a('lipsync', 'idle');
-  const overlay = a('overlay', 'idle');
   const remix = a('remix', 'idle');
 
   const byId: Record<FilmAgentId, FilmAgentVM> = {

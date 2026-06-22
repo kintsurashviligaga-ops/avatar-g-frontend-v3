@@ -41,6 +41,15 @@ export const maxDuration = 300; // CPU FFmpeg stitch of a 30s master needs headr
 
 const ASSEMBLE_COST = 20; // credits to stitch a composition
 
+/** True when the brief reads as a music video — drives the branded lower-third. */
+function isMusicVideoBrief(brief: string | null | undefined): boolean {
+  const b = (brief ?? '').toLowerCase();
+  if (!b) return false;
+  return /\bmusic video\b/.test(b)
+    || (/\bmusic\b|\bsong\b|\bbeat\b|\bvocal|\br&b\b|\brnb\b|\bpop\b|\bhip[- ]?hop\b/.test(b) && /\bsing|\bsinger\b|\bvocal|\blyric/.test(b))
+    || /მუსიკალური ვიდეო|სიმღერ|მომღერ/.test(brief ?? '');
+}
+
 // Atomic dispatch deadline. A render that stalls mid-stitch (a clip URL that
 // never resolves, a render-node stream that hangs at ~38%) must NOT be allowed
 // to pin the function until the platform hard-kills it at maxDuration — a hard
@@ -200,6 +209,9 @@ export async function POST(req: NextRequest) {
       // This is the honest "exactly 30 seconds" fix and the beat-synced grammar a
       // music video wants. An explicit caller transition still wins (spread after).
       ...(filmTokenId ? { transition: 'cut' } : {}),
+      // The brief drives the cinematic 3D LUT look in the assembler (night/neon →
+      // purple-gold, golden-hour → warm amber, else neutral teal-orange).
+      ...(typeof body.scorePrompt === 'string' && body.scorePrompt.trim() ? { brief: body.scorePrompt.trim() } : {}),
       ...(body.globalRender ?? {}),
       ...(body.orientation ? { orientation: String(body.orientation) } : {}),
     },
@@ -347,6 +359,13 @@ export async function POST(req: NextRequest) {
   let marketing: MarketingOverlay | null = body.marketing ?? null;
   if (!marketing && resultUrl && typeof body.scorePrompt === 'string') {
     marketing = await deriveMarketingFromBrief(body.scorePrompt);
+  }
+  // MUSIC-VIDEO BRANDING — when the brief is a music video (and no B2B marketing
+  // applies), burn a neon-cyan branded lower-third: "AI Music Video" (white) over
+  // "MyAvatar.ge" (accent #00D2FF). Gated on music-video intent so a narrative film
+  // never gets a music-video label. Fail-open like every overlay.
+  if (!marketing && resultUrl && isMusicVideoBrief(body.scorePrompt)) {
+    marketing = { overlayText: 'AI Music Video', website: 'MyAvatar.ge' };
   }
   if (resultUrl && marketing && hasOverlayContent(marketing)) {
     const overlaid = await overlayMasterUrl(resultUrl, marketing);

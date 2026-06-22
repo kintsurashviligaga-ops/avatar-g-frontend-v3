@@ -39,6 +39,25 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('vignette='); // master vignette
   });
 
+  test('lut3dPath → a lut3d=file pass is injected into the master grade (after eq, before vignette)', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30, lut3dPath: '/tmp/asm_x/myavatar-night-neon-purple-gold.cube' });
+    expect(g.filter).toContain("lut3d=file='/tmp/asm_x/myavatar-night-neon-purple-gold.cube'");
+    // ordering: base eq grade → lut3d → vignette
+    const order = g.filter.indexOf('eq=contrast=1.04') < g.filter.indexOf('lut3d=')
+      && g.filter.indexOf('lut3d=') < g.filter.indexOf('vignette=');
+    expect(order).toBe(true);
+  });
+
+  test('no lut3dPath → no lut3d pass (base colorbalance grade only)', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).not.toContain('lut3d');
+  });
+
+  test('lut3d path with colons (Windows-ish) is escaped for the filtergraph', () => {
+    const g = buildFilterComplex({ nClips: 2, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30, lut3dPath: 'C:/tmp/grade.cube' });
+    expect(g.filter).toContain("lut3d=file='C\\:/tmp/grade.cube'"); // ':' escaped
+  });
+
   test('voice + music → narration-forward: lifted voice, lowered + hard-ducked bed', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
     expect(g.filter).toContain('sidechaincompress');

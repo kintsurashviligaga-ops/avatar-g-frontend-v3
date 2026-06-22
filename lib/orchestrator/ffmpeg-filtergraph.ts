@@ -22,6 +22,10 @@ export interface FilterGraphOpts {
   transition?: string;  // crossfade | dissolve | wipe | fade_to_black
   /** Output orientation. 'vertical' → 1080×1920 (9:16, TikTok/Reels/Shorts). */
   orientation?: 'landscape' | 'vertical';
+  /** Absolute path to a .cube 3D LUT. When set, a `lut3d=file=…` pass is applied
+   *  in the master grade (after the colorbalance/eq/vignette base). The caller
+   *  writes the .cube to a temp file and passes its path. */
+  lut3dPath?: string;
 }
 
 const XFADE: Record<string, string> = {
@@ -129,9 +133,17 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const padSec = Math.max(0, targetDur - totalDur);
   const fadeOutStart = padSec > 0 ? Math.max(0, totalDur - 0.3) : Math.max(0, targetDur - FADE_SEC);
   const fadeOutDur = padSec > 0 ? padSec + 0.3 : FADE_SEC;
+  // A real 3D LUT pass (lut3d) layered on the base grade when a .cube is supplied
+  // — the "cinematic colour grade LUT" graphics step. Escape the path for the
+  // filtergraph (':' and '\' are filter syntax). Applied AFTER the base
+  // colorbalance/eq so the LUT shapes the final look, BEFORE vignette/fades.
+  const lutPass = opts.lut3dPath
+    ? `lut3d=file='${opts.lut3dPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'")}',`
+    : '';
   parts.push(
     `${vmap}colorbalance=rs=-0.02:bs=0.05:rm=0.03:bm=-0.02:rh=0.05:bh=-0.05,` +
       `eq=contrast=1.04:saturation=1.06:gamma=0.98,` +
+      lutPass +
       `vignette=angle=PI/4.2,` +
       (padSec > 0 ? `tpad=stop_mode=clone:stop_duration=${padSec.toFixed(2)},` : '') +
       `fade=t=in:st=0:d=${FADE_SEC},` +

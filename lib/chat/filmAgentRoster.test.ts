@@ -40,6 +40,17 @@ describe('deriveFilmRoster', () => {
     expect(r.remix.status).toBe('idle');
   });
 
+  it('graphics agent activates during the stitch (grade + LUT + overlay) and completes with the master', () => {
+    const stitching = byId(deriveFilmRoster(progress({ phase: 'stitching', matrix: { storyboard: 'succeeded' } })));
+    expect(stitching.overlay.status).toBe('processing'); // graphics work runs during the stitch
+    const assembled = byId(deriveFilmRoster(progress({ phase: 'assembled', matrix: { storyboard: 'succeeded' } })));
+    expect(assembled.overlay.status).toBe('completed');
+    // lip-sync + remix stay dormant in the plain film render (honest — they run in
+    // the companion talking-avatar + remix flows).
+    expect(assembled.lipsync.status).toBe('idle');
+    expect(assembled.remix.status).toBe('idle');
+  });
+
   it('dispatching → director + storyboard working, video queued', () => {
     const r = byId(deriveFilmRoster(progress({ phase: 'dispatching', matrix: { storyboard: 'pending' } })));
     expect(r.director.status).toBe('processing');

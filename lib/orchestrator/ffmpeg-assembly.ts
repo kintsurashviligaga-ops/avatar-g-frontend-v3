@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex } from './ffmpeg-filtergraph';
+import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadAndSign } from './storage-adapter';
 
@@ -127,6 +128,28 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
         ? 'vertical'
         : 'landscape';
 
+    // Cinematic 3D LUT grade. The look is chosen by the orchestrator (globalRender.lut)
+    // or auto-classified from the brief (night/neon → purple-gold, golden → warm).
+    // We write the .cube to the temp dir and feed lut3d the path. Fail-open: any
+    // write error simply skips the LUT (the base colorbalance grade still applies).
+    let lut3dPath: string | undefined;
+    let lutLook: LutLook | null = null;
+    try {
+      const requested = String(g.lut || '').trim() as LutLook;
+      lutLook = (['cinematic', 'night_neon', 'warm_golden'] as const).includes(requested)
+        ? requested
+        : pickLutLook(typeof g.brief === 'string' ? g.brief : undefined);
+      const cubePath = join(dir, LUT_FILENAME[lutLook]);
+      await writeFile(cubePath, buildCubeFile(lutLook));
+      lut3dPath = cubePath;
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] applying lut3d grade: ${LUT_FILENAME[lutLook]} (${lutLook})`);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] LUT write failed, using base grade only:', e instanceof Error ? e.message : e);
+      lut3dPath = undefined;
+    }
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
@@ -137,6 +160,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       duckPct,
       transition,
       clipSec,
+      lut3dPath,
     });
 
     const out = join(dir, 'master.mp4');
