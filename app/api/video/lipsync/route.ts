@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
+import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -113,7 +114,10 @@ export async function POST(req: NextRequest) {
   // "Speak this text": type a script → ElevenLabs → optionally the user's TRAINED voice.
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
   if (text) {
-    const ttsUrl = await textToHostedSpeech(text);
+    // Honour an explicit Female/Male choice via the cloned-voice map; otherwise let
+    // textToHostedSpeech auto-pick by persona.
+    const g = body.gender === 'male' ? 'male' : body.gender === 'female' ? 'female' : null;
+    const ttsUrl = await textToHostedSpeech(text, g ? georgianVoiceId(g) : undefined);
     // If TTS failed, FAIL CLEANLY instead of falling through with audioUrl===videoUrl
     // (the face image) — that would lip-sync the photo to itself and waste a provider
     // job before surfacing a generic failure minutes later.

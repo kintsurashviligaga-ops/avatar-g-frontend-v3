@@ -863,6 +863,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [videoMyVoiceNarration, setVideoMyVoiceNarration] = useState(false);
   // Lip-sync "dub from text" → speak the typed script in the user's TRAINED voice (RVC).
   const [lipMyVoice, setLipMyVoice] = useState(false);
+  // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
+  const [lipGender, setLipGender] = useState<'female' | 'male'>('female');
+  const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
@@ -1727,6 +1730,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // audio. A direct audio attachment also works (skips TTS). One long request → the
     // synced master, rendered inline like any other video result.
     if (mode === 'lipsync') {
+      // Output format the user picked: presenter dimension + the result player's box.
+      const lipOrientation = lipFormat === '9:16' ? 'vertical' : lipFormat === '1:1' ? 'square' : 'landscape';
+      const lipResultOrientation: 'landscape' | 'vertical' = lipFormat === '16:9' ? 'landscape' : 'vertical';
       // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
@@ -1742,16 +1748,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // A) synthesize the cloned-voice audio, B) submit it to HeyGen → videoId.
           const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            // The presenter voice is auto-derived from the script persona server-side;
-            // there is no gender param on the route (it was a dead field).
-            body: JSON.stringify({ text, orientation: videoOrientation }),
+            // Honour the panel's Voice (Female/Male) + Format selections.
+            body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
           const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string };
           let sj: { success?: boolean; videoId?: string } = {};
           if (syn.success && syn.audioUrl) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: videoOrientation }),
+              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation }),
             });
             sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
           }
@@ -1771,7 +1776,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync', orientation: videoOrientation } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
+            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync', orientation: lipResultOrientation } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
             return next;
           });
         } catch {
@@ -1796,7 +1801,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),
           ...(text ? { text } : {}),
-          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : {}),
+          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
         });
         // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
         // SadTalker provider intermittently crashes (Pillow 'ANTIALIAS' on some of its
@@ -1834,7 +1839,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
-              ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: videoOrientation }
+              ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
               : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
@@ -1857,7 +1862,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -2732,9 +2737,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               );
             })()}
             <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Attach a face → type what it says (the photo speaks it). Or leave it empty — an AI presenter speaks your script in the cloned voice.' : locale === 'ru' ? 'Прикрепите лицо → введите текст (фото произнесёт). Или оставьте пустым — AI-ведущий озвучит ваш текст клонированным голосом.' : 'მიამაგრე სახე → ჩაწერე ტექსტი (ფოტო ალაპარაკდება). ან დატოვე ცარიელი — AI წამყვანი წაიკითხავს კლონირებული ხმით.'}</span>
+            {/* Voice (cloned Georgian Female/Male) + output Format — always available. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
+                <div className="mt-1.5 flex gap-1.5">
+                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი']] as const).map(([g, label]) => (
+                    <button key={g} type="button" onClick={() => setLipGender(g)} aria-pressed={lipGender === g}
+                      className={`flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+                <div className="mt-1.5 flex gap-1.5">
+                  {(['9:16', '16:9', '1:1'] as const).map((f) => (
+                    <button key={f} type="button" onClick={() => setLipFormat(f)} aria-pressed={lipFormat === f}
+                      className={`flex-1 rounded-lg px-1.5 py-2 text-[11px] font-semibold tabular-nums transition active:scale-[0.98] ${lipFormat === f ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{f}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
             {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'My audio' : locale === 'ru' ? 'Моё аудио' : 'ჩემი აუდიო'}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {attachments.some((a) => isAudio(a.mimeType)) && (
                     <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>

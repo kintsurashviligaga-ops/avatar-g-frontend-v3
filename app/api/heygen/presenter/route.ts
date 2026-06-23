@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 
 /**
  * /api/heygen/presenter — "Presenter mode"
@@ -81,14 +82,17 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured' }, { status: 503 });
 
-  const body = (await req.json().catch(() => ({}))) as { text?: string; audioUrl?: string; faceUrl?: string; orientation?: 'landscape' | 'vertical' };
+  const body = (await req.json().catch(() => ({}))) as { text?: string; audioUrl?: string; faceUrl?: string; orientation?: 'landscape' | 'vertical' | 'square'; gender?: 'female' | 'male' };
 
   // ── PHASE A — synthesize the line in the CLONED Georgian voice → public mp3 url.
   // TTS only (no HeyGen calls here), so it stays ~4s — comfortably under 60s.
   if (!body.audioUrl) {
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     if (!text) return NextResponse.json({ success: false, error: 'text is required' }, { status: 400 });
-    const audioUrl = await textToHostedSpeech(text.slice(0, 1500), null).catch(() => null);
+    // Honour the caller's Female/Male choice via the cloned-voice map; falls back to
+    // the female clone when unspecified.
+    const gender = body.gender === 'male' ? 'male' : 'female';
+    const audioUrl = await textToHostedSpeech(text.slice(0, 1500), georgianVoiceId(gender)).catch(() => null);
     if (!audioUrl) return NextResponse.json({ success: false, error: 'voice synthesis failed (no cloned-voice audio)' }, { status: 502 });
     return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
   }
@@ -120,8 +124,11 @@ export async function POST(req: NextRequest) {
   cachedTalkingPhotoId = talkingPhotoId;
 
   // 2) Generate the audio-driven video. Capture HeyGen's actual reply.
-  const vertical = body.orientation === 'vertical';
-  const dimension = vertical ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
+  const dimension = body.orientation === 'vertical'
+    ? { width: 720, height: 1280 }
+    : body.orientation === 'square'
+      ? { width: 720, height: 720 }
+      : { width: 1280, height: 720 };
   const genRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ video_inputs: [{ character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' }, voice: { type: 'audio', audio_url: audioUrl } }], dimension }),
