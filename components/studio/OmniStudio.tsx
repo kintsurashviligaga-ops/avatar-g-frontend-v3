@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import FilmDirectorConsole from './FilmDirectorConsole';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine } from '@/lib/chat/filmAgentRoster';
@@ -573,8 +573,9 @@ interface StoryboardState {
   orientation: 'landscape' | 'vertical';
   seed: number;
   scenes: StoryboardScene[];
-  /** LLM story scenes (one per scene) — threaded to the render so clips match. */
-  sceneScripts?: string[] | null;
+  /** LLM story scenes (one per scene) — threaded to the render so clips match. A
+   *  reordered/added scene may have no script (null) until it is re-rolled. */
+  sceneScripts?: (string | null)[] | null;
   /** Per-scene frame-prompt for the streaming single-scene frame calls. */
   framePrompts?: Record<number, string>;
   /** Scene ordinals whose frame is still being generated (drives the N/M counter
@@ -592,6 +593,28 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+// P9 — after a delete / reorder / add, renumber ordinals to 1..N and rebuild the
+// per-scene maps so every lookup stays consistent with the new order:
+//   • framePrompts is keyed by ordinal → re-key to the new ordinal.
+//   • sceneScripts is POSITIONAL (index = scene position) → carry each scene's old
+//     script to its new slot (a brand-new scene has no old index → null).
+function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): StoryboardState {
+  const oldFP = prev.framePrompts ?? {};
+  const oldScripts = prev.sceneScripts ?? [];
+  const idxByOrd = new Map(prev.scenes.map((s, i) => [s.ordinal, i] as const));
+  const framePrompts: Record<number, string> = {};
+  const sceneScripts: (string | null)[] = [];
+  const scenes = ordered.map((s, i) => {
+    const newOrd = i + 1;
+    const fp = oldFP[s.ordinal];
+    if (fp) framePrompts[newOrd] = fp;
+    const oldIdx = idxByOrd.get(s.ordinal);
+    sceneScripts[i] = oldIdx != null ? oldScripts[oldIdx] ?? null : null;
+    return { ...s, ordinal: newOrd };
+  });
+  return { ...prev, scenes, framePrompts, sceneScripts };
+}
+
 /**
  * SceneTile — one storyboard scene as a SMART, interactive skeleton (Master Prompt
  * v329 placeholder upgrade):
@@ -603,16 +626,23 @@ function fileToDataUrl(file: File): Promise<string> {
  *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
  *     an agent's delivery glides in with no layout pop (fixed-aspect container).
  */
-function SceneTile({ s, t, portrait, pending, regenning, busy, onRegenScene, onEditScene, onView }: {
+function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove }: {
   s: StoryboardScene;
   t: (typeof COPY)[Lang];
   portrait: boolean;
   pending: boolean;
   regenning: boolean;
   busy: boolean;
+  /** P9 — this scene's position (0-based) and the board size, for move-bound checks. */
+  index: number;
+  total: number;
+  /** P9 — structural edits (move/delete) only once frames have settled (not streaming). */
+  structEnabled: boolean;
   onRegenScene: (ordinal: number, baseImage?: string) => void;
   onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
+  onDelete: (ordinal: number) => void;
+  onMove: (ordinal: number, dir: -1 | 1) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -703,6 +733,23 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, onRegenScene, onE
           className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
           <RotateCcw size={11} /> {t.sbRegen}
         </button>
+        {/* P9 — reorder (earlier/later) + delete, enabled once frames have settled. */}
+        {structEnabled && (
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label="Move earlier" title="Move earlier"
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
+              <ChevronLeft size={14} />
+            </button>
+            <button type="button" onClick={() => onMove(s.ordinal, 1)} disabled={busy || index === total - 1} aria-label="Move later" title="Move later"
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
+              <ChevronRight size={14} />
+            </button>
+            <button type="button" onClick={() => onDelete(s.ordinal)} disabled={busy || total <= 2} aria-label="Delete scene" title="Delete scene"
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-400 disabled:opacity-30 touch-manipulation">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -710,9 +757,10 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, onRegenScene, onE
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel }: {
+function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
+  locale: Lang;
   busy: boolean;
   /** The scene ordinal currently re-rolling its frame (null = none). */
   regenningOrdinal: number | null;
@@ -722,6 +770,9 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
   onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
   onCancel: () => void;
+  onDelete: (ordinal: number) => void;
+  onMove: (ordinal: number, dir: -1 | 1) => void;
+  onAddScene: () => void;
 }) {
   const portrait = sb.orientation === 'vertical';
   const pending = sb.pending ?? [];
@@ -755,7 +806,7 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
         )}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {sb.scenes.map((s) => (
+            {sb.scenes.map((s, i) => (
               <SceneTile
                 key={s.ordinal}
                 s={s}
@@ -764,11 +815,28 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
                 pending={pending.includes(s.ordinal)}
                 regenning={regenningOrdinal === s.ordinal}
                 busy={busy || regenningOrdinal !== null}
+                index={i}
+                total={total}
+                structEnabled={!streaming}
                 onRegenScene={onRegenScene}
                 onEditScene={onEditScene}
                 onView={onView}
+                onDelete={onDelete}
+                onMove={onMove}
               />
             ))}
+            {/* P9 — append a new scene (max 8). Disabled while frames are still streaming. */}
+            {!streaming && total < 8 && (
+              <button
+                type="button"
+                onClick={onAddScene}
+                disabled={busy || regenningOrdinal !== null}
+                className={`flex ${portrait ? 'aspect-[9/16]' : 'aspect-video'} flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-app-border/25 bg-app-elevated/40 text-app-muted transition-colors hover:border-app-accent/50 hover:bg-app-accent/[0.06] hover:text-app-accent disabled:opacity-40 touch-manipulation`}
+              >
+                <Plus size={22} />
+                <span className="text-[11px] font-medium">{locale === 'en' ? 'Add scene' : locale === 'ru' ? 'Добавить сцену' : 'სცენის დამატება'}</span>
+              </button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
@@ -1451,6 +1519,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, prompt: text, edited: true } : s)) }
       : prev);
   }, []);
+
+  // P9 — delete a scene (keep ≥2 for a valid film), then renumber + remap.
+  const deleteScene = useCallback((ordinal: number) => {
+    setStoryboard((prev) => {
+      if (!prev || prev.scenes.length <= 2) return prev;
+      return commitSceneOrder(prev, prev.scenes.filter((s) => s.ordinal !== ordinal));
+    });
+  }, []);
+
+  // P9 — move a scene one slot earlier (-1) / later (+1) in the running order.
+  const moveScene = useCallback((ordinal: number, dir: -1 | 1) => {
+    setStoryboard((prev) => {
+      if (!prev) return prev;
+      const i = prev.scenes.findIndex((s) => s.ordinal === ordinal);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.scenes.length) return prev;
+      const ordered = prev.scenes.slice();
+      const a = ordered[i]!; const b = ordered[j]!;
+      ordered[i] = b; ordered[j] = a;
+      return commitSceneOrder(prev, ordered);
+    });
+  }, []);
+
+  // P9 — append a blank scene (max 8). Seeded with the film idea as its prompt so a
+  // re-roll produces a frame even before the user edits it; it has no frame yet, so
+  // the user re-rolls (or edits then re-rolls) before generating.
+  const addScene = useCallback(() => {
+    setStoryboard((prev) => {
+      if (!prev || prev.scenes.length >= 8) return prev;
+      const beat = locale === 'en' ? 'New scene' : locale === 'ru' ? 'Новая сцена' : 'ახალი სცენა';
+      const blank: StoryboardScene = { ordinal: 90000 + prev.scenes.length, beat, prompt: prev.filmPrompt, frameUrl: null, edited: true };
+      return commitSceneOrder(prev, [...prev.scenes, blank]);
+    });
+  }, [locale]);
 
   // One-click RE-ROLL of an image/music result: re-run the SAME prompt + settings
   // (a fresh variation) WITHOUT a new user bubble — the new asset lands as a fresh
@@ -3493,11 +3595,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         <StoryboardOverlay
           sb={storyboard}
           t={t}
+          locale={locale}
           busy={busy}
           regenningOrdinal={regenningOrdinal}
           onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}
           onView={(url) => setLightbox(url)}
+          onDelete={deleteScene}
+          onMove={moveScene}
+          onAddScene={addScene}
           onGenerate={() => {
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
