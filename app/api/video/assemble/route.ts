@@ -38,7 +38,11 @@ import { generateMusic } from '@/lib/ai/replicate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 300; // CPU FFmpeg stitch of a 30s master needs headroom (Pro)
+// STEP 3 (v331) — raised 300→600s so a cold-CPU stitch of the full 30s master plus
+// the synchronous score gen completes well inside the function budget (was timing out
+// at ~197s). Requires the Vercel plan to allow >300s (Fluid Compute); if the build
+// rejects it, fall back to 300 — the concurrent audio bed still recovers most of the gap.
+export const maxDuration = 600; // CPU FFmpeg stitch of a 30s master needs headroom (Pro/Fluid)
 
 const ASSEMBLE_COST = 20; // credits to stitch a composition
 
@@ -89,9 +93,9 @@ function deriveMusicBug(
 // ASSEMBLE_DISPATCH_TIMEOUT_MS; clamped to a sane [30s, 290s] window.
 const DISPATCH_TIMEOUT_MS = (() => {
   const raw = Number(process.env.ASSEMBLE_DISPATCH_TIMEOUT_MS);
-  const fallback = 270_000; // 30s headroom under maxDuration for compensate + response
+  const fallback = 540_000; // v331 — 60s headroom under the raised 600s maxDuration
   if (!Number.isFinite(raw) || raw <= 0) return fallback;
-  return Math.min(290_000, Math.max(30_000, Math.round(raw)));
+  return Math.min(580_000, Math.max(30_000, Math.round(raw)));
 })();
 
 interface SegmentInput {
@@ -166,7 +170,7 @@ async function assembleImpl(req: NextRequest) {
   // made RELATIVE to time already consumed so it fires inside the function (→ saga
   // compensate releases credits) rather than letting the platform hard-kill the request.
   const fnT0 = Date.now();
-  const MAX_FN_MS = 300_000;
+  const MAX_FN_MS = 600_000; // v331 — matches the raised maxDuration (was 300_000)
   let body: AssembleBody;
   try {
     body = (await req.json()) as AssembleBody;
@@ -218,18 +222,6 @@ async function assembleImpl(req: NextRequest) {
   // no 503. (RunPod is the quality upgrade: GPU encode + 60fps interpolation.)
   const cfg = readRunPodConfig();
 
-  // Media-flow sanitization (Task 3): re-sign any internal Supabase Storage
-  // object so only 15-minute signed URLs cross to the render node — no
-  // permanent bucket URL escapes. External provider links pass through.
-  const signedSegments = await Promise.all(
-    segments.map(async s => ({
-      url: await reSignIfInternal(s.url),
-      durationSec: s.durationSec ?? 6,
-      cameraMotion: s.cameraMotion ?? null,
-      render: s.render ?? {},
-    })),
-  );
-
   // v330 — resolve the master mode ONCE (used by both the audio layer and the
   // burned lower-third). The explicit Music Video Mode flag wins; the legacy
   // brief-keyword heuristic is the fallback. B2B marketing films are always
@@ -245,98 +237,96 @@ async function assembleImpl(req: NextRequest) {
   // v330 — MTV-style music info bug content, derived from the brief + vocal gender.
   const musicBugSpec = musicVideoMode ? deriveMusicBug(body.scorePrompt ?? '', body.vocalGender, captionLang) : null;
 
-  // PHASE 55 §2 — Cochlear score fallback. When the upstream Udio score failed
-  // under credit exhaustion the client sends no musicUrl, and the stitched 30s
-  // master would play completely silent. Synthesize a cohesive cinematic score
-  // on the funded Replicate MusicGen module and overlay it across the whole
-  // timeline so the film is never mute. Best-effort: a fallback miss degrades
-  // gracefully to silent — it never fails the stitch.
-  // v330 — a user-uploaded soundtrack is the master bed and wins over everything:
-  // it short-circuits the Udio score (already skipped upstream) AND the MusicGen
-  // fallback below (because resolvedMusicUrl is now non-null), and the compositing
-  // pipeline anchors strictly onto this file.
-  let resolvedMusicUrl = body.customAudioUrl
-    ? await reSignIfInternal(body.customAudioUrl)
-    : body.musicUrl
-      ? await reSignIfInternal(body.musicUrl)
-      : null;
-  if (body.customAudioUrl) {
-    // eslint-disable-next-line no-console
-    console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
-  }
-  let scoreFallback: 'udio->musicgen' | 'elevenlabs-music' | null = null;
+  // STEP 3 (v331) — AUDIO BED runs CONCURRENTLY with the segment re-signing rather
+  // than strictly before it, so a slow score gen (EL Music / MusicGen) no longer
+  // SERIALLY eats the stitch's window — the cause of the ~197s "dispatch stalled"
+  // timeout. `audioTotalSec` is derived from the RAW segments (re-signing changes
+  // URLs, not durations) so the score gen can start without waiting on the re-sign.
+  // Combined with the raised function budget (maxDuration 600s) the full 30s master
+  // stitches comfortably inside the deadline even on a cold CPU node.
+  const audioTotalSec = Math.min(30, Math.max(8, Math.round(
+    segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0),
+  )));
 
-  // v330 — ElevenLabs Music is the MASTER audio layer. Synthesize the full track
-  // SYNCHRONOUSLY (sung vocals + backing for a music video, or an instrumental score)
-  // and host it. This is the primary source, replacing the async Udio leg; MusicGen
-  // below stays as the graceful fallback if EL Music is unavailable or the account
-  // lacks Music access, so the film is never silently mute.
-  if (!resolvedMusicUrl && !body.noMusic && hasElevenLabsMusicKey()) {
-    const totalSec = Math.min(30, Math.max(8, Math.round(signedSegments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0))));
-    const { prompt, instrumental } = buildElevenMusicPrompt({
-      brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
-      totalSec,
-      musicVideoMode,
-      vocalGender: body.vocalGender,
-    });
-    try {
-      // Tight budget: this runs SYNCHRONOUSLY before the stitch, inside the same 300s
-      // function. EL Music is normally ~20–45s for 30s of audio; 60s caps a slow gen so
-      // the stitch keeps its window.
-      const EL_MUSIC_BUDGET_MS = 60_000;
-      const { audio, contentType } = await Promise.race([
-        composeElevenLabsMusic({ prompt, lengthMs: totalSec * 1000, instrumental }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
-      ]);
-      const path = `films/elmusic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      resolvedMusicUrl = (await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800)) ?? null;
-      if (resolvedMusicUrl) scoreFallback = 'elevenlabs-music';
+  // PHASE 55 §2 + v330 — resolve ONE master audio bed, fail-open to SILENT at every
+  // tier (never a 500): custom upload / upstream Udio musicUrl  >  ElevenLabs Music
+  // (sung vocals + backing, or instrumental)  >  Replicate MusicGen fallback.
+  const resolveMusicBed = async (): Promise<{ url: string | null; fallback: 'udio->musicgen' | 'elevenlabs-music' | null }> => {
+    // A user-uploaded soundtrack (or an upstream Udio track) is the master bed and
+    // wins over everything — it bypasses BOTH score providers below.
+    if (body.customAudioUrl) {
       // eslint-disable-next-line no-console
-      console.log('[assemble] ElevenLabs Music track ready:', resolvedMusicUrl ? `yes (${instrumental ? 'instrumental' : 'sung'})` : 'no');
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+      console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
+      return { url: await reSignIfInternal(body.customAudioUrl), fallback: null };
     }
-  }
+    if (body.musicUrl) return { url: await reSignIfInternal(body.musicUrl), fallback: null };
+    if (body.noMusic) return { url: null, fallback: null };
 
-  // MusicGen fallback — rescues the film when EL Music produced nothing. Gate on the
-  // REMAINING function budget (not how long EL took): it still rescues after a slow EL
-  // failure/timeout (the old elapsed<30s gate left those silent), yet never stacks two
-  // long gens past the 300s ceiling because it only runs when there's room for the
-  // MusicGen cap PLUS a stitch reserve.
-  const SCORE_BUDGET_MS = 120_000;
-  const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
-  if (!resolvedMusicUrl && !body.noMusic && (MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
-    // Match the score length to the assembled timeline so MusicGen returns a
-    // track that spans every compiled clip rather than looping a short stub.
-    const totalSec = Math.min(
-      30,
-      Math.max(8, Math.round(signedSegments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0))),
-    );
-    const brief =
-      typeof body.scorePrompt === 'string' && body.scorePrompt.trim()
-        ? body.scorePrompt.trim()
-        : 'emotional orchestral instrumental, cohesive cinematic film score';
-    try {
-      // BUDGET GUARD — MusicGen runs synchronously BEFORE the saga dispatch, so an
-      // unbounded cold-boot could eat the function's maxDuration (300s) and leave no
-      // headroom for the CPU stitch, hard-killing the request and stranding the
-      // reserved credits. Cap the score at 120s: long enough for a warm/cold render,
-      // short enough to leave the stitch its full window. A timeout degrades to a
-      // silent film (never a failed render). (SCORE_BUDGET_MS hoisted to the gate above.)
-      const score = await Promise.race([
-        generateMusic(`${brief}, ${totalSec}-second continuous film score, instrumental`, totalSec),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('musicgen score timed out')), SCORE_BUDGET_MS)),
-      ]);
-      resolvedMusicUrl = score.audioUrl;
-      scoreFallback = 'udio->musicgen';
-      // eslint-disable-next-line no-console
-      console.log('[assemble] MusicGen score ready:', resolvedMusicUrl ? 'yes' : 'no');
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[assemble] MusicGen score fallback failed (film stays silent):', err instanceof Error ? err.message : err);
+    // PRIMARY — ElevenLabs Music. Time-boxed so a slow gen can't run away; on a miss
+    // we fall through to MusicGen, then to silent.
+    if (hasElevenLabsMusicKey()) {
+      const { prompt, instrumental } = buildElevenMusicPrompt({
+        brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
+        totalSec: audioTotalSec,
+        musicVideoMode,
+        vocalGender: body.vocalGender,
+      });
+      try {
+        const EL_MUSIC_BUDGET_MS = 90_000;
+        const { audio, contentType } = await Promise.race([
+          composeElevenLabsMusic({ prompt, lengthMs: audioTotalSec * 1000, instrumental }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
+        ]);
+        const path = `films/elmusic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+        const url = (await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800)) ?? null;
+        // eslint-disable-next-line no-console
+        console.log('[assemble] ElevenLabs Music track ready:', url ? `yes (${instrumental ? 'instrumental' : 'sung'})` : 'no');
+        if (url) return { url, fallback: 'elevenlabs-music' };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+      }
     }
-  }
+
+    // FALLBACK — Replicate MusicGen. Budget-guarded against the (raised) ceiling so it
+    // never stacks past maxDuration; a timeout/miss degrades to a SILENT film, never a 500.
+    const SCORE_BUDGET_MS = 120_000;
+    const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
+    if ((MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
+      const brief =
+        typeof body.scorePrompt === 'string' && body.scorePrompt.trim()
+          ? body.scorePrompt.trim()
+          : 'emotional orchestral instrumental, cohesive cinematic film score';
+      try {
+        const score = await Promise.race([
+          generateMusic(`${brief}, ${audioTotalSec}-second continuous film score, instrumental`, audioTotalSec),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('musicgen score timed out')), SCORE_BUDGET_MS)),
+        ]);
+        // eslint-disable-next-line no-console
+        console.log('[assemble] MusicGen score ready:', score.audioUrl ? 'yes' : 'no');
+        if (score.audioUrl) return { url: score.audioUrl, fallback: 'udio->musicgen' };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[assemble] MusicGen score fallback failed (film stays silent):', err instanceof Error ? err.message : err);
+      }
+    }
+    return { url: null, fallback: null };
+  };
+
+  // Media-flow sanitization (Task 3): re-sign any internal Supabase Storage object so
+  // only 15-minute signed URLs cross to the render node. STEP 3 (v331) — kick off the
+  // audio bed AND the re-signing CONCURRENTLY, then await both, so the score gen
+  // overlaps the prep instead of running strictly before the stitch.
+  const musicBedPromise = resolveMusicBed();
+  const signedSegments = await Promise.all(
+    segments.map(async s => ({
+      url: await reSignIfInternal(s.url),
+      durationSec: s.durationSec ?? 6,
+      cameraMotion: s.cameraMotion ?? null,
+      render: s.render ?? {},
+    })),
+  );
+  const { url: resolvedMusicUrl, fallback: scoreFallback } = await musicBedPromise;
 
   // FIX 3 — one consolidated, greppable line of the FINAL audio decision so a
   // silent/odd master is diagnosable from logs alone (which provider won, whether
