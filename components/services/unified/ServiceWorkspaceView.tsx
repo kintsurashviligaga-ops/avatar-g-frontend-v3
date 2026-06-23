@@ -107,14 +107,15 @@ const SERVICE_WORKSPACES: Record<string, ServiceWorkspace> = {
   },
   avatar: {
     fields: [
-      { id: 'prompt', type: 'textarea', label: { en: 'Description', ka: 'აღწერა', ru: 'Описание' }, placeholder: { en: 'Describe your avatar...', ka: 'აღწერეთ თქვენი ავატარი...', ru: 'Опишите ваш аватар...' } },
-      { id: 'style', type: 'select', label: { en: 'Style', ka: 'სტილი', ru: 'Стиль' }, options: [{ value: 'photorealistic', label: 'Photorealistic' }, { value: 'artistic', label: 'Artistic' }, { value: '3d', label: '3D Render' }, { value: 'anime', label: 'Anime' }], defaultValue: 'photorealistic' },
-      { id: 'reference', type: 'upload', label: { en: 'Reference Photo', ka: 'რეფერენსი', ru: 'Референс' } },
+      { id: 'prompt', type: 'textarea', label: { en: 'Script', ka: 'ტექსტი', ru: 'Текст' }, placeholder: { en: 'What should the avatar say? (spoken in a cloned Georgian voice)', ka: 'რას იტყვის ავატარი? (ქართული კლონ-ხმით)', ru: 'Что скажет аватар? (клонированный грузинский голос)' } },
+      { id: 'voice_gender', type: 'select', label: { en: 'Voice', ka: 'ხმა', ru: 'Голос' }, options: [{ value: 'female', label: 'Female · ქალი' }, { value: 'male', label: 'Male · კაცი' }], defaultValue: 'female' },
+      { id: 'video_format', type: 'select', label: { en: 'Aspect Ratio', ka: 'პროპორცია', ru: 'Пропорции' }, options: [{ value: '9:16', label: '9:16 — Reels / TikTok / Shorts' }, { value: '16:9', label: '16:9 — YouTube / Landscape' }, { value: '1:1', label: '1:1 — Square' }], defaultValue: '9:16' },
+      { id: 'reference', type: 'upload', label: { en: 'Your Photo — optional, makes YOUR face talk', ka: 'შენი ფოტო — სურვილისამებრ, შენი სახე ალაპარაკდება', ru: 'Ваше фото — необязательно, заговорит ваше лицо' } },
     ],
     creditCost: 10,
     actionLabel: { en: 'Generate Avatar', ka: 'ავატარის გენერაცია', ru: 'Создать аватар' },
-    outputType: 'image',
-    previewHint: { en: 'Your avatar will appear here', ka: 'ავატარი აქ გამოჩნდება', ru: 'Ваш аватар появится здесь' },
+    outputType: 'video',
+    previewHint: { en: 'Your talking avatar video will appear here', ka: 'მოლაპარაკე ავატარის ვიდეო აქ გამოჩნდება', ru: 'Видео говорящего аватара появится здесь' },
   },
   image: {
     fields: [
@@ -1619,9 +1620,9 @@ export default function ServiceWorkspaceView({
           }
         })
         if (serviceId === 'avatar') {
+          // Honour the panel's selections (voice + aspect ratio), with sensible defaults.
           answers.voice_gender = answers.voice_gender || 'female'
-          answers.voice_language = answers.voice_language || 'en'
-          answers.video_format = '16:9'
+          answers.video_format = answers.video_format || '9:16'
         }
         if (serviceId === 'video') {
           answers.resolution = '1920x1080'

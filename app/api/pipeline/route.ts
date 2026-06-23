@@ -23,6 +23,7 @@ import { selectTtsModel, voiceSettingsForModel } from '@/lib/audio/tts-model';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -265,9 +266,6 @@ async function generateAvatar(
   answers: Record<string, string | string[]>,
   mediaFiles: MediaFile[],
 ): Promise<{ resultUrl?: string; outputKind: string; error?: string }> {
-  const apiKey = process.env.HEYGEN_API_KEY;
-  if (!apiKey) return { outputKind: 'video', error: 'HEYGEN_API_KEY not configured' };
-
   const videoFormat = String(answers.video_format ?? '16:9');
   const dimension = videoFormat === '9:16'
     ? { width: 720,  height: 1280 }
@@ -276,52 +274,58 @@ async function generateAvatar(
       : { width: 1280, height: 720  };
 
   // Voice: synthesize the script in our CLONED Georgian voice (honouring the user's
-  // Female/Male choice) and drive HeyGen with voice.type:'audio' — far better than
+  // Female/Male choice) and drive the render with voice.type:'audio' — far better than
   // HeyGen's own generic English voices, and it lip-syncs native Georgian.
   const gender = String(answers.voice_gender ?? 'female').toLowerCase() === 'male' ? 'male' : 'female';
   const audioUrl = await textToHostedSpeech(script.slice(0, 1500), georgianVoiceId(gender)).catch(() => null);
   if (!audioUrl) return { outputKind: 'video', error: 'voice synthesis failed (no cloned-voice audio)' };
 
-  // Face: resolve a talking_photo WITHOUT the unusably slow /v2/avatars list (the root
-  // of the original 504 gateway timeouts). Priority: user's uploaded photo → a cached/
-  // existing account talking_photo → upload the default presenter face once.
   const photoFile = mediaFiles.find(f => f.type === 'image');
-  let talkingPhotoId: string | null = null;
-  let style: 'rectangle' | 'square' = 'square';
-  let uploadDetail: string | undefined;
+
+  // ── USER PHOTO → talk THAT face via the HeyGen→SadTalker cascade (lipsyncCreate).
+  // HeyGen caps photo-avatars at 3 with NO working API delete, so a brand-new user face
+  // can't always get a HeyGen talking_photo slot — lipsyncCreate tries HeyGen first
+  // (best quality when a slot is free) and falls through to SadTalker on Replicate (no
+  // cap), which animates the user's actual photo. Either way the user's face talks.
   if (photoFile) {
-    // User's own photo → upload its bytes directly and talk THAT face.
     const raw = (photoFile.dataUrl.includes(',') ? photoFile.dataUrl.split(',')[1] : photoFile.dataUrl) ?? '';
-    const bytes = Uint8Array.from(Buffer.from(raw, 'base64'));
-    const up = await uploadTalkingPhoto(apiKey, bytes, photoFile.mimeType || 'image/jpeg');
-    talkingPhotoId = up.id;
-    uploadDetail = up.detail;
-    if (talkingPhotoId) {
-      style = 'rectangle';
-    } else {
-      // The HeyGen plan caps photo-avatars at 3; a new upload past that 401028s. Rather
-      // than fail the whole render, fall back to the reusable default presenter face so
-      // the user still gets a talking avatar in their chosen voice/format.
-      talkingPhotoId = cachedAvatarTalkingPhotoId || await firstExistingTalkingPhotoId(apiKey);
+    const faceUrl = await uploadAndSign('uploads', `avatar-face/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`, raw, photoFile.mimeType || 'image/jpeg', 3600);
+    if (!faceUrl) return { outputKind: 'video', error: 'photo upload failed' };
+    const jobId = await lipsyncCreate(faceUrl, audioUrl);
+    if (!jobId) return { outputKind: 'video', error: 'lip-sync provider unavailable' };
+    // Poll to completion (HeyGen or SadTalker), bounded by the route budget (~240s).
+    const deadline = Date.now() + 240_000;
+    let out: string | null = null;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const st = await lipsyncFetch(jobId);
+      if (st.status === 'succeeded' && st.url) { out = st.url; break; }
+      if (st.status === 'failed' || st.status === 'canceled') return { outputKind: 'video', error: st.error || 'lip-sync render failed' };
     }
-  } else {
-    // No photo → reuse a cached/existing account talking_photo, else upload the default
-    // presenter face once. (Caching only the default — never a user's one-off photo.)
-    talkingPhotoId = cachedAvatarTalkingPhotoId || await firstExistingTalkingPhotoId(apiKey);
-    if (!talkingPhotoId) {
-      const faceRes = await fetch(AVATAR_DEFAULT_FACE_URL, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
-      if (faceRes && faceRes.ok) {
-        const mime = faceRes.headers.get('content-type') || 'image/jpeg';
-        const up = await uploadTalkingPhoto(apiKey, new Uint8Array(await faceRes.arrayBuffer()), mime);
-        talkingPhotoId = up.id;
-        uploadDetail = up.detail;
-      }
-    }
-    cachedAvatarTalkingPhotoId = talkingPhotoId;
+    if (!out) return { outputKind: 'video', error: 'lip-sync timed out' };
+    return { resultUrl: await rehostHeygenVideo(out), outputKind: 'video' };
   }
+
+  // ── NO PHOTO → consistent HeyGen presenter. Reuse an existing talking_photo (never the
+  // unusably slow /v2/avatars list — the root of the original 504s); upload the default
+  // presenter face only if the account has none.
+  const apiKey = process.env.HEYGEN_API_KEY;
+  if (!apiKey) return { outputKind: 'video', error: 'HEYGEN_API_KEY not configured' };
+  let talkingPhotoId = cachedAvatarTalkingPhotoId || await firstExistingTalkingPhotoId(apiKey);
+  let uploadDetail: string | undefined;
+  if (!talkingPhotoId) {
+    const faceRes = await fetch(AVATAR_DEFAULT_FACE_URL, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (faceRes && faceRes.ok) {
+      const mime = faceRes.headers.get('content-type') || 'image/jpeg';
+      const up = await uploadTalkingPhoto(apiKey, new Uint8Array(await faceRes.arrayBuffer()), mime);
+      talkingPhotoId = up.id;
+      uploadDetail = up.detail;
+    }
+  }
+  cachedAvatarTalkingPhotoId = talkingPhotoId;
   if (!talkingPhotoId) return { outputKind: 'video', error: `talking_photo unavailable (HeyGen)${uploadDetail ? ` — ${uploadDetail}` : ''}` };
 
-  const character = { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: style };
+  const character = { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' as const };
   const videoId  = await heygenCreateVideo(apiKey, character, { type: 'audio', audio_url: audioUrl }, dimension);
   const videoUrl = await heygenPoll(apiKey, videoId);
   // Re-host to a stable 7-day Supabase URL: HeyGen's result URL expires (~1h) → a blank
