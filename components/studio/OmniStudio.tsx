@@ -348,6 +348,18 @@ function parseRemixScenes(text: string, total: number): number[] {
   return [...nums].sort((a, b) => a - b);
 }
 
+// P8 — built-in avatar presets (1024² studio portraits in /public/avatars).
+// Selecting one uses it as the talking face — no upload needed — and suggests the
+// matching cloned-voice gender. Diverse on gender + age so most users find a fit.
+const AVATAR_PRESETS: { src: string; gender: 'female' | 'male' }[] = [
+  { src: '/avatars/preset-1.jpg', gender: 'female' },
+  { src: '/avatars/preset-2.jpg', gender: 'male' },
+  { src: '/avatars/preset-3.jpg', gender: 'female' },
+  { src: '/avatars/preset-4.jpg', gender: 'male' },
+  { src: '/avatars/preset-5.jpg', gender: 'male' },
+  { src: '/avatars/preset-6.jpg', gender: 'female' },
+];
+
 // ── Per-service options (real backend capabilities) ──────────────────────────
 const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:2', '2:3'] as const;
 type ImgAspect = (typeof IMG_ASPECTS)[number];
@@ -1003,6 +1015,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
   const [lipGender, setLipGender] = useState<'female' | 'male'>('female');
   const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
+  // P8 — selected built-in avatar preset (a /public path used as the talking face).
+  // Mutually exclusive with an uploaded face: picking one clears the other.
+  const [lipPreset, setLipPreset] = useState<string | null>(null);
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
@@ -1939,10 +1954,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
-      // PRESENTER — no face photo but a typed script → a consistent stock avatar
-      // speaks it in the CLONED Georgian voice (audio-driven HeyGen). START + POLL,
-      // mobile-safe. (With a photo, fall through to the existing talking-photo flow.)
-      if (!faceAtt && text) {
+      // PRESENTER — no face photo AND no chosen preset, but a typed script → a
+      // consistent stock avatar speaks it in the CLONED Georgian voice (audio-driven
+      // HeyGen). START + POLL, mobile-safe. (A face OR a preset falls through to the
+      // talking-photo flow below.)
+      if (!faceAtt && !lipPreset && text) {
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: t.generatingLipsync, genKind: 'lipsync' }]);
         setInput(''); setAttachments([]); setBusy(true);
         try {
@@ -1989,14 +2005,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }
         return;
       }
-      if (!faceAtt || (!text && !audioAtt)) {
+      if ((!faceAtt && !lipPreset) || (!text && !audioAtt)) {
         setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
         return;
       }
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
+      // Show the chosen face in the user bubble (uploaded attachment OR preset thumb).
+      const bubbleMedias: Media[] = attachments.length ? attachments : (lipPreset ? [{ dataUrl: lipPreset, mimeType: 'image/jpeg' }] : []);
+      const chosenPreset = lipPreset;
+      setMessages((prev) => [...prev, { role: 'user', text, ...(bubbleMedias.length ? { medias: bubbleMedias } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
-        const videoUrl = await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType);
+        // A preset is a /public path → uploadBigFile re-fetches it same-origin and
+        // re-hosts to the user's storage, giving the provider a known-good https face.
+        const videoUrl = faceAtt
+          ? await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType)
+          : await uploadBigFile(chosenPreset!, 'image/jpeg');
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
         const startBody = JSON.stringify({
@@ -2064,7 +2087,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -2985,33 +3008,62 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mb-2 space-y-2">
             {(() => {
               const face = attachments.find((a) => isImage(a.mimeType) || isVideo(a.mimeType));
+              const presetSrc = !face ? lipPreset : null; // a chosen preset stands in as the face
+              const ready = !!face || !!presetSrc;
               return (
                 <div role="button" tabIndex={0} onClick={() => lipsyncFaceRef.current?.click()}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lipsyncFaceRef.current?.click(); } }}
-                  className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${face ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
-                  {face ? (
+                  className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${ready ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                  {ready ? (
                     <>
-                      {isImage(face.mimeType) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={face.dataUrl} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
-                      ) : (
+                      {face && !isImage(face.mimeType) ? (
                         <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-app-bg/60 text-app-accent ring-1 ring-app-accent/40"><Film size={18} /></span>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={face ? face.dataUrl : presetSrc!} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       )}
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა'}</span>
-                      <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
+                      <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
                         className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                     </>
                   ) : (
                     <>
                       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={16} /></span>
                       <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Character photo' : locale === 'ru' ? 'Фото персонажа' : 'პერსონაჟის ფოტო'}</span>
-                      <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'a face to make it talk' : locale === 'ru' ? 'лицо, которое заговорит' : 'სახე, რომ ალაპარაკდეს'}</span>
+                      <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload a face — or pick a preset below' : locale === 'ru' ? 'загрузите лицо — или выберите пресет ниже' : 'ატვირთე სახე — ან აირჩიე მზა ქვემოთ'}</span>
                     </>
                   )}
                 </div>
               );
             })()}
-            <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Attach a face → type what it says (the photo speaks it). Or leave it empty — an AI presenter speaks your script in the cloned voice.' : locale === 'ru' ? 'Прикрепите лицо → введите текст (фото произнесёт). Или оставьте пустым — AI-ведущий озвучит ваш текст клонированным голосом.' : 'მიამაგრე სახე → ჩაწერე ტექსტი (ფოტო ალაპარაკდება). ან დატოვე ცარიელი — AI წამყვანი წაიკითხავს კლონირებული ხმით.'}</span>
+            {/* P8 — built-in avatar gallery: tap to use as the talking face (no upload). */}
+            <div>
+              <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Or pick an avatar' : locale === 'ru' ? 'Или выберите аватар' : 'ან აირჩიე ავატარი'}</span>
+              <div className="grid grid-cols-6 gap-1.5">
+                {AVATAR_PRESETS.map((p, i) => {
+                  const selected = lipPreset === p.src;
+                  return (
+                    <button key={p.src} type="button" aria-pressed={selected} aria-label={`Avatar ${i + 1}`}
+                      onClick={() => {
+                        if (selected) { setLipPreset(null); return; }
+                        setLipPreset(p.src);
+                        setLipGender(p.gender); // match the cloned voice to the face
+                        setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)));
+                      }}
+                      className={`relative aspect-square overflow-hidden rounded-lg ring-1 transition active:scale-95 ${selected ? 'ring-2 ring-app-accent' : 'ring-app-border/15 hover:ring-app-accent/50'}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.src} alt="" loading="lazy" className="h-full w-full object-cover" />
+                      {selected && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-app-accent/30">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-app-accent text-app-bg"><Check size={12} /></span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Pick or attach a face → type what it says (it speaks). Or leave it empty — an AI presenter speaks your script in the cloned voice.' : locale === 'ru' ? 'Выберите или прикрепите лицо → введите текст (оно произнесёт). Или оставьте пустым — AI-ведущий озвучит ваш текст клонированным голосом.' : 'აირჩიე ან მიამაგრე სახე → ჩაწერე ტექსტი (ალაპარაკდება). ან დატოვე ცარიელი — AI წამყვანი წაიკითხავს კლონირებული ხმით.'}</span>
             {/* Voice (cloned Georgian Female/Male) + output Format — always available. */}
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
@@ -3370,6 +3422,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (!f) return;
           try {
             const small = await downscaleDataUrl(await fileToDataUrl(f));
+            setLipPreset(null); // an uploaded face supersedes a chosen preset
             setAttachments((prev) => [
               ...prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)),
               { dataUrl: small, mimeType: f.type || 'image/jpeg' },
