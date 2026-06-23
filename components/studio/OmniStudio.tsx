@@ -617,7 +617,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, onRegenScene, onE
 
         <span className="absolute left-1.5 top-1.5 z-20 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
         <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy} aria-label={t.sbReroll} title={t.sbReroll}
-          className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40">
+          className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40 touch-manipulation before:absolute before:-inset-2 before:content-['']">
           <RotateCcw size={13} />
         </button>
         {s.baseImage && (
@@ -685,7 +685,7 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
               <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
             )}
           </div>
-          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
             <X size={18} />
           </button>
         </div>
@@ -2284,7 +2284,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const el = e.currentTarget;
           setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
         }}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-3 pt-1"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pb-3 pt-1"
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
@@ -2653,7 +2653,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -2719,7 +2719,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       )}
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა'}</span>
                       <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
-                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                     </>
                   ) : (
                     <>
@@ -2785,7 +2785,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <img src={videoCharacterRef} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Character locked' : locale === 'ru' ? 'Персонаж зафиксирован' : 'პერსონაჟი ჩაკეტილია'}</span>
                     <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
                   <>
@@ -2808,7 +2808,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
                     <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
                     <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack(null); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
                   <>
@@ -2993,7 +2993,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </span>
                 )}
                 <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
-                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
               </div>
             ))}
           </div>
@@ -3232,7 +3232,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <span className="tabular-nums text-app-muted">· {Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100))}% · {fmtClock(elapsed)}</span>
                 </p>
               </div>
-              <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+              <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
                 <X size={18} />
               </button>
             </div>
@@ -3313,7 +3313,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <aside onClick={(e) => e.stopPropagation()} className="flex h-full w-80 max-w-[86vw] flex-col bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.35)] animate-[slideIn_0.2s_ease-out]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
             <div className="flex items-center justify-between px-4 py-3.5">
               <span className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-app-text"><History size={16} /> {t.historyTitle}</span>
-              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
             <div className="px-2 pb-2">
               <button type="button" onClick={startNewConversation} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-medium text-app-accent transition-colors hover:bg-app-elevated">
