@@ -255,8 +255,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = (await req.json()) as { messages: IncomingMessage[]; webSearch?: boolean };
+    const body = (await req.json()) as { messages: IncomingMessage[]; webSearch?: boolean; language?: string; tier?: string };
     const { messages = [] } = body;
+    // P5 — explicit response language (overrides the auto-detect default) + model tier.
+    const langName = body.language === 'en' ? 'English' : body.language === 'ru' ? 'Russian (Русский)' : body.language === 'ka' ? 'Georgian (ქართული)' : '';
+    const langDirective = langName ? `RESPONSE LANGUAGE: Always reply in ${langName}, regardless of the language the user writes in.` : '';
+    const isPro = body.tier === 'pro';
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(
@@ -291,7 +295,7 @@ export async function POST(req: NextRequest) {
     const nowTbilisi = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tbilisi', dateStyle: 'full', timeStyle: 'short' });
     const datePreamble = `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${nowTbilisi}. When the user asks the time, date, or day, answer using THIS exact value — never output a placeholder like "[current time]".`;
 
-    const effectiveSystem = [datePreamble, memoryPreamble, searchPreamble, SYSTEM_PROMPT]
+    const effectiveSystem = [datePreamble, langDirective, memoryPreamble, searchPreamble, SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n');
 
@@ -306,11 +310,11 @@ export async function POST(req: NextRequest) {
           // Try Gemini models in order — fail fast (maxRetries:0) so the fallback
           // chain runs within the 60s Vercel timeout instead of burning it on retries.
           // gemini-2.5-flash has a separate quota bucket and is the most capable.
-          const GEMINI_MODELS = [
-            'gemini-2.5-flash',
-            'gemini-2.0-flash-lite',
-            'gemini-2.0-flash',
-          ] as const;
+          // P5 — "Pro" tier tries the more capable gemini-2.5-pro first, then falls
+          // back through the standard flash chain (so Pro never hard-fails).
+          const GEMINI_MODELS: string[] = isPro
+            ? ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash']
+            : ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 
           let geminiOk = false;
           for (const modelName of GEMINI_MODELS) {

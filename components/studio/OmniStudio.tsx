@@ -334,6 +334,20 @@ function videoDurationAtLeast(url: string, minSec: number): Promise<boolean> {
   });
 }
 
+// P10 — best-effort client preview of which scenes a remix edit will re-render
+// (mirrors the server's planRemixFromText "scene N" / positional detection). Empty
+// result → the AI picks the scene(s); the preview says so.
+function parseRemixScenes(text: string, total: number): number[] {
+  const t = text.toLowerCase();
+  const nums = new Set<number>();
+  const re = /(?:scene|სცენა|сцена)\s*#?\s*(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t))) { const n = parseInt(m[1] ?? '', 10); if (n >= 1 && n <= total) nums.add(n); }
+  if (/\b(intro|opening|first|beginning)\b|დასაწყის|პირველ|перв|начал/.test(t)) nums.add(1);
+  if (/\b(ending|finale|final|last|resolution)\b|დასასრ|ფინალ|ბოლო|последн|конц|финал/.test(t)) nums.add(total);
+  return [...nums].sort((a, b) => a - b);
+}
+
 // ── Per-service options (real backend capabilities) ──────────────────────────
 const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:2', '2:3'] as const;
 type ImgAspect = (typeof IMG_ASPECTS)[number];
@@ -819,6 +833,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Remix: per-film-bubble edit draft + which film is currently remixing.
   const [remixDrafts, setRemixDrafts] = useState<Record<number, string>>({});
   const [remixBusyIdx, setRemixBusyIdx] = useState<number | null>(null);
+  // P10 — which result bubble is showing its remix CONFIRM preview (scene diff).
+  const [remixPreviewIdx, setRemixPreviewIdx] = useState<number | null>(null);
   // Inline edit-&-resend of a user turn: which message is being edited + its draft.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -878,6 +894,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [imgStyle, setImgStyle] = useState<string>('Auto');
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
+  // P5 — Chat: response language (auto = reply in the user's language) + model tier.
+  const [chatLang, setChatLang] = useState<'auto' | 'ka' | 'en' | 'ru'>('auto');
+  const [chatTier, setChatTier] = useState<'standard' | 'pro'>('standard');
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
   const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
@@ -1569,7 +1588,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     try {
       const res = await fetch('/api/chat/gemini', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }), credentials: 'include', signal: ac.signal,
+        body: JSON.stringify({ messages: payload, ...(chatLang !== 'auto' ? { language: chatLang } : {}), ...(chatTier === 'pro' ? { tier: 'pro' } : {}) }), credentials: 'include', signal: ac.signal,
       });
       if (!res.ok || !res.body) throw new Error('stream failed');
       const reader = res.body.getReader();
@@ -1610,7 +1629,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, []);
+  }, [chatLang, chatTier]);
 
   // Regenerate the LAST assistant reply: re-stream from the conversation up to (and
   // including) the user turn that prompted it — the standard chat "try again" /
@@ -2533,24 +2552,54 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
                       shown once the film captured its landed clips + brief. */}
                   {m.filmClips && m.filmClips.length > 0 && (
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      <input
-                        type="text"
-                        value={remixDrafts[i] ?? ''}
-                        onChange={(e) => setRemixDrafts((d) => ({ ...d, [i]: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void remixFilm(i); } }}
-                        placeholder={t.remixPlaceholder}
-                        disabled={remixBusyIdx !== null}
-                        className="min-w-0 flex-1 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void remixFilm(i)}
-                        disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
-                      >
-                        {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
-                      </button>
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={remixDrafts[i] ?? ''}
+                          onChange={(e) => setRemixDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if ((remixDrafts[i] ?? '').trim()) setRemixPreviewIdx(i); } }}
+                          placeholder={t.remixPlaceholder}
+                          disabled={remixBusyIdx !== null}
+                          className="min-w-0 flex-1 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRemixPreviewIdx(i)}
+                          disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+                        >
+                          {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
+                        </button>
+                      </div>
+                      {/* P10 — preview which scenes change vs reuse, then Confirm/Cancel. */}
+                      {remixPreviewIdx === i && (() => {
+                        const totalScenes = m.filmClips!.length;
+                        const change = parseRemixScenes(remixDrafts[i] ?? '', totalScenes);
+                        const reuse = Array.from({ length: totalScenes }, (_, k) => k + 1).filter((n) => !change.includes(n));
+                        return (
+                          <div className="space-y-2 rounded-xl border border-app-accent/30 bg-app-accent/[0.06] p-3 text-[12px]">
+                            <p className="font-semibold text-app-text">{locale === 'en' ? 'Remix preview' : locale === 'ru' ? 'Предпросмотр ремикса' : 'რემიქსის გადახედვა'}</p>
+                            {change.length > 0 ? (
+                              <p className="text-app-muted">
+                                <span className="font-semibold text-app-accent">{locale === 'en' ? `Scene${change.length > 1 ? 's' : ''} ${change.join(', ')}` : locale === 'ru' ? `Сцен${change.length > 1 ? 'ы' : 'а'} ${change.join(', ')}` : `სცენა ${change.join(', ')}`}</span> {locale === 'en' ? 'will be re-rendered.' : locale === 'ru' ? 'будет перерисована.' : 'გადაირენდერდება.'} {reuse.length > 0 && (locale === 'en' ? `Scenes ${reuse.join(', ')} will be reused.` : locale === 'ru' ? `Сцены ${reuse.join(', ')} будут переиспользованы.` : `სცენები ${reuse.join(', ')} ხელახლა გამოიყენება.`)}
+                              </p>
+                            ) : (
+                              <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                              <button type="button" onClick={() => { setRemixPreviewIdx(null); void remixFilm(i); }}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]">
+                                <Check size={13} /> {locale === 'en' ? 'Confirm' : locale === 'ru' ? 'Подтвердить' : 'დადასტურება'}
+                              </button>
+                              <button type="button" onClick={() => setRemixPreviewIdx(null)}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-medium text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90">
+                                {locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -2729,6 +2778,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div ref={composerRef} className="shrink-0 pt-1">
+        {/* P5 — Chat controls: response language + model tier, and quick preset prompts. */}
+        {mode === 'chat' && (
+          <div className="mb-2 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reply in' : locale === 'ru' ? 'Ответ на' : 'პასუხი'}:</span>
+              {([['auto', locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'], ['ka', 'ქართ.'], ['en', 'EN'], ['ru', 'RU']] as const).map(([v, label]) => (
+                <Chip key={v} active={chatLang === v} onClick={() => setChatLang(v)}>{label}</Chip>
+              ))}
+              <span className="ml-1 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Model' : locale === 'ru' ? 'Модель' : 'მოდელი'}:</span>
+              <Chip active={chatTier === 'standard'} onClick={() => setChatTier('standard')}>Avatar G</Chip>
+              <Chip active={chatTier === 'pro'} onClick={() => setChatTier('pro')}>Avatar G Pro</Chip>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['🎬', 'შექმენი ვიდეო'],
+                ['🖼️', 'შექმენი სურათი'],
+                ['🎵', 'შექმენი მუსიკა'],
+              ] as const).map(([emoji, label]) => (
+                <button key={label} type="button" onClick={() => { setInput(label); taRef.current?.focus(); }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 bg-app-elevated/50 px-3 py-1.5 text-[12px] font-medium text-app-text transition hover:bg-app-elevated active:scale-[0.98]">
+                  <span>{emoji}</span> {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
             never covered and the input stays reachable; on desktop (sm:) they're always
             open. When open on mobile they're capped to 58dvh (keyboard-aware) and scroll internally. */}
