@@ -22,6 +22,7 @@ import { reportError } from '@/lib/observability/report-error';
 import { selectTtsModel, voiceSettingsForModel } from '@/lib/audio/tts-model';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -328,7 +329,24 @@ async function generateAvatar(
   const character = { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: style };
   const videoId  = await heygenCreateVideo(apiKey, character, { type: 'audio', audio_url: audioUrl }, dimension);
   const videoUrl = await heygenPoll(apiKey, videoId);
-  return { resultUrl: videoUrl, outputKind: 'video' };
+  // Re-host to a stable 7-day Supabase URL: HeyGen's result URL expires (~1h) → a blank
+  // player on revisit. Fail-open — any miss returns the raw provider URL.
+  return { resultUrl: await rehostHeygenVideo(videoUrl), outputKind: 'video' };
+}
+
+/** Re-host a finished HeyGen video to a stable 7-day Supabase URL (mirrors the
+ *  presenter route). Fail-open: returns the raw provider URL on any miss. */
+async function rehostHeygenVideo(providerUrl: string): Promise<string> {
+  try {
+    const r = await fetch(providerUrl, { signal: AbortSignal.timeout(45_000) });
+    if (!r.ok) return providerUrl;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.byteLength < 1024 || buf.byteLength > 80 * 1024 * 1024) return providerUrl;
+    const path = `avatar/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
+  } catch {
+    return providerUrl;
+  }
 }
 
 async function generateVideo(
