@@ -1,0 +1,50 @@
+name: Build RunPod render worker
+
+# Builds the GPU FFmpeg assembly worker (runpod-worker/) into a container image and
+# pushes it to GitHub Container Registry (GHCR), so a RunPod Serverless endpoint can
+# pull it WITHOUT any local Docker. After the first run, make the package public:
+#   https://github.com/users/kintsurashviligaga-ops/packages/container/myavatar-render/settings
+# then point the RunPod endpoint at:  ghcr.io/kintsurashviligaga-ops/myavatar-render:latest
+
+on:
+  push:
+    paths:
+      - 'runpod-worker/**'
+      - '.github/workflows/build-runpod-worker.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase image name
+        id: img
+        run: echo "ref=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/myavatar-render" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./runpod-worker
+          file: ./runpod-worker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.img.outputs.ref }}:latest
+            ${{ steps.img.outputs.ref }}:${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "### RunPod worker image pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${{ steps.img.outputs.ref }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Make the package PUBLIC, then create the RunPod Serverless endpoint from this image." >> "$GITHUB_STEP_SUMMARY"
