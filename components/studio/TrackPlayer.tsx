@@ -99,15 +99,16 @@ export function TrackPlayer({ url, coverUrl, label }: { url: string; coverUrl?: 
       {/* Scrubber + time */}
       <div className="mt-2.5 space-y-1">
         {/* -my-2.5 + py-2.5 gives a ~28px touch zone around the 8px visual track
-            (WCAG 2.5.5) without changing layout. touch-none stops the page from
-            stealing the drag as a scroll. */}
+            (WCAG 2.5.5) without changing layout. touch-pan-y (not touch-none) lets a
+            vertical swipe still scroll the page/feed while horizontal drags are
+            captured by the pointer handlers for scrubbing. */}
         <div
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onKeyDown={onKey}
-          className="group relative -my-2.5 cursor-pointer touch-none py-2.5"
+          className="group relative -my-2.5 cursor-pointer touch-pan-y py-2.5"
           role="slider"
           aria-label={label}
           aria-valuemin={0}

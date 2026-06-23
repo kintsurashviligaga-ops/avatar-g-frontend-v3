@@ -999,9 +999,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => {
     const el = composerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => setComposerH(el.offsetHeight));
+    // Bail on no-op churn — the observer fires on every frame of an auto-grow /
+    // options-expand, but React only needs the height when it actually changes.
+    const measure = () => setComposerH((h) => (h === el.offsetHeight ? h : el.offsetHeight));
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setComposerH(el.offsetHeight);
+    measure();
     return () => ro.disconnect();
   }, []);
 
@@ -2631,7 +2634,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           aria-label={t.scrollDown}
           title={t.scrollDown}
           className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
-          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${composerH + 12}px)` }}
+          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${Math.min(composerH, 180) + 12}px)` }}
         >
           <ChevronDown size={18} />
         </button>

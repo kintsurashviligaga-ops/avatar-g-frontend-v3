@@ -25,6 +25,7 @@ import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -147,6 +148,12 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
   const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Escape-to-close + focus trap/restore + dialog semantics for every overlay.
+  // (sidebarOpen can only ever be true on mobile — the hamburger is md:hidden —
+  // so the drawer keeps its persistent-desktop role and only becomes a modal here.)
+  const sidebarDialogRef = useDialogA11y<HTMLElement>(sidebarOpen, () => setSidebarOpen(false));
+  const settingsDialogRef = useDialogA11y<HTMLElement>(menuOpen, () => setMenuOpen(false));
+  const profileDialogRef = useDialogA11y<HTMLDivElement>(profileOpen, () => setProfileOpen(false));
   const [conversations, setConversations] = useState<{ id: string; title: string; updatedAt: number }[]>([]);
   const refreshConversations = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -225,12 +232,16 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
       {/* ── Left sidebar — persistent on desktop, swipe-from-left drawer on mobile ── */}
       <aside
+        ref={sidebarDialogRef}
+        role={sidebarOpen ? 'dialog' : undefined}
+        aria-modal={sidebarOpen ? true : undefined}
+        aria-label={t.menu}
         className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[268px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
           <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
-          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text md:hidden"><X className="h-[18px] w-[18px]" /></button>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden"><X className="h-[18px] w-[18px]" /></button>
         </div>
 
         {/* New chat */}
@@ -267,7 +278,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <p className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</p>
           {conversations.length === 0 ? (
-            <p className="px-2 py-1 text-[12px] text-app-muted/70">{tNoHistory}</p>
+            <p className="px-2 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
           ) : (
             <div className="space-y-0.5 pb-2">
               {conversations.map((c) => (
@@ -327,10 +338,10 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       {/* ── Settings drawer ──────────────────────────────────────────────────── */}
       {menuOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setMenuOpen(false)}>
-          <aside onClick={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-80 max-w-[92vw] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+          <aside ref={settingsDialogRef} role="dialog" aria-modal="true" aria-label={t.settings} onClick={(e) => e.stopPropagation()} className="flex max-h-[86dvh] w-80 max-w-[92vw] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="flex items-center justify-between px-4 py-4">
               <span className="text-[15px] font-semibold tracking-tight text-app-text">{t.settings}</span>
-              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
@@ -405,13 +416,13 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
       {profileOpen && (
         <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+          <div ref={profileDialogRef} role="dialog" aria-modal="true" aria-label={locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
-              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
             <p className="mb-1.5 text-[12px] text-app-muted">{locale === 'en' ? 'Display name' : locale === 'ru' ? 'Отображаемое имя' : 'სახელი'}</p>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
             <button type="button" onClick={() => void saveProfile()} disabled={savingProfile} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-2.5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">{savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {locale === 'en' ? 'Save' : locale === 'ru' ? 'Сохранить' : 'შენახვა'}</button>
           </div>
         </div>

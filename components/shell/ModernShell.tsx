@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { SERVICES } from '@/lib/services/catalog'
+import { useDialogA11y } from '@/hooks/useDialogA11y'
 
 /* ─── Icons (inline SVGs for zero dependency) ─── */
 function IconMenu() {
@@ -329,6 +330,10 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
+  // Escape-to-close + focus trap/restore + dialog semantics (the panel had only
+  // the scroll lock; keyboard/AT users could tab behind the z-260 overlay).
+  const dialogRef = useDialogA11y<HTMLElement>(open, onClose);
+
   return (
     <>
       {/* Backdrop */}
@@ -340,6 +345,10 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
       )}
       {/* Panel */}
       <aside
+        ref={dialogRef}
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? true : undefined}
+        aria-label={locale === 'en' ? 'Menu' : locale === 'ru' ? 'Меню' : 'მენიუ'}
         className={`fixed top-0 left-0 bottom-0 z-[260] w-72 transform transition-transform duration-300 ease-out flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -355,7 +364,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
         {/* Header */}
         <div className="flex items-center justify-between px-4 h-16 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
           <BrandLogo size="nav" showText compact={false} />
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
+          <button onClick={onClose} aria-label={locale === 'en' ? 'Close menu' : locale === 'ru' ? 'Закрыть меню' : 'მენიუს დახურვა'} className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
             <IconX />
           </button>
         </div>

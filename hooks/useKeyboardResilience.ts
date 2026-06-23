@@ -18,15 +18,33 @@ export function useKeyboardResilience(): { keyboardOffset: number } {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    let raf = 0;
+    const compute = () => {
+      raf = 0;
+      // Keyboard height = how much the *visual* viewport shrank vs the layout
+      // viewport. We deliberately do NOT subtract vv.offsetTop: offsetTop is the
+      // page-pan of the visual viewport (positive while scrolling a focused field
+      // with the keyboard open), and subtracting it made the same physical keyboard
+      // compute a smaller value mid-scroll — the composer visibly jittered. Clamp
+      // to >= 0 so a transient layout can never produce a negative height.
+      const diff = Math.max(0, window.innerHeight - vv.height);
+      const next = diff > 120 ? Math.round(diff) : 0;
+      // Bail on no-op churn (scroll fires this on every frame) so an unchanged
+      // value never re-renders the consuming shell.
+      setKeyboardOffset((prev) => (prev === next ? prev : next));
+    };
+    // Coalesce bursts of resize+scroll during the open/close animation into one
+    // update per frame.
     const update = () => {
-      const diff = window.innerHeight - vv.height - vv.offsetTop;
-      setKeyboardOffset(diff > 120 ? Math.round(diff) : 0);
+      if (raf) return;
+      raf = requestAnimationFrame(compute);
     };
 
-    update();
+    compute();
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
     return () => {
+      if (raf) cancelAnimationFrame(raf);
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
     };
