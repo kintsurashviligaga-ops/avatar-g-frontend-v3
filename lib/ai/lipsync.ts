@@ -148,7 +148,7 @@ async function faceUrlToBase64(url: string): Promise<{ base64: string; mime: str
 /** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null).
  *  Exported so the presenter route can drive a DEFAULT face through the same fast
  *  talking_photo path (the /v2/avatars list is unusably slow on our account). */
-export async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<string | null> {
+export async function heygenLipsyncCreate(faceUrl: string, audioUrl: string, orientation?: 'vertical' | 'landscape' | 'square'): Promise<string | null> {
   const key = heygenKey();
   if (!key) return null;
   try {
@@ -173,7 +173,10 @@ export async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Pr
           character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' },
           voice: { type: 'audio', audio_url: audioUrl },
         }],
-        dimension: { width: 720, height: 1280 },
+        // Honour the avatar panel's Format selector; default to 9:16 vertical (mobile).
+        dimension: orientation === 'landscape' ? { width: 1280, height: 720 }
+          : orientation === 'square' ? { width: 720, height: 720 }
+          : { width: 720, height: 1280 },
       }),
       signal: AbortSignal.timeout(20_000),
     });
@@ -269,7 +272,7 @@ export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise
  *
  * PRIMARY: HeyGen talking-photo (reliable). FALLBACK: Replicate SadTalker.
  */
-export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean }): Promise<string | null> {
+export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean; orientation?: 'vertical' | 'landscape' | 'square' }): Promise<string | null> {
   if (!videoUrl || !audioUrl) return null;
   // Prefer HeyGen (the "Avatar" engine) by DEFAULT whenever a key is present — a
   // reliable, professional talking-photo render driven by OUR ElevenLabs (cloned
@@ -278,7 +281,7 @@ export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: {
   // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed,
   // so the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
   if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN !== '0') {
-    const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl);
+    const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl, opts?.orientation);
     if (heygenId) return heygenId;
   }
   const key = token();

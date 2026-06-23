@@ -2027,6 +2027,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           ...(audioUrl ? { audioUrl } : {}),
           ...(text ? { text } : {}),
           ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
+          orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
         });
         // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
         // SadTalker provider intermittently crashes (Pillow 'ANTIALIAS' on some of its

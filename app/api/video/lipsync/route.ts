@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -144,6 +144,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ jobId });
   }
   // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
-  const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true });
+  // orientation → HeyGen output dimension (the avatar panel's Format selector).
+  const orientation = body.orientation === 'landscape' ? 'landscape' : body.orientation === 'square' ? 'square' : body.orientation === 'vertical' ? 'vertical' : undefined;
+  const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true, ...(orientation ? { orientation } : {}) });
   return NextResponse.json({ jobId });
 }
