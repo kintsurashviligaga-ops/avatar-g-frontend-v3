@@ -940,8 +940,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female'>('male');
   // P1 — Music Video: after the master assembles, sync the singer's mouth to the
-  // Georgian vocal (HeyGen→SadTalker via /api/video/lipsync). Default ON; fail-open.
-  const [videoLipsync, setVideoLipsync] = useState(true);
+  // Georgian vocal (HeyGen→SadTalker via /api/video/lipsync). Wired + fail-open, but
+  // default OFF until a verified end-to-end run confirms the engine syncs a multi-shot
+  // master sanely (SadTalker is single-face; the pass can otherwise burn minutes then
+  // fall back). Flip to true once verified. Opt-in via the panel toggle meanwhile.
+  const [videoLipsync, setVideoLipsync] = useState(false);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
