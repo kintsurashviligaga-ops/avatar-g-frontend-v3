@@ -480,6 +480,29 @@ const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
 const isVideo = (m: string) => m.startsWith('video/');
 
+// FIX 2 — Chat-mode video intent. When the user describes a video in plain Chat
+// mode, the old behaviour was an inert text reply ("▶ Video Studio will…") that
+// fired NOTHING. These detectors let the chat handler auto-route a strong video
+// brief straight into the real Video Studio pipeline. Deliberately conservative:
+// a bare "video" mention does NOT fire — it needs an explicit production cue (make
+// a video / music video / short film / 30-second clip), in en/ka/ru.
+function isVideoIntent(s: string): boolean {
+  const b = (s || '').toLowerCase();
+  if (/\b(music\s*video|video\s*clip|short\s*film|mini[\s-]?(movie|film))\b/.test(b)) return true;
+  if (/\b(make|create|generate|produce|render|build|do)\b[\s\S]{0,48}\bvideo\b/.test(b)) return true;
+  if (/\b(30|thirty)[\s-]?(second|sec|s)\b[\s\S]{0,40}\b(video|film|clip)\b/.test(b)) return true;
+  // Georgian / Russian explicit cues.
+  if (/მუსიკალური\s*ვიდეო|ვიდეო\s*კლიპ|შემიქმენ[\s\S]{0,40}ვიდეო|გააკეთ[\s\S]{0,40}ვიდეო|ფილმ/.test(s || '')) return true;
+  if (/музыкальн\w*\s*клип|видеоклип|сними[\s\S]{0,30}видео|сделай[\s\S]{0,30}видео/.test(b)) return true;
+  return false;
+}
+function isMusicVideoIntent(s: string): boolean {
+  const b = (s || '').toLowerCase();
+  return /\bmusic\s*video\b|\br&b\b|\brnb\b|\bsong\b|\bsinger\b|\bvocal|\blyric/.test(b)
+    || /მუსიკალური\s*ვიდეო|სიმღერ|მომღერ|ვოკალ|ვიდეო\s*კლიპ/.test(s || '')
+    || /музыкальн\w*\s*клип|видеоклип|песн\w|вокал|певиц/.test(b);
+}
+
 // ── Multi-conversation chat history (localStorage) ───────────────────────────
 // A real chat history like ChatGPT/Grok: every conversation is saved (id + title
 // + lean messages + updatedAt), survives reloads, can be resumed/renamed/deleted,
@@ -2085,6 +2108,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
 
     // ── CHAT (multimodal Gemini) ───────────────────────────────────────────────
+    // FIX 2 — a video brief typed in Chat mode must ACTUALLY start the pipeline,
+    // not return inert "▶ Video Studio" text. On a strong video cue we auto-switch
+    // to Video Studio, pick Music-Video vs Documentary from the wording, post a
+    // clear note, and fire the proven storyboard→render flow (createStoryboard) —
+    // the same path the Video tab uses. Anything that is NOT a clear video brief
+    // falls through to the normal multimodal chat below, unchanged.
+    if (mode === 'chat' && text && isVideoIntent(text)) {
+      const musicVideo = isMusicVideoIntent(text);
+      setMode('video');
+      setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
+      const routeOrientation: 'landscape' | 'vertical' = musicVideo ? 'vertical' : videoOrientation;
+      const routeRefs = [
+        ...(videoCharacterRef ? [videoCharacterRef] : []),
+        ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
+      ];
+      const routeNote = locale === 'en'
+        ? '🎬 Opening Video Studio and planning your scenes — review the storyboard, then tap Generate Video.'
+        : locale === 'ru'
+          ? '🎬 Открываю Видеостудию и планирую сцены — проверьте раскадровку и нажмите «Сгенерировать видео».'
+          : '🎬 ვხსნი ვიდეო სტუდიას და ვგეგმავ სცენებს — გადახედე სტორიბორდს და დააჭირე „ვიდეოს გენერაციას“.';
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: routeNote }]);
+      setInput(''); setAttachments([]);
+      await createStoryboard(text, routeRefs, routeOrientation);
+      return;
+    }
+
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);

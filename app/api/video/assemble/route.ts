@@ -137,7 +137,30 @@ interface AssembleBody {
   vocalGender?: 'male' | 'female';
 }
 
+// FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
+// work lives in `assembleImpl`; any throw that escapes it (auth, status-store,
+// re-sign, upload — anything OUTSIDE the saga) is caught here and turned into a
+// STRUCTURED error the client can read and show, instead of a bare 500 that left
+// the composer silently idle. Audio-provider failures already degrade to silent
+// inside the saga, so they can never reach this catch.
 export async function POST(req: NextRequest) {
+  try {
+    return await assembleImpl(req);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[assemble] UNHANDLED error → degraded to a structured 502 (never a raw 500):', err instanceof Error ? (err.stack ?? err.message) : err);
+    return NextResponse.json(
+      {
+        error: 'assemble_error',
+        reason: 'unexpected',
+        message: err instanceof Error ? err.message : 'Unexpected error while assembling the video.',
+      },
+      { status: 502 },
+    );
+  }
+}
+
+async function assembleImpl(req: NextRequest) {
   // v330 — function-entry timestamp so the synchronous audio legs + the dispatch
   // deadline stay collectively under maxDuration (300s). The dispatch timeout below is
   // made RELATIVE to time already consumed so it fires inside the function (→ saga
@@ -315,6 +338,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // FIX 3 — one consolidated, greppable line of the FINAL audio decision so a
+  // silent/odd master is diagnosable from logs alone (which provider won, whether
+  // a fallback fired, and whether a spoken voiceover is present). The film proceeds
+  // to stitch regardless of this outcome — silent is the accepted last resort,
+  // never a 500.
+  // eslint-disable-next-line no-console
+  console.log('[assemble] audio resolved →', JSON.stringify({
+    music: resolvedMusicUrl ? (scoreFallback ?? (body.customAudioUrl ? 'user-upload' : body.musicUrl ? 'udio' : 'present')) : 'SILENT (all music providers missed — proceeding silent, not 500)',
+    voiceover: body.voiceoverUrl ? 'present' : 'none',
+    musicVideoMode,
+  }));
+
   const manifest: RunPodManifest = {
     segments: signedSegments,
     voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
@@ -483,11 +518,26 @@ export async function POST(req: NextRequest) {
     // fails so the user can retry immediately instead of waiting out the 60s
     // double-click window on a render they already paid (and got refunded) for.
     await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`);
+    // FIX 1/4 — CREDITS. When the saga aborted on a balance rejection, return a
+    // dedicated, user-facing structured response (402) carrying a clear top-up
+    // message — NOT a generic 502/500. The client shows this verbatim in chat so
+    // the user understands WHY (and what to do) instead of a silent idle composer.
+    const sagaErr = String(saga.error || '');
+    if (/insufficient credits/i.test(sagaErr)) {
+      const topUp =
+        'You need credits to generate. Top up your account to continue. ' +
+        '(New accounts include 3 free starter videos — these have been used up on this account.)';
+      if (filmTokenId) await recordFilmFailed(filmTokenId, 'insufficient credits');
+      return NextResponse.json(
+        { error: 'insufficient_credits', reason: 'insufficient_credits', message: topUp, failedStep: saga.failedStep },
+        { status: 402 },
+      );
+    }
     // PHASE 47 §1 — record the terminal failure so the tracker stops claiming
     // 'assembling' forever; the client's amber fallback already covers the UX.
-    if (filmTokenId) await recordFilmFailed(filmTokenId, String(saga.error || 'assembly failed'));
+    if (filmTokenId) await recordFilmFailed(filmTokenId, sagaErr || 'assembly failed');
     return NextResponse.json(
-      { error: 'assembly_failed', failedStep: saga.failedStep, message: saga.error, compensated: saga.compensatedSteps },
+      { error: 'assembly_failed', reason: 'assembly_failed', failedStep: saga.failedStep, message: sagaErr || 'The editor could not assemble the final video.', compensated: saga.compensatedSteps },
       { status: 502 },
     );
   }

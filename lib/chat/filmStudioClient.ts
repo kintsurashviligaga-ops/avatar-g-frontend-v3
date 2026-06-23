@@ -444,7 +444,7 @@ async function assembleMaster(
   customAudioUrl?: string | null,
   captionLang?: 'ka' | 'en' | 'ru',
   vocalGender?: 'male' | 'female',
-): Promise<{ url: string; qa: FilmQaSummary | null } | null> {
+): Promise<{ url: string; qa: FilmQaSummary | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
   let finalVoiceUrl = voiceUrl ?? null;
@@ -491,9 +491,21 @@ async function assembleMaster(
       ...(transition ? { globalRender: { transition } } : {}),
     }),
   });
-  if (!res.ok) return null;
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown } | null;
-  if (!(json && typeof json.url === 'string' && json.url.length > 0)) return null;
+  // FIX 4 — surface the route's STRUCTURED reason (insufficient credits, audio/
+  // stitch failure) instead of collapsing every non-OK response to a blank null.
+  // The message is propagated up to the chat bubble so the user always learns why.
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown } | null;
+  if (!res.ok) {
+    const msg = typeof json?.message === 'string' && json.message.trim()
+      ? json.message.trim()
+      : typeof json?.error === 'string' && json.error.trim()
+        ? json.error.trim()
+        : `The editor returned an error (HTTP ${res.status}).`;
+    return { url: null, error: msg };
+  }
+  if (!(json && typeof json.url === 'string' && json.url.length > 0)) {
+    return { url: null, error: 'The editor finished but returned no playable master URL.' };
+  }
   return { url: json.url, qa: asQa(json.qa) };
 }
 
@@ -717,7 +729,14 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // the caption language for the burned-in lower-third (the app locale).
     const musicVideoMode = Boolean(opts.musicVideoMode);
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
-    let assembled = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
+    let assembled: { url: string; qa: FilmQaSummary | null } | null =
+      assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
+        ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
+        : null;
+    // FIX 4 — keep the route's real reason (e.g. the insufficient-credits top-up
+    // message) so a failure shows WHY in chat, not a generic "could not host".
+    const assembleErr = !assembled && assembledRes && 'error' in assembledRes ? assembledRes.error : null;
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {
@@ -728,7 +747,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       // Route through fail() so a terminal 'failed' is EMITTED (the old inline
       // return left the last phase at 'stitching', wedging the UI on a spinner).
       return fail(
-        'The editor could not host the final master. Showing the first rendered scene instead.',
+        assembleErr ?? 'The editor could not host the final master. Showing the first rendered scene instead.',
         matrix,
       );
     }

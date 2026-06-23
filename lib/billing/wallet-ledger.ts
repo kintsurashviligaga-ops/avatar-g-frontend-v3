@@ -104,8 +104,8 @@ export interface OnboardingState {
   avatarName: string | null;
   isAvatarNamed: boolean;
   freeRemaining: number;
-  /** Free 30-second films left (founder promo, default 1). Drives the honest
-   *  "0.00 GEL · 1 Free Founder Video Remaining" ledger on the studio home. */
+  /** Free 30-second films left (starter grant, default 3 since 2026-06-23; was 1).
+   *  Drives the honest "0.00 GEL · N Free Videos Remaining" ledger on the studio home. */
   freeFilmsRemaining: number;
 }
 
