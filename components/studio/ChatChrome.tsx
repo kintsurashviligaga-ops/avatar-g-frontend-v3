@@ -154,6 +154,16 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const sidebarDialogRef = useDialogA11y<HTMLElement>(sidebarOpen, () => setSidebarOpen(false));
   const settingsDialogRef = useDialogA11y<HTMLElement>(menuOpen, () => setMenuOpen(false));
   const profileDialogRef = useDialogA11y<HTMLDivElement>(profileOpen, () => setProfileOpen(false));
+  // The drawer is a modal ONLY at mobile width; at >=md it's the persistent sidebar.
+  // If it's open and the viewport crosses to desktop (rotate/resize/foldable), drop the
+  // modal state so it sheds role=dialog/aria-modal and releases the focus trap.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const sync = () => { if (mq.matches) setSidebarOpen(false); };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
   const [conversations, setConversations] = useState<{ id: string; title: string; updatedAt: number }[]>([]);
   const refreshConversations = useCallback(() => {
     if (typeof window === 'undefined') return;

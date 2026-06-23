@@ -122,7 +122,7 @@ export default function BusinessProfilePage() {
               value={profile.legalName}
               onChange={handleChange}
               placeholder={t('business.profile.legal_name_placeholder')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg !bg-white !text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -137,7 +137,7 @@ export default function BusinessProfilePage() {
               value={profile.taxId}
               onChange={handleChange}
               placeholder={t('business.profile.tax_id_placeholder')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg !bg-white !text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -152,7 +152,7 @@ export default function BusinessProfilePage() {
               onChange={handleChange}
               placeholder={t('business.profile.address_placeholder')}
               rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg !bg-white !text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -167,7 +167,7 @@ export default function BusinessProfilePage() {
               value={profile.email}
               onChange={handleChange}
               placeholder={t('business.profile.email_placeholder')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg !bg-white !text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -182,7 +182,7 @@ export default function BusinessProfilePage() {
               value={profile.phone}
               onChange={handleChange}
               placeholder={t('business.profile.phone_placeholder')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg !bg-white !text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -221,7 +221,7 @@ export default function BusinessProfilePage() {
                 onChange={handleChange}
                 step="0.01"
                 min="0.01"
-                className="w-24 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-24 px-4 py-2 border border-gray-300 rounded-lg !bg-white !text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <span className="text-gray-600">₾</span>
             </div>

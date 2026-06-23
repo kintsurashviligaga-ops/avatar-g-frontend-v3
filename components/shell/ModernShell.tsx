@@ -80,9 +80,24 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // NOTE: focus-in is handled by useDialogA11y below (it focuses the first focusable
+  // = the search input). We must NOT autoFocus/focus the input ourselves first, or the
+  // hook would capture the input — not the trigger — as the focus-restore target.
+
+  // Full-screen search is a modal: Escape-to-close + focus trap/restore + dialog
+  // semantics (the twin of the drawer, which was already hardened with this hook).
+  const closeSearch = () => { setSearchOpen(false); setSearchQuery('') }
+  const searchDialogRef = useDialogA11y<HTMLDivElement>(searchOpen, closeSearch)
+  // Lock body scroll while it's open so the page behind doesn't scroll under a drag.
   useEffect(() => {
-    if (searchOpen) searchRef.current?.focus()
+    if (!searchOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
   }, [searchOpen])
+  // Close on navigation (bottom nav / back gesture / any link) so the overlay never
+  // lingers over a new route — the navbar persists across App Router transitions.
+  useEffect(() => { setSearchOpen(false); setSearchQuery('') }, [pathname])
 
   const pathWithoutLocale = pathname.replace(/^\/(ka|en|ru)/, '') || '/'
 
@@ -193,9 +208,11 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         {/* Mini search for mobile */}
         <button
           onClick={() => setSearchOpen(!searchOpen)}
-          className="md:hidden p-2.5 rounded-xl transition-colors hover:bg-[var(--card-hover)] active:scale-95"
+          className="md:hidden flex items-center justify-center min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-colors hover:bg-[var(--card-hover)] active:scale-95 touch-manipulation"
           style={{ color: 'var(--color-text-secondary)' }}
-          aria-label="Search"
+          aria-label={locale === 'ka' ? 'ძებნა' : locale === 'ru' ? 'Поиск' : 'Search'}
+          aria-expanded={searchOpen}
+          aria-controls="mobile-search-overlay"
         >
           <IconSearch />
         </button>
@@ -253,7 +270,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
 
     {/* Mobile search overlay */}
     {searchOpen && (
-      <div className="fixed inset-x-0 top-0 z-[201] md:hidden mobile-search-overlay" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div ref={searchDialogRef} id="mobile-search-overlay" role="dialog" aria-modal="true" aria-label={locale === 'ka' ? 'ძებნა' : locale === 'ru' ? 'Поиск' : 'Search'} className="fixed inset-x-0 top-0 z-[201] md:hidden mobile-search-overlay" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="px-3 pt-2 pb-3" style={{ backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px) saturate(1.2)', WebkitBackdropFilter: 'blur(20px) saturate(1.2)', borderBottom: '1px solid var(--nav-border)' }}>
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)' }}>
@@ -270,7 +287,6 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
                 }
                 className="flex-1 bg-transparent text-sm outline-none"
                 style={{ color: 'var(--color-text)', border: 'none', boxShadow: 'none' }}
-                autoFocus
               />
             </div>
             <button

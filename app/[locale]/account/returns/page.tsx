@@ -87,7 +87,7 @@ export default function BuyerReturnsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-16 px-4">
+    <div className="bg-transparent py-16 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -142,7 +142,7 @@ export default function BuyerReturnsPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                       <div>
                         <p className="text-sm text-gray-400 mb-1">{t('returns.reason')}</p>
                         <p className="text-white">{returnRequest.reason}</p>

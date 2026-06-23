@@ -2002,7 +2002,7 @@ export default function ServiceWorkspaceView({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleDownload}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                       style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(148,163,184,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}
                     >
                       <span className="flex items-center gap-1">
@@ -2012,7 +2012,7 @@ export default function ServiceWorkspaceView({
                     </button>
                     <button
                       onClick={handleCopy}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                       style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(148,163,184,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}
                     >
                       <span className="flex items-center gap-1">
