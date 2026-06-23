@@ -238,12 +238,20 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
     args.push(
-      // Professional-grade H.264 encode: 'fast' + CRF 18 is visually near-source
-      // for 1080p film delivery while staying well inside the serverless CPU
-      // budget (a 5-clip master encodes in seconds); High profile @ L4.2 is the
-      // standard 1080p delivery target.
-      '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-      '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
+      // v331 (FIX 5) — CPU-FALLBACK FRUGAL ENCODE. The previous 'fast' + CRF 18 +
+      // High@L4.2 encode of a 1080×1920 30s master OOM-killed the serverless
+      // function (raw 500 at ~230s, before the 280s exec timeout). x264's
+      // rc-lookahead + motion-estimation buffers are the dominant memory consumer
+      // and scale with the preset; 'ultrafast' removes the lookahead entirely and
+      // a 2-thread cap bounds the per-thread buffers, so the stitch fits inside the
+      // 3008 MB function. Resolution is UNCHANGED (still 1080p — no test/QA
+      // regression); only the encoder effort drops. The GPU RunPod worker, once
+      // provisioned, renders the full-quality 1080p/60fps master and bypasses this
+      // path. ultrafast forbids the High-profile tools (CABAC/8x8dct), so the
+      // explicit -profile/-level are dropped to avoid a conflict; yuv420p keeps it
+      // universally playable.
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20',
+      '-threads', '2', '-pix_fmt', 'yuv420p',
       // 256 kbps / 48 kHz AAC for clean, full-bandwidth film audio.
       '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
       // Hard-cap the container to the EXACT compiled target so the video and audio
