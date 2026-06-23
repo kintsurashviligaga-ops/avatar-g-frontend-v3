@@ -35,6 +35,8 @@ import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/li
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { generateMusic } from '@/lib/ai/replicate';
+import { generateUdioTrack } from '@/lib/udio/client';
+import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -248,29 +250,33 @@ async function assembleImpl(req: NextRequest) {
     segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0),
   )));
 
-  // PHASE 55 §2 + v330 — resolve ONE master audio bed, fail-open to SILENT at every
-  // tier (never a 500): custom upload / upstream Udio musicUrl  >  ElevenLabs Music
-  // (sung vocals + backing, or instrumental)  >  Replicate MusicGen fallback.
-  const resolveMusicBed = async (): Promise<{ url: string | null; fallback: 'udio->musicgen' | 'elevenlabs-music' | null }> => {
-    // A user-uploaded soundtrack (or an upstream Udio track) is the master bed and
-    // wins over everything — it bypasses BOTH score providers below.
+  // AUDIO BED — user-chosen chain (2026-06-24): ElevenLabs is the MAIN engine for
+  // instrumentals + sung vocals (and ElevenLabs sound-generation already powers the
+  // SFX/effects leg upstream), with Udio as the FALLBACK, then Replicate MusicGen as
+  // the last resort, then SILENT. Fail-open at every tier — never a 500.
+  //   custom upload / upstream musicUrl  >  ElevenLabs Music  >  Udio  >  MusicGen  >  silent
+  type AudioEngine = 'custom-upload' | 'upstream' | 'elevenlabs-music' | 'udio' | 'musicgen' | null;
+  const resolveMusicBed = async (): Promise<{ url: string | null; fallback: AudioEngine }> => {
+    // A user-uploaded soundtrack (or an upstream track) is the master bed and wins.
     if (body.customAudioUrl) {
       // eslint-disable-next-line no-console
-      console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
-      return { url: await reSignIfInternal(body.customAudioUrl), fallback: null };
+      console.log('[assemble] custom soundtrack supplied → bypassing all generators, anchoring onto the upload');
+      return { url: await reSignIfInternal(body.customAudioUrl), fallback: 'custom-upload' };
     }
-    if (body.musicUrl) return { url: await reSignIfInternal(body.musicUrl), fallback: null };
+    if (body.musicUrl) return { url: await reSignIfInternal(body.musicUrl), fallback: 'upstream' };
     if (body.noMusic) return { url: null, fallback: null };
 
-    // PRIMARY — ElevenLabs Music. Time-boxed so a slow gen can't run away; on a miss
-    // we fall through to MusicGen, then to silent.
+    // ONE shared song spec, so ElevenLabs AND the Udio fallback render the SAME brief
+    // (e.g. a sung Georgian R&B track for a music video, or an instrumental film score).
+    const { prompt, instrumental } = buildElevenMusicPrompt({
+      brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
+      totalSec: audioTotalSec,
+      musicVideoMode,
+      vocalGender: body.vocalGender,
+    });
+
+    // PRIMARY — ElevenLabs Music (instrumentals + sung vocals). Time-boxed.
     if (hasElevenLabsMusicKey()) {
-      const { prompt, instrumental } = buildElevenMusicPrompt({
-        brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
-        totalSec: audioTotalSec,
-        musicVideoMode,
-        vocalGender: body.vocalGender,
-      });
       try {
         const EL_MUSIC_BUDGET_MS = 90_000;
         const { audio, contentType } = await Promise.race([
@@ -284,14 +290,32 @@ async function assembleImpl(req: NextRequest) {
         if (url) return { url, fallback: 'elevenlabs-music' };
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+        console.warn('[assemble] ElevenLabs Music failed → falling back to Udio:', err instanceof Error ? err.message : err);
       }
     }
 
-    // FALLBACK — Replicate MusicGen. Budget-guarded against the (raised) ceiling so it
-    // never stacks past maxDuration; a timeout/miss degrades to a SILENT film, never a 500.
-    const SCORE_BUDGET_MS = 120_000;
+    // FALLBACK 1 — Udio (the user's chosen fallback). start+poll, budget-bounded so it
+    // can't run past maxDuration; on a miss we drop to MusicGen. Udio's hosted URL is
+    // stable for the stitch window, so it goes straight to the manifest.
     const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
+    const UDIO_BUDGET_MS = 150_000;   // Udio is the slowest leg (full song generation)
+    if (resolveUdioApiKey() && (MAX_FN_MS - (Date.now() - fnT0)) > UDIO_BUDGET_MS + STITCH_RESERVE_MS) {
+      try {
+        const res = await generateUdioTrack(
+          { prompt, makeInstrumental: instrumental },
+          { maxAttempts: Math.floor(UDIO_BUDGET_MS / 6_000), pollIntervalMs: 6_000 },
+        );
+        // eslint-disable-next-line no-console
+        console.log('[assemble] Udio track ready (fallback):', res.audioUrl ? `yes (${instrumental ? 'instrumental' : 'sung'})` : `no (status ${res.status})`);
+        if (res.audioUrl) return { url: res.audioUrl, fallback: 'udio' };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[assemble] Udio fallback failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // FALLBACK 2 — Replicate MusicGen (last resort before silent). Budget-guarded.
+    const SCORE_BUDGET_MS = 120_000;
     if ((MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
       const brief =
         typeof body.scorePrompt === 'string' && body.scorePrompt.trim()
@@ -304,7 +328,7 @@ async function assembleImpl(req: NextRequest) {
         ]);
         // eslint-disable-next-line no-console
         console.log('[assemble] MusicGen score ready:', score.audioUrl ? 'yes' : 'no');
-        if (score.audioUrl) return { url: score.audioUrl, fallback: 'udio->musicgen' };
+        if (score.audioUrl) return { url: score.audioUrl, fallback: 'musicgen' };
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[assemble] MusicGen score fallback failed (film stays silent):', err instanceof Error ? err.message : err);
