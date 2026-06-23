@@ -290,33 +290,28 @@ const MODES = [
   { id: 'lipsync', Icon: Volume2, key: 'modeLipsync' },
 ] as const;
 
-// P1 — Music-video lip-sync pass. Sends the assembled master to /api/video/lipsync
-// (omitting audioUrl → the route keys the singer's mouth to the master's EMBEDDED song
-// vocal). Mirrors the avatar flow's start→poll→HeyGen→SadTalker cascade. Returns the
-// synced URL or null (caller keeps the un-synced master — fail-open).
+// P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
+// with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
+// keying the singer's mouth to the master's embedded Georgian vocal. Returns the synced
+// URL or null (caller keeps the un-synced master — fail-open).
 async function lipsyncFilmMaster(masterUrl: string, signal: AbortSignal, mine: () => boolean): Promise<string | null> {
-  let forceSadTalker = false;
-  for (let attempt = 0; attempt < 2 && mine(); attempt += 1) {
-    const body = JSON.stringify(forceSadTalker ? { videoUrl: masterUrl, forceSadTalker: true } : { videoUrl: masterUrl });
-    let jobId: string | null = null;
+  let jobId: string | null = null;
+  try {
+    const r = await fetch('/api/video/lipsync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'film', videoUrl: masterUrl }),
+      credentials: 'include', signal,
+    });
+    jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
+  } catch { return null; }
+  if (!jobId) return null;
+  for (let i = 0; i < 60 && mine(); i += 1) {
+    await new Promise((res) => setTimeout(res, 6000));
     try {
-      const r = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'include', signal });
-      jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
-    } catch { return null; }
-    if (!jobId) return null;
-    const usedHeygen = jobId.startsWith('heygen:');
-    let url: string | null = null;
-    for (let i = 0; i < 60 && mine(); i += 1) {
-      await new Promise((res) => setTimeout(res, 6000));
-      try {
-        const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
-        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-        if (pj.done) { url = pj.url ?? null; break; }
-      } catch { /* transient poll error — keep polling */ }
-    }
-    if (url) return url;
-    if (usedHeygen) { forceSadTalker = true; continue; } // HeyGen miss → force SadTalker once
-    break;
+      const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
+      const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+      if (pj.done) return pj.url ?? null;
+    } catch { /* transient poll error — keep polling */ }
   }
   return null;
 }
@@ -940,11 +935,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female'>('male');
   // P1 — Music Video: after the master assembles, sync the singer's mouth to the
-  // Georgian vocal (HeyGen→SadTalker via /api/video/lipsync). Wired + fail-open, but
-  // default OFF until a verified end-to-end run confirms the engine syncs a multi-shot
-  // master sanely (SadTalker is single-face; the pass can otherwise burn minutes then
-  // fall back). Flip to true once verified. Opt-in via the panel toggle meanwhile.
-  const [videoLipsync, setVideoLipsync] = useState(false);
+  // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
+  // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
+  // (prediction q9m5k5nexdrmr0cyyhnt2ca090, ~113s, output mp4). Default ON; fail-open
+  // to the un-synced master if anything misses.
+  const [videoLipsync, setVideoLipsync] = useState(true);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);

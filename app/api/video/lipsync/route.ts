@@ -15,7 +15,7 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { lipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
+import { lipsyncCreate, filmLipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -137,6 +137,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // kind:'film' → multi-shot video master needs the VIDEO-INPUT engine (sync/lipsync-2),
+  // not the talking-photo engines. Falls back to null → caller keeps the un-synced master.
+  if (body.kind === 'film') {
+    const jobId = await filmLipsyncCreate(videoUrl, audioUrl);
+    return NextResponse.json({ jobId });
+  }
   // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
   const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true });
   return NextResponse.json({ jobId });

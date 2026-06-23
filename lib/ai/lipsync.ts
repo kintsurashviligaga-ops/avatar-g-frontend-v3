@@ -302,6 +302,35 @@ export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: {
   }
 }
 
+// ─── FILM lip-sync (sync/lipsync-2) ─────────────────────────────────────────
+// The avatar lipsync above uses SadTalker (still image → talking head). For a
+// MULTI-SHOT video master (music videos) we need a video-input engine. Replicate's
+// official `sync/lipsync-2` model takes { video, audio } and returns a lip-synced
+// video — verified working end-to-end (prediction q9m5k5nexdrmr0cyyhnt2ca090,
+// predict_time ~113s on the canonical example clip). Official models don't need a
+// version hash — POST to `/v1/models/sync/lipsync-2/predictions` directly.
+
+/** Start a film lip-sync (video + audio → lip-synced video). Returns the prediction
+ *  id (prefixed "sync:") on success, null otherwise. Fail-open. */
+export async function filmLipsyncCreate(videoUrl: string, audioUrl: string): Promise<string | null> {
+  const key = token();
+  if (!key || !videoUrl || !audioUrl) return null;
+  try {
+    const res = await fetch('https://api.replicate.com/v1/models/sync/lipsync-2/predictions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ input: { video: videoUrl, audio: audioUrl, sync_mode: 'loop' } }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return null;
+    const pred = (await res.json().catch(() => ({}))) as ReplicatePrediction;
+    return pred.id ? `sync:${pred.id}` : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Poll a prediction ONCE → its status, the output URL (when succeeded), + any error. */
 export async function lipsyncFetch(predictionId: string): Promise<{ status: string; url: string | null; error: string | null }> {
   if (!predictionId) return { status: 'failed', url: null, error: null };
@@ -309,10 +338,14 @@ export async function lipsyncFetch(predictionId: string): Promise<{ status: stri
   if (predictionId.startsWith('heygen:')) {
     return heygenLipsyncFetch(predictionId.slice(7));
   }
+  // Film lip-sync (sync/lipsync-2) jobs are tagged "sync:<predictionId>" —
+  // they use the same Replicate poll endpoint, just with the prefix stripped.
+  const isSync = predictionId.startsWith('sync:');
+  const id = isSync ? predictionId.slice(5) : predictionId;
   const key = token();
   if (!key) return { status: 'failed', url: null, error: null };
   try {
-    const res = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(predictionId)}`, {
+    const res = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(id)}`, {
       headers: { Authorization: `Bearer ${key}` },
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000),
