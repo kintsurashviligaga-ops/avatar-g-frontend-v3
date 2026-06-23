@@ -1317,7 +1317,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
       if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace && mine()) {
         setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎤 Generating the lip-synced singer performance (HeyGen)…' : locale === 'ru' ? '🎤 Генерирую липсинк-выступление певицы (HeyGen)…' : '🎤 ვქმნი მომღერლის ლიპსინქ-შესრულებას (HeyGen)…', genKind: 'lipsync' }]);
-        const perf = await heygenSingerPerformance(singerFace, res.musicUrl, isMusicVideo ? 'vertical' : orientation, ac.signal, mine);
+        // Stage 2 — isolate the vocal (ElevenLabs Voice Isolator) so HeyGen syncs to the
+        // clean voice, not the full mix. Fail-open: a miss keeps the full song.
+        let vocalForSync: string = res.musicUrl;
+        try {
+          const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
+          const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
+          if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
+        } catch { /* fail-open → full mix */ }
+        const perf = await heygenSingerPerformance(singerFace, vocalForSync, isMusicVideo ? 'vertical' : orientation, ac.signal, mine);
         const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
         setMessages((prev) => {
           if (!mine()) return prev;

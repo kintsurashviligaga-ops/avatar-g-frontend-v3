@@ -65,6 +65,9 @@
     "app/api/voice-lab/**": {
       "maxDuration": 30
     },
+    "app/api/audio/**": {
+      "maxDuration": 120
+    },
     "app/api/webhooks/**": {
       "maxDuration": 30
     },
