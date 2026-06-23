@@ -433,7 +433,7 @@ interface Media { dataUrl: string; mimeType: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
-type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string };
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string };
 type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean; lyrics?: string };
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
@@ -878,6 +878,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [imgStyle, setImgStyle] = useState<string>('Auto');
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
+  // P7 — negative prompt (what to avoid), expandable below the main prompt.
+  const [imgNegative, setImgNegative] = useState('');
+  const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
   const [musicInstrumental, setMusicInstrumental] = useState(true);
   const [musicGenre, setMusicGenre] = useState<string>('cinematic');
   // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
@@ -885,6 +888,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
+  // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
+  const [musicDuration, setMusicDuration] = useState<15 | 30 | 60 | 90>(30);
+  const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
   // In-app voice-sample recorder for "sing in my voice" — separate from the chat
   // dictation mic. Captures ≥15s of audio → added as the music voice reference.
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -1446,7 +1452,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }
             : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental, ...(spec.lyrics ? { lyrics: spec.lyrics } : {}) },
         ),
         credentials: 'include',
@@ -1522,7 +1528,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const res = await fetch('/api/nanobanana/image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}) }),
+            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
             credentials: 'include',
             signal: ac.signal,
           });
@@ -1659,7 +1665,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Downscale a data: reference so a full-res photo never exceeds the body limit;
       // an https reference (the "Edit" action) is used as-is.
       const imgRef = imgRefRaw ? await downscaleDataUrl(imgRefRaw) : undefined;
-      const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) };
+      const neg = imgNegative.trim();
+      const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}), ...(neg ? { negativePrompt: neg } : {}) };
       if (isBatch) {
         await runImageBatch(imgSpec, imgCount);
         return;
@@ -1668,7 +1675,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) }),
+          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}), ...(neg ? { negativePrompt: neg } : {}) }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -1732,6 +1739,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           body: JSON.stringify({
             prompt: musicPrompt,
             style: musicGenre,
+            durationSec: musicDuration,
+            tempo: musicTempo,
             // Trained voice (RVC) → no upload needed; the server uses the user's model.
             ...(useTrained ? { useMyVoice: true } : {}),
             instrumental: (useTrained || isVoiceClone) ? false : musicInstrumental,
@@ -1934,7 +1943,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -2774,6 +2783,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
               </div>
             </div>
+            {/* P7 — Negative prompt (expandable) */}
+            <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <button type="button" onClick={() => setImgNegativeOpen((v) => !v)} aria-expanded={imgNegativeOpen}
+                className="flex w-full items-center justify-between text-[12.5px] font-semibold text-app-text">
+                <span className="inline-flex items-center gap-1.5">🚫 {locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
+                <ChevronDown size={15} className={`transition-transform ${imgNegativeOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {imgNegativeOpen && (
+                <textarea
+                  value={imgNegative}
+                  onChange={(e) => setImgNegative(e.target.value)}
+                  placeholder={locale === 'en' ? 'What to avoid in the image…' : locale === 'ru' ? 'Что исключить из изображения…' : 'რა ავიცილოთ სურათში…'}
+                  rows={2}
+                  className="mt-2 w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none placeholder:text-app-muted/60 focus:border-app-accent/50"
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -3038,6 +3064,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Genre' : locale === 'ru' ? 'Жанр' : 'ჟანრი'}</span>
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
+              </div>
+              {/* P6 — Duration + Tempo */}
+              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
+              <div className="flex gap-1.5">
+                {([15, 30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}s</Chip>)}
+              </div>
+              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
+              <div className="flex gap-1.5">
+                {([['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'], ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'], ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი']] as const).map(([v, label]) => (
+                  <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>
+                ))}
               </div>
             </div>
             <VoiceTrainer lang={locale} onReady={setHasTrainedVoice} />

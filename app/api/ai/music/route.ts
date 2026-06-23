@@ -79,12 +79,13 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // v330 — standalone music composition via ElevenLabs Music (the master audio engine,
 // replacing Udio), with Replicate MusicGen as the graceful fallback. EL Music returns
 // audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
-async function composeTrackUrl(prompt: string, style: string, instrumental: boolean): Promise<string> {
+async function composeTrackUrl(prompt: string, style: string, instrumental: boolean, lengthSec = 30): Promise<string> {
+  const secs = Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
   if (hasElevenLabsMusicKey()) {
     try {
       const { audio, contentType } = await composeElevenLabsMusic({
         prompt: style ? `${prompt}. Style: ${style}.` : prompt,
-        lengthMs: 30_000,
+        lengthMs: secs * 1000,
         instrumental,
       });
       const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
@@ -95,7 +96,7 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
       console.warn('[ai/music] ElevenLabs Music failed → MusicGen fallback:', e instanceof Error ? e.message : e);
     }
   }
-  const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, 30);
+  const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, secs);
   if (!score.audioUrl) throw new Error('Music generation did not complete in time.');
   return score.audioUrl;
 }
@@ -111,11 +112,17 @@ export async function POST(req: NextRequest) {
   let audioReference = '';
   let voiceReference = '';
   let useMyVoice = false;
+  let durationSec = 30;
+  let tempo = '';
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
+    // P6 — duration (15/30/60/90) + tempo (slow/medium/fast). Duration drives the track
+    // length; tempo is folded into the prompt as a BPM/feel hint the model honours.
+    if (typeof body.durationSec === 'number' && body.durationSec > 0) durationSec = Math.max(15, Math.min(90, Math.round(body.durationSec)));
+    if (typeof body.tempo === 'string') tempo = body.tempo.trim().toLowerCase();
     // Custom lyrics (vocal tracks) — Udio sings these verbatim; empty → auto lyrics.
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
     // Cover: an uploaded reference track (data: URL) → Udio reimagines it in the
@@ -136,7 +143,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
   }
 
-  const capped = prompt.slice(0, 1000);
+  // Fold the tempo selection into the brief as a feel/BPM hint (empty for 'medium').
+  const tempoHint = tempo === 'slow' ? 'Slow tempo, around 70 BPM. ' : tempo === 'fast' ? 'Fast, upbeat tempo, around 140 BPM. ' : '';
+  const capped = (tempoHint + prompt).slice(0, 1000);
 
   try {
     // Suno-style cover art — generated in PARALLEL with the track (it's the faster of
@@ -152,7 +161,7 @@ export async function POST(req: NextRequest) {
       // FAITHFUL "sing in my voice": ElevenLabs Music composes a song WITH vocals, then
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
-      const composedUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, false);
+      const composedUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, false, durationSec);
       try {
         providerAudioUrl = await convertSongWithRvc(composedUrl, trainedModel.modelUrl);
       } catch {
@@ -198,7 +207,7 @@ export async function POST(req: NextRequest) {
     } else {
       // Compose a fresh track from the brief — ElevenLabs Music (sung when not
       // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt.
-      providerAudioUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, makeInstrumental);
+      providerAudioUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, makeInstrumental, durationSec);
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.

@@ -73,6 +73,8 @@ export async function POST(req: NextRequest) {
       endpoint?: string;
       /** Img2img / edit: a source image (data: upload OR an https URL to edit). */
       referenceImage?: string;
+      /** P7 — what to AVOID in the image (folded into the prompt as a negative clause). */
+      negativePrompt?: string;
     };
 
     const prompt = (body.prompt ?? '').trim();
@@ -86,7 +88,11 @@ export async function POST(req: NextRequest) {
     const styleSuffix = STYLE_SUFFIXES[styleLabel] ?? styleLabel;
     // A style brings its own quality descriptors; an un-styled ("Auto") prompt gets a
     // light universal boost so every image is crisp + detailed, not flat.
-    const enriched    = styleSuffix ? `${prompt}, ${styleSuffix}` : `${prompt}, ultra detailed, sharp focus, professional quality`;
+    const base        = styleSuffix ? `${prompt}, ${styleSuffix}` : `${prompt}, ultra detailed, sharp focus, professional quality`;
+    // P7 — negative prompt: NanoBanana has no dedicated negative field, so the things to
+    // avoid are appended as an explicit exclusion clause the model honours.
+    const negative    = typeof body.negativePrompt === 'string' ? body.negativePrompt.trim().slice(0, 400) : '';
+    const enriched    = negative ? `${base}. Do NOT include: ${negative}.` : base;
 
     // Img2img / edit — resolve the reference image to an https URL the provider
     // accepts: data: uploads are hosted to Supabase; https URLs (e.g. editing a
