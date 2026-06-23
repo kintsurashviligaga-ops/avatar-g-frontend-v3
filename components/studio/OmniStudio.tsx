@@ -294,18 +294,23 @@ const MODES = [
 // with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
 // keying the singer's mouth to the master's embedded Georgian vocal. Returns the synced
 // URL or null (caller keeps the un-synced master — fail-open).
-async function lipsyncFilmMaster(masterUrl: string, signal: AbortSignal, mine: () => boolean): Promise<string | null> {
+// MUSIC-VIDEO lip-sync — generate a clean HeyGen SINGER PERFORMANCE: a close-up storyboard
+// face lip-synced to the song's vocal (the talking-photo path, which tries HeyGen first).
+// This replaces the old whole-master relip (sync/lipsync-2 warped the montage's wide/aerial
+// shots). Fail-open: returns null on any miss so the caller just omits the companion clip.
+async function heygenSingerPerformance(faceUrl: string, audioUrl: string, orientation: 'landscape' | 'vertical', signal: AbortSignal, mine: () => boolean): Promise<string | null> {
   let jobId: string | null = null;
   try {
     const r = await fetch('/api/video/lipsync', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'film', videoUrl: masterUrl }),
+      // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the vocal.
+      body: JSON.stringify({ videoUrl: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }),
       credentials: 'include', signal,
     });
     jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
   } catch { return null; }
   if (!jobId) return null;
-  for (let i = 0; i < 60 && mine(); i += 1) {
+  for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
     await new Promise((res) => setTimeout(res, 6000));
     try {
       const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
@@ -1290,37 +1295,42 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
       const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt } : {};
 
-      // P1 — Music Video: sync the singer's mouth to the embedded Georgian vocal. The
-      // Director Console Lip-Sync agent goes Standby → Working → Done. Fail-open with a
-      // duration guard: a missed/mangled pass keeps the un-synced 30s master intact.
-      let finalUrl = res.masterUrl;
-      if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && mine()) {
-        const lipProg = { phase: 'assembled' as const, matrix: res.matrix ?? null, masterUrl: res.masterUrl, message: '', previewUrl: null };
-        const lipRoster = deriveFilmRoster(lipProg, 'processing');
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant' && !last.videoUrl) {
-            next[next.length - 1] = { ...last, text: locale === 'en' ? "🎤 Syncing the singer's lips to the vocal…" : locale === 'ru' ? '🎤 Синхронизирую губы певицы с вокалом…' : '🎤 ვასინქრონებ მომღერლის ტუჩებს ვოკალთან…', filmRoster: lipRoster };
-          }
-          return next;
-        });
-        const synced = await lipsyncFilmMaster(res.masterUrl, ac.signal, mine);
-        if (synced && (await videoDurationAtLeast(synced, 20))) finalUrl = synced;
-      }
-
+      // MUSIC VIDEO — the cinematic LTX montage is the PRIMARY result. We no longer relip the
+      // whole master (sync/lipsync-2 warped the wide/aerial shots — "terrible"). Show the
+      // cinematic video first, then generate a clean matched-lip SINGER PERFORMANCE via HeyGen
+      // (a close-up storyboard face lip-synced to the song) as a COMPANION clip. Fail-open.
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
           next[next.length - 1] = res.ok && res.masterUrl
-            ? { role: 'assistant', text: '', videoUrl: finalUrl ?? res.masterUrl, orientation, ...remixCarry }
+            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
         }
         return next;
       });
+
+      // Companion HeyGen singer performance — needs the resolved song URL + a clear close-up face.
+      const singerFace =
+        (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
+        ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
+      if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace && mine()) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎤 Generating the lip-synced singer performance (HeyGen)…' : locale === 'ru' ? '🎤 Генерирую липсинк-выступление певицы (HeyGen)…' : '🎤 ვქმნი მომღერლის ლიპსინქ-შესრულებას (HeyGen)…', genKind: 'lipsync' }]);
+        const perf = await heygenSingerPerformance(singerFace, res.musicUrl, isMusicVideo ? 'vertical' : orientation, ac.signal, mine);
+        const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
+        setMessages((prev) => {
+          if (!mine()) return prev;
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant' && !last.videoUrl) {
+            next[next.length - 1] = perfOk
+              ? { role: 'assistant', text: '', videoUrl: perf as string, genKind: 'lipsync', orientation: 'vertical' }
+              : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t generate the HeyGen singer performance — kept the cinematic video above.' : locale === 'ru' ? '⚠️ Не удалось создать HeyGen-выступление — оставлено кинематографичное видео выше.' : '⚠️ HeyGen შესრულება ვერ შეიქმნა — დარჩა ზემოთ მოცემული კინემატოგრაფიული ვიდეო.' };
+          }
+          return next;
+        });
+      }
     } catch {
       if (!mine()) return;
       setMessages((prev) => {

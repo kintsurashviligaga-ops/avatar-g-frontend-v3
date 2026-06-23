@@ -602,5 +602,7 @@ async function assembleImpl(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ url: resultUrl, qa, sagaId: saga.sagaId, filmTokenId, scoreFallback, freeFilm: Boolean(bag.freeFilm) });
+  // Return the resolved song URL so the client can drive a HeyGen singer-performance
+  // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
+  return NextResponse.json({ url: resultUrl, qa, sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm) });
 }

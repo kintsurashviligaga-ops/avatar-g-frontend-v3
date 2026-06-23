@@ -88,6 +88,9 @@ export interface FilmStudioResult {
   matrix: FilmStudioMatrix | null;
   /** Quality grade of the master from the server Supervisor QA gate, if any. */
   qa?: FilmQaSummary | null;
+  /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
+   *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
+  musicUrl?: string | null;
   error?: string;
 }
 
@@ -444,7 +447,7 @@ async function assembleMaster(
   customAudioUrl?: string | null,
   captionLang?: 'ka' | 'en' | 'ru',
   vocalGender?: 'male' | 'female',
-): Promise<{ url: string; qa: FilmQaSummary | null } | { url: null; error: string } | null> {
+): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
   let finalVoiceUrl = voiceUrl ?? null;
@@ -494,7 +497,7 @@ async function assembleMaster(
   // FIX 4 — surface the route's STRUCTURED reason (insufficient credits, audio/
   // stitch failure) instead of collapsing every non-OK response to a blank null.
   // The message is propagated up to the chat bubble so the user always learns why.
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown } | null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown } | null;
   if (!res.ok) {
     const msg = typeof json?.message === 'string' && json.message.trim()
       ? json.message.trim()
@@ -506,7 +509,7 @@ async function assembleMaster(
   if (!(json && typeof json.url === 'string' && json.url.length > 0)) {
     return { url: null, error: 'The editor finished but returned no playable master URL.' };
   }
-  return { url: json.url, qa: asQa(json.qa) };
+  return { url: json.url, qa: asQa(json.qa), musicUrl: typeof json.musicUrl === 'string' ? json.musicUrl : null };
 }
 
 /** Recover an already-hosted master (+ its QA verdict) from the durable tracker. */
@@ -737,6 +740,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // FIX 4 — keep the route's real reason (e.g. the insufficient-credits top-up
     // message) so a failure shows WHY in chat, not a generic "could not host".
     const assembleErr = !assembled && assembledRes && 'error' in assembledRes ? assembledRes.error : null;
+    // The resolved song URL — handed back so the client can drive a HeyGen
+    // singer-performance lip-sync (face frame + this vocal).
+    const assembledMusicUrl = assembledRes && 'musicUrl' in assembledRes ? assembledRes.musicUrl : null;
 
     // 4 ── Recover if the assemble response was lost in transit
     if (!assembled && matrix.statusTokenId) {
@@ -759,7 +765,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // voice-over is mixed under the score) but the master is not lip-synced here; the
     // standalone Lip-sync mode covers true talking-character output for shorter clips.
     emit('assembled', matrix, master);
-    return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, previewUrl: firstPreviewUrl(matrix), matrix };
+    return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl, previewUrl: firstPreviewUrl(matrix), matrix };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { ok: false, phase: 'idle', masterUrl: null, previewUrl: null, matrix: null, error: 'Canceled.' };
