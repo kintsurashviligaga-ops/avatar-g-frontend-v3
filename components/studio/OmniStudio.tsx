@@ -2340,7 +2340,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="space-y-1.5">
                   <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={m.imageUrl} alt="generated" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
+                    <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
                   </button>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -2380,7 +2380,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         {tile.status === 'done' && tile.url ? (
                           <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={tile.url} alt="variation" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
+                            <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
                           </button>
                         ) : tile.status === 'failed' ? (
                           <div className="flex h-full w-full items-center justify-center text-app-danger/70"><X size={18} /></div>
@@ -2550,9 +2550,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => startEdit(i)}
                     aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
                     title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-app-muted/70 transition-colors hover:bg-app-border/15 hover:text-app-accent"
+                    className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md text-app-muted transition-colors hover:bg-app-border/15 hover:text-app-accent"
                   >
-                    <Pencil size={12} />
+                    <Pencil size={13} />
                   </button>
                 </div>
               )}
@@ -3072,7 +3072,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mt-1 flex items-center gap-1">
             {/* [+] add / attach */}
             <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Plus size={20} />
             </button>
 
@@ -3116,14 +3116,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
             {busy ? (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
                 <Square size={15} className="fill-current" />
               </button>
             ) : recording ? (
               // While dictating, a STOP that never disappears — even as live text
               // arrives — so recording is always controllable.
               <button type="button" onClick={() => void toggleMic()} aria-label={t.stop} title={t.stop}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
                 <Square size={16} />
               </button>
             ) : (
@@ -3131,12 +3131,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
                   <Mic size={19} />
                 </button>
                 {input.trim() && (
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}

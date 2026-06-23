@@ -126,7 +126,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
       <div className="flex items-center gap-2">
         <button
           onClick={onMenuToggle}
-          className="p-2 rounded-lg transition-colors hover:bg-[var(--card-hover)]"
+          className="p-2.5 rounded-lg transition-colors hover:bg-[var(--card-hover)] touch-manipulation"
           style={{ color: 'var(--color-text-secondary)' }}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
         >
@@ -521,7 +521,7 @@ export function BottomNavigation() {
             key={item.path}
             href={lh(item.path)}
             className="flex flex-col items-center justify-center gap-0.5 py-2 px-4 min-w-[56px] min-h-[44px] rounded-lg transition-colors active:scale-95"
-            style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+            style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)' }}
           >
             <Icon />
             <span className="text-[11px] font-medium">
