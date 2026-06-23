@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
+  MessageSquare, Image as ImageIcon, Music2, Film, Volume2, Check,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { WalletRefillModal } from '@/components/chat/WalletRefill';
@@ -23,6 +24,8 @@ import AuthModal from '@/components/chat/AuthModal';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -61,11 +64,38 @@ interface ChatChromeProps {
   children: React.ReactNode;
 }
 
+// The 5 in-composer services (OmniStudio modes). The hamburger lists them so a mobile
+// user can jump straight to a service; selecting one bridges to OmniStudio via a window
+// CustomEvent (low coupling — no prop threading through ServiceHub).
+const SERVICES: Array<{ id: 'chat' | 'image' | 'music' | 'video' | 'lipsync'; Icon: typeof MessageSquare; ka: string; en: string; ru: string }> = [
+  { id: 'chat', Icon: MessageSquare, ka: 'ჩატი', en: 'Chat', ru: 'Чат' },
+  { id: 'image', Icon: ImageIcon, ka: 'სურათი', en: 'Image', ru: 'Изображение' },
+  { id: 'music', Icon: Music2, ka: 'მუსიკა', en: 'Music', ru: 'Музыка' },
+  { id: 'video', Icon: Film, ka: 'ვიდეო', en: 'Video', ru: 'Видео' },
+  { id: 'lipsync', Icon: Volume2, ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
+];
+
 export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
+  // iOS Safari leaves 100dvh full-height when the keyboard opens, sliding the composer
+  // under it. Subtract the measured keyboard height from the shell so the input stays
+  // visible (the same fix the sibling chat surface already uses).
+  const { keyboardOffset } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Active composer service, mirrored from OmniStudio (for the hamburger highlight).
+  const [activeService, setActiveService] = useState<string>('chat');
+  useEffect(() => {
+    const onMode = (e: Event) => { const d = (e as CustomEvent).detail; if (typeof d === 'string') setActiveService(d); };
+    window.addEventListener('omni:mode-changed', onMode);
+    return () => window.removeEventListener('omni:mode-changed', onMode);
+  }, []);
+  const selectService = useCallback((id: string) => {
+    window.dispatchEvent(new CustomEvent('omni:set-mode', { detail: id }));
+    setActiveService(id);
+    setSidebarOpen(false);
+  }, []);
   const [walletOpen, setWalletOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -118,6 +148,22 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
   const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Escape-to-close + focus trap/restore + dialog semantics for every overlay.
+  // (sidebarOpen can only ever be true on mobile — the hamburger is md:hidden —
+  // so the drawer keeps its persistent-desktop role and only becomes a modal here.)
+  const sidebarDialogRef = useDialogA11y<HTMLElement>(sidebarOpen, () => setSidebarOpen(false));
+  const settingsDialogRef = useDialogA11y<HTMLElement>(menuOpen, () => setMenuOpen(false));
+  const profileDialogRef = useDialogA11y<HTMLDivElement>(profileOpen, () => setProfileOpen(false));
+  // The drawer is a modal ONLY at mobile width; at >=md it's the persistent sidebar.
+  // If it's open and the viewport crosses to desktop (rotate/resize/foldable), drop the
+  // modal state so it sheds role=dialog/aria-modal and releases the focus trap.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const sync = () => { if (mq.matches) setSidebarOpen(false); };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
   const [conversations, setConversations] = useState<{ id: string; title: string; updatedAt: number }[]>([]);
   const refreshConversations = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -188,7 +234,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
 
   return (
-    <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
       {/* Mobile backdrop for the slide-over sidebar. */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} aria-hidden />
@@ -196,12 +242,16 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
       {/* ── Left sidebar — persistent on desktop, swipe-from-left drawer on mobile ── */}
       <aside
+        ref={sidebarDialogRef}
+        role={sidebarOpen ? 'dialog' : undefined}
+        aria-modal={sidebarOpen ? true : undefined}
+        aria-label={t.menu}
         className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[268px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
           <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
-          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text md:hidden"><X className="h-[18px] w-[18px]" /></button>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden"><X className="h-[18px] w-[18px]" /></button>
         </div>
 
         {/* New chat */}
@@ -211,11 +261,34 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           </button>
         </div>
 
+        {/* Services — jump straight to any composer service (mirrors the in-chat mode). */}
+        <div className="mt-3 px-2">
+          <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.services}</p>
+          <div className="space-y-0.5">
+            {SERVICES.map(({ id, Icon, ka, en, ru }) => {
+              const on = activeService === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => selectService(id)}
+                  aria-current={on ? 'true' : undefined}
+                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[13.5px] font-medium transition-colors active:scale-[0.99] ${on ? 'bg-app-accent/12 text-app-accent' : 'text-app-text/90 hover:bg-app-elevated'}`}
+                >
+                  <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} />
+                  {lang === 'en' ? en : lang === 'ru' ? ru : ka}
+                  {on && <Check className="ml-auto h-3.5 w-3.5" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Chat history list */}
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <p className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</p>
           {conversations.length === 0 ? (
-            <p className="px-2 py-1 text-[12px] text-app-muted/70">{tNoHistory}</p>
+            <p className="px-2 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
           ) : (
             <div className="space-y-0.5 pb-2">
               {conversations.map((c) => (
@@ -244,7 +317,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
             <div className="flex min-w-0 items-center gap-1.5">
               {/* Mobile: open the sidebar drawer. Desktop: sidebar is persistent. */}
-              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
+              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
               <span className="truncate text-[15px] font-semibold tracking-tight text-app-text md:hidden">
@@ -255,7 +328,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
             <div className="flex shrink-0 items-center gap-0.5">
               <span className="px-1.5 text-[13px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</span>
-              <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-8 w-8 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
+              <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-10 w-10 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
                 <Plus className="h-4 w-4" />
               </button>
             </div>
@@ -275,10 +348,10 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       {/* ── Settings drawer ──────────────────────────────────────────────────── */}
       {menuOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setMenuOpen(false)}>
-          <aside onClick={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-80 max-w-[92vw] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+          <aside ref={settingsDialogRef} role="dialog" aria-modal="true" aria-label={t.settings} onClick={(e) => e.stopPropagation()} className="flex max-h-[86dvh] w-80 max-w-[92vw] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="flex items-center justify-between px-4 py-4">
               <span className="text-[15px] font-semibold tracking-tight text-app-text">{t.settings}</span>
-              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
@@ -353,13 +426,13 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
       {profileOpen && (
         <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+          <div ref={profileDialogRef} role="dialog" aria-modal="true" aria-label={locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-app-surface p-4 shadow-[0_0_60px_rgba(0,0,0,0.4)]">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
-              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
             <p className="mb-1.5 text-[12px] text-app-muted">{locale === 'en' ? 'Display name' : locale === 'ru' ? 'Отображаемое имя' : 'სახელი'}</p>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
             <button type="button" onClick={() => void saveProfile()} disabled={savingProfile} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-2.5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">{savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {locale === 'en' ? 'Save' : locale === 'ru' ? 'Сохранить' : 'შენახვა'}</button>
           </div>
         </div>

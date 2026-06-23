@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
 import FilmDirectorConsole from './FilmDirectorConsole';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine } from '@/lib/chat/filmAgentRoster';
@@ -51,7 +51,7 @@ async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string 
 
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
-  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string;
+  modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string; remix: string; remixPlaceholder: string; remixGenerating: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string; lyricsBlocked: string;
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
@@ -59,7 +59,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -68,7 +68,7 @@ const COPY: Record<Lang, {
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
-    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა',
+    generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა', remix: 'რემიქსი', remixPlaceholder: 'შეცვალე სცენა — მაგ. „გახადე მე-2 სცენა უფრო თბილი და ნათელი“…', remixGenerating: 'რემიქსი მუშავდება — მხოლოდ შეცვლილი სცენა გადაირენდერება…',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
@@ -79,7 +79,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -88,7 +88,7 @@ const COPY: Record<Lang, {
     placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything, or generate an image or music — by text, voice or file.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Chat', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
-    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied',
+    generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied', remix: 'Remix', remixPlaceholder: 'Edit a scene — e.g. “make scene 2 warmer and brighter”…', remixGenerating: 'Remixing — re-rendering only the edited scene…',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
@@ -99,7 +99,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -108,7 +108,7 @@ const COPY: Record<Lang, {
     placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно или создайте изображение или музыку — текстом, голосом или файлом.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Чат', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
-    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована',
+    generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована', remix: 'Ремикс', remixPlaceholder: 'Измените сцену — напр. «сделай 2-ю сцену теплее и ярче»…', remixGenerating: 'Ремикс — перерисовывается только изменённая сцена…',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
@@ -119,7 +119,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -290,6 +290,76 @@ const MODES = [
   { id: 'lipsync', Icon: Volume2, key: 'modeLipsync' },
 ] as const;
 
+// P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
+// with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
+// keying the singer's mouth to the master's embedded Georgian vocal. Returns the synced
+// URL or null (caller keeps the un-synced master — fail-open).
+async function lipsyncFilmMaster(masterUrl: string, signal: AbortSignal, mine: () => boolean): Promise<string | null> {
+  let jobId: string | null = null;
+  try {
+    const r = await fetch('/api/video/lipsync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'film', videoUrl: masterUrl }),
+      credentials: 'include', signal,
+    });
+    jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
+  } catch { return null; }
+  if (!jobId) return null;
+  for (let i = 0; i < 60 && mine(); i += 1) {
+    await new Promise((res) => setTimeout(res, 6000));
+    try {
+      const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
+      const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+      if (pj.done) return pj.url ?? null;
+    } catch { /* transient poll error — keep polling */ }
+  }
+  return null;
+}
+
+// Reject a lip-sync result that isn't a sane full-length master (e.g. a 5s talking-head
+// SadTalker mangled from a multi-shot film) so a good 30s master is never replaced by
+// garbage. Resolves false on any load error/timeout.
+function videoDurationAtLeast(url: string, minSec: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') { resolve(false); return; }
+    try {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      const to = setTimeout(() => resolve(false), 12000);
+      v.onloadedmetadata = () => { clearTimeout(to); resolve(Number.isFinite(v.duration) && v.duration >= minSec); };
+      v.onerror = () => { clearTimeout(to); resolve(false); };
+      v.src = url;
+    } catch { resolve(false); }
+  });
+}
+
+// P10 — best-effort client preview of which scenes a remix edit will re-render
+// (mirrors the server's planRemixFromText "scene N" / positional detection). Empty
+// result → the AI picks the scene(s); the preview says so.
+function parseRemixScenes(text: string, total: number): number[] {
+  const t = text.toLowerCase();
+  const nums = new Set<number>();
+  const re = /(?:scene|სცენა|сцена)\s*#?\s*(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t))) { const n = parseInt(m[1] ?? '', 10); if (n >= 1 && n <= total) nums.add(n); }
+  if (/\b(intro|opening|first|beginning)\b|დასაწყის|პირველ|перв|начал/.test(t)) nums.add(1);
+  if (/\b(ending|finale|final|last|resolution)\b|დასასრ|ფინალ|ბოლო|последн|конц|финал/.test(t)) nums.add(total);
+  return [...nums].sort((a, b) => a - b);
+}
+
+// P8 — built-in avatar presets (1024² studio portraits in /public/avatars).
+// Selecting one uses it as the talking face — no upload needed — and suggests the
+// matching cloned-voice gender. Diverse on gender + age so most users find a fit.
+const AVATAR_PRESETS: { src: string; gender: 'female' | 'male' }[] = [
+  { src: '/avatars/preset-1.jpg', gender: 'female' },
+  { src: '/avatars/preset-2.jpg', gender: 'male' },
+  { src: '/avatars/preset-3.jpg', gender: 'female' },
+  { src: '/avatars/preset-4.jpg', gender: 'male' },
+  { src: '/avatars/preset-5.jpg', gender: 'male' },
+  { src: '/avatars/preset-6.jpg', gender: 'female' },
+];
+
 // ── Per-service options (real backend capabilities) ──────────────────────────
 const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:2', '2:3'] as const;
 type ImgAspect = (typeof IMG_ASPECTS)[number];
@@ -306,7 +376,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${active ? 'bg-app-accent/15 text-app-accent' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors active:scale-95 ${active ? 'bg-app-accent/15 text-app-accent' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+      style={{ minHeight: 36 }}
     >
       {children}
     </button>
@@ -388,14 +459,19 @@ interface Media { dataUrl: string; mimeType: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
-type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string };
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string };
 type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean; lyrics?: string };
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch }
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
+  /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
+   *  film bubble can offer a "remix" box (re-render only the edited scenes). */
+  filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
+  /** Orientation of a video result, so the player uses the right aspect box on reload. */
+  orientation?: 'landscape' | 'vertical' }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -502,15 +578,16 @@ function deleteConversation(id: string): void {
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
-interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean }
+interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean; /** Per-scene base image (data URL) the user supplied to override this scene's identity reference. */ baseImage?: string }
 interface StoryboardState {
   filmPrompt: string;
   refs: string[];
   orientation: 'landscape' | 'vertical';
   seed: number;
   scenes: StoryboardScene[];
-  /** LLM story scenes (one per scene) — threaded to the render so clips match. */
-  sceneScripts?: string[] | null;
+  /** LLM story scenes (one per scene) — threaded to the render so clips match. A
+   *  reordered/added scene may have no script (null) until it is re-rolled. */
+  sceneScripts?: (string | null)[] | null;
   /** Per-scene frame-prompt for the streaming single-scene frame calls. */
   framePrompts?: Record<number, string>;
   /** Scene ordinals whose frame is still being generated (drives the N/M counter
@@ -518,20 +595,196 @@ interface StoryboardState {
   pending?: number[];
 }
 
+/** Read a picked File into a data: URL (for the per-scene "Change Base Image"). */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('read failed'));
+    fr.readAsDataURL(file);
+  });
+}
+
+// P9 — after a delete / reorder / add, renumber ordinals to 1..N and rebuild the
+// per-scene maps so every lookup stays consistent with the new order:
+//   • framePrompts is keyed by ordinal → re-key to the new ordinal.
+//   • sceneScripts is POSITIONAL (index = scene position) → carry each scene's old
+//     script to its new slot (a brand-new scene has no old index → null).
+function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): StoryboardState {
+  const oldFP = prev.framePrompts ?? {};
+  const oldScripts = prev.sceneScripts ?? [];
+  const idxByOrd = new Map(prev.scenes.map((s, i) => [s.ordinal, i] as const));
+  const framePrompts: Record<number, string> = {};
+  const sceneScripts: (string | null)[] = [];
+  const scenes = ordered.map((s, i) => {
+    const newOrd = i + 1;
+    const fp = oldFP[s.ordinal];
+    if (fp) framePrompts[newOrd] = fp;
+    const oldIdx = idxByOrd.get(s.ordinal);
+    sceneScripts[i] = oldIdx != null ? oldScripts[oldIdx] ?? null : null;
+    return { ...s, ordinal: newOrd };
+  });
+  return { ...prev, scenes, framePrompts, sceneScripts };
+}
+
+/**
+ * SceneTile — one storyboard scene as a SMART, interactive skeleton (Master Prompt
+ * v329 placeholder upgrade):
+ *   • Loading/empty state is a shimmer-swept container, not a flat gray box.
+ *   • Hover (or focus) over a placeholder reveals inline asset-override triggers —
+ *     "Edit prompt" (focuses the shot field) and "Change base image" (per-scene
+ *     identity upload). Clicking either INTERCEPTS this scene mid-generation and
+ *     hot-reloads just its own agent thread; the rest of the board keeps streaming.
+ *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
+ *     an agent's delivery glides in with no layout pop (fixed-aspect container).
+ */
+function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove }: {
+  s: StoryboardScene;
+  t: (typeof COPY)[Lang];
+  portrait: boolean;
+  pending: boolean;
+  regenning: boolean;
+  busy: boolean;
+  /** P9 — this scene's position (0-based) and the board size, for move-bound checks. */
+  index: number;
+  total: number;
+  /** P9 — structural edits (move/delete) only once frames have settled (not streaming). */
+  structEnabled: boolean;
+  onRegenScene: (ordinal: number, baseImage?: string) => void;
+  onEditScene: (ordinal: number, text: string) => void;
+  onView: (url: string) => void;
+  onDelete: (ordinal: number) => void;
+  onMove: (ordinal: number, dir: -1 | 1) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const pickBase = useCallback(() => fileRef.current?.click(), []);
+  const focusPrompt = useCallback(() => {
+    const el = taRef.current;
+    if (el) { el.focus(); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  }, []);
+  const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try { onRegenScene(s.ordinal, await fileToDataUrl(f)); } catch { /* ignore unreadable file */ }
+  }, [onRegenScene, s.ordinal]);
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-app-border/12 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
+      <div className={`group/media relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
+        {s.frameUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={s.frameUrl}
+            alt={`${t.sbScene} ${s.ordinal}`}
+            onClick={() => s.frameUrl && onView(s.frameUrl)}
+            // BLUR-UP morph: mounts blurred + slightly scaled, resolves sharp on load.
+            className="h-full w-full cursor-zoom-in object-cover opacity-0 blur-md scale-[1.04] [transition:opacity_.6s_ease,filter_.7s_ease,transform_.7s_ease]"
+            onLoad={(e) => { const el = e.currentTarget; el.style.opacity = '1'; el.style.filter = 'blur(0)'; el.style.transform = 'scale(1)'; }}
+          />
+        ) : (
+          // SMART SKELETON — shimmer-swept, not a flat gray box.
+          <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-app-elevated to-app-surface">
+            <div className="pointer-events-none absolute inset-0 animate-[tile-shimmer_1.6s_linear_infinite] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+            {pending ? (
+              <>
+                <Loader2 size={18} className="animate-spin text-app-accent/70" />
+                <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal} · {t.sbGenerating}…</span>
+              </>
+            ) : (
+              <>
+                <ImageIcon size={18} className="text-app-muted/40" />
+                <span className="text-[10px] text-app-muted/40">{t.sbEmpty}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* INTERACTIVE HOVER / MID-GENERATION INTERCEPT — only over a placeholder. */}
+        {!s.frameUrl && !regenning && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/media:opacity-100 focus-within:opacity-100">
+            <button type="button" onClick={focusPrompt} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/92 px-3 py-1.5 text-[11px] font-semibold text-black shadow transition-transform active:scale-95 disabled:opacity-50">
+              <Pencil size={12} /> {t.sbEditPromptAction}
+            </button>
+            <button type="button" onClick={pickBase} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[11px] font-semibold text-app-bg shadow transition-transform active:scale-95 disabled:opacity-50">
+              <Upload size={12} /> {t.sbChangeBaseAction}
+            </button>
+          </div>
+        )}
+
+        <span className="absolute left-1.5 top-1.5 z-20 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
+        <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy} aria-label={t.sbReroll} title={t.sbReroll}
+          className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40 touch-manipulation before:absolute before:-inset-2 before:content-['']">
+          <RotateCcw size={13} />
+        </button>
+        {s.baseImage && (
+          <span className="absolute bottom-1.5 left-1.5 z-20 inline-flex items-center gap-1 rounded-full bg-app-accent/85 px-2 py-0.5 text-[9px] font-semibold text-app-bg" title={t.sbChangeBaseAction}>
+            <ImageIcon size={9} /> base
+          </span>
+        )}
+        {regenning && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-1 bg-black/60"><Loader2 size={20} className="animate-spin text-white" /><span className="text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+      </div>
+      <div className="flex flex-1 flex-col gap-1.5 p-2">
+        <p className="text-[11.5px] font-semibold leading-snug text-app-text">{s.beat}</p>
+        <textarea
+          ref={taRef}
+          value={s.prompt}
+          onChange={(e) => onEditScene(s.ordinal, e.target.value)}
+          rows={4}
+          placeholder={t.sbEditHint}
+          aria-label={`${t.sbScene} ${s.ordinal}`}
+          className="min-h-[72px] w-full flex-1 resize-y rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
+        />
+        <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy}
+          className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
+          <RotateCcw size={11} /> {t.sbRegen}
+        </button>
+        {/* P9 — reorder (earlier/later) + delete, enabled once frames have settled. */}
+        {structEnabled && (
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label="Move earlier" title="Move earlier"
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
+              <ChevronLeft size={14} />
+            </button>
+            <button type="button" onClick={() => onMove(s.ordinal, 1)} disabled={busy || index === total - 1} aria-label="Move later" title="Move later"
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
+              <ChevronRight size={14} />
+            </button>
+            <button type="button" onClick={() => onDelete(s.ordinal)} disabled={busy || total <= 2} aria-label="Delete scene" title="Delete scene"
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-400 disabled:opacity-30 touch-manipulation">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel }: {
+function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
+  locale: Lang;
   busy: boolean;
   /** The scene ordinal currently re-rolling its frame (null = none). */
   regenningOrdinal: number | null;
   onGenerate: () => void;
   onRegenerate: () => void;
-  onRegenScene: (ordinal: number) => void;
+  onRegenScene: (ordinal: number, baseImage?: string) => void;
   onEditScene: (ordinal: number, text: string) => void;
   onView: (url: string) => void;
   onCancel: () => void;
+  onDelete: (ordinal: number) => void;
+  onMove: (ordinal: number, dir: -1 | 1) => void;
+  onAddScene: () => void;
 }) {
   const portrait = sb.orientation === 'vertical';
   const pending = sb.pending ?? [];
@@ -553,7 +806,7 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
               <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
             )}
           </div>
-          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
             <X size={18} />
           </button>
         </div>
@@ -565,53 +818,37 @@ function StoryboardOverlay({ sb, t, busy, regenningOrdinal, onGenerate, onRegene
         )}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {sb.scenes.map((s) => (
-              <div key={s.ordinal} className="flex flex-col overflow-hidden rounded-xl border border-app-border/12 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
-                <div className={`relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
-                  {s.frameUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.frameUrl} alt={`${t.sbScene} ${s.ordinal}`} onClick={() => s.frameUrl && onView(s.frameUrl)} className="h-full w-full cursor-zoom-in object-cover opacity-0 transition-opacity duration-500 hover:opacity-90" onLoad={(e) => { e.currentTarget.style.opacity = '1'; }} />
-                  ) : pending.includes(s.ordinal) ? (
-                    // Generating — a pulsing skeleton with a spinner + the scene number,
-                    // so it reads as "creating scene N", never a broken-image box.
-                    <div className="flex h-full w-full animate-pulse flex-col items-center justify-center gap-2 bg-gradient-to-br from-app-elevated to-app-surface">
-                      <Loader2 size={18} className="animate-spin text-app-accent/70" />
-                      <span className="text-[10px] font-medium text-app-muted/70">{t.sbScene} {s.ordinal}</span>
-                    </div>
-                  ) : (
-                    // Frame settled with no image (provider miss) — graceful icon + a
-                    // re-roll hint, never an endless spinner or broken-image glyph.
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-app-surface text-app-muted/40">
-                      <ImageIcon size={18} />
-                      <RotateCcw size={12} className="opacity-70" />
-                    </div>
-                  )}
-                  <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
-                  <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} aria-label={t.sbReroll} title={t.sbReroll} className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40">
-                    <RotateCcw size={13} />
-                  </button>
-                  {regenningOrdinal === s.ordinal && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55"><Loader2 size={20} className="animate-spin text-white" /><span className="text-[10px] font-medium text-white/85">{t.sbRegen}…</span></div>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col gap-1.5 p-2">
-                  <p className="text-[11.5px] font-semibold leading-snug text-app-text">{s.beat}</p>
-                  {/* Editable shot description — bordered + placeholder so it's obviously
-                      a field you can type into; your words drive the re-roll + the render. */}
-                  <textarea
-                    value={s.prompt}
-                    onChange={(e) => onEditScene(s.ordinal, e.target.value)}
-                    rows={4}
-                    placeholder={t.sbEditHint}
-                    aria-label={`${t.sbScene} ${s.ordinal}`}
-                    className="min-h-[72px] w-full flex-1 resize-y rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
-                  />
-                  <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={regenningOrdinal !== null || busy} className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
-                    <RotateCcw size={11} /> {t.sbRegen}
-                  </button>
-                </div>
-              </div>
+            {sb.scenes.map((s, i) => (
+              <SceneTile
+                key={s.ordinal}
+                s={s}
+                t={t}
+                portrait={portrait}
+                pending={pending.includes(s.ordinal)}
+                regenning={regenningOrdinal === s.ordinal}
+                busy={busy || regenningOrdinal !== null}
+                index={i}
+                total={total}
+                structEnabled={!streaming}
+                onRegenScene={onRegenScene}
+                onEditScene={onEditScene}
+                onView={onView}
+                onDelete={onDelete}
+                onMove={onMove}
+              />
             ))}
+            {/* P9 — append a new scene (max 8). Disabled while frames are still streaming. */}
+            {!streaming && total < 8 && (
+              <button
+                type="button"
+                onClick={onAddScene}
+                disabled={busy || regenningOrdinal !== null}
+                className={`flex ${portrait ? 'aspect-[9/16]' : 'aspect-video'} flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-app-border/25 bg-app-elevated/40 text-app-muted transition-colors hover:border-app-accent/50 hover:bg-app-accent/[0.06] hover:text-app-accent disabled:opacity-40 touch-manipulation`}
+              >
+                <Plus size={22} />
+                <span className="text-[11px] font-medium">{locale === 'en' ? 'Add scene' : locale === 'ru' ? 'Добавить сцену' : 'სცენის დამატება'}</span>
+              </button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
@@ -673,6 +910,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
   // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
   const [speakPhase, setSpeakPhase] = useState<'loading' | 'playing' | null>(null);
+  // Remix: per-film-bubble edit draft + which film is currently remixing.
+  const [remixDrafts, setRemixDrafts] = useState<Record<number, string>>({});
+  const [remixBusyIdx, setRemixBusyIdx] = useState<number | null>(null);
+  // P10 — which result bubble is showing its remix CONFIRM preview (scene diff).
+  const [remixPreviewIdx, setRemixPreviewIdx] = useState<number | null>(null);
   // Inline edit-&-resend of a user turn: which message is being edited + its draft.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -681,6 +923,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // doesn't let the orphaned fetch start playing after the user moved on.
   const ttsTokenRef = useRef(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // v330 — dedicated hidden inputs for the Video panel's asset slots: a single
+  // Character Reference image and a custom Audio Track (beat/song), each kept
+  // separate from the shared attachment picker so they read as their own slots.
+  const charFileRef = useRef<HTMLInputElement | null>(null);
+  const audioFileRef = useRef<HTMLInputElement | null>(null);
+  // v330 — Avatar/lip-sync face: a scoped single-IMAGE picker (the slot can't ingest
+  // PDFs/audio/multiples the way the shared attach button could).
+  const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
@@ -697,6 +947,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const sttFinalRef = useRef('');
   const feedRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Composer wrapper height → anchors the scroll-to-bottom FAB just above it, so the
+  // FAB never overlaps a grown composer (multi-line draft, attachments, open options).
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const [composerH, setComposerH] = useState(96);
   // Stop / cancel plumbing. `abortRef` aborts the in-flight fetch; `genIdRef` is a
   // monotonic generation token — every finalizer checks it so a STOPPED or
   // superseded request can never clobber a newer message (or re-clear `busy`).
@@ -720,6 +974,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [imgStyle, setImgStyle] = useState<string>('Auto');
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
+  // P5 — Chat: response language (auto = reply in the user's language) + model tier.
+  const [chatLang, setChatLang] = useState<'auto' | 'ka' | 'en' | 'ru'>('auto');
+  const [chatTier, setChatTier] = useState<'standard' | 'pro'>('standard');
+  // P7 — negative prompt (what to avoid), expandable below the main prompt.
+  const [imgNegative, setImgNegative] = useState('');
+  const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
   const [musicInstrumental, setMusicInstrumental] = useState(true);
   const [musicGenre, setMusicGenre] = useState<string>('cinematic');
   // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
@@ -727,6 +987,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
+  // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
+  const [musicDuration, setMusicDuration] = useState<15 | 30 | 60 | 90>(30);
+  const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
   // In-app voice-sample recorder for "sing in my voice" — separate from the chat
   // dictation mic. Captures ≥15s of audio → added as the music voice reference.
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -738,7 +1001,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Auto-write lyrics from a theme (removes the "I don't have lyrics" friction).
   const [writingLyrics, setWritingLyrics] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
-  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('landscape');
+  // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
+  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('vertical');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // Spoken voice for the film — ON by default so the character actually TALKS (and,
   // with the lip-sync pass, the lips move with it). When on, a localized cue is
@@ -748,6 +1012,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [videoMyVoiceNarration, setVideoMyVoiceNarration] = useState(false);
   // Lip-sync "dub from text" → speak the typed script in the user's TRAINED voice (RVC).
   const [lipMyVoice, setLipMyVoice] = useState(false);
+  // Avatar mode: cloned-voice gender + output format (the panel's selectable options).
+  const [lipGender, setLipGender] = useState<'female' | 'male'>('female');
+  const [lipFormat, setLipFormat] = useState<'9:16' | '16:9' | '1:1'>('9:16');
+  // P8 — selected built-in avatar preset (a /public path used as the talking face).
+  // Mutually exclusive with an uploaded face: picking one clears the other.
+  const [lipPreset, setLipPreset] = useState<string | null>(null);
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
@@ -755,8 +1025,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [videoSpeech, setVideoSpeech] = useState('');
   // Film length: 10s (2 scenes) or 30s (6 scenes). Drives the storyboard scene count.
   const [videoDuration, setVideoDuration] = useState<10 | 30>(30);
-  // Background score on/off (off → voice-only film).
+  // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
+  // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
+  // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
+  // 'documentary' → narration-forward (voice on top, music ducked under it).
+  const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>('documentary');
+  // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
+  // separate from the generic attachment tray so it reads as its own asset slot.
+  const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
+  // v330 — dedicated AUDIO INGEST slot: a user-uploaded beat/song. Once uploaded
+  // (uploadBigFile → storage path) it becomes the master bed, bypassing ambient music
+  // generation. `videoSoundtrackBusy` is true while the upload is in flight.
+  const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string } | null>(null);
+  const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
+  // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
+  // + selects the cloned Georgian voice for any narration). Default male tenor.
+  const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female'>('male');
+  // P1 — Music Video: after the master assembles, sync the singer's mouth to the
+  // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
+  // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
+  // (prediction q9m5k5nexdrmr0cyyhnt2ca090, ~113s, output mp4). Default ON; fail-open
+  // to the un-synced master if anything misses.
+  const [videoLipsync, setVideoLipsync] = useState(true);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -845,6 +1136,39 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
+  // v330 — bridge with the ChatChrome hamburger's Services list. The hamburger
+  // dispatches 'omni:set-mode' to switch the active service; we mirror back the current
+  // mode via 'omni:mode-changed' so the hamburger can highlight it. Switching also opens
+  // the options drawer so the chosen service's controls are immediately visible.
+  useEffect(() => {
+    const onSet = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync') {
+        setMode(d);
+        if (d !== 'chat') setOptionsOpen(true);
+        setModeMenuOpen(false);
+      }
+    };
+    window.addEventListener('omni:set-mode', onSet);
+    return () => window.removeEventListener('omni:set-mode', onSet);
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
+  }, [mode]);
+  // Track the composer's live height so the scroll-to-bottom FAB always floats just
+  // above it (a fixed 104px offset overlapped a multi-line / attachments / open-options composer).
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    // Bail on no-op churn — the observer fires on every frame of an auto-grow /
+    // options-expand, but React only needs the height when it actually changes.
+    const measure = () => setComposerH((h) => (h === el.offsetHeight ? h : el.offsetHeight));
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, []);
+
   // Close the full-screen lightbox on Escape (desktop affordance; the backdrop tap
   // and the X button cover touch).
   useEffect(() => {
@@ -870,14 +1194,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
     setBusy(true);
     try {
+      // v330 — Music Video mode: the song rules, so the standalone narrator is
+      // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
+      // mode keeps narration-forward behaviour (voice-over + ducked score).
+      const isMusicVideo = videoMode === 'musicvideo';
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,
-        orientation,
+        // v330 — Music Video Mode is full-screen mobile-first: force 9:16 vertical.
+        orientation: isMusicVideo ? 'vertical' : orientation,
         transition: videoTransition,
-        myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
-        ...(videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
-        ...(videoMusic ? {} : { noMusic: true }),
+        musicVideoMode: isMusicVideo,
+        ...(isMusicVideo ? { vocalGender: videoVocalGender } : {}),
+        // Only a music video uses the uploaded soundtrack — never let a leftover track
+        // silently turn Documentary mode into a narrator-less music video.
+        ...(isMusicVideo && videoSoundtrack?.url ? { soundtrackUrl: videoSoundtrack.url } : {}),
+        // Narration only in documentary mode — a music video has no spoken narrator.
+        myVoiceNarration: !isMusicVideo && videoMyVoiceNarration && hasTrainedVoice,
+        ...(!isMusicVideo && videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
+        // Music can only be turned OFF in documentary mode; a music video always has its song.
+        ...(!isMusicVideo && !videoMusic ? { noMusic: true } : {}),
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
@@ -924,13 +1260,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           });
         },
       });
+      // Capture the landed per-scene clips so the film bubble can offer Remix
+      // (re-render only the edited scene, reuse the rest via /api/pipeline/remix).
+      const landed = (res.matrix?.clips ?? [])
+        .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
+        .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
+      const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt } : {};
+
+      // P1 — Music Video: sync the singer's mouth to the embedded Georgian vocal. The
+      // Director Console Lip-Sync agent goes Standby → Working → Done. Fail-open with a
+      // duration guard: a missed/mangled pass keeps the un-synced 30s master intact.
+      let finalUrl = res.masterUrl;
+      if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && mine()) {
+        const lipProg = { phase: 'assembled' as const, matrix: res.matrix ?? null, masterUrl: res.masterUrl, message: '', previewUrl: null };
+        const lipRoster = deriveFilmRoster(lipProg, 'processing');
+        setMessages((prev) => {
+          if (!mine()) return prev;
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant' && !last.videoUrl) {
+            next[next.length - 1] = { ...last, text: locale === 'en' ? "🎤 Syncing the singer's lips to the vocal…" : locale === 'ru' ? '🎤 Синхронизирую губы певицы с вокалом…' : '🎤 ვასინქრონებ მომღერლის ტუჩებს ვოკალთან…', filmRoster: lipRoster };
+          }
+          return next;
+        });
+        const synced = await lipsyncFilmMaster(res.masterUrl, ac.signal, mine);
+        if (synced && (await videoDurationAtLeast(synced, 20))) finalUrl = synced;
+      }
+
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
           next[next.length - 1] = res.ok && res.masterUrl
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl }
+            ? { role: 'assistant', text: '', videoUrl: finalUrl ?? res.masterUrl, orientation, ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
         }
         return next;
@@ -946,7 +1309,48 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMyVoiceNarration, videoNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+
+  // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
+  // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
+  // remixed result carries the same clips/brief so it can be remixed again.
+  const remixFilm = useCallback(async (i: number) => {
+    const src = messages[i];
+    const edit = (remixDrafts[i] ?? '').trim();
+    if (!src?.filmClips?.length || !src.filmPrompt || !edit || remixBusyIdx !== null) return;
+    setRemixBusyIdx(i);
+    setMessages((prev) => [...prev, { role: 'user', text: edit }, { role: 'assistant', text: t.remixGenerating, genKind: 'video' }]);
+    setRemixDrafts((d) => ({ ...d, [i]: '' }));
+    const clips = src.filmClips;
+    const prompt = src.filmPrompt;
+    try {
+      const r = await fetch('/api/pipeline/remix', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string };
+      const url = j.success ? (j.masterUrl || j.url || null) : null;
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') {
+          next[next.length - 1] = url
+            ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt }
+            : { role: 'assistant', text: `⚠️ ${j.message || t.videoFailed}` };
+        }
+        return next;
+      });
+    } catch {
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
+        return next;
+      });
+    } finally {
+      setRemixBusyIdx(null);
+    }
+  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
@@ -1004,24 +1408,51 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         } catch { /* best-effort; render falls back to deterministic beats */ }
       })();
 
+      // STEP 2.6 — CHARACTER LOCK. Derive ONE protagonist anchor portrait from the
+      // brief, then condition EVERY scene frame on it so the character stays identical
+      // across all 6 scenes — the frames anchor the LTX clips, so the whole 30s video
+      // keeps the same face, hair and wardrobe. Skipped when the user uploaded their
+      // own reference (that selfie already anchors identity). Fail-open: a miss falls
+      // back to per-scene text frames (the prior, drift-prone behaviour).
+      let anchorRefs = refs;
+      if (!refs.length) {
+        try {
+          const ar = await fetch('/api/film/storyboard', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ prompt: filmPrompt, orientation, style: videoStyle, locale, sceneCount, characterAnchor: true }),
+          });
+          const aj = (await ar.json().catch(() => ({}))) as { success?: boolean; anchorUrl?: string | null };
+          if (aj.success && typeof aj.anchorUrl === 'string' && aj.anchorUrl) {
+            anchorRefs = [aj.anchorUrl];
+            // Thread the anchor into the stored refs so the RENDER and single-scene
+            // re-rolls also lock to the same character.
+            setStoryboard((prev) => (prev ? { ...prev, refs: anchorRefs } : prev));
+          }
+        } catch { /* fall back to unanchored per-scene frames */ }
+      }
+
       // STEP 3 — stream each frame in (concurrency 3); each tile fades in the moment
       // its own frame lands, and the N/M counter ticks up. A failed frame settles to
       // a graceful icon (removed from `pending`) — never an endless spinner.
       const fetchFrame = async (ordinal: number) => {
-        // Up to 2 attempts — a transient provider miss shouldn't leave a permanent
-        // graceful-icon gap when a quick retry would land the frame.
-        for (let attempt = 0; attempt < 2; attempt++) {
+        // Up to 3 attempts with BACKOFF — under heavy image-provider load the frame
+        // endpoint can return 503; retrying immediately just hammers it. Backing off
+        // (3s, 6s) lets the provider recover so a transient 503 still lands the frame
+        // instead of leaving a permanent graceful-icon gap.
+        const MAX = 3;
+        const backoff = (attempt: number) => new Promise((res) => setTimeout(res, 3000 * (attempt + 1)));
+        for (let attempt = 0; attempt < MAX; attempt++) {
           try {
             const r = await fetch('/api/film/storyboard', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal: ac.signal,
-              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
             });
             const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
-            if (url || attempt === 1) {
+            if (url || attempt === MAX - 1) {
               setStoryboard((prev) => prev ? {
                 ...prev,
                 scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)),
@@ -1029,12 +1460,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               } : prev);
               return;
             }
+            await backoff(attempt); // 503 / transient miss → wait before retrying
           } catch {
             if (ac.signal.aborted) return;
-            if (attempt === 1) {
+            if (attempt === MAX - 1) {
               setStoryboard((prev) => prev ? { ...prev, pending: (prev.pending ?? []).filter((o) => o !== ordinal) } : prev);
               return;
             }
+            await backoff(attempt);
           }
         }
       };
@@ -1053,17 +1486,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [videoStyle, locale, videoDuration, renderFilm]);
 
-  // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in.
-  const regenScene = useCallback(async (ordinal: number) => {
+  // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
+  // a hot-reload of just this one scene's agent thread, never the master loop. An
+  // optional `baseImage` (a data URL the user dropped on this scene via "Change Base
+  // Image") becomes THIS scene's identity reference, overriding the film anchor; it's
+  // downscaled + persisted on the scene so a later re-roll keeps it.
+  const regenScene = useCallback(async (ordinal: number, baseImage?: string) => {
     if (!storyboard || regenningOrdinal !== null) return;
     setRegenningOrdinal(ordinal);
     const scene = storyboard.scenes.find((s) => s.ordinal === ordinal);
+    let newBase: string | undefined;
+    if (baseImage) {
+      try { newBase = await downscaleDataUrl(baseImage, 1280); } catch { newBase = baseImage; }
+      setStoryboard((prev) => prev ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, baseImage: newBase } : s)) } : prev);
+    }
+    // Per-scene base image (just-supplied or previously stored) wins as the
+    // reference; otherwise the film's locked character anchor.
+    const refsForScene = newBase ?? scene?.baseImage
+      ? [String(newBase ?? scene?.baseImage)]
+      : storyboard.refs;
     try {
       const res = await fetch('/api/film/storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: storyboard.refs, style: videoStyle, locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
       if (j.success && typeof j.frameUrl === 'string') {
@@ -1088,6 +1535,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       : prev);
   }, []);
 
+  // P9 — delete a scene (keep ≥2 for a valid film), then renumber + remap.
+  const deleteScene = useCallback((ordinal: number) => {
+    setStoryboard((prev) => {
+      if (!prev || prev.scenes.length <= 2) return prev;
+      return commitSceneOrder(prev, prev.scenes.filter((s) => s.ordinal !== ordinal));
+    });
+  }, []);
+
+  // P9 — move a scene one slot earlier (-1) / later (+1) in the running order.
+  const moveScene = useCallback((ordinal: number, dir: -1 | 1) => {
+    setStoryboard((prev) => {
+      if (!prev) return prev;
+      const i = prev.scenes.findIndex((s) => s.ordinal === ordinal);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.scenes.length) return prev;
+      const ordered = prev.scenes.slice();
+      const a = ordered[i]!; const b = ordered[j]!;
+      ordered[i] = b; ordered[j] = a;
+      return commitSceneOrder(prev, ordered);
+    });
+  }, []);
+
+  // P9 — append a blank scene (max 8). Seeded with the film idea as its prompt so a
+  // re-roll produces a frame even before the user edits it; it has no frame yet, so
+  // the user re-rolls (or edits then re-rolls) before generating.
+  const addScene = useCallback(() => {
+    setStoryboard((prev) => {
+      if (!prev || prev.scenes.length >= 8) return prev;
+      const beat = locale === 'en' ? 'New scene' : locale === 'ru' ? 'Новая сцена' : 'ახალი სცენა';
+      const blank: StoryboardScene = { ordinal: 90000 + prev.scenes.length, beat, prompt: prev.filmPrompt, frameUrl: null, edited: true };
+      return commitSceneOrder(prev, [...prev.scenes, blank]);
+    });
+  }, [locale]);
+
   // One-click RE-ROLL of an image/music result: re-run the SAME prompt + settings
   // (a fresh variation) WITHOUT a new user bubble — the new asset lands as a fresh
   // assistant bubble beneath the original. Mirrors send()'s gen-token / abort
@@ -1107,7 +1588,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }
             : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental, ...(spec.lyrics ? { lyrics: spec.lyrics } : {}) },
         ),
         credentials: 'include',
@@ -1183,7 +1664,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const res = await fetch('/api/nanobanana/image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}) }),
+            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
             credentials: 'include',
             signal: ac.signal,
           });
@@ -1224,7 +1705,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     try {
       const res = await fetch('/api/chat/gemini', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }), credentials: 'include', signal: ac.signal,
+        body: JSON.stringify({ messages: payload, ...(chatLang !== 'auto' ? { language: chatLang } : {}), ...(chatTier === 'pro' ? { tier: 'pro' } : {}) }), credentials: 'include', signal: ac.signal,
       });
       if (!res.ok || !res.body) throw new Error('stream failed');
       const reader = res.body.getReader();
@@ -1265,7 +1746,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, []);
+  }, [chatLang, chatTier]);
 
   // Regenerate the LAST assistant reply: re-stream from the conversation up to (and
   // including) the user turn that prompted it — the standard chat "try again" /
@@ -1320,7 +1801,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Downscale a data: reference so a full-res photo never exceeds the body limit;
       // an https reference (the "Edit" action) is used as-is.
       const imgRef = imgRefRaw ? await downscaleDataUrl(imgRefRaw) : undefined;
-      const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) };
+      const neg = imgNegative.trim();
+      const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}), ...(neg ? { negativePrompt: neg } : {}) };
       if (isBatch) {
         await runImageBatch(imgSpec, imgCount);
         return;
@@ -1329,7 +1811,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}) }),
+          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}), ...(neg ? { negativePrompt: neg } : {}) }),
           credentials: 'include',
           signal: ac.signal,
         });
@@ -1393,6 +1875,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           body: JSON.stringify({
             prompt: musicPrompt,
             style: musicGenre,
+            durationSec: musicDuration,
+            tempo: musicTempo,
             // Trained voice (RVC) → no upload needed; the server uses the user's model.
             ...(useTrained ? { useMyVoice: true } : {}),
             instrumental: (useTrained || isVoiceClone) ? false : musicInstrumental,
@@ -1438,13 +1922,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // streams its live status into the assistant bubble, then renders the master
     // inline — so the full film service lives in this one chatbox.
     if (mode === 'video' && text) {
-      const refs = attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl);
-      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${(videoNarration || (videoMyVoiceNarration && hasTrainedVoice)) ? t.narrationCue : ''}`;
+      // v330 — the dedicated Character Reference slot leads the identity-lock refs,
+      // followed by any generic image attachments (back-compat).
+      const refs = [
+        ...(videoCharacterRef ? [videoCharacterRef] : []),
+        ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
+      ];
+      // A music video has no spoken narrator → never append the narration cue in that mode.
+      const wantNarration = videoMode === 'documentary' && (videoNarration || (videoMyVoiceNarration && hasTrainedVoice));
+      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${wantNarration ? t.narrationCue : ''}`;
       setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
       setInput(''); setAttachments([]);
-      // Storyboard-FIRST: plan the 6 scenes + a frame each for the user to review;
-      // the approved frames then anchor the full render (createStoryboard → renderFilm).
-      await createStoryboard(filmPrompt, refs, videoOrientation);
+      // Storyboard-FIRST: plan the scenes + a frame each for the user to review; the
+      // approved frames then anchor the full render. Music Video Mode is forced 9:16
+      // vertical so the storyboard frames match the full-screen mobile render.
+      const sbOrientation = videoMode === 'musicvideo' ? 'vertical' : videoOrientation;
+      await createStoryboard(filmPrompt, refs, sbOrientation);
       return;
     }
 
@@ -1454,37 +1947,54 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // audio. A direct audio attachment also works (skips TTS). One long request → the
     // synced master, rendered inline like any other video result.
     if (mode === 'lipsync') {
+      // Output format the user picked: presenter dimension + the result player's box.
+      const lipOrientation = lipFormat === '9:16' ? 'vertical' : lipFormat === '1:1' ? 'square' : 'landscape';
+      const lipResultOrientation: 'landscape' | 'vertical' = lipFormat === '16:9' ? 'landscape' : 'vertical';
       // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
       const audioAtt = attachments.find((a) => isAudio(a.mimeType));
-      // PRESENTER — no face photo but a typed script → a consistent stock avatar
-      // speaks it in the CLONED Georgian voice (audio-driven HeyGen). START + POLL,
-      // mobile-safe. (With a photo, fall through to the existing talking-photo flow.)
-      if (!faceAtt && text) {
+      // PRESENTER — no face photo AND no chosen preset, but a typed script → a
+      // consistent stock avatar speaks it in the CLONED Georgian voice (audio-driven
+      // HeyGen). START + POLL, mobile-safe. (A face OR a preset falls through to the
+      // talking-photo flow below.)
+      if (!faceAtt && !lipPreset && text) {
         setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: t.generatingLipsync, genKind: 'lipsync' }]);
         setInput(''); setAttachments([]); setBusy(true);
         try {
-          const startRes = await fetch('/api/heygen/presenter', {
+          // Two-phase START (each request stays well under the gateway timeout):
+          // A) synthesize the cloned-voice audio, B) submit it to HeyGen → videoId.
+          const synRes = await fetch('/api/heygen/presenter', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ text, orientation: videoOrientation, gender: 'female' }),
+            // Honour the panel's Voice (Female/Male) + Format selections.
+            body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
-          const sj = (await startRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string };
+          let sj: { success?: boolean; videoId?: string } = {};
+          if (syn.success && syn.audioUrl) {
+            const genRes = await fetch('/api/heygen/presenter', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation }),
+            });
+            sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
+          }
           let url: string | null = null;
+          let failReason: string | null = null;
           if (sj.success && sj.videoId) {
-            for (let i = 0; i < 60 && !url; i++) { // ~6 min of quick polls
+            for (let i = 0; i < 90 && !url && !failReason; i++) { // ~9 min of quick polls
               if (!mine()) return;
               await new Promise((r) => setTimeout(r, 6000));
               const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(sj.videoId)}`, { credentials: 'include', signal: ac.signal });
-              const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-              if (pj.done) { url = pj.url ?? null; break; }
+              const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+              // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
+              if (pj.done) { if (pj.url) url = pj.url; else failReason = pj.error || t.lipsyncFailed; break; }
             }
           }
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync' } : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` };
+            if (last && last.role === 'assistant') next[next.length - 1] = url ? { role: 'assistant', text: '', videoUrl: url, genKind: 'lipsync', orientation: lipResultOrientation } : { role: 'assistant', text: `⚠️ ${failReason || t.lipsyncFailed}` };
             return next;
           });
         } catch {
@@ -1495,21 +2005,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }
         return;
       }
-      if (!faceAtt || (!text && !audioAtt)) {
+      if ((!faceAtt && !lipPreset) || (!text && !audioAtt)) {
         setMessages((prev) => [...prev, { role: 'assistant', text: t.lipsyncNeedFiles }]);
         return;
       }
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
+      // Show the chosen face in the user bubble (uploaded attachment OR preset thumb).
+      const bubbleMedias: Media[] = attachments.length ? attachments : (lipPreset ? [{ dataUrl: lipPreset, mimeType: 'image/jpeg' }] : []);
+      const chosenPreset = lipPreset;
+      setMessages((prev) => [...prev, { role: 'user', text, ...(bubbleMedias.length ? { medias: bubbleMedias } : {}) }, { role: 'assistant', text: t.generatingLipsync }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
-        const videoUrl = await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType);
+        // A preset is a /public path → uploadBigFile re-fetches it same-origin and
+        // re-hosts to the user's storage, giving the provider a known-good https face.
+        const videoUrl = faceAtt
+          ? await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType)
+          : await uploadBigFile(chosenPreset!, 'image/jpeg');
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
         const startBody = JSON.stringify({
           videoUrl,
           ...(audioUrl ? { audioUrl } : {}),
           ...(text ? { text } : {}),
-          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : {}),
+          ...(lipMyVoice && hasTrainedVoice ? { useMyVoice: true } : { gender: lipGender }),
+          orientation: lipOrientation, // honour the Format selector (9:16 / 16:9 / 1:1) in the HeyGen render
         });
         // START the job (returns fast) → poll in SHORT requests (mobile-safe). The
         // SadTalker provider intermittently crashes (Pillow 'ANTIALIAS' on some of its
@@ -1547,7 +2065,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const last = next[next.length - 1];
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
-              ? { role: 'assistant', text: '', videoUrl: resultUrl }
+              ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
               : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
@@ -1570,7 +2088,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, lipMyVoice, hasTrainedVoice, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -1997,7 +2515,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const el = e.currentTarget;
           setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
         }}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-3 pt-1"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pb-3 pt-1"
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
@@ -2053,33 +2571,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="space-y-1.5">
                   <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={m.imageUrl} alt="generated" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
+                    <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
                   </button>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => void dl(m.imageUrl!, 'myavatar-image.png')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
                     <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
                     <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Sparkles size={13} /> {t.upscaleBtn}
                     </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
                     {/* Edit → load this image as the img2img source. */}
                     <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Pencil size={13} /> {t.editImage}
                     </button>
                   </div>
@@ -2093,7 +2611,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         {tile.status === 'done' && tile.url ? (
                           <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={tile.url} alt="variation" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
+                            <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
                           </button>
                         ) : tile.status === 'failed' ? (
                           <div className="flex h-full w-full items-center justify-center text-app-danger/70"><X size={18} /></div>
@@ -2105,7 +2623,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                   {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
                     <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <RotateCcw size={13} /> {t.regenerate}
                     </button>
                   )}
@@ -2119,17 +2637,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <button
                       type="button"
                       onClick={() => void dl(m.audioUrl!, 'myavatar-track.mp3')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
                     <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
                     {m.regen && (
                       <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
@@ -2141,20 +2659,75 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   {/* #t=0.1 makes the browser paint a real frame as the poster (not a
                       black box); preload=metadata forces that frame to load up front. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl bg-black/90 ring-1 ring-app-border/10" />
+                  {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
+                      pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className={`${(m.orientation ?? videoOrientation) === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : 'aspect-video w-full'} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                     >
                       <Download size={13} /> {t.imgDownload}
                     </button>
                     <button type="button" onClick={() => void share(m.videoUrl!, 'myavatar-video.mp4')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
                   </div>
+                  {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
+                      shown once the film captured its landed clips + brief. */}
+                  {m.filmClips && m.filmClips.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={remixDrafts[i] ?? ''}
+                          onChange={(e) => setRemixDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if ((remixDrafts[i] ?? '').trim()) setRemixPreviewIdx(i); } }}
+                          placeholder={t.remixPlaceholder}
+                          disabled={remixBusyIdx !== null}
+                          className="min-w-0 flex-1 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRemixPreviewIdx(i)}
+                          disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+                        >
+                          {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
+                        </button>
+                      </div>
+                      {/* P10 — preview which scenes change vs reuse, then Confirm/Cancel. */}
+                      {remixPreviewIdx === i && (() => {
+                        const totalScenes = m.filmClips!.length;
+                        const change = parseRemixScenes(remixDrafts[i] ?? '', totalScenes);
+                        const reuse = Array.from({ length: totalScenes }, (_, k) => k + 1).filter((n) => !change.includes(n));
+                        return (
+                          <div className="space-y-2 rounded-xl border border-app-accent/30 bg-app-accent/[0.06] p-3 text-[12px]">
+                            <p className="font-semibold text-app-text">{locale === 'en' ? 'Remix preview' : locale === 'ru' ? 'Предпросмотр ремикса' : 'რემიქსის გადახედვა'}</p>
+                            {change.length > 0 ? (
+                              <p className="text-app-muted">
+                                <span className="font-semibold text-app-accent">{locale === 'en' ? `Scene${change.length > 1 ? 's' : ''} ${change.join(', ')}` : locale === 'ru' ? `Сцен${change.length > 1 ? 'ы' : 'а'} ${change.join(', ')}` : `სცენა ${change.join(', ')}`}</span> {locale === 'en' ? 'will be re-rendered.' : locale === 'ru' ? 'будет перерисована.' : 'გადაირენდერდება.'} {reuse.length > 0 && (locale === 'en' ? `Scenes ${reuse.join(', ')} will be reused.` : locale === 'ru' ? `Сцены ${reuse.join(', ')} будут переиспользованы.` : `სცენები ${reuse.join(', ')} ხელახლა გამოიყენება.`)}
+                              </p>
+                            ) : (
+                              <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                              <button type="button" onClick={() => { setRemixPreviewIdx(null); void remixFilm(i); }}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]">
+                                <Check size={13} /> {locale === 'en' ? 'Confirm' : locale === 'ru' ? 'Подтвердить' : 'დადასტურება'}
+                              </button>
+                              <button type="button" onClick={() => setRemixPreviewIdx(null)}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-medium text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90">
+                                {locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               )}
               {(() => {
@@ -2187,7 +2760,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {kind === 'video' ? (
                         // The Master-Prompt Director's Console — the 9-agent crew,
                         // live, driven by the real film-pipeline matrix.
-                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} />
+                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} />
                       ) : (
                         <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
                       )}
@@ -2210,7 +2783,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       />
                       <div className="flex items-center justify-end gap-1.5">
                         <button type="button" onClick={cancelEdit} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text">{locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}</button>
-                        <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
+                        <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
                       </div>
                     </div>
                   );
@@ -2238,22 +2811,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => startEdit(i)}
                     aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
                     title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-app-muted/70 transition-colors hover:bg-app-border/15 hover:text-app-accent"
+                    className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md text-app-muted transition-colors hover:bg-app-border/15 hover:text-app-accent"
                   >
-                    <Pencil size={12} />
+                    <Pencil size={13} />
                   </button>
                 </div>
               )}
               {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
                   Like/Dislike, per the one-window spec. */}
               {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
-                <div className="mt-1 flex items-center gap-0.5 text-app-muted">
+                <div className="mt-1 flex items-center gap-1.5 text-app-muted">
                   <button
                     type="button"
                     onClick={() => void speakMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
                     title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {speakingIdx === i
                       ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
@@ -2264,7 +2837,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void copyMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
                     title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -2273,7 +2846,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'up', m.text)}
                     aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
                     title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsUp size={13} />
                   </button>
@@ -2282,7 +2855,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'down', m.text)}
                     aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
                     title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsDown size={13} />
                   </button>
@@ -2292,7 +2865,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       onClick={() => regenerateChat()}
                       aria-label={t.regenerate}
                       title={t.regenerate}
-                      className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent"
+                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent"
                     >
                       <RotateCcw size={13} />
                     </button>
@@ -2322,7 +2895,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           aria-label={t.scrollDown}
           title={t.scrollDown}
           className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 104px)' }}
+          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${Math.min(composerH, 180) + 12}px)` }}
         >
           <ChevronDown size={18} />
         </button>
@@ -2330,10 +2903,36 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div className="shrink-0 pt-1">
+      <div ref={composerRef} className="shrink-0 pt-1">
+        {/* P5 — Chat controls: response language + model tier, and quick preset prompts. */}
+        {mode === 'chat' && (
+          <div className="mb-2 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reply in' : locale === 'ru' ? 'Ответ на' : 'პასუხი'}:</span>
+              {([['auto', locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'], ['ka', 'ქართ.'], ['en', 'EN'], ['ru', 'RU']] as const).map(([v, label]) => (
+                <Chip key={v} active={chatLang === v} onClick={() => setChatLang(v)}>{label}</Chip>
+              ))}
+              <span className="ml-1 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Model' : locale === 'ru' ? 'Модель' : 'მოდელი'}:</span>
+              <Chip active={chatTier === 'standard'} onClick={() => setChatTier('standard')}>Avatar G</Chip>
+              <Chip active={chatTier === 'pro'} onClick={() => setChatTier('pro')}>Avatar G Pro</Chip>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['🎬', 'შექმენი ვიდეო'],
+                ['🖼️', 'შექმენი სურათი'],
+                ['🎵', 'შექმენი მუსიკა'],
+              ] as const).map(([emoji, label]) => (
+                <button key={label} type="button" onClick={() => { setInput(label); taRef.current?.focus(); }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 bg-app-elevated/50 px-3 py-1.5 text-[12px] font-medium text-app-text transition hover:bg-app-elevated active:scale-[0.98]">
+                  <span>{emoji}</span> {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
             never covered and the input stays reachable; on desktop (sm:) they're always
-            open. When open on mobile they're capped to 45vh and scroll internally. */}
+            open. When open on mobile they're capped to 58dvh (keyboard-aware) and scroll internally. */}
         {mode !== 'chat' && (
           <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
             className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/12 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition active:scale-[0.99] sm:hidden">
@@ -2341,7 +2940,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        <div className={`${optionsOpen ? 'max-h-[45vh] overflow-y-auto pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -2385,25 +2984,111 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
               </div>
             </div>
+            {/* P7 — Negative prompt (expandable) */}
+            <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <button type="button" onClick={() => setImgNegativeOpen((v) => !v)} aria-expanded={imgNegativeOpen}
+                className="flex w-full items-center justify-between text-[12.5px] font-semibold text-app-text">
+                <span className="inline-flex items-center gap-1.5">🚫 {locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
+                <ChevronDown size={15} className={`transition-transform ${imgNegativeOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {imgNegativeOpen && (
+                <textarea
+                  value={imgNegative}
+                  onChange={(e) => setImgNegative(e.target.value)}
+                  placeholder={locale === 'en' ? 'What to avoid in the image…' : locale === 'ru' ? 'Что исключить из изображения…' : 'რა ავიცილოთ სურათში…'}
+                  rows={2}
+                  className="mt-2 w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none placeholder:text-app-muted/60 focus:border-app-accent/50"
+                />
+              )}
+            </div>
           </div>
         )}
 
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
         {mode === 'lipsync' && (
           <div className="mb-2 space-y-2">
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🧑 {locale === 'en' ? 'Character photo' : locale === 'ru' ? 'Фото персонажа' : 'პერსონაჟის ფოტო'}</span>
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
-                  <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType) || isVideo(a.mimeType)) ? (locale === 'en' ? 'Photo ✓' : locale === 'ru' ? 'Фото ✓' : 'ფოტო ✓') : (locale === 'en' ? 'Attach' : locale === 'ru' ? 'Прикрепить' : 'მიამაგრე')}
-                </button>
+            {(() => {
+              const face = attachments.find((a) => isImage(a.mimeType) || isVideo(a.mimeType));
+              const presetSrc = !face ? lipPreset : null; // a chosen preset stands in as the face
+              const ready = !!face || !!presetSrc;
+              return (
+                <div role="button" tabIndex={0} onClick={() => lipsyncFaceRef.current?.click()}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lipsyncFaceRef.current?.click(); } }}
+                  className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${ready ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                  {ready ? (
+                    <>
+                      {face && !isImage(face.mimeType) ? (
+                        <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-app-bg/60 text-app-accent ring-1 ring-app-accent/40"><Film size={18} /></span>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={face ? face.dataUrl : presetSrc!} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                      )}
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
+                      <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={16} /></span>
+                      <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Character photo' : locale === 'ru' ? 'Фото персонажа' : 'პერსონაჟის ფოტო'}</span>
+                      <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload a face — or pick a preset below' : locale === 'ru' ? 'загрузите лицо — или выберите пресет ниже' : 'ატვირთე სახე — ან აირჩიე მზა ქვემოთ'}</span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+            {/* P8 — built-in avatar gallery: tap to use as the talking face (no upload). */}
+            <div>
+              <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Or pick an avatar' : locale === 'ru' ? 'Или выберите аватар' : 'ან აირჩიე ავატარი'}</span>
+              <div className="grid grid-cols-6 gap-1.5">
+                {AVATAR_PRESETS.map((p, i) => {
+                  const selected = lipPreset === p.src;
+                  return (
+                    <button key={p.src} type="button" aria-pressed={selected} aria-label={`Avatar ${i + 1}`}
+                      onClick={() => {
+                        if (selected) { setLipPreset(null); return; }
+                        setLipPreset(p.src);
+                        setLipGender(p.gender); // match the cloned voice to the face
+                        setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)));
+                      }}
+                      className={`relative aspect-square overflow-hidden rounded-lg ring-1 transition active:scale-95 ${selected ? 'ring-2 ring-app-accent' : 'ring-app-border/15 hover:ring-app-accent/50'}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.src} alt="" loading="lazy" className="h-full w-full object-cover" />
+                      {selected && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-app-accent/30">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-app-accent text-app-bg"><Check size={12} /></span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-              <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Attach a face photo, then type what it should say below — the photo speaks it.' : locale === 'ru' ? 'Прикрепите фото лица, затем введите текст ниже — фото это произнесёт.' : 'მიამაგრე სახის ფოტო და ქვემოთ ჩაწერე ტექსტი — ფოტო ალაპარაკდება.'}</span>
+            </div>
+            <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Pick or attach a face → type what it says (it speaks). Or leave it empty — an AI presenter speaks your script in the cloned voice.' : locale === 'ru' ? 'Выберите или прикрепите лицо → введите текст (оно произнесёт). Или оставьте пустым — AI-ведущий озвучит ваш текст клонированным голосом.' : 'აირჩიე ან მიამაგრე სახე → ჩაწერე ტექსტი (ალაპარაკდება). ან დატოვე ცარიელი — AI წამყვანი წაიკითხავს კლონირებული ხმით.'}</span>
+            {/* Voice (cloned Georgian Female/Male) + output Format — always available. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
+                <div className="mt-1.5 flex gap-1.5">
+                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი']] as const).map(([g, label]) => (
+                    <button key={g} type="button" onClick={() => setLipGender(g)} aria-pressed={lipGender === g}
+                      className={`flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+                <div className="mt-1.5 flex gap-1.5">
+                  {(['9:16', '16:9', '1:1'] as const).map((f) => (
+                    <button key={f} type="button" onClick={() => setLipFormat(f)} aria-pressed={lipFormat === f}
+                      className={`flex-1 rounded-lg px-1.5 py-2 text-[11px] font-semibold tabular-nums transition active:scale-[0.98] ${lipFormat === f ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{f}</button>
+                  ))}
+                </div>
+              </div>
             </div>
             {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'My audio' : locale === 'ru' ? 'Моё аудио' : 'ჩემი აუდიო'}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {attachments.some((a) => isAudio(a.mimeType)) && (
                     <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
@@ -2417,27 +3102,76 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* VIDEO — a clear, labeled control panel so every setting has an obvious place:
-            character · what they say · length · music · voice · effects · format. */}
+        {/* VIDEO — v330 elite, responsive multi-slot panel: master audio MODE,
+            Character Reference + Audio Track ingest slots, length/format, mode-aware
+            audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
-            {/* 1 · Character */}
+            {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
             <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🧑 {locale === 'en' ? 'Character' : locale === 'ru' ? 'Персонаж' : 'პერსონაჟი'}</span>
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${attachments.some((a) => isImage(a.mimeType)) ? 'bg-app-accent text-app-bg' : 'bg-app-bg/50 text-app-text ring-1 ring-app-border/20 hover:bg-app-bg/70'}`}>
-                  <Upload size={13} /> {attachments.some((a) => isImage(a.mimeType)) ? t.charPhotoOn : t.charPhoto}
-                </button>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {([
+                  ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'song leads · no narrator' : locale === 'ru' ? 'песня ведёт · без диктора' : 'სიმღერა წამყვანი · დიქტორის გარეშე'],
+                  ['documentary', Mic, locale === 'en' ? 'Documentary' : locale === 'ru' ? 'Документальный' : 'დოკუმენტური', locale === 'en' ? 'narrator leads · music ducked' : locale === 'ru' ? 'диктор ведёт · музыка тише' : 'დიქტორი წამყვანი · მუსიკა ჩაწეული'],
+                ] as const).map(([id, Icon, label, sub]) => {
+                  const on = videoMode === id;
+                  return (
+                    <button key={id} type="button" onClick={() => setVideoMode(id)}
+                      className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${on ? 'border-app-accent/60 bg-app-accent/12 ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 hover:bg-app-bg/60'}`}>
+                      <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${on ? 'text-app-accent' : 'text-app-text'}`}><Icon size={14} /> {label}</span>
+                      <span className="text-[10.5px] leading-tight text-app-muted">{sub}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* 2 · Dialogue */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
-              <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
-                placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
-                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            {/* 2 · ASSET SLOTS — Character Reference + Audio Track ingest (responsive 2-up) */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Character Reference slot */}
+              <div role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charFileRef.current?.click(); } }}
+                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                {videoCharacterRef ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={videoCharacterRef} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Character locked' : locale === 'ru' ? 'Персонаж зафиксирован' : 'პერსონაჟი ჩაკეტილია'}</span>
+                    <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={16} /></span>
+                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Character ref' : locale === 'ru' ? 'Реф. персонажа' : 'პერსონაჟის რეფ.'}</span>
+                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'lock the identity' : locale === 'ru' ? 'зафиксировать лицо' : 'ჩაკეტე ვინაობა'}</span>
+                  </>
+                )}
+              </div>
+
+              {/* Audio Track ingest slot */}
+              <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoSoundtrackBusy) { e.preventDefault(); audioFileRef.current?.click(); } }}
+                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoSoundtrack ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                {videoSoundtrackBusy ? (
+                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…'}</span></>
+                ) : videoSoundtrack ? (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
+                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
+                    <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack(null); }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
+                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Audio track' : locale === 'ru' ? 'Аудиодорожка' : 'აუდიო ტრეკი'}</span>
+                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload a beat/song' : locale === 'ru' ? 'загрузить бит/песню' : 'ატვირთე ბიტი/სიმღერა'}</span>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* 3 · Length + Format, side by side */}
@@ -2450,33 +3184,87 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               </div>
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
-                <div className="flex items-end gap-3">
-                  <button type="button" onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${videoOrientation === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
-                    <span className={`text-[10.5px] font-medium ${videoOrientation === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}{videoMode === 'musicvideo' && <span className="ml-1 text-[10px] font-normal text-app-muted">· {locale === 'en' ? '9:16 locked' : locale === 'ru' ? '9:16 фикс.' : '9:16 ფიქს.'}</span>}</span>
+                <div className={`flex items-end gap-3 ${videoMode === 'musicvideo' ? 'opacity-70' : ''}`}>
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
+                    <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
                   </button>
-                  <button type="button" onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex flex-col items-center gap-1 transition active:scale-95">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${videoOrientation === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
-                    <span className={`text-[10.5px] font-medium ${videoOrientation === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
+                    <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* 4 · Music & voice */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
-                <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
-                <span className="mx-1 h-4 w-px bg-app-border/15" />
-                <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
-                {hasTrainedVoice && (
-                  <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
-                )}
-              </div>
-            </div>
+            {/* 4 · Audio mix — adapts to the chosen mode (the voice-overlap fix made visible) */}
+            {videoMode === 'documentary' ? (
+              <>
+                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
+                    <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
+                    <span className="mx-1 h-4 w-px bg-app-border/15" />
+                    <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
+                    {hasTrainedVoice && (
+                      <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                    )}
+                  </div>
+                </div>
+                {/* Dialogue — spoken verbatim as the narrator (documentary only). */}
+                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
+                  <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
+                    placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
+                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Vocal gender — steers the ElevenLabs Music singer (big touch targets) */}
+                <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {([
+                      ['female', '👩‍🎤', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
+                      ['male', '👨‍🎤', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'მამრობითი'],
+                    ] as const).map(([id, emoji, label]) => {
+                      const on = videoVocalGender === id;
+                      return (
+                        <button key={id} type="button" onClick={() => setVideoVocalGender(id)}
+                          className={`flex min-h-[52px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-[14px] font-semibold transition active:scale-[0.98] ${on ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-text hover:bg-app-bg/60'}`}>
+                          <span className="text-[19px] leading-none">{emoji}</span> {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Song-master info */}
+                <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/8 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">🎚 {locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
+                  <p className="text-[11px] leading-relaxed text-app-muted">
+                    {locale === 'en'
+                      ? 'The song rules the master — no narrator, backing ducked −12 dB under the vocal, forced 9:16 vertical. Upload a beat in the Audio Track slot, or one is generated for you.'
+                      : locale === 'ru'
+                        ? 'Песня — мастер: без диктора, фон −12 дБ под вокал, вертикаль 9:16. Загрузите бит в слот «Аудиодорожка» — или он сгенерируется.'
+                        : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონი −12 dB ვოკალის ქვეშ, 9:16 ვერტიკალური. ატვირთე ბიტი „აუდიო ტრეკში“, ან დაგენერირდება.'}
+                  </p>
+                </div>
+                {/* P1 · Lip-sync the singer to the vocal (default ON; fail-open) */}
+                <button type="button" onClick={() => setVideoLipsync((v) => !v)} aria-pressed={videoLipsync}
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoLipsync ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/20 bg-app-bg/40'}`}>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
+                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'A lip-sync pass after the film assembles (adds time).' : locale === 'ru' ? 'Липсинк после сборки фильма (дольше).' : 'ლიპსინკი ფილმის აწყობის შემდეგ (დრო ემატება).'}</span>
+                  </span>
+                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoLipsync ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                  </span>
+                </button>
+              </>
+            )}
 
             {/* 5 · Effect & transition */}
             <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
@@ -2503,8 +3291,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
                 <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
               </div>
+              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Genre' : locale === 'ru' ? 'Жанр' : 'ჟანრი'}</span>
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
+              </div>
+              {/* P6 — Duration + Tempo */}
+              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
+              <div className="flex gap-1.5">
+                {([15, 30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}s</Chip>)}
+              </div>
+              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
+              <div className="flex gap-1.5">
+                {([['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'], ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'], ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი']] as const).map(([v, label]) => (
+                  <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>
+                ))}
               </div>
             </div>
             <VoiceTrainer lang={locale} onReady={setHasTrainedVoice} />
@@ -2534,26 +3334,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* Custom lyrics — the exact sung words. Shown for vocal tracks AND when singing
-            with the trained voice (the lyrics are what your voice will sing). */}
-        {mode === 'music' && (() => {
-          const trained = useMyVoice && hasTrainedVoice;
-          if (musicInstrumental && !trained) return null;
-          return (
-            <div className="mb-2 space-y-1.5">
-              <textarea
-                value={musicLyrics}
-                onChange={(e) => setMusicLyrics(e.target.value)}
-                rows={2}
-                placeholder={trained ? t.voiceLyricsPlaceholder : t.lyricsPlaceholder}
-                className="w-full resize-none rounded-xl bg-app-elevated/60 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/60 focus:bg-app-elevated"
-              />
-              <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/15 px-3 py-1 text-[11px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
-                {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
-              </button>
-            </div>
-          );
-        })()}
+        {/* Custom lyrics — the exact sung words. Only for vocal tracks WITHOUT a trained
+            voice; the trained-voice card above owns lyrics in that flow (no duplicate editor). */}
+        {mode === 'music' && !musicInstrumental && !hasTrainedVoice && (
+          <div className="mb-2 space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ტექსტი'}</span>
+            <textarea
+              value={musicLyrics}
+              onChange={(e) => setMusicLyrics(e.target.value)}
+              rows={2}
+              placeholder={t.lyricsPlaceholder}
+              className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
+            />
+            <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/15 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
+              {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
+            </button>
+          </div>
+        )}
 
         </div>{/* /collapsible options */}
 
@@ -2572,7 +3369,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </span>
                 )}
                 <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
-                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text"><X size={11} /></button>
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
               </div>
             ))}
           </div>
@@ -2591,6 +3388,48 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           }
           e.target.value = '';
         }} />
+        {/* v330 — dedicated Character Reference picker (single image, downscaled + locked). */}
+        <input ref={charFileRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const dataUrl = await fileToDataUrl(f);
+            setVideoCharacterRef(await downscaleDataUrl(dataUrl));
+          } catch { /* ignore unreadable file */ }
+        }} />
+        {/* v330 — dedicated Audio Track ingest (single beat/song → uploadBigFile → master bed). */}
+        <input ref={audioFileRef} type="file" accept="audio/*" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          setVideoSoundtrackBusy(true);
+          try {
+            const dataUrl = await fileToDataUrl(f);
+            const url = await uploadBigFile(dataUrl, f.type || 'audio/mpeg');
+            if (url) {
+              setVideoSoundtrack({ name: f.name, url });
+              setVideoMode('musicvideo'); // an uploaded soundtrack implies music-video intent
+            }
+          } catch { /* ignore */ } finally {
+            setVideoSoundtrackBusy(false);
+          }
+        }} />
+        {/* v330 — Avatar/lip-sync face: scoped single-image picker → replaces any prior
+            face image in the attachment tray (the talking-photo flow reads attachments). */}
+        <input ref={lipsyncFaceRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const small = await downscaleDataUrl(await fileToDataUrl(f));
+            setLipPreset(null); // an uploaded face supersedes a chosen preset
+            setAttachments((prev) => [
+              ...prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)),
+              { dataUrl: small, mimeType: f.type || 'image/jpeg' },
+            ]);
+          } catch { /* ignore unreadable file */ }
+        }} />
         <div className="rounded-[24px] bg-app-elevated px-3 py-2">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
@@ -2599,6 +3438,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+            onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder}
@@ -2609,7 +3449,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mt-1 flex items-center gap-1">
             {/* [+] add / attach */}
             <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Plus size={20} />
             </button>
 
@@ -2653,14 +3493,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
             {busy ? (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
                 <Square size={15} className="fill-current" />
               </button>
             ) : recording ? (
               // While dictating, a STOP that never disappears — even as live text
               // arrives — so recording is always controllable.
               <button type="button" onClick={() => void toggleMic()} aria-label={t.stop} title={t.stop}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
                 <Square size={16} />
               </button>
             ) : (
@@ -2668,12 +3508,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
                   <Mic size={19} />
                 </button>
                 {input.trim() && (
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}
@@ -2769,7 +3609,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <span className="tabular-nums text-app-muted">· {Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100))}% · {fmtClock(elapsed)}</span>
                 </p>
               </div>
-              <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+              <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
                 <X size={18} />
               </button>
             </div>
@@ -2809,11 +3649,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         <StoryboardOverlay
           sb={storyboard}
           t={t}
+          locale={locale}
           busy={busy}
           regenningOrdinal={regenningOrdinal}
-          onRegenScene={(ordinal) => void regenScene(ordinal)}
+          onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}
           onView={(url) => setLightbox(url)}
+          onDelete={deleteScene}
+          onMove={moveScene}
+          onAddScene={addScene}
           onGenerate={() => {
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
@@ -2850,7 +3694,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <aside onClick={(e) => e.stopPropagation()} className="flex h-full w-80 max-w-[86vw] flex-col bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.35)] animate-[slideIn_0.2s_ease-out]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
             <div className="flex items-center justify-between px-4 py-3.5">
               <span className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-app-text"><History size={16} /> {t.historyTitle}</span>
-              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="close" className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
             </div>
             <div className="px-2 pb-2">
               <button type="button" onClick={startNewConversation} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-medium text-app-accent transition-colors hover:bg-app-elevated">

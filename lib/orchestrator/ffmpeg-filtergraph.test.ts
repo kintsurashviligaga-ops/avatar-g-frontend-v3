@@ -39,6 +39,45 @@ describe('buildFilterComplex', () => {
     expect(g.filter).toContain('vignette='); // master vignette
   });
 
+  test('lut3dPath → a lut3d=file pass is injected into the master grade (after eq, before vignette)', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30, lut3dPath: '/tmp/asm_x/myavatar-night-neon-purple-gold.cube' });
+    expect(g.filter).toContain("lut3d=file='/tmp/asm_x/myavatar-night-neon-purple-gold.cube'");
+    // ordering: base eq grade → lut3d → vignette
+    const order = g.filter.indexOf('eq=contrast=1.04') < g.filter.indexOf('lut3d=')
+      && g.filter.indexOf('lut3d=') < g.filter.indexOf('vignette=');
+    expect(order).toBe(true);
+  });
+
+  test('no lut3dPath → no lut3d pass (base colorbalance grade only)', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).not.toContain('lut3d');
+  });
+
+  test('lut3d path with colons (Windows-ish) is escaped for the filtergraph', () => {
+    const g = buildFilterComplex({ nClips: 2, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30, lut3dPath: 'C:/tmp/grade.cube' });
+    expect(g.filter).toContain("lut3d=file='C\\:/tmp/grade.cube'"); // ':' escaped
+  });
+
+  test('brand overlay composites at the LAST input index (after video + audio)', () => {
+    // 5 clips (0-4) + voice (5) + music (6) → brand PNG is the next input = index 7.
+    const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasBrandOverlay: true });
+    expect(g.filter).toContain('[7:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.vmap).toBe('[vbrand]'); // final map is the brand-composited video
+  });
+
+  test('brand overlay index tracks the present audio inputs (no voice → lower index)', () => {
+    // 3 clips (0-2) + music only (3) → brand PNG = index 4 (voice/sfx absent).
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasBrandOverlay: true });
+    expect(g.filter).toContain('[4:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.vmap).toBe('[vbrand]');
+  });
+
+  test('no brand overlay → no overlay filter, vmap stays the graded video', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).not.toContain('overlay=0:0');
+    expect(g.vmap).toBe('[vfinal]');
+  });
+
   test('voice + music → narration-forward: lifted voice, lowered + hard-ducked bed', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
     expect(g.filter).toContain('sidechaincompress');
@@ -96,5 +135,62 @@ describe('buildFilterComplex', () => {
   test('cpu path never emits minterpolate even at fps 60', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: false, hasMusic: false, hasSfx: false, fps: 60, duckPct: 30 });
     expect(g.filter).not.toContain('minterpolate');
+  });
+
+  // ── MUSIC VIDEO / SONG-MASTER MODE (v330) ──────────────────────────────────
+  test('music video mode → song rules the master, narrator OMITTED entirely', () => {
+    // The classic clash: a narrator over a song. In music-video mode the voice is
+    // dropped from the mix even though it is present (and its input index reserved).
+    const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true });
+    // music is index 6 (5 clips 0-4, voice 5, music 6) → song is the master at unity
+    expect(g.filter).not.toContain('volume=1.25'); // NO voice lift — voice is gone
+    expect(g.filter).not.toContain('[vkey]');       // voice never split into the mix
+    expect(g.filter).not.toContain('[vraw]');
+    expect(g.filter).not.toContain('sidechaincompress'); // no SFX → no duck needed
+    expect(g.amap).toBe('[aout]'); // the song still flows through the master chain
+  });
+
+  test('music video mode + SFX → secondary bed sidechain-ducked under the SONG (~−12dB)', () => {
+    const g = buildFilterComplex({ nClips: 4, hasVoice: true, hasMusic: true, hasSfx: true, fps: 24, duckPct: 30, musicVideo: true });
+    expect(g.filter).toContain('asplit=2[songkey][songmaster]'); // song keys the duck
+    expect(g.filter).toContain('[songkey]sidechaincompress');     // SFX ducked under the song
+    expect(g.filter).toContain('ratio=20');                       // deep, ~−12dB duck
+    expect(g.filter).toContain('[songmaster][sfxduck]amix=inputs=2'); // song stays on top
+    expect(g.filter).not.toContain('volume=1.25'); // narrator still omitted
+    expect(g.amap).toBe('[aout]');
+  });
+
+  test('music video mode reserves the voice input index → brand overlay index unshifted', () => {
+    // 3 clips (0-2) + voice (3, reserved/omitted) + music (4) → brand PNG = index 5.
+    const g = buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true });
+    expect(g.filter).toContain('[5:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.vmap).toBe('[vbrand]');
+  });
+
+  test('default (no musicVideo flag) → unchanged narration-forward mix', () => {
+    // Regression guard: without the flag the documentary mix is byte-for-byte intact.
+    const g = buildFilterComplex({ nClips: 2, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
+    expect(g.filter).toContain('volume=1.25'); // voice still lifted on top
+    expect(g.filter).toContain('sidechaincompress');
+    expect(g.filter).not.toContain('songmaster');
+  });
+
+  // ── MTV-STYLE MUSIC INFO BUG (v330) ────────────────────────────────────────
+  test('music bug → faded, time-gated overlay composited AFTER the brand PNG', () => {
+    // 5 clips (0-4) + music (5) → brand PNG = index 6, music-bug PNG = index 7.
+    const g = buildFilterComplex({ nClips: 5, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true, hasMusicBug: true });
+    // brand waits until the bug fades (~4.4s) so they never collide bottom-left
+    expect(g.filter).toContain("[6:v]overlay=0:0:format=auto:enable='gte(t,4.4)'[vbrand]");
+    expect(g.filter).toContain('[7:v]format=rgba,fade=t=in'); // bug PNG alpha-faded
+    expect(g.filter).toContain("[vbrand][mbug]overlay=0:0:enable='between(t,0,4.4)'"); // bug over the opening
+    expect(g.vmap).toBe('[vmbug]');
+  });
+
+  test('music bug without a brand overlay → bug takes the first overlay input index', () => {
+    // 3 clips (0-2) + music (3) → music-bug PNG = index 4 (no brand PNG before it).
+    const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasMusicBug: true });
+    expect(g.filter).toContain('[4:v]format=rgba,fade=t=in');
+    expect(g.filter).not.toContain('[vbrand]');
+    expect(g.vmap).toBe('[vmbug]');
   });
 });

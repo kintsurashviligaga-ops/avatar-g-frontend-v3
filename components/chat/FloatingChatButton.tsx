@@ -5,14 +5,24 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { CallScreen } from '@/components/chat/grok/CallScreen'
+import { useKeyboardResilience } from '@/hooks/useKeyboardResilience'
 
-export function FloatingChatButton() {
+export function FloatingChatButton({ hidden = false }: { hidden?: boolean }) {
   const { language } = useLanguage()
   const pathname = usePathname()
   const [callOpen, setCallOpen] = useState(false)
+  const { keyboardOffset } = useKeyboardResilience()
 
   // Hide on Agent G chat page (already in fullscreen chat)
   if (pathname?.includes('/services/agent-g')) return null
+  // Hide while the shell drawer is open — these float at z-[9999], above the
+  // drawer (z-260), so they'd otherwise overlap it and swallow taps meant for it.
+  if (hidden) return null
+  // Hide while the soft keyboard is open. These are position:fixed at the bottom,
+  // so on a non-immersive page with a bottom composer (e.g. /chat) they float over
+  // the composer's corner controls (mic/send/attach) and swallow taps. The keyboard
+  // being open is exactly when the user is interacting with that composer.
+  if (keyboardOffset > 0) return null
 
   const chatHref = '/' + language + '/services/agent-g'
   const callLabel = language === 'ka' ? 'Agent G-ს დარეკვა' : language === 'ru' ? 'Позвонить Agent G' : 'Call Agent G'

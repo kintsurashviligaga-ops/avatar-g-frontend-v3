@@ -46,8 +46,9 @@ const SUPPORTED_LOCALES = new Set(['ka', 'en', 'ru']);
 export const viewport: Viewport = {
 	width: 'device-width',
 	initialScale: 1,
-	maximumScale: 1,
-	userScalable: false,
+	// v330 — pinch-zoom is NOT disabled (WCAG 1.4.4): low-vision users must be able to
+	// magnify. iOS focus auto-zoom is already prevented by the 16px input rule in CSS,
+	// so the zoom lock was both an accessibility failure and unnecessary.
 	viewportFit: 'cover',
 	interactiveWidget: 'resizes-content',
 	themeColor: '#000000',

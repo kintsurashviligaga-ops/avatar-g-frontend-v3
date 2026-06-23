@@ -469,7 +469,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
       return;
     }
 
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: Event) => {
       const node = event.target as Node;
       if (barRef.current?.contains(node)) {
         return;
@@ -484,10 +484,14 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
     };
 
     window.addEventListener('mousedown', onPointerDown);
+    // iOS Safari doesn't reliably synthesize mousedown for taps on non-interactive
+    // background regions, so the outside-tap close needs a touch listener too.
+    window.addEventListener('touchstart', onPointerDown);
     window.addEventListener('keydown', onEscape);
 
     return () => {
       window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('touchstart', onPointerDown);
       window.removeEventListener('keydown', onEscape);
     };
   }, [switcherOpen]);
@@ -1490,7 +1494,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
                         setCommandLanguage(option.id);
                         setLocale(option.id);
                       }}
-                      className={`rounded-xl px-2 py-1 text-[11px] font-semibold transition ${
+                      className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-3 py-1 text-[11px] font-semibold transition ${
                         active
                           ? 'bg-cyan-500/25 text-cyan-100'
                           : 'text-white/75 hover:bg-white/10 hover:text-white'
@@ -1624,7 +1628,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
           role="presentation"
         >
           <div
-            className="mx-auto flex h-full w-full max-w-6xl flex-col px-4 pb-[max(env(safe-area-inset-bottom,0px),20px)] pt-[max(env(safe-area-inset-top,0px),20px)]"
+            className="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col px-4 pb-[max(env(safe-area-inset-bottom,0px),20px)] pt-[max(env(safe-area-inset-top,0px),20px)]"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1688,7 +1692,7 @@ export default function CommandCenterChat({ hideEmptyHint = false }: { hideEmpty
           role="presentation"
         >
           <div
-            className="mx-auto flex h-full w-full max-w-6xl flex-col px-4 pb-[max(env(safe-area-inset-bottom,0px),20px)] pt-[max(env(safe-area-inset-top,0px),20px)]"
+            className="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col px-4 pb-[max(env(safe-area-inset-bottom,0px),20px)] pt-[max(env(safe-area-inset-top,0px),20px)]"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"

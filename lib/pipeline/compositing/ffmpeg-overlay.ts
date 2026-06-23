@@ -14,19 +14,32 @@ import ffmpegStatic from 'ffmpeg-static';
 import { Resvg } from '@resvg/resvg-js';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { NOTO_SANS_B64 } from './font-data';
+import { FIRAGO_REGULAR_B64, FIRAGO_MEDIUM_B64 } from './font-data-firago';
 
-// Font passed to resvg EXPLICITLY as a buffer — Vercel's librsvg ignores @font-face data
-// URIs (renders tofu), but resvg honours an explicit font buffer identically everywhere.
-const FONT_BUFFER = Buffer.from(NOTO_SANS_B64, 'base64');
+// Fonts passed to resvg EXPLICITLY as buffers — Vercel's librsvg ignores @font-face data
+// URIs (renders tofu), but resvg honours explicit font buffers identically everywhere.
+// CRITICAL: loadSystemFonts is false, so a script only renders if its font is bundled.
+// FiraGO (Latin + Cyrillic + Georgian, geometric-humanist) is the cinematic caption family
+// for en / ru / ka; the legacy Latin Noto Sans stays as a final fallback so nothing regresses.
+const FONTS: Array<{ file: string; b64: string }> = [
+  { file: 'overlay-firago-regular.ttf', b64: FIRAGO_REGULAR_B64 },
+  { file: 'overlay-firago-medium.ttf', b64: FIRAGO_MEDIUM_B64 },
+  { file: 'overlay-noto-sans.ttf', b64: NOTO_SANS_B64 },
+];
+// FiraGO Regular registers as family "FiraGO"; the Medium weight as "FiraGO Medium".
+const FONT_TITLE = 'FiraGO Medium'; // headings / lower-third title / chips
+const FONT_BODY = 'FiraGO';         // sub-lines / spec bullets
 
-let cachedFontFile: string | null = null;
-/** Materialize the embedded font to /tmp once → return its path for resvg's fontFiles. */
-function overlayFontFile(): string {
-  if (cachedFontFile && existsSync(cachedFontFile)) return cachedFontFile;
-  const p = join(tmpdir(), 'overlay-noto-sans.ttf');
-  if (!existsSync(p)) writeFileSync(p, FONT_BUFFER);
-  cachedFontFile = p;
-  return p;
+let cachedFontFiles: string[] | null = null;
+/** Materialize the embedded fonts to /tmp once → return their paths for resvg's fontFiles. */
+function overlayFontFiles(): string[] {
+  if (cachedFontFiles && cachedFontFiles.every((p) => existsSync(p))) return cachedFontFiles;
+  cachedFontFiles = FONTS.map(({ file, b64 }) => {
+    const p = join(tmpdir(), file);
+    if (!existsSync(p)) writeFileSync(p, Buffer.from(b64, 'base64'));
+    return p;
+  });
+  return cachedFontFiles;
 }
 
 export interface MarketingOverlay {
@@ -35,11 +48,20 @@ export interface MarketingOverlay {
   cta?: string;
   website?: string;
   specs?: string[];
+  /** Caption language → drives font shaping + casing. Auto-detected from the text
+   *  (Georgian Unicode range) when omitted; set explicitly to force a script. */
+  lang?: 'ka' | 'en' | 'ru';
 }
 
 const ACCENT = '#00D2FF';
 
-/** XML-escape an SVG text value. */
+/** Georgian Unicode ranges: Mkhedruli + Asomtavruli + Mtavruli + Nuskhuri. */
+const GEORGIAN_RE = /[Ⴀ-ჿᲐ-Ჿⴀ-⴯]/;
+function hasGeorgian(...parts: Array<string | undefined>): boolean {
+  return parts.some((p) => !!p && GEORGIAN_RE.test(p));
+}
+
+/** XML-escape an SVG text value (generous cap — Georgian copy runs longer than Latin). */
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -47,53 +69,120 @@ function esc(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/\n/g, ' ')
-    .slice(0, 140);
+    .slice(0, 200);
 }
 
-/** Approx text width in px for chip sizing (NotoSans averages ~0.54em). */
-function textW(s: string, fontPx: number): number {
-  return Math.round(s.length * fontPx * 0.56);
+/** Approx rendered text width in px for chip/scrim sizing. Georgian glyphs and tracked
+ *  (letter-spaced) uppercase Latin both advance wider than plain Latin, so account for both. */
+function textW(str: string, fontPx: number, opts?: { ka?: boolean; tracked?: boolean }): number {
+  const adv = opts?.ka ? 0.62 : opts?.tracked ? 0.64 : 0.56;
+  const tracking = opts?.tracked ? fontPx * 0.12 * Math.max(0, str.length - 1) : 0;
+  return Math.round(str.length * fontPx * adv + tracking);
 }
 
-/** Build the full overlay SVG, scaled to the target video w×h (positions adapt to aspect). */
+/** A line of caption text with a soft offset drop-shadow for legibility over ANY footage.
+ *  Implemented as a duplicated dark copy (not feDropShadow) so it renders identically across
+ *  resvg builds — the renderer fails open, so a portable technique avoids silent caption loss.
+ *  `content` must already be esc()'d. */
+function cinematicText(o: {
+  x: number; y: number; size: number; family: string; fill: string; ls: number; lang: string; content: string;
+}): string {
+  const d = Math.max(1, Math.round(o.size * 0.05));
+  const common = `font-size="${o.size}" font-family="${o.family}" letter-spacing="${o.ls}" xml:lang="${o.lang}"`;
+  return (
+    `<text x="${o.x + d}" y="${o.y + d}" ${common} fill="#000000" fill-opacity="0.55">${o.content}</text>` +
+    `<text x="${o.x}" y="${o.y}" ${common} fill="${o.fill}">${o.content}</text>`
+  );
+}
+
+/** Build the full cinematic caption SVG, scaled to the target video w×h.
+ *  Language-aware: Georgian copy keeps its native case + FiraGO Georgian shaping; Latin/
+ *  Cyrillic copy is set in tracked uppercase for a geometric film-title look. Everything sits
+ *  inside an action-safe inset and carries a soft shadow so it lifts off any footage. */
 export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): string {
-  const s = (px: number) => Math.round(px * (h / 1080)); // scale to height
+  // Type scales by the SHORTER edge so captions read consistently on 16:9 and 9:16.
+  const base = Math.min(w, h);
+  const s = (px: number) => Math.round(px * (base / 1080));
+  // Action-safe insets (~5% / 5.5%) so no element crosses the screen safe zone on any aspect.
+  const safeX = Math.round(w * 0.05);
+  const safeY = Math.round(h * 0.055);
+
+  const ka = m.lang ? m.lang === 'ka' : hasGeorgian(m.overlayText, m.cta, m.website, ...(m.specs ?? []));
+  const lang = ka ? 'ka' : m.lang === 'ru' ? 'ru' : 'en';
+  // Latin/Cyrillic → tracked uppercase (geometric, cinematic). Georgian has no uppercase
+  // mapping in this face → keep native case and a gentler track.
+  const cased = (t: string) => (ka ? t : t.toUpperCase());
+  const titleLS = ka ? s(1) : s(3);
+
+  // Height the lower-third reserves (shared so the CTA can sit clear above it).
+  const ltBlockH = m.overlayText ? (m.website ? s(96) : s(70)) : 0;
+
   const els: string[] = [];
 
-  // Lower-third — title + website, bottom-left.
+  // ── defs: accent gradient + left→right scrim ───────────────────────────────
+  els.push(
+    `<defs>` +
+      `<linearGradient id="ltAccent" x1="0" y1="0" x2="0" y2="1">` +
+        `<stop offset="0" stop-color="${ACCENT}"/><stop offset="1" stop-color="#0077B6"/>` +
+      `</linearGradient>` +
+      `<linearGradient id="ltScrim" x1="0" y1="0" x2="1" y2="0">` +
+        `<stop offset="0" stop-color="#05070D" stop-opacity="0.72"/>` +
+        `<stop offset="1" stop-color="#05070D" stop-opacity="0"/>` +
+      `</linearGradient>` +
+    `</defs>`,
+  );
+
+  // ── Lower-third — accent bar + title + website, bottom-left, inside the safe zone ──
   if (m.overlayText) {
-    const y = h - s(154);
-    const bw = Math.min(Math.round(w * 0.62), s(40) + textW(m.overlayText, s(44)) + s(40));
-    els.push(`<rect x="${s(40)}" y="${y}" width="${bw}" height="${s(100)}" rx="${s(14)}" fill="#000000" fill-opacity="0.58"/>`);
-    els.push(`<text x="${s(64)}" y="${y + s(58)}" font-size="${s(44)}" font-family="Noto Sans" fill="#ffffff">${esc(m.overlayText)}</text>`);
-    if (m.website) els.push(`<text x="${s(66)}" y="${y + s(88)}" font-size="${s(22)}" font-family="Noto Sans" fill="${ACCENT}">${esc(m.website)}</text>`);
+    const title = cased(m.overlayText);
+    const titleSize = s(46);
+    const subSize = s(23);
+    const barW = s(6);
+    const gap = s(20);
+    const textX = safeX + barW + gap;
+    const blockTop = h - safeY - ltBlockH;
+    const scrimW = Math.min(
+      Math.round(w * 0.7),
+      textX + Math.max(textW(title, titleSize, { ka, tracked: !ka }), m.website ? textW(m.website, subSize) : 0) + s(48),
+    );
+    els.push(`<rect x="0" y="${blockTop - s(18)}" width="${scrimW}" height="${ltBlockH + s(36)}" fill="url(#ltScrim)"/>`);
+    els.push(`<rect x="${safeX}" y="${blockTop}" width="${barW}" height="${ltBlockH}" rx="${Math.round(barW / 2)}" fill="url(#ltAccent)"/>`);
+    const titleBaseline = blockTop + titleSize;
+    els.push(cinematicText({ x: textX, y: titleBaseline, size: titleSize, family: FONT_TITLE, fill: '#ffffff', ls: titleLS, lang, content: esc(title) }));
+    if (m.website) {
+      els.push(cinematicText({ x: textX, y: titleBaseline + s(34), size: subSize, family: FONT_BODY, fill: ACCENT, ls: s(1), lang: 'en', content: esc(m.website) }));
+    }
   } else if (m.website) {
-    els.push(`<text x="${s(48)}" y="${h - s(56)}" font-size="${s(26)}" font-family="Noto Sans" fill="${ACCENT}">${esc(m.website)}</text>`);
+    els.push(cinematicText({ x: safeX, y: h - safeY, size: s(26), family: FONT_BODY, fill: ACCENT, ls: s(1), lang: 'en', content: esc(m.website) }));
   }
 
-  // Price chip — top-right.
+  // ── Price chip — top-right, inside the safe zone ───────────────────────────
   if (m.priceTag) {
-    const cw = s(40) + textW(m.priceTag, s(40));
-    const x = w - cw - s(40);
-    els.push(`<rect x="${x}" y="${s(40)}" width="${cw}" height="${s(70)}" rx="${s(14)}" fill="${ACCENT}"/>`);
-    els.push(`<text x="${x + s(22)}" y="${s(40) + s(48)}" font-size="${s(40)}" font-family="Noto Sans" fill="#000000">${esc(m.priceTag)}</text>`);
+    const priceSize = s(40);
+    const label = cased(m.priceTag);
+    const cw = s(40) + textW(label, priceSize, { ka, tracked: !ka });
+    const x = w - safeX - cw;
+    els.push(`<rect x="${x}" y="${safeY}" width="${cw}" height="${s(70)}" rx="${s(16)}" fill="url(#ltAccent)"/>`);
+    els.push(`<text x="${x + s(22)}" y="${safeY + s(48)}" font-size="${priceSize}" font-family="${FONT_TITLE}" letter-spacing="${titleLS}" fill="#04121C" xml:lang="${lang}">${esc(label)}</text>`);
   }
 
-  // Spec bullets — top-left.
+  // ── Spec bullets — top-left, inside the safe zone ──────────────────────────
   (m.specs ?? []).slice(0, 3).forEach((sp, i) => {
-    els.push(`<text x="${s(44)}" y="${s(126) + i * s(50)}" font-size="${s(26)}" font-family="Noto Sans" fill="#ffffff">•  ${esc(sp)}</text>`);
+    els.push(cinematicText({ x: safeX, y: safeY + s(40) + i * s(50), size: s(26), family: FONT_BODY, fill: '#ffffff', ls: 0, lang, content: `•  ${esc(sp)}` }));
   });
 
-  // CTA pill — centred, lifted clear ABOVE the lower-third so it never overlaps (any aspect).
+  // ── CTA pill — centred, lifted clear ABOVE the lower-third (any aspect) ─────
   if (m.cta) {
-    const cw = s(50) + textW(m.cta, s(34));
+    const ctaSize = s(34);
+    const label = cased(m.cta);
+    const cw = s(54) + textW(label, ctaSize, { ka, tracked: !ka });
     const x = Math.round((w - cw) / 2);
-    const y = h - s(300);
+    const y = h - safeY - ltBlockH - s(36) - s(62);
     els.push(`<rect x="${x}" y="${y}" width="${cw}" height="${s(62)}" rx="${s(31)}" fill="#ffffff" fill-opacity="0.96"/>`);
-    els.push(`<text x="${x + s(26)}" y="${y + s(42)}" font-size="${s(34)}" font-family="Noto Sans" fill="#000000">${esc(m.cta)}</text>`);
+    els.push(`<text x="${x + s(27)}" y="${y + s(42)}" font-size="${ctaSize}" font-family="${FONT_TITLE}" letter-spacing="${titleLS}" fill="#04121C" xml:lang="${lang}">${esc(label)}</text>`);
   }
 
-  return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${els.join('')}</svg>`;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${els.join('')}</svg>`;
 }
 
 /** Render the overlay layer to a transparent PNG (sharp + librsvg), or null if empty. */
@@ -101,7 +190,79 @@ export async function renderOverlayPng(m: MarketingOverlay, w: number, h: number
   if (!m.overlayText && !m.priceTag && !m.cta && !m.website && !(m.specs && m.specs.length)) return null;
   try {
     const resvg = new Resvg(buildOverlaySvg(m, w, h), {
-      font: { fontFiles: [overlayFontFile()], loadSystemFonts: false, defaultFontFamily: 'Noto Sans' },
+      font: { fontFiles: overlayFontFiles(), loadSystemFonts: false, defaultFontFamily: 'FiraGO' },
+    });
+    return Buffer.from(resvg.render().asPng());
+  } catch {
+    return null;
+  }
+}
+
+// ── MTV-style music info bug (v330) ────────────────────────────────────────
+// A stylized lower-left "now playing" card baked over the first few seconds of a
+// music video, inspired by classic music-network on-screen graphics. Composited with
+// a timed opacity fade in/out by the filtergraph (see buildFilterComplex hasMusicBug).
+export interface MusicBug {
+  artist?: string;   // Selected avatar / cloned-voice character
+  track?: string;    // Generation title / user theme
+  theme?: string;    // Contextual theme/genre (e.g. "Tbilisi City Nights" / "სიყვარულზე")
+  producer?: string; // Production identity, defaults to "MyAvatar.ge Originals"
+  lang?: 'ka' | 'en' | 'ru';
+}
+
+export function hasMusicBugContent(m: MusicBug): boolean {
+  return Boolean(m.artist || m.track || m.theme);
+}
+
+/** Build the MTV-style music info-bug SVG (lower-left), language-aware like the lower-third. */
+export function buildMusicBugSvg(m: MusicBug, w: number, h: number): string {
+  const base = Math.min(w, h);
+  const s = (px: number) => Math.round(px * (base / 1080));
+  const safeX = Math.round(w * 0.05);
+  const safeY = Math.round(h * 0.055);
+  const ka = m.lang ? m.lang === 'ka' : hasGeorgian(m.artist, m.track, m.theme);
+  const lang = ka ? 'ka' : m.lang === 'ru' ? 'ru' : 'en';
+  const cap = (t: string) => (ka ? t : t.toUpperCase());
+
+  // Stack: TRACK (big) · Artist (accent) · Theme (muted) · producer tag.
+  const rows: Array<{ size: number; family: string; fill: string; ls: number; text: string; lang: string }> = [];
+  if (m.track) rows.push({ size: s(34), family: FONT_TITLE, fill: '#ffffff', ls: ka ? s(1) : s(2), text: cap(m.track), lang });
+  if (m.artist) rows.push({ size: s(24), family: FONT_BODY, fill: ACCENT, ls: s(1), text: m.artist, lang });
+  if (m.theme) rows.push({ size: s(21), family: FONT_BODY, fill: '#d7e3ec', ls: ka ? 0 : s(1), text: m.theme, lang });
+  rows.push({ size: s(16), family: FONT_TITLE, fill: ACCENT, ls: s(2), text: (m.producer || 'MyAvatar.ge Originals').toUpperCase(), lang: 'en' });
+
+  const gap = s(14);
+  const heights = rows.map((r) => r.size + gap);
+  const blockH = heights.reduce((a, b) => a + b, 0);
+  const barW = s(5);
+  const textX = safeX + barW + s(16);
+  const top = h - safeY - blockH;
+
+  const els: string[] = [];
+  els.push(
+    `<defs>` +
+      `<linearGradient id="bugAccent" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ACCENT}"/><stop offset="1" stop-color="#0077B6"/></linearGradient>` +
+      `<linearGradient id="bugScrim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#05070D" stop-opacity="0.66"/><stop offset="1" stop-color="#05070D" stop-opacity="0"/></linearGradient>` +
+    `</defs>`,
+  );
+  // soft scrim + accent bar
+  els.push(`<rect x="0" y="${top - s(14)}" width="${Math.round(w * 0.62)}" height="${blockH + s(26)}" fill="url(#bugScrim)"/>`);
+  els.push(`<rect x="${safeX}" y="${top}" width="${barW}" height="${blockH - gap}" rx="${Math.round(barW / 2)}" fill="url(#bugAccent)"/>`);
+  let y = top;
+  for (const r of rows) {
+    y += r.size;
+    els.push(cinematicText({ x: textX, y, size: r.size, family: r.family, fill: r.fill, ls: r.ls, lang: r.lang, content: esc(r.text) }));
+    y += gap;
+  }
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${els.join('')}</svg>`;
+}
+
+/** Rasterise the music info bug to a transparent PNG (resvg), or null if empty. */
+export async function renderMusicBugPng(m: MusicBug, w: number, h: number): Promise<Buffer | null> {
+  if (!hasMusicBugContent(m)) return null;
+  try {
+    const resvg = new Resvg(buildMusicBugSvg(m, w, h), {
+      font: { fontFiles: overlayFontFiles(), loadSystemFonts: false, defaultFontFamily: 'FiraGO' },
     });
     return Buffer.from(resvg.render().asPng());
   } catch {

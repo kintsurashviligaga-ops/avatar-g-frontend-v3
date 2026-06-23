@@ -2,13 +2,16 @@
  * Pure FFmpeg filtergraph builder for the CPU assembly fallback (Option B).
  *
  * Produces the `-filter_complex` string + the video/audio map labels that stitch
- * N clips with xfade transitions and a dual-track audio mix (voiceover at full
- * level; music + SFX attenuated by the ducking percentage). No IO, no ffmpeg
- * import → trivially unit-testable and client-safe.
- *
- * Mirrors the GPU worker (runpod-worker/handler.py) but uses a constant `volume`
- * attenuation for ducking instead of sidechaincompress — predictable + fast on
- * a CPU serverless node. (The GPU path keeps true dynamic sidechain ducking.)
+ * N clips with xfade transitions and the audio mix. Two mastering modes:
+ *   • Documentary/Commercial (default) — NARRATION-FORWARD: the spoken voiceover
+ *     rules the master; music + SFX are lifted-and-ducked beneath it via a fast
+ *     sidechain compressor keyed off the voice.
+ *   • Music Video (opts.musicVideo) — SONG-MASTER: the vocal song rules the
+ *     master at unity, the standalone narrator is OMITTED entirely, and any
+ *     secondary backing (SFX) is smoothly sidechain-ducked ~−12 dB under the
+ *     song's vocal/critical-frequency energy. This is the explicit fix for the
+ *     narrator-vs-song overlap clash.
+ * No IO, no ffmpeg import → trivially unit-testable and client-safe.
  */
 
 export interface FilterGraphOpts {
@@ -22,6 +25,27 @@ export interface FilterGraphOpts {
   transition?: string;  // crossfade | dissolve | wipe | fade_to_black
   /** Output orientation. 'vertical' → 1080×1920 (9:16, TikTok/Reels/Shorts). */
   orientation?: 'landscape' | 'vertical';
+  /** Absolute path to a .cube 3D LUT. When set, a `lut3d=file=…` pass is applied
+   *  in the master grade (after the colorbalance/eq/vignette base). The caller
+   *  writes the .cube to a temp file and passes its path. */
+  lut3dPath?: string;
+  /** When true, a brand lower-third PNG is composited over the final graded video
+   *  IN THIS SAME PASS (no separate re-encode). The caller adds the PNG as the
+   *  LAST `-i` input (after all video + audio inputs); the filtergraph references
+   *  it at that index. Reliable by construction — no post-stitch round-trip. */
+  hasBrandOverlay?: boolean;
+  /** MUSIC-VIDEO / SONG-MASTER mode. When true the vocal song (the music input)
+   *  rules the master stream at unity, the standalone narrator (voice input) is
+   *  OMITTED from the mix entirely (no narration over a music video — the explicit
+   *  voice-overlap fix), and any secondary backing track (SFX) is smoothly
+   *  sidechain-ducked ~−12 dB under the song's energy. Default/false keeps the
+   *  narration-forward documentary mix. The voice input index is still RESERVED
+   *  when hasVoice is true, so the brand-overlay input index is unaffected. */
+  musicVideo?: boolean;
+  /** MTV-style music info bug. When true, a SECOND overlay PNG (added by the caller as
+   *  the LAST -i input, AFTER the brand PNG) is composited over the opening of the film
+   *  with a timed opacity fade in/out (appears ~0–4.4s, then disappears). */
+  hasMusicBug?: boolean;
 }
 
 const XFADE: Record<string, string> = {
@@ -129,9 +153,17 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const padSec = Math.max(0, targetDur - totalDur);
   const fadeOutStart = padSec > 0 ? Math.max(0, totalDur - 0.3) : Math.max(0, targetDur - FADE_SEC);
   const fadeOutDur = padSec > 0 ? padSec + 0.3 : FADE_SEC;
+  // A real 3D LUT pass (lut3d) layered on the base grade when a .cube is supplied
+  // — the "cinematic colour grade LUT" graphics step. Escape the path for the
+  // filtergraph (':' and '\' are filter syntax). Applied AFTER the base
+  // colorbalance/eq so the LUT shapes the final look, BEFORE vignette/fades.
+  const lutPass = opts.lut3dPath
+    ? `lut3d=file='${opts.lut3dPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'")}',`
+    : '';
   parts.push(
     `${vmap}colorbalance=rs=-0.02:bs=0.05:rm=0.03:bm=-0.02:rh=0.05:bh=-0.05,` +
       `eq=contrast=1.04:saturation=1.06:gamma=0.98,` +
+      lutPass +
       `vignette=angle=PI/4.2,` +
       (padSec > 0 ? `tpad=stop_mode=clone:stop_duration=${padSec.toFixed(2)},` : '') +
       `fade=t=in:st=0:d=${FADE_SEC},` +
@@ -147,10 +179,39 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   const bg = [musicIdx, sfxIdx].filter((x): x is number => x !== null);
   const duck = Math.max(0, Math.min(1, opts.duckPct / 100));
 
+  // Music-video song-master ducking: a deep, SMOOTH sidechain duck of the SFX bed
+  // keyed off the song so the secondary backing drops ~−12 dB whenever the song's
+  // vocal/critical-frequency energy emits (−12 dB ≈ amplitude 0.25). A high ratio
+  // + low threshold yields the deep, broadcast-style "pumping" duck; the slow
+  // release lets the SFX swell back smoothly between vocal phrases. The song
+  // itself is never attenuated — it owns the master stream at unity.
+  const MV_DUCK_RATIO = 20;        // strong gain reduction → ~−12 dB under the song
+  const MV_DUCK_THRESHOLD = 0.03;  // song easily exceeds this → reliable triggering
+
   // The pre-final audio label produced by mixing/ducking, before the master
   // timeline pad+trim is applied. Null when the film carries no audio at all.
   let apre: string | null = null;
-  if (voiceIdx !== null && bg.length > 0) {
+  if (opts.musicVideo && musicIdx !== null) {
+    // ── MUSIC VIDEO / SONG-MASTER ────────────────────────────────────────────
+    // The vocal song rules the master. The standalone narrator (voiceIdx) is
+    // intentionally OMITTED — its input index stays reserved (line above) so the
+    // brand-overlay index is unaffected, but it never reaches the mix. This is the
+    // explicit narrator-vs-song overlap fix.
+    const song = `[${musicIdx}:a]`;
+    if (sfxIdx !== null) {
+      // Split the song: one copy keys the sidechain (energy detector), the other
+      // is the audible master. SFX is ducked ~−12 dB under the song's energy.
+      parts.push(`${song}asplit=2[songkey][songmaster]`);
+      parts.push(
+        `[${sfxIdx}:a][songkey]sidechaincompress=threshold=${MV_DUCK_THRESHOLD}:ratio=${MV_DUCK_RATIO}:attack=5:release=300[sfxduck]`,
+      );
+      parts.push(`[songmaster][sfxduck]amix=inputs=2:normalize=0[apre]`);
+      apre = '[apre]';
+    } else {
+      // Just the song — it owns the entire master stream at unity.
+      apre = song;
+    }
+  } else if (voiceIdx !== null && bg.length > 0) {
     let bgLabel: string;
     if (bg.length > 1) {
       parts.push(`${bg.map(i => `[${i}:a]`).join('')}amix=inputs=${bg.length}:normalize=0[bg]`);
@@ -200,6 +261,30 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
         `loudnorm=I=-14:TP=-1.5:LRA=11[aout]`,
     );
     amap = '[aout]';
+  }
+
+  // Brand lower-third — composited over the final graded video in THIS pass. The
+  // PNG is the LAST input (index `ai`, after every video + audio input the caller
+  // added). overlay=0:0 since the PNG is rendered at the exact canvas size.
+  // Overlays are the LAST -i inputs (after every video + audio input), added by the
+  // caller in this exact order: brand lower-third PNG, then the music info-bug PNG.
+  let overlayIdx = ai;
+  if (opts.hasBrandOverlay) {
+    // The brand lower-third and the MTV info bug both live bottom-left. When BOTH are
+    // present, hold the brand back until the bug has faded out (~4.4s) so they never
+    // collide/overprint; otherwise show the brand for the whole film.
+    const brandEnable = opts.hasMusicBug ? `:enable='gte(t,4.4)'` : '';
+    parts.push(`${vmap}[${overlayIdx}:v]overlay=0:0:format=auto${brandEnable}[vbrand]`);
+    vmap = '[vbrand]';
+    overlayIdx++;
+  }
+  if (opts.hasMusicBug) {
+    // Fade the bug PNG's alpha up then down, and composite it ONLY over the opening
+    // window so it appears for the first ~4s and gracefully fades out (MTV "now playing").
+    parts.push(`[${overlayIdx}:v]format=rgba,fade=t=in:st=0.3:d=0.5:alpha=1,fade=t=out:st=3.6:d=0.6:alpha=1[mbug]`);
+    parts.push(`${vmap}[mbug]overlay=0:0:enable='between(t,0,4.4)'[vmbug]`);
+    vmap = '[vmbug]';
+    overlayIdx++;
   }
 
   return { filter: parts.join(';'), vmap, amap };

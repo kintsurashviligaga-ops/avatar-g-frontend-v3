@@ -18,6 +18,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex } from './ffmpeg-filtergraph';
+import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
+import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadAndSign } from './storage-adapter';
 
@@ -127,6 +129,83 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
         ? 'vertical'
         : 'landscape';
 
+    // Cinematic 3D LUT grade. The look is chosen by the orchestrator (globalRender.lut)
+    // or auto-classified from the brief (night/neon → purple-gold, golden → warm).
+    // We write the .cube to the temp dir and feed lut3d the path. Fail-open: any
+    // write error simply skips the LUT (the base colorbalance grade still applies).
+    let lut3dPath: string | undefined;
+    let lutLook: LutLook | null = null;
+    try {
+      const requested = String(g.lut || '').trim() as LutLook;
+      lutLook = (['cinematic', 'night_neon', 'warm_golden'] as const).includes(requested)
+        ? requested
+        : pickLutLook(typeof g.brief === 'string' ? g.brief : undefined);
+      const cubePath = join(dir, LUT_FILENAME[lutLook]);
+      await writeFile(cubePath, buildCubeFile(lutLook));
+      lut3dPath = cubePath;
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] applying lut3d grade: ${LUT_FILENAME[lutLook]} (${lutLook})`);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] LUT write failed, using base grade only:', e instanceof Error ? e.message : e);
+      lut3dPath = undefined;
+    }
+
+    // Brand lower-third (music videos) — burned IN THIS pass, not a fragile
+    // post-stitch round-trip. Render the SVG→PNG at the exact canvas size and add
+    // it as the LAST input so the filtergraph composites it over the graded video.
+    let brandPngPath: string | undefined;
+    try {
+      const raw = typeof g.brandLowerThird === 'string' ? g.brandLowerThird : '';
+      if (raw) {
+        const spec = JSON.parse(raw) as MarketingOverlay;
+        const W = orientation === 'vertical' ? 1080 : 1920;
+        const H = orientation === 'vertical' ? 1920 : 1080;
+        const png = await renderOverlayPng(spec, W, H);
+        if (png) {
+          const p = join(dir, 'brand-lowerthird.png');
+          await writeFile(p, png);
+          brandPngPath = p;
+          // eslint-disable-next-line no-console
+          console.log('[assemble] brand lower-third burned into the stitch:', spec.overlayText, '/', spec.website);
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] brand overlay skipped:', e instanceof Error ? e.message : e);
+      brandPngPath = undefined;
+    }
+
+    // MTV-style music info bug — a "now playing" card (artist / track / theme /
+    // MyAvatar.ge Originals) faded in over the first ~4s. Rendered to a PNG and added
+    // as the LAST -i input (after the brand PNG); the filtergraph fades + time-gates it.
+    let musicBugPath: string | undefined;
+    try {
+      const raw = typeof g.musicBug === 'string' ? g.musicBug : '';
+      if (raw) {
+        const spec = JSON.parse(raw) as MusicBug;
+        const W = orientation === 'vertical' ? 1080 : 1920;
+        const H = orientation === 'vertical' ? 1920 : 1080;
+        const png = await renderMusicBugPng(spec, W, H);
+        if (png) {
+          const p = join(dir, 'music-bug.png');
+          await writeFile(p, png);
+          musicBugPath = p;
+          // eslint-disable-next-line no-console
+          console.log('[assemble] music info bug burned into the opening:', spec.track, '/', spec.artist);
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] music bug skipped:', e instanceof Error ? e.message : e);
+      musicBugPath = undefined;
+    }
+
+    // MUSIC-VIDEO / SONG-MASTER audio mode — the song rules, the standalone narrator
+    // is omitted, and any SFX is sidechain-ducked under the song. Driven by the
+    // explicit Music Video Mode flag threaded through globalRender (the voice-overlap fix).
+    const musicVideo = g.musicVideo === true || String(g.musicVideo) === 'true';
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
@@ -137,12 +216,25 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       duckPct,
       transition,
       clipSec,
+      lut3dPath,
+      hasBrandOverlay: Boolean(brandPngPath),
+      musicVideo,
+      hasMusicBug: Boolean(musicBugPath),
     });
 
     const out = join(dir, 'master.mp4');
     const args: string[] = ['-y'];
     for (const p of inputs) args.push('-i', p);
     for (const a of [voice, music, sfx]) if (a) args.push('-i', a);
+    // Brand lower-third PNG is the LAST input → its index matches `ai` in the
+    // filtergraph (after every video + audio input).
+    if (brandPngPath) args.push('-i', brandPngPath);
+    // Music info-bug PNG is the LAST input (after the brand PNG) — matches the
+    // filtergraph's overlay-index order (brand, then bug). It MUST be looped into a
+    // short stream (`-loop 1 -t`): a plain single-frame image sits at t=0, so the
+    // filtergraph's alpha fade (st=0.3s …) would never resolve and the bug would
+    // render fully transparent. A 5s looped clip gives the fade in/out a timeline.
+    if (musicBugPath) args.push('-loop', '1', '-t', '5', '-i', musicBugPath);
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
     args.push(
@@ -188,7 +280,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     }
 
     const objectPath = `${m.pipelineId || 'render'}/${Date.now()}.mp4`;
-    const url = await uploadAndSign(RENDER_BUCKET, objectPath, data.toString('base64'), 'video/mp4');
+    // v330 — host the user-facing master with a 7-day signed URL (matching the audio-bed
+    // + overlay convention). The default 15-min TTL expired while the film sat in chat
+    // history, producing a blank player (MEDIA_ERR 4) on revisit. The status route also
+    // re-signs on read-back as a second layer of defence.
+    const url = await uploadAndSign(RENDER_BUCKET, objectPath, data.toString('base64'), 'video/mp4', 604_800);
     if (!url) throw new Error('master upload failed (Supabase Storage not configured)');
     return { url, qa };
   } finally {

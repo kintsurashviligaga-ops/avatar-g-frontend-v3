@@ -15,8 +15,9 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { lipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
+import { lipsyncCreate, filmLipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
+import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
     let hosted = url;
     try {
       const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 30_000);
+      const to = setTimeout(() => ac.abort(), 45_000); // route has 300s headroom; fewer fail-opens to the expiring URL
       const r = await fetch(url, { signal: ac.signal }).finally(() => clearTimeout(to));
       if (r.ok) {
         const buf = Buffer.from(await r.arrayBuffer());
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -113,25 +114,38 @@ export async function POST(req: NextRequest) {
   // "Speak this text": type a script → ElevenLabs → optionally the user's TRAINED voice.
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
   if (text) {
-    const ttsUrl = await textToHostedSpeech(text);
-    if (ttsUrl) {
-      audioUrl = ttsUrl;
-      if (body.useMyVoice === true) {
-        try {
-          const { user } = await authedClientFromRequest(req);
-          const model = await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID);
-          if (model) {
-            const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
-            if (converted) audioUrl = converted;
-          }
-        } catch {
-          /* keep the TTS voice */
+    // Honour an explicit Female/Male choice via the cloned-voice map; otherwise let
+    // textToHostedSpeech auto-pick by persona.
+    const g = body.gender === 'male' ? 'male' : body.gender === 'female' ? 'female' : null;
+    const ttsUrl = await textToHostedSpeech(text, g ? georgianVoiceId(g) : undefined);
+    // If TTS failed, FAIL CLEANLY instead of falling through with audioUrl===videoUrl
+    // (the face image) — that would lip-sync the photo to itself and waste a provider
+    // job before surfacing a generic failure minutes later.
+    if (!ttsUrl) return NextResponse.json({ jobId: null, error: 'tts-failed' });
+    audioUrl = ttsUrl;
+    if (body.useMyVoice === true) {
+      try {
+        const { user } = await authedClientFromRequest(req);
+        const model = await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID);
+        if (model) {
+          const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
+          if (converted) audioUrl = converted;
         }
+      } catch {
+        /* keep the TTS voice */
       }
     }
   }
 
+  // kind:'film' → multi-shot video master needs the VIDEO-INPUT engine (sync/lipsync-2),
+  // not the talking-photo engines. Falls back to null → caller keeps the un-synced master.
+  if (body.kind === 'film') {
+    const jobId = await filmLipsyncCreate(videoUrl, audioUrl);
+    return NextResponse.json({ jobId });
+  }
   // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
-  const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true });
+  // orientation → HeyGen output dimension (the avatar panel's Format selector).
+  const orientation = body.orientation === 'landscape' ? 'landscape' : body.orientation === 'square' ? 'square' : body.orientation === 'vertical' ? 'vertical' : undefined;
+  const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true, ...(orientation ? { orientation } : {}) });
   return NextResponse.json({ jobId });
 }

@@ -28,14 +28,13 @@
 
 import 'server-only';
 import { hasVideoProvider, videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
-import { hasUdioApiKey } from './mediaKeys';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
-import { startUdioGeneration } from '@/lib/udio/client';
+import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
@@ -60,6 +59,10 @@ import { filmBalanceDecision } from './filmBalanceGate';
 import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
 
 const serviceManager = new ServiceManager();
+
+// v330 — buildMusicRequest (the Udio request builder) was removed with the Udio
+// retirement. Music is now generated at the assemble step: ElevenLabs Music
+// (buildElevenMusicPrompt in lib/elevenlabs/music.ts) primary, MusicGen fallback.
 
 export { isThirtySecondFilm } from './filmPipeline';
 
@@ -578,44 +581,26 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
   // (Past the 38% guard above, at least one clip is guaranteed queued.)
-  let musicWorkId: string | null = null;
-  if (hasUdioApiKey()) {
-    try {
-      const audioForecast = forecastMarginForAction('voice_tts');
-      musicWorkId = await withTrace(
-        {
-          userId: input.userId || null,
-          agentId: 'music-agent',
-          workerKind: 'udio',
-          action: 'generate_track',
-          promptSummary: input.message,
-          costWholesaleGel: audioForecast.wholesaleGel,
-          costRetailGel: audioForecast.retailGel,
-          metadata: { composite: true, leg: 'film-audio', durationSec: plan.shared.totalSec },
-          deduct: true,
-          deductRef: `${compositeId}:audio`,
-        },
-        () =>
-          startUdioGeneration({
-            // A professional FILM SCORE brief (not a song): match the era, mood and
-            // intensity of the story, with a real build-and-release dynamic arc that
-            // underscores the on-screen action. Fully instrumental, no vocals.
-            prompt:
-              `Professional, fully-instrumental cinematic FILM SCORE for a ${plan.shared.totalSec}-second short film. ` +
-              `Match the era, mood, location and intensity of this story: "${input.message.slice(0, 400)}". ` +
-              `Emotional and orchestral with a clear dynamic arc — a quiet build that swells through the middle and resolves at the end, ` +
-              `composed to underscore the on-screen action moment-to-moment. No vocals, no lyrics, no spoken word.`,
-            style: style || 'cinematic',
-            genre: style || 'cinematic',
-            makeInstrumental: true,
-          }),
-      ).then((r) => r.workId);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[film] audio leg failed:', err instanceof Error ? err.message : err);
-      musicWorkId = null;
-    }
+  // v330 — read the explicit Music Video signals the composer threads through
+  // metadata. A user-uploaded soundtrack BYPASSES the ambient music-generation
+  // loop entirely (we never call — or bill — Udio); the explicit mode flag forces
+  // a sung song when the brief keywords would otherwise miss.
+  const filmMeta = (input.metadata ?? {}) as { soundtrackUrl?: unknown };
+  const hasCustomSoundtrack = typeof filmMeta.soundtrackUrl === 'string' && filmMeta.soundtrackUrl.trim().length > 0;
+  const musicWorkId: string | null = null;
+  if (hasCustomSoundtrack) {
+    // eslint-disable-next-line no-console
+    console.log('[film] custom soundtrack supplied → skipping the Udio audio leg (no generation, no charge)');
+  } else if (hasElevenLabsMusicKey()) {
+    // v330 — ElevenLabs Music is the master audio layer and runs SYNCHRONOUSLY at the
+    // assemble step, so the async Udio leg is skipped entirely (no workId, no charge).
+    // Udio remains the fallback only when no ElevenLabs key is configured.
+    // eslint-disable-next-line no-console
+    console.log('[film] ElevenLabs Music configured → song synthesized at assemble; skipping the legacy audio leg');
   }
+  // v330 — Udio is fully retired. Music is generated at the ASSEMBLE step (ElevenLabs
+  // Music primary, Replicate MusicGen fallback), so the film's async audio leg no longer
+  // mints a workId — `musicWorkId` stays null and the union poll reports audio 'skipped'.
 
   // ── Legs 4b + 4c: narration voice-over (PHASE 48 §2) + cinematic SFX (§49.7) ─
   // These two are INDEPENDENT (both derive from the brief, not from each other or

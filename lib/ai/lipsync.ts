@@ -145,8 +145,10 @@ async function faceUrlToBase64(url: string): Promise<{ base64: string; mime: str
   }
 }
 
-/** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null). */
-async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<string | null> {
+/** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null).
+ *  Exported so the presenter route can drive a DEFAULT face through the same fast
+ *  talking_photo path (the /v2/avatars list is unusably slow on our account). */
+export async function heygenLipsyncCreate(faceUrl: string, audioUrl: string, orientation?: 'vertical' | 'landscape' | 'square'): Promise<string | null> {
   const key = heygenKey();
   if (!key) return null;
   try {
@@ -171,7 +173,10 @@ async function heygenLipsyncCreate(faceUrl: string, audioUrl: string): Promise<s
           character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' },
           voice: { type: 'audio', audio_url: audioUrl },
         }],
-        dimension: { width: 720, height: 1280 },
+        // Honour the avatar panel's Format selector; default to 9:16 vertical (mobile).
+        dimension: orientation === 'landscape' ? { width: 1280, height: 720 }
+          : orientation === 'square' ? { width: 720, height: 720 }
+          : { width: 720, height: 1280 },
       }),
       signal: AbortSignal.timeout(20_000),
     });
@@ -267,15 +272,16 @@ export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise
  *
  * PRIMARY: HeyGen talking-photo (reliable). FALLBACK: Replicate SadTalker.
  */
-export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean }): Promise<string | null> {
+export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean; orientation?: 'vertical' | 'landscape' | 'square' }): Promise<string | null> {
   if (!videoUrl || !audioUrl) return null;
-  // Prefer HeyGen (the "Avatar" engine) when enabled (LIPSYNC_HEYGEN=1) — a reliable,
-  // professional talking-photo render driven by OUR ElevenLabs audio. Fail-open: if the
-  // HeyGen create path misses, fall straight through to the proven SadTalker pass.
-  // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed, so
-  // the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
-  if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN === '1') {
-    const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl);
+  // Prefer HeyGen (the "Avatar" engine) by DEFAULT whenever a key is present — a
+  // reliable, professional talking-photo render driven by OUR ElevenLabs (cloned
+  // Georgian) audio. Set LIPSYNC_HEYGEN=0 to force the SadTalker fallback. Fail-open:
+  // if the HeyGen create path misses, we fall straight through to SadTalker.
+  // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed,
+  // so the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
+  if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN !== '0') {
+    const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl, opts?.orientation);
     if (heygenId) return heygenId;
   }
   const key = token();
@@ -299,6 +305,35 @@ export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: {
   }
 }
 
+// ─── FILM lip-sync (sync/lipsync-2) ─────────────────────────────────────────
+// The avatar lipsync above uses SadTalker (still image → talking head). For a
+// MULTI-SHOT video master (music videos) we need a video-input engine. Replicate's
+// official `sync/lipsync-2` model takes { video, audio } and returns a lip-synced
+// video — verified working end-to-end (prediction q9m5k5nexdrmr0cyyhnt2ca090,
+// predict_time ~113s on the canonical example clip). Official models don't need a
+// version hash — POST to `/v1/models/sync/lipsync-2/predictions` directly.
+
+/** Start a film lip-sync (video + audio → lip-synced video). Returns the prediction
+ *  id (prefixed "sync:") on success, null otherwise. Fail-open. */
+export async function filmLipsyncCreate(videoUrl: string, audioUrl: string): Promise<string | null> {
+  const key = token();
+  if (!key || !videoUrl || !audioUrl) return null;
+  try {
+    const res = await fetch('https://api.replicate.com/v1/models/sync/lipsync-2/predictions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ input: { video: videoUrl, audio: audioUrl, sync_mode: 'loop' } }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return null;
+    const pred = (await res.json().catch(() => ({}))) as ReplicatePrediction;
+    return pred.id ? `sync:${pred.id}` : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Poll a prediction ONCE → its status, the output URL (when succeeded), + any error. */
 export async function lipsyncFetch(predictionId: string): Promise<{ status: string; url: string | null; error: string | null }> {
   if (!predictionId) return { status: 'failed', url: null, error: null };
@@ -306,10 +341,14 @@ export async function lipsyncFetch(predictionId: string): Promise<{ status: stri
   if (predictionId.startsWith('heygen:')) {
     return heygenLipsyncFetch(predictionId.slice(7));
   }
+  // Film lip-sync (sync/lipsync-2) jobs are tagged "sync:<predictionId>" —
+  // they use the same Replicate poll endpoint, just with the prefix stripped.
+  const isSync = predictionId.startsWith('sync:');
+  const id = isSync ? predictionId.slice(5) : predictionId;
   const key = token();
   if (!key) return { status: 'failed', url: null, error: null };
   try {
-    const res = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(predictionId)}`, {
+    const res = await fetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(id)}`, {
       headers: { Authorization: `Bearer ${key}` },
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000),

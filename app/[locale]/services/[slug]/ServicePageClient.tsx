@@ -99,7 +99,7 @@ export default function ServicePageClient(props: ServicePageClientProps) {
         >
           <button
             onClick={() => setViewMode('workspace')}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
             style={{
               background: viewMode === 'workspace' ? 'rgba(0,212,255,0.12)' : 'transparent',
               color: viewMode === 'workspace' ? '#00d4ff' : 'rgba(148,163,184,0.5)',
@@ -113,7 +113,7 @@ export default function ServicePageClient(props: ServicePageClientProps) {
           </button>
           <button
             onClick={() => setViewMode('chat')}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
             style={{
               background: viewMode === 'chat' ? 'rgba(0,212,255,0.12)' : 'transparent',
               color: viewMode === 'chat' ? '#00d4ff' : 'rgba(148,163,184,0.5)',

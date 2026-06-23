@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { SERVICES } from '@/lib/services/catalog'
+import { useDialogA11y } from '@/hooks/useDialogA11y'
 
 /* ─── Icons (inline SVGs for zero dependency) ─── */
 function IconMenu() {
@@ -79,9 +80,24 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // NOTE: focus-in is handled by useDialogA11y below (it focuses the first focusable
+  // = the search input). We must NOT autoFocus/focus the input ourselves first, or the
+  // hook would capture the input — not the trigger — as the focus-restore target.
+
+  // Full-screen search is a modal: Escape-to-close + focus trap/restore + dialog
+  // semantics (the twin of the drawer, which was already hardened with this hook).
+  const closeSearch = () => { setSearchOpen(false); setSearchQuery('') }
+  const searchDialogRef = useDialogA11y<HTMLDivElement>(searchOpen, closeSearch)
+  // Lock body scroll while it's open so the page behind doesn't scroll under a drag.
   useEffect(() => {
-    if (searchOpen) searchRef.current?.focus()
+    if (!searchOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
   }, [searchOpen])
+  // Close on navigation (bottom nav / back gesture / any link) so the overlay never
+  // lingers over a new route — the navbar persists across App Router transitions.
+  useEffect(() => { setSearchOpen(false); setSearchQuery('') }, [pathname])
 
   const pathWithoutLocale = pathname.replace(/^\/(ka|en|ru)/, '') || '/'
 
@@ -125,7 +141,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
       <div className="flex items-center gap-2">
         <button
           onClick={onMenuToggle}
-          className="p-2 rounded-lg transition-colors hover:bg-[var(--card-hover)]"
+          className="p-2.5 rounded-lg transition-colors hover:bg-[var(--card-hover)] touch-manipulation"
           style={{ color: 'var(--color-text-secondary)' }}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
         >
@@ -192,9 +208,11 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         {/* Mini search for mobile */}
         <button
           onClick={() => setSearchOpen(!searchOpen)}
-          className="md:hidden p-2.5 rounded-xl transition-colors hover:bg-[var(--card-hover)] active:scale-95"
+          className="md:hidden flex items-center justify-center min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-colors hover:bg-[var(--card-hover)] active:scale-95 touch-manipulation"
           style={{ color: 'var(--color-text-secondary)' }}
-          aria-label="Search"
+          aria-label={locale === 'ka' ? 'ძებნა' : locale === 'ru' ? 'Поиск' : 'Search'}
+          aria-expanded={searchOpen}
+          aria-controls="mobile-search-overlay"
         >
           <IconSearch />
         </button>
@@ -252,7 +270,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
 
     {/* Mobile search overlay */}
     {searchOpen && (
-      <div className="fixed inset-x-0 top-0 z-[201] md:hidden mobile-search-overlay" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div ref={searchDialogRef} id="mobile-search-overlay" role="dialog" aria-modal="true" aria-label={locale === 'ka' ? 'ძებნა' : locale === 'ru' ? 'Поиск' : 'Search'} className="fixed inset-x-0 top-0 z-[201] md:hidden mobile-search-overlay" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="px-3 pt-2 pb-3" style={{ backgroundColor: 'var(--nav-bg)', backdropFilter: 'blur(20px) saturate(1.2)', WebkitBackdropFilter: 'blur(20px) saturate(1.2)', borderBottom: '1px solid var(--nav-border)' }}>
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--input-bg)', border: '1px solid var(--input-border)' }}>
@@ -269,7 +287,6 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
                 }
                 className="flex-1 bg-transparent text-sm outline-none"
                 style={{ color: 'var(--color-text)', border: 'none', boxShadow: 'none' }}
-                autoFocus
               />
             </div>
             <button
@@ -320,6 +337,19 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
     return pathname === full || pathname.startsWith(full + '/')
   }
 
+  // Lock body scroll while the drawer is open so the page behind it doesn't
+  // scroll under a swipe on the panel/backdrop (a common mobile drawer bug).
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
+  // Escape-to-close + focus trap/restore + dialog semantics (the panel had only
+  // the scroll lock; keyboard/AT users could tab behind the z-260 overlay).
+  const dialogRef = useDialogA11y<HTMLElement>(open, onClose);
+
   return (
     <>
       {/* Backdrop */}
@@ -331,6 +361,10 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
       )}
       {/* Panel */}
       <aside
+        ref={dialogRef}
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? true : undefined}
+        aria-label={locale === 'en' ? 'Menu' : locale === 'ru' ? 'Меню' : 'მენიუ'}
         className={`fixed top-0 left-0 bottom-0 z-[260] w-72 transform transition-transform duration-300 ease-out flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -346,7 +380,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
         {/* Header */}
         <div className="flex items-center justify-between px-4 h-16 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
           <BrandLogo size="nav" showText compact={false} />
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
+          <button onClick={onClose} aria-label={locale === 'en' ? 'Close menu' : locale === 'ru' ? 'Закрыть меню' : 'მენიუს დახურვა'} className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
             <IconX />
           </button>
         </div>
@@ -503,7 +537,7 @@ export function BottomNavigation() {
             key={item.path}
             href={lh(item.path)}
             className="flex flex-col items-center justify-center gap-0.5 py-2 px-4 min-w-[56px] min-h-[44px] rounded-lg transition-colors active:scale-95"
-            style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+            style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)' }}
           >
             <Icon />
             <span className="text-[11px] font-medium">

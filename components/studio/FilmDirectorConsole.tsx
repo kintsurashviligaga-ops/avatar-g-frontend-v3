@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   Clock,
   ArrowDown,
+  Square,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -84,6 +85,8 @@ const MICRO: Partial<Record<FilmAgentId, { processing: Record<Loc, string>; comp
   voice: { processing: { en: 'Recording VO…', ru: 'Озвучка…', ka: 'გახმოვანება…' }, completed: { en: 'Voiceover ready', ru: 'Озвучка готова', ka: 'გახმოვანება მზადაა' } },
   sfx: { processing: { en: 'Scoring…', ru: 'Музыка…', ka: 'მუსიკა…' }, completed: { en: 'Music + SFX', ru: 'Музыка и SFX', ka: 'მუსიკა + SFX' } },
   montage: { processing: { en: 'Stitching…', ru: 'Склейка…', ka: 'მონტაჟი…' }, completed: { en: 'Final cut', ru: 'Финал готов', ka: 'საბოლოო კადრი' } },
+  overlay: { processing: { en: 'Grading…', ru: 'Цветокоррекция…', ka: 'გრადაცია…' }, completed: { en: 'Graded + branded', ru: 'Цвет + бренд', ka: 'გრადაცია + ბრენდი' } },
+  lipsync: { processing: { en: 'Syncing lips…', ru: 'Синхрон губ…', ka: 'ლიპსინკი…' }, completed: { en: 'Lips synced', ru: 'Губы готовы', ka: 'ტუჩები სინქრ.' } },
 };
 
 const TITLE: Record<Loc, string> = { en: "Director's Console", ru: 'Пульт режиссёра', ka: 'რეჟისორის პულტი' };
@@ -253,6 +256,8 @@ export default function FilmDirectorConsole({
   elapsed,
   targetSec,
   locale,
+  onCancel,
+  stopLabel,
 }: {
   /** Pre-derived roster from the live message; falls back to deriving from `progress`. */
   roster?: FilmAgentVM[];
@@ -262,20 +267,27 @@ export default function FilmDirectorConsole({
   statusText?: string;
   /** Seconds since the render started — drives the header MM:SS clock. */
   elapsed?: number;
-  /** Eased wall-clock target (s) for this render — drives the coarse ETA readout. */
+  /** Eased wall-clock target (s) for this render — early-phase ETA fallback only. */
   targetSec?: number;
   locale: string;
+  /** Abort the running generation (wired to OmniStudio's stop()). */
+  onCancel?: () => void;
+  /** Localized "Stop" label for the Cancel control. */
+  stopLabel?: string;
 }) {
   const loc = asLoc(locale);
   const list = roster && roster.length ? roster : deriveFilmRoster(progress ?? null);
   const pct = overallFilmPct(list);
   const anyWorking = list.some((a) => a.status === 'processing');
   const allDone = list.filter((a) => a.status !== 'idle').every((a) => a.status === 'completed');
-  // Coarse ETA from the eased render target (consistent with GenerationProgress);
-  // never shown once the crew has finished.
-  const remaining = typeof targetSec === 'number' && typeof elapsed === 'number' && !allDone
-    ? Math.max(0, targetSec - elapsed)
-    : null;
+  // ETA projected from the REAL progress %, so the clock and the big % stay
+  // consistent (81% → ~elapsed*19/81 left, not a fixed 440s estimate). Falls back to
+  // the eased target only very early (pct≈0) before there's progress to project from.
+  const remaining = !allDone && typeof elapsed === 'number' && pct > 2
+    ? Math.round((elapsed * (100 - pct)) / pct)
+    : typeof targetSec === 'number' && typeof elapsed === 'number' && !allDone
+      ? Math.max(0, targetSec - elapsed)
+      : null;
 
   return (
     <div className="w-[min(88vw,460px)] space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/55 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
@@ -310,12 +322,24 @@ export default function FilmDirectorConsole({
         </div>
       </div>
 
-      {/* Overall progress bar */}
-      <div className="h-2 w-full overflow-hidden rounded-full bg-app-border/12">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-app-accent/70 to-app-accent transition-[width] duration-700 ease-out"
-          style={{ width: `${Math.max(4, pct)}%` }}
-        />
+      {/* Overall progress bar + Cancel (abort the running render) */}
+      <div className="flex items-center gap-2">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/12">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-app-accent/70 to-app-accent transition-[width] duration-700 ease-out"
+            style={{ width: `${Math.max(4, pct)}%` }}
+          />
+        </div>
+        {onCancel && (anyWorking || !allDone) ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label={stopLabel || 'Stop'}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/20 active:scale-[0.98] touch-manipulation"
+          >
+            <Square size={10} className="fill-current" /> {stopLabel || 'Stop'}
+          </button>
+        ) : null}
       </div>
 
       {/* 9-agent crew grid */}

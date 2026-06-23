@@ -322,6 +322,19 @@ export default function ServiceChatLayout({
     setOutputReady(false)
   }, [])
 
+  // Conversation CRUD — kept in-memory alongside `conversations`. The panel reads
+  // these via optional callbacks; without them the inline actions stay hidden.
+  const handleRenameConversation = useCallback((id: string, newTitle: string) => {
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c))
+  }, [])
+  const handleDeleteConversation = useCallback((id: string) => {
+    setConversations(prev => prev.filter(c => c.id !== id))
+    setActiveConversationId(prev => (prev === id ? null : prev))
+  }, [])
+  const handleTogglePinConversation = useCallback((id: string) => {
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, isPinned: !c.isPinned } : c))
+  }, [])
+
   const handleMenuItemClick = useCallback((itemId: string) => {
     if (!config) return
     const item = config.menuItems.find(m => m.id === itemId)
@@ -473,6 +486,9 @@ export default function ServiceChatLayout({
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
           onNewChat={handleNewChat}
+          onRename={handleRenameConversation}
+          onDelete={handleDeleteConversation}
+          onTogglePin={handleTogglePinConversation}
         />
 
         {/* Call Screen */}

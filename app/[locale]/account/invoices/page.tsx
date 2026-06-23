@@ -79,27 +79,27 @@ export default function InvoicesPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">{t('invoices.title')}</h1>
             <p className="text-gray-600 mt-2">{t('invoices.description')}</p>
           </div>
           <Link
             href="/account/invoices/create"
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 inline-flex items-center gap-2"
+            className="shrink-0 self-start sm:self-auto bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 inline-flex items-center gap-2"
           >
             <FileText size={18} />
             {t('invoices.create_new')}
           </Link>
         </div>
 
-        {/* Status Filter */}
-        <div className="flex gap-2 mb-6">
+        {/* Status Filter — scrolls horizontally instead of clipping the 4 localized pills at 360px */}
+        <div className="flex gap-2 mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(['all', 'issued', 'paid', 'void'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg font-medium transition ${
                 statusFilter === status
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'

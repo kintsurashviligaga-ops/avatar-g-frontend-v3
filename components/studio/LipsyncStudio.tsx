@@ -78,7 +78,7 @@ function Dropzone({
       {picked ? (
         <div className="flex items-center gap-2 text-[12px] text-[#00D2FF]">
           <span className="max-w-[180px] truncate">{picked.name}</span>
-          <button type="button" onClick={onClear} aria-label="clear" className="text-neutral-500 hover:text-white"><X size={14} /></button>
+          <button type="button" onClick={onClear} aria-label="clear" className="-m-2 inline-flex h-11 w-11 items-center justify-center p-2 text-neutral-500 transition-colors hover:text-white touch-manipulation"><X size={14} /></button>
         </div>
       ) : (
         <p className="text-[12px] text-neutral-500">{hint}</p>
@@ -209,7 +209,7 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
           <video src={resultUrl} controls playsInline className="w-full rounded-xl border border-white/10 bg-black" />
           <a
             href={resultUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/10 px-3 py-1.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/10 px-4 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
           >
             <Download size={13} /> {t.download}
           </a>

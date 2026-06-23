@@ -26,8 +26,9 @@ import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orc
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
-import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
@@ -40,6 +41,42 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // CPU FFmpeg stitch of a 30s master needs headroom (Pro)
 
 const ASSEMBLE_COST = 20; // credits to stitch a composition
+
+/** True when the brief reads as a music video — drives the branded lower-third. */
+function isMusicVideoBrief(brief: string | null | undefined): boolean {
+  const b = (brief ?? '').toLowerCase();
+  if (!b) return false;
+  return /\bmusic video\b/.test(b)
+    || (/\bmusic\b|\bsong\b|\bbeat\b|\bvocal|\br&b\b|\brnb\b|\bpop\b|\bhip[- ]?hop\b/.test(b) && /\bsing|\bsinger\b|\bvocal|\blyric/.test(b))
+    || /მუსიკალური ვიდეო|სიმღერ|მომღერ/.test(brief ?? '');
+}
+
+/** Derive MTV-style music-bug content (artist / track / theme) from the brief. */
+function deriveMusicBug(
+  brief: string,
+  gender: 'male' | 'female' | undefined,
+  lang: 'ka' | 'en' | 'ru',
+): { artist: string; track: string; theme: string; producer: string; lang: 'ka' | 'en' | 'ru' } {
+  const b = (brief || '').toLowerCase();
+  const ka = lang === 'ka';
+  // Contextual theme detection.
+  let theme: string;
+  if (/tbilisi|თბილის/.test(b)) theme = ka ? 'თბილისის ღამეები' : 'Tbilisi City Nights';
+  else if (/\blove\b|სიყვარ/.test(b)) theme = ka ? 'სიყვარულზე' : 'About Love';
+  else if (/\bnight\b|ღამ/.test(b)) theme = ka ? 'ღამის განწყობა' : 'Night Vibes';
+  else if (/r&b|rnb/.test(b)) theme = 'R&B';
+  else if (/folk|ფოლკ/.test(b)) theme = ka ? 'პოპ-ფოლკი' : 'Pop-Folk';
+  else theme = ka ? 'ორიგინალური ტრეკი' : 'Original Track';
+  // Track title — evocative, theme-anchored.
+  const track = /tbilisi|თბილის/.test(b)
+    ? (ka ? 'ჩემო თბილისო' : 'My Tbilisi')
+    : (ka ? 'ცოცხალი შესრულება' : 'Live Session');
+  // Artist — the platform avatar performer, gendered.
+  const artist = ka
+    ? (gender === 'female' ? 'ავატარი · ქალი ვოკალი' : 'ავატარი · მამრობითი ვოკალი')
+    : `MyAvatar · ${gender === 'female' ? 'Female' : 'Male'} Vocal`;
+  return { artist, track, theme, producer: 'MyAvatar.ge Originals', lang };
+}
 
 // Atomic dispatch deadline. A render that stalls mid-stitch (a clip URL that
 // never resolves, a render-node stream that hangs at ~38%) must NOT be allowed
@@ -83,9 +120,30 @@ interface AssembleBody {
   /** B2B commercials only — the director's marketing copy. When present, the finished
    *  master gets animated lower-third / price / CTA overlays burned in (fail-open). */
   marketing?: MarketingOverlay | null;
+  /** v330 — explicit MUSIC VIDEO MODE (vs documentary/commercial). When true the
+   *  song rules the master stream (narrator omitted, SFX ducked −12 dB under the
+   *  song) and the branded music-video lower-third is burned in. When false the
+   *  narration-forward documentary mix is used. Overrides the legacy brief-keyword
+   *  heuristic; omitted → fall back to isMusicVideoBrief(scorePrompt). */
+  musicVideoMode?: boolean;
+  /** v330 — a user-supplied soundtrack (uploaded beat/song). When present it BECOMES
+   *  the master music bed, bypassing BOTH the Udio score and the MusicGen fallback,
+   *  and the LTX/compositing pipeline anchors onto it. */
+  customAudioUrl?: string | null;
+  /** v330 — caption language for the burned-in lower-third (ka/en/ru). Drives the
+   *  FiraGO script + casing. Omitted → auto-detected from the brief. */
+  captionLang?: 'ka' | 'en' | 'ru';
+  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer). */
+  vocalGender?: 'male' | 'female';
 }
 
 export async function POST(req: NextRequest) {
+  // v330 — function-entry timestamp so the synchronous audio legs + the dispatch
+  // deadline stay collectively under maxDuration (300s). The dispatch timeout below is
+  // made RELATIVE to time already consumed so it fires inside the function (→ saga
+  // compensate releases credits) rather than letting the platform hard-kill the request.
+  const fnT0 = Date.now();
+  const MAX_FN_MS = 300_000;
   let body: AssembleBody;
   try {
     body = (await req.json()) as AssembleBody;
@@ -148,15 +206,84 @@ export async function POST(req: NextRequest) {
       render: s.render ?? {},
     })),
   );
+
+  // v330 — resolve the master mode ONCE (used by both the audio layer and the
+  // burned lower-third). The explicit Music Video Mode flag wins; the legacy
+  // brief-keyword heuristic is the fallback. B2B marketing films are always
+  // documentary-style (their own overlay), so they never take music-video mode.
+  const musicVideoMode =
+    (typeof body.musicVideoMode === 'boolean' ? body.musicVideoMode : isMusicVideoBrief(body.scorePrompt)) &&
+    !body.marketing;
+  // Caption language for the burned lower-third: explicit, else auto-detected from the brief.
+  const captionLang: 'ka' | 'en' | 'ru' =
+    body.captionLang ?? (/[Ⴀ-ჿᲐ-Ჿ]/.test(body.scorePrompt ?? '') ? 'ka' : 'en');
+  const brandText =
+    captionLang === 'ka' ? 'მუსიკალური ვიდეო' : captionLang === 'ru' ? 'Музыкальное видео' : 'AI Music Video';
+  // v330 — MTV-style music info bug content, derived from the brief + vocal gender.
+  const musicBugSpec = musicVideoMode ? deriveMusicBug(body.scorePrompt ?? '', body.vocalGender, captionLang) : null;
+
   // PHASE 55 §2 — Cochlear score fallback. When the upstream Udio score failed
   // under credit exhaustion the client sends no musicUrl, and the stitched 30s
   // master would play completely silent. Synthesize a cohesive cinematic score
   // on the funded Replicate MusicGen module and overlay it across the whole
   // timeline so the film is never mute. Best-effort: a fallback miss degrades
   // gracefully to silent — it never fails the stitch.
-  let resolvedMusicUrl = body.musicUrl ? await reSignIfInternal(body.musicUrl) : null;
-  let scoreFallback: 'udio->musicgen' | null = null;
-  if (!resolvedMusicUrl && !body.noMusic && process.env.REPLICATE_API_TOKEN) {
+  // v330 — a user-uploaded soundtrack is the master bed and wins over everything:
+  // it short-circuits the Udio score (already skipped upstream) AND the MusicGen
+  // fallback below (because resolvedMusicUrl is now non-null), and the compositing
+  // pipeline anchors strictly onto this file.
+  let resolvedMusicUrl = body.customAudioUrl
+    ? await reSignIfInternal(body.customAudioUrl)
+    : body.musicUrl
+      ? await reSignIfInternal(body.musicUrl)
+      : null;
+  if (body.customAudioUrl) {
+    // eslint-disable-next-line no-console
+    console.log('[assemble] custom soundtrack supplied → bypassing Udio + MusicGen, anchoring onto the upload');
+  }
+  let scoreFallback: 'udio->musicgen' | 'elevenlabs-music' | null = null;
+
+  // v330 — ElevenLabs Music is the MASTER audio layer. Synthesize the full track
+  // SYNCHRONOUSLY (sung vocals + backing for a music video, or an instrumental score)
+  // and host it. This is the primary source, replacing the async Udio leg; MusicGen
+  // below stays as the graceful fallback if EL Music is unavailable or the account
+  // lacks Music access, so the film is never silently mute.
+  if (!resolvedMusicUrl && !body.noMusic && hasElevenLabsMusicKey()) {
+    const totalSec = Math.min(30, Math.max(8, Math.round(signedSegments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0))));
+    const { prompt, instrumental } = buildElevenMusicPrompt({
+      brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
+      totalSec,
+      musicVideoMode,
+      vocalGender: body.vocalGender,
+    });
+    try {
+      // Tight budget: this runs SYNCHRONOUSLY before the stitch, inside the same 300s
+      // function. EL Music is normally ~20–45s for 30s of audio; 60s caps a slow gen so
+      // the stitch keeps its window.
+      const EL_MUSIC_BUDGET_MS = 60_000;
+      const { audio, contentType } = await Promise.race([
+        composeElevenLabsMusic({ prompt, lengthMs: totalSec * 1000, instrumental }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('elevenlabs music timed out')), EL_MUSIC_BUDGET_MS)),
+      ]);
+      const path = `films/elmusic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+      resolvedMusicUrl = (await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800)) ?? null;
+      if (resolvedMusicUrl) scoreFallback = 'elevenlabs-music';
+      // eslint-disable-next-line no-console
+      console.log('[assemble] ElevenLabs Music track ready:', resolvedMusicUrl ? `yes (${instrumental ? 'instrumental' : 'sung'})` : 'no');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // MusicGen fallback — rescues the film when EL Music produced nothing. Gate on the
+  // REMAINING function budget (not how long EL took): it still rescues after a slow EL
+  // failure/timeout (the old elapsed<30s gate left those silent), yet never stacks two
+  // long gens past the 300s ceiling because it only runs when there's room for the
+  // MusicGen cap PLUS a stitch reserve.
+  const SCORE_BUDGET_MS = 120_000;
+  const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
+  if (!resolvedMusicUrl && !body.noMusic && (MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
     // Match the score length to the assembled timeline so MusicGen returns a
     // track that spans every compiled clip rather than looping a short stub.
     const totalSec = Math.min(
@@ -173,8 +300,7 @@ export async function POST(req: NextRequest) {
       // headroom for the CPU stitch, hard-killing the request and stranding the
       // reserved credits. Cap the score at 120s: long enough for a warm/cold render,
       // short enough to leave the stitch its full window. A timeout degrades to a
-      // silent film (never a failed render).
-      const SCORE_BUDGET_MS = 120_000;
+      // silent film (never a failed render). (SCORE_BUDGET_MS hoisted to the gate above.)
       const score = await Promise.race([
         generateMusic(`${brief}, ${totalSec}-second continuous film score, instrumental`, totalSec),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('musicgen score timed out')), SCORE_BUDGET_MS)),
@@ -200,8 +326,27 @@ export async function POST(req: NextRequest) {
       // This is the honest "exactly 30 seconds" fix and the beat-synced grammar a
       // music video wants. An explicit caller transition still wins (spread after).
       ...(filmTokenId ? { transition: 'cut' } : {}),
+      // The brief drives the cinematic 3D LUT look in the assembler (night/neon →
+      // purple-gold, golden-hour → warm amber, else neutral teal-orange).
+      ...(typeof body.scorePrompt === 'string' && body.scorePrompt.trim() ? { brief: body.scorePrompt.trim() } : {}),
+      // MUSIC-VIDEO BRAND LOWER-THIRD — burned INTO the stitch (reliable, no
+      // post-pass round-trip). Gated on the resolved Music Video Mode so narrative
+      // films never get a music-video label; B2B marketing uses its own overlay.
+      // Language-tagged so the FiraGO overlay renders Georgian/Russian, not tofu.
+      ...(musicVideoMode
+        ? { brandLowerThird: JSON.stringify({ overlayText: brandText, website: 'MyAvatar.ge', lang: captionLang }) }
+        : {}),
+      // MTV-style music info bug (artist / track / theme / MyAvatar.ge Originals) —
+      // faded over the opening ~4s by the assembler.
+      ...(musicBugSpec ? { musicBug: JSON.stringify(musicBugSpec) } : {}),
       ...(body.globalRender ?? {}),
       ...(body.orientation ? { orientation: String(body.orientation) } : {}),
+      // SONG-MASTER audio mix (narrator omitted, SFX ducked −12 dB) — asserted AFTER
+      // the client globalRender spread so the resolved mode is authoritative. Gated on a
+      // resolved song: if BOTH score providers failed (no music bed), don't claim
+      // song-master — that would drop the narrator AND have no song, leaving the film
+      // silent / promoting the narrator via fall-through. Fall back to the normal mix.
+      musicVideo: musicVideoMode && Boolean(resolvedMusicUrl),
     },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
@@ -277,11 +422,17 @@ export async function POST(req: NextRequest) {
           else ctx.signal.addEventListener('abort', abort, { once: true });
         }
         let timer: ReturnType<typeof setTimeout> | null = null;
+        // v330 — make the deadline RELATIVE to time already spent on the synchronous
+        // audio legs (EL Music / MusicGen). A fixed 270s deadline could push total past
+        // maxDuration (300s) → platform hard-kill BEFORE this timer fires → saga compensate
+        // skipped → stranded credits. Cap it to the remaining budget (minus a response/
+        // compensate reserve) so the timer always fires inside the function.
+        const effectiveDeadlineMs = Math.max(30_000, Math.min(DISPATCH_TIMEOUT_MS, MAX_FN_MS - (Date.now() - fnT0) - 15_000));
         const deadline = new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             ac.abort();
-            reject(new Error(`dispatch stalled — aborted after ${DISPATCH_TIMEOUT_MS}ms`));
-          }, DISPATCH_TIMEOUT_MS);
+            reject(new Error(`dispatch stalled — aborted after ${effectiveDeadlineMs}ms (budget-aware)`));
+          }, effectiveDeadlineMs);
         });
         try {
           // GPU worker when configured; else stitch on this node with CPU FFmpeg.
@@ -344,13 +495,24 @@ export async function POST(req: NextRequest) {
   // B2B commercials — use the marketing copy the client passed, or AUTO-derive it from the
   // film brief (intent classified by the director). Burn the overlays into the finished
   // master before it is recorded/delivered. Fail-open at every step: a miss keeps the master.
+  // The music-video brand lower-third is now burned IN the stitch (see
+  // globalRender.brandLowerThird above) — reliable, no post-pass. This block is
+  // ONLY the B2B commercial overlay (price/CTA/spec lower-thirds), which still uses
+  // the post-stitch burn. Bounded so it can never push the route past maxDuration.
   let marketing: MarketingOverlay | null = body.marketing ?? null;
   if (!marketing && resultUrl && typeof body.scorePrompt === 'string') {
     marketing = await deriveMarketingFromBrief(body.scorePrompt);
   }
   if (resultUrl && marketing && hasOverlayContent(marketing)) {
-    const overlaid = await overlayMasterUrl(resultUrl, marketing);
-    if (overlaid) resultUrl = overlaid;
+    try {
+      const overlaid = await Promise.race([
+        overlayMasterUrl(resultUrl, marketing),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000)),
+      ]);
+      if (overlaid) resultUrl = overlaid;
+    } catch {
+      /* keep the clean master */
+    }
   }
 
   // PHASE 47 §1 — stamp the finished hosted master onto the unified tracker so a

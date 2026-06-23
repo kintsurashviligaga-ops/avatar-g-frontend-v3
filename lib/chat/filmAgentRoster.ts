@@ -57,7 +57,12 @@ const PCT: Record<FilmAgentStatus, number> = { idle: 0, queued: 0, processing: 5
  * `null`/`undefined` (before the first progress tick) and returns a sensible
  * "just dispatched" roster so the console renders immediately on click.
  */
-export function deriveFilmRoster(p: FilmStudioProgress | null | undefined): FilmAgentVM[] {
+export function deriveFilmRoster(
+  p: FilmStudioProgress | null | undefined,
+  /** Drives the Lip-Sync card when a post-assemble lip-sync pass runs (music videos).
+   *  Omitted/undefined → the agent stays dormant ('idle'/Standby) as before. */
+  lipsyncStatus?: FilmAgentStatus,
+): FilmAgentVM[] {
   const phase = p?.phase ?? 'idle';
   const m = p?.matrix ?? null;
   const clips = m?.clips ?? [];
@@ -135,9 +140,22 @@ export function deriveFilmRoster(p: FilmStudioProgress | null | undefined): Film
     pct: montageStatus === 'completed' ? 100 : montageStatus === 'processing' ? 90 : 0,
   });
 
-  // dormant specialists — light up in talking-avatar / B2B-overlay / remix flows.
-  const lipsync = a('lipsync', 'idle');
-  const overlay = a('overlay', 'idle');
+  // GRAPHICS (overlay agent) — the cinematic colour grade + 3D LUT, plus any
+  // branded lower-third, are applied during the stitch/assemble stage, so the
+  // Graphics agent genuinely lights up then and completes with the master. (Not
+  // faked: this is the real grade+overlay pass in assembleWithFfmpeg.)
+  const overlay = a(
+    'overlay',
+    failedFilm ? 'error'
+      : done ? 'completed'
+      : phase === 'stitching' ? 'processing'
+      : phase === 'idle' ? 'idle'   // nothing started yet
+      : 'queued',                    // rendering → graphics queued behind the clips
+    { pct: done ? 100 : phase === 'stitching' ? 80 : 0 },
+  );
+  // Lip-sync lights up for the music-video post-assemble pass (syncing the singer's
+  // mouth to the vocal); otherwise dormant. Remix stays dormant during a render.
+  const lipsync = a('lipsync', lipsyncStatus ?? 'idle');
   const remix = a('remix', 'idle');
 
   const byId: Record<FilmAgentId, FilmAgentVM> = {

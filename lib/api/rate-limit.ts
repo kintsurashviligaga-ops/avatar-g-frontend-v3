@@ -109,6 +109,11 @@ export const RATE_LIMITS = {
   READ:      { maxRequests: 100, windowMs: 60_000,       keyPrefix: 'rl:read'  } as const,
   WRITE:     { maxRequests: 20,  windowMs: 60_000,       keyPrefix: 'rl:write' } as const,
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
+  // Storyboard preview = ONE logical generation that fans out into many quick
+  // server calls (plan + per-scene frame stream + retries + re-rolls). Treating
+  // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This
+  // dedicated tier sizes the limit to a full board (+ a re-roll or two) per minute.
+  STORYBOARD:{ maxRequests: 30,  windowMs: 60_000,       keyPrefix: 'rl:sb'    } as const,
   AUTH:      { maxRequests: 5,   windowMs: 15 * 60_000,  keyPrefix: 'rl:auth'  } as const,
   PUBLIC:    { maxRequests: 200, windowMs: 60_000,       keyPrefix: 'rl:pub'   } as const,
   AI:        { maxRequests: 10,  windowMs: 60_000,       keyPrefix: 'rl:ai'    } as const,

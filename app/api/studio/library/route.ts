@@ -49,6 +49,9 @@ export async function GET(req: NextRequest) {
   if (!client) return NextResponse.json({ items: [] });
 
   const limit = Math.min(60, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 40) || 40));
+  // offset enables infinite-scroll pagination from the client — capped only
+  // implicitly by what's in the user's library; out-of-range returns [].
+  const offset = Math.max(0, Number(req.nextUrl.searchParams.get('offset') ?? 0) || 0);
   const kind = req.nextUrl.searchParams.get('kind'); // optional service_type filter
 
   try {
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
       .eq('status', 'completed')
       .neq('service_type', 'voice') // trained voice models aren't playable Library media
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
     if (kind) query = query.eq('service_type', kind);
 
     const { data, error } = await query;
@@ -84,5 +87,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items });
   } catch {
     return NextResponse.json({ items: [] });
+  }
+}
+
+/**
+ * DELETE /api/studio/library?id=<job_id> — soft-erase a library item from the
+ * user's view. Only deletes the row owned by the AUTHENTICATED user; RLS at the
+ * supabase layer enforces the .eq('user_id', user.id) — a tampered id can never
+ * affect someone else's row. 401 when signed out (delete needs identity).
+ */
+export async function DELETE(req: NextRequest) {
+  const { supabase, user } = await authedClientFromRequest(req);
+  if (!user) return NextResponse.json({ success: false, error: 'unauthenticated' }, { status: 401 });
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 });
+  try {
+    const { error } = await supabase
+      .from('generation_jobs')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e instanceof Error ? e.message : 'delete failed' }, { status: 500 });
   }
 }

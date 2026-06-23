@@ -34,7 +34,11 @@ export function resolveAliasName(aliases: readonly string[], env: NodeJS.Process
   return null;
 }
 
-// ─── Udio (cinematic score) ──────────────────────────────────────────────────
+// ─── Udio (LEGACY) ───────────────────────────────────────────────────────────
+// v330: the music-video + film pipeline AND standalone Music mode are fully migrated
+// to ElevenLabs Music (master) + Replicate MusicGen (fallback) — Udio is no longer
+// used there. The resolver remains ONLY for legacy endpoints not yet migrated
+// (/api/udio/generate and its callers); it is otherwise dead. Do not add new Udio call sites.
 const UDIO_KEY_ALIASES = ['UDIO_API_KEY', 'UDIO_KEY', 'UDIOAPI_KEY', 'UDIO_API_TOKEN'] as const;
 
 export function resolveUdioApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
