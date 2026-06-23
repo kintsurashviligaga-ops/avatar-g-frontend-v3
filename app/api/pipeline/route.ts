@@ -196,45 +196,24 @@ function handleConfirm(serviceId: ServiceId, userInput: string, answers: Record<
 
 // ─── HeyGen helpers (inlined — no internal HTTP calls) ────────────────────────
 
-async function heygenUploadPhotoAsset(apiKey: string, photoBase64: string, mimeType: string): Promise<string> {
-  const b64 = (photoBase64.includes(',') ? photoBase64.split(',')[1] : photoBase64) ?? '';
-  const binary = Buffer.from(b64, 'base64');
-  const uint8 = new Uint8Array(binary.buffer, binary.byteOffset, binary.byteLength);
-  const blob = new Blob([uint8], { type: mimeType || 'image/jpeg' });
-
-  const form = new FormData();
-  form.append('file', blob, 'photo.jpg');
-  form.append('type', 'image');
-
-  const res = await fetch(`${HEYGEN_BASE}/v1/asset`, {
-    method: 'POST',
-    headers: { 'X-Api-Key': apiKey },
-    body: form,
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`asset upload failed ${res.status}: ${err}`);
+/** Upload raw image bytes to HeyGen's UPLOAD host and get a talking_photo_id back in
+ *  one call. NOTE the host: uploads go to upload.heygen.com — the previous code posted
+ *  a multipart asset to api.heygen.com/v1/asset, which 404s (that host has no /v1/asset).
+ *  This is the exact endpoint the (working) presenter route uses. */
+async function uploadTalkingPhoto(apiKey: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<string | null> {
+  try {
+    const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
+      method: 'POST',
+      headers: { 'X-Api-Key': apiKey, 'Content-Type': mime || 'image/jpeg' },
+      body: bytes,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json().catch(() => null)) as { data?: { talking_photo_id?: string } } | null;
+    return j?.data?.talking_photo_id ?? null;
+  } catch {
+    return null;
   }
-  const data = await res.json() as { data?: { id?: string; asset_id?: string } };
-  const id = data.data?.id ?? data.data?.asset_id;
-  if (!id) throw new Error('no asset ID returned');
-  return id;
-}
-
-async function heygenCreateTalkingPhoto(apiKey: string, assetId: string): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, {
-    method: 'POST',
-    headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_asset_id: assetId }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`talking_photo failed ${res.status}: ${err}`);
-  }
-  const data = await res.json() as { data?: { talking_photo_id?: string } };
-  const id = data.data?.talking_photo_id;
-  if (!id) throw new Error('no talking_photo_id returned');
-  return id;
 }
 
 async function heygenCreateVideo(
@@ -308,23 +287,25 @@ async function generateAvatar(
   let talkingPhotoId: string | null = null;
   let style: 'rectangle' | 'square' = 'square';
   if (photoFile) {
-    const assetId = await heygenUploadPhotoAsset(apiKey, photoFile.dataUrl, photoFile.mimeType);
-    talkingPhotoId = await heygenCreateTalkingPhoto(apiKey, assetId);
+    // User's own photo → upload its bytes directly and talk THAT face.
+    const raw = (photoFile.dataUrl.includes(',') ? photoFile.dataUrl.split(',')[1] : photoFile.dataUrl) ?? '';
+    const bytes = Uint8Array.from(Buffer.from(raw, 'base64'));
+    talkingPhotoId = await uploadTalkingPhoto(apiKey, bytes, photoFile.mimeType || 'image/jpeg');
     style = 'rectangle';
   } else {
+    // No photo → reuse a cached/existing account talking_photo, else upload the default
+    // presenter face once. (Caching only the default — never a user's one-off photo.)
     talkingPhotoId = cachedAvatarTalkingPhotoId || await firstExistingTalkingPhotoId(apiKey);
     if (!talkingPhotoId) {
       const faceRes = await fetch(AVATAR_DEFAULT_FACE_URL, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
       if (faceRes && faceRes.ok) {
         const mime = faceRes.headers.get('content-type') || 'image/jpeg';
-        const b64 = Buffer.from(await faceRes.arrayBuffer()).toString('base64');
-        const assetId = await heygenUploadPhotoAsset(apiKey, b64, mime);
-        talkingPhotoId = await heygenCreateTalkingPhoto(apiKey, assetId);
+        talkingPhotoId = await uploadTalkingPhoto(apiKey, new Uint8Array(await faceRes.arrayBuffer()), mime);
       }
     }
     cachedAvatarTalkingPhotoId = talkingPhotoId;
   }
-  if (!talkingPhotoId) return { outputKind: 'video', error: 'no talking_photo available (HeyGen photo-avatar cap reached and none reusable)' };
+  if (!talkingPhotoId) return { outputKind: 'video', error: 'talking_photo upload failed (HeyGen)' };
 
   const character = { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: style };
   const videoId  = await heygenCreateVideo(apiKey, character, { type: 'audio', audio_url: audioUrl }, dimension);
