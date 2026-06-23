@@ -160,10 +160,14 @@ export async function POST(req: NextRequest): Promise<Response> {
   // ORIGINAL landed clip if a re-render failed — so a provider miss leaves the
   // film intact (the edit simply doesn't apply) rather than dropping a scene.
   const landedByOrdinal = new Map(landedClips.map((c) => [c.ordinal, c.url]));
-  const segments: { ordinal: number; url: string }[] = [];
+  // Carry each scene's planned duration (FILM_CLIP_SEC=5) so the re-stitch reproduces
+  // the ORIGINAL film's exact total (6×5 = 30.0s). Without this the assembler fell back
+  // to a 6s/clip default + crossfade and the master drifted to ~25–31s. (remix-duration fix)
+  const durByOrdinal = new Map(plan.scenes.map((s) => [s.ordinal, s.durationSec]));
+  const segments: { ordinal: number; url: string; durationSec: number }[] = [];
   for (let ordinal = 1; ordinal <= sceneCount; ordinal += 1) {
     const url = rerendered.get(ordinal) ?? landedByOrdinal.get(ordinal);
-    if (url) segments.push({ ordinal, url });
+    if (url) segments.push({ ordinal, url, durationSec: durByOrdinal.get(ordinal) ?? 5 });
   }
 
   if (segments.length < 2) {
@@ -179,11 +183,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   let masterUrl: string | null = null;
   try {
     const result = await assembleWithFfmpeg({
-      segments: segments.map((s) => ({ url: s.url })),
+      segments: segments.map((s) => ({ url: s.url, durationSec: s.durationSec })),
       voiceoverUrl: null,
       musicUrl: null,
       sfxUrl: null,
-      globalRender: { transition: 'crossfade', vocal_ducking_pct: 30, fps: 24 },
+      // 'cut' (not crossfade) matches the production film assemble path so the total
+      // duration math is identical (transSec=0) — the master lands at exactly 30.0s.
+      globalRender: { transition: 'cut', vocal_ducking_pct: 30, fps: 24 },
       pipelineId: `remix_${stamp}`,
     });
     masterUrl = result?.url ?? null;

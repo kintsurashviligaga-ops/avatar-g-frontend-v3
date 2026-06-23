@@ -290,6 +290,55 @@ const MODES = [
   { id: 'lipsync', Icon: Volume2, key: 'modeLipsync' },
 ] as const;
 
+// P1 — Music-video lip-sync pass. Sends the assembled master to /api/video/lipsync
+// (omitting audioUrl → the route keys the singer's mouth to the master's EMBEDDED song
+// vocal). Mirrors the avatar flow's start→poll→HeyGen→SadTalker cascade. Returns the
+// synced URL or null (caller keeps the un-synced master — fail-open).
+async function lipsyncFilmMaster(masterUrl: string, signal: AbortSignal, mine: () => boolean): Promise<string | null> {
+  let forceSadTalker = false;
+  for (let attempt = 0; attempt < 2 && mine(); attempt += 1) {
+    const body = JSON.stringify(forceSadTalker ? { videoUrl: masterUrl, forceSadTalker: true } : { videoUrl: masterUrl });
+    let jobId: string | null = null;
+    try {
+      const r = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'include', signal });
+      jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
+    } catch { return null; }
+    if (!jobId) return null;
+    const usedHeygen = jobId.startsWith('heygen:');
+    let url: string | null = null;
+    for (let i = 0; i < 60 && mine(); i += 1) {
+      await new Promise((res) => setTimeout(res, 6000));
+      try {
+        const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
+        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+        if (pj.done) { url = pj.url ?? null; break; }
+      } catch { /* transient poll error — keep polling */ }
+    }
+    if (url) return url;
+    if (usedHeygen) { forceSadTalker = true; continue; } // HeyGen miss → force SadTalker once
+    break;
+  }
+  return null;
+}
+
+// Reject a lip-sync result that isn't a sane full-length master (e.g. a 5s talking-head
+// SadTalker mangled from a multi-shot film) so a good 30s master is never replaced by
+// garbage. Resolves false on any load error/timeout.
+function videoDurationAtLeast(url: string, minSec: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') { resolve(false); return; }
+    try {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      const to = setTimeout(() => resolve(false), 12000);
+      v.onloadedmetadata = () => { clearTimeout(to); resolve(Number.isFinite(v.duration) && v.duration >= minSec); };
+      v.onerror = () => { clearTimeout(to); resolve(false); };
+      v.src = url;
+    } catch { resolve(false); }
+  });
+}
+
 // ── Per-service options (real backend capabilities) ──────────────────────────
 const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:2', '2:3'] as const;
 type ImgAspect = (typeof IMG_ASPECTS)[number];
@@ -890,6 +939,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female'>('male');
+  // P1 — Music Video: after the master assembles, sync the singer's mouth to the
+  // Georgian vocal (HeyGen→SadTalker via /api/video/lipsync). Default ON; fail-open.
+  const [videoLipsync, setVideoLipsync] = useState(true);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -1102,18 +1154,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           });
         },
       });
+      // Capture the landed per-scene clips so the film bubble can offer Remix
+      // (re-render only the edited scene, reuse the rest via /api/pipeline/remix).
+      const landed = (res.matrix?.clips ?? [])
+        .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
+        .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
+      const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt } : {};
+
+      // P1 — Music Video: sync the singer's mouth to the embedded Georgian vocal. The
+      // Director Console Lip-Sync agent goes Standby → Working → Done. Fail-open with a
+      // duration guard: a missed/mangled pass keeps the un-synced 30s master intact.
+      let finalUrl = res.masterUrl;
+      if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && mine()) {
+        const lipProg = { phase: 'assembled' as const, matrix: res.matrix ?? null, masterUrl: res.masterUrl, message: '', previewUrl: null };
+        const lipRoster = deriveFilmRoster(lipProg, 'processing');
+        setMessages((prev) => {
+          if (!mine()) return prev;
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === 'assistant' && !last.videoUrl) {
+            next[next.length - 1] = { ...last, text: locale === 'en' ? "🎤 Syncing the singer's lips to the vocal…" : locale === 'ru' ? '🎤 Синхронизирую губы певицы с вокалом…' : '🎤 ვასინქრონებ მომღერლის ტუჩებს ვოკალთან…', filmRoster: lipRoster };
+          }
+          return next;
+        });
+        const synced = await lipsyncFilmMaster(res.masterUrl, ac.signal, mine);
+        if (synced && (await videoDurationAtLeast(synced, 20))) finalUrl = synced;
+      }
+
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
-          // Capture the landed per-scene clips so the film bubble can offer Remix
-          // (re-render only the edited scene, reuse the rest via /api/pipeline/remix).
-          const landed = (res.matrix?.clips ?? [])
-            .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
-            .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
           next[next.length - 1] = res.ok && res.masterUrl
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, ...(landed.length >= 2 ? { filmClips: landed, filmPrompt } : {}) }
+            ? { role: 'assistant', text: '', videoUrl: finalUrl ?? res.masterUrl, orientation, ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
         }
         return next;
@@ -1129,7 +1203,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoVocalGender, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -2504,7 +2578,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {kind === 'video' ? (
                         // The Master-Prompt Director's Console — the 9-agent crew,
                         // live, driven by the real film-pipeline matrix.
-                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} />
+                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} />
                       ) : (
                         <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
                       )}
@@ -2924,6 +2998,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         : 'სიმღერა მთავარია — დიქტორის გარეშე, ფონი −12 dB ვოკალის ქვეშ, 9:16 ვერტიკალური. ატვირთე ბიტი „აუდიო ტრეკში“, ან დაგენერირდება.'}
                   </p>
                 </div>
+                {/* P1 · Lip-sync the singer to the vocal (default ON; fail-open) */}
+                <button type="button" onClick={() => setVideoLipsync((v) => !v)} aria-pressed={videoLipsync}
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoLipsync ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/20 bg-app-bg/40'}`}>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
+                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'A lip-sync pass after the film assembles (adds time).' : locale === 'ru' ? 'Липсинк после сборки фильма (дольше).' : 'ლიპსინკი ფილმის აწყობის შემდეგ (დრო ემატება).'}</span>
+                  </span>
+                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoLipsync ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                  </span>
+                </button>
               </>
             )}
 

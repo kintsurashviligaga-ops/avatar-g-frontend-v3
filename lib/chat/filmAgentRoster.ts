@@ -57,7 +57,12 @@ const PCT: Record<FilmAgentStatus, number> = { idle: 0, queued: 0, processing: 5
  * `null`/`undefined` (before the first progress tick) and returns a sensible
  * "just dispatched" roster so the console renders immediately on click.
  */
-export function deriveFilmRoster(p: FilmStudioProgress | null | undefined): FilmAgentVM[] {
+export function deriveFilmRoster(
+  p: FilmStudioProgress | null | undefined,
+  /** Drives the Lip-Sync card when a post-assemble lip-sync pass runs (music videos).
+   *  Omitted/undefined → the agent stays dormant ('idle'/Standby) as before. */
+  lipsyncStatus?: FilmAgentStatus,
+): FilmAgentVM[] {
   const phase = p?.phase ?? 'idle';
   const m = p?.matrix ?? null;
   const clips = m?.clips ?? [];
@@ -148,9 +153,9 @@ export function deriveFilmRoster(p: FilmStudioProgress | null | undefined): Film
       : 'queued',                    // rendering → graphics queued behind the clips
     { pct: done ? 100 : phase === 'stitching' ? 80 : 0 },
   );
-  // Lip-sync + remix stay dormant during a plain film render — they light up in
-  // the talking-avatar (companion hero clip) and remix flows respectively.
-  const lipsync = a('lipsync', 'idle');
+  // Lip-sync lights up for the music-video post-assemble pass (syncing the singer's
+  // mouth to the vocal); otherwise dormant. Remix stays dormant during a render.
+  const lipsync = a('lipsync', lipsyncStatus ?? 'idle');
   const remix = a('remix', 'idle');
 
   const byId: Record<FilmAgentId, FilmAgentVM> = {
