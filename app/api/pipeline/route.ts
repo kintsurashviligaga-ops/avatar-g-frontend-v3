@@ -200,7 +200,7 @@ function handleConfirm(serviceId: ServiceId, userInput: string, answers: Record<
  *  one call. NOTE the host: uploads go to upload.heygen.com — the previous code posted
  *  a multipart asset to api.heygen.com/v1/asset, which 404s (that host has no /v1/asset).
  *  This is the exact endpoint the (working) presenter route uses. */
-async function uploadTalkingPhoto(apiKey: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<string | null> {
+async function uploadTalkingPhoto(apiKey: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<{ id: string | null; detail?: string }> {
   try {
     const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
       method: 'POST',
@@ -208,11 +208,13 @@ async function uploadTalkingPhoto(apiKey: string, bytes: Uint8Array<ArrayBuffer>
       body: bytes,
       signal: AbortSignal.timeout(30_000),
     });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { data?: { talking_photo_id?: string } } | null;
-    return j?.data?.talking_photo_id ?? null;
-  } catch {
-    return null;
+    const text = await r.text().catch(() => '');
+    if (!r.ok) return { id: null, detail: `HeyGen ${r.status}: ${text.slice(0, 200)}` };
+    let id: string | null = null;
+    try { id = JSON.parse(text)?.data?.talking_photo_id ?? null; } catch { id = null; }
+    return { id, detail: id ? undefined : `no talking_photo_id in: ${text.slice(0, 200)}` };
+  } catch (e) {
+    return { id: null, detail: `upload threw: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) };
   }
 }
 
@@ -286,12 +288,22 @@ async function generateAvatar(
   const photoFile = mediaFiles.find(f => f.type === 'image');
   let talkingPhotoId: string | null = null;
   let style: 'rectangle' | 'square' = 'square';
+  let uploadDetail: string | undefined;
   if (photoFile) {
     // User's own photo → upload its bytes directly and talk THAT face.
     const raw = (photoFile.dataUrl.includes(',') ? photoFile.dataUrl.split(',')[1] : photoFile.dataUrl) ?? '';
     const bytes = Uint8Array.from(Buffer.from(raw, 'base64'));
-    talkingPhotoId = await uploadTalkingPhoto(apiKey, bytes, photoFile.mimeType || 'image/jpeg');
-    style = 'rectangle';
+    const up = await uploadTalkingPhoto(apiKey, bytes, photoFile.mimeType || 'image/jpeg');
+    talkingPhotoId = up.id;
+    uploadDetail = up.detail;
+    if (talkingPhotoId) {
+      style = 'rectangle';
+    } else {
+      // The HeyGen plan caps photo-avatars at 3; a new upload past that 401028s. Rather
+      // than fail the whole render, fall back to the reusable default presenter face so
+      // the user still gets a talking avatar in their chosen voice/format.
+      talkingPhotoId = cachedAvatarTalkingPhotoId || await firstExistingTalkingPhotoId(apiKey);
+    }
   } else {
     // No photo → reuse a cached/existing account talking_photo, else upload the default
     // presenter face once. (Caching only the default — never a user's one-off photo.)
@@ -300,12 +312,14 @@ async function generateAvatar(
       const faceRes = await fetch(AVATAR_DEFAULT_FACE_URL, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
       if (faceRes && faceRes.ok) {
         const mime = faceRes.headers.get('content-type') || 'image/jpeg';
-        talkingPhotoId = await uploadTalkingPhoto(apiKey, new Uint8Array(await faceRes.arrayBuffer()), mime);
+        const up = await uploadTalkingPhoto(apiKey, new Uint8Array(await faceRes.arrayBuffer()), mime);
+        talkingPhotoId = up.id;
+        uploadDetail = up.detail;
       }
     }
     cachedAvatarTalkingPhotoId = talkingPhotoId;
   }
-  if (!talkingPhotoId) return { outputKind: 'video', error: 'talking_photo upload failed (HeyGen)' };
+  if (!talkingPhotoId) return { outputKind: 'video', error: `talking_photo unavailable (HeyGen)${uploadDetail ? ` — ${uploadDetail}` : ''}` };
 
   const character = { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: style };
   const videoId  = await heygenCreateVideo(apiKey, character, { type: 'audio', audio_url: audioUrl }, dimension);
