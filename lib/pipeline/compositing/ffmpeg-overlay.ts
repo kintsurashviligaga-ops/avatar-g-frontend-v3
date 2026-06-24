@@ -270,6 +270,47 @@ export async function renderMusicBugPng(m: MusicBug, w: number, h: number): Prom
   }
 }
 
+/** Build a centered cinematic TITLE CARD svg (big title + accent subtitle), for the
+ *  music-video intro. Latin/Cyrillic → tracked uppercase; Georgian keeps native case. */
+export function buildTitleCardSvg(o: { title: string; subtitle?: string; lang?: 'ka' | 'en' | 'ru' }, w: number, h: number): string {
+  const base = Math.min(w, h);
+  const s = (px: number) => Math.round(px * (base / 1080));
+  const ka = o.lang ? o.lang === 'ka' : hasGeorgian(o.title, o.subtitle);
+  const lang = ka ? 'ka' : o.lang === 'ru' ? 'ru' : 'en';
+  const cap = (t: string) => (ka ? t : t.toUpperCase());
+  const title = cap((o.title || '').slice(0, 40));
+  const titleSize = s(w > h ? 84 : 104);
+  const subSize = s(34);
+  const cx = Math.round(w / 2);
+  const cy = Math.round(h * 0.40);
+  const titleLS = ka ? s(1) : s(6);
+  const d = Math.max(2, s(4));
+  const tCommon = `text-anchor="middle" font-size="${titleSize}" font-family="${FONT_TITLE}" letter-spacing="${titleLS}" xml:lang="${lang}"`;
+  const els: string[] = [];
+  els.push(`<text x="${cx + d}" y="${cy + d}" ${tCommon} fill="#000000" fill-opacity="0.5">${esc(title)}</text>`);
+  els.push(`<text x="${cx}" y="${cy}" ${tCommon} fill="#ffffff">${esc(title)}</text>`);
+  if (o.subtitle) {
+    const sy = cy + s(58);
+    const sCommon = `text-anchor="middle" font-size="${subSize}" font-family="${FONT_BODY}" letter-spacing="${s(3)}" xml:lang="${lang}"`;
+    els.push(`<text x="${cx + Math.max(1, s(2))}" y="${sy + Math.max(1, s(2))}" ${sCommon} fill="#000000" fill-opacity="0.5">${esc(cap(o.subtitle.slice(0, 40)))}</text>`);
+    els.push(`<text x="${cx}" y="${sy}" ${sCommon} fill="${ACCENT}">${esc(cap(o.subtitle.slice(0, 40)))}</text>`);
+  }
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${els.join('')}</svg>`;
+}
+
+/** Rasterise the title card to a transparent PNG (resvg), or null on any miss. */
+export async function renderTitleCardPng(o: { title: string; subtitle?: string; lang?: 'ka' | 'en' | 'ru' }, w: number, h: number): Promise<Buffer | null> {
+  if (!o.title || !o.title.trim()) return null;
+  try {
+    const resvg = new Resvg(buildTitleCardSvg(o, w, h), {
+      font: { fontFiles: overlayFontFiles(), loadSystemFonts: false, defaultFontFamily: 'FiraGO' },
+    });
+    return Buffer.from(resvg.render().asPng());
+  } catch {
+    return null;
+  }
+}
+
 export interface OverlayResult {
   ok: boolean;
   error?: string;

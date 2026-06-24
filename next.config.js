@@ -65,6 +65,8 @@ const nextConfig = {
       // B2B marketing overlays: ffmpeg-static binary + @resvg (SVG→PNG with an EXPLICIT font
       // buffer + its native bins) ride along so the lambda renders the overlay PNG + composites.
       '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // Music-Video graphics agent: equalizer (ffmpeg) + title/lower-third (resvg SVG→PNG).
+      '/api/video/graphics': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
     },
   },
   eslint: {

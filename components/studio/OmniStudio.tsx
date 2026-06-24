@@ -1427,13 +1427,36 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const composited = (perfOk && perf && res.matrix && mine())
           ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, isMusicVideo ? 'vertical' : orientation, videoTransition, ac.signal, mine)
           : null;
+        // GRAPHICS AGENT — layer beautiful motion graphics (music-synced equalizer +
+        // animated title card over the intro + animated lower-third) over the final cut.
+        // Strictly fail-open: a miss keeps the un-graphic composite.
+        let finalMv = composited;
+        if (composited && isMusicVideo && mine()) {
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev]; const last = next[next.length - 1];
+            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: locale === 'en' ? '🎬 Adding motion graphics…' : locale === 'ru' ? '🎬 Добавляю графику…' : '🎬 ვამატებ გრაფიკას…' };
+            return next;
+          });
+          try {
+            const theme = /tbilisi|თბილის/i.test(filmPrompt) ? 'TBILISI'
+              : /night|ღამ|neon|ნეონ/i.test(filmPrompt) ? (locale === 'ka' ? 'ღამის განწყობა' : locale === 'ru' ? 'НОЧНЫЕ ВАЙБЫ' : 'NIGHT VIBES')
+              : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
+            const gr = await fetch('/api/video/graphics', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+              body: JSON.stringify({ videoUrl: composited, title: theme, lang: locale, introSec: videoDuration === 60 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale } }),
+            });
+            const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
+            if (gj.url) finalMv = gj.url;
+          } catch { /* fail-open → composited */ }
+        }
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant' && !last.videoUrl) {
             next[next.length - 1] = composited
-              ? { role: 'assistant', text: '', videoUrl: composited, orientation: 'vertical' }
+              ? { role: 'assistant', text: '', videoUrl: finalMv ?? composited, orientation: 'vertical' }
               : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t add the lip-synced close-ups — the cinematic video above is your result.' : locale === 'ru' ? '⚠️ Не удалось добавить липсинк — кинематографичное видео выше — ваш результат.' : '⚠️ ლიპსინქ ვერ დაემატა — ზემოთ კინემატოგრაფიული ვიდეო თქვენი შედეგია.' };
           }
           return next;
