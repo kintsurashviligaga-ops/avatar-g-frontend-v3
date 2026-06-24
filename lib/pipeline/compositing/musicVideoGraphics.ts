@@ -87,18 +87,21 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
     ]);
     if (!titlePng && !bugPng && !hasAudio) return null; // nothing to add
 
+    // Image overlays MUST be looped (`-loop 1`) so they become a continuous stream —
+    // otherwise the single PNG frame sits at t=0, the time-based alpha fade renders it
+    // fully transparent, and the title/lower-third never appear.
     const inputs: string[] = ['-y', '-i', inPath];
     let titleIdx = -1; let bugIdx = -1; let nextIdx = 1;
-    if (titlePng) { const p = join(dir, 'title.png'); await writeFile(p, titlePng); inputs.push('-i', p); titleIdx = nextIdx++; }
-    if (bugPng) { const p = join(dir, 'bug.png'); await writeFile(p, bugPng); inputs.push('-i', p); bugIdx = nextIdx++; }
+    if (titlePng) { const p = join(dir, 'title.png'); await writeFile(p, titlePng); inputs.push('-loop', '1', '-i', p); titleIdx = nextIdx++; }
+    if (bugPng) { const p = join(dir, 'bug.png'); await writeFile(p, bugPng); inputs.push('-loop', '1', '-i', p); bugIdx = nextIdx++; }
 
     // Build the filtergraph. Each layer is optional; `cur` tracks the live video label.
-    const eqH = Math.round(h * 0.085);
+    const eqH = Math.round(h * 0.10);
     const parts: string[] = [];
     let cur = '0:v';
     if (hasAudio) {
       parts.push(`[0:a]aformat=channel_layouts=stereo,showfreqs=s=${w}x${eqH}:mode=bar:ascale=sqrt:fscale=log:colors=0xFFC857|0xFF8C42[eqr]`);
-      parts.push(`[eqr]format=rgba,colorchannelmixer=aa=0.5[eq]`);
+      parts.push(`[eqr]format=rgba,colorchannelmixer=aa=0.85[eq]`);
       parts.push(`[${cur}][eq]overlay=0:${h - eqH}:format=auto:enable='gte(t,${introSec.toFixed(1)})'[veq]`);
       cur = 'veq';
     }
@@ -121,6 +124,8 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
       ...inputs,
       '-filter_complex', parts.join(';'),
       '-map', '[vout]', '-map', '0:a?',
+      // The looped image inputs are infinite — bound the output to the master's length.
+      '-t', String(Math.max(1, Math.ceil(dur))),
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
       '-c:a', 'copy', '-movflags', '+faststart', outPath,
     ];
