@@ -14,7 +14,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { driveFilmStudio } from '@/lib/chat/filmStudioClient';
+import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
+import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine } from '@/lib/chat/filmAgentRoster';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
@@ -319,6 +320,64 @@ async function heygenSingerPerformance(faceUrl: string, audioUrl: string, orient
     } catch { /* transient poll error — keep polling */ }
   }
   return null;
+}
+
+// Stage 2b — COMPOSITE the HeyGen close-ups INTO the cinematic montage. Face-forward beats
+// (Medium / Arc / Close-Up) take a 5s window of the continuous HeyGen performance at their
+// timeline position (so lips match the song there); wide beats (Establishing / Wide / Reso-
+// lution) keep the cinematic LTX clip. Re-assembles with the SONG as the master audio.
+// Fail-open: a miss returns null and the caller keeps the cinematic + companion clips.
+async function compositeMusicVideo(
+  heygenUrl: string,
+  matrix: FilmStudioMatrix,
+  storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
+  musicUrl: string,
+  orientation: 'landscape' | 'vertical',
+  transition: 'crossfade' | 'cut',
+  signal: AbortSignal,
+  mine: () => boolean,
+): Promise<string | null> {
+  try {
+    const ltxByOrd = new Map<number, string>();
+    for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
+    const beatByOrd = new Map<number, string>();
+    for (const s of storyboardScenes ?? []) beatByOrd.set(s.ordinal, (s.beat ?? '').toLowerCase());
+    const ordinals = [...ltxByOrd.keys()].sort((a, b) => a - b);
+    if (ordinals.length < 2) return null;
+    const FACE = /close|medium|arc/;
+    const segs: { url: string; durationSec: number }[] = [];
+    for (const ord of ordinals) {
+      const isFace = FACE.test(beatByOrd.get(ord) ?? '');
+      let url = ltxByOrd.get(ord) as string;
+      if (isFace && mine()) {
+        try {
+          const r = await fetch('/api/video/trim', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
+            body: JSON.stringify({ videoUrl: heygenUrl, startSec: (ord - 1) * FILM_CLIP_SEC, durationSec: FILM_CLIP_SEC }),
+          });
+          const seg = ((await r.json().catch(() => ({}))) as { url?: string | null }).url ?? null;
+          if (seg) url = seg; // else keep the LTX clip for this scene
+        } catch { /* keep LTX */ }
+      }
+      segs.push({ url, durationSec: FILM_CLIP_SEC });
+    }
+    if (segs.length < 2 || !mine()) return null;
+    const r = await fetch('/api/video/assemble', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
+      body: JSON.stringify({
+        segments: segs,
+        musicUrl,
+        musicVideoMode: true,
+        ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
+        ...(transition ? { globalRender: { transition } } : {}),
+      }),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json().catch(() => null)) as { url?: unknown } | null;
+    return j && typeof j.url === 'string' && j.url.length > 0 ? j.url : null;
+  } catch {
+    return null;
+  }
 }
 
 // Reject a lip-sync result that isn't a sane full-length master (e.g. a 5s talking-head
@@ -1317,9 +1376,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
       if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace && mine()) {
         setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎤 Generating the lip-synced singer performance (HeyGen)…' : locale === 'ru' ? '🎤 Генерирую липсинк-выступление певицы (HeyGen)…' : '🎤 ვქმნი მომღერლის ლიპსინქ-შესრულებას (HeyGen)…', genKind: 'lipsync' }]);
+        // Capture the full song (vocal + backing) — it stays the composited master's audio.
+        const songUrl: string = res.musicUrl;
         // Stage 2 — isolate the vocal (ElevenLabs Voice Isolator) so HeyGen syncs to the
         // clean voice, not the full mix. Fail-open: a miss keeps the full song.
-        let vocalForSync: string = res.musicUrl;
+        let vocalForSync: string = songUrl;
         try {
           const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
           const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
@@ -1338,6 +1399,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           }
           return next;
         });
+
+        // Stage 2b — composite the synced HeyGen close-ups INTO the cinematic montage.
+        if (perfOk && perf && res.matrix && mine()) {
+          setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎬 Compositing the singer close-ups into the cinematic cut…' : locale === 'ru' ? '🎬 Монтирую крупные планы певицы в кинокадр…' : '🎬 ვაერთიანებ მომღერლის ახლო ხედებს კინო-მონტაჟში…', genKind: 'video' }]);
+          const composited = await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, isMusicVideo ? 'vertical' : orientation, videoTransition, ac.signal, mine);
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant' && !last.videoUrl) {
+              next[next.length - 1] = composited
+                ? { role: 'assistant', text: '', videoUrl: composited, orientation: 'vertical' }
+                : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t composite the close-ups — the cinematic video + HeyGen performance above still stand.' : locale === 'ru' ? '⚠️ Не удалось смонтировать крупные планы — видео и выступление выше остаются.' : '⚠️ ახლო ხედების მონტაჟი ვერ მოხერხდა — ზემოთ ვიდეო და შესრულება რჩება.' };
+            }
+            return next;
+          });
+        }
       }
     } catch {
       if (!mine()) return;
