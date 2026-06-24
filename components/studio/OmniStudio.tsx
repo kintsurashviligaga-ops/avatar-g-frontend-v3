@@ -347,7 +347,10 @@ async function compositeMusicVideo(
     const FACE = /close|medium|arc/;
     const segs: { url: string; durationSec: number }[] = [];
     for (const ord of ordinals) {
-      const isFace = FACE.test(beatByOrd.get(ord) ?? '');
+      // Keep the cinematic INTRO (drone over the city → into the venue: scenes 1-2 of a
+      // 4+ scene music video) as the LTX clip — never lip-sync a shot with no singer.
+      const isIntro = ordinals.length >= 4 && ord <= 2;
+      const isFace = !isIntro && FACE.test(beatByOrd.get(ord) ?? '');
       let url = ltxByOrd.get(ord) as string;
       if (isFace && mine()) {
         try {
@@ -1505,7 +1508,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal: ac.signal,
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
@@ -1535,7 +1538,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         try {
           const sr = await fetch('/api/film/storyboard', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
           });
           const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {

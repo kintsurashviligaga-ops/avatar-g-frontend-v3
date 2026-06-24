@@ -233,6 +233,10 @@ export interface FilmPlanOptions {
    * while the seed + style guide + character anchor still lock continuity.
    */
   sceneScripts?: string[];
+  /** Music-Video mode → open with a cinematic INTRO: scene 1 is an aerial/drone
+   *  establishing shot over the city and scene 2 moves into the venue, before the
+   *  performance begins. Gives the 30s/60s music video a real "drone → singer" edit. */
+  musicVideo?: boolean;
 }
 
 /** Parameters shared identically across every clip — the continuity contract. */
@@ -376,7 +380,16 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // its own camera + shot-size direction). Fall back to the deterministic
     // camera-beat framing when no script was supplied.
     const llmScene = opts.sceneScripts?.[seg.index]?.trim();
-    const head = llmScene && llmScene.length > 0 ? llmScene : `${beat.framing} — ${subject}${styled}`;
+    // Music-Video INTRO: force the first one/two scenes to a cinematic drone/venue
+    // establishing sequence (NO protagonist) so the clip opens with a real aerial
+    // intro, then cuts to the singer — overrides any per-scene LLM script for these.
+    const mvIntro = opts.musicVideo && segments.length >= 4 && seg.index <= 1;
+    const placeHint = /tbilisi|თბილის/i.test(subject) ? 'the old town of Tbilisi' : 'a city';
+    const head = mvIntro
+      ? (seg.index === 0
+          ? `Cinematic aerial drone shot at night flying high over ${placeHint}, glowing streets, rooftops and warm windows, slowly descending toward a lively music venue — atmospheric wide establishing shot, NO people in frame, neon and golden light, photorealistic${styled}`
+          : `Cinematic camera move arriving INTO a warm, lively bar at night — golden string lights, exposed brick, a small crowd with drinks, a stage with a vintage microphone, anticipation just before the performance${styled}`)
+      : (llmScene && llmScene.length > 0 ? llmScene : `${beat.framing} — ${subject}${styled}`);
     // …while the seed + style guide + character anchor hold the world CONSTANT.
     const continuity = `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
     // Inject the explicit camera move + subject energy + a clean-frame guard (no

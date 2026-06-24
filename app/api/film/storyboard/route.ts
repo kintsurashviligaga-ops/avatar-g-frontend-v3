@@ -158,8 +158,10 @@ export async function POST(req: NextRequest) {
     sceneOrdinal?: number;
     /** A user-EDITED shot description for the single-scene regen (Storyboard editing). */
     scenePrompt?: string;
-    /** How many scenes (2 → ~10s · 6 → ~30s). Clamped to [2, FILM_SCENE_COUNT]. */
+    /** How many scenes (2 → ~10s · 6 → ~30s · 12 → ~60s). Clamped to [2, 12]. */
     sceneCount?: number;
+    /** Music-Video mode → open the board with a cinematic drone/venue intro. */
+    musicVideoMode?: boolean;
     /** Plan-only: return deterministic scene beats INSTANTLY (no LLM, no frames), so
      *  the client opens the board in ~1s and streams each frame in per-scene. */
     planOnly?: boolean;
@@ -194,7 +196,8 @@ export async function POST(req: NextRequest) {
   const hostedRefs = refList.length ? await Promise.all(refList.map((r, i) => hostRef(r, i))) : [];
   const selfie = hostedRefs.find((r) => /^https?:\/\//i.test(r)) ?? null;
 
-  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec });
+  const musicVideo = body.musicVideoMode === true;
+  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec, musicVideo });
   const aspect = orientation === 'vertical' ? '9:16' : '16:9';
   const sessionId = `storyboard_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -294,7 +297,7 @@ export async function POST(req: NextRequest) {
   // render all frames in one request. Fail-open: a miss leaves `plan` in place.
   const sceneScripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
   const storyPlan = sceneScripts
-    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec })
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec, musicVideo })
     : plan;
 
   const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
