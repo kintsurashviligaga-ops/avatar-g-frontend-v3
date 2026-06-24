@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
   const brief = typeof body.brief === 'string' ? body.brief.trim() : '';
   const gender: 'male' | 'female' = body.gender === 'male' ? 'male' : 'female';
-  const totalSec = Number.isFinite(Number(body.totalSec)) && Number(body.totalSec) > 0 ? Math.min(30, Number(body.totalSec)) : 30;
+  const totalSec = Number.isFinite(Number(body.totalSec)) && Number(body.totalSec) > 0 ? Math.min(60, Number(body.totalSec)) : 30;
   if (!brief) return NextResponse.json({ url: null });
   // Diagnostic mode (gated): run each leg in isolation and report which fails + why,
   // so a prod miss can be localized (the main path fail-opens to null and hides it).

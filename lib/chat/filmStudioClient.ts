@@ -121,8 +121,9 @@ export interface DriveFilmOptions {
    * is implied true. Absent/false → narration-forward documentary mix.
    */
   musicVideoMode?: boolean;
-  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer). */
-  vocalGender?: 'male' | 'female';
+  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer).
+   *  'duet' → a male + female duet (two lead vocalists). */
+  vocalGender?: 'male' | 'female' | 'duet';
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
@@ -446,7 +447,7 @@ async function assembleMaster(
   musicVideoMode?: boolean,
   customAudioUrl?: string | null,
   captionLang?: 'ka' | 'en' | 'ru',
-  vocalGender?: 'male' | 'female',
+  vocalGender?: 'male' | 'female' | 'duet',
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.

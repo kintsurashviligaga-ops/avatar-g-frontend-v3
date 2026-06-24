@@ -184,7 +184,8 @@ export async function POST(req: NextRequest) {
   // Scene count = film length: the user picks 10s (2 scenes) or 30s (6). The scene
   // count is driven by totalSec (count × clip seconds) — planFilmScenes splits the
   // runtime into FILM_CLIP_SEC beats, so totalSec is what actually sets the count.
-  const sceneCount = Math.max(2, Math.min(FILM_SCENE_COUNT, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
+  // Up to 12 scenes (the 60s Music-Video variant); 10s→2, 30s→6, 60s→12.
+  const sceneCount = Math.max(2, Math.min(12, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
   const sceneTotalSec = sceneCount * FILM_CLIP_SEC;
 
   // Host any uploaded reference photos so the storyboard frames can lock the

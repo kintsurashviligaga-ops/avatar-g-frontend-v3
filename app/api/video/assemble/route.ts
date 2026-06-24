@@ -60,7 +60,7 @@ function isMusicVideoBrief(brief: string | null | undefined): boolean {
 /** Derive MTV-style music-bug content (artist / track / theme) from the brief. */
 function deriveMusicBug(
   brief: string,
-  gender: 'male' | 'female' | undefined,
+  gender: 'male' | 'female' | 'duet' | undefined,
   lang: 'ka' | 'en' | 'ru',
 ): { artist: string; track: string; theme: string; producer: string; lang: 'ka' | 'en' | 'ru' } {
   const b = (brief || '').toLowerCase();
@@ -77,10 +77,10 @@ function deriveMusicBug(
   const track = /tbilisi|თბილის/.test(b)
     ? (ka ? 'ჩემო თბილისო' : 'My Tbilisi')
     : (ka ? 'ცოცხალი შესრულება' : 'Live Session');
-  // Artist — the platform avatar performer, gendered.
+  // Artist — the platform avatar performer, gendered (duet = both).
   const artist = ka
-    ? (gender === 'female' ? 'ავატარი · ქალი ვოკალი' : 'ავატარი · მამრობითი ვოკალი')
-    : `MyAvatar · ${gender === 'female' ? 'Female' : 'Male'} Vocal`;
+    ? (gender === 'duet' ? 'ავატარი · დუეტი' : gender === 'female' ? 'ავატარი · ქალი ვოკალი' : 'ავატარი · მამრობითი ვოკალი')
+    : `MyAvatar · ${gender === 'duet' ? 'Duet' : gender === 'female' ? 'Female' : 'Male'} Vocal`;
   return { artist, track, theme, producer: 'MyAvatar.ge Originals', lang };
 }
 
@@ -139,8 +139,9 @@ interface AssembleBody {
   /** v330 — caption language for the burned-in lower-third (ka/en/ru). Drives the
    *  FiraGO script + casing. Omitted → auto-detected from the brief. */
   captionLang?: 'ka' | 'en' | 'ru';
-  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer). */
-  vocalGender?: 'male' | 'female';
+  /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer).
+   *  'duet' → a male + female duet. */
+  vocalGender?: 'male' | 'female' | 'duet';
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real

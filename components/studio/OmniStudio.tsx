@@ -1110,8 +1110,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
   // (empty = auto-written narration). The clear "what should they say" field.
   const [videoSpeech, setVideoSpeech] = useState('');
-  // Film length: 10s (2 scenes) or 30s (6 scenes). Drives the storyboard scene count.
-  const [videoDuration, setVideoDuration] = useState<10 | 30>(30);
+  // Film length: 10s (2 scenes), 30s (6 scenes) or 60s (12 scenes). Drives the
+  // storyboard scene count. 60s = a cinematic intro (first scenes establishing) →
+  // the singer performance, for a full music-video edit.
+  const [videoDuration, setVideoDuration] = useState<10 | 30 | 60>(30);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
@@ -1128,7 +1130,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
-  const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female'>('male');
+  const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
   // P1 — Music Video: after the master assembles, sync the singer's mouth to the
   // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
   // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
@@ -1304,7 +1306,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
         try {
-          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender, totalSec: 30 }) });
+          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: videoDuration }) });
           const j = (await r.json().catch(() => ({}))) as { url?: string | null };
           if (j.url) kaSoundtrack = j.url;
         } catch { /* fail-open → EL Music (English) */ }
@@ -1492,7 +1494,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
-    const sceneCount = Math.max(2, Math.min(6, Math.round(videoDuration / 5)));
+    // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
+    // establishing/intro beats then moves to the performance.
+    const sceneCount = Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
     try {
       // STEP 1 — fast PLAN-ONLY call: deterministic scene beats, no LLM, no frames.
       // Returns in ~1s so the board opens immediately (no long "frozen" wait).
@@ -3344,6 +3348,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="flex gap-1.5">
                   <Chip active={videoDuration === 10} onClick={() => setVideoDuration(10)}>10{locale === 'en' ? 's' : 'წმ'}</Chip>
                   <Chip active={videoDuration === 30} onClick={() => setVideoDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
+                  <Chip active={videoDuration === 60} onClick={() => setVideoDuration(60)}>60{locale === 'en' ? 's' : 'წმ'}</Chip>
                 </div>
               </div>
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
@@ -3389,10 +3394,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Vocal gender — steers the ElevenLabs Music singer (big touch targets) */}
                 <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                   <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="mt-2 grid grid-cols-3 gap-2">
                     {([
                       ['female', '👩‍🎤', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
                       ['male', '👨‍🎤', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'მამრობითი'],
+                      ['duet', '👫', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
                     ] as const).map(([id, emoji, label]) => {
                       const on = videoVocalGender === id;
                       return (

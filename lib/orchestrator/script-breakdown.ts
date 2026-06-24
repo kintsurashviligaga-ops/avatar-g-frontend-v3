@@ -16,8 +16,9 @@
 import { SEGMENT_DURATION_SEC } from './types';
 import { agentASystemPrompt } from './agents/profiles';
 
-/** Safety cap — 8 × 6s = 48s, the longest composition we assemble in one pass. */
-export const MAX_SEGMENTS = 8;
+/** Safety cap — 12 × 5s = 60s, the longest composition we assemble in one pass
+ *  (the 1-minute Music-Video variant: a few establishing/intro beats → performance). */
+export const MAX_SEGMENTS = 12;
 
 export const CAMERA_MOTIONS = ['zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'dolly'] as const;
 export type CameraMotion = (typeof CAMERA_MOTIONS)[number];
