@@ -15,14 +15,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen, Monitor, Moon, Sun,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
+import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
 import AuthModal from '@/components/chat/AuthModal';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { useTheme } from '@/lib/theme/ThemeContext';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
@@ -63,6 +64,16 @@ interface ChatChromeProps {
   children: React.ReactNode;
 }
 
+// On/off switch used by the Settings → Notifications + Generation-defaults toggles.
+function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onClick}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-app-accent' : 'bg-app-border/30'}`}>
+      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+    </button>
+  );
+}
+
 export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -75,11 +86,11 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  // Every secondary surface (Library + the 3 legal pages) opens IN-WINDOW in this
-  // one slide-over — never a new tab or a route change. Legal embeds the real,
-  // vetted page (?embed=1 strips its chrome); X-Frame-Options is SAMEORIGIN so the
-  // same-origin iframe renders the full content cleanly.
-  const [sheet, setSheet] = useState<null | 'library' | 'privacy' | 'terms' | 'support'>(null);
+  // Library opens IN-WINDOW in this slide-over. Legal (Privacy/Terms) no longer use
+  // it — they're INSTANT client-side modals (LegalModal) with zero network/iframe, so
+  // they paint in one frame instead of flashing an iframe-loaded page.
+  const [sheet, setSheet] = useState<null | 'library'>(null);
+  const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
   const [authed, setAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
@@ -89,6 +100,27 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const [displayName, setDisplayName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // Theme (Dark / Light / System) for the Appearance section. ThemeContext is binary
+  // (dark|light); "System" resolves the OS preference once via matchMedia.
+  const { theme, setTheme } = useTheme();
+  const pickSystemTheme = useCallback(() => {
+    try { setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { setTheme('dark'); }
+  }, [setTheme]);
+
+  // Settings prefs (Notifications + Generation defaults) — localStorage only, no API.
+  const [emailNotif, setEmailNotif] = useState(false);
+  const [autoSave, setAutoSave] = useState(true);
+  const [defaultVideoLen, setDefaultVideoLen] = useState<10 | 30 | 60>(30);
+  useEffect(() => {
+    try {
+      setEmailNotif(localStorage.getItem('mya:notif-email') === '1');
+      setAutoSave(localStorage.getItem('mya:autosave') !== '0');
+      const len = Number(localStorage.getItem('mya:default-video-len'));
+      if (len === 10 || len === 30 || len === 60) setDefaultVideoLen(len);
+    } catch { /* private mode — defaults stand */ }
+  }, []);
+  const persist = useCallback((key: string, val: string) => { try { localStorage.setItem(key, val); } catch { /* ignore */ } }, []);
 
   // Reactive auth — flips Guest⇄User instantly (no reload) on sign in/out.
   useEffect(() => {
@@ -118,7 +150,9 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
   useEffect(() => { void refreshBalance(); }, [refreshBalance]);
 
-  const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] text-app-text transition-colors hover:bg-app-elevated';
+  const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-app-text transition-colors hover:bg-app-elevated';
+  const sectionHdr = 'px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-app-muted';
+  const settingsDivider = 'my-2 border-t border-app-border/10';
   const sideRow = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-app-text transition-colors hover:bg-app-elevated';
 
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
@@ -255,7 +289,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
-          <span className="truncate text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
+          <span className="truncate text-[16px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
           <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden"><X className="h-[18px] w-[18px]" /></button>
         </div>
 
@@ -275,9 +309,9 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
             <div className="space-y-2 pb-2">
               {convGroups.map((g) => (
                 <div key={g.key} className="space-y-0.5">
-                  <p className="px-2.5 pb-0.5 pt-1 text-[10.5px] font-semibold uppercase tracking-wider text-app-muted/70">{g.label}</p>
+                  <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-app-muted/70">{g.label}</p>
                   {g.items.map((c) => (
-                    <button key={c.id} type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-[13px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                    <button key={c.id} type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-[14px] text-app-text/90 transition-colors hover:bg-app-elevated">
                       {c.title}
                     </button>
                   ))}
@@ -307,17 +341,17 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
               <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
-              <span className="truncate text-[15px] font-semibold tracking-tight text-app-text md:hidden">
+              <span className="truncate text-[16px] font-semibold tracking-tight text-app-text md:hidden">
                 {title ?? <>MyAvatar<span className="text-app-accent">.ge</span></>}
               </span>
-              {title && <span className="hidden truncate text-[15px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
+              {title && <span className="hidden truncate text-[16px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
               <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
                 className="flex items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation">
-                <span className="text-[13px] font-semibold tabular-nums">{(balanceGel ?? 0).toFixed(2)} ₾</span>
+                <span className="text-[14px] font-semibold tabular-nums">{(balanceGel ?? 0).toFixed(2)} ₾</span>
                 <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
               </button>
               {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an
@@ -347,76 +381,102 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         </div>
       </div>
 
-      {/* ── Settings drawer ──────────────────────────────────────────────────── */}
+      {/* ── Settings drawer — 5 sections · sticky header · internal scroll ──────── */}
       {menuOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setMenuOpen(false)}>
-          <aside ref={settingsDialogRef} role="dialog" aria-modal="true" aria-label={t.settings} onClick={(e) => e.stopPropagation()} className="flex max-h-[86dvh] w-80 max-w-[92vw] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.4)]">
-            <div className="flex items-center justify-between px-4 py-4">
-              <span className="text-[15px] font-semibold tracking-tight text-app-text">{t.settings}</span>
-              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 max-sm:p-0" onClick={() => setMenuOpen(false)}>
+          <aside ref={settingsDialogRef} role="dialog" aria-modal="true" aria-label={t.settings} onClick={(e) => e.stopPropagation()}
+            className="flex w-full max-w-[420px] flex-col overflow-hidden rounded-2xl bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.45)] max-sm:h-full max-sm:!max-h-full max-sm:max-w-none max-sm:rounded-none"
+            style={{ maxHeight: 'min(80vh, 680px)' }}>
+            {/* Sticky header */}
+            <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-app-border/10 bg-app-surface px-5 py-4" style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}>
+              <span className="text-[16px] font-semibold tracking-tight text-app-text">{t.settings}</span>
+              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-9 w-9 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><X className="h-[18px] w-[18px]" /></button>
             </div>
 
-            <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
-              {/* Account line */}
-              <div className="px-3 pb-1 pt-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.account}</p>
-                <p className="mt-0.5 truncate text-[13px] text-app-text" title={userEmail ?? undefined}>{userEmail ?? t.accountGuest}</p>
-              </div>
+            {/* Scrollable body — thin themed scrollbar */}
+            <div className="flex-1 overflow-y-auto px-3 py-2 [scrollbar-color:rgb(var(--app-border)/0.3)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-app-border/20 [&::-webkit-scrollbar]:w-1.5" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
 
-              {/* Preferences — theme + language grouped under one section header
-                  (Theme used to be the only unlabelled row). */}
-              <p className="px-3 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{locale === 'en' ? 'Preferences' : locale === 'ru' ? 'Предпочтения' : 'პრეფერენციები'}</p>
-              <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[13.5px] text-app-text">
-                <span>{t.theme}</span>
-                <ThemeToggle label={t.theme} />
-              </div>
-
-              {/* Language switcher — ka / en / ru (navigates to the locale's dashboard). */}
-              <div className="px-3 pb-1 pt-1">
-                <p className="mb-1.5 text-[12px] text-app-muted">{t.language}</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([['ka', 'ქართული'], ['en', 'English'], ['ru', 'Русский']] as const).map(([code, label]) => (
-                    <a
-                      key={code}
-                      href={`/${code}/dashboard`}
-                      className={`inline-flex items-center justify-center rounded-xl px-2 py-2 text-center text-[12px] font-medium transition-colors ${lang === code ? 'bg-app-accent/12 text-app-accent' : 'bg-app-elevated text-app-text hover:opacity-80'}`}
-                    >
-                      {label}
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              {/* FIX 3 — guests sign in from the TOP BAR, never here. Settings shows only
-                  the "Account: Guest" line (above) for guests; account controls appear once
-                  signed in. No Sign in / Sign up buttons inside Settings anymore. */}
-              {authed && (
+              {/* SECTION 1 — ACCOUNT */}
+              <p className={sectionHdr}>{t.account}</p>
+              {authed ? (
                 <>
-                  {/* Balance + top-up — hidden inside the iOS shell (data-iap-external). */}
-                  <div data-iap-external className="mt-1 flex items-center justify-between rounded-xl bg-app-elevated/60 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-app-muted">{locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}</p>
-                      <p className="text-[15px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</p>
+                  <div className="mb-1 flex items-center gap-3 px-2 py-1.5">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-[16px] font-bold uppercase text-app-accent">{userName?.[0] || userEmail?.[0] || 'U'}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-medium text-app-text">{userName || userEmail}</p>
+                      <span className="mt-0.5 inline-flex items-center rounded-full bg-app-elevated px-2 py-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Plan: Free' : locale === 'ru' ? 'План: Free' : 'გეგმა: Free'}</span>
                     </div>
-                    <button type="button" onClick={() => { setMenuOpen(false); setCreditsOpen(true); }} className="shrink-0 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90">{t.topUp}</button>
                   </div>
-                  {/* Edit profile (#3) */}
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
-                  {/* Download my data — GDPR export (#4) */}
                   <button type="button" onClick={() => void exportData()} disabled={exporting} className={`${drawerRow} disabled:opacity-50`}>{exporting ? <Loader2 className="h-[18px] w-[18px] animate-spin text-app-muted" /> : <Download className="h-[18px] w-[18px] text-app-muted" />} {locale === 'en' ? 'Download my data' : locale === 'ru' ? 'Скачать мои данные' : 'მონაცემების ჩამოტვირთვა'}</button>
-                  {/* Sign out */}
-                  <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={drawerRow}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
-                  {/* Danger zone — delete account (Apple Guideline 5.1.1(v)). */}
-                  <div className="mx-3 my-1.5 border-t border-app-border/10" />
-                  <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
+                  <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
+              ) : (
+                <div className="px-2 pb-1 pt-0.5">
+                  <p className="text-[14px] text-app-text">{locale === 'en' ? 'Account: Guest' : locale === 'ru' ? 'Аккаунт: Гость' : 'ანგარიში: სტუმარი'}</p>
+                  <p className="mt-0.5 text-[12px] text-app-muted">{locale === 'en' ? 'Sign in to save your preferences' : locale === 'ru' ? 'Войдите, чтобы сохранить настройки' : 'შესვლა პრეფერენციების შესანახად'}</p>
+                </div>
               )}
 
-              {/* Legal — open IN-WINDOW (the real pages embedded), never a new tab. */}
-              <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.legal}</p>
-              <button type="button" onClick={() => { setMenuOpen(false); setSheet('privacy'); }} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
-              <button type="button" onClick={() => { setMenuOpen(false); setSheet('terms'); }} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
-              <button type="button" onClick={() => { setMenuOpen(false); setSheet('support'); }} className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</button>
+              <div className={settingsDivider} />
+              {/* SECTION 2 — APPEARANCE */}
+              <p className={sectionHdr}>{locale === 'en' ? 'Appearance' : locale === 'ru' ? 'Внешний вид' : 'გარეგნობა'}</p>
+              <p className="px-2 pb-1.5 pt-1 text-[12px] text-app-muted">{t.theme}</p>
+              <div className="grid grid-cols-3 gap-1.5 px-1">
+                {([['dark', Moon, locale === 'en' ? 'Dark' : locale === 'ru' ? 'Тёмная' : 'მუქი'], ['light', Sun, locale === 'en' ? 'Light' : locale === 'ru' ? 'Светлая' : 'ნათელი'], ['system', Monitor, locale === 'en' ? 'System' : locale === 'ru' ? 'Система' : 'სისტემა']] as const).map(([id, Icon, label]) => {
+                  const on = id !== 'system' && theme === id;
+                  return (
+                    <button key={id} type="button" onClick={() => (id === 'system' ? pickSystemTheme() : setTheme(id))}
+                      className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[12px] font-medium transition-colors ${on ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>
+                      <Icon size={16} /> {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="px-2 pb-1.5 pt-3 text-[12px] text-app-muted">{t.language}</p>
+              <div className="grid grid-cols-3 gap-1.5 px-1">
+                {([['ka', 'ქართული'], ['en', 'English'], ['ru', 'Русский']] as const).map(([code, label]) => (
+                  <a key={code} href={`/${code}/dashboard`} className={`inline-flex items-center justify-center rounded-xl border px-2 py-2 text-center text-[12.5px] font-medium transition-colors ${lang === code ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>{label}</a>
+                ))}
+              </div>
+
+              <div className={settingsDivider} />
+              {/* SECTION 3 — NOTIFICATIONS */}
+              <p className={sectionHdr}>{locale === 'en' ? 'Notifications' : locale === 'ru' ? 'Уведомления' : 'შეტყობინებები'}</p>
+              <div className="flex items-center justify-between gap-3 px-2 py-2">
+                <div className="min-w-0">
+                  <p className="text-[14px] text-app-text">{locale === 'en' ? 'Updates' : locale === 'ru' ? 'Новости' : 'სიახლეები'}</p>
+                  <p className="text-[12px] text-app-muted">{locale === 'en' ? 'Receive news about new features' : locale === 'ru' ? 'Новости о новых функциях' : 'მიიღე სიახლეები ახალ ფუნქციებზე'}</p>
+                </div>
+                <Toggle on={emailNotif} label="Email updates" onClick={() => { const v = !emailNotif; setEmailNotif(v); persist('mya:notif-email', v ? '1' : '0'); }} />
+              </div>
+
+              <div className={settingsDivider} />
+              {/* SECTION 4 — GENERATION DEFAULTS */}
+              <p className={sectionHdr}>{locale === 'en' ? 'Generation defaults' : locale === 'ru' ? 'Параметры генерации' : 'გენერაციის პარამეტრები'}</p>
+              <p className="px-2 pb-1.5 pt-1 text-[12px] text-app-muted">{locale === 'en' ? 'Default video length' : locale === 'ru' ? 'Длина видео по умолчанию' : 'ვიდეოს ნაგულისხმევი ხანგრძლივობა'}</p>
+              <div className="grid grid-cols-3 gap-1.5 px-1">
+                {([10, 30, 60] as const).map((len) => (
+                  <button key={len} type="button" onClick={() => { setDefaultVideoLen(len); persist('mya:default-video-len', String(len)); }}
+                    className={`rounded-xl border px-2 py-2 text-[12.5px] font-medium transition-colors ${defaultVideoLen === len ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>{len}s</button>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 px-2 py-2">
+                <p className="text-[14px] text-app-text">{locale === 'en' ? 'Auto-save generations' : locale === 'ru' ? 'Автосохранение' : 'ავტო-შენახვა'}</p>
+                <Toggle on={autoSave} label="Auto-save" onClick={() => { const v = !autoSave; setAutoSave(v); persist('mya:autosave', v ? '1' : '0'); }} />
+              </div>
+
+              <div className={settingsDivider} />
+              {/* SECTION 5 — ABOUT (instant legal modals · mailto support) */}
+              <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
+              <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar.ge v1.0.0</p>
+              <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
+              <button type="button" onClick={() => setLegalOpen('terms')} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
+              <a href="mailto:support@myavatar.ge" className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
+              {authed && (
+                <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
+              )}
+              <p className="px-2 pt-3 text-center text-[11px] text-app-muted">© 2024 MyAvatar.ge</p>
             </div>
           </aside>
         </div>
@@ -430,6 +490,8 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         onClose={() => { setCreditsOpen(false); void refreshBalance(); }}
         onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
       />
+      {/* Instant Privacy / Terms modals — pure client, no iframe/network (FIX 1). */}
+      <LegalModal kind={legalOpen} onClose={() => setLegalOpen(null)} />
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
       {profileOpen && (
         <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
@@ -445,24 +507,9 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         </div>
       )}
       <AuthModal open={authOpen} locale={lang} initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); void refreshBalance(); }} />
-      <StudioSheet
-        open={sheet !== null}
-        title={sheet === 'library' ? t.library : sheet === 'privacy' ? t.privacy : sheet === 'terms' ? t.terms : sheet === 'support' ? t.support : ''}
-        onClose={() => setSheet(null)}
-        flush={sheet !== null && sheet !== 'library'}
-      >
-        {sheet === 'library' ? (
-          <StudioLibraryGrid locale={lang} />
-        ) : sheet ? (
-          // Legal pages embedded in-window. A spinner sits behind the iframe and is
-          // covered the moment the (opaque) page paints — no blank flash.
-          <div className="relative h-full w-full bg-app-bg">
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-app-muted" />
-            </div>
-            <iframe key={sheet} src={`/${locale}/${sheet}?embed=1`} title={sheet} className="relative h-full w-full border-0 bg-app-bg" />
-          </div>
-        ) : null}
+      {/* Library-only sheet now — Privacy/Terms moved to the instant LegalModal above. */}
+      <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
+        {sheet === 'library' ? <StudioLibraryGrid locale={lang} /> : null}
       </StudioSheet>
     </div>
   );

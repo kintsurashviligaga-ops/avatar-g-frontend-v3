@@ -36,7 +36,7 @@ function CodeBlock({ text }: { text: string }) {
 
 export function Markdown({ children }: { children: string }) {
   return (
-    <div className="space-y-2 text-[14.5px] leading-relaxed [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+    <div className="space-y-2 text-[16px] leading-[1.7] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

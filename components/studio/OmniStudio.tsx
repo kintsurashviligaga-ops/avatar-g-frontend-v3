@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
@@ -2707,8 +2707,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
             <div className="space-y-1.5">
-              <h2 className="text-[22px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
-              <p className="mx-auto max-w-sm text-[13.5px] text-app-muted">{t.empty}</p>
+              <h2 className="text-[28px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
+              <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
             </div>
             {/* No hardcoded template suggestions here — the 4 ghost service pills above
                 the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
@@ -2719,7 +2719,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {m.role === 'assistant' && (
               <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-app-accent/15 text-[12px] font-bold text-app-accent">M</span>
             )}
-            <div className={`text-[14.5px] leading-relaxed ${
+            <div className={`text-[16px] leading-[1.7] ${
               m.role === 'user'
                 ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
                 : 'min-w-0 flex-1 text-app-text'
@@ -3604,10 +3604,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ]);
           } catch { /* ignore unreadable file */ }
         }} />
-        {/* Camera capture (mobile) — shoot a photo in-app; it joins the attachment tray and,
-            in Video mode, seeds the storyboard as the start image. `capture="user"` opens the
-            front camera on mobile and falls back to the file picker on desktop. */}
-        <input ref={cameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={async (e) => {
+        {/* Camera capture — shoot a photo in-app; it joins the attachment tray and, in
+            Video mode, seeds the storyboard as the start image. `capture="environment"`
+            opens the REAR camera on mobile and falls back to the file picker on desktop. */}
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
           if (!f) return;
@@ -3640,10 +3640,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Plus size={20} />
             </button>
-            {/* Camera is NOT a separate composer button (FIX 6A) — the [+] attach picker
-                already accepts images and opens the camera on mobile via the OS sheet. */}
+            {/* [📷] camera — image/camera capture specifically (rear camera on mobile);
+                the selected photo previews in the attachment tray above and rides the next
+                generation (core to image-to-video). Sits right of [+], left of the spacer. */}
+            <button type="button" onClick={() => cameraRef.current?.click()}
+              aria-label={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
+              title={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              <Camera size={19} />
+            </button>
 
-            {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+] stays on
+            {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+]/📷 stay on
                 the left and the mode dropdown sits between the text and the mic. */}
             <div className="flex-1" />
 
