@@ -312,6 +312,16 @@ export async function orchestrate(
     }
   }
 
+  // P1-B — MUSIC-VIDEO MODE is an EXPLICIT user choice (the studio panel's flag),
+  // so honour it REGARDLESS of the message language or keywords. Without this an
+  // English brief like "30 second R&B music video with a female singer in Tbilisi"
+  // gets keyword-routed to a Udio AUDIO-only job instead of the FILM pipeline. The
+  // flag rides in metadata from driveFilmStudio (and the orchestrate dispatch), so
+  // the film/music-video pipeline activates whenever musicVideoMode === true.
+  if (input.metadata?.musicVideoMode === true) {
+    return handleFilmComposite(input);
+  }
+
   // PHASE 42 §1 — The flagship "30-Second Film" pipeline is the most specific
   // composite, so it is checked FIRST. `isThirtySecondFilm` is deliberately
   // conservative (explicit "30-second film / short film / mini-movie" phrasing),

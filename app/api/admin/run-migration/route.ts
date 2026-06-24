@@ -30,6 +30,8 @@ const ALLOWED: Record<string, string> = {
   '20260523_wallet_and_onboarding.sql': 'supabase/migrations/20260523_wallet_and_onboarding.sql',
   '20260523_generation_jobs.sql': 'supabase/migrations/20260523_generation_jobs.sql',
   '20260602_free_film_promo.sql': 'supabase/migrations/20260602_free_film_promo.sql',
+  // P1-A — new users get 3 free films (ALTER DEFAULT 3 + backfill existing to >=3).
+  '20260623_free_films_starter_3.sql': 'supabase/migrations/20260623_free_films_starter_3.sql',
   '006_gemini_chat_history.sql': 'migrations/006_gemini_chat_history.sql',
 };
 
@@ -38,6 +40,7 @@ const EXPECTED_FNS: Record<string, string[]> = {
   '20260523_wallet_and_onboarding.sql': ['credit_wallet_gel', 'consume_free_avatar_chat', 'set_avatar_name'],
   '20260523_generation_jobs.sql': [],
   '20260602_free_film_promo.sql': ['consume_free_film', 'restore_free_film'],
+  '20260623_free_films_starter_3.sql': [], // DDL + backfill only, no new functions
   '006_gemini_chat_history.sql': [],
 };
 
