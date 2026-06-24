@@ -16,10 +16,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
-  MessageSquare, Image as ImageIcon, Music2, Film, Volume2, Check,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
-import { WalletRefillModal } from '@/components/chat/WalletRefill';
+import { CreditsModal } from '@/components/studio/CreditsModal';
 import AuthModal from '@/components/chat/AuthModal';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
@@ -64,17 +63,6 @@ interface ChatChromeProps {
   children: React.ReactNode;
 }
 
-// The 5 in-composer services (OmniStudio modes). The hamburger lists them so a mobile
-// user can jump straight to a service; selecting one bridges to OmniStudio via a window
-// CustomEvent (low coupling — no prop threading through ServiceHub).
-const SERVICES: Array<{ id: 'chat' | 'image' | 'music' | 'video' | 'lipsync'; Icon: typeof MessageSquare; ka: string; en: string; ru: string }> = [
-  { id: 'chat', Icon: MessageSquare, ka: 'ჩატი', en: 'Chat', ru: 'Чат' },
-  { id: 'image', Icon: ImageIcon, ka: 'სურათი', en: 'Image', ru: 'Изображение' },
-  { id: 'music', Icon: Music2, ka: 'მუსიკა', en: 'Music', ru: 'Музыка' },
-  { id: 'video', Icon: Film, ka: 'ვიდეო', en: 'Video', ru: 'Видео' },
-  { id: 'lipsync', Icon: Volume2, ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
-];
-
 export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -84,19 +72,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   // visible (the same fix the sibling chat surface already uses).
   const { keyboardOffset } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
-  // Active composer service, mirrored from OmniStudio (for the hamburger highlight).
-  const [activeService, setActiveService] = useState<string>('chat');
-  useEffect(() => {
-    const onMode = (e: Event) => { const d = (e as CustomEvent).detail; if (typeof d === 'string') setActiveService(d); };
-    window.addEventListener('omni:mode-changed', onMode);
-    return () => window.removeEventListener('omni:mode-changed', onMode);
-  }, []);
-  const selectService = useCallback((id: string) => {
-    window.dispatchEvent(new CustomEvent('omni:set-mode', { detail: id }));
-    setActiveService(id);
-    setSidebarOpen(false);
-  }, []);
-  const [walletOpen, setWalletOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   // Every secondary surface (Library + the 3 legal pages) opens IN-WINDOW in this
@@ -261,29 +237,6 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           </button>
         </div>
 
-        {/* Services — jump straight to any composer service (mirrors the in-chat mode). */}
-        <div className="mt-3 px-2">
-          <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.services}</p>
-          <div className="space-y-0.5">
-            {SERVICES.map(({ id, Icon, ka, en, ru }) => {
-              const on = activeService === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => selectService(id)}
-                  aria-current={on ? 'true' : undefined}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[13.5px] font-medium transition-colors active:scale-[0.99] ${on ? 'bg-app-accent/12 text-app-accent' : 'text-app-text/90 hover:bg-app-elevated'}`}
-                >
-                  <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} />
-                  {lang === 'en' ? en : lang === 'ru' ? ru : ka}
-                  {on && <Check className="ml-auto h-3.5 w-3.5" />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Chat history list */}
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <p className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</p>
@@ -305,7 +258,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           <button type="button" onClick={() => { setSheet('library'); setSidebarOpen(false); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
           </button>
-          <button type="button" onClick={() => { setMenuOpen(true); setSidebarOpen(false); }} className={sideRow}>
+          <button type="button" onClick={() => { setMenuOpen((v) => !v); setSidebarOpen(false); }} className={sideRow}>
             <Settings className="h-[17px] w-[17px] text-app-muted" /> {t.settings}
           </button>
         </div>
@@ -326,11 +279,26 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
               {title && <span className="hidden truncate text-[15px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
             </div>
 
-            <div className="flex shrink-0 items-center gap-0.5">
-              <span className="px-1.5 text-[13px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</span>
-              <button type="button" onClick={() => setWalletOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external className="flex h-10 w-10 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-elevated touch-manipulation">
-                <Plus className="h-4 w-4" />
+            <div className="flex shrink-0 items-center gap-1">
+              {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
+              <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
+                className="flex items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation">
+                <span className="text-[13px] font-semibold tabular-nums">{(balanceGel ?? 0).toFixed(2)} ₾</span>
+                <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
               </button>
+              {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an
+                  avatar initial (→ settings) once signed in. The modal itself is AuthModal. */}
+              {authed ? (
+                <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.account} title={userEmail ?? t.account}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation">
+                  {userName?.[0] || userEmail?.[0] || 'U'}
+                </button>
+              ) : (
+                <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} aria-label={t.login}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation">
+                  <LogIn className="h-3.5 w-3.5" /> {t.login}
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -398,7 +366,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                       <p className="text-[11px] font-medium uppercase tracking-wider text-app-muted">{locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}</p>
                       <p className="text-[15px] font-semibold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</p>
                     </div>
-                    <button type="button" onClick={() => { setMenuOpen(false); setWalletOpen(true); }} className="shrink-0 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90">{t.topUp}</button>
+                    <button type="button" onClick={() => { setMenuOpen(false); setCreditsOpen(true); }} className="shrink-0 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90">{t.topUp}</button>
                   </div>
                   {/* Edit profile (#3) */}
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
@@ -422,7 +390,14 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         </div>
       )}
 
-      <WalletRefillModal open={walletOpen} locale={locale} variant="obsidian" onClose={() => { setWalletOpen(false); void refreshBalance(); }} />
+      <CreditsModal
+        open={creditsOpen}
+        locale={locale}
+        balanceGel={balanceGel}
+        authed={authed}
+        onClose={() => { setCreditsOpen(false); void refreshBalance(); }}
+        onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
+      />
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
       {profileOpen && (
         <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>

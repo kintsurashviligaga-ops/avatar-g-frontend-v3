@@ -462,32 +462,6 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-// First-run examples — tappable cards that make the assistant self-explanatory.
-// Tapping pre-fills the composer (and switches to Image mode for a draw example)
-// WITHOUT auto-sending, so the user reviews + presses send (never an accidental
-// spend). `icon` maps to a lucide glyph in the render.
-type StarterIcon = 'chat' | 'image' | 'spark' | 'music' | 'film';
-const STARTERS: Record<Lang, { label: string; prompt: string; mode: 'chat' | 'image' | 'music' | 'video'; icon: StarterIcon }[]> = {
-  ka: [
-    { label: 'დახატე ნეონის ქალაქი წვიმაში', prompt: 'ნეონის ქალაქი წვიმაში ღამით, კინემატოგრაფიული, ანარეკლები ასფალტზე', mode: 'image', icon: 'image' },
-    { label: 'შექმენი 30-წამიანი კინო', prompt: 'ზღვისპირა ქალაქი მზის ჩასვლისას, მარტოხელა მოგზაური დადის ნაპირზე — კინემატოგრაფიული, თბილი ფერები', mode: 'video', icon: 'film' },
-    { label: 'შექმენი ეპიკური კინო-მუსიკა', prompt: 'ეპიკური ორკესტრული კინო-მუსიკა, დრამატული, გმირული განწყობა', mode: 'music', icon: 'music' },
-    { label: 'მომეცი იდეები ვიდეოსთვის', prompt: 'მომეცი 3 კრეატიული იდეა 30-წამიანი კინო-კლიპისთვის ქართულ ბუნებაზე', mode: 'chat', icon: 'spark' },
-  ],
-  en: [
-    { label: 'Draw a neon city in the rain', prompt: 'A neon city in the rain at night, cinematic, reflections on the wet asphalt', mode: 'image', icon: 'image' },
-    { label: 'Make a 30-second film', prompt: 'A seaside town at sunset, a lone traveller walking along the shore — cinematic, warm tones', mode: 'video', icon: 'film' },
-    { label: 'Compose epic cinematic music', prompt: 'Epic orchestral cinematic score, dramatic, heroic mood', mode: 'music', icon: 'music' },
-    { label: 'Give me ideas for a video', prompt: 'Give me 3 creative ideas for a 30-second cinematic clip about Georgian nature', mode: 'chat', icon: 'spark' },
-  ],
-  ru: [
-    { label: 'Нарисуй неоновый город под дождём', prompt: 'Неоновый город под дождём ночью, кинематографично, отражения на мокром асфальте', mode: 'image', icon: 'image' },
-    { label: 'Сделай 30-секундный фильм', prompt: 'Приморский город на закате, одинокий путник идёт по берегу — кинематографично, тёплые тона', mode: 'video', icon: 'film' },
-    { label: 'Создай эпичную кино-музыку', prompt: 'Эпичная оркестровая кино-музыка, драматичная, героическое настроение', mode: 'music', icon: 'music' },
-    { label: 'Идеи для видео', prompt: 'Дай 3 креативные идеи для 30-секундного кинороликa о природе Грузии', mode: 'chat', icon: 'spark' },
-  ],
-};
-
 // Downscale a data: image (longest side ≤ maxDim, JPEG) so an attached photo used as
 // an img2img reference stays well under the ~4.5MB function-body limit — a full-res
 // phone photo would otherwise 413. The output image is still generated at full tier;
@@ -2736,23 +2710,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <h2 className="text-[22px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
               <p className="mx-auto max-w-sm text-[13.5px] text-app-muted">{t.empty}</p>
             </div>
-            {/* Tappable first-run examples — borderless, minimal. Pre-fill the
-                composer (never auto-send); the user reviews then presses send. */}
-            <div className="flex w-full max-w-md flex-col gap-1.5">
-              {(STARTERS[locale] ?? STARTERS.ka).map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => { setMode(s.mode); setInput(s.prompt); }}
-                  className="group flex items-center gap-3 rounded-2xl bg-app-elevated/60 px-4 py-3 text-left text-[13.5px] text-app-text transition-colors hover:bg-app-elevated active:scale-[0.99] motion-reduce:active:scale-100"
-                >
-                  <span className="shrink-0 text-app-muted transition-colors group-hover:text-app-accent">
-                    {s.icon === 'image' ? <ImageIcon size={16} /> : s.icon === 'film' ? <Film size={16} /> : s.icon === 'music' ? <Music2 size={16} /> : s.icon === 'spark' ? <Sparkles size={16} /> : <MessageSquare size={16} />}
-                  </span>
-                  <span className="flex-1">{s.label}</span>
-                </button>
-              ))}
-            </div>
+            {/* No hardcoded template suggestions here — the 4 ghost service pills above
+                the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
           </div>
         ) : messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -3148,6 +3107,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </button>
         )}
         <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
+            affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
+            collapses it. Lives at the top of the scroll area so it's always reachable. */}
+        {mode !== 'chat' && (
+          <div className="mb-2 flex items-center justify-between px-0.5">
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t[activeModeKey]}</span>
+            <button type="button" onClick={() => { setMode('chat'); setOptionsOpen(false); }}
+              aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text active:scale-95">
+              <X size={17} />
+            </button>
+          </div>
+        )}
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -3716,7 +3688,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         type="button"
                         role="menuitemradio"
                         aria-checked={mode === id}
-                        onClick={() => { setMode(id); setModeMenuOpen(false); }}
+                        onClick={() => { if (id === mode) { setMode('chat'); setOptionsOpen(false); } else { setMode(id); } setModeMenuOpen(false); }}
                         className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
                       >
                         <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
