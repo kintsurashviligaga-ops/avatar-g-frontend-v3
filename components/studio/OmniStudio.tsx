@@ -1288,7 +1288,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
       // music video we build the song ourselves (Georgian rap on the cloned KA voice over a
       // funk bed) and use it as the soundtrack. Fail-open → normal EL Music (English).
-      const georgianBrief = /\bgeorgian\b/i.test(filmPrompt) || /[Ⴀ-ჿᲐ-Ჿ]/.test(filmPrompt);
+      // Fire for the Georgian-first audience (locale 'ka') OR any brief that names Georgian /
+      // is written in Georgian script — UNLESS the brief explicitly asks for English vocals.
+      // Keying off locale (not just prose) catches the common case of a ka user who typed an
+      // English / transliterated brief; the English-intent guard avoids forcing Georgian on
+      // a brief like "a Georgian-American singing in English".
+      const wantsEnglishVocals = /\bin\s+english\b|english\s+(?:lyrics|vocals|song)/i.test(filmPrompt);
+      const georgianBrief = !wantsEnglishVocals && (locale === 'ka' || /\bgeorgian\b/i.test(filmPrompt) || /[Ⴀ-ჿᲐ-Ჿ]/.test(filmPrompt));
       let kaSoundtrack: string | null = isMusicVideo && videoSoundtrack?.url ? videoSoundtrack.url : null;
       if (isMusicVideo && !kaSoundtrack && georgianBrief && mine()) {
         setMessages((prev) => {

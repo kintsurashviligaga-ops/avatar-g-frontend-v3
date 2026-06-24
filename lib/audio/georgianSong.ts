@@ -129,10 +129,13 @@ export async function generateGeorgianSong(
       '-y', '-i', vPath, '-i', bPath,
       '-filter_complex',
       // vocal lifted, bed ducked to ~0.5; mix, pad/trim to totalSec, broadcast loudness.
-      `[0:a]volume=1.25[v];[1:a]volume=0.5[b];[v][b]amix=inputs=2:duration=longest:normalize=0,` +
+      // aformat=stereo on BOTH legs first: the TTS vocal is mono, so without this amix
+      // negotiates a mono layout and collapses the stereo funk bed to mono.
+      `[0:a]volume=1.25,aformat=channel_layouts=stereo[v];[1:a]volume=0.5,aformat=channel_layouts=stereo[b];` +
+        `[v][b]amix=inputs=2:duration=longest:normalize=0,` +
         `apad,atrim=0:${totalSec},loudnorm=I=-14:TP=-1.5:LRA=11[a]`,
       '-map', '[a]', '-c:a', 'libmp3lame', '-b:a', '192k', out,
-    ], { maxBuffer: 1 << 26, timeout: 90_000 });
+    ], { maxBuffer: 1 << 26, timeout: 90_000, signal });
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) return null;
     const path = `films/kasong-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;

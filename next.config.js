@@ -53,6 +53,10 @@ const nextConfig = {
       '/api/ai/music': ['./node_modules/ffmpeg-static/**'],
       // Voice training splits the uploaded voice into a wav dataset with ffmpeg-static.
       '/api/voice/train': ['./node_modules/ffmpeg-static/**'],
+      // Georgian-song builder mixes the cloned-voice vocal OVER a funk bed with
+      // ffmpeg-static — without this the binary is absent in the lambda, the mix
+      // exec ENOENTs, and the route silently fail-opens to the English path.
+      '/api/audio/georgian-song': ['./node_modules/ffmpeg-static/**'],
       // The runtime migration gate reads raw .sql by path at request time. Next
       // only bundles files it can statically trace, so without this the lambda's
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace

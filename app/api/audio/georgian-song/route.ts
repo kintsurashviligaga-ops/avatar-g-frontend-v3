@@ -6,11 +6,19 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { generateGeorgianSong } from '@/lib/audio/georgianSong';
+import { applyApiGuards } from '@/lib/api/guard';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  // Cost/abuse guard: this is a public POST and each accepted call performs billed
+  // ElevenLabs TTS + Music (or Replicate) work before any fail-open, so cap it per-IP
+  // at the EXPENSIVE tier (5/min). A 429 is returned as a normal response, never a 500.
+  const gate = await applyApiGuards(req, { limit: RATE_LIMITS.EXPENSIVE });
+  if (gate.response) return gate.response;
+
   let body: { brief?: unknown; gender?: unknown; totalSec?: unknown };
   try {
     body = (await req.json()) as { brief?: unknown; gender?: unknown; totalSec?: unknown };
