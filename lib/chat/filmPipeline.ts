@@ -356,6 +356,18 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
 
   const styleGuide = buildStyleGuide(shared);
 
+  // The per-beat camera move was computed but never reached the video model, so the
+  // clips came out near-static. Map each beat to an explicit, strong motion directive.
+  const cameraDirectiveFor = (m: string | null | undefined): string => {
+    switch (m) {
+      case 'zoom_in': return 'Camera: slow continuous cinematic dolly push-in toward the subject';
+      case 'dolly': return 'Camera: smooth lateral gimbal/dolly tracking move alongside the subject';
+      case 'pan_right': return 'Camera: controlled arc panning to the right around the subject';
+      case 'pan_left': return 'Camera: slow controlled push and pan across the subject';
+      case 'zoom_out': return 'Camera: sweeping crane pull-back and zoom-out reveal';
+      default: return 'Camera: continuous deliberate camera movement';
+    }
+  };
   const scenes: FilmScene[] = segments.map((seg) => {
     // §2 — vary the COMPOSITION per scene (real storyboard arc)…
     const beat = sceneBeat(seg.index, segments.length);
@@ -367,7 +379,12 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     const head = llmScene && llmScene.length > 0 ? llmScene : `${beat.framing} — ${subject}${styled}`;
     // …while the seed + style guide + character anchor hold the world CONSTANT.
     const continuity = `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
-    const enriched = enrichVideoPrompt(`${head}. ${continuity}`, traits, 1200);
+    // Inject the explicit camera move + subject energy + a clean-frame guard (no
+    // AI-burned text/titles), so the model actually MOVES and doesn't paint captions.
+    const enriched = enrichVideoPrompt(
+      `${head}. ${cameraDirectiveFor(beat.cameraMotion)}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+      traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
+    );
     return {
       index: seg.index,
       ordinal: seg.index + 1,

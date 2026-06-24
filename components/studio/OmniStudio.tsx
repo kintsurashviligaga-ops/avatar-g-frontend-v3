@@ -1375,11 +1375,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
         ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
       if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace && mine()) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎤 Generating the lip-synced singer performance (HeyGen)…' : locale === 'ru' ? '🎤 Генерирую липсинк-выступление певицы (HeyGen)…' : '🎤 ვქმნი მომღერლის ლიპსინქ-შესრულებას (HeyGen)…', genKind: 'lipsync' }]);
-        // Capture the full song (vocal + backing) — it stays the composited master's audio.
+        // ONE status bubble that becomes the COMPOSITE (cinematic wides + lip-synced singer
+        // close-ups, with the FULL song as the master audio). We no longer surface the
+        // isolated-vocal performance on its own — it carried no backing music, which is the
+        // "just singing, no music" complaint. The composite is the single lip-synced result.
+        setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎬 Adding lip-synced singer close-ups…' : locale === 'ru' ? '🎬 Добавляю липсинк крупные планы певицы…' : '🎬 ვამატებ ლიპსინქ ახლო ხედებს…', genKind: 'video' }]);
+        // The full song (vocal + backing) is the composited master's audio.
         const songUrl: string = res.musicUrl;
-        // Stage 2 — isolate the vocal (ElevenLabs Voice Isolator) so HeyGen syncs to the
-        // clean voice, not the full mix. Fail-open: a miss keeps the full song.
+        // Isolate the vocal so the lip-sync mouth-tracking follows the VOICE; the composite
+        // still carries the full song. Fail-open: a miss keeps the full mix.
         let vocalForSync: string = songUrl;
         try {
           const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
@@ -1388,34 +1392,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         } catch { /* fail-open → full mix */ }
         const perf = await heygenSingerPerformance(singerFace, vocalForSync, isMusicVideo ? 'vertical' : orientation, ac.signal, mine);
         const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
+        // Composite the synced close-ups INTO the cinematic montage (full song = master audio).
+        const composited = (perfOk && perf && res.matrix && mine())
+          ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, isMusicVideo ? 'vertical' : orientation, videoTransition, ac.signal, mine)
+          : null;
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last && last.role === 'assistant' && !last.videoUrl) {
-            next[next.length - 1] = perfOk
-              ? { role: 'assistant', text: '', videoUrl: perf as string, genKind: 'lipsync', orientation: 'vertical' }
-              : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t generate the HeyGen singer performance — kept the cinematic video above.' : locale === 'ru' ? '⚠️ Не удалось создать HeyGen-выступление — оставлено кинематографичное видео выше.' : '⚠️ HeyGen შესრულება ვერ შეიქმნა — დარჩა ზემოთ მოცემული კინემატოგრაფიული ვიდეო.' };
+            next[next.length - 1] = composited
+              ? { role: 'assistant', text: '', videoUrl: composited, orientation: 'vertical' }
+              : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t add the lip-synced close-ups — the cinematic video above is your result.' : locale === 'ru' ? '⚠️ Не удалось добавить липсинк — кинематографичное видео выше — ваш результат.' : '⚠️ ლიპსინქ ვერ დაემატა — ზემოთ კინემატოგრაფიული ვიდეო თქვენი შედეგია.' };
           }
           return next;
         });
-
-        // Stage 2b — composite the synced HeyGen close-ups INTO the cinematic montage.
-        if (perfOk && perf && res.matrix && mine()) {
-          setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎬 Compositing the singer close-ups into the cinematic cut…' : locale === 'ru' ? '🎬 Монтирую крупные планы певицы в кинокадр…' : '🎬 ვაერთიანებ მომღერლის ახლო ხედებს კინო-მონტაჟში…', genKind: 'video' }]);
-          const composited = await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, isMusicVideo ? 'vertical' : orientation, videoTransition, ac.signal, mine);
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) {
-              next[next.length - 1] = composited
-                ? { role: 'assistant', text: '', videoUrl: composited, orientation: 'vertical' }
-                : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t composite the close-ups — the cinematic video + HeyGen performance above still stand.' : locale === 'ru' ? '⚠️ Не удалось смонтировать крупные планы — видео и выступление выше остаются.' : '⚠️ ახლო ხედების მონტაჟი ვერ მოხერხდა — ზემოთ ვიდეო და შესრულება რჩება.' };
-            }
-            return next;
-          });
-        }
       }
     } catch {
       if (!mine()) return;
@@ -1883,6 +1874,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const send = useCallback(async (opts?: { forceMyVoice?: boolean }) => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || busy) return;
+    // MOBILE FIX — collapse the settings panel on generation so the result (video +
+    // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
+    // then fills the screen; the user re-opens settings to tweak the next run.
+    setOptionsOpen(false);
     // Stop any live dictation so the recognizer doesn't keep appending after send.
     try { recognitionRef.current?.stop(); } catch { /* noop */ }
     // Mobile: blur the composer so the on-screen keyboard COMMITS the IME buffer —

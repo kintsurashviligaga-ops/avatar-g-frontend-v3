@@ -273,8 +273,13 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // The brand lower-third and the MTV info bug both live bottom-left. When BOTH are
     // present, hold the brand back until the bug has faded out (~4.4s) so they never
     // collide/overprint; otherwise show the brand for the whole film.
-    const brandEnable = opts.hasMusicBug ? `:enable='gte(t,4.4)'` : '';
-    parts.push(`${vmap}[${overlayIdx}:v]overlay=0:0:format=auto${brandEnable}[vbrand]`);
+    // Keep the brand lower-third SUBTLE so the FOOTAGE leads, not the text (the
+    // "nothing but text" complaint): show it for a short ~5s window with alpha
+    // fade-in/out instead of full-opacity for the entire film.
+    const brandStart = opts.hasMusicBug ? 5.0 : 1.0;
+    const brandEnd = Math.min(targetDur - 0.4, brandStart + 5.0);
+    parts.push(`[${overlayIdx}:v]format=rgba,fade=t=in:st=${brandStart.toFixed(2)}:d=0.5:alpha=1,fade=t=out:st=${Math.max(brandStart, brandEnd - 0.6).toFixed(2)}:d=0.6:alpha=1[vbrandpng]`);
+    parts.push(`${vmap}[vbrandpng]overlay=0:0:format=auto:enable='between(t,${brandStart.toFixed(2)},${brandEnd.toFixed(2)})'[vbrand]`);
     vmap = '[vbrand]';
     overlayIdx++;
   }

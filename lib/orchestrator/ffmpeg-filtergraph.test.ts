@@ -61,14 +61,17 @@ describe('buildFilterComplex', () => {
   test('brand overlay composites at the LAST input index (after video + audio)', () => {
     // 5 clips (0-4) + voice (5) + music (6) → brand PNG is the next input = index 7.
     const g = buildFilterComplex({ nClips: 5, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasBrandOverlay: true });
-    expect(g.filter).toContain('[7:v]overlay=0:0:format=auto[vbrand]');
+    // The brand PNG (input 7) is alpha-faded and time-gated (subtle), not a full-length full-opacity cover.
+    expect(g.filter).toContain('[7:v]format=rgba,fade=t=in');
+    expect(g.filter).toContain("[vbrandpng]overlay=0:0:format=auto:enable='between(");
     expect(g.vmap).toBe('[vbrand]'); // final map is the brand-composited video
   });
 
   test('brand overlay index tracks the present audio inputs (no voice → lower index)', () => {
     // 3 clips (0-2) + music only (3) → brand PNG = index 4 (voice/sfx absent).
     const g = buildFilterComplex({ nClips: 3, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, hasBrandOverlay: true });
-    expect(g.filter).toContain('[4:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.filter).toContain('[4:v]format=rgba,fade=t=in');
+    expect(g.filter).toContain("[vbrandpng]overlay=0:0:format=auto:enable='between(");
     expect(g.vmap).toBe('[vbrand]');
   });
 
@@ -163,7 +166,8 @@ describe('buildFilterComplex', () => {
   test('music video mode reserves the voice input index → brand overlay index unshifted', () => {
     // 3 clips (0-2) + voice (3, reserved/omitted) + music (4) → brand PNG = index 5.
     const g = buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true });
-    expect(g.filter).toContain('[5:v]overlay=0:0:format=auto[vbrand]');
+    expect(g.filter).toContain('[5:v]format=rgba,fade=t=in');
+    expect(g.filter).toContain("[vbrandpng]overlay=0:0:format=auto:enable='between(");
     expect(g.vmap).toBe('[vbrand]');
   });
 
@@ -179,8 +183,9 @@ describe('buildFilterComplex', () => {
   test('music bug → faded, time-gated overlay composited AFTER the brand PNG', () => {
     // 5 clips (0-4) + music (5) → brand PNG = index 6, music-bug PNG = index 7.
     const g = buildFilterComplex({ nClips: 5, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, musicVideo: true, hasBrandOverlay: true, hasMusicBug: true });
-    // brand waits until the bug fades (~4.4s) so they never collide bottom-left
-    expect(g.filter).toContain("[6:v]overlay=0:0:format=auto:enable='gte(t,4.4)'[vbrand]");
+    // brand waits until the bug fades (~5s), then shows briefly with its own alpha fades
+    expect(g.filter).toContain('[6:v]format=rgba,fade=t=in:st=5.00');
+    expect(g.filter).toContain("[vbrandpng]overlay=0:0:format=auto:enable='between(t,5.00,");
     expect(g.filter).toContain('[7:v]format=rgba,fade=t=in'); // bug PNG alpha-faded
     expect(g.filter).toContain("[vbrand][mbug]overlay=0:0:enable='between(t,0,4.4)'"); // bug over the opening
     expect(g.vmap).toBe('[vmbug]');
