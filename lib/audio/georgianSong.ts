@@ -91,6 +91,41 @@ async function instrumentalBed(brief: string, totalSec: number, signal?: AbortSi
 }
 
 /**
+ * Diagnostic — run each leg in isolation and report which succeeds + the error.
+ * Gated behind the route's `diag` flag; lets us localize a prod failure (the main
+ * path fail-opens to null and hides the cause). Never throws.
+ */
+export async function diagnoseGeorgianSong(
+  brief: string,
+  gender: 'male' | 'female',
+  totalSec = 30,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const bin = ffmpegStatic as unknown as string | null;
+  out.ffmpegBin = !!bin;
+  if (bin) {
+    try { await exec(bin, ['-version'], { timeout: 10_000 }); out.ffmpegRuns = true; }
+    catch (e) { out.ffmpegRuns = false; out.ffmpegErr = (e instanceof Error ? e.message : String(e)).slice(0, 200); }
+  }
+  const lyrics = generateGeorgianLyrics(brief);
+  out.lyricsLen = lyrics.length;
+  const voiceId = gender === 'male' ? KA_VOICE_MALE : KA_VOICE_FEMALE;
+  try { out.vocal = !!(await textToHostedSpeech(lyrics, voiceId)); }
+  catch (e) { out.vocal = false; out.vocalErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  out.elMusicKey = hasElevenLabsMusicKey();
+  if (hasElevenLabsMusicKey()) {
+    try {
+      const r = await composeElevenLabsMusic({ prompt: instrumentalPrompt(brief, totalSec), lengthMs: totalSec * 1000, instrumental: true, signal });
+      out.elMusic = !!(r.audio && r.audio.length > 1024);
+    } catch (e) { out.elMusic = false; out.elMusicErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  }
+  try { const s = await generateMusic(instrumentalPrompt(brief, totalSec), totalSec); out.musicGen = !!s.audioUrl; }
+  catch (e) { out.musicGen = false; out.musicGenErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  return out;
+}
+
+/**
  * Build the full Georgian song (vocal mixed over the funk bed) → hosted MP3 URL.
  * @param gender steers the cloned voice (male = deeper soul/rap timbre).
  */

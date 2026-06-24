@@ -5,7 +5,7 @@
  * falls back to the normal ElevenLabs Music path).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { generateGeorgianSong } from '@/lib/audio/georgianSong';
+import { generateGeorgianSong, diagnoseGeorgianSong } from '@/lib/audio/georgianSong';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
   const gate = await applyApiGuards(req, { limit: RATE_LIMITS.EXPENSIVE });
   if (gate.response) return gate.response;
 
-  let body: { brief?: unknown; gender?: unknown; totalSec?: unknown };
+  let body: { brief?: unknown; gender?: unknown; totalSec?: unknown; diag?: unknown };
   try {
-    body = (await req.json()) as { brief?: unknown; gender?: unknown; totalSec?: unknown };
+    body = (await req.json()) as { brief?: unknown; gender?: unknown; totalSec?: unknown; diag?: unknown };
   } catch {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
@@ -29,6 +29,12 @@ export async function POST(req: NextRequest) {
   const gender: 'male' | 'female' = body.gender === 'male' ? 'male' : 'female';
   const totalSec = Number.isFinite(Number(body.totalSec)) && Number(body.totalSec) > 0 ? Math.min(30, Number(body.totalSec)) : 30;
   if (!brief) return NextResponse.json({ url: null });
+  // Diagnostic mode (gated): run each leg in isolation and report which fails + why,
+  // so a prod miss can be localized (the main path fail-opens to null and hides it).
+  if (body.diag === true) {
+    const diag = await diagnoseGeorgianSong(brief, gender, totalSec, req.signal).catch((e) => ({ error: String(e) }));
+    return NextResponse.json({ diag });
+  }
   const url = await generateGeorgianSong(brief, gender, totalSec, req.signal).catch(() => null);
   return NextResponse.json({ url });
 }
