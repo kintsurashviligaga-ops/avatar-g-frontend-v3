@@ -13,9 +13,9 @@
  * in a native slide-over (no iframe).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, X, Plus, History, LogIn, UserPlus, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
@@ -209,6 +209,35 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
 
+  // FIX 6E — bucket the history into Today / Yesterday / Previous 7 days / Older so the
+  // sidebar reads like ChatGPT/Claude. Only non-empty groups render (each already sorted
+  // newest-first by refreshConversations). Recomputed when the list changes.
+  const convGroups = useMemo(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const today = start.getTime();
+    const yesterday = today - 86_400_000;
+    const week = today - 7 * 86_400_000;
+    const buckets: Record<'today' | 'yesterday' | 'week' | 'older', typeof conversations> = { today: [], yesterday: [], week: [], older: [] };
+    for (const c of conversations) {
+      if (c.updatedAt >= today) buckets.today.push(c);
+      else if (c.updatedAt >= yesterday) buckets.yesterday.push(c);
+      else if (c.updatedAt >= week) buckets.week.push(c);
+      else buckets.older.push(c);
+    }
+    const label = (k: 'today' | 'yesterday' | 'week' | 'older') => {
+      const L = {
+        today: { en: 'Today', ru: 'Сегодня', ka: 'დღეს' },
+        yesterday: { en: 'Yesterday', ru: 'Вчера', ka: 'გუშინ' },
+        week: { en: 'Previous 7 days', ru: 'Предыдущие 7 дней', ka: 'წინა 7 დღე' },
+        older: { en: 'Older', ru: 'Ранее', ka: 'უფრო ადრე' },
+      }[k];
+      return lang === 'en' ? L.en : lang === 'ru' ? L.ru : L.ka;
+    };
+    return (['today', 'yesterday', 'week', 'older'] as const)
+      .filter((k) => buckets[k].length > 0)
+      .map((k) => ({ key: k, label: label(k), items: buckets[k] }));
+  }, [conversations, lang]);
+
   return (
     <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
       {/* Mobile backdrop for the slide-over sidebar. */}
@@ -222,7 +251,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         role={sidebarOpen ? 'dialog' : undefined}
         aria-modal={sidebarOpen ? true : undefined}
         aria-label={t.menu}
-        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[268px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[260px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
@@ -243,11 +272,16 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           {conversations.length === 0 ? (
             <p className="px-2 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
           ) : (
-            <div className="space-y-0.5 pb-2">
-              {conversations.map((c) => (
-                <button key={c.id} type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-[13px] text-app-text/90 transition-colors hover:bg-app-elevated">
-                  {c.title}
-                </button>
+            <div className="space-y-2 pb-2">
+              {convGroups.map((g) => (
+                <div key={g.key} className="space-y-0.5">
+                  <p className="px-2.5 pb-0.5 pt-1 text-[10.5px] font-semibold uppercase tracking-wider text-app-muted/70">{g.label}</p>
+                  {g.items.map((c) => (
+                    <button key={c.id} type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-[13px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                      {c.title}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
@@ -353,12 +387,10 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                 </div>
               </div>
 
-              {!authed ? (
-                <div className="mt-1 grid grid-cols-2 gap-2 px-1">
-                  <button type="button" onClick={() => { setMenuOpen(false); setAuthMode('login'); setAuthOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-app-accent px-3 py-2.5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90"><LogIn className="h-4 w-4" /> {t.login}</button>
-                  <button type="button" onClick={() => { setMenuOpen(false); setAuthMode('register'); setAuthOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-app-elevated px-3 py-2.5 text-[13px] font-semibold text-app-text transition-colors hover:opacity-80"><UserPlus className="h-4 w-4" /> {t.signup}</button>
-                </div>
-              ) : (
+              {/* FIX 3 — guests sign in from the TOP BAR, never here. Settings shows only
+                  the "Account: Guest" line (above) for guests; account controls appear once
+                  signed in. No Sign in / Sign up buttons inside Settings anymore. */}
+              {authed && (
                 <>
                   {/* Balance + top-up — hidden inside the iOS shell (data-iap-external). */}
                   <div data-iap-external className="mt-1 flex items-center justify-between rounded-xl bg-app-elevated/60 px-3 py-2.5">

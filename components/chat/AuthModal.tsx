@@ -17,7 +17,6 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft } from 'lucide-react';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
-import { LoginCard } from '@/components/auth/LoginCard';
 import { SUPPORT_EMAIL, buildSupportMailto } from '@/lib/support';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -214,7 +213,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
           onClick={onClose}
-          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
         >
           <motion.div
@@ -246,18 +245,9 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
               </button>
             </div>
 
-            {/* One-click social OAuth — Google · Apple · GitHub (login/register only) */}
-            {(mode === 'login' || mode === 'register') && (
-              <>
-                <LoginCard locale={locale} redirectTo={`/${locale}/dashboard`} className="mb-1" />
-                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-app-muted">
-                  <span className="h-px flex-1 bg-app-border/15" />
-                  {t.orContinue}
-                  <span className="h-px flex-1 bg-app-border/15" />
-                </div>
-              </>
-            )}
-
+            {/* OAuth removed — the Supabase project has no social providers enabled
+                (Google/Apple/GitHub returned "provider is not enabled"). Email + password
+                is the only path; a "coming soon" note sits under the form. */}
             <form onSubmit={submit} className="space-y-3">
               {mode === 'register' && (
                 <div className="relative">
@@ -291,25 +281,32 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
               </motion.button>
             </form>
 
-            {/* Mode switches */}
-            <div className="mt-4 space-y-2 text-center text-[12px]">
-              {mode === 'login' && (
-                <>
-                  <button type="button" onClick={() => { setMode('magic'); reset(); }} className="block w-full text-sky-500 dark:text-sky-300 hover:text-sky-400 dark:hover:text-sky-200 transition">{t.useMagic}</button>
-                  <div className="flex items-center justify-center gap-3 text-app-muted">
-                    <button type="button" onClick={() => { setMode('reset'); reset(); }} className="hover:text-app-text transition">{t.forgot}</button>
-                    <span aria-hidden>·</span>
-                    <button type="button" onClick={() => { setMode('register'); reset(); }} className="hover:text-app-text transition">{t.noAccount}</button>
-                  </div>
-                </>
-              )}
-              {mode === 'register' && (
-                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-app-muted hover:text-app-text transition">{t.haveAccount} <span className="text-sky-500 dark:text-sky-300">{t.login}</span></button>
-              )}
-              {mode === 'magic' && (
-                <button type="button" onClick={() => { setMode('login'); reset(); }} className="text-app-muted hover:text-app-text transition">{t.usePassword}</button>
-              )}
-            </div>
+            {/* ── ან ── divider + full-width secondary toggle (register ⇄ login).
+                Replaces the old OAuth + text-link cluster: one clean alternate action. */}
+            {(mode === 'login' || mode === 'register') && (
+              <>
+                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-app-muted">
+                  <span className="h-px flex-1 bg-app-border/15" />
+                  {t.orContinue}
+                  <span className="h-px flex-1 bg-app-border/15" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); reset(); }}
+                  className="w-full h-11 rounded-xl border border-app-border/15 bg-app-elevated text-[14px] font-semibold text-app-text transition-colors hover:bg-app-border/10"
+                >
+                  {mode === 'login' ? t.register : t.login}
+                </button>
+                {mode === 'login' && (
+                  <button type="button" onClick={() => { setMode('reset'); reset(); }} className="mt-2 block w-full text-center text-[12px] text-app-muted hover:text-app-text transition">{t.forgot}</button>
+                )}
+                {/* Google sign-in is not enabled on the project yet — set expectations. */}
+                <p className="mt-3 text-center text-[11px] text-app-muted">{locale === 'en' ? 'Google sign-in coming soon' : locale === 'ru' ? 'Вход через Google скоро' : 'Google-ით შესვლა მალე'}</p>
+              </>
+            )}
+            {mode === 'magic' && (
+              <button type="button" onClick={() => { setMode('login'); reset(); }} className="mt-4 block w-full text-center text-[12px] text-app-muted hover:text-app-text transition">{t.usePassword}</button>
+            )}
 
             {/* Official support node */}
             <div className="mt-4 pt-3 border-t border-app-border/10 text-center text-[11px] text-app-muted">

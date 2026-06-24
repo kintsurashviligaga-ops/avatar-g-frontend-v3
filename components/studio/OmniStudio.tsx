@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
@@ -2714,11 +2714,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
           </div>
         ) : messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={i} className={`flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start gap-2.5'}`}>
+            {/* Assistant avatar — a small "M" brand circle to the left, Claude.ai-style. */}
+            {m.role === 'assistant' && (
+              <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-app-accent/15 text-[12px] font-bold text-app-accent">M</span>
+            )}
             <div className={`text-[14.5px] leading-relaxed ${
               m.role === 'user'
                 ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
-                : 'w-full max-w-full text-app-text'
+                : 'min-w-0 flex-1 text-app-text'
             }`}>
               {m.medias && m.medias.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
@@ -3076,26 +3080,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div ref={composerRef} className="shrink-0 pt-1">
-        {/* Quick-action suggestion pills — shown ONLY on an empty chat (ChatGPT-style).
-            Each routes to that service (sets the active mode). Ghost pills: 0.5px border,
-            13px, muted; 2×2 grid on mobile, inline row on desktop. Replaces the old
-            response-language / model-tier / media chip rows (cluttered + confusing). */}
-        {mode === 'chat' && messages.length === 0 && (
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            {([
-              ['🖼', locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'გამოსახულება', 'image'],
-              ['🎵', locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', 'music'],
-              ['🎬', locale === 'en' ? 'Video' : locale === 'ru' ? 'Видео' : 'ვიდეო', 'video'],
-              ['💬', locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი', 'chat'],
-            ] as const).map(([emoji, label, svc]) => (
-              <button key={svc} type="button"
-                onClick={() => { setMode(svc); if (svc !== 'chat') setOptionsOpen(true); }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full border-[0.5px] border-app-border/30 bg-transparent px-3.5 py-2 text-[13px] font-medium text-app-muted transition-colors hover:border-app-border/55 hover:text-app-text active:scale-[0.98]">
-                <span className="text-[15px] leading-none">{emoji}</span> {label}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Service shortcuts intentionally REMOVED from the composer — the in-pill mode
+            dropdown (Chat ⌄ / Video ⌄) is the single, canonical mode switcher. The empty
+            state is now just the heading + subtitle (no pills, no templates). */}
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
             never covered and the input stays reachable; on desktop (sm:) they're always
             open. When open on mobile they're capped to 58dvh (keyboard-aware) and scroll internally. */}
@@ -3631,7 +3618,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }} />
         {/* One clean rounded pill — min-height 52px, padding 12px 16px; the prompt sits on
             its own line so a long brief is never squeezed, and ALL controls live inside. */}
-        <div className="rounded-[24px] bg-app-elevated px-4 py-3 min-h-[52px]">
+        <div className="rounded-[24px] border border-transparent bg-app-elevated px-4 py-3 min-h-[52px] transition-colors focus-within:border-white/15">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
           <textarea
@@ -3653,16 +3640,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Plus size={20} />
             </button>
-            {/* Camera — shoot a photo in-app (mobile); in Video mode it seeds the storyboard. */}
-            <button type="button" onClick={() => cameraRef.current?.click()}
-              aria-label={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
-              title={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
-              <Camera size={19} />
-            </button>
+            {/* Camera is NOT a separate composer button (FIX 6A) — the [+] attach picker
+                already accepts images and opens the camera on mobile via the OS sheet. */}
 
-            {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+]/camera
-                stay on the left and the mode dropdown sits between the text and the mic. */}
+            {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+] stays on
+                the left and the mode dropdown sits between the text and the mic. */}
             <div className="flex-1" />
 
             {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
