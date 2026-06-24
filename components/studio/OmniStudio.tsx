@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
@@ -1018,6 +1018,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // separate from the shared attachment picker so they read as their own slots.
   const charFileRef = useRef<HTMLInputElement | null>(null);
   const audioFileRef = useRef<HTMLInputElement | null>(null);
+  // Camera capture (mobile): shoot a photo in-app → it seeds the attachment tray (and,
+  // in Video mode, becomes the start image that anchors the storyboard).
+  const cameraRef = useRef<HTMLInputElement | null>(null);
   // v330 — Avatar/lip-sync face: a scoped single-IMAGE picker (the slot can't ingest
   // PDFs/audio/multiples the way the shared attach button could).
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
@@ -3602,6 +3605,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ]);
           } catch { /* ignore unreadable file */ }
         }} />
+        {/* Camera capture (mobile) — shoot a photo in-app; it joins the attachment tray and,
+            in Video mode, seeds the storyboard as the start image. `capture="user"` opens the
+            front camera on mobile and falls back to the file picker on desktop. */}
+        <input ref={cameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          try {
+            const small = await downscaleDataUrl(await fileToDataUrl(f));
+            setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: small, mimeType: f.type || 'image/jpeg' }]);
+          } catch { /* ignore unreadable capture */ }
+        }} />
         <div className="rounded-[24px] bg-app-elevated px-3 py-2">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
@@ -3623,6 +3638,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Plus size={20} />
+            </button>
+            {/* Camera — shoot a photo in-app (mobile); in Video mode it seeds the storyboard. */}
+            <button type="button" onClick={() => cameraRef.current?.click()}
+              aria-label={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
+              title={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              <Camera size={19} />
             </button>
 
             {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
