@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { planFilmScenes, normalizeReferenceImages, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
+import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
@@ -267,6 +268,23 @@ export async function POST(req: NextRequest) {
   // threads the scripts into the render, so the ~10-15s LLM call never blocks the
   // board from appearing. Fail-open: a miss returns null (render uses deterministic).
   if (body.scriptsOnly) {
+    // PROMPT AGENT (Sonnet) — produce the Master Film Brief: ONE locked character +
+    // per-scene image prompts that embed it VERBATIM. The scene imagePrompts ride back
+    // as `sceneScripts` (the existing render channel) and the locked character fragment
+    // as `character`, which the client threads to the render so the protagonist never
+    // drifts. Fail-open: a miss falls back to the haiku Script Agent.
+    const brief = await runPromptAgent({
+      brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
+      length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
+    });
+    if (brief) {
+      return NextResponse.json({
+        success: true,
+        sceneScripts: brief.scenes.map((s) => s.imagePrompt),
+        character: brief.character.imagePromptFragment,
+        masterBrief: brief,
+      });
+    }
     const scripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
     return NextResponse.json({ success: true, sceneScripts: scripts });
   }
@@ -293,11 +311,19 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Full board (legacy single-shot path) — enrich with the LLM Script Agent, then
+  // Full board (legacy single-shot path) — enrich with the Master Prompt Agent (locked
+  // character + per-scene image prompts), fail-open to the haiku Script Agent, then
   // render all frames in one request. Fail-open: a miss leaves `plan` in place.
-  const sceneScripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
+  const masterBrief: MasterFilmBrief | null = await runPromptAgent({
+    brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
+    length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
+  });
+  const sceneScripts = masterBrief
+    ? masterBrief.scenes.map((s) => s.imagePrompt)
+    : ((await generateSceneScripts(prompt, sceneCount)) ?? null);
+  const characterLock = masterBrief?.character.imagePromptFragment ?? null;
   const storyPlan = sceneScripts
-    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec, musicVideo })
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
     : plan;
 
   const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
@@ -327,5 +353,8 @@ export async function POST(req: NextRequest) {
     // The LLM scene scripts (one per scene) — the client threads these back to the
     // render so the clips are generated from the same story, not the deterministic beats.
     sceneScripts,
+    // Prompt-Agent locked character fragment — threaded to the render so the
+    // protagonist's appearance is identical across every clip.
+    character: characterLock,
   });
 }

@@ -10,6 +10,7 @@
  * only in their own flows.
  */
 import {
+  Sparkles,
   Clapperboard,
   Film,
   Video,
@@ -46,6 +47,7 @@ const fmtClock = (sec: number): string => {
 };
 
 const ICONS: Record<FilmAgentId, typeof Clapperboard> = {
+  prompt: Sparkles,
   director: Clapperboard,
   storyboard: Film,
   video: Video,
@@ -58,6 +60,7 @@ const ICONS: Record<FilmAgentId, typeof Clapperboard> = {
 };
 
 const LABELS: Record<FilmAgentId, Record<Loc, string>> = {
+  prompt: { en: 'Prompt', ru: 'Промпт', ka: 'Prompt' },
   director: { en: 'Director', ru: 'Режиссёр', ka: 'რეჟისორი' },
   storyboard: { en: 'Storyboard', ru: 'Раскадровка', ka: 'სცენარი' },
   video: { en: 'Cinematographer', ru: 'Оператор', ka: 'ოპერატორი' },
@@ -80,6 +83,7 @@ const STATUS_LABEL: Record<FilmAgentStatus, Record<Loc, string>> = {
 // Adaptive per-agent micro-step text (Master-Prompt §P6) — what the agent is
 // actually doing right now, not just its status. Falls back to the status label.
 const MICRO: Partial<Record<FilmAgentId, { processing: Record<Loc, string>; completed: Record<Loc, string> }>> = {
+  prompt: { processing: { en: 'Analyzing…', ru: 'Анализирует…', ka: 'აანალიზებს…' }, completed: { en: 'Brief ready', ru: 'Бриф готов', ka: 'ბრიფი მზადაა' } },
   director: { processing: { en: 'Planning…', ru: 'Планирует…', ka: 'გეგმავს…' }, completed: { en: 'Scenes planned', ru: 'Сцены готовы', ka: 'სცენები მზადაა' } },
   storyboard: { processing: { en: 'Drawing frames…', ru: 'Кадры…', ka: 'კადრები…' }, completed: { en: 'Shot list locked', ru: 'Кадры готовы', ka: 'კადრები ჩაიკეტა' } },
   voice: { processing: { en: 'Recording VO…', ru: 'Озвучка…', ka: 'გახმოვანება…' }, completed: { en: 'Voiceover ready', ru: 'Озвучка готова', ka: 'გახმოვანება მზადაა' } },

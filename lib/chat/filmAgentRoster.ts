@@ -17,6 +17,7 @@ import type { FilmStudioProgress } from '@/lib/chat/filmStudioClient';
 export type FilmAgentStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'error';
 
 export type FilmAgentId =
+  | 'prompt'
   | 'director'
   | 'storyboard'
   | 'video'
@@ -39,6 +40,7 @@ export interface FilmAgentVM {
 
 /** Console layout order: the active production chain first, dormant specialists last. */
 export const FILM_AGENT_ORDER: FilmAgentId[] = [
+  'prompt',
   'director',
   'storyboard',
   'video',
@@ -79,6 +81,15 @@ export function deriveFilmRoster(
     pct: extra?.pct ?? PCT[status],
     ...extra,
   });
+
+  // prompt — the Master Prompt Agent runs FIRST (extracts the locked character + writes
+  // every scene's image prompt), before the storyboard/dispatch. By the time anything
+  // else is in flight its Master Film Brief is already produced (or it fell open), so it
+  // shows queued before kick-off and completed as soon as the pipeline starts moving.
+  const promptAgent = a(
+    'prompt',
+    phase === 'idle' ? 'queued' : 'completed',
+  );
 
   // director — orchestration plan; done once the scenes are dispatched.
   const director = a(
@@ -159,6 +170,7 @@ export function deriveFilmRoster(
   const remix = a('remix', 'idle');
 
   const byId: Record<FilmAgentId, FilmAgentVM> = {
+    prompt: promptAgent,
     director,
     storyboard,
     video,
@@ -212,6 +224,7 @@ export function deriveFilmLog(p: FilmStudioProgress | null | undefined, locale: 
     // Surface the dispatch + whatever landed, then the failure, so context isn't lost.
   }
   if (phase !== 'idle') {
+    lines.push({ key: 'prompt', icon: '✨', text: T('Prompt Agent — master brief & character lock ready', 'Промпт-агент — мастер-бриф и фиксация персонажа готовы', 'Prompt აგენტი — მასტერ-ბრიფი და პერსონაჟის ჩაკეტვა მზადაა') });
     lines.push({ key: 'dispatch', icon: '🎬', text: T('Director — breaking down the script', 'Режиссёр — разбор сценария', 'რეჟისორი — სცენარის დაშლა') });
   }
   if (m) {

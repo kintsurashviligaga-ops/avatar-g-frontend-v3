@@ -72,6 +72,12 @@ const orchestrateSchema = z.object({
   soundtrackUrl: z.string().min(1).max(2048).optional(),
   // v330 — explicit Music Video mode (implied by a soundtrack) → sung song + song-master mix.
   musicVideoMode: z.boolean().optional(),
+  // The Video-panel effect (Cinematic / Vintage / Neon …) → drives the clip prompt's
+  // visual style guide. Previously only reached the storyboard frames, never the render.
+  style: z.string().max(80).optional(),
+  // Prompt-Agent character LOCK — one detailed appearance fragment injected verbatim
+  // into every scene so the protagonist never drifts shot-to-shot.
+  characterLock: z.string().max(2000).optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -181,7 +187,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.soundtrackUrl || data.musicVideoMode)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -192,6 +198,9 @@ export async function POST(req: NextRequest) {
             // v330 — Music Video signals: a soundtrack skips ambient gen; the flag forces a sung song.
             ...(data.soundtrackUrl ? { soundtrackUrl: data.soundtrackUrl } : {}),
             ...(data.musicVideoMode ? { musicVideoMode: true } : {}),
+            // Prompt-Agent: the chosen effect + the locked character description.
+            ...(data.style ? { style: data.style } : {}),
+            ...(data.characterLock ? { characterLock: data.characterLock } : {}),
           }
         : data.metadata,
       customInstructions: effectiveInstructions,

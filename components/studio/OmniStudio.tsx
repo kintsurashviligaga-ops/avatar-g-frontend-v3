@@ -668,6 +668,9 @@ interface StoryboardState {
   /** Scene ordinals whose frame is still being generated (drives the N/M counter
    *  + per-tile spinner). Empty/undefined once every frame has settled. */
   pending?: number[];
+  /** Prompt-Agent locked character fragment (from /api/film/storyboard scriptsOnly) —
+   *  threaded to the render so the protagonist is identical across every clip. */
+  character?: string | null;
 }
 
 /** Read a picked File into a data: URL (for the per-scene "Change Base Image"). */
@@ -1269,7 +1272,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[]) => {
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
@@ -1315,6 +1318,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         orientation: isMusicVideo ? 'vertical' : orientation,
         transition: videoTransition,
         musicVideoMode: isMusicVideo,
+        // FIX B — the chosen effect reaches the CLIP prompts (not just the frames).
+        style: videoStyle,
+        // FIX A — the Prompt-Agent locked character → identical protagonist every clip.
+        ...(characterLock?.trim() ? { characterLock: characterLock.trim() } : {}),
         ...(isMusicVideo ? { vocalGender: videoVocalGender } : {}),
         // Music Video soundtrack: the user-built Georgian song (or an uploaded track).
         ...(isMusicVideo && kaSoundtrack ? { soundtrackUrl: kaSoundtrack } : {}),
@@ -1464,7 +1471,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -1557,10 +1564,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
           });
-          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null };
+          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {
             const scripts = sj.sceneScripts;
-            setStoryboard((prev) => (prev ? { ...prev, sceneScripts: scripts } : prev));
+            // Prompt-Agent locked character → store it so the render threads it as the
+            // character lock (identical protagonist across every clip).
+            const character = typeof sj.character === 'string' && sj.character.trim() ? sj.character.trim() : null;
+            setStoryboard((prev) => (prev ? { ...prev, sceneScripts: scripts, ...(character ? { character } : {}) } : prev));
           }
         } catch { /* best-effort; render falls back to deterministic beats */ }
       })();
@@ -3875,7 +3885,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })));
+            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }

@@ -84,6 +84,12 @@ export function buildConsistencySeed(prompt: string): number {
  * first shot's protagonist as the canonical one to reproduce.
  */
 export function buildCharacterAnchor(prompt: string, opts: FilmPlanOptions = {}): string {
+  // Prompt-Agent character LOCK wins: a detailed, extracted appearance (age,
+  // ethnicity, hair, eyes, wardrobe) repeated VERBATIM in every shot is the
+  // strongest text-side anti-drift lever — far stronger than the generic clause
+  // below, which left the diffusion model free to re-invent the person each scene.
+  const lock = typeof opts.characterLock === 'string' ? opts.characterLock.trim() : '';
+  if (lock) return `${lock} — the EXACT same person, identical face, hair and wardrobe in every shot`;
   if (opts.avatarReference) {
     return "the user's custom avatar — identical face, hair and wardrobe in every shot";
   }
@@ -222,6 +228,10 @@ export interface FilmPlanOptions {
   referenceImages?: unknown;
   /** Optional aesthetic/genre override (e.g. "cyberpunk", "noir"). */
   style?: string | null;
+  /** PROMPT-AGENT character LOCK — one detailed appearance fragment (age, hair, eyes,
+   *  wardrobe) prepended VERBATIM to every scene's continuity so the protagonist never
+   *  drifts, even with no uploaded selfie. Supplied by the Master Prompt Agent. */
+  characterLock?: string | null;
   /** Override total runtime; defaults to FILM_TOTAL_SEC (30s). */
   totalSec?: number;
   /** Frame orientation — drives the per-clip aspect ratio. Default landscape. */

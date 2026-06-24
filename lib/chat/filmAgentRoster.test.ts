@@ -26,14 +26,16 @@ const byId = (roster: ReturnType<typeof deriveFilmRoster>) =>
   Object.fromEntries(roster.map((a) => [a.id, a])) as Record<FilmAgentId, { status: FilmAgentStatus; pct: number; ready?: number; total?: number }>;
 
 describe('deriveFilmRoster', () => {
-  it('returns all 9 agents in canonical order, even for null progress', () => {
+  it('returns all 10 agents in canonical order, even for null progress', () => {
     const r = deriveFilmRoster(null);
     expect(r.map((a) => a.id)).toEqual(FILM_AGENT_ORDER);
-    expect(r).toHaveLength(9);
+    expect(r).toHaveLength(10);
+    expect(r[0]!.id).toBe('prompt'); // the Master Prompt Agent leads the console
   });
 
-  it('idle progress → director queued, dormant specialists idle', () => {
+  it('idle progress → prompt + director queued, dormant specialists idle', () => {
     const r = byId(deriveFilmRoster(null));
+    expect(r.prompt.status).toBe('queued');
     expect(r.director.status).toBe('queued');
     expect(r.lipsync.status).toBe('idle');
     expect(r.overlay.status).toBe('idle');

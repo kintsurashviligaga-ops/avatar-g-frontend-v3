@@ -57,6 +57,7 @@ import {
 } from './filmClipRetry';
 import { filmBalanceDecision } from './filmBalanceGate';
 import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
+import { runPromptAgent } from './promptAgent';
 
 const serviceManager = new ServiceManager();
 
@@ -388,16 +389,46 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     opts.characterReference ||
     (typeof input.metadata?.avatarUrl === 'string' ? input.metadata.avatarUrl : undefined) ||
     null;
-  const style = opts.style || null;
+  // FIX B — the Video-panel effect (Cinematic / Vintage / Neon …). Read from BOTH
+  // selectedOptions AND metadata: the composer now threads it as metadata.style so it
+  // reaches the CLIP prompts' style guide, not just the storyboard frames.
+  const style =
+    opts.style ||
+    (typeof input.metadata?.style === 'string' ? input.metadata.style : null) ||
+    null;
   // Frame orientation forwarded from the composer (Video mode 16:9 / 9:16) via
   // metadata. Drives the per-clip aspect ratio so the cut never changes shape.
   const orientation: 'landscape' | 'vertical' =
     input.metadata?.orientation === 'vertical' ? 'vertical' : 'landscape';
   // Approved LLM story scenes from the storyboard step — the clips render from
   // these exact scene descriptions (real story) instead of the deterministic beats.
-  const sceneScripts = Array.isArray(input.metadata?.sceneScripts)
+  let sceneScripts = Array.isArray(input.metadata?.sceneScripts)
     ? (input.metadata.sceneScripts as unknown[]).map((s) => (typeof s === 'string' ? s : '')).filter(Boolean)
     : undefined;
+  // FIX A — Prompt-Agent character LOCK. The storyboard step (which runs the Prompt
+  // Agent) threads the locked appearance fragment here so every clip prompt asserts the
+  // SAME protagonist. If it's absent (a direct render that skipped the storyboard), run
+  // the Prompt Agent NOW as a fail-open fallback so the character is still locked.
+  let characterLock =
+    typeof input.metadata?.characterLock === 'string' && input.metadata.characterLock.trim()
+      ? input.metadata.characterLock.trim()
+      : null;
+  if (!characterLock && (!sceneScripts || sceneScripts.length === 0)) {
+    const brief = await runPromptAgent({
+      brief: input.message,
+      mode: input.metadata?.musicVideoMode ? 'music_video' : 'documentary',
+      sceneCount: FILM_SCENE_COUNT,
+      length: FILM_SCENE_COUNT * FILM_CLIP_SEC,
+      effect: style ?? 'Cinematic',
+      language: input.locale,
+    }).catch(() => null);
+    if (brief) {
+      characterLock = brief.character.imagePromptFragment;
+      sceneScripts = brief.scenes.map((s) => s.imagePrompt);
+      // eslint-disable-next-line no-console
+      console.log('[filmComposite] Prompt Agent fallback produced a locked character + scene prompts');
+    }
+  }
   // PHASE 45 §2/§3 — accept 1–3 multimodal reference images from the composer.
   // They arrive either as a JSON string in selectedOptions or as an array on
   // metadata; planFilmScenes normalises/caps/dedupes them either way.
@@ -439,7 +470,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}) });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}) });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

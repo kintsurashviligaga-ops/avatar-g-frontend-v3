@@ -151,6 +151,12 @@ export interface DriveFilmOptions {
    * rendered from these exact scene descriptions so the film matches the storyboard.
    */
   sceneScripts?: string[];
+  /** The Video-panel effect (Cinematic / Vintage / Neon …). Threaded to the render so
+   *  the CLIP prompts' style guide matches the chosen look (was only on the frames). */
+  style?: string;
+  /** Prompt-Agent locked character fragment (from /api/film/storyboard) — injected
+   *  verbatim into every clip prompt so the protagonist never drifts shot-to-shot. */
+  characterLock?: string;
   locale?: string;
   signal?: AbortSignal;
   onProgress?: (p: FilmStudioProgress) => void;
@@ -619,6 +625,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // soundtrack), so a documentary with a custom bed is never silently turned into a
           // narrator-less music video.
           ...(opts.musicVideoMode ? { musicVideoMode: true } : {}),
+          // The chosen effect → the clip prompts' style guide (was only on the frames).
+          ...(opts.style ? { style: opts.style } : {}),
+          // Prompt-Agent locked character → injected verbatim into every clip prompt.
+          ...(opts.characterLock?.trim() ? { characterLock: opts.characterLock.trim() } : {}),
         },
         signal,
       );
