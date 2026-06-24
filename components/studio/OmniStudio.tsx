@@ -1285,6 +1285,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
       // mode keeps narration-forward behaviour (voice-over + ducked score).
       const isMusicVideo = videoMode === 'musicvideo';
+      // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
+      // music video we build the song ourselves (Georgian rap on the cloned KA voice over a
+      // funk bed) and use it as the soundtrack. Fail-open → normal EL Music (English).
+      const georgianBrief = /\bgeorgian\b/i.test(filmPrompt) || /[Ⴀ-ჿᲐ-Ჿ]/.test(filmPrompt);
+      let kaSoundtrack: string | null = isMusicVideo && videoSoundtrack?.url ? videoSoundtrack.url : null;
+      if (isMusicVideo && !kaSoundtrack && georgianBrief && mine()) {
+        setMessages((prev) => {
+          if (!mine()) return prev;
+          const next = [...prev]; const last = next[next.length - 1];
+          if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: locale === 'en' ? '🎤 Writing the Georgian vocal track…' : locale === 'ru' ? '🎤 Создаю грузинский вокал…' : '🎤 ვქმნი ქართულ ვოკალს…' };
+          return next;
+        });
+        try {
+          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender, totalSec: 30 }) });
+          const j = (await r.json().catch(() => ({}))) as { url?: string | null };
+          if (j.url) kaSoundtrack = j.url;
+        } catch { /* fail-open → EL Music (English) */ }
+      }
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,
@@ -1293,9 +1311,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         transition: videoTransition,
         musicVideoMode: isMusicVideo,
         ...(isMusicVideo ? { vocalGender: videoVocalGender } : {}),
-        // Only a music video uses the uploaded soundtrack — never let a leftover track
-        // silently turn Documentary mode into a narrator-less music video.
-        ...(isMusicVideo && videoSoundtrack?.url ? { soundtrackUrl: videoSoundtrack.url } : {}),
+        // Music Video soundtrack: the user-built Georgian song (or an uploaded track).
+        ...(isMusicVideo && kaSoundtrack ? { soundtrackUrl: kaSoundtrack } : {}),
         // Narration only in documentary mode — a music video has no spoken narrator.
         myVoiceNarration: !isMusicVideo && videoMyVoiceNarration && hasTrainedVoice,
         ...(!isMusicVideo && videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
