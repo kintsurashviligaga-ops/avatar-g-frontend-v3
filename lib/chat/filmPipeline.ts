@@ -394,10 +394,19 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     const continuity = `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
     // Inject the explicit camera move + subject energy + a clean-frame guard (no
     // AI-burned text/titles), so the model actually MOVES and doesn't paint captions.
-    const enriched = enrichVideoPrompt(
-      `${head}. ${cameraDirectiveFor(beat.cameraMotion)}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
-      traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
-    );
+    // Music-Video INTRO scenes are a PURE establishing location (drone over the city,
+    // then the venue) with NO performer — so they must NOT get the "subject performs"
+    // energy line or the character anchor, which were turning the drone shot into a
+    // person on a street. Everything else keeps the performer + continuity contract.
+    const enriched = mvIntro
+      ? enrichVideoPrompt(
+          `${head}. ${cameraDirectiveFor(beat.cameraMotion)}, slow cinematic camera movement, atmospheric and immersive. NO people, NO performer, NO singer anywhere in frame — a pure establishing location shot only. No on-screen text, titles, captions, subtitles, watermarks or logos. ${styleGuide} (consistency seed ${seed}).`,
+          traits, 1500,
+        )
+      : enrichVideoPrompt(
+          `${head}. ${cameraDirectiveFor(beat.cameraMotion)}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+          traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
+        );
     return {
       index: seg.index,
       ordinal: seg.index + 1,
