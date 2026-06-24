@@ -18,7 +18,6 @@ import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioCli
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine } from '@/lib/chat/filmAgentRoster';
-import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -434,6 +433,18 @@ const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as c
 type ImgQuality = (typeof IMG_QUALITIES)[number][0];
 const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'] as const;
 const MUSIC_GENRES = ['cinematic', 'pop', 'electronic', 'lo-fi', 'rock', 'hip-hop', 'classical', 'ambient', 'jazz', 'folk', 'orchestral', 'trap', 'r&b', 'funk', 'reggae'] as const;
+// Curated style set for the redesigned Music panel (Section A). Each entry maps a
+// user-facing label (per locale) to a MUSIC_GENRES value the score engine understands.
+const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru: string }]> = [
+  ['folk', { ka: 'ქართული ფოლკი', en: 'Georgian Folk', ru: 'Грузинский фолк' }],
+  ['r&b', { ka: 'R&B', en: 'R&B', ru: 'R&B' }],
+  ['hip-hop', { ka: 'ჰიპ-ჰოპი', en: 'Hip-Hop', ru: 'Хип-хоп' }],
+  ['pop', { ka: 'პოპი', en: 'Pop', ru: 'Поп' }],
+  ['electronic', { ka: 'ელექტრონული', en: 'Electronic', ru: 'Электроника' }],
+  ['jazz', { ka: 'ჯაზი', en: 'Jazz', ru: 'Джаз' }],
+  ['rock', { ka: 'როკი', en: 'Rock', ru: 'Рок' }],
+  ['classical', { ka: 'კლასიკა', en: 'Classical', ru: 'Классика' }],
+];
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial'] as const;
 
 // A small, theme-tokenised option chip used by the per-service options bar.
@@ -1073,8 +1084,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
   const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
-  const [musicInstrumental, setMusicInstrumental] = useState(true);
-  const [musicGenre, setMusicGenre] = useState<string>('cinematic');
+  // Default to VOCALS now that the redesigned Music panel has no instrumental/vocal
+  // toggle (a vocal R&B/pop track is the common case; the model writes lyrics from the
+  // prompt). Describe "instrumental …" in the prompt for an instrumental bed.
+  const [musicInstrumental, setMusicInstrumental] = useState(false);
+  const [musicGenre, setMusicGenre] = useState<string>('r&b');
+  // Redesigned Music-panel prompt (Section C) — its OWN field so it never mirrors the
+  // shared composer pill; the Generate button threads it into send() as promptOverride.
+  const [musicPrompt, setMusicPrompt] = useState('');
   // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
@@ -1927,8 +1944,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     void streamChat(messages.slice(0, lastA));
   }, [busy, messages, streamChat]);
 
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean }) => {
-    const text = input.trim();
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string }) => {
+    const text = (opts?.promptOverride ?? input).trim();
     if ((!text && attachments.length === 0) || busy) return;
     // MOBILE FIX — collapse the settings panel on generation so the result (video +
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
@@ -3100,30 +3117,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div ref={composerRef} className="shrink-0 pt-1">
-        {/* P5 — Chat controls: response language + model tier, and quick preset prompts. */}
-        {mode === 'chat' && (
-          <div className="mb-2 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reply in' : locale === 'ru' ? 'Ответ на' : 'პასუხი'}:</span>
-              {([['auto', locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'], ['ka', 'ქართ.'], ['en', 'EN'], ['ru', 'RU']] as const).map(([v, label]) => (
-                <Chip key={v} active={chatLang === v} onClick={() => setChatLang(v)}>{label}</Chip>
-              ))}
-              <span className="ml-1 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Model' : locale === 'ru' ? 'Модель' : 'მოდელი'}:</span>
-              <Chip active={chatTier === 'standard'} onClick={() => setChatTier('standard')}>Avatar G</Chip>
-              <Chip active={chatTier === 'pro'} onClick={() => setChatTier('pro')}>Avatar G Pro</Chip>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {([
-                ['🎬', 'შექმენი ვიდეო'],
-                ['🖼️', 'შექმენი სურათი'],
-                ['🎵', 'შექმენი მუსიკა'],
-              ] as const).map(([emoji, label]) => (
-                <button key={label} type="button" onClick={() => { setInput(label); taRef.current?.focus(); }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 bg-app-elevated/50 px-3 py-1.5 text-[12px] font-medium text-app-text transition hover:bg-app-elevated active:scale-[0.98]">
-                  <span>{emoji}</span> {label}
-                </button>
-              ))}
-            </div>
+        {/* Quick-action suggestion pills — shown ONLY on an empty chat (ChatGPT-style).
+            Each routes to that service (sets the active mode). Ghost pills: 0.5px border,
+            13px, muted; 2×2 grid on mobile, inline row on desktop. Replaces the old
+            response-language / model-tier / media chip rows (cluttered + confusing). */}
+        {mode === 'chat' && messages.length === 0 && (
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            {([
+              ['🖼', locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'გამოსახულება', 'image'],
+              ['🎵', locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', 'music'],
+              ['🎬', locale === 'en' ? 'Video' : locale === 'ru' ? 'Видео' : 'ვიდეო', 'video'],
+              ['💬', locale === 'en' ? 'Chat' : locale === 'ru' ? 'Чат' : 'ჩატი', 'chat'],
+            ] as const).map(([emoji, label, svc]) => (
+              <button key={svc} type="button"
+                onClick={() => { setMode(svc); if (svc !== 'chat') setOptionsOpen(true); }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border-[0.5px] border-app-border/30 bg-transparent px-3.5 py-2 text-[13px] font-medium text-app-muted transition-colors hover:border-app-border/55 hover:text-app-text active:scale-[0.98]">
+                <span className="text-[15px] leading-none">{emoji}</span> {label}
+              </button>
+            ))}
           </div>
         )}
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
@@ -3478,77 +3489,83 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         )}
 
-        {/* FAITHFUL trained voice (RVC) — train once right here in chat, then sing in
-            your REAL voice. No page jump; the whole service lives in this chatbox. */}
-        {mode === 'music' && (
-          <div className="mb-2 space-y-2">
-            {/* Style — instrumental/vocal + genre, in one clearly-labelled section */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
-              <div className="flex gap-1.5">
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{t.instrumental}</Chip>
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{t.withVocals}</Chip>
-              </div>
-              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Genre' : locale === 'ru' ? 'Жанр' : 'ჟანრი'}</span>
+        {/* ── Music panel · 5 clean sections (A Style · B Duration+Tempo · C Prompt · D Generate · E Result) ── */}
+        {mode === 'music' && (() => {
+          const lastMusic = [...messages].reverse().find((m) => m.audioUrl);
+          const tempos = [
+            ['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'],
+            ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'],
+            ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი'],
+          ] as const;
+          return (
+          <div className="mb-2 space-y-4">
+            {/* A — Style (single select, horizontal scroll) */}
+            <div>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {MUSIC_GENRES.map((g) => <Chip key={g} active={musicGenre === g} onClick={() => setMusicGenre(g)}>{g}</Chip>)}
-              </div>
-              {/* P6 — Duration + Tempo */}
-              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
-              <div className="flex gap-1.5">
-                {([15, 30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}s</Chip>)}
-              </div>
-              <span className="block pt-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
-              <div className="flex gap-1.5">
-                {([['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'], ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'], ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი']] as const).map(([v, label]) => (
-                  <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>
+                {MUSIC_STYLES.map(([val, label]) => (
+                  <Chip key={val} active={musicGenre === val} onClick={() => setMusicGenre(val)}>{label[locale] ?? label.en}</Chip>
                 ))}
               </div>
             </div>
-            <VoiceTrainer lang={locale} onReady={setHasTrainedVoice} />
-            {/* Once trained: type lyrics + ONE button that GENERATES in your voice — no
-                confusing toggle, no separate send. Pressing it creates the song. */}
-            {hasTrainedVoice && (
-              <div className="space-y-2 rounded-xl border border-app-accent/30 bg-app-accent/[0.06] p-3">
-                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-app-accent">
-                  <Check size={13} /> {t.myVoiceReady}
+
+            {/* B — Duration + Tempo, side by side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
+                <div className="flex gap-1.5">
+                  {([15, 30, 60] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}s</Chip>)}
                 </div>
+              </div>
+              <div>
+                <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
+                <div className="flex gap-1.5">
+                  {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
+                </div>
+              </div>
+            </div>
+
+            {/* C — Prompt (max 300 chars, live counter bottom-right) */}
+            <div>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">✍️ {locale === 'en' ? 'Prompt' : locale === 'ru' ? 'Описание' : 'აღწერა'}</span>
+              <div className="relative">
                 <textarea
-                  value={musicLyrics}
-                  onChange={(e) => setMusicLyrics(e.target.value)}
+                  value={musicPrompt}
+                  onChange={(e) => setMusicPrompt(e.target.value.slice(0, 300))}
+                  maxLength={300}
                   rows={3}
-                  placeholder={t.myVoiceLyricsPh}
-                  className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none transition-colors placeholder:text-app-muted/50 focus:border-app-accent/50 focus:bg-app-bg/70"
+                  placeholder={t.musicPlaceholder}
+                  className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 pb-6 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
                 />
-                <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex w-fit items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1 text-[11px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
-                  {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
-                </button>
-                <button type="button" onClick={() => void send({ forceMyVoice: true })} disabled={busy}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
-                  {busy ? <Loader2 size={16} className="animate-spin" /> : <>🎤 {t.myVoiceCreate}</>}
-                </button>
+                <span className="pointer-events-none absolute bottom-2 right-3 text-[11px] tabular-nums text-app-muted/60">{musicPrompt.length}/300</span>
+              </div>
+            </div>
+
+            {/* D — Generate (full width) */}
+            <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || !musicPrompt.trim()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <>🎵 {locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}</>}
+            </button>
+
+            {/* E — Result (hidden until a track exists): audio player + download/share */}
+            {lastMusic?.audioUrl && (
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                <span className="block text-[12.5px] font-semibold text-app-text">🎧 {locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                <audio src={lastMusic.audioUrl} controls className="w-full" />
+                <div className="flex gap-2">
+                  <a href={lastMusic.audioUrl} download className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                    <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
+                  </a>
+                  <button type="button" onClick={() => { void navigator.clipboard?.writeText(lastMusic.audioUrl ?? ''); }} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                    <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
-        )}
-
-        {/* Custom lyrics — the exact sung words. Only for vocal tracks WITHOUT a trained
-            voice; the trained-voice card above owns lyrics in that flow (no duplicate editor). */}
-        {mode === 'music' && !musicInstrumental && !hasTrainedVoice && (
-          <div className="mb-2 space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ტექსტი'}</span>
-            <textarea
-              value={musicLyrics}
-              onChange={(e) => setMusicLyrics(e.target.value)}
-              rows={2}
-              placeholder={t.lyricsPlaceholder}
-              className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
-            />
-            <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/15 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-accent disabled:opacity-40">
-              {writingLyrics ? <Loader2 size={11} className="animate-spin" /> : null} {t.writeLyricsBtn}
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         </div>{/* /collapsible options */}
 
@@ -3640,7 +3657,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: small, mimeType: f.type || 'image/jpeg' }]);
           } catch { /* ignore unreadable capture */ }
         }} />
-        <div className="rounded-[24px] bg-app-elevated px-3 py-2">
+        {/* One clean rounded pill — min-height 52px, padding 12px 16px; the prompt sits on
+            its own line so a long brief is never squeezed, and ALL controls live inside. */}
+        <div className="rounded-[24px] bg-app-elevated px-4 py-3 min-h-[52px]">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
           <textarea
@@ -3669,6 +3688,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Camera size={19} />
             </button>
+
+            {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+]/camera
+                stay on the left and the mode dropdown sits between the text and the mic. */}
+            <div className="flex-1" />
 
             {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
             <div className="relative shrink-0">
@@ -3703,8 +3726,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </>
               )}
             </div>
-
-            <div className="flex-1" />
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
