@@ -185,46 +185,76 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
 
 /**
  * Run the Master Prompt Agent. Returns a coherent `MasterFilmBrief` or `null`
- * (fail-open). Hard 20s cap so it never stalls the dispatch hot-path.
+ * (fail-open). Capped at PROMPT_AGENT_TIMEOUT_MS (default 45s) — a full MasterFilmBrief
+ * (locked character + style + N scene prompts ≈ 1.5k tokens) takes Sonnet ~20-30s, so
+ * the original 20s cap timed it out every run and it always fell open to haiku. Both
+ * routes that call this declare maxDuration=300, and the call is off the user's
+ * board-open hot-path (it runs in the background scriptsOnly step).
  */
 export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFilmBrief | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  const model = process.env.ANTHROPIC_PROMPT_AGENT_MODEL ?? 'claude-sonnet-4-6';
   const sceneCount = Math.max(2, Math.min(12, Math.round(input.sceneCount)));
+  const timeoutMs = Number(process.env.PROMPT_AGENT_TIMEOUT_MS) || 45_000;
+  let settled = false;
+
+  // Primary = Sonnet (best extraction); FALLBACK = the haiku model already proven on
+  // prod (the storyboard's Script Agent uses it). The fallback covers BOTH failure
+  // modes I can't introspect from here: a slow/timed-out Sonnet AND a Sonnet that
+  // isn't entitled on this key — either way the character lock still engages.
+  const primary = process.env.ANTHROPIC_PROMPT_AGENT_MODEL ?? 'claude-sonnet-4-6';
+  const fallback = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
+  const userContent =
+    `Brief: ${input.brief.trim().slice(0, 1800)}\n` +
+    `Mode: ${input.mode}\n` +
+    `Scenes: ${sceneCount}\n` +
+    `Length: ${input.length}s\n` +
+    `Effect: ${input.effect}\n` +
+    `Language: ${input.language}` +
+    (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
+    `\n\nProduce EXACTLY ${sceneCount} scenes.`;
+
+  const tryModel = async (model: string, perCallMs: number): Promise<MasterFilmBrief | null> => {
+    const t0 = Date.now();
+    const client = new Anthropic({ apiKey, maxRetries: 0, timeout: perCallMs });
+    const msg = await client.messages.create({
+      model, max_tokens: 3000, system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
+    });
+    const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');
+    const brief = coerceBrief(extractJson(text), sceneCount);
+    // eslint-disable-next-line no-console
+    console.log(`[promptAgent] ${model} ${brief ? 'ok' : 'unparseable'} in ${Date.now() - t0}ms (${brief?.scenes.length ?? 0} scenes)`);
+    return brief;
+  };
 
   const work = (async (): Promise<MasterFilmBrief | null> => {
+    let brief: MasterFilmBrief | null = null;
     try {
-      const client = new Anthropic({ apiKey });
-      const userContent =
-        `Brief: ${input.brief.trim().slice(0, 1800)}\n` +
-        `Mode: ${input.mode}\n` +
-        `Scenes: ${sceneCount}\n` +
-        `Length: ${input.length}s\n` +
-        `Effect: ${input.effect}\n` +
-        `Language: ${input.language}` +
-        (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
-        `\n\nProduce EXACTLY ${sceneCount} scenes.`;
-      const msg = await client.messages.create({
-        model,
-        max_tokens: 3000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userContent }],
-      });
-      const text = msg.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('');
-      return coerceBrief(extractJson(text), sceneCount);
+      brief = await tryModel(primary, timeoutMs - 4_000);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[promptAgent] failed (fail-open):', err instanceof Error ? err.message : err);
-      return null;
+      console.warn(`[promptAgent] primary ${primary} failed → trying ${fallback}:`, err instanceof Error ? err.message : err);
     }
+    if (!brief && primary !== fallback) {
+      try { brief = await tryModel(fallback, Math.min(20_000, timeoutMs)); }
+      catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[promptAgent] fallback failed (fail-open):', err instanceof Error ? err.message : err);
+      }
+    }
+    settled = true;
+    return brief;
   })();
 
+  // Backstop race: the per-call timeouts already bound each request, but this guards
+  // against the SDK hanging past them so the caller never waits unbounded.
   return Promise.race([
     work,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
+    new Promise<null>((resolve) => setTimeout(() => {
+      // eslint-disable-next-line no-console
+      if (!settled) console.warn(`[promptAgent] hard backstop hit after ${timeoutMs + 22_000}ms (fail-open)`);
+      resolve(null);
+    }, timeoutMs + 22_000)),
   ]);
 }
