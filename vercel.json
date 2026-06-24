@@ -65,6 +65,9 @@
     "app/api/voice-lab/**": {
       "maxDuration": 30
     },
+    "app/api/audio/georgian-song/route.ts": {
+      "maxDuration": 240
+    },
     "app/api/audio/**": {
       "maxDuration": 120
     },

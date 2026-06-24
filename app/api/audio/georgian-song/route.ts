@@ -10,7 +10,7 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 240;
 
 export async function POST(req: NextRequest) {
   // Cost/abuse guard: this is a public POST and each accepted call performs billed
@@ -35,6 +35,14 @@ export async function POST(req: NextRequest) {
     const diag = await diagnoseGeorgianSong(brief, gender, totalSec, req.signal).catch((e) => ({ error: String(e) }));
     return NextResponse.json({ diag });
   }
-  const url = await generateGeorgianSong(brief, gender, totalSec, req.signal).catch(() => null);
+  // EL Music is intermittently flaky (~1-in-2 misses observed on prod), and a single
+  // null silently drops the Georgian vocal to the English fallback. The legs are healthy,
+  // so retry the whole build a few times before giving up — the 240s budget covers ~3
+  // attempts (~32s each on success). Still strictly fail-open: null after all retries.
+  let url: string | null = null;
+  for (let attempt = 0; attempt < 3 && !url; attempt += 1) {
+    if (req.signal?.aborted) break;
+    url = await generateGeorgianSong(brief, gender, totalSec, req.signal).catch(() => null);
+  }
   return NextResponse.json({ url });
 }
