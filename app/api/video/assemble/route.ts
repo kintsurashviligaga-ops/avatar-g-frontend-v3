@@ -27,6 +27,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { muxAudioOntoVideo } from '@/lib/video/remixOps';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
@@ -193,8 +194,11 @@ async function assembleImpl(req: NextRequest) {
     seenUrls.add(s.url);
     return true;
   });
-  if (segments.length < 2) {
-    return NextResponse.json({ error: 'at least 2 ready segments required' }, { status: 400 });
+  // ≥1 segment. A SINGLE segment (6s film, sceneCount=1) takes the lightweight
+  // single-clip path below (mux music, no multi-clip xfade stitch); ≥2 keeps the
+  // full filtergraph stitch. Zero segments is still a hard error.
+  if (segments.length < 1) {
+    return NextResponse.json({ error: 'at least 1 ready segment required' }, { status: 400 });
   }
 
   // Anonymous trial renders are allowed. The expensive part — rendering the 5
@@ -337,6 +341,26 @@ async function assembleImpl(req: NextRequest) {
     }
     return { url: null, fallback: null };
   };
+
+  // ── PHASE 2 — SINGLE-CLIP (6s) PATH ───────────────────────────────────────────
+  // A 1-scene film has no multi-clip stitch: skip the xfade filtergraph entirely.
+  // Resolve the music bed and mux it straight onto the single clip (ffmpeg -map
+  // 0:v -map 1:a -c:a aac -shortest, via muxAudioOntoVideo), then host + return.
+  // The graphics agent runs as the usual OmniStudio post-step on this master.
+  // Strictly additive: the ≥2 path below is untouched.
+  if (segments.length === 1) {
+    const clipUrl = await reSignIfInternal(segments[0]!.url);
+    const { url: musicUrl, fallback } = await resolveMusicBed();
+    let master = clipUrl;
+    if (musicUrl) {
+      const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'replace').catch(() => null);
+      if (muxed) master = muxed;
+    }
+    // eslint-disable-next-line no-console
+    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', muxed: master !== clipUrl }));
+    if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
+    return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: false, single: true });
+  }
 
   // Media-flow sanitization (Task 3): re-sign any internal Supabase Storage object so
   // only 15-minute signed URLs cross to the render node. STEP 3 (v331) — kick off the

@@ -782,7 +782,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // Reached when every scene is ready OR a timeout left ≥2 salvageable clips.
     emit('stitching', matrix, null);
     const clips = readyClipUrls(matrix);
-    if (clips.length < MIN_SALVAGE_CLIPS) {
+    // PHASE 2 — a 6s film is INTENDED as a single scene; allow exactly 1 clip then so
+    // it reaches the assembler's single-clip path (music mux, no stitch). Multi-scene
+    // films still need ≥2 salvageable clips. Additive: only the sceneCount===1 case.
+    const intendedSingleClip = matrix.sceneCount === 1;
+    if (clips.length < MIN_SALVAGE_CLIPS && !(intendedSingleClip && clips.length === 1)) {
       return fail('Not enough scenes rendered to stitch a film (need at least 2).', matrix);
     }
     // §5 — a user soundtrack (Music-Video mode) wins over any generated score.

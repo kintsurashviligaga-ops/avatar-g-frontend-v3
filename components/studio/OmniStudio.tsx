@@ -1307,7 +1307,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Film length: 10s (2 scenes), 30s (6 scenes) or 60s (12 scenes). Drives the
   // storyboard scene count. 60s = a cinematic intro (first scenes establishing) →
   // the singer performance, for a full music-video edit.
-  const [videoDuration, setVideoDuration] = useState<10 | 30 | 60>(30);
+  // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
+  const [videoDuration, setVideoDuration] = useState<6 | 30 | 60>(30);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
@@ -1662,7 +1663,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (characterPortrait && /^https?:/i.test(characterPortrait)) return characterPortrait;
         if (mine()) {
           try {
-            const sc = Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
+            const sc = videoDuration <= 6 ? 1 : Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
             const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
             const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
             if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
@@ -1747,7 +1748,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
           const gr = await fetch('/api/video/graphics', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: videoDuration === 60 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
+            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: videoDuration <= 6 ? 2 : videoDuration === 60 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
           });
           const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
           if (gj.url) setResultVideo(gj.url);
@@ -1849,7 +1850,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setStoryboardBusy(true);
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
-    const sceneCount = Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
+    const sceneCount = videoDuration <= 6 ? 1 : Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
     try {
       // STEP 1 — fast PLAN-ONLY call: deterministic scene beats, no LLM, no frames.
       // Returns in ~1s so the board opens immediately (no long "frozen" wait).
@@ -3838,7 +3839,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Length' : locale === 'ru' ? 'Длина' : 'ხანგრძლივობა'}</span>
                 <div className="flex gap-1.5">
-                  <Chip active={videoDuration === 10} onClick={() => setVideoDuration(10)}>10{locale === 'en' ? 's' : 'წმ'}</Chip>
+                  <Chip active={videoDuration === 6} onClick={() => setVideoDuration(6)}>6{locale === 'en' ? 's' : 'წმ'}</Chip>
                   <Chip active={videoDuration === 30} onClick={() => setVideoDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
                   <Chip active={videoDuration === 60} onClick={() => setVideoDuration(60)}>60{locale === 'en' ? 's' : 'წმ'}</Chip>
                 </div>
@@ -4627,7 +4628,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 feels like the storyboard is materialising, not a blank spinner. */}
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {Array.from({ length: Math.max(2, Math.min(6, Math.round(videoDuration / 5))) }).map((_, i) => (
+                {Array.from({ length: videoDuration <= 6 ? 1 : Math.max(2, Math.min(6, Math.round(videoDuration / 5))) }).map((_, i) => (
                   <div key={i} className="overflow-hidden rounded-xl border border-app-border/10 bg-app-elevated">
                     <div className={`relative ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} animate-pulse bg-gradient-to-br from-app-border/20 via-app-border/8 to-app-border/15`} style={{ animationDelay: `${i * 140}ms` }}>
                       <span className="absolute left-1.5 top-1.5 rounded-full bg-black/45 px-2 py-0.5 text-[11px] font-medium text-white/75">{t.sbScene} {i + 1}</span>
