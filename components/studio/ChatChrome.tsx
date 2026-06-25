@@ -22,6 +22,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
 import AuthModal from '@/components/chat/AuthModal';
+import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useTheme } from '@/lib/theme/ThemeContext';
@@ -95,6 +96,9 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
   const [authed, setAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  // PHASE 3 Task 2 — first-login welcome. Default true to avoid a flash before the
+  // localStorage read; the effect flips it false for users who haven't seen it.
+  const [welcomed, setWelcomed] = useState(true);
   const [balanceGel, setBalanceGel] = useState<number | null>(null);
   // Profile editing (#3) + GDPR data export (#4).
   const [profileOpen, setProfileOpen] = useState(false);
@@ -167,6 +171,12 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
     return () => window.clearInterval(id);
   }, [authed, refreshBalance]);
+
+  // PHASE 3 Task 2 — show the first-login welcome once per device.
+  useEffect(() => {
+    try { if (localStorage.getItem('myavatar:welcomed') === '1') setWelcomed(true); else setWelcomed(false); }
+    catch { setWelcomed(true); }
+  }, []);
 
   const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-app-text transition-colors hover:bg-app-elevated';
   const sectionHdr = 'px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-app-muted';
@@ -525,6 +535,11 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         </div>
       )}
       <AuthModal open={authOpen} locale={lang} initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); void refreshBalance(); }} />
+
+      {/* PHASE 3 Task 2 — first-login welcome (signed-in users who haven't seen it). */}
+      {authed && !welcomed && (
+        <WelcomeOnboarding locale={locale} balanceGel={balanceGel} onComplete={() => setWelcomed(true)} />
+      )}
       {/* Library-only sheet now — Privacy/Terms moved to the instant LegalModal above. */}
       <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
         {sheet === 'library' ? <StudioLibraryGrid locale={lang} /> : null}
