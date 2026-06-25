@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
         ? 'female vocals, female singer'
         : voiceType === 'male'
           ? 'male vocals, male singer'
-          : 'male and female duet, two singers (one male and one female trading lines)'
+          : 'male and female duet, two voices'
       : '';
 
   try {

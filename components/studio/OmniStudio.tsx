@@ -3930,7 +3930,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               const genLabel = musicInstrumental
                 ? `🎵 ${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
                 : musicVoiceType === 'duet'
-                  ? `🎤 ${locale === 'en' ? 'Generate Duet' : locale === 'ru' ? 'Создать дуэт' : 'დუეტის გენერაცია'}`
+                  ? `🎤 ${locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'}`
                   : musicVoiceType === 'male'
                     ? `🎤 ${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
                     : `🎤 ${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
