@@ -384,6 +384,104 @@ async function compositeMusicVideo(
   }
 }
 
+// DOCUMENTARY talking head — lip-sync the CLEAN portrait to the spoken DIALOGUE. Same
+// talking-photo engine as the singer (HeyGen first), but the audio is ElevenLabs TTS of the
+// dialogue text in the narrator gender — the route's `text`+`gender` path does the TTS
+// internally, so the returned clip already carries the narration in its audio track.
+// Fail-open: any miss → null.
+async function heygenSpeakingHead(
+  portrait: string,
+  dialogue: string,
+  gender: 'male' | 'female',
+  orientation: 'landscape' | 'vertical',
+  signal: AbortSignal,
+  mine: () => boolean,
+): Promise<string | null> {
+  let jobId: string | null = null;
+  try {
+    const r = await fetch('/api/video/lipsync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      // No `kind:'film'` → talking-photo (HeyGen first) animates the portrait. `text`+`gender`
+      // → the route synthesizes the narrator voice (ElevenLabs) and keys the mouth to it.
+      body: JSON.stringify({ characterRef: portrait, videoUrl: portrait, text: dialogue, gender, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }),
+      credentials: 'include', signal,
+    });
+    jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
+  } catch { return null; }
+  if (!jobId) return null;
+  for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
+    await new Promise((res) => setTimeout(res, 6000));
+    try {
+      const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
+      const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+      if (pj.done) return pj.url ?? null;
+    } catch { /* transient poll error — keep polling */ }
+  }
+  return null;
+}
+
+// DOCUMENTARY composite — narrate the film in the character's OWN voice + face. Mirrors
+// compositeMusicVideo, but: (1) the audio source is the spoken DIALOGUE (not a song vocal),
+// (2) ElevenLabs TTS of that dialogue drives the lip-sync (narrator gender per the panel),
+// (3) the CLEAN portrait is lip-synced via talking-photo, (4) the talking head is composited
+// at the CLOSE-UP beat (cameraShot 'close-up' / beat /close/) — (5) or scene 3 by default if
+// no close-up exists. The talking-head clip carries the narration, so we re-assemble with that
+// clip itself as the master audio bed (ffmpeg maps its audio stream) → the documentary is
+// narrated in the synced voice. Fail-open: any miss → null and the caller keeps the base master.
+async function compositeDocumentary(
+  portrait: string,
+  matrix: FilmStudioMatrix,
+  storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
+  dialogue: string,
+  gender: 'male' | 'female',
+  orientation: 'landscape' | 'vertical',
+  transition: 'crossfade' | 'cut',
+  signal: AbortSignal,
+  mine: () => boolean,
+): Promise<string | null> {
+  try {
+    // 1+2+3. ElevenLabs TTS of the dialogue + lip-sync the CLEAN portrait to it (talking-photo).
+    const talkingHead = await heygenSpeakingHead(portrait, dialogue, gender, orientation, signal, mine);
+    if (!talkingHead || !mine()) return null;
+
+    // 4+5. Choose the scene that hosts the talking head: a CLOSE-UP beat, else scene 3, else
+    // the middle scene of the montage.
+    const ltxByOrd = new Map<number, string>();
+    for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
+    const beatByOrd = new Map<number, string>();
+    for (const s of storyboardScenes ?? []) beatByOrd.set(s.ordinal, (s.beat ?? '').toLowerCase());
+    const ordinals = [...ltxByOrd.keys()].sort((a, b) => a - b);
+    if (ordinals.length < 2) return null;
+    const closeUpOrd =
+      ordinals.find((o) => /close/.test(beatByOrd.get(o) ?? '')) ??
+      (ordinals.includes(3) ? 3 : ordinals[Math.min(2, ordinals.length - 1)]);
+
+    // Swap the close-up scene's cinematic clip for the talking head; keep every other scene.
+    const segs: { url: string; durationSec: number }[] = ordinals.map((ord) => ({
+      url: ord === closeUpOrd ? talkingHead : (ltxByOrd.get(ord) as string),
+      durationSec: FILM_CLIP_SEC,
+    }));
+    if (segs.length < 2 || !mine()) return null;
+
+    // Re-assemble the documentary — the talking-head clip is the master audio bed so the film
+    // is narrated in the synced voice (NOT musicVideoMode → narration-forward documentary mix).
+    const r = await fetch('/api/video/assemble', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
+      body: JSON.stringify({
+        segments: segs,
+        musicUrl: talkingHead,
+        ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
+        ...(transition ? { globalRender: { transition } } : {}),
+      }),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json().catch(() => null)) as { url?: unknown } | null;
+    return j && typeof j.url === 'string' && j.url.length > 0 ? j.url : null;
+  } catch {
+    return null;
+  }
+}
+
 // Reject a lip-sync result that isn't a sane full-length master (e.g. a 5s talking-head
 // SadTalker mangled from a multi-shot film) so a good 30s master is never replaced by
 // garbage. Resolves false on any load error/timeout.
@@ -1481,27 +1579,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (composited) { graphicsInput = composited; setResultVideo(composited); }
           patchLipsyncCard(composited ? 'completed' : 'skipped');
         } else if (!isMusicVideo && wantsLipsync) {
-          // FIX 2 — DOCUMENTARY with dialogue: lip-sync the assembled master to the narration
-          // (the route's text path = Georgian TTS + video-input sync/lipsync-2). Fail-open.
+          // DOCUMENTARY with dialogue → compositeDocumentary: ElevenLabs TTS of the dialogue
+          // drives a talking-photo lip-sync of the CLEAN portrait, composited into the montage
+          // at the close-up beat (or scene 3), narrated in the synced voice. Replaces the old
+          // video-input sync/lipsync-2 pass (which warped the multi-shot master, returning null
+          // on a montage with no consistent on-screen head). Fail-open → base master + graphics.
           patchLipsyncCard('processing');
           const face = await resolveCleanFace();
-          let synced: string | null = null;
-          try {
-            const sr = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ kind: 'film', videoUrl: res.masterUrl, ...(face ? { characterRef: face } : {}), text: videoSpeech.trim(), gender: videoVocalGender === 'male' ? 'male' : 'female', orientation }) });
-            const sj = (await sr.json().catch(() => ({}))) as { jobId?: string | null };
-            if (sj.jobId) {
-              for (let i = 0; i < 60 && mine(); i += 1) {
-                await new Promise((r2) => setTimeout(r2, 6000));
-                try {
-                  const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(sj.jobId)}`, { credentials: 'include', signal: ac.signal });
-                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-                  if (pj.done) { synced = pj.url ?? null; break; }
-                } catch { /* keep polling */ }
-              }
-            }
-          } catch { /* base master */ }
-          if (synced) { graphicsInput = synced; setResultVideo(synced); }
-          patchLipsyncCard(synced ? 'completed' : 'skipped');
+          const composited = (face && res.matrix && mine())
+            ? await compositeDocumentary(
+                face,
+                res.matrix,
+                storyboardScenes,
+                videoSpeech.trim(),
+                videoVocalGender === 'male' ? 'male' : 'female',
+                orientation === 'vertical' ? 'vertical' : 'landscape',
+                videoTransition,
+                ac.signal,
+                mine,
+              )
+            : null;
+          if (composited) { graphicsInput = composited; setResultVideo(composited); }
+          patchLipsyncCard(composited ? 'completed' : 'skipped');
         } else {
           patchLipsyncCard('skipped');
         }
