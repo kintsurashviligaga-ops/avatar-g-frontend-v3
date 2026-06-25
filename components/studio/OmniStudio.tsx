@@ -1126,6 +1126,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const sttBaseRef = useRef('');
   const sttFinalRef = useRef('');
+  // Set true by send() so any in-flight/queued transcription result is DISCARDED
+  // instead of re-populating the input after we've cleared it. Reset to false when
+  // a new dictation starts. (Without this the record-and-transcribe fallback kept
+  // streaming the spoken text back into the composer right after sending it.)
+  const sttDiscardRef = useRef(false);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   // Composer wrapper height → anchors the scroll-to-bottom FAB just above it, so the
@@ -2096,8 +2101,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
     // then fills the screen; the user re-opens settings to tweak the next run.
     setOptionsOpen(false);
-    // Stop any live dictation so the recognizer doesn't keep appending after send.
+    // Stop ALL live dictation and DISCARD any further transcription so a late async
+    // result can't re-populate the box after we clear it below. There are TWO
+    // recognizers — the Web Speech recognizer AND the record-and-transcribe
+    // fallback (the iOS/WebView path) — and the recorder kept streaming text into
+    // the composer after send, which is exactly why the dictated text "stayed" in
+    // the input. Reset the STT accumulators too so the next dictation starts clean.
+    sttDiscardRef.current = true;
     try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    try { recRef.current?.stop(); } catch { /* noop */ }
+    sttBaseRef.current = '';
+    sttFinalRef.current = '';
     // Mobile: blur the composer so the on-screen keyboard COMMITS the IME buffer —
     // otherwise a programmatic value='' doesn't visibly clear and the sent text lingers.
     try { taRef.current?.blur(); } catch { /* noop */ }
@@ -2642,6 +2656,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // MATCHING extension: iOS records mp4, NOT webm — a wrong extension makes Whisper
   // reject the audio (a real cause of "the mic does nothing on mobile").
   const startRecorderFallback = useCallback(async () => {
+    sttDiscardRef.current = false; // fresh dictation — accept transcription again
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -2660,7 +2675,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // the accumulated blob (chunk[0] carries the container header) is a valid clip,
       // so the text grows live as you speak instead of only appearing when you stop.
       const transcribeSoFar = async () => {
-        if (inFlight) return;
+        if (sttDiscardRef.current || inFlight) return; // a send() discarded this dictation
+
         const type = rec.mimeType || chosen || 'audio/webm';
         const blob = new Blob(chunks, { type });
         if (blob.size < 1600) return;
@@ -2715,6 +2731,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         rec.lang = lang;
         rec.continuous = true;
         rec.interimResults = true;
+        sttDiscardRef.current = false; // fresh dictation — accept transcription again
         sttBaseRef.current = input ? `${input.trimEnd()} ` : '';
         sttFinalRef.current = '';
         let fellBack = false;
@@ -2731,6 +2748,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // moment before speaking would wrongly kill live transcription.
         const watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 8000);
         rec.onresult = (e: SREvent) => {
+          if (sttDiscardRef.current) return; // a send() discarded this dictation
           gotResult = true;
           clearTimeout(watchdog);
           let interim = '';
@@ -2885,7 +2903,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
           </div>
         ) : messages.map((m, i) => (
-          <div key={i} className={`flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start gap-2.5'}`}>
+          <div key={i} className={`group flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start gap-2.5'}`}>
             {/* Assistant avatar — a small "M" brand circle to the left, Claude.ai-style. */}
             {m.role === 'assistant' && (
               <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-app-accent/15 text-[12px] font-bold text-app-accent">M</span>
@@ -3150,9 +3168,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   )
                   : <span className="whitespace-pre-wrap">{m.text}</span>;
               })()}
-              {/* Edit a user turn → re-run the chat from here (drops later turns). */}
+              {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
+                  could copy assistant replies but not their own messages. On desktop
+                  the row reveals on hover / keyboard focus (group-hover); on mobile
+                  (no hover) it stays visible so the action is always reachable. */}
               {m.role === 'user' && m.text && editingIdx !== i && !busy && (
-                <div className="mt-1 flex justify-end">
+                <div className="mt-1 flex justify-end gap-1.5 text-app-muted transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => void copyMsg(m.text, i)}
+                    aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                    title={copiedIdx === i
+                      ? (locale === 'en' ? 'Copied!' : locale === 'ru' ? 'Скопировано!' : 'დაკოპირდა!')
+                      : (locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება')}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-border/15 hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                  >
+                    {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
                   <button
                     type="button"
                     onClick={() => startEdit(i)}

@@ -38,7 +38,7 @@ type Strings = {
   loginCta: string; registerCta: string; resetCta: string; magicCta: string;
   haveAccount: string; noAccount: string;
   forgot: string; useMagic: string; usePassword: string;
-  checkEmail: string; orContinue: string; notConfigured: string; back: string;
+  checkEmail: string; registerCheckEmail: string; orContinue: string; notConfigured: string; back: string;
   // Friendly, localised auth errors (never surface raw provider JSON).
   errInvalidEmail: string; errInvalidCredentials: string; errEmailInUse: string;
   errRateLimited: string; errWeakPassword: string; errEmailNotConfirmed: string;
@@ -74,7 +74,8 @@ const COPY: Record<Lang, Strings> = {
     loginCta: 'შესვლა', registerCta: 'ანგარიშის შექმნა', resetCta: 'ბმულის გაგზავნა', magicCta: 'ბმულის მიღება',
     haveAccount: 'უკვე გაქვს ანგარიში?', noAccount: 'არ გაქვს ანგარიში?',
     forgot: 'დაგავიწყდა პაროლი?', useMagic: 'მაგიური ბმულით შესვლა', usePassword: 'პაროლით შესვლა',
-    checkEmail: 'შეამოწმე ელ.ფოსტა — ბმული გამოგზავნილია.', orContinue: 'ან',
+    checkEmail: 'შეამოწმე ელ.ფოსტა — ბმული გამოგზავნილია.',
+    registerCheckEmail: 'შეამოწმეთ ელფოსტა — დაადასტურეთ ანგარიში შესვლამდე.', orContinue: 'ან',
     notConfigured: 'ავთენტიფიკაცია ამ გარემოში გამორთულია (demo).',
     back: 'უკან',
     errInvalidEmail: 'შეიყვანე სწორი ელ.ფოსტის მისამართი.',
@@ -92,7 +93,8 @@ const COPY: Record<Lang, Strings> = {
     loginCta: 'Sign in', registerCta: 'Create account', resetCta: 'Send reset link', magicCta: 'Send magic link',
     haveAccount: 'Already have an account?', noAccount: "Don't have an account?",
     forgot: 'Forgot password?', useMagic: 'Sign in with magic link', usePassword: 'Sign in with password',
-    checkEmail: 'Check your email — a link is on its way.', orContinue: 'or',
+    checkEmail: 'Check your email — a link is on its way.',
+    registerCheckEmail: 'Check your email to confirm your account before signing in.', orContinue: 'or',
     notConfigured: 'Authentication is disabled in this environment (demo).',
     back: 'Back',
     errInvalidEmail: 'Please enter a valid email address.',
@@ -110,7 +112,8 @@ const COPY: Record<Lang, Strings> = {
     loginCta: 'Войти', registerCta: 'Создать аккаунт', resetCta: 'Отправить ссылку', magicCta: 'Получить ссылку',
     haveAccount: 'Уже есть аккаунт?', noAccount: 'Нет аккаунта?',
     forgot: 'Забыли пароль?', useMagic: 'Войти по магической ссылке', usePassword: 'Войти по паролю',
-    checkEmail: 'Проверьте почту — ссылка отправлена.', orContinue: 'или',
+    checkEmail: 'Проверьте почту — ссылка отправлена.',
+    registerCheckEmail: 'Проверьте почту — подтвердите аккаунт перед входом.', orContinue: 'или',
     notConfigured: 'Аутентификация отключена в этой среде (demo).',
     back: 'Назад',
     errInvalidEmail: 'Введите корректный адрес эл. почты.',
@@ -171,19 +174,51 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         if (error) throw error;
         onAuthed?.(); onClose();
       } else if (mode === 'register') {
-        const { data, error } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
-        });
-        if (error) throw error;
-        // CRITICAL: when the project has email-confirmation OFF, signUp returns a
-        // LIVE session — the user is already signed in. The old code always showed
-        // "check your email" and never logged them in, so registration looked
-        // broken (an email that never arrives). Sign them in immediately when a
-        // session exists; only fall back to the confirm-email notice when the
-        // project actually requires confirmation (no session returned).
-        if (data.session) { onAuthed?.(); onClose(); }
-        else setNotice(t.checkEmail);
+        // PRIMARY PATH — server-side admin registration that confirms the email
+        // immediately. The project requires email confirmation but its mailer
+        // can't reliably deliver, so the plain signUp() below left every new user
+        // stuck on a "check your email" dead end. /api/auth/register creates a
+        // confirmed account with the service-role key; we then sign the user
+        // straight in. No email round-trip.
+        let registered = false;
+        try {
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.trim(), password, name: name.trim() || undefined }),
+          });
+          const j = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string };
+          if (res.ok && j.ok) {
+            registered = true;
+          } else if (j.code === 'exists') {
+            setError(t.errEmailInUse);
+            return;
+          } else if (res.status === 429) {
+            setError(t.errRateLimited);
+            return;
+          }
+          // Any other code (unavailable/error) → fall through to the client signUp.
+        } catch {
+          // Network/route failure → fall through to the client signUp path.
+        }
+
+        if (registered) {
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          onAuthed?.(); onClose();
+        } else {
+          // FALLBACK — classic client signUp. If the project ever returns a live
+          // session (confirmation OFF) we log straight in; otherwise show a clear,
+          // register-specific confirm-email notice instead of leaving the user
+          // wondering whether anything happened.
+          const { data, error } = await supabase.auth.signUp({
+            email, password,
+            options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
+          });
+          if (error) throw error;
+          if (data.session) { onAuthed?.(); onClose(); }
+          else setNotice(t.registerCheckEmail);
+        }
       } else if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
         if (error) throw error;
