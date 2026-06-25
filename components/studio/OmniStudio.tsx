@@ -1331,6 +1331,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
   const [productBusy, setProductBusy] = useState(false);
   const [productResultUrl, setProductResultUrl] = useState<string | null>(null);
+  // PHASE 4 — Product-Ad duration: 6s = one clip; 30/60s = N clips (same product
+  // photo, varied scene prompts) stitched + scored via the assemble pipeline.
+  const [productDuration, setProductDuration] = useState<6 | 30 | 60>(6);
+  const [productProgress, setProductProgress] = useState<string | null>(null);
   // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
   // separate from the generic attachment tray so it reads as its own asset slot.
   const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
@@ -1786,23 +1790,51 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (!productImage || productBusy) return;
     setProductBusy(true);
     setProductResultUrl(null);
+    setProductProgress(null);
+    const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
+    // One i2v clip per ~5s. 6s → single clip (shown directly); 30/60s → N clips
+    // (same product photo, varied scene prompts) generated in parallel, then stitched
+    // + scored by the assemble pipeline (ElevenLabs music bed).
+    const genClip = async (sceneIndex: number): Promise<string | null> => {
+      try {
+        const r = await fetch('/api/video/remix', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
+        });
+        const j = (await r.json().catch(() => null)) as { url?: string } | null;
+        return r.ok && j?.url ? j.url : null;
+      } catch { return null; }
+    };
     try {
-      const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
-      const res = await fetch('/api/video/remix', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect }),
-      });
-      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-      if (res.ok && j?.url) {
-        setProductResultUrl(j.url);
-        notifyCredit('video', { seconds: 6 });
+      if (productDuration <= 6) {
+        const url = await genClip(-1);
+        if (url) { setProductResultUrl(url); notifyCredit('video', { seconds: 6 }); }
+        return;
       }
+      const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
+      setProductProgress(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
+      const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((u): u is string => !!u);
+      if (clips.length < 2) { if (clips[0]) setProductResultUrl(clips[0]); return; }
+      setProductProgress(locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…');
+      const ar = await fetch('/api/video/assemble', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          segments: clips.map((url) => ({ url, durationSec: 5 })),
+          orientation: videoOrientation,
+          scorePrompt: `${productPreset} product commercial, premium, uplifting`,
+          globalRender: { transition: 'dissolve' },
+        }),
+      });
+      const aj = (await ar.json().catch(() => null)) as { url?: string } | null;
+      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); notifyCredit('video', { seconds: productDuration }); }
+      else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
     } catch {
       /* fail-open — the panel just stays on its previous state */
     } finally {
       setProductBusy(false);
+      setProductProgress(null);
     }
-  }, [productImage, productBusy, productPreset, videoOrientation, notifyCredit]);
+  }, [productImage, productBusy, productPreset, productDuration, videoOrientation, locale, notifyCredit]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -4092,10 +4124,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <Chip active={productPreset === 'nature'} onClick={() => setProductPreset('nature')}>🍃 {locale === 'en' ? 'Nature' : locale === 'ru' ? 'Природа' : 'ბუნება'}</Chip>
                   </div>
                 </div>
+                {/* PHASE 4 — duration: 6s single clip · 30/60s multi-clip stitch */}
+                <div>
+                  <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Chip active={productDuration === 6} onClick={() => setProductDuration(6)}>6{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 30} onClick={() => setProductDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 60} onClick={() => setProductDuration(60)}>60{locale === 'en' ? 's' : 'წმ'}</Chip>
+                  </div>
+                </div>
                 {/* Generate */}
                 <button type="button" disabled={!productImage || productBusy} onClick={generateProductAd}
                   className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage || productBusy ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  {productBusy ? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…') : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
+                  {productBusy ? (productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')) : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
                 </button>
                 {productResultUrl && (
                   <video src={productResultUrl} controls playsInline className="w-full rounded-xl border border-app-border/20" />

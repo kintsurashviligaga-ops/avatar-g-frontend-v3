@@ -85,13 +85,27 @@ export async function POST(req: NextRequest) {
       // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
       const startImg = /^data:image\//i.test(img) ? img : await resolveMedia(img);
       if (!startImg) return fail('Add a product photo.');
+      // Per-preset visual STYLE (the look) + per-scene ACTIONS (the multi-clip arc).
+      // Single-clip (no sceneIndex) → just the style. Multi-clip (sceneIndex set) →
+      // a distinct scene action prepended, cycled, so a 30/60s ad reads as a sequence
+      // rather than the same shot N times. Same product photo anchors every clip.
       const PRESETS: Record<string, string> = {
-        splash: 'dynamic water splashing around the product, droplets frozen mid-air in slow motion, glossy studio reflections, photorealistic commercial',
-        epic: 'epic cinematic hero product shot, volumetric smoke, dramatic moody lighting, slow dolly push-in, premium commercial',
-        luxury: 'luxury product on a slowly rotating podium, floating gold particles, elegant neon ambient glow, soft reflections, high-end commercial',
-        nature: 'product in a natural organic environment, warm sun rays, stone and wood textures, falling leaves, fresh outdoor commercial',
+        splash: 'glossy studio reflections, photorealistic water commercial',
+        epic: 'volumetric smoke, dramatic moody lighting, premium cinematic commercial',
+        luxury: 'floating gold particles, elegant neon ambient glow, soft reflections, high-end commercial',
+        nature: 'warm sun rays, stone and wood textures, fresh outdoor organic commercial',
       };
-      const motion = PRESETS[String(body.preset || 'luxury')] ?? PRESETS.luxury!;
+      const PRESET_SCENES: Record<string, string[]> = {
+        splash: ['dynamic water splashing around the product, droplets frozen mid-air in slow motion', 'close-up of droplets sliding down the product surface', 'wide splash burst with the product centered', 'slow-motion ripples and spray around the product', 'final clean reveal as the water settles'],
+        epic: ['slow dolly push-in through volumetric smoke toward the product', 'low-angle hero shot with dramatic rim light', 'controlled orbit around the product, moody lighting', 'smoke swirls part to reveal the product', 'final epic crane pull-back reveal'],
+        luxury: ['product rotating slowly as gold particles appear', 'elegant close-up detail shot with soft lighting', 'wide shot of the product in a luxury environment', 'product centered with particles swirling around it', 'final brand-aesthetic reveal'],
+        nature: ['sun rays over the product as leaves drift past', 'close-up on natural stone and wood textures beside the product', 'wide organic environment with a soft breeze', 'dappled light moving across the product', 'final fresh golden-hour reveal'],
+      };
+      const presetKey = String(body.preset || 'luxury');
+      const style = PRESETS[presetKey] ?? PRESETS.luxury!;
+      const scenes = PRESET_SCENES[presetKey] ?? PRESET_SCENES.luxury!;
+      const sceneIdx = Number.isFinite(Number(body.sceneIndex)) ? Math.max(0, Math.floor(Number(body.sceneIndex))) : -1;
+      const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
       const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
       return url ? ok(url) : fail('Product ad generation failed.');
