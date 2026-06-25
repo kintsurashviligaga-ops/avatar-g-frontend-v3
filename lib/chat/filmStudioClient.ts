@@ -132,6 +132,10 @@ export interface DriveFilmOptions {
   myVoiceNarration?: boolean;
   /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
   narrationScript?: string;
+  /** Explicit narrator gender (video panel 👩/👨) → cloned female/male Georgian voice. */
+  narratorGender?: 'male' | 'female';
+  /** Multi-character dialogue script (video panel) — split per speaker, mixed into one track. */
+  dialogueScript?: string;
   /** Music OFF → no score (voice-only film). */
   noMusic?: boolean;
   /**
@@ -617,6 +621,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.sceneScripts?.length ? { sceneScripts: opts.sceneScripts } : {}),
           // Verbatim dialogue the user typed → spoken as the film's voice-over.
           ...(opts.narrationScript?.trim() ? { narrationScript: opts.narrationScript.trim() } : {}),
+          // Narrator gender + multi-character dialogue (video panel voice selection).
+          ...(opts.narratorGender ? { narratorGender: opts.narratorGender } : {}),
+          ...(opts.dialogueScript?.trim() ? { dialogueScript: opts.dialogueScript.trim() } : {}),
           // v330 — a user-uploaded soundtrack: tell the orchestrator to SKIP the
           // ambient music-generation (Udio) leg entirely (no generation, no charge);
           // the upload becomes the master bed at assemble time.

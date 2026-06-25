@@ -30,7 +30,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
-import { KA_VOICE_MALE, KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
+import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /** Same model ladder the script agent uses, so narration matches the storyboard's voice. */
@@ -158,6 +158,62 @@ function pickGeorgianVoiceId(brief: string): string | null {
 }
 
 /**
+ * Resolve the narrator voice for an EXPLICIT gender choice (the video panel's
+ * 👩 ქალი / 👨 კაცი selector). Order: the task-specified env override
+ * (ELEVENLABS_VOICE_ID_FEMALE / _MALE) → the cloned native-Georgian voice for that
+ * gender (georgianVoiceId, which itself honours ELEVENLABS_GEORGIAN_VOICE_ID) →
+ * the single configured voice. Fail-soft: returns null only when nothing at all
+ * is configured, so a missing voice ID degrades to the auto pick rather than crashing.
+ */
+function pickNarratorVoiceId(gender: 'male' | 'female'): string | null {
+  const envSlot = (gender === 'male' ? process.env.ELEVENLABS_VOICE_ID_MALE : process.env.ELEVENLABS_VOICE_ID_FEMALE) || '';
+  return (
+    envSlot.trim() ||
+    (georgianVoiceId(gender) || '').trim() ||
+    (process.env.ELEVENLABS_VOICE_ID && process.env.ELEVENLABS_VOICE_ID.trim()) ||
+    null
+  );
+}
+
+/**
+ * Split a multi-character dialogue script into ordered { gender, text } turns.
+ * Recognises Georgian (ქალი:/კაცი:), English (Woman:/Man:/Female:/Male:) and
+ * Russian (Женщина:/Мужчина:) speaker prefixes. A line with no prefix continues
+ * the previous speaker; text before any prefix defaults to the female narrator.
+ * Exported for unit testing.
+ */
+export interface DialogueTurn { gender: 'male' | 'female'; text: string; }
+const SPEAKER_RE = /^\s*(ქალ\S*|კაც\S*|მამაკაც\S*|woman|man|female|male|женщина|мужчина)\s*[:：]\s*(.*)$/i;
+export function parseDialogueScript(script: string): DialogueTurn[] {
+  const turns: DialogueTurn[] = [];
+  let current: 'male' | 'female' | null = null;
+  for (const rawLine of String(script || '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const m = line.match(SPEAKER_RE);
+    if (m) {
+      const tag = m[1]!.toLowerCase();
+      const isMale =
+        tag.startsWith('კაც') || tag.startsWith('მამაკაც') ||
+        tag === 'man' || tag === 'male' || tag.startsWith('мужч');
+      current = isMale ? 'male' : 'female';
+      const rest = (m[2] || '').trim();
+      if (rest) turns.push({ gender: current, text: rest });
+    } else {
+      turns.push({ gender: current ?? 'female', text: line });
+    }
+  }
+  // Merge consecutive same-speaker turns so each TTS call reads a full breath.
+  const merged: DialogueTurn[] = [];
+  for (const turn of turns) {
+    const last = merged[merged.length - 1];
+    if (last && last.gender === turn.gender) last.text = `${last.text} ${turn.text}`.trim();
+    else merged.push({ ...turn });
+  }
+  return merged;
+}
+
+/**
  * Synthesise via Google Cloud TTS — used as the GEORGIAN-NATIVE fallback. Google
  * ships voices trained on ka-GE (Chirp3-HD / Neural2), which sound far more human
  * than ElevenLabs' non-native multilingual approximation. Returns null on any miss.
@@ -264,17 +320,58 @@ export async function generateFilmVoiceover(opts: {
   compositeId: string;
   /** Verbatim dialogue the user typed in the video panel — spoken as-is, no rewrite. */
   narrationScript?: string | null;
+  /** Explicit narrator gender from the video panel (👩/👨). Overrides brief auto-detect. */
+  narratorGender?: 'male' | 'female' | null;
 }): Promise<string | null> {
   try {
     const custom = opts.narrationScript && opts.narrationScript.trim() ? opts.narrationScript.trim().slice(0, 600) : null;
     const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
     if (!script) return null;
-    // Pick a voice that fits the story's protagonist (male/female/child/elder/young).
-    const audio = await synthesizeVoiceover(script, pickGeorgianVoiceId(opts.brief), genderForPersona(detectPersona(opts.brief)));
+    // Explicit panel choice wins; otherwise pick a voice that fits the protagonist
+    // (male/female/child/elder/young) auto-detected from the brief.
+    const voiceId = opts.narratorGender ? pickNarratorVoiceId(opts.narratorGender) : pickGeorgianVoiceId(opts.brief);
+    const ttsGender: TtsGender = opts.narratorGender
+      ? (opts.narratorGender === 'male' ? 'MALE' : 'FEMALE')
+      : genderForPersona(detectPersona(opts.brief));
+    const audio = await synthesizeVoiceover(script, voiceId, ttsGender);
     if (!audio) return null;
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;
     return (await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Multi-character dialogue voice-over: parse the script into speaker turns, TTS
+ * each turn in the matching gendered voice (concurrently, order preserved), then
+ * concatenate the MP3 segments into one continuous track and host it. The segments
+ * share the same ElevenLabs mp3 format, so a byte-concat plays back as sequential
+ * dialogue (woman → man → …). Strictly fail-open: any miss returns null and the
+ * film falls back to the music-only mix. Not separately billed.
+ */
+export async function generateDialogueVoiceover(opts: {
+  script: string;
+  compositeId: string;
+}): Promise<string | null> {
+  try {
+    const turns = parseDialogueScript(opts.script).slice(0, 12); // bound the track + cost
+    if (!turns.length) return null;
+    const segments = await Promise.all(
+      turns.map((turn) => {
+        const text = turn.text.slice(0, 400);
+        if (!text) return Promise.resolve<{ base64: string; contentType: string } | null>(null);
+        return synthesizeVoiceover(text, pickNarratorVoiceId(turn.gender), turn.gender === 'male' ? 'MALE' : 'FEMALE').catch(() => null);
+      }),
+    );
+    const buffers = segments
+      .filter((s): s is { base64: string; contentType: string } => Boolean(s))
+      .map((s) => Buffer.from(s.base64, 'base64'));
+    if (!buffers.length) return null;
+    const merged = Buffer.concat(buffers);
+    const path = `${opts.compositeId}/dialogue.mp3`;
+    return (await uploadAndSign('renders', path, merged.toString('base64'), 'audio/mpeg', 7200)) ?? null;
   } catch {
     return null;
   }

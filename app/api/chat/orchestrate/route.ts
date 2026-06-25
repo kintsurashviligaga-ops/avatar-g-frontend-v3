@@ -67,6 +67,11 @@ const orchestrateSchema = z.object({
   sceneScripts: z.array(z.string().min(1).max(2000)).max(8).optional(),
   // Verbatim dialogue the user typed in the video panel → spoken as the film's voice.
   narrationScript: z.string().max(2000).optional(),
+  // Explicit narrator gender (video panel 👩/👨) → selects the cloned female/male voice.
+  narratorGender: z.enum(['male', 'female']).optional(),
+  // Multi-character dialogue script (video panel) → split per speaker (ქალი:/კაცი:/
+  // Woman:/Man:), each line voiced in its gendered voice and mixed into one track.
+  dialogueScript: z.string().max(4000).optional(),
   // v330 — a user-uploaded soundtrack URL. When present the film's audio leg SKIPS
   // ambient music generation (Udio) entirely and the upload becomes the master bed.
   soundtrackUrl: z.string().min(1).max(2048).optional(),
@@ -187,7 +192,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.dialogueScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -195,6 +200,8 @@ export async function POST(req: NextRequest) {
             ...(data.sceneFrames?.length ? { sceneFrames: data.sceneFrames } : {}),
             ...(data.sceneScripts?.length ? { sceneScripts: data.sceneScripts } : {}),
             ...(data.narrationScript ? { narrationScript: data.narrationScript } : {}),
+            ...(data.narratorGender ? { narratorGender: data.narratorGender } : {}),
+            ...(data.dialogueScript ? { dialogueScript: data.dialogueScript } : {}),
             // v330 — Music Video signals: a soundtrack skips ambient gen; the flag forces a sung song.
             ...(data.soundtrackUrl ? { soundtrackUrl: data.soundtrackUrl } : {}),
             ...(data.musicVideoMode ? { musicVideoMode: true } : {}),

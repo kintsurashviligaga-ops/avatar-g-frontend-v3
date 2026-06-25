@@ -114,8 +114,9 @@ export async function POST(req: NextRequest) {
   let useMyVoice = false;
   let durationSec = 30;
   let tempo = '';
+  let voiceType: 'female' | 'male' | 'duet' | '' = '';
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown };
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
@@ -135,6 +136,9 @@ export async function POST(req: NextRequest) {
     if (typeof body.voiceReference === 'string' && body.voiceReference.trim()) voiceReference = body.voiceReference.trim();
     // Use the user's TRAINED RVC voice (faithful) instead of a one-shot reference.
     if (body.useMyVoice === true) useMyVoice = true;
+    // Sung-vocal gender for a SONG → appended to the prompt as vocal descriptors
+    // (the music engine is prompt-steered for the singer; see vocalDescriptor below).
+    if (body.voiceType === 'female' || body.voiceType === 'male' || body.voiceType === 'duet') voiceType = body.voiceType;
   } catch {
     /* malformed body → guard below */
   }
@@ -146,6 +150,18 @@ export async function POST(req: NextRequest) {
   // Fold the tempo selection into the brief as a feel/BPM hint (empty for 'medium').
   const tempoHint = tempo === 'slow' ? 'Slow tempo, around 70 BPM. ' : tempo === 'fast' ? 'Fast, upbeat tempo, around 140 BPM. ' : '';
   const capped = (tempoHint + prompt).slice(0, 1000);
+
+  // Sung-vocal gender → prompt engineering. The music engine (ElevenLabs Music /
+  // MusicGen) is steered by the text prompt, so the singer's gender rides in the
+  // brief. Only meaningful for a SONG (non-instrumental).
+  const vocalDescriptor =
+    !makeInstrumental && voiceType
+      ? voiceType === 'female'
+        ? 'female vocals, female singer'
+        : voiceType === 'male'
+          ? 'male vocals, male singer'
+          : 'male and female duet, two singers (one male and one female trading lines)'
+      : '';
 
   try {
     // Suno-style cover art — generated in PARALLEL with the track (it's the faster of
@@ -206,8 +222,10 @@ export async function POST(req: NextRequest) {
       providerAudioUrl = cover.audioUrl;
     } else {
       // Compose a fresh track from the brief — ElevenLabs Music (sung when not
-      // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt.
-      providerAudioUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, makeInstrumental, durationSec);
+      // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt; the
+      // vocal descriptor (female/male/duet) is appended for a sung track.
+      const composeBrief = vocalDescriptor ? `${capped}. ${vocalDescriptor}.` : capped;
+      providerAudioUrl = await composeTrackUrl(lyrics ? `${composeBrief}. Lyrics: ${lyrics}` : composeBrief, style, makeInstrumental, durationSec);
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.

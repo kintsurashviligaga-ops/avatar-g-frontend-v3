@@ -1185,6 +1185,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
   const [musicDuration, setMusicDuration] = useState<15 | 30 | 60 | 90>(30);
   const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
+  // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
+  // descriptors appended to the music prompt server-side (female/male/duet).
+  const [musicVoiceType, setMusicVoiceType] = useState<'female' | 'male' | 'duet'>('female');
   // In-app voice-sample recorder for "sing in my voice" — separate from the chat
   // dictation mic. Captures ≥15s of audio → added as the music voice reference.
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -1239,6 +1242,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
+  // Documentary narrator gender (👩 ქალი / 👨 კაცი) → cloned female/male Georgian TTS.
+  const [videoNarratorGender, setVideoNarratorGender] = useState<'male' | 'female'>('female');
+  // Multi-character dialogue: when ON, the dialogue textarea is split per speaker
+  // (ქალი:/კაცი:/Woman:/Man:) and each line is voiced in its gendered voice + mixed.
+  const [videoMultiChar, setVideoMultiChar] = useState(false);
+  const [videoDialogue, setVideoDialogue] = useState('');
   // P1 — Music Video: after the master assembles, sync the singer's mouth to the
   // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
   // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
@@ -1442,6 +1451,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // Narration only in documentary mode — a music video has no spoken narrator.
         myVoiceNarration: !isMusicVideo && videoMyVoiceNarration && hasTrainedVoice,
         ...(!isMusicVideo && videoSpeech.trim() ? { narrationScript: videoSpeech.trim() } : {}),
+        // Narrator gender (👩/👨) — overrides brief auto-detect; only when NOT using
+        // the user's own trained voice (that path forces the cloned-self voice).
+        ...(!isMusicVideo && !videoMultiChar && !videoMyVoiceNarration ? { narratorGender: videoNarratorGender } : {}),
+        // Multi-character dialogue → split per speaker, each line in its gendered voice.
+        ...(!isMusicVideo && videoMultiChar && videoDialogue.trim() ? { dialogueScript: videoDialogue.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
         ...(!isMusicVideo && !videoMusic ? { noMusic: true } : {}),
         ...(sceneFrames?.length ? { sceneFrames } : {}),
@@ -1637,7 +1651,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -2226,6 +2240,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Trained voice (RVC) → no upload needed; the server uses the user's model.
             ...(useTrained ? { useMyVoice: true } : {}),
             instrumental: (useTrained || isVoiceClone) ? false : musicInstrumental,
+            // Sung-vocal gender for a SONG (not the trained/clone paths, which carry
+            // their own voice) → the route appends the matching vocal descriptors.
+            ...(!musicInstrumental && !useTrained && !isVoiceClone ? { voiceType: musicVoiceType } : {}),
             // Lyrics ride along for vocal tracks, voice clones AND the trained voice.
             ...((useTrained || isVoiceClone || !musicInstrumental) && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}),
             ...(useTrained ? {} : isVoiceClone
@@ -2460,7 +2477,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -3582,13 +3599,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
                     )}
                   </div>
+                  {/* Narrator voice — female/male cloned Georgian voice. Shown when
+                      narration is on (single-narrator mode; multi-character uses its
+                      own per-line voices). Hidden when the user's own voice is chosen. */}
+                  {videoNarration && !videoMultiChar && !videoMyVoiceNarration && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Narrator:' : locale === 'ru' ? 'Диктор:' : 'დიქტორი:'}</span>
+                      <Chip active={videoNarratorGender === 'female'} onClick={() => setVideoNarratorGender('female')}>👩 {locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
+                      <Chip active={videoNarratorGender === 'male'} onClick={() => setVideoNarratorGender('male')}>👨 {locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
+                    </div>
+                  )}
                 </div>
-                {/* Dialogue — spoken verbatim as the narrator (documentary only). */}
+                {/* Multiple-characters toggle — when on, the script below is split per
+                    speaker (ქალი:/კაცი:/Woman:/Man:) and each line voiced separately. */}
+                <button type="button" onClick={() => setVideoMultiChar((v) => !v)} aria-pressed={videoMultiChar}
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoMultiChar ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/20 bg-app-bg/40'}`}>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">💬 {locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
+                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Each speaker gets their own voice.' : locale === 'ru' ? 'У каждого говорящего свой голос.' : 'თითო პერსონაჟს თავისი ხმა.'}</span>
+                  </span>
+                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoMultiChar ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoMultiChar ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                  </span>
+                </button>
+                {/* Dialogue — single narrator (verbatim) OR a multi-character script. */}
                 <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
-                  <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
-                    placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
-                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+                  {videoMultiChar ? (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'Dialogue script' : locale === 'ru' ? 'Сценарий диалога' : 'დიალოგის სცენარი'}</span>
+                      <textarea value={videoDialogue} onChange={(e) => setVideoDialogue(e.target.value)} rows={4}
+                        placeholder={locale === 'en' ? 'Woman: Hello, how are you?\nMan: I am well, thanks!' : locale === 'ru' ? 'Женщина: Привет, как дела?\nМужчина: Хорошо, спасибо!' : 'ქალი: გამარჯობა, როგორ ხარ?\nკაცი: კარგად ვარ, გმადლობ!'}
+                        className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
+                      <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
+                        placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
+                        className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+                    </>
+                  )}
                 </div>
               </>
             ) : (
@@ -3676,7 +3726,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <div>
                 <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                 <div className="flex gap-1.5">
-                  {([15, 30, 60] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}s</Chip>)}
+                  {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
                 </div>
               </div>
               <div>
@@ -3685,6 +3735,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
                 </div>
               </div>
+            </div>
+
+            {/* B2 — Track type (instrumental vs song) + vocal gender (song only) */}
+            <div className="space-y-3">
+              <div>
+                <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Track type' : locale === 'ru' ? 'Тип трека' : 'ტიპი'}</span>
+                <div className="flex gap-1.5">
+                  <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>🎵 {locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრუმენტული'}</Chip>
+                  <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>🎤 {locale === 'en' ? 'Song' : locale === 'ru' ? 'Песня' : 'სიმღერა'}</Chip>
+                </div>
+              </div>
+              {/* Vocal gender — only meaningful for a sung track */}
+              {!musicInstrumental && (
+                <div>
+                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ['female', '👩', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
+                      ['male', '👨', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
+                      ['duet', '👫', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
+                    ] as const).map(([id, emoji, label]) => (
+                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{emoji} {label}</Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* C — Prompt (max 300 chars, live counter bottom-right) */}
@@ -3703,11 +3779,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* D — Generate (full width) */}
-            <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || !musicPrompt.trim()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <>🎵 {locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}</>}
-            </button>
+            {/* D — Generate (full width). Label reflects track type + vocal choice. */}
+            {(() => {
+              const genLabel = musicInstrumental
+                ? `🎵 ${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
+                : musicVoiceType === 'duet'
+                  ? `🎤 ${locale === 'en' ? 'Generate Duet' : locale === 'ru' ? 'Создать дуэт' : 'დუეტის გენერაცია'}`
+                  : musicVoiceType === 'male'
+                    ? `🎤 ${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
+                    : `🎤 ${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
+              return (
+                <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || !musicPrompt.trim()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <>{genLabel}</>}
+                </button>
+              );
+            })()}
 
             {/* E — Result (hidden until a track exists): audio player + download/share */}
             {lastMusic?.audioUrl && (

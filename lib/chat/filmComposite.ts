@@ -37,7 +37,7 @@ import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
-import { generateFilmVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
+import { generateFilmVoiceover, generateDialogueVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
 import {
   planFilmScenes,
   buildFilmClipRequest,
@@ -639,17 +639,34 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // instead of back-to-back — the audio legs finish in max(voice, sfx) rather than
   // their sum. Voice-over only fires when the brief asks for a commentator/narrator
   // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
+  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown } | undefined;
   const customNarration = (() => {
-    const v = (input.metadata as { narrationScript?: unknown } | undefined)?.narrationScript;
+    const v = voiceMeta?.narrationScript;
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  })();
+  // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
+  const narratorGender: 'male' | 'female' | null =
+    voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
+  // Multi-character dialogue script (video panel toggle) — split per speaker, each
+  // line voiced in its gendered voice and mixed into one track. Wins over single narration.
+  const dialogueScript = (() => {
+    const v = voiceMeta?.dialogueScript;
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   })();
   const [voiceUrl, sfxUrl] = await Promise.all([
-    (wantsCommentary(input.message) || customNarration)
+    dialogueScript
+      ? generateDialogueVoiceover({ script: dialogueScript, compositeId }).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
+          return null;
+        })
+      : (wantsCommentary(input.message) || customNarration)
       ? generateFilmVoiceover({
           brief: input.message,
           totalSec: plan.shared.totalSec,
           compositeId,
           narrationScript: customNarration,
+          narratorGender,
         }).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
