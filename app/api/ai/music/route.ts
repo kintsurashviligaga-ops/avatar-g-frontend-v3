@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
+import { generateUdioTrack } from '@/lib/udio/client';
+import { hasUdioApiKey } from '@/lib/chat/mediaKeys';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
@@ -12,17 +14,21 @@ import { randomUUID } from 'node:crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 /**
- * Assistant music generation (Udio).
+ * Assistant music generation.
  *
  * POST { prompt } → { success, url }. The Smart Assistant's Music mode sends a
- * vibe/description here; Udio composes a cohesive cinematic instrumental, which
- * is then RE-HOSTED to Supabase Storage (CSP media-src allows *.supabase.co) so
- * the <audio> element plays + the track persists past Udio's short-lived CDN URL.
+ * vibe/description here; a track is composed and RE-HOSTED to Supabase Storage
+ * (CSP media-src allows *.supabase.co) so the <audio> element plays + the track
+ * persists past the provider's short-lived CDN URL.
  *
- * Synchronous start+poll, bounded WELL under the 300s function ceiling. Udio is
- * the founder's funded provider (credits confirmed live); the poll is resilient
- * to transient feed blips (see lib/udio/client). Fail-closed with a clean reason
- * on a real miss; fail-open on the re-host (keeps the provider URL).
+ * Provider chain (composeTrackUrl): ElevenLabs Music (default, sung when not
+ * instrumental) → Replicate MusicGen (instrumental fallback). Udio (the founder's
+ * funded song engine) is re-enabled as an OPT-IN primary via MUSIC_PROVIDER=udio
+ * and falls back through the same chain. Singer gender is prompt-engineered (the
+ * EL Music API has no voice_id; cloned voice IDs apply to TTS/narration, not music).
+ *
+ * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
+ * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
  */
 
 export const dynamic = 'force-dynamic';
@@ -81,6 +87,28 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
 async function composeTrackUrl(prompt: string, style: string, instrumental: boolean, lengthSec = 30): Promise<string> {
   const secs = Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
+
+  // OPT-IN Udio (the founder's funded song engine — better sung vocals). Retired in
+  // v330 in favour of ElevenLabs Music; re-enabled here behind MUSIC_PROVIDER=udio so
+  // the DEFAULT path is unchanged (zero regression) and the operator can flip Udio on
+  // once they've confirmed the live endpoint. STRICTLY fallback-protected: any Udio
+  // miss falls through to ElevenLabs Music → MusicGen, so music always generates.
+  // NOTE: the Udio gateway has no exact-duration param; `secs` steers EL/MusicGen below.
+  if (process.env.MUSIC_PROVIDER === 'udio' && hasUdioApiKey()) {
+    try {
+      const udio = await generateUdioTrack(
+        { prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental },
+        { maxAttempts: 45, pollIntervalMs: 4000 }, // ~180s, bounded under the 300s ceiling
+      );
+      if (udio.status === 'succeeded' && udio.audioUrl) return udio.audioUrl; // re-hosted by caller
+      // eslint-disable-next-line no-console
+      console.warn(`[ai/music] Udio did not complete (${udio.status}) → ElevenLabs Music fallback`);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[ai/music] Udio failed → ElevenLabs Music fallback:', e instanceof Error ? e.message : e);
+    }
+  }
+
   if (hasElevenLabsMusicKey()) {
     try {
       const { audio, contentType } = await composeElevenLabsMusic({
