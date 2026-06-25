@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Avatar G',
+    title: 'MyAvatar.ge',
   },
   formatDetection: {
     telephone: false,
@@ -30,30 +30,33 @@ export const metadata: Metadata = {
     apple: '/apple-touch-icon.png',
   },
   title: {
-    default: "Avatar G - AI მედია პლატფორმა",
-    template: "%s - Avatar G"
+    default: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათების გენერაცია",
+    template: "%s · MyAvatar.ge"
   },
-  description: "შექმენი ავატარები, ვიდეო, სურათები და მუსიკა AI-ით",
-  keywords: ["AI", "ავატარი", "ვიდეო გენერაცია", "სურათის გენერაცია", "მუსიკის გენერაცია"],
-  authors: [{ name: "Avatar G Team" }],
+  description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა — შექმენი ვიდეო, მუსიკა და სურათები ხელოვნური ინტელექტით, წამებში.",
+  keywords: ["AI ვიდეო", "AI მუსიკა", "AI სურათი", "ხელოვნური ინტელექტი", "AI კონტენტი", "MyAvatar", "ვიდეოს გენერაცია"],
+  authors: [{ name: "MyAvatar.ge" }],
   openGraph: {
     type: "website",
     locale: "ka_GE",
+    alternateLocale: ["en_US", "ru_RU"],
     url: metadataBaseUrl,
-    siteName: "Avatar G",
+    siteName: "MyAvatar.ge",
+    title: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათების გენერაცია",
+    description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა.",
     images: [{
       // 1200×630 landscape card — `summary_large_image` and Facebook/LinkedIn
       // crop a 512² square badly. The dedicated /og-image.png is the right ratio.
       url: "/og-image.png",
       width: 1200,
       height: 630,
-      alt: "Avatar G - AI მედია პლატფორმა"
+      alt: "MyAvatar.ge — AI კონტენტის შემქმნელი პლატფორმა"
     }]
   },
   twitter: {
     card: "summary_large_image",
-    title: "Avatar G - AI მედია პლატფორმა",
-    description: "AI მედიის შექმნა Avatar G-სთან ერთად",
+    title: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათები",
+    description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა.",
     images: ["/og-image.png"]
   },
   robots: {
