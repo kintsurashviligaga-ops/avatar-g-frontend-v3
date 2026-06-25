@@ -1320,6 +1320,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
   const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
   const [voiceTone, setVoiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
+  // PHASE 2 L1 — camera controls → clip prompt tokens (move + 1–10 motion intensity).
+  const [videoCameraMove, setVideoCameraMove] = useState<'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down'>('auto');
+  const [videoMotionIntensity, setVideoMotionIntensity] = useState(5);
   // PHASE 2 L1 — Product-Ad mode: one product photo (hosted URL) + a commercial preset.
   const [productImage, setProductImage] = useState<string | null>(null);
   const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
@@ -1556,6 +1559,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ...(!isMusicVideo && !videoMultiChar && !videoMyVoiceNarration ? { narratorGender: videoNarratorGender } : {}),
         // PHASE 2 L1 — Character Voice selector → VOICE_MAP (documentary narration only).
         ...(!isMusicVideo && !videoMyVoiceNarration ? { voiceLanguage, voicePersona, voiceTone } : {}),
+        // PHASE 2 L1 — camera controls → clip prompt tokens (apply to every cinema render).
+        ...(videoCameraMove !== 'auto' ? { cameraMove: videoCameraMove } : {}),
+        motionIntensity: videoMotionIntensity,
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
         ...(!isMusicVideo && videoMultiChar && videoDialogue.trim() ? { dialogueScript: videoDialogue.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
@@ -1758,7 +1764,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -4023,6 +4029,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
                 <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
               </div>
+            </div>
+
+            {/* PHASE 2 L1 — Camera controls: move + motion intensity → clip prompt tokens */}
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎥 {locale === 'en' ? 'Camera' : locale === 'ru' ? 'Камера' : 'კამერა'}</span>
+              <div className="flex flex-wrap gap-1.5">
+                <Chip active={videoCameraMove === 'auto'} onClick={() => setVideoCameraMove('auto')}>{locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'}</Chip>
+                <Chip active={videoCameraMove === 'pan_left'} onClick={() => setVideoCameraMove('pan_left')}>← {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
+                <Chip active={videoCameraMove === 'pan_right'} onClick={() => setVideoCameraMove('pan_right')}>→ {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
+                <Chip active={videoCameraMove === 'zoom_in'} onClick={() => setVideoCameraMove('zoom_in')}>＋ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
+                <Chip active={videoCameraMove === 'zoom_out'} onClick={() => setVideoCameraMove('zoom_out')}>－ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
+                <Chip active={videoCameraMove === 'tilt_up'} onClick={() => setVideoCameraMove('tilt_up')}>↑ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
+                <Chip active={videoCameraMove === 'tilt_down'} onClick={() => setVideoCameraMove('tilt_down')}>↓ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
+              </div>
+              <label className="flex items-center gap-2 pt-0.5">
+                <span className="whitespace-nowrap text-[11px] text-app-muted">{locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}</span>
+                <input type="range" min={1} max={10} step={1} value={videoMotionIntensity} onChange={(e) => setVideoMotionIntensity(Number(e.target.value))} className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="motion intensity" />
+                <span className="w-9 text-right text-[10.5px] tabular-nums text-app-text">{videoMotionIntensity}/10</span>
+              </label>
             </div>
             </>)}
 

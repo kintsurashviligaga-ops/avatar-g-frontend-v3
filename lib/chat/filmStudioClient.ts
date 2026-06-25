@@ -156,6 +156,9 @@ export interface DriveFilmOptions {
   voiceLanguage?: 'ka' | 'en' | 'ru';
   voicePersona?: 'male' | 'female' | 'child' | 'elderly';
   voiceTone?: 'epic' | 'emotional' | 'energetic';
+  /** PHASE 2 L1 — camera controls → clip prompt tokens. */
+  cameraMove?: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down';
+  motionIntensity?: number;
   /** Multi-character dialogue script (video panel) — split per speaker, mixed into one track. */
   dialogueScript?: string;
   /** Music OFF → no score (voice-only film). */
@@ -662,6 +665,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.voiceLanguage ? { voiceLanguage: opts.voiceLanguage } : {}),
           ...(opts.voicePersona ? { voicePersona: opts.voicePersona } : {}),
           ...(opts.voiceTone ? { voiceTone: opts.voiceTone } : {}),
+          // PHASE 2 L1 — camera controls (move + motion intensity).
+          ...(opts.cameraMove && opts.cameraMove !== 'auto' ? { cameraMove: opts.cameraMove } : {}),
+          ...(typeof opts.motionIntensity === 'number' ? { motionIntensity: opts.motionIntensity } : {}),
           ...(opts.dialogueScript?.trim() ? { dialogueScript: opts.dialogueScript.trim() } : {}),
           // v330 — a user-uploaded soundtrack: tell the orchestrator to SKIP the
           // ambient music-generation (Udio) leg entirely (no generation, no charge);

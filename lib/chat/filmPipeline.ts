@@ -228,6 +228,11 @@ export interface FilmPlanOptions {
   referenceImages?: unknown;
   /** Optional aesthetic/genre override (e.g. "cyberpunk", "noir"). */
   style?: string | null;
+  /** PHASE 2 L1 — user camera controls. `cameraMove` overrides the per-beat camera
+   *  move in the PROMPT (auto/undefined keeps the storyboard's per-scene variety);
+   *  `motionIntensity` (1–10) adds a paced movement directive. Both purely additive. */
+  cameraMove?: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down' | null;
+  motionIntensity?: number | null;
   /** PROMPT-AGENT character LOCK — one detailed appearance fragment (age, hair, eyes,
    *  wardrobe) prepended VERBATIM to every scene's continuity so the protagonist never
    *  drifts, even with no uploaded selfie. Supplied by the Master Prompt Agent. */
@@ -379,9 +384,24 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       case 'pan_right': return 'Camera: controlled arc panning to the right around the subject';
       case 'pan_left': return 'Camera: slow controlled push and pan across the subject';
       case 'zoom_out': return 'Camera: sweeping crane pull-back and zoom-out reveal';
+      // PHASE 2 L1 — user camera controls add explicit tilt moves.
+      case 'tilt_up': return 'Camera: smooth vertical tilt rising up across the subject';
+      case 'tilt_down': return 'Camera: smooth vertical tilt craning down toward the subject';
       default: return 'Camera: continuous deliberate camera movement';
     }
   };
+  // PHASE 2 L1 — a motion-intensity suffix (1–10) the user dials in. Absent/0 → no
+  // change (the per-beat directive stays exactly as before). Strictly additive.
+  const motionSuffix = (() => {
+    const n = Number(opts.motionIntensity);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    const pace = n >= 8 ? ', fast energetic kinetic movement' : n <= 3 ? ', very subtle slow gentle movement' : ', steady moderate movement';
+    return ` (motion intensity ${Math.round(n)}/10${pace})`;
+  })();
+  // When the user picks an explicit camera move it overrides the per-beat default
+  // FOR THE PROMPT ONLY (the stored scene.cameraMotion is unchanged for downstream use).
+  const promptMoveFor = (beatMotion: string): string =>
+    (opts.cameraMove && opts.cameraMove !== 'auto' ? opts.cameraMove : beatMotion);
   const scenes: FilmScene[] = segments.map((seg) => {
     // §2 — vary the COMPOSITION per scene (real storyboard arc)…
     const beat = sceneBeat(seg.index, segments.length);
@@ -410,11 +430,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // person on a street. Everything else keeps the performer + continuity contract.
     const enriched = mvIntro
       ? enrichVideoPrompt(
-          `${head}. ${cameraDirectiveFor(beat.cameraMotion)}, slow cinematic camera movement, atmospheric and immersive. NO people, NO performer, NO singer anywhere in frame — a pure establishing location shot only. No on-screen text, titles, captions, subtitles, watermarks or logos. ${styleGuide} (consistency seed ${seed}).`,
+          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. NO people, NO performer, NO singer anywhere in frame — a pure establishing location shot only. No on-screen text, titles, captions, subtitles, watermarks or logos. ${styleGuide} (consistency seed ${seed}).`,
           traits, 1500,
         )
       : enrichVideoPrompt(
-          `${head}. ${cameraDirectiveFor(beat.cameraMotion)}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
           traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
         );
     return {

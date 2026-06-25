@@ -396,6 +396,16 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     opts.style ||
     (typeof input.metadata?.style === 'string' ? input.metadata.style : null) ||
     null;
+  // PHASE 2 L1 — user camera controls (video panel). Whitelisted; absent → the
+  // storyboard's per-beat camera variety is unchanged (fully additive).
+  const cameraMove = (() => {
+    const v = input.metadata?.cameraMove;
+    return v === 'pan_left' || v === 'pan_right' || v === 'zoom_in' || v === 'zoom_out' || v === 'tilt_up' || v === 'tilt_down' || v === 'auto' ? v : null;
+  })();
+  const motionIntensity = (() => {
+    const n = Number(input.metadata?.motionIntensity);
+    return Number.isFinite(n) && n > 0 ? Math.max(1, Math.min(10, Math.round(n))) : null;
+  })();
   // Frame orientation forwarded from the composer (Video mode 16:9 / 9:16) via
   // metadata. Drives the per-clip aspect ratio so the cut never changes shape.
   const orientation: 'landscape' | 'vertical' =
@@ -474,7 +484,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}) });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}) });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');
