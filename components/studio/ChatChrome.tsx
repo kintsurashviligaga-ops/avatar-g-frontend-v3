@@ -366,7 +366,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
             <div className="flex shrink-0 items-center gap-1">
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
               <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
-                className="flex items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation">
+                className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
                 <span className="text-[14px] font-semibold tabular-nums">{(balanceGel ?? 0).toFixed(2)} ₾</span>
                 <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
               </button>
@@ -374,12 +374,12 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                   avatar initial (→ settings) once signed in. The modal itself is AuthModal. */}
               {authed ? (
                 <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.account} title={userEmail ?? t.account}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation">
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
                   {userName?.[0] || userEmail?.[0] || 'U'}
                 </button>
               ) : (
                 <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} aria-label={t.login}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation">
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation sm:min-h-0">
                   <LogIn className="h-3.5 w-3.5" /> {t.login}
                 </button>
               )}
