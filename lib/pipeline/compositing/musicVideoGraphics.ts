@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { renderTitleCardPng, renderMusicBugPng, renderSubtitleCardPng, splitIntoSubtitleLines, type MusicBug } from './ffmpeg-overlay';
+import { renderTitleCardPng, renderMusicBugPng, renderSubtitleCardPng, splitIntoSubtitleLines, subtitleStripHeight, type MusicBug } from './ffmpeg-overlay';
 
 const exec = (bin: string, args: string[], timeoutMs = 240_000): Promise<{ ok: boolean; err: string }> =>
   new Promise((resolve) => {
@@ -131,16 +131,17 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
       cur = 'vbug';
     }
     // DIALOGUE SUBTITLES — burned LAST (on top of eq/title/bug), distributed evenly
-    // across the timeline. Each looped card is time-gated with `between()` + a quick
-    // alpha fade so captions punch in/out like the reference video.
+    // across the timeline. Hard-cut in/out via `enable='between()'` (no alpha fade) —
+    // both cheaper (no full-stream fade pass → keeps the graphics pass in budget) AND
+    // a closer match to the reference video's snappy burned captions.
     if (subIdxs.length) {
       const per = dur / subIdxs.length;
+      const subY = h - subtitleStripHeight(h); // strip sits at the bottom of the frame
       subIdxs.forEach((idx, i) => {
         const st = +(i * per).toFixed(2);
         const en = +(Math.min(dur, (i + 1) * per) - 0.12).toFixed(2);
-        const fout = +(Math.max(st + 0.3, en - 0.3)).toFixed(2);
-        parts.push(`[${idx}:v]format=rgba,fade=t=in:st=${st}:d=0.25:alpha=1,fade=t=out:st=${fout}:d=0.3:alpha=1[sub${i}]`);
-        parts.push(`[${cur}][sub${i}]overlay=0:0:format=auto:enable='between(t,${st},${en})'[vsub${i}]`);
+        parts.push(`[${idx}:v]format=rgba[sub${i}]`);
+        parts.push(`[${cur}][sub${i}]overlay=0:${subY}:format=auto:enable='between(t,${st},${en})'[vsub${i}]`);
         cur = `vsub${i}`;
       });
     }

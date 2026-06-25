@@ -339,27 +339,36 @@ export function splitIntoSubtitleLines(text: string): string[] {
   return lines;
 }
 
-/** One bottom-centre caption card — white text with a heavy black outline
- *  (paint-order:stroke draws the outline behind the fill in one pass) so it stays
- *  legible over ANY footage, like the reference video's burned subtitles. */
+/** Subtitle cards render as a BOTTOM STRIP (not a full w×h frame) so each looped-PNG
+ *  overlay stream is ~3x lighter — that keeps the graphics pass inside its 300s budget
+ *  even with several cards on a 60s master (a full-frame card per line tipped it over).
+ *  The caller overlays the strip at y = h - subtitleStripHeight(h). */
+export function subtitleStripHeight(h: number): number {
+  return Math.round(h * 0.3);
+}
+
+/** One bottom caption card (a w × stripH strip) — white text with a heavy black outline
+ *  (paint-order:stroke draws the outline behind the fill in one pass) so it stays legible
+ *  over ANY footage, like the reference video's burned subtitles. */
 export function buildSubtitleCardSvg(line: string, w: number, h: number): string {
+  const stripH = subtitleStripHeight(h);
   const base = Math.min(w, h);
   const s = (px: number) => Math.round(px * (base / 1080));
   const ka = GEORGIAN_RE.test(line);
   const lang = ka ? 'ka' : 'en';
   const size = s(w > h ? 52 : 62);
   const cx = Math.round(w / 2);
-  const cy = Math.round(h * 0.84);
+  const cy = Math.round(stripH * 0.55); // sits ~0.86h once the strip is overlaid at the bottom
   const stroke = Math.max(3, s(6));
   const ls = ka ? s(0) : s(2);
   const common = `text-anchor="middle" font-size="${size}" font-family="${FONT_TITLE}" letter-spacing="${ls}" xml:lang="${lang}"`;
   const el =
     `<text x="${cx}" y="${cy}" ${common} fill="#ffffff" stroke="#000000" stroke-width="${stroke}" ` +
     `stroke-opacity="0.92" stroke-linejoin="round" paint-order="stroke">${esc(line)}</text>`;
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${el}</svg>`;
+  return `<svg width="${w}" height="${stripH}" viewBox="0 0 ${w} ${stripH}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${el}</svg>`;
 }
 
-/** Rasterise one subtitle card → transparent PNG (resvg), or null on any miss. */
+/** Rasterise one subtitle card → transparent PNG strip (resvg), or null on any miss. */
 export async function renderSubtitleCardPng(line: string, w: number, h: number): Promise<Buffer | null> {
   const t = (line || '').trim();
   if (!t) return null;
