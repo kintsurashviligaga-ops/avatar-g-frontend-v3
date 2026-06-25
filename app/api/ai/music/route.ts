@@ -3,6 +3,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/
 import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { hasUdioApiKey } from '@/lib/chat/mediaKeys';
+import { trimAudioToDuration } from '@/lib/audio/trimAudio';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
@@ -102,7 +103,13 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
         { prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental },
         { maxAttempts: 45, pollIntervalMs: 4000 }, // ~180s, bounded under the 300s ceiling
       );
-      if (udio.status === 'succeeded' && udio.audioUrl) return udio.audioUrl; // re-hosted by caller
+      if (udio.status === 'succeeded' && udio.audioUrl) {
+        // Udio ignores the requested length (no duration param) → returns a full
+        // ~2–4 min song. Trim it to `secs` (30/60/90) so the panel selection is
+        // honoured. Fail-open: if the trim misses, keep the full track.
+        const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
+        return trimmed ?? udio.audioUrl; // re-hosted by caller
+      }
       // eslint-disable-next-line no-console
       console.warn(`[ai/music] Udio did not complete (${udio.status}) → ElevenLabs Music fallback`);
     } catch (e) {
