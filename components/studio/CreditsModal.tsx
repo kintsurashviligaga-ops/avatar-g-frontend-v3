@@ -38,7 +38,7 @@ const COST = CREDIT_COSTS;
 
 const COPY: Record<Lang, {
   title: string; balance: string; freeVideos: string; pay: string; cardHint: string;
-  comingSoon: string; signInNeeded: string; signIn: string; credits: string; close: string;
+  comingSoon: string; payError: string; redirecting: string; signInNeeded: string; signIn: string; credits: string; close: string;
   starter: string; pro: string; max: string;
   videos: string; images: string;
   guideTitle: string; perCredit: string;
@@ -47,6 +47,7 @@ const COPY: Record<Lang, {
   ka: {
     title: 'კრედიტები', balance: 'ბალანსი', freeVideos: 'უფასო ვიდეო', pay: 'გადახდა',
     cardHint: 'TBC / BOG ბარათით', comingSoon: 'მალე — გადახდა მალე დაემატება',
+    payError: 'გადახდა ვერ დაიწყო — სცადეთ თავიდან', redirecting: 'გადამისამართება…',
     signInNeeded: 'შესვლა საჭიროა', signIn: 'შესვლა', credits: 'კრედიტი', close: 'დახურვა',
     starter: '📦 სტარტერი', pro: '💎 პრო', max: '🚀 მაქსი',
     videos: 'ვიდეო', images: 'სურათი',
@@ -56,6 +57,7 @@ const COPY: Record<Lang, {
   en: {
     title: 'Credits', balance: 'Balance', freeVideos: 'Free videos', pay: 'Pay',
     cardHint: 'TBC / BOG card', comingSoon: 'Coming soon — payments arrive shortly',
+    payError: 'Could not start checkout — please try again', redirecting: 'Redirecting…',
     signInNeeded: 'Please sign in first', signIn: 'Sign In', credits: 'credits', close: 'Close',
     starter: '📦 Starter', pro: '💎 Pro', max: '🚀 Max',
     videos: 'videos', images: 'images',
@@ -65,6 +67,7 @@ const COPY: Record<Lang, {
   ru: {
     title: 'Кредиты', balance: 'Баланс', freeVideos: 'Бесплатные видео', pay: 'Оплатить',
     cardHint: 'Картой TBC / BOG', comingSoon: 'Скоро — оплата появится в ближайшее время',
+    payError: 'Не удалось начать оплату — попробуйте снова', redirecting: 'Перенаправление…',
     signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кред.', close: 'Закрыть',
     starter: '📦 Стартер', pro: '💎 Про', max: '🚀 Макс',
     videos: 'видео', images: 'фото',
@@ -83,6 +86,8 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
   const [freeFilms, setFreeFilms] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Per-package in-flight state for the checkout redirect (disables that Pay button).
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   // Pull the authoritative free-films count when the modal opens for a signed-in user.
   useEffect(() => {
@@ -108,10 +113,32 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
   }, [open, onClose]);
 
-  const showComingSoon = useCallback(() => {
-    setToast(t.comingSoon);
-    window.setTimeout(() => setToast(null), 2600);
-  }, [t.comingSoon]);
+  // Start a Stripe Checkout for a credit package. POSTs the package's GEL amount to
+  // the canonical one-time top-up route, then redirects to the returned Checkout URL.
+  // On success the user lands back on /dashboard?topup=success and the chip refreshes.
+  // Fail-open: 401 → sign-in, anything else → a self-contained error toast.
+  const startCheckout = useCallback(async (pkg: { id: string; gel: number }) => {
+    if (busyId) return;
+    setBusyId(pkg.id);
+    try {
+      const res = await fetch('/api/billing/wallet-topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amountGel: pkg.gel }),
+      });
+      if (res.status === 401) { setBusyId(null); onClose(); onSignIn(); return; }
+      const j = (await res.json().catch(() => null)) as { url?: string } | null;
+      if (res.ok && j?.url) { window.location.assign(j.url); return; } // full redirect to Stripe
+      setBusyId(null);
+      setToast(t.payError);
+      window.setTimeout(() => setToast(null), 2600);
+    } catch {
+      setBusyId(null);
+      setToast(t.payError);
+      window.setTimeout(() => setToast(null), 2600);
+    }
+  }, [busyId, onClose, onSignIn, t.payError]);
 
   if (!mounted || typeof document === 'undefined' || !open) return null;
 
@@ -182,9 +209,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                   <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-app-accent">{p.credits} {t.credits}</span>
                   <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.video_30s)} {t.videos}</span>
                   <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.image_generate)} {t.images}</span>
-                  <button type="button" onClick={showComingSoon}
-                    className={`mt-1 w-full rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
-                    {t.pay}
+                  <button type="button" onClick={() => startCheckout(p)} disabled={busyId !== null}
+                    className={`mt-1 inline-flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 ${p.highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
+                    {busyId === p.id ? <><Loader2 size={12} className="animate-spin" /> {t.redirecting}</> : t.pay}
                   </button>
                   <span className="text-[9px] leading-tight text-app-muted">{t.cardHint}</span>
                 </div>

@@ -83,10 +83,13 @@ export interface CreditPackage {
   credits: number;
   highlight: boolean;
 }
+// Flat GEL → credits (1 credit = 0.10 ₾, so credits = gel × 10). The Stripe wallet
+// top-up credits the literal GEL paid (no bonus tiers), so the advertised credits
+// must equal what's delivered — otherwise the modal over-promises.
 export const CREDIT_PACKAGES: ReadonlyArray<CreditPackage> = [
   { id: 'starter', gel: 5, credits: 50, highlight: false },
-  { id: 'pro', gel: 20, credits: 250, highlight: true },
-  { id: 'max', gel: 50, credits: 700, highlight: false },
+  { id: 'pro', gel: 20, credits: 200, highlight: true },
+  { id: 'max', gel: 50, credits: 500, highlight: false },
 ];
 
 /** USD value of a credit amount. */

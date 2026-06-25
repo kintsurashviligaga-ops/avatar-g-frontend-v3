@@ -150,6 +150,22 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
   useEffect(() => { void refreshBalance(); }, [refreshBalance]);
 
+  // Stripe Checkout returns to /dashboard?topup=success. The crediting webhook is
+  // async, so poll the balance a few times to catch the credit landing, then strip
+  // the query param so a refresh doesn't re-trigger. Fail-soft on every step.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !authed) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('topup') !== 'success') return;
+    let n = 0;
+    const id = window.setInterval(() => { n += 1; void refreshBalance(); if (n >= 5) window.clearInterval(id); }, 1500);
+    void refreshBalance();
+    params.delete('topup');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    return () => window.clearInterval(id);
+  }, [authed, refreshBalance]);
+
   const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-app-text transition-colors hover:bg-app-elevated';
   const sectionHdr = 'px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-app-muted';
   const settingsDivider = 'my-2 border-t border-app-border/10';

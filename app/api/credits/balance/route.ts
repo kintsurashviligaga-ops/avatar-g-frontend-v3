@@ -15,26 +15,26 @@ export async function GET(request: NextRequest) {
     const supabase = createRouteHandlerClient();
 
     await supabase.rpc('reset_user_credits_if_due', { p_user_id: user.id });
-    
-    // Get credits
-    const { data: credits, error: creditsError } = await supabase
-      .from('credits')
-      .select('balance, monthly_allowance, reset_at')
-      .eq('user_id', user.id)
-      .single();
-    
-    if (creditsError) {
-      console.error('Failed to get credits:', creditsError);
-      return NextResponse.json(
-        { error: 'Failed to get credits' },
-        { status: 500 }
-      );
-    }
-    
+
+    // BALANCE OF RECORD = profiles.credits_balance — the GEL wallet the spend saga
+    // (deduct_credits) draws from AND the Stripe top-up webhook (credit_wallet_gel)
+    // credits. The legacy `credits` table now only carries the monthly subscription
+    // allowance, so read the wallet from profiles (falling back to credits.balance for
+    // any profile row not yet backfilled). This is why a paid top-up + in-app spends
+    // now reflect in the top-bar ₾ chip.
+    const [{ data: prof }, { data: credits }] = await Promise.all([
+      supabase.from('profiles').select('credits_balance').eq('id', user.id).maybeSingle(),
+      supabase.from('credits').select('balance, monthly_allowance, reset_at').eq('user_id', user.id).maybeSingle(),
+    ]);
+
+    const balance = typeof prof?.credits_balance === 'number'
+      ? prof.credits_balance
+      : (typeof credits?.balance === 'number' ? credits.balance : 0);
+
     return NextResponse.json({
-      balance: credits.balance,
-      monthlyAllowance: credits.monthly_allowance,
-      resetAt: credits.reset_at,
+      balance,
+      monthlyAllowance: credits?.monthly_allowance ?? null,
+      resetAt: credits?.reset_at ?? null,
     });
     
   } catch (error) {
