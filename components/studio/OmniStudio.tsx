@@ -1292,9 +1292,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
       // mode keeps narration-forward behaviour (voice-over + ducked score).
       const isMusicVideo = videoMode === 'musicvideo';
-      // Director's-Console Lip-Sync agent: RUN it (queued → processing → done) only when a
-      // music video has lip-sync ON; otherwise it shows "Skipped" (no dialogue to sync).
-      lipsyncStageRef.current = isMusicVideo && videoLipsync ? 'queued' : 'skipped';
+      // Director's-Console Lip-Sync agent (dialogue-driven). RUN when there's actual
+      // dialogue/narration to sync: a music video with character dialogue + lip-sync ON, OR
+      // a documentary with dialogue. A PURE music video (no dialogue) shows "Skipped".
+      const hasDialogue = videoSpeech.trim().length > 0;
+      const wantsLipsync = (isMusicVideo && videoLipsync && hasDialogue) || (!isMusicVideo && hasDialogue);
+      lipsyncStageRef.current = wantsLipsync ? 'queued' : 'skipped';
       // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
       // music video we build the song ourselves (Georgian rap on the cloned KA voice over a
       // funk bed) and use it as the soundtrack. Fail-open → normal EL Music (English).
@@ -1401,31 +1404,43 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
           next[next.length - 1] = res.ok && res.masterUrl
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, ...remixCarry }
+            // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
+            // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
+            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
         }
         return next;
       });
 
-      // Companion HeyGen singer performance — needs the resolved song URL + a CLEAN
-      // FRONT-FACING face. HeyGen's talking_photo (self-tests as working) returns null
-      // when fed a stylized cinematic SCENE FRAME — that was the lip-sync bug. So prefer
-      // the character-anchor portrait / uploaded selfie (characterPortrait); generate one
-      // on-demand if absent; only fall back to a scene frame as a last resort.
-      let singerFace: string | null =
-        characterPortrait && /^https?:/i.test(characterPortrait) ? characterPortrait : null;
-      if (!singerFace && isMusicVideo && mine()) {
-        try {
-          const sc = Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
-          const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ prompt: filmPrompt, orientation: 'vertical', style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
-          const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
-          if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) singerFace = aj.anchorUrl;
-        } catch { /* fall through to a scene frame */ }
-      }
-      if (!singerFace) {
-        singerFace = (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
+      // Upgrade the result bubble's video IN PLACE (base master → lip-synced → graphics),
+      // so the chain progressively replaces the shown video without spawning new bubbles.
+      const setResultVideo = (url: string) => {
+        if (!mine()) return;
+        setMessages((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            const m = next[i];
+            if (m && m.role === 'assistant' && m.videoUrl) { next[i] = { ...m, videoUrl: url }; break; }
+          }
+          return next;
+        });
+      };
+      // A CLEAN front-facing face for any talking-head lip-sync — HeyGen's talking_photo
+      // needs a clear portrait, not a stylized scene frame (that was the null bug). Prefer
+      // the threaded anchor/selfie; generate one on-demand; last resort a close scene frame.
+      const resolveCleanFace = async (): Promise<string | null> => {
+        if (characterPortrait && /^https?:/i.test(characterPortrait)) return characterPortrait;
+        if (mine()) {
+          try {
+            const sc = Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
+            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
+            const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
+            if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
+          } catch { /* fall through */ }
+        }
+        return (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
           ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
-      }
+      };
       // Patch the Lip-Sync card on whichever bubble carries the Director's Console roster.
       const patchLipsyncCard = (st: FilmAgentStatus) => {
         lipsyncStageRef.current = st;
@@ -1442,69 +1457,70 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           return next;
         });
       };
-      const willLipsync = Boolean(res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace);
-      // Lip-sync wanted but un-runnable (no song / no face) → mark Skipped, not stuck "Queued".
-      if (!willLipsync && lipsyncStageRef.current === 'queued') patchLipsyncCard('skipped');
-      if (willLipsync && res.musicUrl && singerFace && mine()) {
-        patchLipsyncCard('processing');
-        // ONE status bubble that becomes the COMPOSITE (cinematic wides + lip-synced singer
-        // close-ups, with the FULL song as the master audio). We no longer surface the
-        // isolated-vocal performance on its own — it carried no backing music, which is the
-        // "just singing, no music" complaint. The composite is the single lip-synced result.
-        setMessages((prev) => [...prev, { role: 'assistant', text: locale === 'en' ? '🎬 Adding lip-synced singer close-ups…' : locale === 'ru' ? '🎬 Добавляю липсинк крупные планы певицы…' : '🎬 ვამატებ ლიპსინქ ახლო ხედებს…', genKind: 'video' }]);
-        // The full song (vocal + backing) is the composited master's audio.
-        const songUrl: string = res.musicUrl;
-        // Isolate the vocal so the lip-sync mouth-tracking follows the VOICE; the composite
-        // still carries the full song. Fail-open: a miss keeps the full mix.
-        let vocalForSync: string = songUrl;
-        try {
-          const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
-          const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
-          if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
-        } catch { /* fail-open → full mix */ }
-        const perf = await heygenSingerPerformance(singerFace, vocalForSync, isMusicVideo ? 'vertical' : orientation, ac.signal, mine);
-        const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
-        // Fail-open by design: a HeyGen miss keeps the un-synced master, so a null perf is
-        // a clean "Skipped" on the console, not an error banner.
-        patchLipsyncCard(perfOk ? 'completed' : 'skipped');
-        // Composite the synced close-ups INTO the cinematic montage (full song = master audio).
-        const composited = (perfOk && perf && res.matrix && mine())
-          ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, isMusicVideo ? 'vertical' : orientation, videoTransition, ac.signal, mine)
-          : null;
-        // GRAPHICS AGENT — layer beautiful motion graphics (music-synced equalizer +
-        // animated title card over the intro + animated lower-third) over the final cut.
-        // Strictly fail-open: a miss keeps the un-graphic composite.
-        let finalMv = composited;
-        if (composited && isMusicVideo && mine()) {
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev]; const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: locale === 'en' ? '🎬 Adding motion graphics…' : locale === 'ru' ? '🎬 Добавляю графику…' : '🎬 ვამატებ გრაფიკას…' };
-            return next;
-          });
+      // GRAPHICS INPUT — defaults to the base master so the Graphics agent ALWAYS runs, even
+      // when Lip-Sync is skipped (FIX 1: never break the graphics chain). Each lip-sync leg
+      // below upgrades it to the lip-synced video.
+      let graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
+      if (res.ok && res.masterUrl && mine()) {
+        if (isMusicVideo && wantsLipsync && res.musicUrl) {
+          // Music video WITH dialogue → the singer-performance sync (close-ups to the vocal).
+          patchLipsyncCard('processing');
+          const songUrl: string = res.musicUrl;
+          let vocalForSync: string = songUrl;
           try {
-            const theme = /tbilisi|თბილის/i.test(filmPrompt) ? 'TBILISI'
-              : /night|ღამ|neon|ნეონ/i.test(filmPrompt) ? (locale === 'ka' ? 'ღამის განწყობა' : locale === 'ru' ? 'НОЧНЫЕ ВАЙБЫ' : 'NIGHT VIBES')
-              : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
-            const gr = await fetch('/api/video/graphics', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ videoUrl: composited, title: theme, lang: locale, introSec: videoDuration === 60 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale } }),
-            });
-            const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
-            if (gj.url) finalMv = gj.url;
-          } catch { /* fail-open → composited */ }
+            const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
+            const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
+            if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
+          } catch { /* full mix */ }
+          const face = await resolveCleanFace();
+          const perf = face ? await heygenSingerPerformance(face, vocalForSync, 'vertical', ac.signal, mine) : null;
+          const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
+          const composited = (perfOk && perf && res.matrix && mine())
+            ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, ac.signal, mine)
+            : null;
+          if (composited) { graphicsInput = composited; setResultVideo(composited); }
+          patchLipsyncCard(composited ? 'completed' : 'skipped');
+        } else if (!isMusicVideo && wantsLipsync) {
+          // FIX 2 — DOCUMENTARY with dialogue: lip-sync the assembled master to the narration
+          // (the route's text path = Georgian TTS + video-input sync/lipsync-2). Fail-open.
+          patchLipsyncCard('processing');
+          const face = await resolveCleanFace();
+          let synced: string | null = null;
+          try {
+            const sr = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ kind: 'film', videoUrl: res.masterUrl, ...(face ? { characterRef: face } : {}), text: videoSpeech.trim(), gender: videoVocalGender === 'male' ? 'male' : 'female', orientation }) });
+            const sj = (await sr.json().catch(() => ({}))) as { jobId?: string | null };
+            if (sj.jobId) {
+              for (let i = 0; i < 60 && mine(); i += 1) {
+                await new Promise((r2) => setTimeout(r2, 6000));
+                try {
+                  const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(sj.jobId)}`, { credentials: 'include', signal: ac.signal });
+                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+                  if (pj.done) { synced = pj.url ?? null; break; }
+                } catch { /* keep polling */ }
+              }
+            }
+          } catch { /* base master */ }
+          if (synced) { graphicsInput = synced; setResultVideo(synced); }
+          patchLipsyncCard(synced ? 'completed' : 'skipped');
+        } else {
+          patchLipsyncCard('skipped');
         }
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant' && !last.videoUrl) {
-            next[next.length - 1] = composited
-              ? { role: 'assistant', text: '', videoUrl: finalMv ?? composited, orientation: 'vertical' }
-              : { role: 'assistant', text: locale === 'en' ? '⚠️ Couldn’t add the lip-synced close-ups — the cinematic video above is your result.' : locale === 'ru' ? '⚠️ Не удалось добавить липсинк — кинематографичное видео выше — ваш результат.' : '⚠️ ლიპსინქ ვერ დაემატა — ზემოთ კინემატოგრაფიული ვიდეო თქვენი შედეგია.' };
-          }
-          return next;
-        });
+      }
+
+      // ── GRAPHICS AGENT — ALWAYS on graphicsInput (lip-synced if it ran, else base master).
+      // FIX 1: a lip-sync skip NEVER drops the graphics pass. Strictly fail-open. ──
+      if (graphicsInput && mine()) {
+        try {
+          const theme = /tbilisi|თბილის/i.test(filmPrompt) ? 'TBILISI'
+            : /night|ღამ|neon|ნეონ/i.test(filmPrompt) ? (locale === 'ka' ? 'ღამის განწყობა' : locale === 'ru' ? 'НОЧНЫЕ ВАЙБЫ' : 'NIGHT VIBES')
+            : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
+          const gr = await fetch('/api/video/graphics', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: videoDuration === 60 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale } }),
+          });
+          const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
+          if (gj.url) setResultVideo(gj.url);
+        } catch { /* fail-open → graphicsInput already shown */ }
       }
     } catch {
       if (!mine()) return;
