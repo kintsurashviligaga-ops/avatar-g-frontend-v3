@@ -5,9 +5,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings, Zap, Sparkles, Monitor, Smartphone, Square, RectangleHorizontal,
-  Globe, Sun, Moon, User, BarChart3, AlertTriangle, X, Loader2, Check,
+  Globe, Sun, Moon, User, BarChart3, AlertTriangle, X, Loader2, Check, History,
   type LucideIcon,
 } from 'lucide-react';
+import { creditsToGel } from '@/lib/credits/pricing';
 import { useTheme } from '@/lib/theme/ThemeContext';
 
 /**
@@ -35,6 +36,7 @@ interface Copy {
   theme: { title: string; dark: string; light: string; subtitle: string };
   profile: { title: string; status: string; signedIn: string; signedOut: string };
   usage: { title: string; subtitle: string; loading: string; failed: string; credits: string; resets: string };
+  history: { title: string; subtitle: string; loading: string; empty: string; credits: string };
   danger: {
     title: string; description: string; cta: string;
     modalTitle: string; modalBody: string; cancel: string; confirm: string;
@@ -58,6 +60,7 @@ const COPY: Record<Locale, Copy> = {
       title: 'API მოხმარება და ბალანსი', subtitle: 'მიმდინარე პერიოდის სტატისტიკა.',
       loading: 'იტვირთება…', failed: 'მონაცემები ვერ მოვიდა.', credits: 'კრედიტი', resets: 'განახლდება',
     },
+    history: { title: 'ისტორია', subtitle: 'ბოლო 10 ტრანზაქცია.', loading: 'იტვირთება…', empty: 'ჯერ არ არის ტრანზაქცია.', credits: 'კრედიტი' },
     danger: {
       title: 'საშიში ზონა',
       description: 'წაშალე ანგარიში და ყველა მონაცემი სამუდამოდ. ეს მოქმედება შეუქცევადია.',
@@ -83,6 +86,7 @@ const COPY: Record<Locale, Copy> = {
       title: 'API Usage & Balance', subtitle: 'Current period statistics.',
       loading: 'Loading…', failed: 'Could not load.', credits: 'credits', resets: 'Resets',
     },
+    history: { title: 'History', subtitle: 'Your last 10 transactions.', loading: 'Loading…', empty: 'No transactions yet.', credits: 'credits' },
     danger: {
       title: 'Danger Zone',
       description: 'Permanently delete your account and all data. This cannot be undone.',
@@ -108,6 +112,7 @@ const COPY: Record<Locale, Copy> = {
       title: 'Использование и баланс', subtitle: 'Статистика за текущий период.',
       loading: 'Загрузка…', failed: 'Не удалось загрузить.', credits: 'кредитов', resets: 'Обновится',
     },
+    history: { title: 'История', subtitle: 'Последние 10 транзакций.', loading: 'Загрузка…', empty: 'Пока нет транзакций.', credits: 'кред.' },
     danger: {
       title: 'Опасная зона',
       description: 'Удалить аккаунт и все данные навсегда. Действие необратимо.',
@@ -174,7 +179,8 @@ export function SettingsView({ locale }: { locale: string }) {
           <motion.div variants={fadeUp} custom={3}><ThemeSection t={t.theme} /></motion.div>
           <motion.div variants={fadeUp} custom={4}><ProfileSection t={t.profile} /></motion.div>
           <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={6}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>
+          <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>
+          <motion.div variants={fadeUp} custom={7}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>
         </motion.div>
       </div>
     </div>
@@ -466,7 +472,73 @@ function ApiUsageSection({ t, loc }: { t: Copy['usage']; loc: Locale }) {
   );
 }
 
-// ── 7. Danger Zone (Delete Account) ───────────────────────────────────────────
+// ── 7. Credit history (last 10 transactions) ──────────────────────────────────
+
+interface HistoryItem { action: string; creditsDelta: number; createdAt: string }
+const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: string }> = {
+  video: { emoji: '🎬', ka: 'ვიდეო', en: 'Video', ru: 'Видео' },
+  music: { emoji: '🎵', ka: 'მუსიკა', en: 'Music', ru: 'Музыка' },
+  image: { emoji: '🖼', ka: 'სურათი', en: 'Image', ru: 'Фото' },
+  avatar: { emoji: '🎭', ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
+  remix: { emoji: '🎞', ka: 'რემიქსი', en: 'Remix', ru: 'Ремикс' },
+  topup: { emoji: '💳', ka: 'შევსება', en: 'Top-up', ru: 'Пополнение' },
+};
+
+function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
+  const [items, setItems] = useState<HistoryItem[] | null>(null);
+  const [state, setState] = useState<'loading' | 'ok' | 'empty'>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/credits/history?limit=10', { credentials: 'include', cache: 'no-store' });
+        const j = (await r.json().catch(() => ({}))) as { items?: HistoryItem[] };
+        const list = Array.isArray(j.items) ? j.items : [];
+        if (!cancelled) { setItems(list); setState(list.length ? 'ok' : 'empty'); }
+      } catch {
+        if (!cancelled) { setItems([]); setState('empty'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const fmtDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString(loc === 'ka' ? 'ka-GE' : loc === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' });
+    } catch { return iso.slice(0, 10); }
+  };
+
+  return (
+    <Card>
+      <CardHeader icon={History} title={t.title} subtitle={t.subtitle} />
+      {state === 'loading' && (
+        <div className="flex items-center gap-2 text-sm text-app-muted"><Loader2 size={14} className="animate-spin" /> {t.loading}</div>
+      )}
+      {state === 'empty' && <div className="text-sm text-app-muted">{t.empty}</div>}
+      {state === 'ok' && items && (
+        <ul className="divide-y divide-app-border/30">
+          {items.map((it, i) => {
+            const meta = ACTION_LABEL[it.action] ?? { emoji: '•', ka: it.action, en: it.action, ru: it.action };
+            const positive = it.creditsDelta > 0;
+            return (
+              <li key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="flex items-center gap-2 text-app-text">
+                  <span className="text-app-muted tabular-nums">{fmtDate(it.createdAt)}</span>
+                  <span>{meta.emoji} {meta[loc]}</span>
+                </span>
+                <span className={`tabular-nums font-semibold ${positive ? 'text-emerald-400' : 'text-app-muted'}`}>
+                  {positive ? '+' : '−'}{Math.abs(it.creditsDelta)} {t.credits} <span className="text-app-muted/70">({creditsToGel(Math.abs(it.creditsDelta)).toFixed(2)} ₾)</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// ── 8. Danger Zone (Delete Account) ───────────────────────────────────────────
 
 function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
   const [open, setOpen] = useState(false);

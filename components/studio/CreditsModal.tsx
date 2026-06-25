@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Loader2, LogIn, CreditCard, Check } from 'lucide-react';
+import { CREDIT_PACKAGES, CREDIT_COSTS, creditsToGel } from '@/lib/credits/pricing';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -31,35 +32,44 @@ interface CreditsModalProps {
   onSignIn: () => void;
 }
 
-type Pkg = { id: 'starter' | 'pro' | 'max'; gel: number; credits: number; highlight: boolean };
-const PACKAGES: ReadonlyArray<Pkg> = [
-  { id: 'starter', gel: 5, credits: 10, highlight: false },
-  { id: 'pro', gel: 20, credits: 50, highlight: true },
-  { id: 'max', gel: 50, credits: 150, highlight: false },
-];
+const PACKAGES = CREDIT_PACKAGES;
+// Per-action credit costs used to render the "what can you do" guide.
+const COST = CREDIT_COSTS;
 
 const COPY: Record<Lang, {
   title: string; balance: string; freeVideos: string; pay: string; cardHint: string;
   comingSoon: string; signInNeeded: string; signIn: string; credits: string; close: string;
   starter: string; pro: string; max: string;
+  videos: string; images: string;
+  guideTitle: string; perCredit: string;
+  gImage: string; gMusic: string; gVideo: string; gAvatar: string;
 }> = {
   ka: {
     title: 'კრედიტები', balance: 'ბალანსი', freeVideos: 'უფასო ვიდეო', pay: 'გადახდა',
     cardHint: 'TBC / BOG ბარათით', comingSoon: 'მალე — გადახდა მალე დაემატება',
     signInNeeded: 'შესვლა საჭიროა', signIn: 'შესვლა', credits: 'კრედიტი', close: 'დახურვა',
-    starter: 'Starter', pro: 'Pro', max: 'Max',
+    starter: '📦 სტარტერი', pro: '💎 პრო', max: '🚀 მაქსი',
+    videos: 'ვიდეო', images: 'სურათი',
+    guideTitle: 'რას შეძლებ კრედიტებით?', perCredit: '1 კრედიტი = 0.10 ₾',
+    gImage: '🖼 სურათი', gMusic: '🎵 მუსიკა 30წმ', gVideo: '🎬 ვიდეო 30წმ', gAvatar: '🎭 ავატარი',
   },
   en: {
     title: 'Credits', balance: 'Balance', freeVideos: 'Free videos', pay: 'Pay',
     cardHint: 'TBC / BOG card', comingSoon: 'Coming soon — payments arrive shortly',
     signInNeeded: 'Please sign in first', signIn: 'Sign In', credits: 'credits', close: 'Close',
-    starter: 'Starter', pro: 'Pro', max: 'Max',
+    starter: '📦 Starter', pro: '💎 Pro', max: '🚀 Max',
+    videos: 'videos', images: 'images',
+    guideTitle: 'What can you do with credits?', perCredit: '1 credit = 0.10 ₾',
+    gImage: '🖼 Image', gMusic: '🎵 Music 30s', gVideo: '🎬 Video 30s', gAvatar: '🎭 Avatar',
   },
   ru: {
     title: 'Кредиты', balance: 'Баланс', freeVideos: 'Бесплатные видео', pay: 'Оплатить',
     cardHint: 'Картой TBC / BOG', comingSoon: 'Скоро — оплата появится в ближайшее время',
-    signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кредитов', close: 'Закрыть',
-    starter: 'Starter', pro: 'Pro', max: 'Max',
+    signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кред.', close: 'Закрыть',
+    starter: '📦 Стартер', pro: '💎 Про', max: '🚀 Макс',
+    videos: 'видео', images: 'фото',
+    guideTitle: 'Что можно сделать за кредиты?', perCredit: '1 кредит = 0.10 ₾',
+    gImage: '🖼 Фото', gMusic: '🎵 Музыка 30с', gVideo: '🎬 Видео 30с', gAvatar: '🎭 Аватар',
   },
 };
 
@@ -169,7 +179,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                   )}
                   <span className="text-[12px] font-semibold text-app-text">{t[p.id]}</span>
                   <span className="text-[19px] font-bold leading-none tabular-nums text-app-text">{p.gel} ₾</span>
-                  <span className="inline-flex items-center gap-0.5 text-[10.5px] text-app-muted">≈ {p.credits} {t.credits}</span>
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-app-accent">{p.credits} {t.credits}</span>
+                  <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.video_30s)} {t.videos}</span>
+                  <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.image_generate)} {t.images}</span>
                   <button type="button" onClick={showComingSoon}
                     className={`mt-1 w-full rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
                     {t.pay}
@@ -177,6 +189,20 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                   <span className="text-[9px] leading-tight text-app-muted">{t.cardHint}</span>
                 </div>
               ))}
+            </div>
+
+            {/* What can you do with credits? */}
+            <div className="mt-4 rounded-2xl border border-app-border/15 bg-app-bg/40 px-4 py-3">
+              <p className="text-[12.5px] font-semibold text-app-text">{t.guideTitle}</p>
+              <p className="mt-0.5 text-[11px] text-app-muted">{t.perCredit}</p>
+              <ul className="mt-2 space-y-1 text-[12px] text-app-text">
+                {([[t.gImage, COST.image_generate], [t.gMusic, COST.music_30s], [t.gVideo, COST.video_30s], [t.gAvatar, COST.avatar_30s]] as const).map(([label, credits]) => (
+                  <li key={label} className="flex items-center justify-between gap-3">
+                    <span>{label}</span>
+                    <span className="tabular-nums text-app-muted">{credits} {t.credits} <span className="text-app-muted/70">({creditsToGel(credits).toFixed(2)} ₾)</span></span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         )}

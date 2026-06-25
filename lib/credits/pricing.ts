@@ -67,6 +67,28 @@ export function creditsToGel(credits: number): number {
   return Math.round(credits * CREDIT_VALUE_GEL * 100) / 100;
 }
 
+/** Credits a GEL balance is worth (1 credit = 0.10 ₾ → ×10), rounded. */
+export function gelToCredits(gel: number): number {
+  return Math.round((gel || 0) / CREDIT_VALUE_GEL);
+}
+
+/**
+ * Top-up packages shown in the Credits modal. Higher tiers carry a bonus (pro +25%,
+ * max +40%) over the flat 10-credits-per-GEL rate, which is why max is 700 not 500.
+ * `approxVideos` / `approxImages` give the "what you get" feel (video_30s=25, image=2).
+ */
+export interface CreditPackage {
+  id: 'starter' | 'pro' | 'max';
+  gel: number;
+  credits: number;
+  highlight: boolean;
+}
+export const CREDIT_PACKAGES: ReadonlyArray<CreditPackage> = [
+  { id: 'starter', gel: 5, credits: 50, highlight: false },
+  { id: 'pro', gel: 20, credits: 250, highlight: true },
+  { id: 'max', gel: 50, credits: 700, highlight: false },
+];
+
 /** USD value of a credit amount. */
 export function creditsToUsd(credits: number): number {
   return Math.round((creditsToGel(credits) / USD_TO_GEL) * 1000) / 1000;

@@ -154,6 +154,76 @@ export async function kenBurnsClip(image: string, durationSec = 5, aspect: '9:16
   }
 }
 
+/** Per-style color-grade ffmpeg filter chains (the spec's vintage / cinematic / neon). */
+const GRADE_VF: Record<'vintage' | 'cinematic' | 'neon', string> = {
+  vintage: 'curves=vintage',
+  cinematic: 'eq=contrast=1.1:saturation=0.9,vignette',
+  neon: 'hue=s=2,eq=contrast=1.2:brightness=0.1',
+};
+
+/** Apply a cinematic color grade (vintage / cinematic / neon) — keeps the audio. */
+export async function colorGrade(videoUrl: string, style: 'vintage' | 'cinematic' | 'neon'): Promise<string | null> {
+  if (!BIN || !videoUrl) return null;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'remix-grade-'));
+    const out = join(dir, 'out.mp4');
+    await exec(BIN, [
+      '-y', '-i', videoUrl, '-vf', GRADE_VF[style] ?? GRADE_VF.cinematic,
+      ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    const buf = await readFile(out);
+    return await hostMp4(buf, `grade-${style}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.grade] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Change playback speed by `factor` (2 = 2× faster, 0.5 = half-speed). Video via
+ * setpts; audio via atempo (chained so factors outside the 0.5–2.0 atempo window
+ * still work). Clamped to a sane 0.25×–4× range.
+ */
+export async function changeSpeed(videoUrl: string, factor: number): Promise<string | null> {
+  if (!BIN || !videoUrl) return null;
+  const f = Math.max(0.25, Math.min(4, Number(factor) || 1));
+  // atempo only accepts 0.5–2.0 per stage → decompose f into a product of in-range steps.
+  const tempoSteps: number[] = [];
+  let remaining = f;
+  while (remaining > 2.0) { tempoSteps.push(2.0); remaining /= 2.0; }
+  while (remaining < 0.5) { tempoSteps.push(0.5); remaining /= 0.5; }
+  tempoSteps.push(remaining);
+  const atempo = tempoSteps.map((s) => `atempo=${s.toFixed(4)}`).join(',');
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'remix-speed-'));
+    const out = join(dir, 'out.mp4');
+    await exec(BIN, [
+      '-y', '-i', videoUrl,
+      '-filter_complex', `[0:v]setpts=${(1 / f).toFixed(4)}*PTS[v];[0:a]${atempo}[a]`,
+      '-map', '[v]', '-map', '[a]',
+      ...X264, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    let buf = await readFile(out).catch(() => null);
+    if (!buf) {
+      // Source may have no audio → retry video-only.
+      await exec(BIN, ['-y', '-i', videoUrl, '-filter_complex', `[0:v]setpts=${(1 / f).toFixed(4)}*PTS[v]`, '-map', '[v]', ...X264, '-an', '-movflags', '+faststart', out], { maxBuffer: 1 << 26, timeout: 180_000 });
+      buf = await readFile(out);
+    }
+    return await hostMp4(buf, 'speed');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.speed] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 const I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
 const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed';
 

@@ -21,7 +21,7 @@ import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, ty
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
-import { creditCostFor, formatCreditDeduction } from '@/lib/credits/pricing';
+import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -1093,7 +1093,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Credit-deduction toast — shown briefly after each successful generation
   // ("−N credits · X.XX ₾"). Pricing is centralised in lib/credits/pricing.ts; the
   // real balance is still the GEL wallet (the ₾ pill re-reads it on the next open).
-  const [creditToast, setCreditToast] = useState<string | null>(null);
+  const [creditToast, setCreditToast] = useState<{ credits: number; balanceGel: number | null } | null>(null);
   // ── Video Remix mode — upload an existing video and edit it ──
   const [remixVideo, setRemixVideo] = useState<{ name: string; url: string } | null>(null);
   const [remixVideoBusy, setRemixVideoBusy] = useState(false);
@@ -1110,11 +1110,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // lib/credits/pricing.ts (single source of truth); the GEL wallet stays the real
   // balance. Declared above renderFilm/send so both can reference it.
   const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number }) => {
-    const msg = formatCreditDeduction(creditCostFor(kind, opts), locale);
-    if (!msg) return;
-    setCreditToast(msg);
-    setTimeout(() => setCreditToast((c) => (c === msg ? null : c)), 3500);
-  }, [locale]);
+    const credits = creditCostFor(kind, opts);
+    if (credits <= 0) return;
+    setCreditToast({ credits, balanceGel: null });
+    // Pull the live balance for the toast's "balance" line (fail-soft → line omitted).
+    void (async () => {
+      try {
+        const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
+        const j = (await res.json().catch(() => ({}))) as { balance?: number | null };
+        if (typeof j?.balance === 'number') setCreditToast((c) => (c ? { ...c, balanceGel: j.balance as number } : c));
+      } catch { /* fail-soft */ }
+    })();
+    // Record the spend in credit_transactions (fail-open if the table/route is absent).
+    void fetch('/api/credits/record', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ action: kind, creditsDelta: -credits }),
+    }).catch(() => {});
+    setTimeout(() => setCreditToast(null), 4000);
+  }, []);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
   // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
@@ -2170,6 +2183,38 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
 
+    // ── VIDEO REMIX (chat-attached) ────────────────────────────────────────────
+    // A video attached in chat + a text request = "edit this video", NOT the film
+    // pipeline. Claude (with a keyword fallback) classifies the intent, then the
+    // matching ffmpeg/generative op runs via /api/video/remix. Fail-open: any miss
+    // surfaces a clean retry notice and keeps the original.
+    if (mode === 'chat' && text && attachments.some((a) => isVideo(a.mimeType))) {
+      const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
+      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', text: t.remixRunning }]);
+      setInput(''); setAttachments([]); setBusy(true);
+      try {
+        const intentRes = await fetch('/api/video/remix-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ message: text }) });
+        const intent = (await intentRes.json().catch(() => ({}))) as { op?: string; params?: Record<string, unknown> };
+        const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType || 'video/mp4');
+        if (!videoUrl) throw new Error('upload failed');
+        const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op: intent.op || 'color_grade', videoUrl, text, ...(intent.params || {}) }) });
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
+        setMessages((prev) => {
+          if (!mine()) return prev;
+          const next = [...prev]; const last = next[next.length - 1];
+          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: '', videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
+          return next;
+        });
+        if (mine() && j.url) notifyCredit('remix');
+      } catch {
+        if (!mine()) return;
+        setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
+      } finally {
+        if (mine()) setBusy(false);
+      }
+      return;
+    }
+
     // ── IMAGE GENERATION (NanoBanana) ──────────────────────────────────────────
     // In image mode the typed prompt becomes a brand-new image: POST it to
     // /api/nanobanana/image and render the returned URL as an assistant image
@@ -2512,7 +2557,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -4002,6 +4047,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
         </div>{/* /collapsible options */}
 
+        {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
+            indicator + quick-action chips that pre-fill the right request. */}
+        {mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && (
+          <div className="mb-2 space-y-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/12 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
+              🎬 {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['📝', locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრები', locale === 'en' ? 'add subtitles' : locale === 'ru' ? 'добавь субтитры' : 'სუბტიტრები დაამატე'],
+                ['🎨', locale === 'en' ? 'Color' : locale === 'ru' ? 'Цвет' : 'ფერი', locale === 'en' ? 'cinematic color grade' : locale === 'ru' ? 'кинематографичный цвет' : 'ფერი შეცვალე — კინემატოგრაფიული'],
+                ['🎵', locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', locale === 'en' ? 'add background music' : locale === 'ru' ? 'добавь музыку' : 'მუსიკა ჩაამატე'],
+                ['✏️', locale === 'en' ? 'Text' : locale === 'ru' ? 'Текст' : 'ტექსტი', locale === 'en' ? 'add a text overlay' : locale === 'ru' ? 'добавь текст' : 'ტექსტი დაამატე'],
+                ['✂️', locale === 'en' ? 'Trim' : locale === 'ru' ? 'Обрезка' : 'მოჭრა', locale === 'en' ? 'trim the first 10 seconds' : locale === 'ru' ? 'обрежь первые 10 секунд' : 'მოჭერი პირველი 10 წამი'],
+                ['⚡', locale === 'en' ? 'Speed' : locale === 'ru' ? 'Скорость' : 'სიჩქარე', locale === 'en' ? 'speed it up 2x' : locale === 'ru' ? 'ускорь в 2 раза' : 'სიჩქარე გაზარდე 2x'],
+              ] as const).map(([emoji, label, fill]) => (
+                <button key={label} type="button" onClick={() => { setInput(fill); taRef.current?.focus(); }}
+                  className="inline-flex items-center gap-1 rounded-full border border-app-border/20 bg-app-bg/40 px-2.5 py-1 text-[12px] font-medium text-app-text transition-colors hover:border-app-accent/50 hover:text-app-accent">
+                  {emoji} {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
             each removable. They ride with the next message (text + files together). */}
         {attachments.length > 0 && (
@@ -4011,9 +4081,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {isImage(a.mimeType) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.dataUrl} alt="" className="h-14 w-14 rounded-xl object-cover" />
+                ) : isVideo(a.mimeType) ? (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
                 ) : (
                   <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-app-surface text-app-accent">
-                    {isVideo(a.mimeType) ? <Film size={18} /> : isAudio(a.mimeType) ? <Music2 size={18} /> : <FileText size={18} />}
+                    {isAudio(a.mimeType) ? <Music2 size={18} /> : <FileText size={18} />}
                   </span>
                 )}
                 <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
@@ -4215,15 +4288,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <Check size={14} className="text-app-accent" /> {shareToast}
         </div>
       )}
-      {/* Credit-deduction toast — slides in after each successful generation. */}
-      {creditToast && (
-        <div
-          className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit animate-[fadeIn_0.2s_ease-out] items-center gap-2 rounded-full bg-app-elevated px-4 py-2 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
-          style={{ bottom: 'max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem))' }}
-        >
-          <Sparkles size={14} className="text-app-accent" /> {creditToast}
-        </div>
-      )}
+      {/* Credit-deduction toast — dark card, green check, 3 lines (done · spent · balance). */}
+      {creditToast && (() => {
+        const creditsWord = locale === 'en' ? 'credits' : locale === 'ru' ? 'кред.' : 'კრედიტი';
+        return (
+          <div
+            className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit max-w-[88vw] animate-[fadeIn_0.2s_ease-out] flex-col gap-1 rounded-2xl bg-app-elevated px-4 py-3 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
+            style={{ bottom: 'max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem))' }}
+          >
+            <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
+            <span className="text-app-muted">💳 −{creditToast.credits} {creditsWord} ({creditsToGel(creditToast.credits).toFixed(2)} ₾)</span>
+            {creditToast.balanceGel !== null && (
+              <span className="text-app-muted">💰 {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> ({creditToast.balanceGel.toFixed(2)} ₾)</span>
+            )}
+          </div>
+        );
+      })()}
       {/* Full-screen image lightbox — tap any chat image to open it edge-to-edge.
           Backdrop tap / the X button / Esc all close it; the picture itself swallows
           the click so it stays open while you inspect it. */}

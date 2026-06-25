@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -68,7 +68,12 @@ export async function POST(req: NextRequest) {
   if (rl) return rl;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const op = String(body.op || '').trim();
+  // Accept both the panel's op names AND the chat-intent (Claude) op names.
+  const OP_ALIASES: Record<string, string> = {
+    add_music: 'music', face_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
+  };
+  const rawOp = String(body.op || '').trim();
+  const op = OP_ALIASES[rawOp] ?? rawOp;
   const videoUrl = await resolveMedia(body.videoUrl);
   if (!videoUrl) return fail('A video is required.');
 
@@ -117,15 +122,30 @@ export async function POST(req: NextRequest) {
         return url ? ok(url) : fail('Lip-sync is unavailable right now.');
       }
 
+      case 'color_grade': {
+        const grade = body.grade === 'vintage' || body.grade === 'neon' ? body.grade : 'cinematic';
+        const url = await colorGrade(videoUrl, grade);
+        return url ? ok(url) : fail('Color grade failed.');
+      }
+
+      case 'speed_change': {
+        const speed = Number.isFinite(Number(body.speed)) && Number(body.speed) > 0 ? Number(body.speed) : 2;
+        const url = await changeSpeed(videoUrl, speed);
+        return url ? ok(url) : fail('Speed change failed.');
+      }
+
       case 'restyle':
-      case 'character': {
-        // Anchor frame → image model (restyle, or character swap/insert) → re-animate.
+      case 'character':
+      case 'background_remove': {
+        // Anchor frame → image model (restyle / character swap / bg removal) → re-animate.
         const frame = await extractFrame(videoUrl, 0.5);
         if (!frame) return fail('Could not read a frame from the video.');
         const editPrompt =
           op === 'restyle'
             ? `Restyle this exact scene: ${text || 'cinematic, film-grade color grade'}. Keep the composition and subjects, change only the visual style.`
-            : `${text || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character to match this description.`;
+            : op === 'background_remove'
+              ? `Remove the background behind the subject and replace it with ${text || 'a clean, plain neutral studio backdrop'}. Keep the subject exactly as-is.`
+              : `${text || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character to match this description.`;
         const styled = await generateNanoBananaImage({
           prompt: editPrompt,
           referenceImageDataUrl: frame,
