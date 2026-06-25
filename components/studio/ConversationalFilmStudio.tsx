@@ -566,6 +566,9 @@ export function ConversationalFilmStudio({
   // Whatever the user had already typed when dictation started — live transcript
   // is appended to THIS base so speaking never clobbers manual edits.
   const baseTranscriptRef = useRef('');
+  // Set true by handleSend so a late/buffered onresult can't re-fill the box after
+  // we clear it; reset to false when a fresh dictation starts.
+  const sttDiscardRef = useRef(false);
   // ── Whisper fallback (§3 Georgian STT) ──────────────────────────────────────
   // Where the browser exposes no SpeechRecognition (iOS Safari, most in-app
   // webviews) the mic would otherwise be hidden entirely. Instead we record a
@@ -671,6 +674,7 @@ export function ConversationalFilmStudio({
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
+      if (sttDiscardRef.current) return; // a send() discarded this dictation
       let transcript = '';
       for (let i = 0; i < e.results.length; i++) {
         transcript += e.results[i]?.[0]?.transcript ?? '';
@@ -1070,6 +1074,10 @@ export function ConversationalFilmStudio({
     } catch {
       /* noop */
     }
+    // Discard any buffered transcription + reset the dictation base so a late
+    // onresult can't re-populate the box after we clear it.
+    sttDiscardRef.current = true;
+    baseTranscriptRef.current = '';
     setIsRecording(false);
     const userPrompt = input.trim();
     setInput('');
@@ -1142,6 +1150,7 @@ export function ConversationalFilmStudio({
         setMicNotice(t.micDenied);
         return;
       }
+      sttDiscardRef.current = false; // fresh dictation — accept transcription again
       baseTranscriptRef.current = input;
       try {
         rec.lang = whisperLang;
@@ -1226,6 +1235,7 @@ export function ConversationalFilmStudio({
       };
       mediaRecorderRef.current = recorder;
       mediaStreamRef.current = stream;
+      sttDiscardRef.current = false; // fresh dictation — accept transcription again
       baseTranscriptRef.current = input;
       try {
         recorder.start();

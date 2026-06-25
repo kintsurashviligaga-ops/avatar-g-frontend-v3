@@ -75,7 +75,7 @@ const COPY: Record<Lang, Strings> = {
     haveAccount: 'უკვე გაქვს ანგარიში?', noAccount: 'არ გაქვს ანგარიში?',
     forgot: 'დაგავიწყდა პაროლი?', useMagic: 'მაგიური ბმულით შესვლა', usePassword: 'პაროლით შესვლა',
     checkEmail: 'შეამოწმე ელ.ფოსტა — ბმული გამოგზავნილია.',
-    registerCheckEmail: 'შეამოწმეთ ელფოსტა — დაადასტურეთ ანგარიში შესვლამდე.', orContinue: 'ან',
+    registerCheckEmail: 'შეამოწმეთ ელფოსტა დასადასტურებლად.', orContinue: 'ან',
     notConfigured: 'ავთენტიფიკაცია ამ გარემოში გამორთულია (demo).',
     back: 'უკან',
     errInvalidEmail: 'შეიყვანე სწორი ელ.ფოსტის მისამართი.',

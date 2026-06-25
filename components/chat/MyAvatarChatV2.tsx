@@ -1078,6 +1078,9 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const abortRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTranscriptRef = useRef('');           // input text snapshot at mic-start
+  // Set true by sendMessage so a late/buffered onresult can't re-populate the box
+  // after we clear it; reset to false when a fresh dictation starts.
+  const sttDiscardRef = useRef(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   // PHASE 49 §4 — the SpeechRecognition instance is created once in a []-deps
   // effect, so its onerror callback would close over a STALE locale/notice. We
@@ -1207,6 +1210,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
+      if (sttDiscardRef.current) return; // a send() discarded this dictation
       let transcript = '';
       for (let i = 0; i < e.results.length; i++) {
         transcript += e.results[i]?.[0]?.transcript ?? '';
@@ -1332,6 +1336,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       assetType: imageUrl ? 'image' : null,
     } });
     dispatch({ type: 'SET_INPUT', text: '' });
+    // Voice: stop the recognizer and DISCARD any buffered transcription so a late
+    // onresult can't re-fill the box after we clear it; reset the dictation base too.
+    sttDiscardRef.current = true;
+    try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    baseTranscriptRef.current = '';
+    dispatch({ type: 'SET_RECORDING', value: false });
     dispatch({ type: 'CLEAR_ATTACHMENTS' });
     dispatch({ type: 'SET_LOADING', value: true });
     setPipeline(derivePipeline(null));
@@ -1681,6 +1691,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       dispatch({ type: 'SET_RECORDING', value: false });
     } else {
       // Snapshot the current composer text so dictation appends, not overwrites.
+      sttDiscardRef.current = false; // fresh dictation — accept transcription again
       baseTranscriptRef.current = inputText.trim();
       // PHASE 49 §4 — lock the transcription decoder to the active locale's BCP-47
       // tag. 'ka-GE' forces the engine to decode the Georgian script + phonology
