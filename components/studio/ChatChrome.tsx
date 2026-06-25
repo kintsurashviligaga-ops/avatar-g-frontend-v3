@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen, Monitor, Moon, Sun,
 } from 'lucide-react';
@@ -90,6 +91,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   // it — they're INSTANT client-side modals (LegalModal) with zero network/iframe, so
   // they paint in one frame instead of flashing an iframe-loaded page.
   const [sheet, setSheet] = useState<null | 'library'>(null);
+  const router = useRouter();
   const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
   const [authed, setAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -339,7 +341,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
 
         {/* Bottom — Library + Settings */}
         <div className="space-y-0.5 border-t border-app-border/10 px-2 py-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
-          <button type="button" onClick={() => { setSheet('library'); setSidebarOpen(false); }} className={sideRow}>
+          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
           </button>
           <button type="button" onClick={() => { setMenuOpen((v) => !v); setSidebarOpen(false); }} className={sideRow}>
