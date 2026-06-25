@@ -1324,6 +1324,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // PHASE 2 L1 — camera controls → clip prompt tokens (move + 1–10 motion intensity).
   const [videoCameraMove, setVideoCameraMove] = useState<'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down'>('auto');
   const [videoMotionIntensity, setVideoMotionIntensity] = useState(5);
+  // PHASE 2 L5 — per-render i2v model (Kling default · Hailuo/MiniMax alternative).
+  const [videoModel, setVideoModel] = useState<'kling' | 'hailuo'>('kling');
   // PHASE 2 L1 — Product-Ad mode: one product photo (hosted URL) + a commercial preset.
   const [productImage, setProductImage] = useState<string | null>(null);
   const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
@@ -1563,6 +1565,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // PHASE 2 L1 — camera controls → clip prompt tokens (apply to every cinema render).
         ...(videoCameraMove !== 'auto' ? { cameraMove: videoCameraMove } : {}),
         motionIntensity: videoMotionIntensity,
+        // PHASE 2 L5 — per-render i2v model (Kling/Hailuo).
+        videoModel,
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
         ...(!isMusicVideo && videoMultiChar && videoDialogue.trim() ? { dialogueScript: videoDialogue.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
@@ -1765,7 +1769,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -4029,6 +4033,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <Chip active={videoTransition === 'dissolve'} onClick={() => setVideoTransition('dissolve')}>◈ {locale === 'en' ? 'Dissolve' : locale === 'ru' ? 'Растворение' : 'დაშლა'}</Chip>
                 <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
                 <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
+              </div>
+            </div>
+
+            {/* PHASE 2 L5 — video engine: Kling vs Hailuo (per-render i2v model) */}
+            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⚙️ {locale === 'en' ? 'Video engine' : locale === 'ru' ? 'Видео-движок' : 'ვიდეო ძრავა'}</span>
+              <div className="flex flex-wrap gap-1.5">
+                <Chip active={videoModel === 'kling'} onClick={() => setVideoModel('kling')}>🎬 Kling</Chip>
+                <Chip active={videoModel === 'hailuo'} onClick={() => setVideoModel('hailuo')}>🌊 Hailuo</Chip>
               </div>
             </div>
 

@@ -76,6 +76,8 @@ const orchestrateSchema = z.object({
   // PHASE 2 L1 — user camera controls (move + motion intensity) → clip prompt tokens.
   cameraMove: z.enum(['auto', 'pan_left', 'pan_right', 'zoom_in', 'zoom_out', 'tilt_up', 'tilt_down']).optional(),
   motionIntensity: z.number().min(1).max(10).optional(),
+  // PHASE 2 L5 — per-render i2v model (Cinema panel Kling/Hailuo toggle).
+  videoModel: z.enum(['kling', 'hailuo']).optional(),
   // Multi-character dialogue script (video panel) → split per speaker (ქალი:/კაცი:/
   // Woman:/Man:), each line voiced in its gendered voice and mixed into one track.
   dialogueScript: z.string().max(4000).optional(),
@@ -199,7 +201,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.dialogueScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -215,6 +217,8 @@ export async function POST(req: NextRequest) {
             // PHASE 2 L1 — camera controls → clip prompt tokens (filmPipeline).
             ...(data.cameraMove ? { cameraMove: data.cameraMove } : {}),
             ...(data.motionIntensity ? { motionIntensity: data.motionIntensity } : {}),
+            // PHASE 2 L5 — per-render i2v model (Kling/Hailuo) → ServiceManager.
+            ...(data.videoModel ? { videoModel: data.videoModel } : {}),
             ...(data.dialogueScript ? { dialogueScript: data.dialogueScript } : {}),
             // v330 — Music Video signals: a soundtrack skips ambient gen; the flag forces a sung song.
             ...(data.soundtrackUrl ? { soundtrackUrl: data.soundtrackUrl } : {}),

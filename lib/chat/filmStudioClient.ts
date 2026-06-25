@@ -159,6 +159,8 @@ export interface DriveFilmOptions {
   /** PHASE 2 L1 — camera controls → clip prompt tokens. */
   cameraMove?: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down';
   motionIntensity?: number;
+  /** PHASE 2 L5 — per-render i2v model (Cinema panel Kling/Hailuo toggle). */
+  videoModel?: 'kling' | 'hailuo';
   /** Multi-character dialogue script (video panel) — split per speaker, mixed into one track. */
   dialogueScript?: string;
   /** Music OFF → no score (voice-only film). */
@@ -668,6 +670,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // PHASE 2 L1 — camera controls (move + motion intensity).
           ...(opts.cameraMove && opts.cameraMove !== 'auto' ? { cameraMove: opts.cameraMove } : {}),
           ...(typeof opts.motionIntensity === 'number' ? { motionIntensity: opts.motionIntensity } : {}),
+          // PHASE 2 L5 — per-render i2v model (Kling/Hailuo).
+          ...(opts.videoModel ? { videoModel: opts.videoModel } : {}),
           ...(opts.dialogueScript?.trim() ? { dialogueScript: opts.dialogueScript.trim() } : {}),
           // v330 — a user-uploaded soundtrack: tell the orchestrator to SKIP the
           // ambient music-generation (Udio) leg entirely (no generation, no charge);

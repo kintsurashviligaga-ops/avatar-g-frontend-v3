@@ -135,6 +135,9 @@ export interface ServiceManagerRequest {
   imageUrl?: string;
   locale?: string;
   confidence?: number;
+  /** PHASE 2 L5 — per-render i2v model override (Cinema panel: Kling vs Hailuo).
+   *  Unset → the REPLICATE_VIDEO_MODEL env default. */
+  videoModel?: 'kling' | 'hailuo';
 }
 
 export interface ServiceManagerResponse {
@@ -367,11 +370,18 @@ export class ServiceManager {
     const aspect = this.toI2vAspect(
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
     );
-    const input = this.buildI2vInput(VIDEO_I2V_MODEL, request.userPrompt, aspect, startImage);
+    // PHASE 2 L5 — per-render i2v model: the Cinema panel's Kling/Hailuo toggle wins,
+    // else the REPLICATE_VIDEO_MODEL env default. buildI2vInput already shapes the
+    // input per model family (kling start_image / minimax first_frame_image).
+    const model =
+      request.videoModel === 'hailuo' ? 'minimax/hailuo-02'
+      : request.videoModel === 'kling' ? 'kwaivgi/kling-v1.6-standard'
+      : VIDEO_I2V_MODEL;
+    const input = this.buildI2vInput(model, request.userPrompt, aspect, startImage);
     const promptHash = this.hashPrompt(request.userPrompt);
 
     try {
-      const res = await fetch(`https://api.replicate.com/v1/models/${VIDEO_I2V_MODEL}/predictions`, {
+      const res = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         cache: 'no-store',
@@ -380,7 +390,7 @@ export class ServiceManager {
       });
       if (!res.ok) {
         // eslint-disable-next-line no-console
-        console.warn(`[i2v] ${VIDEO_I2V_MODEL} create ${res.status} → LTX fallback`);
+        console.warn(`[i2v] ${model} create ${res.status} → LTX fallback`);
         return null;
       }
       const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
@@ -393,7 +403,7 @@ export class ServiceManager {
           success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
           message: 'Video generation completed successfully.', assetUrl: immediateUrl, assetType: 'video',
           predictionStatus: 'succeeded',
-          metadata: { provider: 'replicate', model: VIDEO_I2V_MODEL, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, providerTaskId: pred.id, promptHash },
+          metadata: { provider: 'replicate', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, providerTaskId: pred.id, promptHash },
         };
       }
       const taskRef = this.encodeTaskRef({
@@ -402,16 +412,16 @@ export class ServiceManager {
         responseType: 'video', promptHash, createdAt: Date.now(),
       });
       // eslint-disable-next-line no-console
-      console.log(`[i2v] ${VIDEO_I2V_MODEL} accepted clip (${pred.id}) — photorealistic i2v engaged`);
+      console.log(`[i2v] ${model} accepted clip (${pred.id}) — photorealistic i2v engaged`);
       return {
         success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-        message: `${VIDEO_I2V_MODEL} accepted the request. Polling for completion.`,
+        message: `${model} accepted the request. Polling for completion.`,
         predictionId: taskRef, predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
-        metadata: { provider: 'replicate', model: VIDEO_I2V_MODEL, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: pred.id, promptHash },
+        metadata: { provider: 'replicate', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: pred.id, promptHash },
       };
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(`[i2v] ${VIDEO_I2V_MODEL} create error → LTX fallback:`, err instanceof Error ? err.message : err);
+      console.warn(`[i2v] create error → LTX fallback:`, err instanceof Error ? err.message : err);
       return null;
     }
   }

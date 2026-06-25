@@ -325,6 +325,10 @@ async function renderClip(
             userPrompt: clipReq.userPrompt,
             selectedOptions: clipReq.selectedOptions,
             locale: input.locale,
+            // PHASE 2 L5 — per-render i2v model (Cinema panel Kling/Hailuo toggle).
+            ...(input.metadata?.videoModel === 'hailuo' || input.metadata?.videoModel === 'kling'
+              ? { videoModel: input.metadata.videoModel }
+              : {}),
           }),
         (r) => r.predictionId || r.assetUrl || null,
       ).then((r) => r.predictionId || r.assetUrl || null);
