@@ -340,7 +340,7 @@ async function compositeMusicVideo(
   storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
   musicUrl: string,
   orientation: 'landscape' | 'vertical',
-  transition: 'crossfade' | 'cut',
+  transition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
   signal: AbortSignal,
   mine: () => boolean,
 ): Promise<string | null> {
@@ -441,7 +441,7 @@ async function compositeDocumentary(
   dialogue: string,
   gender: 'male' | 'female',
   orientation: 'landscape' | 'vertical',
-  transition: 'crossfade' | 'cut',
+  transition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
   signal: AbortSignal,
   mine: () => boolean,
 ): Promise<string | null> {
@@ -549,9 +549,41 @@ const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru
   ['electronic', { ka: 'ელექტრონული', en: 'Electronic', ru: 'Электроника' }],
   ['jazz', { ka: 'ჯაზი', en: 'Jazz', ru: 'Джаз' }],
   ['rock', { ka: 'როკი', en: 'Rock', ru: 'Рок' }],
-  ['classical', { ka: 'კლასიკა', en: 'Classical', ru: 'Классика' }],
+  ['classical', { ka: 'კლასიკური', en: 'Classical', ru: 'Классика' }],
+  ['trap', { ka: 'ტრეპი', en: 'Trap', ru: 'Трэп' }],
+  ['reggae', { ka: 'რეგი', en: 'Reggae', ru: 'Регги' }],
+  ['blues', { ka: 'ბლუზი', en: 'Blues', ru: 'Блюз' }],
+  ['metal', { ka: 'მეტალი', en: 'Metal', ru: 'Метал' }],
+  ['country', { ka: 'ქანთრი', en: 'Country', ru: 'Кантри' }],
+  ['ambient', { ka: 'ემბიენტი', en: 'Ambient', ru: 'Эмбиент' }],
+  ['lo-fi', { ka: 'ლო-ფაი', en: 'Lo-fi', ru: 'Лоу-фай' }],
 ];
-const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial'] as const;
+const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
+
+// Split text into TTS-sized chunks so a LONG read-aloud is never truncated by a
+// single TTS request. Breaks on sentence terminators (Latin · Georgian · CJK) and
+// newlines, merges fragments up to ~600 chars, and hard-splits any runaway sentence.
+function chunkForTts(text: string): string[] {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const sentences = clean.match(/[^.!?。！？\n]+[.!?。！？]+|\S[^.!?。！？\n]*$/g) || [clean];
+  const MAX = 600;
+  const chunks: string[] = [];
+  let buf = '';
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s) continue;
+    if (`${buf} ${s}`.trim().length > MAX) {
+      if (buf) { chunks.push(buf.trim()); buf = ''; }
+      if (s.length > MAX) { for (let k = 0; k < s.length; k += MAX) chunks.push(s.slice(k, k + MAX)); }
+      else buf = s;
+    } else {
+      buf = buf ? `${buf} ${s}` : s;
+    }
+  }
+  if (buf.trim()) chunks.push(buf.trim());
+  return chunks;
+}
 
 // A small, theme-tokenised option chip used by the per-service options bar.
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -1244,7 +1276,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [writingLyrics, setWritingLyrics] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
   // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
-  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical'>('vertical');
+  // 16:9 landscape · 9:16 vertical · 1:1 square · 4:5 portrait. The render pipeline
+  // currently masters landscape/vertical, so square/portrait map to the nearest
+  // (vertical) at dispatch — the selector still records the user's exact choice.
+  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical' | 'square' | 'portrait'>('vertical');
   const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
   // Spoken voice for the film — ON by default so the character actually TALKS (and,
   // with the lip-sync pass, the lips move with it). When on, a localized cue is
@@ -1261,7 +1296,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Mutually exclusive with an uploaded face: picking one clears the other.
   const [lipPreset, setLipPreset] = useState<string | null>(null);
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
-  const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut'>('crossfade');
+  const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide'>('crossfade');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
   // (empty = auto-written narration). The clear "what should they say" field.
   const [videoSpeech, setVideoSpeech] = useState('');
@@ -2378,7 +2413,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Storyboard-FIRST: plan the scenes + a frame each for the user to review; the
       // approved frames then anchor the full render. Music Video Mode is forced 9:16
       // vertical so the storyboard frames match the full-screen mobile render.
-      const sbOrientation = videoMode === 'musicvideo' ? 'vertical' : videoOrientation;
+      const sbOrientation: 'landscape' | 'vertical' = videoMode === 'musicvideo' ? 'vertical' : videoOrientation === 'landscape' ? 'landscape' : 'vertical';
       await createStoryboard(filmPrompt, refs, sbOrientation);
       return;
     }
@@ -2538,7 +2573,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
-      const routeOrientation: 'landscape' | 'vertical' = musicVideo ? 'vertical' : videoOrientation;
+      const routeOrientation: 'landscape' | 'vertical' = musicVideo ? 'vertical' : videoOrientation === 'landscape' ? 'landscape' : 'vertical';
       const routeRefs = [
         ...(videoCharacterRef ? [videoCharacterRef] : []),
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
@@ -2731,32 +2766,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const live = () => token === ttsTokenRef.current;
     setSpeakingIdx(i);
     setSpeakPhase('loading'); // spinner while eleven_v3 synthesises the cloned voice
+
+    // CHUNKED read-aloud: long replies were getting cut off because a single TTS
+    // request truncates. Split into sentence-sized chunks and synthesise + play
+    // them back-to-back (eleven_v3 cloned Georgian voice each time), so the WHOLE
+    // message is read. The next chunk is pre-fetched while the current one plays.
+    const chunks = chunkForTts(text);
+    if (!chunks.length) { setSpeakingIdx(null); setSpeakPhase(null); return; }
+
+    const synth = async (chunk: string): Promise<string | null> => {
+      try {
+        const res = await fetch('/api/elevenlabs/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: chunk, locale }),
+        });
+        if (!res.ok) return null;
+        return URL.createObjectURL(await res.blob());
+      } catch { return null; }
+    };
+
     try {
-      const res = await fetch('/api/elevenlabs/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.slice(0, 5000), locale }),
-      });
-      if (!live()) return; // superseded/cancelled during synthesis
-      if (!res.ok) { setSpeakingIdx(null); setSpeakPhase(null); return; }
-      const url = URL.createObjectURL(await res.blob());
-      if (!live()) { URL.revokeObjectURL(url); return; }
-      const audio = new Audio(url);
-      ttsAudioRef.current = audio;
-      const clear = () => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); } URL.revokeObjectURL(url); if (ttsAudioRef.current === audio) ttsAudioRef.current = null; };
-      audio.onended = clear;
-      audio.onerror = clear;
-      // Drive state from events, not just play()'s promise: a browser that leaves
-      // play() pending (strict autoplay) must not strand the spinner. onplaying flips
-      // to 'playing'; a timeout recovers to 'playing'/null if it never starts.
-      audio.onplaying = () => { if (live()) setSpeakPhase('playing'); };
-      audio.play()
-        .then(() => { if (live()) setSpeakPhase('playing'); })
-        .catch(() => { if (live()) { setSpeakingIdx(null); setSpeakPhase(null); ttsAudioRef.current = null; } });
-      window.setTimeout(() => {
-        if (live()) setSpeakPhase((p) => (p === 'loading' ? (audio.paused ? null : 'playing') : p));
-        if (live() && audio.paused && ttsAudioRef.current === audio) { /* blocked → reset bubble */ setSpeakingIdx((s) => (s === i ? null : s)); }
-      }, 1800);
+      let nextUrlPromise: Promise<string | null> = synth(chunks[0]!);
+      for (let idx = 0; idx < chunks.length; idx++) {
+        const url = await nextUrlPromise;
+        if (!live()) { if (url) URL.revokeObjectURL(url); return; }
+        // Kick off the next chunk's synthesis while this one plays (hides the gap).
+        nextUrlPromise = idx + 1 < chunks.length ? synth(chunks[idx + 1]!) : Promise.resolve(null);
+        if (!url) continue; // a chunk failed → skip it, keep reading the rest
+        const audio = new Audio(url);
+        ttsAudioRef.current = audio;
+        if (live()) setSpeakPhase('playing');
+        await new Promise<void>((resolve) => {
+          const done = () => { if (ttsAudioRef.current === audio) ttsAudioRef.current = null; URL.revokeObjectURL(url); resolve(); };
+          audio.onended = done;
+          audio.onerror = done;
+          audio.play().catch(done);
+        });
+        if (!live()) return; // stopped mid-read
+      }
+      if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
     } catch {
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
       ttsAudioRef.current = null;
@@ -3035,7 +3084,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
-      className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-4 pt-2 text-app-text"
+      className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden px-4 pt-2 text-app-text"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       {/* Chat-history button — opens the list of past conversations (resume/delete). */}
@@ -3054,7 +3103,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const el = e.currentTarget;
           setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
         }}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pb-3 pt-1"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
       >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
@@ -3459,7 +3508,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
             affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
             collapses it. Lives at the top of the scroll area so it's always reachable. */}
@@ -3727,6 +3776,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
                     <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
                   </button>
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('square')} aria-label="1:1" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${videoMode !== 'musicvideo' && videoOrientation === 'square' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 30, height: 30 }} />
+                    <span className={`text-[10.5px] font-medium ${videoMode !== 'musicvideo' && videoOrientation === 'square' ? 'text-app-accent' : 'text-app-muted'}`}>1:1</span>
+                  </button>
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('portrait')} aria-label="4:5" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                    <span className={`block rounded-[3px] border-2 transition-colors ${videoMode !== 'musicvideo' && videoOrientation === 'portrait' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 26, height: 32 }} />
+                    <span className={`text-[10.5px] font-medium ${videoMode !== 'musicvideo' && videoOrientation === 'portrait' ? 'text-app-accent' : 'text-app-muted'}`}>4:5</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -3745,14 +3802,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
                     )}
                   </div>
-                  {/* Narrator voice — female/male cloned Georgian voice. Shown when
-                      narration is on (single-narrator mode; multi-character uses its
-                      own per-line voices). Hidden when the user's own voice is chosen. */}
-                  {videoNarration && !videoMultiChar && !videoMyVoiceNarration && (
+                  {/* Character voice — female/male cloned Georgian voice, or "Both"
+                      (ორივე) which flips on multi-character mode (per-speaker voices,
+                      script split below). Shown when narration is on and not using
+                      the user's own trained voice. */}
+                  {videoNarration && !videoMyVoiceNarration && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Narrator:' : locale === 'ru' ? 'Диктор:' : 'დიქტორი:'}</span>
-                      <Chip active={videoNarratorGender === 'female'} onClick={() => setVideoNarratorGender('female')}>👩 {locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
-                      <Chip active={videoNarratorGender === 'male'} onClick={() => setVideoNarratorGender('male')}>👨 {locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
+                      <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Character voice:' : locale === 'ru' ? 'Голос персонажа:' : 'პერსონაჟის ხმა:'}</span>
+                      <Chip active={!videoMultiChar && videoNarratorGender === 'female'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('female'); }}>👩 {locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
+                      <Chip active={!videoMultiChar && videoNarratorGender === 'male'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('male'); }}>👨 {locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
+                      <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>👫 {locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
                     </div>
                   )}
                 </div>
@@ -3842,6 +3901,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                 <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
                 <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
+                <Chip active={videoTransition === 'dissolve'} onClick={() => setVideoTransition('dissolve')}>◈ {locale === 'en' ? 'Dissolve' : locale === 'ru' ? 'Растворение' : 'დაშლა'}</Chip>
+                <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
+                <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
               </div>
             </div>
           </div>

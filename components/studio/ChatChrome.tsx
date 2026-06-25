@@ -185,7 +185,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
           .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string')
           .map((c) => ({ id: c.id, title: (c.title || 'New chat').trim() || 'New chat', updatedAt: c.updatedAt ?? 0 }))
           .sort((a, b) => b.updatedAt - a.updatedAt)
-          .slice(0, 40),
+          .slice(0, 20), // FIX 7D — cap the history list to the 20 most recent
       );
     } catch {
       /* ignore corrupt history */

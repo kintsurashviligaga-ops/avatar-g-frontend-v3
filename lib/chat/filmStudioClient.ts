@@ -127,7 +127,7 @@ export interface DriveFilmOptions {
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
-  transition?: 'crossfade' | 'cut';
+  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide';
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
   /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
@@ -750,7 +750,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // the caption language for the burned-in lower-third (the app locale).
     const musicVideoMode = Boolean(opts.musicVideoMode);
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
+    // The assembler masters a hard 'cut' or a smooth crossfade; the richer panel
+    // transitions (dissolve/zoom/slide) degrade to crossfade until xfade-named
+    // transitions land in the filtergraph.
+    const assembleTransition: 'crossfade' | 'cut' = opts.transition === 'cut' ? 'cut' : 'crossfade';
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, assembleTransition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }

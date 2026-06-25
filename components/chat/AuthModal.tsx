@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft } from 'lucide-react';
@@ -129,6 +130,7 @@ const COPY: Record<Lang, Strings> = {
 
 export default function AuthModal({ open, locale, onClose, onAuthed, initialMode = 'login' }: AuthModalProps) {
   const t = COPY[locale] ?? COPY.ka;
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -172,7 +174,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        onAuthed?.(); onClose();
+        onAuthed?.(); onClose(); router.refresh();
       } else if (mode === 'register') {
         // PRIMARY PATH — server-side admin registration that confirms the email
         // immediately. The project requires email confirmation but its mailer
@@ -205,7 +207,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         if (registered) {
           const { error } = await supabase.auth.signInWithPassword({ email, password });
           if (error) throw error;
-          onAuthed?.(); onClose();
+          onAuthed?.(); onClose(); router.refresh();
         } else {
           // FALLBACK — classic client signUp. If the project ever returns a live
           // session (confirmation OFF) we log straight in; otherwise show a clear,
@@ -216,7 +218,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
           });
           if (error) throw error;
-          if (data.session) { onAuthed?.(); onClose(); }
+          if (data.session) { onAuthed?.(); onClose(); router.refresh(); }
           else setNotice(t.registerCheckEmail);
         }
       } else if (mode === 'magic') {
