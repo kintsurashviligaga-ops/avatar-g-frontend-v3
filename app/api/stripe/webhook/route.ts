@@ -9,8 +9,9 @@ import {
 } from '@/lib/stripe/subscriptions';
 import { updateAccountStatus } from '@/lib/stripe/connect';
 import { updateCommissionStatus } from '@/lib/stripe/payments';
-import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel } from '@/lib/billing/wallet-ledger';
+import { createNotification } from '@/lib/notifications/store';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
 import { enqueueQueueItem } from '@/lib/platform/queues';
 
@@ -329,6 +330,11 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
         if (userId) {
           await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
           console.info('[Stripe Webhook] wallet top-up credited', { userId, amountGel, sessionId: session.id });
+          // PHASE 3 Task 3 — payment-success notification (service role; fail-open).
+          try {
+            const svc = createServiceRoleClient();
+            if (svc) await createNotification(svc, userId, 'payment', `კრედიტები დამატებულია: +${amountGel} ₾ ✅`);
+          } catch { /* fail-open — never block the credit on a notification */ }
         } else {
           console.error('[Stripe Webhook] wallet top-up: no user for customer', customerId);
         }

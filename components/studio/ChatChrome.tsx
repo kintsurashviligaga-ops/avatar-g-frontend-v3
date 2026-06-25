@@ -23,6 +23,7 @@ import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
+import NotificationBell from '@/components/notifications/NotificationBell';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useTheme } from '@/lib/theme/ThemeContext';
@@ -376,6 +377,8 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
+              {/* PHASE 3 Task 3 — notification bell (signed-in users). */}
+              {authed && <NotificationBell locale={locale} />}
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
               <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
                 className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">

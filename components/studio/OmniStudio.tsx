@@ -1149,12 +1149,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const credits = creditCostFor(kind, opts);
     if (credits <= 0) return;
     setCreditToast({ credits, balanceGel: null });
-    // Pull the live balance for the toast's "balance" line (fail-soft → line omitted).
+    // PHASE 3 Task 3 — file a "your <kind> is ready" notification (fail-open if the
+    // notifications table isn't migrated). avatar/remix read as video to the user.
+    const notifType: 'video' | 'music' | 'image' = kind === 'music' ? 'music' : kind === 'image' ? 'image' : 'video';
+    const readyMsg = notifType === 'music'
+      ? (locale === 'en' ? 'Your music is ready! 🎵' : locale === 'ru' ? 'Музыка готова! 🎵' : 'მუსიკა მზადაა! 🎵')
+      : notifType === 'image'
+        ? (locale === 'en' ? 'Your image is ready! 🖼' : locale === 'ru' ? 'Изображение готово! 🖼' : 'სურათი მზადაა! 🖼')
+        : (locale === 'en' ? 'Your video is ready! 🎬' : locale === 'ru' ? 'Ваше видео готово! 🎬' : 'თქვენი ვიდეო მზადაა! 🎬');
+    const fileNotif = (type: string, message: string) => {
+      void fetch('/api/notifications', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ type, message }),
+      }).then(() => { try { window.dispatchEvent(new Event('myavatar:notifications-refresh')); } catch { /* ignore */ } }).catch(() => {});
+    };
+    fileNotif(notifType, readyMsg);
+    // Pull the live balance for the toast's "balance" line + a low-credit warning.
     void (async () => {
       try {
         const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
         const j = (await res.json().catch(() => ({}))) as { balance?: number | null };
-        if (typeof j?.balance === 'number') setCreditToast((c) => (c ? { ...c, balanceGel: j.balance as number } : c));
+        if (typeof j?.balance === 'number') {
+          setCreditToast((c) => (c ? { ...c, balanceGel: j.balance as number } : c));
+          // Credits low: warn under ~1 ₾ (≈10 credits at 0.10 ₾/cr).
+          if (j.balance < 1) fileNotif('credits_low', locale === 'en' ? 'Credits almost out ⚠️' : locale === 'ru' ? 'Кредиты заканчиваются ⚠️' : 'კრედიტები თითქმის ამოიწურა ⚠️');
+        }
       } catch { /* fail-soft */ }
     })();
     // Record the spend in credit_transactions (fail-open if the table/route is absent).
@@ -1163,7 +1182,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       body: JSON.stringify({ action: kind, creditsDelta: -credits }),
     }).catch(() => {});
     setTimeout(() => setCreditToast(null), 4000);
-  }, []);
+  }, [locale]);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
   // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
