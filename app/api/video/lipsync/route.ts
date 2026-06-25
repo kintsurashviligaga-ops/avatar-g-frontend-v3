@@ -99,15 +99,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
-  let body: { videoUrl?: unknown; audioUrl?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; characterRef?: unknown; sceneIndex?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ jobId: null });
   }
 
-  // Resolve the face image (external https, internal https, OR a bare upload path).
-  const videoUrl = await resolveMedia(body.videoUrl);
+  // Resolve the face image. PREFER an explicit `characterRef` (a CLEAN front-facing
+  // character portrait) over `videoUrl` — HeyGen's talking_photo needs a clear, evenly
+  // lit face, and feeding it a stylized cinematic SCENE FRAME is exactly why the
+  // music-video lip-sync was returning null (the HeyGen path itself self-tests as
+  // working). `sceneIndex` rides along for callers that lip-sync a single scene clip.
+  const videoUrl = (await resolveMedia(body.characterRef)) ?? (await resolveMedia(body.videoUrl));
   if (!videoUrl) return NextResponse.json({ jobId: null });
   let audioUrl: string = (await resolveMedia(body.audioUrl)) ?? videoUrl;
 

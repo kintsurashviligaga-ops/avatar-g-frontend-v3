@@ -17,7 +17,7 @@ import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, 
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
-import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine } from '@/lib/chat/filmAgentRoster';
+import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -303,8 +303,10 @@ async function heygenSingerPerformance(faceUrl: string, audioUrl: string, orient
   try {
     const r = await fetch('/api/video/lipsync', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the vocal.
-      body: JSON.stringify({ videoUrl: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }),
+      // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the
+      // vocal. `characterRef` (the CLEAN portrait) is the preferred face — HeyGen needs a
+      // front-facing portrait, not a stylized scene frame.
+      body: JSON.stringify({ videoUrl: faceUrl, characterRef: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }),
       credentials: 'include', signal,
     });
     jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
@@ -1042,6 +1044,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Live elapsed seconds during a generation — drives the progress clock + bar.
   const [elapsed, setElapsed] = useState(0);
   const genStartRef = useRef(0);
+  // Live Director's-Console status for the post-assemble Lip-Sync agent (the music-video
+  // singer sync). 'skipped' when no lip-sync is wanted; flips queued→processing→completed.
+  const lipsyncStageRef = useRef<FilmAgentStatus>('idle');
   // Scroll-to-bottom affordance — shown only when the user scrolled up.
   const [showJump, setShowJump] = useState(false);
   // Inline mode selector popover (the Gemini "Flash ⌄" analog).
@@ -1272,7 +1277,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string) => {
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string, characterPortrait?: string) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
@@ -1287,6 +1292,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
       // mode keeps narration-forward behaviour (voice-over + ducked score).
       const isMusicVideo = videoMode === 'musicvideo';
+      // Director's-Console Lip-Sync agent: RUN it (queued → processing → done) only when a
+      // music video has lip-sync ON; otherwise it shows "Skipped" (no dialogue to sync).
+      lipsyncStageRef.current = isMusicVideo && videoLipsync ? 'queued' : 'skipped';
       // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
       // music video we build the song ourselves (Georgian rap on the cloned KA voice over a
       // funk bed) and use it as the soundtrack. Fail-open → normal EL Music (English).
@@ -1354,7 +1362,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // Fold the live matrix into the 9-agent roster + activity log so the
           // Director's Console renders real per-agent state and a streaming feed
           // (not a fake timer) right in the bubble.
-          const roster = deriveFilmRoster(p);
+          const roster = deriveFilmRoster(p, lipsyncStageRef.current);
           const freshLog = deriveFilmLog(p, locale);
           const nowElapsed = Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000));
           setMessages((prev) => {
@@ -1399,11 +1407,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return next;
       });
 
-      // Companion HeyGen singer performance — needs the resolved song URL + a clear close-up face.
-      const singerFace =
-        (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
-        ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
-      if (res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace && mine()) {
+      // Companion HeyGen singer performance — needs the resolved song URL + a CLEAN
+      // FRONT-FACING face. HeyGen's talking_photo (self-tests as working) returns null
+      // when fed a stylized cinematic SCENE FRAME — that was the lip-sync bug. So prefer
+      // the character-anchor portrait / uploaded selfie (characterPortrait); generate one
+      // on-demand if absent; only fall back to a scene frame as a last resort.
+      let singerFace: string | null =
+        characterPortrait && /^https?:/i.test(characterPortrait) ? characterPortrait : null;
+      if (!singerFace && isMusicVideo && mine()) {
+        try {
+          const sc = Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
+          const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ prompt: filmPrompt, orientation: 'vertical', style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
+          const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
+          if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) singerFace = aj.anchorUrl;
+        } catch { /* fall through to a scene frame */ }
+      }
+      if (!singerFace) {
+        singerFace = (storyboardScenes ?? []).find((s) => /close|medium/i.test(s.beat ?? '') && s.frameUrl)?.frameUrl
+          ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
+      }
+      // Patch the Lip-Sync card on whichever bubble carries the Director's Console roster.
+      const patchLipsyncCard = (st: FilmAgentStatus) => {
+        lipsyncStageRef.current = st;
+        if (!mine()) return;
+        setMessages((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            const m = next[i];
+            if (m && m.role === 'assistant' && m.filmRoster) {
+              next[i] = { ...m, filmRoster: m.filmRoster.map((a) => (a.id === 'lipsync' ? { ...a, status: st, pct: st === 'completed' || st === 'skipped' ? 100 : st === 'processing' ? 50 : 0 } : a)) };
+              break;
+            }
+          }
+          return next;
+        });
+      };
+      const willLipsync = Boolean(res.ok && res.masterUrl && isMusicVideo && videoLipsync && res.musicUrl && singerFace);
+      // Lip-sync wanted but un-runnable (no song / no face) → mark Skipped, not stuck "Queued".
+      if (!willLipsync && lipsyncStageRef.current === 'queued') patchLipsyncCard('skipped');
+      if (willLipsync && res.musicUrl && singerFace && mine()) {
+        patchLipsyncCard('processing');
         // ONE status bubble that becomes the COMPOSITE (cinematic wides + lip-synced singer
         // close-ups, with the FULL song as the master audio). We no longer surface the
         // isolated-vocal performance on its own — it carried no backing music, which is the
@@ -1421,6 +1464,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         } catch { /* fail-open → full mix */ }
         const perf = await heygenSingerPerformance(singerFace, vocalForSync, isMusicVideo ? 'vertical' : orientation, ac.signal, mine);
         const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
+        // Fail-open by design: a HeyGen miss keeps the un-synced master, so a null perf is
+        // a clean "Skipped" on the console, not an error banner.
+        patchLipsyncCard(perfOk ? 'completed' : 'skipped');
         // Composite the synced close-ups INTO the cinematic montage (full song = master audio).
         const composited = (perfOk && perf && res.matrix && mine())
           ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, isMusicVideo ? 'vertical' : orientation, videoTransition, ac.signal, mine)
@@ -1471,7 +1517,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoStyle, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, hasTrainedVoice, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -3885,7 +3931,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined);
+            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0]);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }

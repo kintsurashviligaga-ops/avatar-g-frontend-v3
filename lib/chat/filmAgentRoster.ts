@@ -14,7 +14,7 @@
  */
 import type { FilmStudioProgress } from '@/lib/chat/filmStudioClient';
 
-export type FilmAgentStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'error';
+export type FilmAgentStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'error' | 'skipped';
 
 export type FilmAgentId =
   | 'prompt'
@@ -52,7 +52,7 @@ export const FILM_AGENT_ORDER: FilmAgentId[] = [
   'remix',
 ];
 
-const PCT: Record<FilmAgentStatus, number> = { idle: 0, queued: 0, processing: 50, completed: 100, error: 100 };
+const PCT: Record<FilmAgentStatus, number> = { idle: 0, queued: 0, processing: 50, completed: 100, error: 100, skipped: 100 };
 
 /**
  * Fold a live `FilmStudioProgress` snapshot into the 9-agent roster. Accepts
@@ -186,7 +186,7 @@ export function deriveFilmRoster(
 
 /** Overall % across the *active* chain — dormant idle specialists don't drag it down. */
 export function overallFilmPct(roster: FilmAgentVM[]): number {
-  const active = roster.filter((r) => r.status !== 'idle');
+  const active = roster.filter((r) => r.status !== 'idle' && r.status !== 'skipped');
   if (!active.length) return 0;
   const sum = active.reduce((s, r) => s + r.pct, 0);
   return Math.round(sum / active.length);

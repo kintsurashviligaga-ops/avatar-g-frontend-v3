@@ -78,6 +78,7 @@ const STATUS_LABEL: Record<FilmAgentStatus, Record<Loc, string>> = {
   processing: { en: 'Working', ru: 'В работе', ka: 'მუშაობს' },
   completed: { en: 'Done', ru: 'Готово', ka: 'მზადაა' },
   error: { en: 'Error', ru: 'Ошибка', ka: 'შეცდომა' },
+  skipped: { en: 'Skipped', ru: 'Пропущено', ka: 'გამოტოვებულია' },
 };
 
 // Adaptive per-agent micro-step text (Master-Prompt §P6) — what the agent is
@@ -127,6 +128,11 @@ const STATUS_STYLE: Record<FilmAgentStatus, { card: string; pill: string; bar: s
     card: 'border-red-500/30 bg-red-500/[0.06]',
     pill: 'bg-red-500/15 text-red-500',
     bar: 'bg-red-500/70',
+  },
+  skipped: {
+    card: 'border-app-border/12 bg-app-elevated/30 opacity-55',
+    pill: 'bg-app-border/15 text-app-muted/70',
+    bar: 'bg-app-muted/30',
   },
 };
 
