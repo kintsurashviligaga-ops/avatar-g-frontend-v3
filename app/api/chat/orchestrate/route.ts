@@ -59,7 +59,7 @@ const orchestrateSchema = z.object({
   referenceImages: z.array(z.string().min(1)).max(3).optional(),
   // Frame orientation for the 30-second film — drives the per-clip aspect ratio
   // so the stitched cut keeps ONE shape (was always 9:16 regardless of choice).
-  orientation: z.enum(['landscape', 'vertical']).optional(),
+  orientation: z.enum(['landscape', 'vertical', 'square', 'portrait']).optional(),
   // Approved storyboard frames (ordered by scene) → per-scene identity anchors so
   // the rendered film matches the storyboard the user reviewed. Capped at 8.
   sceneFrames: z.array(z.string().min(1)).max(8).optional(),

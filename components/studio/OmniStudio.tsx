@@ -661,7 +661,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imag
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
-  orientation?: 'landscape' | 'vertical' }
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait' }
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -795,7 +795,7 @@ interface StoryboardScene { ordinal: number; beat: string; prompt: string; frame
 interface StoryboardState {
   filmPrompt: string;
   refs: string[];
-  orientation: 'landscape' | 'vertical';
+  orientation: 'landscape' | 'vertical' | 'square' | 'portrait';
   seed: number;
   scenes: StoryboardScene[];
   /** LLM story scenes (one per scene) — threaded to the render so clips match. A
@@ -1468,7 +1468,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string, characterPortrait?: string) => {
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string, characterPortrait?: string) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
@@ -1777,7 +1777,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
   // never blocked. A user Cancel (abort) stops quietly without rendering.
-  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical') => {
+  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait') => {
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
@@ -2413,7 +2413,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Storyboard-FIRST: plan the scenes + a frame each for the user to review; the
       // approved frames then anchor the full render. Music Video Mode is forced 9:16
       // vertical so the storyboard frames match the full-screen mobile render.
-      const sbOrientation: 'landscape' | 'vertical' = videoMode === 'musicvideo' ? 'vertical' : videoOrientation === 'landscape' ? 'landscape' : 'vertical';
+      const sbOrientation = videoMode === 'musicvideo' ? 'vertical' : videoOrientation;
       await createStoryboard(filmPrompt, refs, sbOrientation);
       return;
     }
@@ -2573,7 +2573,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
-      const routeOrientation: 'landscape' | 'vertical' = musicVideo ? 'vertical' : videoOrientation === 'landscape' ? 'landscape' : 'vertical';
+      const routeOrientation = musicVideo ? 'vertical' : videoOrientation;
       const routeRefs = [
         ...(videoCharacterRef ? [videoCharacterRef] : []),
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
@@ -3238,7 +3238,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       black box); preload=metadata forces that frame to load up front. */}
                   {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
                       pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className={`${(m.orientation ?? videoOrientation) === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : 'aspect-video w-full'} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"

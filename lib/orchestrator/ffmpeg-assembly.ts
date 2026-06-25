@@ -123,11 +123,24 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const segDurs = segs.map((s) => Number(s.durationSec)).filter((d) => Number.isFinite(d) && d > 0);
     const clipSec = segDurs.length ? Math.max(1, Math.round(segDurs.reduce((a, b) => a + b, 0) / segDurs.length)) : 6;
     const transSec = transition === 'cut' ? 0 : 1;
-    // 9:16 vertical (TikTok/Reels/Shorts) when the orientation / aspect says so.
-    const orientation: 'landscape' | 'vertical' =
-      String(g.orientation || g.aspect || '').replace(':', 'x') === '9x16' || String(g.orientation) === 'vertical'
-        ? 'vertical'
-        : 'landscape';
+    // Output canvas: landscape 16:9 · vertical 9:16 · square 1:1 · portrait 4:5.
+    // Resolved from globalRender.orientation (the panel's Format) or a raw aspect.
+    const orientation: 'landscape' | 'vertical' | 'square' | 'portrait' = (() => {
+      const o = String(g.orientation || '').toLowerCase();
+      if (o === 'vertical' || o === 'square' || o === 'portrait' || o === 'landscape') return o;
+      const a = String(g.orientation || g.aspect || '').replace(':', 'x');
+      if (a === '9x16') return 'vertical';
+      if (a === '1x1') return 'square';
+      if (a === '4x5') return 'portrait';
+      return 'landscape';
+    })();
+    // Canvas dimensions for overlay PNGs (brand lower-third, music bug) — must match
+    // the filtergraph's master canvas so overlays composite at 1:1 pixels.
+    const [ovW, ovH]: readonly [number, number] =
+      orientation === 'vertical' ? [1080, 1920]
+        : orientation === 'square' ? [1080, 1080]
+          : orientation === 'portrait' ? [1080, 1350]
+            : [1920, 1080];
 
     // Cinematic 3D LUT grade. The look is chosen by the orchestrator (globalRender.lut)
     // or auto-classified from the brief (night/neon → purple-gold, golden → warm).
@@ -159,8 +172,8 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       const raw = typeof g.brandLowerThird === 'string' ? g.brandLowerThird : '';
       if (raw) {
         const spec = JSON.parse(raw) as MarketingOverlay;
-        const W = orientation === 'vertical' ? 1080 : 1920;
-        const H = orientation === 'vertical' ? 1920 : 1080;
+        const W = ovW;
+        const H = ovH;
         const png = await renderOverlayPng(spec, W, H);
         if (png) {
           const p = join(dir, 'brand-lowerthird.png');
@@ -184,8 +197,8 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       const raw = typeof g.musicBug === 'string' ? g.musicBug : '';
       if (raw) {
         const spec = JSON.parse(raw) as MusicBug;
-        const W = orientation === 'vertical' ? 1080 : 1920;
-        const H = orientation === 'vertical' ? 1920 : 1080;
+        const W = ovW;
+        const H = ovH;
         const png = await renderMusicBugPng(spec, W, H);
         if (png) {
           const p = join(dir, 'music-bug.png');

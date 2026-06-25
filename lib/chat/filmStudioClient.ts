@@ -125,7 +125,7 @@ export interface DriveFilmOptions {
    *  'duet' → a male + female duet (two lead vocalists). */
   vocalGender?: 'male' | 'female' | 'duet';
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
-  orientation?: 'landscape' | 'vertical';
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
   transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide';
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
@@ -448,10 +448,10 @@ async function assembleMaster(
   statusTokenId: string | undefined,
   scorePrompt: string,
   signal?: AbortSignal,
-  orientation?: 'landscape' | 'vertical',
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait',
   voiceUrl?: string | null,
   sfxUrl?: string | null,
-  transition?: 'crossfade' | 'cut',
+  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
   myVoiceNarration?: boolean,
   noMusic?: boolean,
   musicVideoMode?: boolean,
@@ -489,7 +489,9 @@ async function assembleMaster(
       ...(sfxUrl ? { sfxUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
-      ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
+      // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
+      // landscape is the route default.
+      ...(orientation && orientation !== 'landscape' ? { orientation } : {}),
       // v330 — explicit Music Video mode → song-master mix + branded lower-third.
       // A supplied soundtrack implies music-video intent.
       ...(musicVideoMode || customAudioUrl ? { musicVideoMode: true } : {}),
@@ -750,11 +752,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // the caption language for the burned-in lower-third (the app locale).
     const musicVideoMode = Boolean(opts.musicVideoMode);
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
-    // The assembler masters a hard 'cut' or a smooth crossfade; the richer panel
-    // transitions (dissolve/zoom/slide) degrade to crossfade until xfade-named
-    // transitions land in the filtergraph.
-    const assembleTransition: 'crossfade' | 'cut' = opts.transition === 'cut' ? 'cut' : 'crossfade';
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, assembleTransition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
+    // The full transition (crossfade/cut/dissolve/zoom/slide) flows to the assembler
+    // → globalRender.transition → buildFilterComplex's XFADE map.
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }

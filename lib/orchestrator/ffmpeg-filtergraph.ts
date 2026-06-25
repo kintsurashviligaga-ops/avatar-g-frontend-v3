@@ -22,9 +22,9 @@ export interface FilterGraphOpts {
   fps: number;          // 24 native; CPU path does not interpolate to 60
   duckPct: number;      // 0–100, background attenuation under the voice
   clipSec?: number;     // per-clip seconds (default 6)
-  transition?: string;  // crossfade | dissolve | wipe | fade_to_black
-  /** Output orientation. 'vertical' → 1080×1920 (9:16, TikTok/Reels/Shorts). */
-  orientation?: 'landscape' | 'vertical';
+  transition?: string;  // crossfade | dissolve | zoom | slide | wipe | fade_to_black | cut
+  /** Output orientation. landscape 16:9 · vertical 9:16 · square 1:1 · portrait 4:5. */
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** Absolute path to a .cube 3D LUT. When set, a `lut3d=file=…` pass is applied
    *  in the master grade (after the colorbalance/eq/vignette base). The caller
    *  writes the .cube to a temp file and passes its path. */
@@ -51,8 +51,18 @@ export interface FilterGraphOpts {
 const XFADE: Record<string, string> = {
   crossfade: 'fade',
   dissolve: 'dissolve',
+  zoom: 'zoomin',
+  slide: 'slideleft',
   wipe: 'wiperight',
   fade_to_black: 'fadeblack',
+};
+
+// Output canvas per format. 16:9 landscape · 9:16 vertical · 1:1 square · 4:5 portrait.
+const CANVAS: Record<string, readonly [number, number]> = {
+  landscape: [1920, 1080],
+  vertical: [1080, 1920],
+  square: [1080, 1080],
+  portrait: [1080, 1350],
 };
 const TRANSITION_SEC = 1; // 1s crossfade (offset = clipSec - 1)
 
@@ -76,9 +86,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // Output canvas: 1920×1080 (16:9) by default, or 1080×1920 (9:16) for the
   // vertical TikTok/Reels/Shorts pipeline. Every clip is normalised onto this
   // exact canvas so the xfade chain never errors on mismatched dimensions.
-  const vertical = opts.orientation === 'vertical';
-  const W = vertical ? 1080 : 1920;
-  const H = vertical ? 1920 : 1080;
+  const [W, H] = CANVAS[opts.orientation ?? 'landscape'] ?? CANVAS.landscape!;
 
   // PHASE 52 TASK 4 — the exact length of the compiled master after the xfade
   // chain. N clips each `clipSec` long, overlapped by `TRANSITION_SEC` at every
@@ -94,9 +102,11 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // (contrast + saturation + slightly lifted blacks via gamma) keeps the look
   // consistent across clips, plus a touch of unsharp for crispness.
   // Fit strategy: landscape letterboxes (decrease + pad) to preserve the full 16:9
-  // frame; vertical FILLS the 9:16 canvas (increase + centre-crop) so a TikTok/
-  // Reels clip is full-frame, not a thin letterboxed strip with huge black bars.
-  const fit = vertical
+  // frame; the portrait/square canvases (vertical · 1:1 · 4:5) FILL the canvas
+  // (increase + centre-crop) so a TikTok/Reels/Instagram clip is full-frame, not a
+  // thin letterboxed strip with huge black bars.
+  const fill = (opts.orientation ?? 'landscape') !== 'landscape';
+  const fit = fill
     ? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`
     : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:-1:-1:color=black`;
   for (let i = 0; i < nClips; i++) {
