@@ -46,6 +46,19 @@ export interface MasterFilmScene {
   mood: string;
   /** FULL ready-to-use image prompt — MUST include the character fragment + style. */
   imagePrompt: string;
+  /** PHASE 2 L3 — a 6-second ambient SFX cue for THIS scene (no music, no speech),
+   *  e.g. "city street ambience, distant cars, footsteps on cobblestone". Optional:
+   *  the model may omit it; generateSceneSfxPrompts() derives a fallback from the
+   *  scene's location/action/mood so the per-scene SFX bed always has a cue. */
+  sfxPrompt?: string;
+}
+
+/** PHASE 2 L3 — one per-scene SFX cue, fed to the EXISTING generateFilmSfx() loop. */
+export interface MasterFilmSfxCue {
+  sceneNumber: number;
+  sfxPrompt: string;
+  /** ElevenLabs sound-generation length (capped 22s upstream); 6s per scene. */
+  duration: number;
 }
 
 export interface MasterFilmAudio {
@@ -66,6 +79,10 @@ export interface MasterFilmBrief {
   visualStyle: MasterFilmVisualStyle;
   scenes: MasterFilmScene[];
   audio: MasterFilmAudio;
+  /** PHASE 2 L3 — ordered per-scene SFX cues (one per scene). Derived in coerceBrief
+   *  from each scene's sfxPrompt (or a fallback). The live film loops the EXISTING
+   *  generateFilmSfx() over these instead of one whole-film bed. */
+  sfxCues: MasterFilmSfxCue[];
 }
 
 export interface PromptAgentInput {
@@ -118,6 +135,13 @@ CLOTHING CONTINUITY:
    - In EVERY scene imagePrompt, repeat each present person's EXACT clothing — same colour,
      same style, same accessories. NEVER omit or change wardrobe between scenes.
 
+SFX CUES (every scene):
+   - Add "sfxPrompt": a 6-second AMBIENT sound-effects description for that scene —
+     diegetic environment sound ONLY (no music, no melody, no speech). Describe the
+     real-world sounds of the location + action, e.g. "rain on rooftops, distant
+     thunder, water dripping" or "busy market crowd murmur, footsteps, vendor calls".
+     Keep it under 200 characters.
+
 4. SCENE STRUCTURE for 30s/6 scenes:
    Scene 1: Wide establishing shot (location context)
    Scene 2: Medium shot (character introduction)
@@ -160,7 +184,8 @@ JSON structure:
       "action": "...",
       "cameraShot": "wide/medium/close-up/drone",
       "mood": "...",
-      "imagePrompt": "FULL ready-to-use prompt"
+      "imagePrompt": "FULL ready-to-use prompt",
+      "sfxPrompt": "6s ambient SFX for this scene — no music, no speech"
     }
   ],
   "audio": {
@@ -169,6 +194,30 @@ JSON structure:
     "narratorScript": "..."
   }
 }`;
+
+/**
+ * PHASE 2 L3 — derive one ambient SFX cue per scene. Prefers the model-supplied
+ * scene.sfxPrompt; falls back to a deterministic cue built from the scene's
+ * location/action/mood so the per-scene SFX bed ALWAYS has usable text (no extra
+ * LLM call, fully fail-open). Returned in scene order.
+ */
+export function generateSceneSfxPrompts(scenes: MasterFilmScene[]): string[] {
+  return scenes.map((s) => {
+    const explicit = (s.sfxPrompt || '').trim();
+    if (explicit) return explicit.slice(0, 200);
+    // Deterministic fallback — ambient sound implied by where/what/mood.
+    const where = (s.location || '').trim();
+    const what = (s.action || '').trim();
+    const mood = (s.mood || '').trim();
+    const parts = [
+      where ? `ambient sound of ${where}` : 'natural ambient room tone',
+      what ? `subtle sounds of ${what}` : '',
+      mood ? `${mood} atmosphere` : '',
+      'no music, no speech',
+    ].filter(Boolean);
+    return parts.join(', ').slice(0, 200);
+  });
+}
 
 /** Coerce an arbitrary parsed object into a strict MasterFilmBrief, or null. */
 function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
@@ -188,6 +237,7 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
       const sc = (s ?? {}) as Record<string, unknown>;
       const imagePrompt = str(sc.imagePrompt) || str(sc.action);
       if (!imagePrompt) return null;
+      const sfxPrompt = str(sc.sfxPrompt);
       return {
         sceneNumber: typeof sc.sceneNumber === 'number' ? sc.sceneNumber : i + 1,
         location: str(sc.location),
@@ -195,6 +245,7 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
         cameraShot: str(sc.cameraShot, 'medium'),
         mood: str(sc.mood),
         imagePrompt,
+        ...(sfxPrompt ? { sfxPrompt } : {}),
       } satisfies MasterFilmScene;
     })
     .filter((s): s is MasterFilmScene => s !== null)
@@ -243,6 +294,12 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
       musicMood: str(au.musicMood),
       narratorScript: str(au.narratorScript),
     },
+    // PHASE 2 L3 — one ordered SFX cue per surviving scene (6s each).
+    sfxCues: generateSceneSfxPrompts(scenes).map((sfxPrompt, i) => ({
+      sceneNumber: scenes[i]?.sceneNumber ?? i + 1,
+      sfxPrompt,
+      duration: 6,
+    })),
   };
 }
 
@@ -257,7 +314,10 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
 export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFilmBrief | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  const sceneCount = Math.max(2, Math.min(12, Math.round(input.sceneCount)));
+  // Floor 1 (was 2) so a 6s single-scene Cinema clip can be planned. NOTE: the
+  // /api/video/assemble stitch requires ≥2 segments, so a true 1-scene film must use
+  // the single-clip return path — callers that go through assembly still pass ≥2.
+  const sceneCount = Math.max(1, Math.min(12, Math.round(input.sceneCount)));
   const timeoutMs = Number(process.env.PROMPT_AGENT_TIMEOUT_MS) || 45_000;
   let settled = false;
 

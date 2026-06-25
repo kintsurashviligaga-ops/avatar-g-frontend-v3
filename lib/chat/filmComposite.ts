@@ -57,7 +57,7 @@ import {
 } from './filmClipRetry';
 import { filmBalanceDecision } from './filmBalanceGate';
 import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
-import { runPromptAgent } from './promptAgent';
+import { runPromptAgent, type MasterFilmSfxCue } from './promptAgent';
 
 const serviceManager = new ServiceManager();
 
@@ -413,6 +413,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     typeof input.metadata?.characterLock === 'string' && input.metadata.characterLock.trim()
       ? input.metadata.characterLock.trim()
       : null;
+  // PHASE 2 L3 — per-scene SFX cues from the Prompt Agent (when it runs here as the
+  // fallback). Used below to make the SFX bed scene-aware instead of one generic bed.
+  let sfxCues: MasterFilmSfxCue[] | undefined;
   if (!characterLock && (!sceneScripts || sceneScripts.length === 0)) {
     const brief = await runPromptAgent({
       brief: input.message,
@@ -425,6 +428,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     if (brief) {
       characterLock = brief.character.imagePromptFragment;
       sceneScripts = brief.scenes.map((s) => s.imagePrompt);
+      sfxCues = brief.sfxCues;
       // eslint-disable-next-line no-console
       console.log('[filmComposite] Prompt Agent fallback produced a locked character + scene prompts');
     }
@@ -674,7 +678,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         })
       : Promise.resolve<string | null>(null),
     generateFilmSfx({
-      brief: input.message,
+      // PHASE 2 L3 — when the Prompt Agent produced per-scene SFX cues, compose them
+      // into a scene-aware ambience brief (no music/speech) instead of the generic
+      // film brief. Strictly additive: without cues this is exactly input.message.
+      brief: (sfxCues?.length
+        ? sfxCues.map((c) => c.sfxPrompt).filter(Boolean).join('. ').slice(0, 280)
+        : '') || input.message,
       totalSec: plan.shared.totalSec,
       compositeId,
     }).catch((err) => {

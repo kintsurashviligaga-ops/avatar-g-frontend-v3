@@ -116,6 +116,15 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const fps = String(g.fps) === '60' ? 60 : 24;
     const duckPct = typeof g.vocal_ducking_pct === 'number' ? g.vocal_ducking_pct : 30;
     const transition = String(g.transition ?? 'crossfade');
+    // PHASE 2 L2/L6 — opt-in 3-track audio master + smart-ducking knobs (all default
+    // OFF/undefined → the existing 2-lane documentary mix is unchanged). The client
+    // sets these via globalRender (three_track_mix / music_volume / sfx_volume /
+    // smart_duck / duck_db) so the assembler can address dialogue/music/sfx separately.
+    const threeTrackMix = g.three_track_mix === true || String(g.three_track_mix) === 'true';
+    const musicVolume = typeof g.music_volume === 'number' ? g.music_volume : undefined;
+    const sfxVolume = typeof g.sfx_volume === 'number' ? g.sfx_volume : undefined;
+    const smartDuck = g.smart_duck === false || String(g.smart_duck) === 'false' ? false : undefined;
+    const duckDb = typeof g.duck_db === 'number' ? g.duck_db : undefined;
     // Derive the per-clip length from the segment durations so the master timeline
     // is correct for ANY cadence — a 6-scene · 5s film, a 5-shot · 6s video, etc.
     // (Average + round; all clips in a composition share one length.) Falls back to
@@ -233,6 +242,12 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       hasBrandOverlay: Boolean(brandPngPath),
       musicVideo,
       hasMusicBug: Boolean(musicBugPath),
+      // PHASE 2 L2/L6 — opt-in 3-track master (gated; only fires with voice+music+sfx).
+      ...(threeTrackMix ? { threeTrackMix } : {}),
+      ...(musicVolume !== undefined ? { musicVolume } : {}),
+      ...(sfxVolume !== undefined ? { sfxVolume } : {}),
+      ...(smartDuck === false ? { smartDuck } : {}),
+      ...(duckDb !== undefined ? { duckDb } : {}),
     });
 
     const out = join(dir, 'master.mp4');

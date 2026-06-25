@@ -46,6 +46,22 @@ export interface FilterGraphOpts {
    *  the LAST -i input, AFTER the brand PNG) is composited over the opening of the film
    *  with a timed opacity fade in/out (appears ~0–4.4s, then disappears). */
   hasMusicBug?: boolean;
+
+  // ── PHASE 2 L2/L6 — true 3-track audio master (opt-in; default OFF keeps the
+  //    existing documentary 2-lane mix and every snapshot test byte-identical) ──
+  /** Enable the dialogue/music/sfx 3-track amix with DISTINCT per-lane gains. Only
+   *  fires when voice+music+sfx are ALL present; otherwise the normal mix runs. */
+  threeTrackMix?: boolean;
+  /** Music lane gain in the 3-track mix (0–1.5). Default 0.7. */
+  musicVolume?: number;
+  /** SFX lane gain in the 3-track mix (0–1.5). Default 0.8. */
+  sfxVolume?: number;
+  /** Smart ducking (L6): when true (default) music is sidechain-ducked under the
+   *  dialogue; when false the three lanes are mixed at static gains, no ducking. */
+  smartDuck?: boolean;
+  /** Ducking depth in dB for smart ducking (e.g. −12). Negative; −6..−18 typical.
+   *  Translated to a sidechain ratio. When unset, derived from duckPct. */
+  duckDb?: number;
 }
 
 const XFADE: Record<string, string> = {
@@ -221,6 +237,34 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       // Just the song — it owns the entire master stream at unity.
       apre = song;
     }
+  } else if (opts.threeTrackMix && voiceIdx !== null && musicIdx !== null && sfxIdx !== null) {
+    // ── PHASE 2 L2/L6 — TRUE 3-TRACK MASTER (dialogue + music + sfx) ──────────
+    // Distinct per-lane gains (dialogue 1.0 · music 0.7 · sfx 0.8 by default),
+    // unlike the documentary branch which merges music+sfx at a single 0.6. When
+    // smart ducking is on (default), the MUSIC lane is sidechain-ducked under the
+    // dialogue energy (depth from duckDb, else duckPct); SFX stays present so
+    // diegetic sound is audible. normalize=0 everywhere (the codebase invariant).
+    const clampVol = (v: number) => Math.max(0, Math.min(1.5, v));
+    const musV = clampVol(opts.musicVolume ?? 0.7);
+    const sfxV = clampVol(opts.sfxVolume ?? 0.8);
+    const smart = opts.smartDuck !== false;
+    // dB→ratio: −12 dB ≈ ratio 20 (matches the music-video duck). Linear-ish around
+    // that anchor; clamped 8..30. Falls back to the duckPct-derived ratio.
+    const ratio = typeof opts.duckDb === 'number'
+      ? Math.max(8, Math.min(30, Math.round(Math.abs(opts.duckDb) * (20 / 12))))
+      : Math.max(8, Math.round(8 + duck * 12));
+    parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
+    parts.push(`[vraw]volume=1.0[vmix]`);
+    parts.push(`[${sfxIdx}:a]volume=${sfxV}[sfxv]`);
+    if (smart) {
+      parts.push(`[${musicIdx}:a]volume=${musV}[musv]`);
+      parts.push(`[musv][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[musduck]`);
+      parts.push(`[musduck][sfxv][vmix]amix=inputs=3:normalize=0[apre]`);
+    } else {
+      parts.push(`[${musicIdx}:a]volume=${musV}[musv]`);
+      parts.push(`[musv][sfxv][vmix]amix=inputs=3:normalize=0[apre]`);
+    }
+    apre = '[apre]';
   } else if (voiceIdx !== null && bg.length > 0) {
     let bgLabel: string;
     if (bg.length > 1) {
