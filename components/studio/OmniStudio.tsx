@@ -1333,6 +1333,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // (prediction q9m5k5nexdrmr0cyyhnt2ca090, ~113s, output mp4). Default ON; fail-open
   // to the un-synced master if anything misses.
   const [videoLipsync, setVideoLipsync] = useState(true);
+  // PHASE 2 L6 — Smart ducking (default ON): in documentary mode the music bed
+  // auto-ducks under the dialogue via the assembler's 3-track sidechain. The slider
+  // sets the duck depth (−6…−18 dB). Only affects films that carry voice + music +
+  // sfx (the assembler's 3-track gate); others keep the existing mix unchanged.
+  const [videoSmartDuck, setVideoSmartDuck] = useState(true);
+  const [videoDuckDb, setVideoDuckDb] = useState(-12);
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
@@ -1537,6 +1543,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ...(!isMusicVideo && videoMultiChar && videoDialogue.trim() ? { dialogueScript: videoDialogue.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
         ...(!isMusicVideo && !videoMusic ? { noMusic: true } : {}),
+        // PHASE 2 L2/L6 — documentary 3-track master + smart ducking. The assembler only
+        // applies it when the film actually has voice + music + sfx, so films missing any
+        // keep their existing mix. Music videos use the song-master path (not this).
+        ...(!isMusicVideo ? { audioMix: { threeTrack: true, smartDuck: videoSmartDuck, duckDb: videoDuckDb } } : {}),
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
@@ -1731,7 +1741,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -3812,6 +3822,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Chip active={!videoMultiChar && videoNarratorGender === 'female'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('female'); }}>👩 {locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
                       <Chip active={!videoMultiChar && videoNarratorGender === 'male'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('male'); }}>👨 {locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
                       <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>👫 {locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
+                    </div>
+                  )}
+                  {/* PHASE 2 L6 — Smart ducking: music auto-ducks under the narration.
+                      Only shown with music on; depth −6…−18 dB (default −12). */}
+                  {videoMusic && (
+                    <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-app-muted">🎚 {locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
+                        <button type="button" role="switch" aria-checked={videoSmartDuck} aria-label="smart ducking" onClick={() => setVideoSmartDuck((v) => !v)}
+                          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${videoSmartDuck ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${videoSmartDuck ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                        </button>
+                      </div>
+                      {videoSmartDuck && (
+                        <label className="flex items-center gap-2">
+                          <span className="whitespace-nowrap text-[10.5px] text-app-muted">{locale === 'en' ? 'Depth' : locale === 'ru' ? 'Глубина' : 'სიღრმე'}</span>
+                          <input type="range" min={-18} max={-6} step={6} value={videoDuckDb}
+                            onChange={(e) => setVideoDuckDb(Number(e.target.value))}
+                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="ducking depth dB" />
+                          <span className="w-12 text-right text-[10.5px] tabular-nums text-app-text">{videoDuckDb} dB</span>
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>

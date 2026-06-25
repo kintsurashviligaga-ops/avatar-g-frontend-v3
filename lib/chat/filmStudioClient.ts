@@ -103,10 +103,28 @@ function asQa(v: unknown): FilmQaSummary | null {
   return { pass: o.pass, score: o.score, grade: o.grade, issues };
 }
 
+/** PHASE 2 L2/L6 — opt-in audio-master controls forwarded to the assembler's
+ *  globalRender (3-track dialogue/music/sfx mix + smart sidechain ducking). All
+ *  optional; omitting them keeps the existing documentary 2-lane mix. */
+export interface AudioMixOptions {
+  /** Enable the dialogue/music/sfx 3-track amix with distinct per-lane gains. */
+  threeTrack?: boolean;
+  /** Music lane gain (0–1.5, default 0.7). */
+  musicVolume?: number;
+  /** SFX lane gain (0–1.5, default 0.8). */
+  sfxVolume?: number;
+  /** Smart ducking: music ducks under dialogue (default true). */
+  smartDuck?: boolean;
+  /** Ducking depth in dB (negative, e.g. −12; −6..−18 typical). */
+  duckDb?: number;
+}
+
 export interface DriveFilmOptions {
   prompt: string;
   /** 1–3 data:/https reference images that lock the protagonist's identity. */
   referenceImages?: string[];
+  /** PHASE 2 L2/L6 — audio-master mix + smart-ducking controls (opt-in). */
+  audioMix?: AudioMixOptions;
   /**
    * §5 Music-Video mode: a user-supplied soundtrack (data:/https URL). When set,
    * it becomes the film's music bed verbatim — overriding the generated score —
@@ -458,6 +476,7 @@ async function assembleMaster(
   customAudioUrl?: string | null,
   captionLang?: 'ka' | 'en' | 'ru',
   vocalGender?: 'male' | 'female' | 'duet',
+  audioMix?: AudioMixOptions,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -472,6 +491,16 @@ async function assembleMaster(
       if (cj?.url) finalVoiceUrl = cj.url;
     } catch { /* keep the original TTS narration */ }
   }
+  // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
+  // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
+  // the route keeps its defaults (and the existing documentary mix) when nothing is set.
+  const globalRender: Record<string, string | number | boolean> = {};
+  if (transition) globalRender.transition = transition;
+  if (audioMix?.threeTrack) globalRender.three_track_mix = true;
+  if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
+  if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
+  if (audioMix?.smartDuck === false) globalRender.smart_duck = false;
+  if (typeof audioMix?.duckDb === 'number') globalRender.duck_db = audioMix.duckDb;
   const res = await fetch('/api/video/assemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -502,9 +531,9 @@ async function assembleMaster(
       ...(captionLang ? { captionLang } : {}),
       // v330 — selected sung-vocal gender (steers the ElevenLabs Music singer).
       ...(vocalGender ? { vocalGender } : {}),
-      // Scene transition (crossfade/cut). globalRender wins over the route's
-      // film-token default ('cut'), so the user's choice is honoured.
-      ...(transition ? { globalRender: { transition } } : {}),
+      // Scene transition + L2/L6 audio knobs. globalRender wins over the route's
+      // film-token default ('cut'), so the user's choices are honoured.
+      ...(Object.keys(globalRender).length ? { globalRender } : {}),
     }),
   });
   // FIX 4 — surface the route's STRUCTURED reason (insufficient credits, audio/
@@ -754,7 +783,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
     // The full transition (crossfade/cut/dissolve/zoom/slide) flows to the assembler
     // → globalRender.transition → buildFilterComplex's XFADE map.
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
