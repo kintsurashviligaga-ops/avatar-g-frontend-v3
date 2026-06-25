@@ -1,9 +1,9 @@
 /**
  * POST /api/video/graphics — the Music-Video GRAPHICS AGENT.
- * Body: { videoUrl, title?, subtitle?, lang?, musicBug?, introSec? } → { url }.
- * Layers a music-synced equalizer + animated title card + animated lower-third over
- * the master. STRICTLY fail-open: any miss returns the ORIGINAL videoUrl unchanged,
- * so the graphics step can never break a good render.
+ * Body: { videoUrl, title?, subtitle?, lang?, musicBug?, introSec?, dialogue? } → { url }.
+ * Layers a music-synced equalizer + animated title card + animated lower-third +
+ * burned reference-style DIALOGUE SUBTITLES over the master. STRICTLY fail-open: any
+ * miss returns the ORIGINAL videoUrl unchanged, so graphics can never break a render.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { enhanceMusicVideoGraphics } from '@/lib/pipeline/compositing/musicVideoGraphics';
@@ -13,7 +13,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // CPU ffmpeg overlay pass over a 60s master
 
 export async function POST(req: NextRequest) {
-  let body: { videoUrl?: unknown; title?: unknown; subtitle?: unknown; lang?: unknown; musicBug?: unknown; introSec?: unknown };
+  let body: { videoUrl?: unknown; title?: unknown; subtitle?: unknown; lang?: unknown; musicBug?: unknown; introSec?: unknown; dialogue?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     lang,
     musicBug: (body.musicBug && typeof body.musicBug === 'object') ? (body.musicBug as MusicBug) : null,
     introSec: Number.isFinite(Number(body.introSec)) ? Number(body.introSec) : undefined,
+    dialogue: typeof body.dialogue === 'string' ? body.dialogue : undefined,
   }).catch(() => null);
   // Fail-open: hand back the original master if graphics couldn't be applied.
   return NextResponse.json({ url: out ?? videoUrl, enhanced: !!out });

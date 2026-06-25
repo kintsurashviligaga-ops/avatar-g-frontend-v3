@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { renderTitleCardPng, renderMusicBugPng, type MusicBug } from './ffmpeg-overlay';
+import { renderTitleCardPng, renderMusicBugPng, renderSubtitleCardPng, splitIntoSubtitleLines, type MusicBug } from './ffmpeg-overlay';
 
 const exec = (bin: string, args: string[], timeoutMs = 240_000): Promise<{ ok: boolean; err: string }> =>
   new Promise((resolve) => {
@@ -61,6 +61,9 @@ export interface MusicVideoGraphicsOpts {
   /** Seconds of cinematic intro before the performance — title shows over this,
    *  equalizer + lower-third start after it. Defaults to ~10s (two intro scenes). */
   introSec?: number;
+  /** Spoken dialogue → burned, reference-style subtitle cards distributed across the
+   *  timeline (white BOLD caps + heavy black outline). Empty/absent → no subtitles. */
+  dialogue?: string;
 }
 
 /**
@@ -85,7 +88,13 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
       opts.title ? renderTitleCardPng({ title: opts.title, subtitle, lang: opts.lang }, w, h) : Promise.resolve(null),
       opts.musicBug ? renderMusicBugPng(opts.musicBug, w, h) : Promise.resolve(null),
     ]);
-    if (!titlePng && !bugPng && !hasAudio) return null; // nothing to add
+    // DIALOGUE SUBTITLES — split into ≤3-word cards, rasterise each (resvg). Keep only
+    // the cards that rendered, so a single failed glyph never aborts the whole pass.
+    const subLines = opts.dialogue ? splitIntoSubtitleLines(opts.dialogue) : [];
+    const subPngs = subLines.length
+      ? (await Promise.all(subLines.map((l) => renderSubtitleCardPng(l, w, h)))).filter((b): b is Buffer => !!b)
+      : [];
+    if (!titlePng && !bugPng && !hasAudio && subPngs.length === 0) return null; // nothing to add
 
     // Image overlays MUST be looped (`-loop 1`) so they become a continuous stream —
     // otherwise the single PNG frame sits at t=0, the time-based alpha fade renders it
@@ -94,6 +103,10 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
     let titleIdx = -1; let bugIdx = -1; let nextIdx = 1;
     if (titlePng) { const p = join(dir, 'title.png'); await writeFile(p, titlePng); inputs.push('-loop', '1', '-i', p); titleIdx = nextIdx++; }
     if (bugPng) { const p = join(dir, 'bug.png'); await writeFile(p, bugPng); inputs.push('-loop', '1', '-i', p); bugIdx = nextIdx++; }
+    const subIdxs: number[] = [];
+    for (let i = 0; i < subPngs.length; i += 1) {
+      const p = join(dir, `sub${i}.png`); await writeFile(p, subPngs[i]!); inputs.push('-loop', '1', '-i', p); subIdxs.push(nextIdx++);
+    }
 
     // Build the filtergraph. Each layer is optional; `cur` tracks the live video label.
     const eqH = Math.round(h * 0.10);
@@ -116,6 +129,20 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
       parts.push(`[${bugIdx}:v]format=rgba,fade=t=in:st=${inB}:d=0.6:alpha=1,fade=t=out:st=${outB}:d=0.7:alpha=1[bug]`);
       parts.push(`[${cur}][bug]overlay=0:0:format=auto:enable='gte(t,${introSec.toFixed(1)})'[vbug]`);
       cur = 'vbug';
+    }
+    // DIALOGUE SUBTITLES — burned LAST (on top of eq/title/bug), distributed evenly
+    // across the timeline. Each looped card is time-gated with `between()` + a quick
+    // alpha fade so captions punch in/out like the reference video.
+    if (subIdxs.length) {
+      const per = dur / subIdxs.length;
+      subIdxs.forEach((idx, i) => {
+        const st = +(i * per).toFixed(2);
+        const en = +(Math.min(dur, (i + 1) * per) - 0.12).toFixed(2);
+        const fout = +(Math.max(st + 0.3, en - 0.3)).toFixed(2);
+        parts.push(`[${idx}:v]format=rgba,fade=t=in:st=${st}:d=0.25:alpha=1,fade=t=out:st=${fout}:d=0.3:alpha=1[sub${i}]`);
+        parts.push(`[${cur}][sub${i}]overlay=0:0:format=auto:enable='between(t,${st},${en})'[vsub${i}]`);
+        cur = `vsub${i}`;
+      });
     }
     parts.push(`[${cur}]format=yuv420p[vout]`);
 

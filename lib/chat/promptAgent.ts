@@ -22,6 +22,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 
 export interface MasterFilmCharacter {
+  /** Stable role id when a brief has several people ("mother" | "father" | "child"). */
+  id?: string;
   /** Detailed, human-readable appearance: age, ethnicity, hair, eyes, clothing, expression. */
   description: string;
   /** Ready-to-paste Stable-Diffusion fragment — prepended IDENTICALLY to every scene prompt. */
@@ -53,7 +55,14 @@ export interface MasterFilmAudio {
 }
 
 export interface MasterFilmBrief {
+  /** The PRIMARY character (kept for single-subject continuity + back-compat). */
   character: MasterFilmCharacter;
+  /** ALL distinct people in the brief (≥1). For a single-subject film this is just
+   *  [character]; for an ensemble (mother + father + child) each is locked separately
+   *  and every scene imagePrompt describes whoever is on screen with EXACT clothing. */
+  characters: MasterFilmCharacter[];
+  /** True when the brief features more than one recurring person. */
+  isMultiCharacter: boolean;
   visualStyle: MasterFilmVisualStyle;
   scenes: MasterFilmScene[];
   audio: MasterFilmAudio;
@@ -75,21 +84,39 @@ const SYSTEM_PROMPT = `You are a Master Film Director.
 Your job: analyze the brief and create a complete MasterFilmBrief JSON.
 
 CRITICAL RULES:
-1. CHARACTER LOCK: Create ONE detailed character description.
-   Use it IDENTICALLY in every single scene imagePrompt.
-   Include: age, ethnicity, hair (color+length+style), eyes (color),
-   clothing (exact description), expression.
+1. CHARACTER LOCK: Detect EVERY recurring person in the brief and create ONE detailed,
+   locked description for EACH (age, ethnicity, hair color+length+style, eye color,
+   EXACT clothing with colours + accessories, expression). Give each a stable id
+   ("mother" | "father" | "child" | "protagonist"). The FIRST/primary person is the
+   "character"; ALL people (including the primary) go in the "characters" array. Set
+   "isMultiCharacter" true when there is more than one recurring person.
 
 2. VISUAL LOCK: Define ONE color grade, lighting style, and camera aesthetic.
    Apply to ALL scenes.
 
 3. IMAGE PROMPTS: Each scene.imagePrompt must be production-ready and include:
-   - [CHARACTER DESCRIPTION] (copy-paste identical each time)
+   - [EVERY CHARACTER ON SCREEN] — copy-paste each present person's locked description
+     VERBATIM (same clothing colours every time). A two-person scene names BOTH people
+     with their exact wardrobe.
    - [SCENE ACTION + LOCATION]
    - [VISUAL STYLE: color grade, lighting]
    - [CAMERA: shot type + angle]
    - "photorealistic, 8k, cinematic, sharp focus"
    - "Negative: blur, distortion, low quality, different face, inconsistent appearance"
+
+SCENE SPECIFICITY RULES (every scene.imagePrompt MUST obey):
+   - NEVER write vague actions like "standing", "walking", "doing something".
+   - ALWAYS specify: WHO (+ exact clothing) + WHAT GESTURE + WHERE EXACTLY + EXPRESSION.
+   - GOOD: "25-year-old Georgian woman in a red wool coat and gold earrings turning
+     toward camera with a slight warm smile, narrow old-Tbilisi cobblestone alley lit by
+     glowing iron lanterns, soft dusk light"
+   - BAD: "a woman standing in a street"
+   - Specify the EXACT location detail (not "outdoors" but "suburban street with red-brick
+     houses and parked cars"), and a real emotional expression ("concerned", "laughing").
+
+CLOTHING CONTINUITY:
+   - In EVERY scene imagePrompt, repeat each present person's EXACT clothing — same colour,
+     same style, same accessories. NEVER omit or change wardrobe between scenes.
 
 4. SCENE STRUCTURE for 30s/6 scenes:
    Scene 1: Wide establishing shot (location context)
@@ -108,9 +135,18 @@ Return ONLY valid JSON. No markdown. No explanation.
 JSON structure:
 {
   "character": {
+    "id": "protagonist",
     "description": "detailed appearance",
     "imagePromptFragment": "ready-to-paste SD prompt fragment"
   },
+  "characters": [
+    {
+      "id": "mother",
+      "description": "detailed appearance + EXACT clothing",
+      "imagePromptFragment": "ready-to-paste SD prompt fragment"
+    }
+  ],
+  "isMultiCharacter": false,
   "visualStyle": {
     "colorGrade": "...",
     "lighting": "...",
@@ -166,8 +202,35 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
 
   if (!fragment || scenes.length === 0) return null;
 
+  const primary: MasterFilmCharacter = {
+    ...(str(ch.id) ? { id: str(ch.id) } : {}),
+    description: str(ch.description) || fragment,
+    imagePromptFragment: fragment,
+  };
+  // Parse the optional ensemble cast; keep only entries with a usable fragment, and
+  // ALWAYS include the primary so `characters` is never empty (back-compat default).
+  const castRaw = Array.isArray(o.characters) ? o.characters : [];
+  const cast: MasterFilmCharacter[] = castRaw
+    .map((c) => {
+      const cc = (c ?? {}) as Record<string, unknown>;
+      const frag = str(cc.imagePromptFragment) || str(cc.description);
+      if (!frag) return null;
+      return { ...(str(cc.id) ? { id: str(cc.id) } : {}), description: str(cc.description) || frag, imagePromptFragment: frag } satisfies MasterFilmCharacter;
+    })
+    .filter((c): c is MasterFilmCharacter => c !== null);
+  const dedup = (arr: MasterFilmCharacter[]): MasterFilmCharacter[] => {
+    const seen = new Set<string>();
+    return arr.filter((c) => { const k = (c.id || c.imagePromptFragment).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  };
+  const characters = dedup(cast.length ? [primary, ...cast] : [primary]);
+  // Keep the flag consistent with what we actually LOCKED — never claim multi-character
+  // when only one usable character survived parsing (the model's hint is advisory).
+  const isMultiCharacter = characters.length > 1;
+
   return {
-    character: { description: str(ch.description) || fragment, imagePromptFragment: fragment },
+    character: primary,
+    characters,
+    isMultiCharacter,
     visualStyle: {
       colorGrade: str(vs.colorGrade),
       lighting: str(vs.lighting),
@@ -217,8 +280,12 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
   const tryModel = async (model: string, perCallMs: number): Promise<MasterFilmBrief | null> => {
     const t0 = Date.now();
     const client = new Anthropic({ apiKey, maxRetries: 0, timeout: perCallMs });
+    // Scale the output budget with scene count: a 12-scene ENSEMBLE brief repeats each
+    // on-screen person's full wardrobe in every scene.imagePrompt, which overflows a flat
+    // 3000 cap → truncated JSON → wasted Sonnet call + haiku fallback. Sonnet/Haiku 4.x
+    // support far more, so size the cap to the request (small briefs stay cheap).
     const msg = await client.messages.create({
-      model, max_tokens: 3000, system: SYSTEM_PROMPT,
+      model, max_tokens: Math.min(8000, 1500 + sceneCount * 400), system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     });
     const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');

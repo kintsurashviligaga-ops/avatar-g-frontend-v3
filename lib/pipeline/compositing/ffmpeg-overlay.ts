@@ -311,6 +311,68 @@ export async function renderTitleCardPng(o: { title: string; subtitle?: string; 
   }
 }
 
+// ── DIALOGUE SUBTITLES (burned, reference-style) ────────────────────────────
+// White BOLD caption cards with a heavy black outline, bottom-centre — the burned
+// dialogue from the reference video. Rendered SVG→PNG (resvg) like every other
+// overlay because the prod ffmpeg-static has no libfreetype (drawtext = tofu).
+
+/** Split spoken dialogue into short, punchy subtitle cards (≤3 words each). Latin/
+ *  Cyrillic → UPPERCASE (reference look); Georgian has no letter-case so it's kept
+ *  as-is. Honours explicit separators ("/", "|", newlines) + sentence boundaries.
+ *  Capped at 8 cards. */
+export function splitIntoSubtitleLines(text: string): string[] {
+  const raw = (text || '').trim();
+  if (!raw) return [];
+  const ka = GEORGIAN_RE.test(raw);
+  const sentences = raw.split(/[.!?。！？]+|\s*[/|]\s*|\n+/).map((s) => s.trim()).filter(Boolean);
+  const lines: string[] = [];
+  for (const sentence of sentences) {
+    const words = sentence.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < words.length; i += 3) {
+      let chunk = words.slice(i, i + 3).join(' ').trim();
+      if (!chunk) continue;
+      if (!ka) chunk = chunk.toUpperCase();
+      lines.push(chunk);
+      if (lines.length >= 8) return lines;
+    }
+  }
+  return lines;
+}
+
+/** One bottom-centre caption card — white text with a heavy black outline
+ *  (paint-order:stroke draws the outline behind the fill in one pass) so it stays
+ *  legible over ANY footage, like the reference video's burned subtitles. */
+export function buildSubtitleCardSvg(line: string, w: number, h: number): string {
+  const base = Math.min(w, h);
+  const s = (px: number) => Math.round(px * (base / 1080));
+  const ka = GEORGIAN_RE.test(line);
+  const lang = ka ? 'ka' : 'en';
+  const size = s(w > h ? 52 : 62);
+  const cx = Math.round(w / 2);
+  const cy = Math.round(h * 0.84);
+  const stroke = Math.max(3, s(6));
+  const ls = ka ? s(0) : s(2);
+  const common = `text-anchor="middle" font-size="${size}" font-family="${FONT_TITLE}" letter-spacing="${ls}" xml:lang="${lang}"`;
+  const el =
+    `<text x="${cx}" y="${cy}" ${common} fill="#ffffff" stroke="#000000" stroke-width="${stroke}" ` +
+    `stroke-opacity="0.92" stroke-linejoin="round" paint-order="stroke">${esc(line)}</text>`;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xml:lang="${lang}" xmlns="http://www.w3.org/2000/svg">${el}</svg>`;
+}
+
+/** Rasterise one subtitle card → transparent PNG (resvg), or null on any miss. */
+export async function renderSubtitleCardPng(line: string, w: number, h: number): Promise<Buffer | null> {
+  const t = (line || '').trim();
+  if (!t) return null;
+  try {
+    const resvg = new Resvg(buildSubtitleCardSvg(t, w, h), {
+      font: { fontFiles: overlayFontFiles(), loadSystemFonts: false, defaultFontFamily: 'FiraGO' },
+    });
+    return Buffer.from(resvg.render().asPng());
+  } catch {
+    return null;
+  }
+}
+
 export interface OverlayResult {
   ok: boolean;
   error?: string;

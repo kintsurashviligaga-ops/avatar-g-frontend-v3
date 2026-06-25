@@ -48,6 +48,19 @@ const LTX_RETRY_BASE_MS = 400;
 // the legacy model / per-clip retry, so the dispatch always returns its poll token.
 const PROVIDER_CREATE_TIMEOUT_MS = 25_000;
 
+// ── PHOTOREALISTIC i2v UPGRADE ──────────────────────────────────────────────
+// The premium image-to-video model that animates a clip FROM its per-scene
+// identity frame (Kling by default — smooth photorealistic motion + zero
+// character drift, the gap vs the legacy LTX clips). Tried FIRST whenever a
+// Replicate token + a start image both exist; on ANY miss the dispatch falls
+// straight through to the proven LTX path, so this can never break a render.
+// Override the model with REPLICATE_VIDEO_MODEL (e.g. bytedance/seedance-1-lite,
+// kwaivgi/kling-v2.1, wavespeedai/wan-2.1-i2v-720p); kill with VIDEO_I2V_DISABLED=1.
+const VIDEO_I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
+const VIDEO_I2V_DISABLED = process.env.VIDEO_I2V_DISABLED === '1';
+const VIDEO_I2V_NEGATIVE =
+  'blurry, distorted face, different person, deformed, low quality, cartoon, illustration, morphing, flickering, extra limbs';
+
 // PHASE 51 §2 — Re-hosted LTX render URLs live for 7 days. A sync LTX call
 // returns the MP4 *binary*; turning that into a multi-MB `data:` URL is the
 // known iOS / standalone-PWA infinite-spinner failure (the <video> element
@@ -259,6 +272,15 @@ export class ServiceManager {
       return this.runHeygenAvatarVideo(request);
     }
 
+    // PHOTOREALISTIC i2v — try the premium image-to-video model (Kling/Seedance)
+    // FIRST: it animates the clip FROM this scene's identity frame, so motion is
+    // smooth + photorealistic and the character never drifts. Returns null when
+    // disabled, no Replicate token, no start image, or the create failed → fall
+    // straight through to the proven LTX engine below (the upgrade never breaks a
+    // render). The returned `replicate` task-ref is resolved by the SAME poll path.
+    const i2v = await this.tryI2vClip(request);
+    if (i2v) return i2v;
+
     // VIDEO ENGINE — prefer the DIRECT LTX-2.3 API (api.ltx.video) whenever a
     // funded LTX key is configured: the operator provisioned LTX_VIDEO_API_KEY to
     // spend their LTX.video balance, so that account is the PRIMARY render engine.
@@ -277,6 +299,121 @@ export class ServiceManager {
     }
     // No LTX key and no Replicate token → still attempt direct LTX (honest fail).
     return this.runLtxVideo(request);
+  }
+
+  /**
+   * Clamp ANY incoming aspect to the three ratios every i2v model accepts
+   * (16:9 / 9:16 / 1:1). normalizeAspectRatio can return 4:5 / 4:3 / 3:4 etc.,
+   * which Kling's enum rejects with a 422 — Replicate validates the enum BEFORE
+   * the model even though start_image makes it a no-op, so an unmapped ratio kills
+   * the i2v attempt (it then wastes a round-trip falling back to LTX). Portrait →
+   * 9:16, landscape → 16:9, square → 1:1.
+   */
+  private toI2vAspect(aspect: string | undefined): '16:9' | '9:16' | '1:1' {
+    const a = (aspect || '').trim();
+    const m = a.match(/^(\d+):(\d+)$/);
+    if (m) {
+      const w = parseInt(m[1]!, 10); const h = parseInt(m[2]!, 10);
+      if (w > 0 && h > 0) return w > h ? '16:9' : w < h ? '9:16' : '1:1';
+    }
+    return /vert|portrait|9:16|story|tall/i.test(a) ? '9:16' : '16:9';
+  }
+
+  /**
+   * Build the Replicate `input` for the configured i2v model. Each family names
+   * its first-frame + control params differently, so map by model owner/name and
+   * only ever send keys that model's schema accepts (an unknown key → 422). `aspect`
+   * is already clamped (toI2vAspect) to 16:9 / 9:16 / 1:1.
+   */
+  private buildI2vInput(model: string, prompt: string, aspect: string, startImage: string): Record<string, unknown> {
+    const fullPrompt = `${prompt}, photorealistic, cinematic, natural lighting, sharp focus, 4k`;
+    const m = model.toLowerCase();
+    if (/kling/.test(m)) {
+      // kling-v2.1 has no aspect_ratio (it's inferred from start_image); v1.6 does.
+      const base: Record<string, unknown> = { start_image: startImage, prompt: fullPrompt, negative_prompt: VIDEO_I2V_NEGATIVE, duration: 5 };
+      if (/v1\.6|v1-6|kling-v1/.test(m)) { base.aspect_ratio = aspect; base.cfg_scale = 0.5; }
+      return base;
+    }
+    if (/seedance/.test(m)) {
+      return { image: startImage, prompt: fullPrompt, aspect_ratio: aspect, duration: 5, resolution: '1080p', fps: 24 };
+    }
+    if (/wan-?2|wan2|wan-video/.test(m)) {
+      return { image: startImage, prompt: fullPrompt, negative_prompt: VIDEO_I2V_NEGATIVE, aspect_ratio: aspect };
+    }
+    if (/minimax|hailuo|video-01/.test(m)) {
+      return { first_frame_image: startImage, prompt: fullPrompt, prompt_optimizer: true };
+    }
+    // Generic i2v fallback — the most widely-accepted shape.
+    return { image: startImage, prompt: fullPrompt };
+  }
+
+  /**
+   * PHOTOREALISTIC i2v clip — animate this scene FROM its identity frame using the
+   * premium model (Kling by default). Self-contained Replicate create that returns
+   * a `replicate` task-ref the EXISTING poll path (pollReplicateTask →
+   * normalizeOutput('video')) resolves to the mp4 — exactly like runReplicateLtxVideo.
+   *
+   * Returns null (so the caller falls through to LTX) when: the feature is disabled,
+   * no Replicate token, NO start image (i2v needs a first frame — text-to-video stays
+   * on LTX), or the create failed/timed-out/returned no id. NEVER throws.
+   */
+  private async tryI2vClip(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
+    if (VIDEO_I2V_DISABLED) return null;
+    const token = process.env.REPLICATE_API_TOKEN;
+    if (!token) return null;
+    const startImage = this.resolveClipImage(request);
+    if (!startImage) return null; // i2v needs an anchor frame; without one, keep LTX
+
+    const aspect = this.toI2vAspect(
+      this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
+    );
+    const input = this.buildI2vInput(VIDEO_I2V_MODEL, request.userPrompt, aspect, startImage);
+    const promptHash = this.hashPrompt(request.userPrompt);
+
+    try {
+      const res = await fetch(`https://api.replicate.com/v1/models/${VIDEO_I2V_MODEL}/predictions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({ input }),
+        signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.warn(`[i2v] ${VIDEO_I2V_MODEL} create ${res.status} → LTX fallback`);
+        return null;
+      }
+      const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+      if (!pred.id) return null;
+
+      // Rare immediate completion.
+      const immediateUrl = this.extractUrl(pred.output);
+      if (pred.status === 'succeeded' && immediateUrl) {
+        return {
+          success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+          message: 'Video generation completed successfully.', assetUrl: immediateUrl, assetType: 'video',
+          predictionStatus: 'succeeded',
+          metadata: { provider: 'replicate', model: VIDEO_I2V_MODEL, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, providerTaskId: pred.id, promptHash },
+        };
+      }
+      const taskRef = this.encodeTaskRef({
+        provider: 'replicate', providerTaskId: pred.id, sessionId: request.sessionId,
+        serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
+        responseType: 'video', promptHash, createdAt: Date.now(),
+      });
+      // eslint-disable-next-line no-console
+      console.log(`[i2v] ${VIDEO_I2V_MODEL} accepted clip (${pred.id}) — photorealistic i2v engaged`);
+      return {
+        success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+        message: `${VIDEO_I2V_MODEL} accepted the request. Polling for completion.`,
+        predictionId: taskRef, predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
+        metadata: { provider: 'replicate', model: VIDEO_I2V_MODEL, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: pred.id, promptHash },
+      };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[i2v] ${VIDEO_I2V_MODEL} create error → LTX fallback:`, err instanceof Error ? err.message : err);
+      return null;
+    }
   }
 
   /**
