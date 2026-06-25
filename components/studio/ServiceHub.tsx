@@ -22,6 +22,7 @@ import { ConversationalFilmStudio } from './ConversationalFilmStudio';
 import OmniStudio, { OMNI_CURRENT_ID_KEY } from './OmniStudio';
 import LipsyncStudio from './LipsyncStudio';
 import { ChatChrome } from './ChatChrome';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Service = 'hub' | 'film' | 'omni' | 'lipsync';
@@ -104,7 +105,23 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
         onNewChat={service === 'omni' ? () => { try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ } setChatResetKey((k) => k + 1); } : undefined}
         scrollBody={service === 'lipsync'}
       >
-        {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} /> : <LipsyncStudio locale={lang} />}
+        {/* PHASE 3 Task 5 — a render crash in the studio keeps the ChatChrome shell +
+            shows a localized, friendly retry card instead of blanking the route. */}
+        <ErrorBoundary
+          fallback={
+            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center">
+              <span className="text-4xl">⚠️</span>
+              <p className="text-[15px] font-semibold text-app-text">{lang === 'en' ? 'Something went wrong' : lang === 'ru' ? 'Что-то пошло не так' : 'რაღაც შეფერხდა'}</p>
+              <p className="max-w-xs text-[13px] text-app-muted">{lang === 'en' ? 'Please reload and try again. Your work is safe.' : lang === 'ru' ? 'Перезагрузите и попробуйте снова. Ваши работы сохранены.' : 'გადატვირთეთ და სცადეთ თავიდან. თქვენი ნამუშევრები დაცულია.'}</p>
+              <button type="button" onClick={() => window.location.reload()}
+                className="mt-1 rounded-xl bg-app-accent px-5 py-2.5 text-[14px] font-semibold text-app-bg transition hover:opacity-90">
+                {lang === 'en' ? 'Reload' : lang === 'ru' ? 'Перезагрузить' : 'გადატვირთვა'}
+              </button>
+            </div>
+          }
+        >
+          {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} /> : <LipsyncStudio locale={lang} />}
+        </ErrorBoundary>
       </ChatChrome>
     );
   }
