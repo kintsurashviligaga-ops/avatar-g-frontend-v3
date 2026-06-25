@@ -21,11 +21,11 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
  * (CSP media-src allows *.supabase.co) so the <audio> element plays + the track
  * persists past the provider's short-lived CDN URL.
  *
- * Provider chain (composeTrackUrl): ElevenLabs Music (default, sung when not
- * instrumental) → Replicate MusicGen (instrumental fallback). Udio (the founder's
- * funded song engine) is re-enabled as an OPT-IN primary via MUSIC_PROVIDER=udio
- * and falls back through the same chain. Singer gender is prompt-engineered (the
- * EL Music API has no voice_id; cloned voice IDs apply to TTS/narration, not music).
+ * Provider chain (composeTrackUrl): Udio (DEFAULT primary when UDIO_API_KEY is set —
+ * the founder's funded song engine) → ElevenLabs Music (sung when not instrumental) →
+ * Replicate MusicGen (instrumental last resort). Set MUSIC_PROVIDER=elevenlabs to skip
+ * Udio. Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id;
+ * cloned voice IDs apply to TTS/narration, not music generation).
  *
  * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
  * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
@@ -88,13 +88,15 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 async function composeTrackUrl(prompt: string, style: string, instrumental: boolean, lengthSec = 30): Promise<string> {
   const secs = Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
 
-  // OPT-IN Udio (the founder's funded song engine — better sung vocals). Retired in
-  // v330 in favour of ElevenLabs Music; re-enabled here behind MUSIC_PROVIDER=udio so
-  // the DEFAULT path is unchanged (zero regression) and the operator can flip Udio on
-  // once they've confirmed the live endpoint. STRICTLY fallback-protected: any Udio
-  // miss falls through to ElevenLabs Music → MusicGen, so music always generates.
-  // NOTE: the Udio gateway has no exact-duration param; `secs` steers EL/MusicGen below.
-  if (process.env.MUSIC_PROVIDER === 'udio' && hasUdioApiKey()) {
+  // PRIMARY: Udio (the founder's funded song engine — better sung vocals). Retired in
+  // v330 (daf02eb) for ElevenLabs Music; restored here as the DEFAULT primary whenever
+  // UDIO_API_KEY is present — no MUSIC_PROVIDER flag needed. STRICTLY fallback-protected:
+  // any Udio miss falls through to ElevenLabs Music → MusicGen, so music ALWAYS generates.
+  // Kill-switch: set MUSIC_PROVIDER=elevenlabs to force EL Music and skip Udio entirely.
+  // Params map to buildGenerateBody (lib/udio/client): prompt → gpt_description_prompt,
+  // style → style, instrumental → make_instrumental. The Udio gateway (chirp-v4-5) has NO
+  // duration param, so `secs` only steers the EL/MusicGen fallbacks below.
+  if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
     try {
       const udio = await generateUdioTrack(
         { prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental },
