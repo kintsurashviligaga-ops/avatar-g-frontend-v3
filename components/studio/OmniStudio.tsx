@@ -138,19 +138,19 @@ const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', strin
   ka: {
     image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
     music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'კადრებს ვქმნი…', 'ხმასა და მუსიკას ვამატებ…', 'ვაერთიანებ…'],
+    video: ['სცენარს ვშლი…', 'აუდიო & SFX…', 'ხმა…', 'ვიდეო კადრები…', 'მასტერინგი…', 'გრაფიკა…'],
     lipsync: ['ფოტოს ვამზადებ…', 'ავატარი ცოცხლდება…', 'ვასრულებ…'],
   },
   en: {
     image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
     music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Breaking down the script…', 'Generating the shots…', 'Adding voice & music…', 'Stitching together…'],
+    video: ['Scripting…', 'Audio SFX…', 'Voice…', 'Video clips…', 'Mastering…', 'Graphics…'],
     lipsync: ['Preparing the photo…', 'Bringing the avatar to life…', 'Finishing up…'],
   },
   ru: {
     image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
     music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Разбираю сценарий…', 'Создаю кадры…', 'Добавляю голос и музыку…', 'Собираю воедино…'],
+    video: ['Сценарий…', 'Аудио и SFX…', 'Голос…', 'Видео-клипы…', 'Мастеринг…', 'Графика…'],
     lipsync: ['Готовлю фото…', 'Оживляю аватар…', 'Завершаю…'],
   },
 };
@@ -190,7 +190,11 @@ function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
   // Eased growth — fast at first, asymptotic toward 95% so it never "finishes"
   // ahead of the real asset. Completes only when the bubble swaps to media.
   const pct = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
-  const stageIdx = Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
+  // PHASE 2 L4 — video uses the explicit 6-phase bands (uneven on purpose:
+  // clip-gen dominates 50-85%); other kinds keep the even time-based split.
+  const stageIdx = kind === 'video'
+    ? (pct < 20 ? 0 : pct < 35 ? 1 : pct < 50 ? 2 : pct < 85 ? 3 : pct < 95 ? 4 : 5)
+    : Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
   const headline = status && status.trim() ? status.trim() : stages[stageIdx];
   const remaining = Math.max(0, Math.round(target - elapsed));
   const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
@@ -1310,6 +1314,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
   // 'documentary' → narration-forward (voice on top, music ducked under it).
   const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>('documentary');
+  // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
+  const [videoTab, setVideoTab] = useState<'cinema' | 'product'>('cinema');
+  // PHASE 2 L1 — Character Voice selector → VOICE_MAP (language + persona + tone).
+  const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
+  const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
+  const [voiceTone, setVoiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
+  // PHASE 2 L1 — Product-Ad mode: one product photo (hosted URL) + a commercial preset.
+  const [productImage, setProductImage] = useState<string | null>(null);
+  const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
+  const [productBusy, setProductBusy] = useState(false);
+  const [productResultUrl, setProductResultUrl] = useState<string | null>(null);
   // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
   // separate from the generic attachment tray so it reads as its own asset slot.
   const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
@@ -1539,6 +1554,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // Narrator gender (👩/👨) — overrides brief auto-detect; only when NOT using
         // the user's own trained voice (that path forces the cloned-self voice).
         ...(!isMusicVideo && !videoMultiChar && !videoMyVoiceNarration ? { narratorGender: videoNarratorGender } : {}),
+        // PHASE 2 L1 — Character Voice selector → VOICE_MAP (documentary narration only).
+        ...(!isMusicVideo && !videoMyVoiceNarration ? { voiceLanguage, voicePersona, voiceTone } : {}),
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
         ...(!isMusicVideo && videoMultiChar && videoDialogue.trim() ? { dialogueScript: videoDialogue.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
@@ -1741,7 +1758,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+
+  // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
+  // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
+  const onProductPhoto = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => setProductImage(typeof reader.result === 'string' ? reader.result : null);
+    reader.readAsDataURL(file);
+  }, []);
+
+  // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
+  // clip via the /api/video/remix `productad` op (Kling, product as start_image).
+  const generateProductAd = useCallback(async () => {
+    if (!productImage || productBusy) return;
+    setProductBusy(true);
+    setProductResultUrl(null);
+    try {
+      const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
+      const res = await fetch('/api/video/remix', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect }),
+      });
+      const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+      if (res.ok && j?.url) {
+        setProductResultUrl(j.url);
+        notifyCredit('video', { seconds: 6 });
+      }
+    } catch {
+      /* fail-open — the panel just stays on its previous state */
+    } finally {
+      setProductBusy(false);
+    }
+  }, [productImage, productBusy, productPreset, videoOrientation, notifyCredit]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -3698,6 +3748,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
+            {/* PHASE 2 L1 — Cinema vs Product-Ad tabs (orthogonal to the music/documentary axis) */}
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setVideoTab('cinema')}
+                className={`rounded-xl border p-2.5 text-[12.5px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                🎬 {locale === 'en' ? 'Cinema' : locale === 'ru' ? 'Кино' : 'კინო'}
+              </button>
+              <button type="button" onClick={() => setVideoTab('product')}
+                className={`rounded-xl border p-2.5 text-[12.5px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                📦 {locale === 'en' ? 'Product Ad' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}
+              </button>
+            </div>
+            {videoTab === 'cinema' && (<>
             {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
             <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
@@ -3824,6 +3886,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>👫 {locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
                     </div>
                   )}
+                  {/* PHASE 2 L1 — Character Voice: language + persona + tone → VOICE_MAP */}
+                  {videoNarration && !videoMyVoiceNarration && (
+                    <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Language:' : locale === 'ru' ? 'Язык:' : 'ენა:'}</span>
+                        <Chip active={voiceLanguage === 'ka'} onClick={() => setVoiceLanguage('ka')}>🇬🇪 KA</Chip>
+                        <Chip active={voiceLanguage === 'en'} onClick={() => setVoiceLanguage('en')}>🇬🇧 EN</Chip>
+                        <Chip active={voiceLanguage === 'ru'} onClick={() => setVoiceLanguage('ru')}>🇷🇺 RU</Chip>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Persona:' : locale === 'ru' ? 'Персона:' : 'პერსონა:'}</span>
+                        <Chip active={voicePersona === 'male'} onClick={() => setVoicePersona('male')}>👨 {locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი'}</Chip>
+                        <Chip active={voicePersona === 'female'} onClick={() => setVoicePersona('female')}>👩 {locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი'}</Chip>
+                        <Chip active={voicePersona === 'child'} onClick={() => setVoicePersona('child')}>👶 {locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი'}</Chip>
+                        <Chip active={voicePersona === 'elderly'} onClick={() => setVoicePersona('elderly')}>👴 {locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმული'}</Chip>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Tone:' : locale === 'ru' ? 'Тон:' : 'ტონი:'}</span>
+                        <Chip active={voiceTone === 'epic'} onClick={() => setVoiceTone('epic')}>🎭 {locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпично' : 'ეპიკური'}</Chip>
+                        <Chip active={voiceTone === 'emotional'} onClick={() => setVoiceTone('emotional')}>💫 {locale === 'en' ? 'Emotional' : locale === 'ru' ? 'Эмоц.' : 'ემოციური'}</Chip>
+                        <Chip active={voiceTone === 'energetic'} onClick={() => setVoiceTone('energetic')}>⚡ {locale === 'en' ? 'Energetic' : locale === 'ru' ? 'Энерг.' : 'ენერგიული'}</Chip>
+                      </div>
+                    </div>
+                  )}
                   {/* PHASE 2 L6 — Smart ducking: music auto-ducks under the narration.
                       Only shown with music on; depth −6…−18 dB (default −12). */}
                   {videoMusic && (
@@ -3938,6 +4024,45 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
               </div>
             </div>
+            </>)}
+
+            {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
+            {videoTab === 'product' && (
+              <div className="space-y-2.5">
+                {/* Product photo upload */}
+                <label className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed p-5 text-center transition ${productImage ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/40'}`}>
+                  {productImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={productImage} alt="product" className="max-h-32 rounded-lg object-contain" />
+                  ) : (
+                    <>
+                      <span className="text-2xl">📦</span>
+                      <span className="text-[12px] font-medium text-app-text">{locale === 'en' ? 'Upload product photo' : locale === 'ru' ? 'Загрузите фото продукта' : 'ატვირთეთ პროდუქტის ფოტო'}</span>
+                      <span className="text-[10.5px] text-app-muted">{locale === 'en' ? 'It becomes the locked foreground' : locale === 'ru' ? 'Станет фиксированным передним планом' : 'დარჩება ფიქსირებულ წინა პლანზე'}</span>
+                    </>
+                  )}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onProductPhoto(f); }} />
+                </label>
+                {/* Commercial presets */}
+                <div>
+                  <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Commercial style' : locale === 'ru' ? 'Стиль рекламы' : 'რეკლამის სტილი'}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Chip active={productPreset === 'splash'} onClick={() => setProductPreset('splash')}>💧 {locale === 'en' ? 'Splash' : locale === 'ru' ? 'Всплеск' : 'შხეფა'}</Chip>
+                    <Chip active={productPreset === 'epic'} onClick={() => setProductPreset('epic')}>🎬 {locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпик' : 'ეპიკური'}</Chip>
+                    <Chip active={productPreset === 'luxury'} onClick={() => setProductPreset('luxury')}>✨ {locale === 'en' ? 'Luxury' : locale === 'ru' ? 'Люкс' : 'ლუქსი'}</Chip>
+                    <Chip active={productPreset === 'nature'} onClick={() => setProductPreset('nature')}>🍃 {locale === 'en' ? 'Nature' : locale === 'ru' ? 'Природа' : 'ბუნება'}</Chip>
+                  </div>
+                </div>
+                {/* Generate */}
+                <button type="button" disabled={!productImage || productBusy} onClick={generateProductAd}
+                  className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage || productBusy ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
+                  {productBusy ? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…') : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
+                </button>
+                {productResultUrl && (
+                  <video src={productResultUrl} controls playsInline className="w-full rounded-xl border border-app-border/20" />
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -643,7 +643,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // instead of back-to-back — the audio legs finish in max(voice, sfx) rather than
   // their sum. Voice-over only fires when the brief asks for a commentator/narrator
   // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
-  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown } | undefined;
+  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown; voiceLanguage?: unknown; voicePersona?: unknown; voiceTone?: unknown } | undefined;
   const customNarration = (() => {
     const v = voiceMeta?.narrationScript;
     return typeof v === 'string' && v.trim() ? v.trim() : null;
@@ -651,6 +651,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
   const narratorGender: 'male' | 'female' | null =
     voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
+  // PHASE 2 L1 — Character Voice selector (language + persona + tone). Whitelisted to
+  // the allowed unions; null when unset so the legacy gender/brief path is unchanged.
+  const voiceLanguage = (voiceMeta?.voiceLanguage === 'ka' || voiceMeta?.voiceLanguage === 'en' || voiceMeta?.voiceLanguage === 'ru') ? voiceMeta.voiceLanguage : null;
+  const voicePersona = (voiceMeta?.voicePersona === 'male' || voiceMeta?.voicePersona === 'female' || voiceMeta?.voicePersona === 'child' || voiceMeta?.voicePersona === 'elderly') ? voiceMeta.voicePersona : null;
+  const voiceTone = (voiceMeta?.voiceTone === 'epic' || voiceMeta?.voiceTone === 'emotional' || voiceMeta?.voiceTone === 'energetic') ? voiceMeta.voiceTone : null;
   // Multi-character dialogue script (video panel toggle) — split per speaker, each
   // line voiced in its gendered voice and mixed into one track. Wins over single narration.
   const dialogueScript = (() => {
@@ -671,6 +676,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
           compositeId,
           narrationScript: customNarration,
           narratorGender,
+          voiceLanguage,
+          voicePersona,
+          voiceTone,
         }).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);

@@ -31,6 +31,7 @@ import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/aud
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
+import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /** Same model ladder the script agent uses, so narration matches the storyboard's voice. */
@@ -230,6 +231,9 @@ async function synthesizeVoiceover(
   text: string,
   voiceIdOverride?: string | null,
   gender?: TtsGender,
+  // PHASE 2 L1 — optional tone-driven voice-setting nudges, merged OVER the model
+  // defaults. Empty/{} → byte-identical to the previous behaviour.
+  extraVoiceSettings?: Record<string, number>,
 ): Promise<{ base64: string; contentType: string } | null> {
   const georgian = isGeorgianText(text);
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -260,7 +264,7 @@ async function synthesizeVoiceover(
           body: JSON.stringify({
             text,
             model_id: modelId,
-            voice_settings: voiceSettingsForModel(modelId),
+            voice_settings: { ...voiceSettingsForModel(modelId), ...(extraVoiceSettings ?? {}) },
           }),
           signal: ac.signal,
         });
@@ -322,18 +326,32 @@ export async function generateFilmVoiceover(opts: {
   narrationScript?: string | null;
   /** Explicit narrator gender from the video panel (👩/👨). Overrides brief auto-detect. */
   narratorGender?: 'male' | 'female' | null;
+  /** PHASE 2 L1 — Character Voice selector (language + persona + tone). When persona
+   *  AND language are both set they win over narratorGender via the VOICE_MAP. */
+  voiceLanguage?: VoiceLanguage | null;
+  voicePersona?: VoicePersonaSel | null;
+  voiceTone?: VoiceTone | null;
 }): Promise<string | null> {
   try {
     const custom = opts.narrationScript && opts.narrationScript.trim() ? opts.narrationScript.trim().slice(0, 600) : null;
     const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
     if (!script) return null;
-    // Explicit panel choice wins; otherwise pick a voice that fits the protagonist
-    // (male/female/child/elder/young) auto-detected from the brief.
-    const voiceId = opts.narratorGender ? pickNarratorVoiceId(opts.narratorGender) : pickGeorgianVoiceId(opts.brief);
-    const ttsGender: TtsGender = opts.narratorGender
-      ? (opts.narratorGender === 'male' ? 'MALE' : 'FEMALE')
-      : genderForPersona(detectPersona(opts.brief));
-    const audio = await synthesizeVoiceover(script, voiceId, ttsGender);
+    // PHASE 2 L1 — the Character Voice selector wins when present (lang+persona);
+    // else the explicit panel gender; else a brief-detected persona voice. The two
+    // legacy branches are untouched so existing renders behave identically.
+    let voiceId: string | null;
+    let ttsGender: TtsGender;
+    if (opts.voicePersona && opts.voiceLanguage) {
+      voiceId = resolveVoiceId(opts.voiceLanguage, opts.voicePersona) ?? pickGeorgianVoiceId(opts.brief);
+      ttsGender = personaToGender(opts.voicePersona) === 'male' ? 'MALE' : 'FEMALE';
+    } else if (opts.narratorGender) {
+      voiceId = pickNarratorVoiceId(opts.narratorGender);
+      ttsGender = opts.narratorGender === 'male' ? 'MALE' : 'FEMALE';
+    } else {
+      voiceId = pickGeorgianVoiceId(opts.brief);
+      ttsGender = genderForPersona(detectPersona(opts.brief));
+    }
+    const audio = await synthesizeVoiceover(script, voiceId, ttsGender, toneToVoiceSettings(opts.voiceTone));
     if (!audio) return null;
     // 2-hour signed URL — comfortably outlives the render + assemble window.
     const path = `${opts.compositeId}/voiceover.mp3`;

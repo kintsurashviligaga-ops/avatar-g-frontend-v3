@@ -69,6 +69,10 @@ const orchestrateSchema = z.object({
   narrationScript: z.string().max(2000).optional(),
   // Explicit narrator gender (video panel 👩/👨) → selects the cloned female/male voice.
   narratorGender: z.enum(['male', 'female']).optional(),
+  // PHASE 2 L1 — Character Voice selector (language + persona + tone) → VOICE_MAP.
+  voiceLanguage: z.enum(['ka', 'en', 'ru']).optional(),
+  voicePersona: z.enum(['male', 'female', 'child', 'elderly']).optional(),
+  voiceTone: z.enum(['epic', 'emotional', 'energetic']).optional(),
   // Multi-character dialogue script (video panel) → split per speaker (ქალი:/კაცი:/
   // Woman:/Man:), each line voiced in its gendered voice and mixed into one track.
   dialogueScript: z.string().max(4000).optional(),
@@ -192,7 +196,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.dialogueScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.dialogueScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -201,6 +205,10 @@ export async function POST(req: NextRequest) {
             ...(data.sceneScripts?.length ? { sceneScripts: data.sceneScripts } : {}),
             ...(data.narrationScript ? { narrationScript: data.narrationScript } : {}),
             ...(data.narratorGender ? { narratorGender: data.narratorGender } : {}),
+            // PHASE 2 L1 — Character Voice selector → filmComposite → filmVoiceover (VOICE_MAP).
+            ...(data.voiceLanguage ? { voiceLanguage: data.voiceLanguage } : {}),
+            ...(data.voicePersona ? { voicePersona: data.voicePersona } : {}),
+            ...(data.voiceTone ? { voiceTone: data.voiceTone } : {}),
             ...(data.dialogueScript ? { dialogueScript: data.dialogueScript } : {}),
             // v330 — Music Video signals: a soundtrack skips ambient gen; the flag forces a sung song.
             ...(data.soundtrackUrl ? { soundtrackUrl: data.soundtrackUrl } : {}),

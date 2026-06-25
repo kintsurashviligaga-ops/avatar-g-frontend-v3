@@ -74,6 +74,34 @@ export async function POST(req: NextRequest) {
   };
   const rawOp = String(body.op || '').trim();
   const op = OP_ALIASES[rawOp] ?? rawOp;
+
+  // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.
+  // Branches BEFORE the videoUrl guard: there is no source video; the product photo
+  // is the Kling start_image (locked foreground) and a preset drives the environment.
+  if (op === 'productad') {
+    try {
+      const aspectP: Aspect = body.aspect === '16:9' || body.aspect === '1:1' ? body.aspect : '9:16';
+      const img = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
+      // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
+      const startImg = /^data:image\//i.test(img) ? img : await resolveMedia(img);
+      if (!startImg) return fail('Add a product photo.');
+      const PRESETS: Record<string, string> = {
+        splash: 'dynamic water splashing around the product, droplets frozen mid-air in slow motion, glossy studio reflections, photorealistic commercial',
+        epic: 'epic cinematic hero product shot, volumetric smoke, dramatic moody lighting, slow dolly push-in, premium commercial',
+        luxury: 'luxury product on a slowly rotating podium, floating gold particles, elegant neon ambient glow, soft reflections, high-end commercial',
+        nature: 'product in a natural organic environment, warm sun rays, stone and wood textures, falling leaves, fresh outdoor commercial',
+      };
+      const motion = PRESETS[String(body.preset || 'luxury')] ?? PRESETS.luxury!;
+      // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
+      const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
+      return url ? ok(url) : fail('Product ad generation failed.');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[video/remix] productad', err instanceof Error ? err.message : err);
+      return fail('Product ad generation failed.');
+    }
+  }
+
   const videoUrl = await resolveMedia(body.videoUrl);
   if (!videoUrl) return fail('A video is required.');
 

@@ -152,6 +152,10 @@ export interface DriveFilmOptions {
   narrationScript?: string;
   /** Explicit narrator gender (video panel 👩/👨) → cloned female/male Georgian voice. */
   narratorGender?: 'male' | 'female';
+  /** PHASE 2 L1 — Character Voice selector (language + persona + tone) → VOICE_MAP. */
+  voiceLanguage?: 'ka' | 'en' | 'ru';
+  voicePersona?: 'male' | 'female' | 'child' | 'elderly';
+  voiceTone?: 'epic' | 'emotional' | 'energetic';
   /** Multi-character dialogue script (video panel) — split per speaker, mixed into one track. */
   dialogueScript?: string;
   /** Music OFF → no score (voice-only film). */
@@ -654,6 +658,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.narrationScript?.trim() ? { narrationScript: opts.narrationScript.trim() } : {}),
           // Narrator gender + multi-character dialogue (video panel voice selection).
           ...(opts.narratorGender ? { narratorGender: opts.narratorGender } : {}),
+          // PHASE 2 L1 — Character Voice selector (language + persona + tone).
+          ...(opts.voiceLanguage ? { voiceLanguage: opts.voiceLanguage } : {}),
+          ...(opts.voicePersona ? { voicePersona: opts.voicePersona } : {}),
+          ...(opts.voiceTone ? { voiceTone: opts.voiceTone } : {}),
           ...(opts.dialogueScript?.trim() ? { dialogueScript: opts.dialogueScript.trim() } : {}),
           // v330 — a user-uploaded soundtrack: tell the orchestrator to SKIP the
           // ambient music-generation (Udio) leg entirely (no generation, no charge);
