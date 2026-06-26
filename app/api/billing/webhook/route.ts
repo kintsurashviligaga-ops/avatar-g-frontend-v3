@@ -1,3 +1,13 @@
+/**
+ * POST /api/billing/webhook — Stripe webhook handler (plan upgrades + wallet top-ups).
+ *
+ * NOTE (audit 2026-06-26): this is a SAFE sibling of /api/stripe/webhook. Both verify the
+ * signature with STRIPE_WEBHOOK_SECRET and credit via creditWalletGel, which is IDEMPOTENT
+ * on `stripe:<session.id>` — so even if an event reaches both, a top-up is credited exactly
+ * once. The Stripe dashboard currently registers /api/webhooks/stripe + /api/stripe/webhook;
+ * this route is not registered there (no events hit it) but is kept for back-compat. Do NOT
+ * delete either — removal risks breaking whichever endpoint a given Stripe config points at.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getPlan, type PlanTier } from '../../../../lib/billing/plans';

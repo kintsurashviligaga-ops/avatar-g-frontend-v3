@@ -5,8 +5,9 @@
  *
  * Signed-out → a "please sign in" gate with a Sign In button (defers to AuthModal
  * via onSignIn). Signed-in → the live GEL balance, free-films remaining (X / 3),
- * and three top-up packages. Card payment isn't wired yet, so "გადახდა" raises a
- * self-contained "Coming soon" toast (there is no ToastProvider in this tree, so
+ * and three top-up packages. Card payment IS wired: "გადახდა" POSTs the package's GEL
+ * amount to /api/billing/wallet-topup and full-redirects to Stripe Checkout. Failures
+ * surface in a self-contained local toast (there is no ToastProvider in this tree, so
  * the toast is local state — never call useToast() here).
  *
  * Closable by ✕ · backdrop click · Escape. Rendered through a portal so it wins
