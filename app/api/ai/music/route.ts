@@ -86,8 +86,10 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // v330 — standalone music composition via ElevenLabs Music (the master audio engine,
 // replacing Udio), with Replicate MusicGen as the graceful fallback. EL Music returns
 // audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
-async function composeTrackUrl(prompt: string, style: string, instrumental: boolean, lengthSec = 30): Promise<string> {
-  const secs = Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
+async function composeTrackUrl(prompt: string, style: string, instrumental: boolean, lengthSec = 30): Promise<{ url: string; engine: string }> {
+  // FIX 2 — lengthSec === 0 means "full song": keep Udio's full ~2–4 min output (no
+  // trim). Otherwise clamp to a 15–90s window. secs===0 is the skip-trim sentinel.
+  const secs = lengthSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
 
   // PRIMARY: Udio (the founder's funded song engine — better sung vocals). Retired in
   // v330 (daf02eb) for ElevenLabs Music; restored here as the DEFAULT primary whenever
@@ -106,9 +108,13 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
       if (udio.status === 'succeeded' && udio.audioUrl) {
         // Udio ignores the requested length (no duration param) → returns a full
         // ~2–4 min song. Trim it to `secs` (30/60/90) so the panel selection is
-        // honoured. Fail-open: if the trim misses, keep the full track.
-        const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
-        return trimmed ?? udio.audioUrl; // re-hosted by caller
+        // honoured — UNLESS secs===0 ("full song"), where we keep the full track.
+        // Fail-open: if the trim misses, keep the full track.
+        if (secs > 0) {
+          const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
+          return { url: trimmed ?? udio.audioUrl, engine: 'Udio' }; // re-hosted by caller
+        }
+        return { url: udio.audioUrl, engine: 'Udio' }; // full song — no trim
       }
       // eslint-disable-next-line no-console
       console.warn(`[ai/music] Udio did not complete (${udio.status}) → ElevenLabs Music fallback`);
@@ -127,7 +133,7 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
       });
       const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
       const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604800);
-      if (url) return url;
+      if (url) return { url, engine: 'ElevenLabs Music' };
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[ai/music] ElevenLabs Music failed → MusicGen fallback:', e instanceof Error ? e.message : e);
@@ -135,7 +141,7 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   }
   const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, secs);
   if (!score.audioUrl) throw new Error('Music generation did not complete in time.');
-  return score.audioUrl;
+  return { url: score.audioUrl, engine: 'MusicGen' };
 }
 
 export async function POST(req: NextRequest) {
@@ -159,7 +165,9 @@ export async function POST(req: NextRequest) {
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
     // P6 — duration (15/30/60/90) + tempo (slow/medium/fast). Duration drives the track
     // length; tempo is folded into the prompt as a BPM/feel hint the model honours.
-    if (typeof body.durationSec === 'number' && body.durationSec > 0) durationSec = Math.max(15, Math.min(90, Math.round(body.durationSec)));
+    // FIX 2 — durationSec === 0 → "full song" (keep Udio's full output, no trim);
+    // any positive value clamps to the 15–90s window.
+    if (typeof body.durationSec === 'number') durationSec = body.durationSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(body.durationSec)));
     if (typeof body.tempo === 'string') tempo = body.tempo.trim().toLowerCase();
     // Custom lyrics (vocal tracks) — Udio sings these verbatim; empty → auto lyrics.
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
@@ -209,16 +217,22 @@ export async function POST(req: NextRequest) {
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
     let providerAudioUrl = '';
+    // The engine that actually produced the track → returned to the client for an
+    // honest "Generated with …" badge (the chain is runtime-dependent, so we can't
+    // hardcode it). Defaults updated per branch below.
+    let engine = 'AI';
     const trainedModel = useMyVoice ? await (async () => { try { const { user } = await authedClientFromRequest(req); return await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID); } catch { return null; } })() : null;
     if (trainedModel) {
       // FAITHFUL "sing in my voice": ElevenLabs Music composes a song WITH vocals, then
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
-      const composedUrl = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, false, durationSec);
+      const composed = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, false, durationSec);
       try {
-        providerAudioUrl = await convertSongWithRvc(composedUrl, trainedModel.modelUrl);
+        providerAudioUrl = await convertSongWithRvc(composed.url, trainedModel.modelUrl);
+        engine = 'Your Voice (RVC)';
       } catch {
-        providerAudioUrl = composedUrl;
+        providerAudioUrl = composed.url;
+        engine = composed.engine;
       }
     } else if (voiceReference) {
       // "Create a song in MY voice" — resolve the user's uploaded voice sample to an
@@ -239,6 +253,7 @@ export async function POST(req: NextRequest) {
       // Lyrics are what MiniMax sings; fall back to the brief if the user only gave a vibe.
       const song = await generateVoiceSong(lyrics || capped, { voiceUrl: mp3Voice || voiceUrl });
       providerAudioUrl = song.audioUrl;
+      engine = 'MiniMax (your voice)';
     } else if (audioReference) {
       // Resolve the melody to an https URL Replicate can fetch:
       //  • data:  → host it (small fallback)
@@ -257,12 +272,15 @@ export async function POST(req: NextRequest) {
       const styledPrompt = style ? `${capped}, ${style} style` : capped;
       const cover = await generateMusicCover(styledPrompt, melodyUrl, 30);
       providerAudioUrl = cover.audioUrl;
+      engine = 'MusicGen (cover)';
     } else {
       // Compose a fresh track from the brief — ElevenLabs Music (sung when not
       // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt; the
       // vocal descriptor (female/male/duet) is appended for a sung track.
       const composeBrief = vocalDescriptor ? `${capped}. ${vocalDescriptor}.` : capped;
-      providerAudioUrl = await composeTrackUrl(lyrics ? `${composeBrief}. Lyrics: ${lyrics}` : composeBrief, style, makeInstrumental, durationSec);
+      const composed = await composeTrackUrl(lyrics ? `${composeBrief}. Lyrics: ${lyrics}` : composeBrief, style, makeInstrumental, durationSec);
+      providerAudioUrl = composed.url;
+      engine = composed.engine;
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.
@@ -294,7 +312,7 @@ export async function POST(req: NextRequest) {
 
     // The cover finished while the track generated — attach it for the result card.
     const coverUrl = await coverArtPromise;
-    return NextResponse.json({ success: true, url: hostedUrl, ...(coverUrl ? { coverUrl } : {}) });
+    return NextResponse.json({ success: true, url: hostedUrl, engine, ...(coverUrl ? { coverUrl } : {}) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Music generation failed';
     // eslint-disable-next-line no-console

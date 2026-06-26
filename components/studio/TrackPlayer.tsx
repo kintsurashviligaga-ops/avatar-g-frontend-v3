@@ -12,7 +12,7 @@ import { Play, Pause, Music2 } from 'lucide-react';
 
 const fmt = (s: number) => (!isFinite(s) || s < 0 ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
-export function TrackPlayer({ url, coverUrl, label }: { url: string; coverUrl?: string; label: string }) {
+export function TrackPlayer({ url, coverUrl, label, engine }: { url: string; coverUrl?: string; label: string; engine?: string }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
@@ -125,6 +125,14 @@ export function TrackPlayer({ url, coverUrl, label }: { url: string; coverUrl?: 
         <div className="flex justify-between text-[11px] tabular-nums text-app-muted/80">
           <span>{fmt(cur)}</span><span>{fmt(dur)}</span>
         </div>
+        {/* Honest provenance badge — the engine that actually produced the track
+            (Udio / ElevenLabs Music / MusicGen / cloned voice), reported by the API. */}
+        {engine && (
+          <div className="flex items-center gap-1.5 pt-0.5 text-[10.5px] font-medium text-app-muted/70">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-400/80" />
+            <span>Generated with {engine}</span>
+          </div>
+        )}
       </div>
 
       <audio

@@ -661,7 +661,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -1290,7 +1290,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
   // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
-  const [musicDuration, setMusicDuration] = useState<15 | 30 | 60 | 90>(30);
+  // FIX 2 — duration 0 = "full song": skip the ffmpeg trim, keep Udio's full ~2-4 min output.
+  const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(30);
   const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
   // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
   // descriptors appended to the music prompt server-side (female/male/duet).
@@ -2495,7 +2496,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal: ac.signal,
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
@@ -2503,12 +2504,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
+                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
                 : { role: 'assistant', text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
         });
-        if (mine() && j.success && j.url) notifyCredit('music', { seconds: musicDuration });
+        // Full song (duration 0 = full ~2-4 min track) bills at the top 90s tier, not 0.
+        if (mine() && j.success && j.url) notifyCredit('music', { seconds: musicDuration === 0 ? 90 : musicDuration });
       } catch {
         if (!mine()) return;
         setMessages((prev) => {
@@ -3339,7 +3341,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.audioUrl && (
                 <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                   {/* Polished Suno-style player (album art + play/scrub/time). */}
-                  <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} />
+                  <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} />
                   <div className="mt-2.5 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -4197,8 +4199,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
+                  {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
+                  <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>🎵 {locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
                 </div>
               </div>
               <div>
@@ -4270,15 +4274,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* E — Result (hidden until a track exists): audio player + download/share */}
             {lastMusic?.audioUrl && (
-              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <div className="space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="block text-[12.5px] font-semibold text-app-text">🎧 {locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <audio src={lastMusic.audioUrl} controls className="w-full" />
+                {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
+                <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} />
                 <div className="flex gap-2">
-                  <a href={lastMusic.audioUrl} download className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                  <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                     <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
-                  </a>
-                  <button type="button" onClick={() => { void navigator.clipboard?.writeText(lastMusic.audioUrl ?? ''); }} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                  </button>
+                  <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                     <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
                   </button>
                 </div>
