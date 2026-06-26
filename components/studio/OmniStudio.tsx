@@ -4521,10 +4521,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <div className="space-y-3">
                 <p className="rounded-lg bg-app-elevated/40 px-3 py-2 text-[10.5px] leading-snug text-app-muted">
                   🔄 {locale === 'en'
-                    ? 'Upload a video + a character photo → AI makes a fresh ~5s clip with the new character (it re-animates a keyframe, not a full-video swap).'
+                    ? 'Upload a video + a character photo → AI swaps the face in your video (motion preserved). If it can’t, it regenerates a short clip instead.'
                     : locale === 'ru'
-                      ? 'Загрузите видео + фото персонажа → ИИ создаст новый ~5с клип с новым персонажем (реанимация кадра, не замена всего видео).'
-                      : 'ატვირთე ვიდეო + პერსონაჟის ფოტო → AI შექმნის ახალ ~5წმ კლიპს ახალი პერსონაჟით (კადრის რეანიმაცია, არა მთლიანი ვიდეოს გადაკეთება).'}
+                      ? 'Загрузите видео + фото персонажа → ИИ заменит лицо в вашем видео (движение сохраняется). Если не получится — создаст короткий клип.'
+                      : 'ატვირთე ვიდეო + პერსონაჟის ფოტო → AI შეუცვლის სახეს შენს ვიდეოში (მოძრაობა შენარჩუნებულია). თუ ვერ — შექმნის მოკლე კლიპს.'}
                 </p>
 
                 {/* 1 — source video */}

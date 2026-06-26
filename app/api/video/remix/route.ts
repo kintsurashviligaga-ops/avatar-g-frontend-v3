@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -31,7 +31,9 @@ import { generateMusic } from '@/lib/ai/replicate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// 600s: roop video face-swap (the character op's primary path) can run several minutes on
+// longer clips; the other ops finish in seconds. Bounded under Vercel's ceiling.
+export const maxDuration = 600;
 
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
 type Aspect = '9:16' | '16:9' | '1:1';
@@ -252,11 +254,16 @@ export async function POST(req: NextRequest) {
         // Anchor frame → image model (restyle / character swap / bg removal) → re-animate.
         const frame = await extractFrame(videoUrl, 0.5);
         if (!frame) return fail('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.');
-        // TASK 1 — character swap with an UPLOADED PHOTO: resolve the new person's photo and
-        // anchor the re-animated clip's identity to it via kling reference_images. Honest
-        // capability: this regenerates a fresh ~5s clip seeded by the source frame (Kling is
-        // image-to-video only — there is no motion-preserving v2v), NOT a frame-perfect swap.
+        // TASK 1 — character swap with an UPLOADED PHOTO.
         const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef) : null;
+        // PRIMARY (closer-to-source): roop video face-swap — the SAME video with the face
+        // replaced throughout, motion preserved. Tried first when a swap photo is present;
+        // on any miss we fall through to the keyframe-regenerate path below (a fresh ~5s clip
+        // seeded by one frame — Kling is i2v-only, so that path can't preserve motion).
+        if (op === 'character' && swapPhoto) {
+          const swapped = await roopFaceSwapVideo(videoUrl, swapPhoto);
+          if (swapped) return ok(swapped, { method: 'faceswap' });
+        }
         const editPrompt =
           op === 'restyle'
             ? `Restyle this exact scene: ${text || 'cinematic, film-grade color grade'}. Keep the composition and subjects, change only the visual style.`
