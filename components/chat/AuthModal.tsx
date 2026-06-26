@@ -193,7 +193,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        onAuthed?.(); onClose(); router.refresh();
+        onAuthed?.(); onClose();
+        // ISSUE 3 — the @supabase/ssr browser client writes the session cookie during
+        // sign-in; awaiting getSession() guarantees it is persisted BEFORE router.refresh()
+        // re-renders the server tree (and middleware re-reads auth), so the refreshed page
+        // sees the logged-in user instead of racing the cookie write and rendering as guest.
+        await supabase.auth.getSession();
+        router.refresh();
       } else if (mode === 'register') {
         // PRIMARY PATH — server-side admin registration that confirms the email
         // immediately. The project requires email confirmation but its mailer
@@ -228,7 +234,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
           const { error } = await supabase.auth.signInWithPassword({ email, password });
           if (error) throw error;
           await redeemRef(); // PHASE 4 Task 3 — apply an inbound referral code now that there's a session
-          onAuthed?.(); onClose(); router.refresh();
+          onAuthed?.(); onClose();
+        // ISSUE 3 — the @supabase/ssr browser client writes the session cookie during
+        // sign-in; awaiting getSession() guarantees it is persisted BEFORE router.refresh()
+        // re-renders the server tree (and middleware re-reads auth), so the refreshed page
+        // sees the logged-in user instead of racing the cookie write and rendering as guest.
+        await supabase.auth.getSession();
+        router.refresh();
         } else {
           // FALLBACK — classic client signUp. If the project ever returns a live
           // session (confirmation OFF) we log straight in; otherwise show a clear,
@@ -239,7 +251,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
           });
           if (error) throw error;
-          if (data.session) { track('user_signup', { method: 'email' }); await redeemRef(); onAuthed?.(); onClose(); router.refresh(); }
+          if (data.session) { track('user_signup', { method: 'email' }); await redeemRef(); onAuthed?.(); onClose();
+        // ISSUE 3 — the @supabase/ssr browser client writes the session cookie during
+        // sign-in; awaiting getSession() guarantees it is persisted BEFORE router.refresh()
+        // re-renders the server tree (and middleware re-reads auth), so the refreshed page
+        // sees the logged-in user instead of racing the cookie write and rendering as guest.
+        await supabase.auth.getSession();
+        router.refresh(); }
           else { track('user_signup', { method: 'email', pending_confirm: true }); setNotice(t.registerCheckEmail); }
         }
       } else if (mode === 'magic') {

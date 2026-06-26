@@ -36,8 +36,9 @@ import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/li
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { generateMusic } from '@/lib/ai/replicate';
-import { generateUdioTrack } from '@/lib/udio/client';
-import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
+// ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY (MusicGen as the silent-
+// safety last resort). Udio is intentionally NOT imported here so it can never score a
+// video; it stays confined to the standalone /api/ai/music surface.
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -255,12 +256,13 @@ async function assembleImpl(req: NextRequest) {
     segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0),
   )));
 
-  // AUDIO BED — user-chosen chain (2026-06-24): ElevenLabs is the MAIN engine for
-  // instrumentals + sung vocals (and ElevenLabs sound-generation already powers the
-  // SFX/effects leg upstream), with Udio as the FALLBACK, then Replicate MusicGen as
-  // the last resort, then SILENT. Fail-open at every tier — never a 500.
-  //   custom upload / upstream musicUrl  >  ElevenLabs Music  >  Udio  >  MusicGen  >  silent
-  type AudioEngine = 'custom-upload' | 'upstream' | 'elevenlabs-music' | 'udio' | 'musicgen' | null;
+  // AUDIO BED — VIDEO pipeline is ElevenLabs-ONLY (ISSUE 5). ElevenLabs is the MAIN
+  // engine for instrumentals + sung vocals (and ElevenLabs sound-generation already
+  // powers the SFX/effects leg upstream); Replicate MusicGen is the silent-safety last
+  // resort. Udio is NOT used for video — it stays on the standalone /api/ai/music
+  // surface only. Fail-open at every tier — never a 500.
+  //   custom upload / upstream musicUrl  >  ElevenLabs Music  >  MusicGen  >  silent
+  type AudioEngine = 'custom-upload' | 'upstream' | 'elevenlabs-music' | 'musicgen' | null;
   const resolveMusicBed = async (): Promise<{ url: string | null; fallback: AudioEngine }> => {
     // A user-uploaded soundtrack (or an upstream track) is the master bed and wins.
     if (body.customAudioUrl) {
@@ -295,31 +297,16 @@ async function assembleImpl(req: NextRequest) {
         if (url) return { url, fallback: 'elevenlabs-music' };
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn('[assemble] ElevenLabs Music failed → falling back to Udio:', err instanceof Error ? err.message : err);
+        console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
       }
     }
 
-    // FALLBACK 1 — Udio (the user's chosen fallback). start+poll, budget-bounded so it
-    // can't run past maxDuration; on a miss we drop to MusicGen. Udio's hosted URL is
-    // stable for the stitch window, so it goes straight to the manifest.
+    // ISSUE 5 — the Udio fallback that used to sit here has been REMOVED so the video
+    // pipeline never scores a film with Udio. ElevenLabs Music is the only premium
+    // engine for video; if it misses we drop straight to MusicGen below.
+
+    // FALLBACK — Replicate MusicGen (last resort before silent). Budget-guarded.
     const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
-    const UDIO_BUDGET_MS = 150_000;   // Udio is the slowest leg (full song generation)
-    if (resolveUdioApiKey() && (MAX_FN_MS - (Date.now() - fnT0)) > UDIO_BUDGET_MS + STITCH_RESERVE_MS) {
-      try {
-        const res = await generateUdioTrack(
-          { prompt, makeInstrumental: instrumental },
-          { maxAttempts: Math.floor(UDIO_BUDGET_MS / 6_000), pollIntervalMs: 6_000 },
-        );
-        // eslint-disable-next-line no-console
-        console.log('[assemble] Udio track ready (fallback):', res.audioUrl ? `yes (${instrumental ? 'instrumental' : 'sung'})` : `no (status ${res.status})`);
-        if (res.audioUrl) return { url: res.audioUrl, fallback: 'udio' };
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[assemble] Udio fallback failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
-      }
-    }
-
-    // FALLBACK 2 — Replicate MusicGen (last resort before silent). Budget-guarded.
     const SCORE_BUDGET_MS = 120_000;
     if ((MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
       const brief =
