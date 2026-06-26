@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
@@ -1127,6 +1127,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
+  // FIX 5 — URLs the user has explicitly filed into the Library (drives the ✓ saved state).
+  const [savedUrls, setSavedUrls] = useState<Set<string>>(new Set());
   // Credit-deduction toast — shown briefly after each successful generation
   // ("−N credits · X.XX ₾"). Pricing is centralised in lib/credits/pricing.ts; the
   // real balance is still the GEL wallet (the ₾ pill re-reads it on the next open).
@@ -3192,6 +3194,47 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [t.linkCopied]);
 
+  // FIX 5 — explicitly file a result into the user's Library. Optimistic ✓; on a miss
+  // the URL is dropped from the saved set so the button returns to its idle state.
+  const saveToLibrary = useCallback(async (url: string, kind: 'film' | 'image' | 'music', prompt?: string) => {
+    if (!url || savedUrls.has(url)) return;
+    setSavedUrls((s) => new Set(s).add(url));
+    try {
+      const r = await fetch('/api/studio/library', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ url, kind, ...(prompt ? { prompt } : {}) }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean };
+      if (j.success) {
+        setShareToast(locale === 'en' ? '📚 Saved to library' : locale === 'ru' ? '📚 Сохранено в библиотеку' : '📚 ბიბლიოთეკაში შენახულია');
+        setTimeout(() => setShareToast((s) => (/library|библиоте|ბიბლიოთეკ/i.test(s ?? '') ? null : s)), 2200);
+      } else {
+        setSavedUrls((s) => { const n = new Set(s); n.delete(url); return n; });
+      }
+    } catch {
+      setSavedUrls((s) => { const n = new Set(s); n.delete(url); return n; });
+    }
+  }, [savedUrls, locale]);
+
+  // FIX 5 — the shared "📚 ბიბლიოთეკაში შენახვა" result action (consistent across every
+  // result card). Shows a ✓ saved state once filed.
+  const saveLibButton = useCallback((url: string, kind: 'film' | 'image' | 'music', prompt?: string) => {
+    const saved = savedUrls.has(url);
+    return (
+      <button
+        type="button"
+        onClick={() => void saveToLibrary(url, kind, prompt)}
+        disabled={saved}
+        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+      >
+        {saved ? <Check size={13} className="text-app-accent" /> : <BookmarkPlus size={13} />}
+        {saved
+          ? (locale === 'en' ? 'Saved' : locale === 'ru' ? 'Сохранено' : 'შენახულია')
+          : (locale === 'en' ? 'Save' : locale === 'ru' ? 'В библиотеку' : 'ბიბლიოთეკაში')}
+      </button>
+    );
+  }, [savedUrls, saveToLibrary, locale]);
+
   // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
   const writeLyrics = useCallback(async () => {
     if (writingLyrics) return;
@@ -3323,6 +3366,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Pencil size={13} /> {t.editImage}
                     </button>
+                    {saveLibButton(m.imageUrl, 'image', m.regen?.kind === 'image' ? m.regen.prompt : undefined)}
                   </div>
                 </div>
               )}
@@ -3374,6 +3418,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
+                    {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
                   </div>
                 </div>
               )}
@@ -3401,6 +3446,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
+                    {saveLibButton(m.videoUrl, 'film', m.filmPrompt)}
                   </div>
                   {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
                       shown once the film captured its landed clips + brief. */}
@@ -4223,6 +4269,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <button type="button" onClick={generateProductAd} disabled={productBusy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                         <RotateCcw size={13} /> {locale === 'en' ? 'Regenerate' : locale === 'ru' ? 'Заново' : 'თავიდან'}
                       </button>
+                      {saveLibButton(productResultUrl, 'film')}
                     </div>
                   </div>
                 )}
@@ -4341,6 +4388,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                     <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
                   </button>
+                  {saveLibButton(lastMusic.audioUrl, 'music')}
                 </div>
               </div>
             )}
