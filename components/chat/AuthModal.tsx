@@ -145,6 +145,24 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // PHASE 4 Task 3 — capture an inbound ?ref=CODE (myavatar.ge?ref=ABC123) so it
+  // survives until the user signs up, then redeems the existing referral system.
+  useEffect(() => {
+    try {
+      const ref = new URLSearchParams(window.location.search).get('ref');
+      if (ref) localStorage.setItem('myavatar:ref', ref.trim().toUpperCase());
+    } catch { /* ignore */ }
+  }, []);
+  const redeemRef = useCallback(async () => {
+    let code = '';
+    try { code = localStorage.getItem('myavatar:ref') || new URLSearchParams(window.location.search).get('ref') || ''; } catch { /* ignore */ }
+    if (!code || code.trim().length < 6) return;
+    try {
+      await fetch('/api/referral/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ code: code.trim() }) });
+      try { localStorage.removeItem('myavatar:ref'); } catch { /* ignore */ }
+    } catch { /* fail-open — referral bonus is best-effort */ }
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -209,6 +227,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         if (registered) {
           const { error } = await supabase.auth.signInWithPassword({ email, password });
           if (error) throw error;
+          await redeemRef(); // PHASE 4 Task 3 — apply an inbound referral code now that there's a session
           onAuthed?.(); onClose(); router.refresh();
         } else {
           // FALLBACK — classic client signUp. If the project ever returns a live
@@ -220,7 +239,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
           });
           if (error) throw error;
-          if (data.session) { track('user_signup', { method: 'email' }); onAuthed?.(); onClose(); router.refresh(); }
+          if (data.session) { track('user_signup', { method: 'email' }); await redeemRef(); onAuthed?.(); onClose(); router.refresh(); }
           else { track('user_signup', { method: 'email', pending_confirm: true }); setNotice(t.registerCheckEmail); }
         }
       } else if (mode === 'magic') {

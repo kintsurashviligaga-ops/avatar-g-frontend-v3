@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { creditsToGel } from '@/lib/credits/pricing';
 import { useTheme } from '@/lib/theme/ThemeContext';
+import ReferralPanel from '@/components/dashboard/ReferralPanel';
 
 /**
  * Settings — top-level user preferences surface.
@@ -180,7 +181,9 @@ export function SettingsView({ locale }: { locale: string }) {
           <motion.div variants={fadeUp} custom={4}><ProfileSection t={t.profile} /></motion.div>
           <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={7}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>
+          {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}
+          <motion.div variants={fadeUp} custom={7}><ReferralPanel isAuthenticated /></motion.div>
+          <motion.div variants={fadeUp} custom={8}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>
         </motion.div>
       </div>
     </div>
