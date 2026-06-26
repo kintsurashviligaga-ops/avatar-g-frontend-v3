@@ -59,7 +59,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   modeRemix: string; remixUploadHint: string; remixRunning: string; remixDone: string; remixFailed: string; remixNeedVideo: string;
-  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
+  stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string;
@@ -80,7 +80,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
-    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის',
@@ -101,7 +101,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
-    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame',
@@ -122,7 +122,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
-    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра',
@@ -661,7 +661,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -1251,9 +1251,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const genIdRef = useRef(0);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
+  // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
+  // render can be retried in one click without the user re-typing or re-uploading.
+  const lastVideoReqRef = useRef<{ filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' } | null>(null);
   // Live elapsed seconds during a generation — drives the progress clock + bar.
   const [elapsed, setElapsed] = useState(0);
   const genStartRef = useRef(0);
+  // FIX 4 — per-result video duration (read from the player) for the result-card badge.
+  const [videoResultDur, setVideoResultDur] = useState<Record<number, number>>({});
   // Live Director's-Console status for the post-assemble Lip-Sync agent (the music-video
   // singer sync). 'skipped' when no lip-sync is wanted; flips queued→processing→completed.
   const lipsyncStageRef = useRef<FilmAgentStatus>('idle');
@@ -1677,7 +1682,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
+            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true };
         }
         return next;
       });
@@ -1799,7 +1804,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
+        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true };
         return next;
       });
     } finally {
@@ -1916,6 +1921,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Fail-open: a storyboard miss falls back to a direct render so the user is
   // never blocked. A user Cancel (abort) stops quietly without rendering.
   const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait') => {
+    // FIX 4 — remember this request so a failed render can be retried in one click.
+    lastVideoReqRef.current = { filmPrompt, refs, orientation };
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
@@ -3377,7 +3384,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       black box); preload=metadata forces that frame to load up front. */}
                   {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
                       pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                  {/* FIX 4 — result meta: real clip length read from the player. */}
+                  {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
+                    <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'} · {(m.orientation ?? videoOrientation) === 'vertical' ? '9:16' : (m.orientation ?? videoOrientation) === 'square' ? '1:1' : (m.orientation ?? videoOrientation) === 'portrait' ? '4:5' : '16:9'}</div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -3519,6 +3530,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   )
                   : <span className="whitespace-pre-wrap">{m.text}</span>;
               })()}
+              {/* FIX 4 — one-click retry on a failed video render (reuses the stored
+                  prompt + refs + orientation; no re-typing / re-uploading). */}
+              {m.retryVideo && !busy && (
+                <button
+                  type="button"
+                  onClick={() => { const r = lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                >
+                  {t.retry}
+                </button>
+              )}
               {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
                   could copy assistant replies but not their own messages. On desktop
                   the row reveals on hover / keyboard focus (group-hover); on mobile
