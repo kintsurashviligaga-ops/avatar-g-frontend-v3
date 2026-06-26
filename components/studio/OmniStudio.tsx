@@ -1401,7 +1401,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'documentary' → narration-forward (voice on top, music ducked under it).
   const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>('documentary');
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
-  const [videoTab, setVideoTab] = useState<'cinema' | 'product'>('cinema');
+  // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
+  // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
+  const [videoTab, setVideoTab] = useState<'cinema' | 'product' | 'videoswap'>('cinema');
+  const [swapSourceVideo, setSwapSourceVideo] = useState<{ name: string; url: string; previewUrl?: string } | null>(null);
+  const [swapSourceVideoBusy, setSwapSourceVideoBusy] = useState(false);
+  const swapVideoRef = useRef<HTMLInputElement | null>(null);
   // PHASE 2 L1 — Character Voice selector → VOICE_MAP (language + persona + tone).
   const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
   const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
@@ -2913,6 +2918,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [remixVideo, remixBusy, busy, remixOp, remixText, remixGender, remixAspect, remixTrack, remixTrimStart, remixTrimDur, locale, notifyCredit, t.remixRunning, t.remixFailed]);
 
+  // TASK 1 — Character swap: source video + new-character PHOTO → the remix `character` op
+  // (frame → swap → re-animate via Kling, identity anchored by the photo). The result lands
+  // in the chat with the Remix Studio staged-timer (remixOpKind: 'character'). Mirrors runRemix.
+  const runVideoSwap = useCallback(async () => {
+    if (!swapSourceVideo?.url || !videoCharacterRef || busy) return;
+    const label = locale === 'en' ? 'Character swap' : locale === 'ru' ? 'Замена персонажа' : 'პერსონაჟის შეცვლა';
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+    setOptionsOpen(false);
+    setMessages((prev) => [...prev, { role: 'user', text: `🔄 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'character' }]);
+    setBusy(true);
+    try {
+      // Host the character photo (a data URL) so kling can fetch it as a reference image.
+      const photoRef = (await uploadBigFile(videoCharacterRef, 'image/jpeg')) || videoCharacterRef;
+      const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
+      const res = await fetch('/api/video/remix', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+        body: JSON.stringify({ op: 'character', videoUrl: swapSourceVideo.url, characterRef: photoRef, aspect }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
+      setMessages((prev) => {
+        if (!mine()) return prev;
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === 'assistant') next[next.length - 1] = j.url
+          ? { role: 'assistant', text: '', videoUrl: j.url, orientation: videoOrientation === 'landscape' ? 'landscape' : 'vertical' }
+          : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
+        return next;
+      });
+      if (mine() && j.url) notifyCredit('remix');
+    } catch {
+      if (!mine()) return;
+      setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
+    } finally {
+      if (mine()) setBusy(false);
+    }
+  }, [swapSourceVideo, videoCharacterRef, busy, videoOrientation, locale, notifyCredit, t.remixRunning, t.remixFailed]);
+
   // Upload a remix video / music track → signed URL (auth-gated; null when not
   // signed in, in which case the picker stays empty and Run remains disabled).
   const pickRemixMedia = useCallback(async (file: File, kind: 'video' | 'track') => {
@@ -4042,15 +4087,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
-            {/* PHASE 2 L1 — Cinema vs Product-Ad tabs (orthogonal to the music/documentary axis) */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* PHASE 2 L1 — Cinema / Product-Ad / Character-Swap tabs (TASK 1 adds swap). */}
+            <div className="grid grid-cols-3 gap-1.5">
               <button type="button" onClick={() => setVideoTab('cinema')}
-                className={`rounded-xl border p-2.5 text-[12.5px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
                 🎬 {locale === 'en' ? 'Cinema' : locale === 'ru' ? 'Кино' : 'კინო'}
               </button>
               <button type="button" onClick={() => setVideoTab('product')}
-                className={`rounded-xl border p-2.5 text-[12.5px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                📦 {locale === 'en' ? 'Product Ad' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}
+                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                📦 {locale === 'en' ? 'Product' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}
+              </button>
+              <button type="button" onClick={() => setVideoTab('videoswap')}
+                className={`relative rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'videoswap' ? 'border-orange-500/50 bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                🔄 {locale === 'en' ? 'Swap' : locale === 'ru' ? 'Замена' : 'შეცვლა'}
+                <span className="absolute -right-1 -top-1 rounded-full bg-orange-500/30 px-1 text-[8px] font-bold text-orange-300">★</span>
               </button>
             </div>
             {videoTab === 'cinema' && (<>
@@ -4465,6 +4515,85 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 )}
               </div>
             )}
+
+            {/* TASK 1 — Character-Swap panel: source video + new-character photo → ~5s clip. */}
+            {videoTab === 'videoswap' && (
+              <div className="space-y-3">
+                <p className="rounded-lg bg-app-elevated/40 px-3 py-2 text-[10.5px] leading-snug text-app-muted">
+                  🔄 {locale === 'en'
+                    ? 'Upload a video + a character photo → AI makes a fresh ~5s clip with the new character (it re-animates a keyframe, not a full-video swap).'
+                    : locale === 'ru'
+                      ? 'Загрузите видео + фото персонажа → ИИ создаст новый ~5с клип с новым персонажем (реанимация кадра, не замена всего видео).'
+                      : 'ატვირთე ვიდეო + პერსონაჟის ფოტო → AI შექმნის ახალ ~5წმ კლიპს ახალი პერსონაჟით (კადრის რეანიმაცია, არა მთლიანი ვიდეოს გადაკეთება).'}
+                </p>
+
+                {/* 1 — source video */}
+                <div>
+                  <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">📹 {locale === 'en' ? 'Source video' : locale === 'ru' ? 'Исходное видео' : 'წყარო ვიდეო'}</span>
+                  {!swapSourceVideo ? (
+                    <div role="button" tabIndex={0}
+                      onClick={() => { if (!swapSourceVideoBusy) swapVideoRef.current?.click(); }}
+                      onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !swapSourceVideoBusy) { e.preventDefault(); swapVideoRef.current?.click(); } }}
+                      className="flex min-h-[96px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-app-border/30 bg-app-bg/40 p-4 text-center transition hover:border-orange-400/40 hover:bg-orange-500/[0.06] active:scale-[0.99]">
+                      {swapSourceVideoBusy ? (
+                        <><Loader2 size={18} className="animate-spin text-orange-400" /><span className="text-[11px] text-app-muted">{locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…'}</span></>
+                      ) : (
+                        <><span className="text-2xl">📹</span>
+                        <span className="text-[12px] font-medium text-app-text">{locale === 'en' ? 'Drop a video or tap' : locale === 'ru' ? 'Перетащите видео' : 'ჩააგდე ვიდეო ან დააწკაპე'}</span>
+                        <span className="text-[10px] text-app-muted">.mp4 .mov — {locale === 'en' ? 'max 100MB' : locale === 'ru' ? 'макс 100МБ' : 'მაქს 100MB'}</span></>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="relative overflow-hidden rounded-xl border border-app-border/15 bg-app-bg/60">
+                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                      <video src={swapSourceVideo.previewUrl || swapSourceVideo.url} muted playsInline preload="metadata" className="h-28 w-full object-cover" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 p-1.5"><p className="truncate text-[10px] text-white">{swapSourceVideo.name}</p></div>
+                      <button type="button" aria-label="remove video" onClick={() => setSwapSourceVideo((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; })}
+                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[11px] text-white hover:bg-black/80 touch-manipulation before:absolute before:-inset-2 before:content-['']">✕</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2 — new character photo (reuses charFileRef + videoCharacterRef) */}
+                <div>
+                  <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">👤 {locale === 'en' ? 'New character (photo)' : locale === 'ru' ? 'Новый персонаж (фото)' : 'ახალი პერსონაჟი (ფოტო)'}</span>
+                  <div role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charFileRef.current?.click(); } }}
+                    className={`relative flex min-h-[80px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-orange-400/50 bg-orange-500/[0.06]' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                    {videoCharacterRef ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={videoCharacterRef} alt="" loading="lazy" decoding="async" className="h-11 w-11 rounded-lg object-cover ring-1 ring-orange-400/40" />
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-400"><Check size={12} /> {locale === 'en' ? 'Character set' : locale === 'ru' ? 'Персонаж задан' : 'პერსონაჟი დაყენდა'}</span>
+                        <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
+                      </>
+                    ) : (
+                      <><span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-orange-400"><ImageIcon size={16} /></span>
+                      <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Upload a face' : locale === 'ru' ? 'Загрузите лицо' : 'ატვირთე სახე'}</span></>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3 — status */}
+                {swapSourceVideo && !videoCharacterRef && (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.08] px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+                    <span>⚠️</span><span>{locale === 'en' ? 'A character photo is required to swap.' : locale === 'ru' ? 'Нужно фото персонажа для замены.' : 'პერსონაჟის შესაცვლელად საჭიროა ფოტო.'}</span>
+                  </div>
+                )}
+                {swapSourceVideo && videoCharacterRef && (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+                    <span>✅</span><span>{locale === 'en' ? 'Ready — video + character set.' : locale === 'ru' ? 'Готово — видео + персонаж заданы.' : 'მზადაა! ვიდეო + პერსონაჟი დაყენებულია.'}</span>
+                  </div>
+                )}
+
+                {/* 4 — generate */}
+                <button type="button" disabled={!swapSourceVideo || !videoCharacterRef || busy} onClick={() => void runVideoSwap()}
+                  className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef || busy) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
+                  🔄 {locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -4779,6 +4908,36 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             }
           } catch { /* ignore */ } finally {
             setVideoSoundtrackBusy(false);
+          }
+        }} />
+        {/* TASK 1 — Character-Swap source video: ≤100MB mp4/mov → Supabase; keeps a local
+            blob for the panel preview. */}
+        <input ref={swapVideoRef} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          const okType = /video\/(mp4|quicktime)/i.test(f.type) || /\.(mp4|mov)$/i.test(f.name);
+          if (!okType) {
+            setShareToast(locale === 'en' ? 'Use an MP4 or MOV file' : locale === 'ru' ? 'Нужен MP4 или MOV' : 'საჭიროა MP4 ან MOV ფაილი');
+            setTimeout(() => setShareToast((s) => (/MP4|MOV/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
+          if (f.size > 100 * 1024 * 1024) {
+            setShareToast(locale === 'en' ? 'Video is too large (max 100MB)' : locale === 'ru' ? 'Видео слишком большое (макс 100МБ)' : 'ვიდეო ძალიან დიდია (მაქს 100MB)');
+            setTimeout(() => setShareToast((s) => (/100/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
+          setSwapSourceVideoBusy(true);
+          try {
+            const dataUrl = await fileToDataUrl(f);
+            const url = await uploadBigFile(dataUrl, f.type || 'video/mp4');
+            if (url) {
+              let previewUrl: string | undefined;
+              try { previewUrl = URL.createObjectURL(f); } catch { /* noop */ }
+              setSwapSourceVideo({ name: f.name, url, ...(previewUrl ? { previewUrl } : {}) });
+            }
+          } catch { /* ignore */ } finally {
+            setSwapSourceVideoBusy(false);
           }
         }} />
         {/* v330 — Avatar/lip-sync face: scoped single-image picker → replaces any prior
