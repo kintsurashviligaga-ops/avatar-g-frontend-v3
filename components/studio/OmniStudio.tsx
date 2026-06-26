@@ -12,12 +12,16 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
-import FilmDirectorConsole from './FilmDirectorConsole';
-import RemixStudioConsole from './RemixStudioConsole';
+// ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
+// initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
+// out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
+const FilmDirectorConsole = dynamic(() => import('./FilmDirectorConsole'), { ssr: false, loading: () => <div className="h-24" /> });
+const RemixStudioConsole = dynamic(() => import('./RemixStudioConsole'), { ssr: false, loading: () => <div className="h-24" /> });
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -563,6 +567,11 @@ const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru
   ['country', { ka: 'ქანთრი', en: 'Country', ru: 'Кантри' }],
   ['ambient', { ka: 'ემბიენტი', en: 'Ambient', ru: 'Эмбиент' }],
   ['lo-fi', { ka: 'ლო-ფაი', en: 'Lo-fi', ru: 'Лоу-фай' }],
+  // ISSUE 6 — round the panel out to 19 genres (the horizontal chip strip already scrolls).
+  ['soul', { ka: 'სოული', en: 'Soul', ru: 'Соул' }],
+  ['funk', { ka: 'ფანკი', en: 'Funk', ru: 'Фанк' }],
+  ['latin', { ka: 'ლათინური', en: 'Latin', ru: 'Латина' }],
+  ['k-pop', { ka: 'K-Pop', en: 'K-Pop', ru: 'K-Pop' }],
 ];
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
 
@@ -1511,6 +1520,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
   }, [mode]);
+  // ISSUE 1 — lock the PAGE behind the options drawer on mobile. The drawer itself
+  // already scrolls (overflow-y-auto + overscroll-contain + touch-pan-y), but without
+  // pinning the body a swipe still bubbled to the html/body and scrolled the whole page.
+  // position:fixed is the only reliable iOS Safari lock (overflow:hidden alone is
+  // ignored there); we preserve + restore the scroll offset so closing the drawer
+  // doesn't jump the feed to the top. Desktop (≥640px) is untouched — the panel is
+  // inline there, not an overlay.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!optionsOpen || window.innerWidth >= 640) return;
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const prev = { overflow: body.style.overflow, position: body.style.position, top: body.style.top, width: body.style.width };
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    return () => {
+      body.style.overflow = prev.overflow;
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, [optionsOpen]);
   // Track the composer's live height so the scroll-to-bottom FAB always floats just
   // above it (a fixed 104px offset overlapped a multi-line / attachments / open-options composer).
   useEffect(() => {
@@ -3996,7 +4030,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
               <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}{videoMode === 'musicvideo' && <span className="ml-1 text-[10px] font-normal text-app-muted">· {locale === 'en' ? '9:16 locked' : locale === 'ru' ? '9:16 фикс.' : '9:16 ფიქს.'}</span>}</span>
-                <div className={`flex items-end gap-3 ${videoMode === 'musicvideo' ? 'opacity-70' : ''}`}>
+                {/* ISSUE 4 — flex-wrap so all 4 formats (16:9·9:16·1:1·4:5) stay visible in
+                    the half-width grid column on a 375px phone (1:1 + 4:5 were clipping off-screen). */}
+                <div className={`flex flex-wrap items-end gap-x-3 gap-y-2 ${videoMode === 'musicvideo' ? 'opacity-70' : ''}`}>
                   <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
                     <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
                     <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>

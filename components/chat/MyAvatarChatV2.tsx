@@ -3241,6 +3241,33 @@ function speechLang(lang: 'en' | 'ka' | 'ru'): string {
   return lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
 }
 
+// ISSUE 2 — split a reply into TTS-sized chunks so a LONG read-aloud is never truncated
+// (the prior code sent ONE request / one utterance, which both ElevenLabs and the Chrome
+// SpeechSynthesis engine cut short — the "2-3 words then stops" bug). Breaks on sentence
+// terminators (Latin · Georgian · CJK) + newlines, merges up to ~600 chars, hard-splits a
+// runaway sentence. Mirrors OmniStudio's proven chunker.
+function chunkForTts(text: string): string[] {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const sentences = clean.match(/[^.!?。！？\n]+[.!?。！？]+|\S[^.!?。！？\n]*$/g) || [clean];
+  const MAX = 600;
+  const chunks: string[] = [];
+  let buf = '';
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s) continue;
+    if (`${buf} ${s}`.trim().length > MAX) {
+      if (buf) { chunks.push(buf.trim()); buf = ''; }
+      if (s.length > MAX) { for (let k = 0; k < s.length; k += MAX) chunks.push(s.slice(k, k + MAX)); }
+      else buf = s;
+    } else {
+      buf = buf ? `${buf} ${s}` : s;
+    }
+  }
+  if (buf.trim()) chunks.push(buf.trim());
+  return chunks;
+}
+
 /** True when a URL resolves to a directly-renderable raster image. */
 function isDirectImage(url: string): boolean {
   return /^data:image\//i.test(url) || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/i.test(url);
@@ -3980,6 +4007,9 @@ function MessageBubble({
   const [ttsState, setTtsState] = useState<'idle' | 'loading' | 'playing' | 'paused'>('idle');
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const readAloudAudioRef = useRef<HTMLAudioElement | null>(null);
+  // ISSUE 2 — monotonic token: bumped on every start/stop so a stale chunk loop (ElevenLabs
+  // OR the browser keep-alive) abandons itself instead of fighting a newer read.
+  const ttsTokenRef = useRef(0);
   // Smooth content mount: media starts blurred + transparent and resolves to a
   // crisp frame on first decode (hardware-accelerated opacity+blur transition).
   const [mediaReady, setMediaReady] = useState(false);
@@ -4038,7 +4068,11 @@ function MessageBubble({
   // and release its blob URL when the bubble unmounts.
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window && utterRef.current) {
+      // ISSUE 2 — bump the token so any in-flight chunk loop / browser keep-alive
+      // interval sees `!live()` and stops (otherwise the 10s pause/resume interval
+      // would outlive the unmounted bubble).
+      ttsTokenRef.current += 1;
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try { window.speechSynthesis.cancel(); } catch { /* noop */ }
       }
       const audio = readAloudAudioRef.current;
@@ -4055,19 +4089,38 @@ function MessageBubble({
     onFeedback(message.id, rating);
   }, [message.id, onFeedback]);
 
-  // Browser SpeechSynthesis — the LAST-RESORT read engine. Most browsers ship
-  // no Georgian (ka-GE) voice, so this only runs when the premium ElevenLabs
-  // stream is unreachable. Markdown-stripped prose, surface-locale voice.
-  const speakViaBrowser = useCallback((plain: string) => {
+  // Browser SpeechSynthesis — the LAST-RESORT read engine (ElevenLabs unreachable).
+  // ISSUE 2 — the OLD version spoke the WHOLE reply in ONE utterance, which Chrome cuts
+  // off after ~15s / a couple of words. Fixed two ways: (1) speak SENTENCE-SIZED chunks
+  // chained on onend, and (2) a 10s pause()/resume() keep-alive that resets Chrome's
+  // internal timer so it never silently stops. Token-guarded so a stop/new read abandons
+  // the chain. `paused` is respected (the keep-alive never resumes a user-paused read).
+  const speakViaBrowser = useCallback((plain: string, token: number) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) { setTtsState('idle'); return; }
     const synth = window.speechSynthesis;
     try { synth.cancel(); } catch { /* noop */ }
-    const utter = new SpeechSynthesisUtterance(plain);
-    utter.lang = speechLang(lang);
-    utter.onend = () => { utterRef.current = null; setTtsState('idle'); };
-    utter.onerror = () => { utterRef.current = null; setTtsState('idle'); };
-    utterRef.current = utter;
-    try { synth.speak(utter); setTtsState('playing'); } catch { setTtsState('idle'); }
+    const sentences = chunkForTts(plain);
+    if (!sentences.length) { setTtsState('idle'); return; }
+    const live = () => token === ttsTokenRef.current;
+    let idx = 0;
+    // Chrome cutoff workaround: a periodic pause→resume resets the engine's watchdog.
+    const keepAlive = window.setInterval(() => {
+      if (!live() || !synth.speaking) { window.clearInterval(keepAlive); return; }
+      if (!synth.paused) { try { synth.pause(); synth.resume(); } catch { /* noop */ } }
+    }, 10_000);
+    const speakNext = () => {
+      if (!live()) { window.clearInterval(keepAlive); return; }
+      if (idx >= sentences.length) { window.clearInterval(keepAlive); utterRef.current = null; setTtsState('idle'); return; }
+      const utter = new SpeechSynthesisUtterance(sentences[idx]!);
+      utter.lang = speechLang(lang);
+      utter.rate = 0.95;
+      utter.onend = () => { idx += 1; window.setTimeout(speakNext, 50); }; // small gap = Chrome stability
+      utter.onerror = () => { idx += 1; speakNext(); };
+      utterRef.current = utter;
+      try { synth.speak(utter); } catch { /* keep going */ }
+    };
+    setTtsState('playing');
+    speakNext();
   }, [lang]);
 
   // Read-aloud play/pause toggle. PHASE 56 — first tap synthesizes the message
@@ -4078,23 +4131,29 @@ function MessageBubble({
   const toggleReadAloud = useCallback(async () => {
     if (!message.text || ttsState === 'loading') return;
 
-    const audio = readAloudAudioRef.current;
+    const cur = readAloudAudioRef.current;
     if (ttsState === 'playing') {
-      if (audio) { try { audio.pause(); } catch { /* noop */ } }
+      if (cur) { try { cur.pause(); } catch { /* noop */ } }
       else if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.pause(); } catch { /* noop */ } }
       setTtsState('paused');
       return;
     }
     if (ttsState === 'paused') {
-      if (audio) { try { await audio.play(); } catch { /* noop */ } }
+      if (cur) { try { await cur.play(); } catch { /* noop */ } }
       else if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.resume(); } catch { /* noop */ } }
       setTtsState('playing');
       return;
     }
 
-    const plain = message.text.replace(/[*_`#>~|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').slice(0, 4000);
+    // ISSUE 2 — fresh read. The OLD code sent the whole reply (≤4000 chars) in ONE
+    // ElevenLabs request and played ONE <audio>; long Georgian replies came back
+    // truncated ("2-3 words then stops"). Now we CHUNK the reply and synthesize + play
+    // the pieces back-to-back (next chunk pre-fetched while the current plays), so the
+    // WHOLE message is read. EL unreachable on the first chunk → the chunked + keep-alive
+    // browser engine. Token-guarded so a new read abandons the prior chain cleanly.
+    const token = ++ttsTokenRef.current;
+    const live = () => token === ttsTokenRef.current;
 
-    // Cancel any prior read (this bubble's or, for speech, a sibling's).
     if (readAloudAudioRef.current) {
       try { readAloudAudioRef.current.pause(); } catch { /* noop */ }
       try { if (readAloudAudioRef.current.src.startsWith('blob:')) URL.revokeObjectURL(readAloudAudioRef.current.src); } catch { /* noop */ }
@@ -4102,44 +4161,55 @@ function MessageBubble({
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch { /* noop */ } }
 
+    const plain = message.text.replace(/[*_`#>~|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').slice(0, 8000);
+    const chunks = chunkForTts(plain);
+    if (!chunks.length) { setTtsState('idle'); return; }
+
     setTtsState('loading');
-    // STEP 1 — synthesize via the premium (cloned-voice) route. A failure HERE means
-    // the audio itself is unavailable → fall back to the browser engine.
-    let el: HTMLAudioElement;
-    let url: string;
+
+    const synthChunk = async (chunk: string): Promise<string | null> => {
+      try {
+        const res = await fetch('/api/elevenlabs/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ text: chunk, locale: lang }),
+        });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        if (!blob.size) return null;
+        return URL.createObjectURL(blob);
+      } catch { return null; }
+    };
+
     try {
-      const res = await fetch('/api/elevenlabs/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ text: plain, locale: lang }),
-      });
-      if (!res.ok) throw new Error(`tts ${res.status}`);
-      const blob = await res.blob();
-      if (!blob.size) throw new Error('empty audio');
-      url = URL.createObjectURL(blob);
-      el = new Audio(url);
-      el.onended = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } readAloudAudioRef.current = null; setTtsState('idle'); };
-      el.onerror = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } readAloudAudioRef.current = null; setTtsState('idle'); };
-      readAloudAudioRef.current = el;
+      let nextUrl: Promise<string | null> = synthChunk(chunks[0]!);
+      for (let i = 0; i < chunks.length; i += 1) {
+        const url = await nextUrl;
+        if (!live()) { if (url) { try { URL.revokeObjectURL(url); } catch { /* noop */ } } return; }
+        // Pre-fetch the next chunk while this one plays (hides the synthesis gap).
+        nextUrl = i + 1 < chunks.length ? synthChunk(chunks[i + 1]!) : Promise.resolve(null);
+        if (!url) {
+          if (i === 0) { speakViaBrowser(plain, token); return; } // EL down → browser engine
+          continue; // a mid-stream chunk missed → skip it, keep reading the rest
+        }
+        const audio = new Audio(url);
+        readAloudAudioRef.current = audio;
+        if (live()) setTtsState('playing');
+        await new Promise<void>((resolve) => {
+          const done = () => { if (readAloudAudioRef.current === audio) readAloudAudioRef.current = null; try { URL.revokeObjectURL(url); } catch { /* noop */ } resolve(); };
+          audio.onended = done;
+          audio.onerror = done;
+          // Pausing this element holds the chain (onended only fires at true end), so
+          // play/pause/resume from the toggle works across the chunk sequence.
+          audio.play().catch(done);
+        });
+        if (!live()) return; // stopped or a newer read started mid-sequence
+      }
+      if (live()) setTtsState('idle');
     } catch {
-      // Premium voice unreachable — degrade to the browser engine.
-      readAloudAudioRef.current = null;
-      speakViaBrowser(plain);
-      return;
+      if (live()) setTtsState('idle');
     }
-    // STEP 2 — play it. Drive state from EVENTS, not just the play() promise: some
-    // browsers (Safari/strict autoplay, automated contexts) leave play() pending
-    // forever, which would strand the button on 'loading'. `onplaying` confirms real
-    // audio; a short timeout recovers to 'paused' (tap-to-play with a fresh gesture)
-    // if it never starts. Never stuck on 'loading', never silent browser-TTS for ka.
-    el.onplaying = () => { if (readAloudAudioRef.current === el) setTtsState('playing'); };
-    el.play()
-      .then(() => { if (readAloudAudioRef.current === el) setTtsState('playing'); })
-      .catch(() => { if (readAloudAudioRef.current === el) setTtsState('paused'); });
-    window.setTimeout(() => {
-      if (readAloudAudioRef.current === el) setTtsState((s) => (s === 'loading' ? (el.paused ? 'paused' : 'playing') : s));
-    }, 1800);
   }, [ttsState, message.text, lang, speakViaBrowser]);
 
   const modelLabel = prettyModel(message.model);
