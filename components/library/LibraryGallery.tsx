@@ -37,28 +37,28 @@ const IMAGE_KINDS = new Set(['image', 'interior']);
 
 const COPY: Record<Lang, {
   title: string; tabs: Record<Tab, string>; empty: string; download: string; del: string;
-  play: string; confirmDel: string; prev: string; next: string; page: string;
+  play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
     tabs: { video: '🎬 ვიდეო', image: '🖼 სურათი', music: '🎵 მუსიკა', favorites: '⭐ ფავორიტი' },
     empty: 'ჯერ არაფერი შექმენით',
     download: 'ჩამოტვირთვა', del: 'წაშლა', play: 'დაკვრა',
-    confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი',
+    confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
   },
   en: {
     title: 'Library',
     tabs: { video: '🎬 Video', image: '🖼 Image', music: '🎵 Music', favorites: '⭐ Favorites' },
     empty: 'Nothing created yet',
     download: 'Download', del: 'Delete', play: 'Play',
-    confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page',
+    confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
   },
   ru: {
     title: 'Библиотека',
     tabs: { video: '🎬 Видео', image: '🖼 Фото', music: '🎵 Музыка', favorites: '⭐ Избранное' },
     empty: 'Пока ничего не создано',
     download: 'Скачать', del: 'Удалить', play: 'Воспроизвести',
-    confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.',
+    confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
   },
 };
 
@@ -74,6 +74,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
 
   const [tab, setTab] = useState<Tab>('video');
   const [page, setPage] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<string>>(new Set());
@@ -123,11 +124,16 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   }, [tab, page]);
 
   // Favorites tab filters the fetched window by the local set, then paginates locally.
-  const display = useMemo(() => (
-    tab === 'favorites'
+  // PHASE 6.3 — client-side search over the loaded items (prompt + kind match). Applied on
+  // top of the tab filter; empty query is a no-op so paging behaviour is unchanged.
+  const display = useMemo(() => {
+    const base = tab === 'favorites'
       ? items.filter((it) => favs.has(it.id)).slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
-      : items
-  ), [tab, items, favs, page]);
+      : items;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((it) => (it.prompt ?? '').toLowerCase().includes(q) || (it.kind ?? '').toLowerCase().includes(q));
+  }, [tab, items, favs, page, searchQuery]);
 
   const onTab = useCallback((next: Tab) => { setTab(next); setPage(0); }, []);
 
@@ -153,6 +159,15 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6">
       <h1 className="mb-4 text-[22px] font-bold tracking-tight text-app-text">{t.title}</h1>
+
+      {/* PHASE 6.3 — search (16px font → no iOS zoom; filters the loaded items by prompt/kind) */}
+      <input
+        type="search"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder={t.search}
+        className="mb-4 w-full rounded-xl border border-app-border/15 bg-app-elevated px-3.5 py-2.5 text-[16px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/40"
+      />
 
       {/* Tabs */}
       <div className="mb-5 flex flex-wrap gap-2">

@@ -22,6 +22,10 @@ export interface AdminStats {
   byService: { kind: string; count: number }[];
   recentSignups: { id: string; created_at: string }[];
   recentGenerations: { id: string; kind: string; user_id: string | null; created_at: string }[];
+  // PHASE 8 — operational health.
+  dau: number;          // distinct users who generated in the last 24h
+  successRate: number;  // completed / (completed + failed) %, 0 when no jobs
+  recentFailures: { id: string; kind: string; user_id: string | null; created_at: string }[];
 }
 
 async function count(client: Client, table: string, build?: (q: any) => any): Promise<number> { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -79,5 +83,23 @@ export async function gatherAdminStats(client: Client): Promise<AdminStats> {
   ].sort((a, b) => b.count - a.count);
   void SERVICES;
 
-  return { totalUsers, gensToday, gensWeek, gensAllTime, failedGens, revenueGel, byService, recentSignups, recentGenerations };
+  // PHASE 8 — DAU (distinct generators in the last 24h; counted in JS since PostgREST has
+  // no DISTINCT count head) + a recent-failures panel. Both fail-open.
+  let dau = 0;
+  try {
+    const { data } = await client.from('generation_jobs').select('user_id').gte('created_at', dayAgo).not('user_id', 'is', null).limit(5000);
+    if (Array.isArray(data)) dau = new Set((data as { user_id: string | null }[]).map((r) => r.user_id).filter(Boolean)).size;
+  } catch { dau = 0; }
+
+  let recentFailures: AdminStats['recentFailures'] = [];
+  try {
+    const { data } = await client.from('generation_jobs').select('id, service_type, user_id, created_at').eq('status', 'failed').order('created_at', { ascending: false }).limit(10);
+    if (Array.isArray(data)) recentFailures = (data as { id: string; service_type: string; user_id: string | null; created_at: string }[]).map((r) => ({ id: r.id, kind: r.service_type, user_id: r.user_id, created_at: r.created_at }));
+  } catch { recentFailures = []; }
+
+  // completed / (completed + failed) — a simple service-health %.
+  const totalTerminal = gensAllTime + failedGens;
+  const successRate = totalTerminal > 0 ? Math.round((gensAllTime / totalTerminal) * 100) : 0;
+
+  return { totalUsers, gensToday, gensWeek, gensAllTime, failedGens, revenueGel, byService, recentSignups, recentGenerations, dau, successRate, recentFailures };
 }

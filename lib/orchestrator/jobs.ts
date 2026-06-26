@@ -17,7 +17,27 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { createNotification, type NotificationType } from '@/lib/notifications/store';
 import type { ProduceKind } from './rate-limit';
+
+// PHASE 7.1 — fire a completion notification (best-effort) so the bell populates when a
+// generation finishes. ProduceKind → notification type + Georgian message. Skipped for
+// manual library saves (the user already has the asset) and for the anonymous demo user.
+const NOTIF_MESSAGE: Partial<Record<ProduceKind, string>> = {
+  film: '🎬 თქვენი ვიდეო მზადაა!',
+  avatar: '🎬 თქვენი ავატარი მზადაა!',
+  image: '🖼 თქვენი სურათი მზადაა!',
+  music: '🎵 თქვენი მუსიკა მზადაა!',
+  voice: '🎤 თქვენი ხმა მზადაა!',
+  interior: '🏠 თქვენი დიზაინი მზადაა!',
+};
+function notifTypeFor(kind: ProduceKind): NotificationType {
+  return kind === 'music' ? 'music' : kind === 'image' ? 'image' : 'video';
+}
+async function fireCompletionNotification(sb: ReturnType<typeof createServiceRoleClient>, userId: string, kind: ProduceKind, source?: string): Promise<void> {
+  if (!sb || !userId || source === 'manual-save') return;
+  try { await createNotification(sb, userId, notifTypeFor(kind), NOTIF_MESSAGE[kind] ?? '✅ თქვენი შედეგი მზადაა!'); } catch { /* fail-open */ }
+}
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
@@ -149,6 +169,7 @@ export async function recordCompletedFilm(input: {
       },
       { onConflict: 'id' },
     );
+    if (!error) await fireCompletionNotification(sb, input.userId, 'film', 'film-studio');
     return !error;
   } catch {
     return false;
@@ -187,6 +208,7 @@ export async function recordCompletedAsset(input: {
       },
       { onConflict: 'id' },
     );
+    if (!error) await fireCompletionNotification(sb, input.userId, input.serviceType, input.source);
     return !error;
   } catch {
     return false;
