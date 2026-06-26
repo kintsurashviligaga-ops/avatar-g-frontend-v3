@@ -299,7 +299,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ type: 'spring', stiffness: 360, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[400px] rounded-3xl bg-app-surface border border-app-border/15 p-6 shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)]"
+            className="w-full max-w-[400px] max-h-[90dvh] overflow-y-auto overscroll-contain rounded-3xl bg-app-surface border border-app-border/15 p-6 shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">

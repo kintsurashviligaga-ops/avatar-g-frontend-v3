@@ -3441,7 +3441,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     isImage(md.mimeType) ? (
                       <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={md.dataUrl} alt="attachment" className="max-h-44 rounded-lg" />
+                        <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
                       </button>
                     ) : isVideo(md.mimeType) ? (
                       // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -3956,7 +3956,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-app-bg/60 text-app-accent ring-1 ring-app-accent/40"><Film size={18} /></span>
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={face ? face.dataUrl : presetSrc!} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                        <img src={face ? face.dataUrl : presetSrc!} alt="" loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       )}
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
                       <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
@@ -4083,7 +4083,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {videoCharacterRef ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={videoCharacterRef} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                    <img src={videoCharacterRef} alt="" loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Character locked' : locale === 'ru' ? 'Персонаж зафиксирован' : 'პერსონაჟი ჩაკეტილია'}</span>
                     <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
                       className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
@@ -4398,7 +4398,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <label className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed p-5 text-center transition ${productImage ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/40'}`}>
                   {productImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={productImage} alt="product" className="max-h-32 rounded-lg object-contain" />
+                    <img src={productImage} alt="product" loading="lazy" decoding="async" className="max-h-32 rounded-lg object-contain" />
                   ) : (
                     <>
                       <span className="text-2xl">📦</span>
@@ -4708,7 +4708,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <div key={ai} className="relative">
                 {isImage(a.mimeType) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.dataUrl} alt="" className="h-14 w-14 rounded-xl object-cover" />
+                  <img src={a.dataUrl} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-xl object-cover" />
                 ) : isVideo(a.mimeType) ? (
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
