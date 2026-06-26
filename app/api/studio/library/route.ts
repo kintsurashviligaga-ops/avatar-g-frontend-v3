@@ -84,7 +84,9 @@ export async function GET(req: NextRequest) {
       })
       .filter((x): x is LibraryItem => x !== null);
 
-    return NextResponse.json({ items });
+    // PHASE 4 Task 5D — short private browser cache: the library changes rarely, so a
+    // 30s cache cuts refetches on tab-switches. Per-user → private (no shared CDN cache).
+    return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, max-age=30' } });
   } catch {
     return NextResponse.json({ items: [] });
   }

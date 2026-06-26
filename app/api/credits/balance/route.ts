@@ -31,12 +31,15 @@ export async function GET(request: NextRequest) {
       ? prof.credits_balance
       : (typeof credits?.balance === 'number' ? credits.balance : 0);
 
+    // PHASE 4 Task 5D — 10s private cache. Safe because the correctness-critical
+    // refetches (post-topup poll, post-generation toast) call this with cache:'no-store'
+    // and bypass it; this only spares redundant background reads.
     return NextResponse.json({
       balance,
       monthlyAllowance: credits?.monthly_allowance ?? null,
       resetAt: credits?.reset_at ?? null,
-    });
-    
+    }, { headers: { 'Cache-Control': 'private, max-age=10' } });
+
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
