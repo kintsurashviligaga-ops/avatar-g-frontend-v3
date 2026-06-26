@@ -79,6 +79,9 @@ export default function NotificationBell({ locale }: { locale: string }) {
         <Bell size={18} />
         {unread > 0 && (
           <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-app-accent px-1 text-[9.5px] font-bold leading-none text-app-bg">
+            {/* PHASE 7.2 — a soft pulse ring draws the eye to a new notification; gated to
+                motion-safe so prefers-reduced-motion users get a static badge. */}
+            <span className="absolute inset-0 -z-10 rounded-full bg-app-accent/60 motion-safe:animate-ping" aria-hidden="true" />
             {unread > 9 ? '9+' : unread}
           </span>
         )}
