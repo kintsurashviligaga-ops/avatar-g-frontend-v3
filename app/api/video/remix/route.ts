@@ -72,8 +72,17 @@ export async function POST(req: NextRequest) {
   const OP_ALIASES: Record<string, string> = {
     add_music: 'music', face_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
   };
-  const rawOp = String(body.op || '').trim();
+  // Accept both shapes: { op, grade, text, … } (the client) AND { operation, params:{…} }.
+  const rawOp = String(body.op || body.operation || '').trim();
   const op = OP_ALIASES[rawOp] ?? rawOp;
+  const p = (body.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {};
+  // Flatten common params so per-op reads can fall back to params.* transparently.
+  if (body.grade === undefined && (p.style ?? p.grade) !== undefined) body.grade = p.style ?? p.grade;
+  if (body.text === undefined && p.text !== undefined) body.text = p.text;
+  if (body.speed === undefined && p.speed !== undefined) body.speed = p.speed;
+  if (body.startSec === undefined && p.startSec !== undefined) body.startSec = p.startSec;
+  if (body.durationSec === undefined && p.durationSec !== undefined) body.durationSec = p.durationSec;
+  if (body.aspect === undefined && p.aspect !== undefined) body.aspect = p.aspect;
 
   // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.
   // Branches BEFORE the videoUrl guard: there is no source video; the product photo
