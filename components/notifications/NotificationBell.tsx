@@ -15,6 +15,13 @@ interface Item { id: string; type: string; message: string; read: boolean; creat
 
 const ICON: Record<string, string> = { video: '🎬', music: '🎵', image: '🖼', credits_low: '⚠️', payment: '✅' };
 
+// When the feed comes from the generation_jobs fallback (no server read-state), the
+// badge counts items newer than the last time this device opened the bell.
+const LAST_SEEN_KEY = 'myavatar:notif-last-seen';
+function readLastSeen(): number { try { return Number(localStorage.getItem(LAST_SEEN_KEY)) || 0; } catch { return 0; } }
+function writeLastSeen(ms: number): void { try { localStorage.setItem(LAST_SEEN_KEY, String(ms)); } catch { /* ignore */ } }
+function tsOf(iso: string): number { const t = new Date(iso).getTime(); return Number.isFinite(t) ? t : 0; }
+
 function rel(iso: string, lang: Lang): string {
   try {
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -34,14 +41,24 @@ export default function NotificationBell({ locale }: { locale: string }) {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const sourceRef = useRef<'table' | 'fallback'>('table');
 
   const load = useCallback(async () => {
     try {
       const r = await fetch('/api/notifications', { cache: 'no-store', credentials: 'include' });
       if (!r.ok) return;
-      const j = (await r.json()) as { items?: Item[]; unread?: number };
-      setItems(Array.isArray(j.items) ? j.items : []);
-      setUnread(typeof j.unread === 'number' ? j.unread : 0);
+      const j = (await r.json()) as { items?: Item[]; unread?: number; source?: string };
+      const list = Array.isArray(j.items) ? j.items : [];
+      setItems(list);
+      if (j.source === 'fallback') {
+        // No server read-state — count items newer than this device's last open.
+        sourceRef.current = 'fallback';
+        const seen = readLastSeen();
+        setUnread(list.filter((it) => tsOf(it.created_at) > seen).length);
+      } else {
+        sourceRef.current = 'table';
+        setUnread(typeof j.unread === 'number' ? j.unread : 0);
+      }
     } catch { /* fail-soft */ }
   }, []);
 
@@ -67,10 +84,16 @@ export default function NotificationBell({ locale }: { locale: string }) {
     setOpen(next);
     if (next && unread > 0) {
       setUnread(0);
-      setItems((prev) => prev.map((it) => ({ ...it, read: true })));
-      try { await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: '{}' }); } catch { /* fail-soft */ }
+      if (sourceRef.current === 'fallback') {
+        // Mark everything currently shown as "seen" on this device.
+        const newest = items.reduce((m, it) => Math.max(m, tsOf(it.created_at)), 0);
+        writeLastSeen(Math.max(newest, Date.now()));
+      } else {
+        setItems((prev) => prev.map((it) => ({ ...it, read: true })));
+        try { await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: '{}' }); } catch { /* fail-soft */ }
+      }
     }
-  }, [open, unread]);
+  }, [open, unread, items]);
 
   return (
     <div ref={ref} className="relative">

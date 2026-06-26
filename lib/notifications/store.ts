@@ -67,3 +67,40 @@ export async function markRead(client: Client, userId: string, id?: string): Pro
     return !error;
   } catch { return false; }
 }
+
+// ── Fallback feed ────────────────────────────────────────────────────────────
+// The dedicated `notifications` table needs a DDL migration that can't currently
+// be applied on prod (all admin DDL channels are down). Until it lands, we
+// synthesize the feed from `generation_jobs` — already written on every completion
+// and exposed under the same owner-only RLS — so the bell is populated TODAY. When
+// the real table exists and has rows, the table path wins and this is never hit.
+// Message/type maps mirror lib/orchestrator/jobs.ts (keep in sync).
+const GEN_MESSAGE: Record<string, string> = {
+  film: '🎬 თქვენი ვიდეო მზადაა!', avatar: '🎬 თქვენი ავატარი მზადაა!',
+  image: '🖼 თქვენი სურათი მზადაა!', music: '🎵 თქვენი მუსიკა მზადაა!',
+  voice: '🎤 თქვენი ხმა მზადაა!', interior: '🏠 თქვენი დიზაინი მზადაა!',
+};
+function genType(serviceType: string): NotificationType {
+  return serviceType === 'music' ? 'music' : serviceType === 'image' ? 'image' : 'video';
+}
+
+/** Synthesize a notification feed from a user's recently-completed generations. Fail-open → []. */
+export async function listGenerationNotifications(client: Client, userId: string, limit = 5): Promise<NotificationRow[]> {
+  try {
+    const { data, error } = await client
+      .from('generation_jobs')
+      .select('id, service_type, status, created_at, updated_at')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .order('updated_at', { ascending: false })
+      .limit(Math.min(50, Math.max(1, limit)));
+    if (error || !Array.isArray(data)) return [];
+    return data.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      type: genType(String(r.service_type)),
+      message: GEN_MESSAGE[String(r.service_type)] ?? '✅ თქვენი შედეგი მზადაა!',
+      read: false, // the client tracks "seen" via a local last-seen timestamp
+      created_at: String(r.updated_at ?? r.created_at),
+    }));
+  } catch { return []; }
+}

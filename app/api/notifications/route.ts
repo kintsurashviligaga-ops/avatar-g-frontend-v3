@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { listNotifications, unreadCount, createNotification, markRead, type NotificationType } from '@/lib/notifications/store';
+import { listNotifications, unreadCount, createNotification, markRead, listGenerationNotifications, type NotificationType } from '@/lib/notifications/store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,7 +23,15 @@ export async function GET(req: NextRequest) {
     listNotifications(supabase, user.id, 5),
     unreadCount(supabase, user.id),
   ]);
-  return NextResponse.json({ items, unread });
+  // Until the dedicated `notifications` table is migrated on prod, fall back to a
+  // feed synthesized from completed generations so the bell is never empty. The
+  // client derives "unread" from a local last-seen timestamp, so source: 'fallback'
+  // lets it know server-side read-state isn't authoritative here.
+  if (items.length === 0) {
+    const fallback = await listGenerationNotifications(supabase, user.id, 5);
+    if (fallback.length > 0) return NextResponse.json({ items: fallback, unread: fallback.length, source: 'fallback' });
+  }
+  return NextResponse.json({ items, unread, source: 'table' });
 }
 
 export async function POST(req: NextRequest) {
