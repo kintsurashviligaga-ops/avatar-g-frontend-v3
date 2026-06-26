@@ -73,9 +73,10 @@ export function gelToCredits(gel: number): number {
 }
 
 /**
- * Top-up packages shown in the Credits modal. Higher tiers carry a bonus (pro +25%,
- * max +40%) over the flat 10-credits-per-GEL rate, which is why max is 700 not 500.
- * `approxVideos` / `approxImages` give the "what you get" feel (video_30s=25, image=2).
+ * Top-up packages shown in the Credits modal. The amounts match the Stripe products
+ * (9 / 29 / 89 ₾). `credits` is the FLAT 10-per-GEL value (1 credit = 0.10 ₾) — it MUST
+ * equal what the wallet actually delivers (the Stripe wallet top-up credits the literal
+ * GEL paid, no bonus tiers), or the modal under/over-promises. So credits = gel × 10.
  */
 export interface CreditPackage {
   id: 'starter' | 'pro' | 'max';
@@ -83,13 +84,10 @@ export interface CreditPackage {
   credits: number;
   highlight: boolean;
 }
-// Flat GEL → credits (1 credit = 0.10 ₾, so credits = gel × 10). The Stripe wallet
-// top-up credits the literal GEL paid (no bonus tiers), so the advertised credits
-// must equal what's delivered — otherwise the modal over-promises.
 export const CREDIT_PACKAGES: ReadonlyArray<CreditPackage> = [
-  { id: 'starter', gel: 5, credits: 50, highlight: false },
-  { id: 'pro', gel: 20, credits: 200, highlight: true },
-  { id: 'max', gel: 50, credits: 500, highlight: false },
+  { id: 'starter', gel: 9, credits: 90, highlight: false },
+  { id: 'pro', gel: 29, credits: 290, highlight: true },
+  { id: 'max', gel: 89, credits: 890, highlight: false },
 ];
 
 /** USD value of a credit amount. */

@@ -22,8 +22,10 @@ export const GEL_COST: Record<MeteredAction, number> = {
 
 /** Quick-charge refill tiers (₾). 5 ₾ is the minimum boundary; 500 ₾ is the
  *  power-user top tier. Server-side validation accepts only these exact values
- *  (see app/api/billing/wallet-topup/route.ts). */
-export const REFILL_TIERS_GEL = [5, 10, 20, 50, 500] as const;
+ *  (see app/api/billing/wallet-topup/route.ts). 9/29/89 are the CreditsModal
+ *  packages (must be present here or wallet-topup 400s on those amounts); the
+ *  legacy 5/10/20/50 tiers stay valid for back-compat. */
+export const REFILL_TIERS_GEL = [5, 9, 10, 20, 29, 50, 89, 500] as const;
 export type RefillTier = (typeof REFILL_TIERS_GEL)[number];
 export const MIN_REFILL_GEL = 5;
 
