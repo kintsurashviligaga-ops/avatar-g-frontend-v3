@@ -25,7 +25,9 @@ import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
-import { reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
+import { generateMusic } from '@/lib/ai/replicate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,6 +65,36 @@ async function runLipsync(videoUrl: string, audioUrl: string): Promise<string | 
   return null;
 }
 
+// FIX 3 — preset-appropriate background score for a SINGLE-clip product ad, hosted to a
+// fetchable URL. (Multi-clip ads already get a music bed from /api/video/assemble.)
+// ElevenLabs Music (instrumental) → MusicGen fallback → null (caller keeps it silent).
+const AD_MUSIC_PROMPTS: Record<string, string> = {
+  splash: 'upbeat fresh energetic commercial pop, bright clean percussion, product advert bed',
+  epic: 'dramatic cinematic orchestral trailer music, powerful epic build, brass and drums',
+  luxury: 'elegant sophisticated ambient electronic, premium smooth refined, luxury brand bed',
+  nature: 'warm acoustic organic uplifting, calm fresh natural, soft guitar and strings',
+};
+async function presetAdMusicUrl(presetKey: string, lengthSec = 8): Promise<string | null> {
+  const prompt = AD_MUSIC_PROMPTS[presetKey] ?? AD_MUSIC_PROMPTS.luxury!;
+  if (hasElevenLabsMusicKey()) {
+    try {
+      const { audio, contentType } = await composeElevenLabsMusic({ prompt, lengthMs: lengthSec * 1000, instrumental: true });
+      const path = `productad-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+      const url = await uploadAndSign(UPLOAD_BUCKET, path, audio.toString('base64'), contentType, 604800);
+      if (url) return url;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[video/remix] productad EL music failed → MusicGen:', e instanceof Error ? e.message : e);
+    }
+  }
+  try {
+    const score = await generateMusic(prompt, lengthSec);
+    return score.audioUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
@@ -72,8 +104,17 @@ export async function POST(req: NextRequest) {
   const OP_ALIASES: Record<string, string> = {
     add_music: 'music', face_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
   };
-  const rawOp = String(body.op || '').trim();
+  // Accept both shapes: { op, grade, text, … } (the client) AND { operation, params:{…} }.
+  const rawOp = String(body.op || body.operation || '').trim();
   const op = OP_ALIASES[rawOp] ?? rawOp;
+  const p = (body.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {};
+  // Flatten common params so per-op reads can fall back to params.* transparently.
+  if (body.grade === undefined && (p.style ?? p.grade) !== undefined) body.grade = p.style ?? p.grade;
+  if (body.text === undefined && p.text !== undefined) body.text = p.text;
+  if (body.speed === undefined && p.speed !== undefined) body.speed = p.speed;
+  if (body.startSec === undefined && p.startSec !== undefined) body.startSec = p.startSec;
+  if (body.durationSec === undefined && p.durationSec !== undefined) body.durationSec = p.durationSec;
+  if (body.aspect === undefined && p.aspect !== undefined) body.aspect = p.aspect;
 
   // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.
   // Branches BEFORE the videoUrl guard: there is no source video; the product photo
@@ -108,7 +149,20 @@ export async function POST(req: NextRequest) {
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
       const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
-      return url ? ok(url) : fail('Product ad generation failed.');
+      if (!url) return fail('Product ad generation failed.');
+      // FIX 3 — SINGLE-clip ads (sceneIdx < 0) come back silent; lay a preset score
+      // under them so the 6s ad isn't mute. Multi-clip (sceneIdx >= 0) skips this — the
+      // assemble pipeline scores the stitched master, so per-clip music would clash.
+      // Fail-open: any music miss returns the (silent) clip — still a working ad.
+      if (sceneIdx < 0) {
+        const music = await presetAdMusicUrl(presetKey, 8);
+        if (music) {
+          const scored = await muxAudioOntoVideo(url, music, 'replace', 12);
+          if (scored) return ok(scored, { engine: 'Kling AI', music: true });
+        }
+        return ok(url, { engine: 'Kling AI', music: false });
+      }
+      return ok(url, { engine: 'Kling AI' });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[video/remix] productad', err instanceof Error ? err.message : err);

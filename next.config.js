@@ -67,6 +67,10 @@ const nextConfig = {
       '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Music-Video graphics agent: equalizer (ffmpeg) + title/lower-third (resvg SVG→PNG).
       '/api/video/graphics': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // Video Remix: EVERY ffmpeg op (color_grade/speed/trim/mux/Ken-Burns) + captions
+      // (overlayMasterUrl → resvg SVG→PNG) runs here. Without the binary + resvg the
+      // lambda ENOENTs and every remix silently fails — the users' "broken remix".
+      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
     },
   },
   eslint: {

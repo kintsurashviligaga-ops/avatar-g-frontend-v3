@@ -13,10 +13,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
+import RemixStudioConsole from './RemixStudioConsole';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -59,7 +60,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   modeRemix: string; remixUploadHint: string; remixRunning: string; remixDone: string; remixFailed: string; remixNeedVideo: string;
-  stop: string; stopped: string; scrollDown: string; regenerate: string; elapsedHint: string; greeting: string; attachHint: string;
+  stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string;
@@ -80,7 +81,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
-    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის',
@@ -101,7 +102,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
-    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame',
@@ -122,7 +123,7 @@ const COPY: Record<Lang, {
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
-    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра',
@@ -661,7 +662,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch;
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -1127,6 +1128,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
+  // FIX 5 — URLs the user has explicitly filed into the Library (drives the ✓ saved state).
+  const [savedUrls, setSavedUrls] = useState<Set<string>>(new Set());
   // Credit-deduction toast — shown briefly after each successful generation
   // ("−N credits · X.XX ₾"). Pricing is centralised in lib/credits/pricing.ts; the
   // real balance is still the GEL wallet (the ₾ pill re-reads it on the next open).
@@ -1251,9 +1254,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const genIdRef = useRef(0);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
+  // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
+  // render can be retried in one click without the user re-typing or re-uploading.
+  const lastVideoReqRef = useRef<{ filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' } | null>(null);
   // Live elapsed seconds during a generation — drives the progress clock + bar.
   const [elapsed, setElapsed] = useState(0);
   const genStartRef = useRef(0);
+  // FIX 4 — per-result video duration (read from the player) for the result-card badge.
+  const [videoResultDur, setVideoResultDur] = useState<Record<number, number>>({});
   // Live Director's-Console status for the post-assemble Lip-Sync agent (the music-video
   // singer sync). 'skipped' when no lip-sync is wanted; flips queued→processing→completed.
   const lipsyncStageRef = useRef<FilmAgentStatus>('idle');
@@ -1290,7 +1298,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
   // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
-  const [musicDuration, setMusicDuration] = useState<15 | 30 | 60 | 90>(30);
+  // FIX 2 — duration 0 = "full song": skip the ffmpeg trim, keep Udio's full ~2-4 min output.
+  const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(30);
   const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
   // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
   // descriptors appended to the music prompt server-side (female/male/duet).
@@ -1362,6 +1371,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // photo, varied scene prompts) stitched + scored via the assemble pipeline.
   const [productDuration, setProductDuration] = useState<6 | 30 | 60>(6);
   const [productProgress, setProductProgress] = useState<string | null>(null);
+  // FIX 3 — product-ad result meta for the result card: real clip duration (read from
+  // the <video>) + whether a music bed was laid (single-clip ads now carry a score).
+  const [productResultDur, setProductResultDur] = useState<number | null>(null);
+  const [productHasAudio, setProductHasAudio] = useState(false);
   // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
   // separate from the generic attachment tray so it reads as its own asset slot.
   const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
@@ -1672,7 +1685,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}` };
+            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true };
         }
         return next;
       });
@@ -1794,7 +1807,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}` };
+        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true };
         return next;
       });
     } finally {
@@ -1818,30 +1831,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setProductBusy(true);
     setProductResultUrl(null);
     setProductProgress(null);
+    setProductResultDur(null);
+    setProductHasAudio(false);
     const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
-    // One i2v clip per ~5s. 6s → single clip (shown directly); 30/60s → N clips
-    // (same product photo, varied scene prompts) generated in parallel, then stitched
-    // + scored by the assemble pipeline (ElevenLabs music bed).
-    const genClip = async (sceneIndex: number): Promise<string | null> => {
+    // One i2v clip per ~5s. 6s → single clip (now scored with a preset music bed by the
+    // route); 30/60s → N clips (same product photo, varied scene prompts) generated in
+    // parallel, then stitched + scored by the assemble pipeline (ElevenLabs music bed).
+    const genClip = async (sceneIndex: number): Promise<{ url: string; music: boolean } | null> => {
       try {
         const r = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
-        const j = (await r.json().catch(() => null)) as { url?: string } | null;
-        return r.ok && j?.url ? j.url : null;
+        const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
+        return r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
       } catch { return null; }
     };
     try {
       if (productDuration <= 6) {
-        const url = await genClip(-1);
-        if (url) { setProductResultUrl(url); notifyCredit('video', { seconds: 6 }); }
+        const res = await genClip(-1);
+        if (res) { setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); }
         return;
       }
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
       setProductProgress(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
-      const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((u): u is string => !!u);
-      if (clips.length < 2) { if (clips[0]) setProductResultUrl(clips[0]); return; }
+      const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
+      if (clips.length < 2) { if (clips[0]) { setProductResultUrl(clips[0]); } return; }
       setProductProgress(locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…');
       const ar = await fetch('/api/video/assemble', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -1853,7 +1868,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }),
       });
       const aj = (await ar.json().catch(() => null)) as { url?: string } | null;
-      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); notifyCredit('video', { seconds: productDuration }); }
+      // Assembled master carries the ElevenLabs music bed → audio present.
+      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); }
       else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
     } catch {
       /* fail-open — the panel just stays on its previous state */
@@ -1908,6 +1924,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Fail-open: a storyboard miss falls back to a direct render so the user is
   // never blocked. A user Cancel (abort) stops quietly without rendering.
   const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait') => {
+    // FIX 4 — remember this request so a failed render can be retried in one click.
+    lastVideoReqRef.current = { filmPrompt, refs, orientation };
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
@@ -2355,11 +2373,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // surfaces a clean retry notice and keeps the original.
     if (mode === 'chat' && text && attachments.some((a) => isVideo(a.mimeType))) {
       const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
-      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', text: t.remixRunning }]);
+      // remixOpKind drives the Remix Studio staged-timer panel; starts generic, then
+      // gets patched to the classified op once the intent call resolves (~1s).
+      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'remix' }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
         const intentRes = await fetch('/api/video/remix-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ message: text }) });
         const intent = (await intentRes.json().catch(() => ({}))) as { op?: string; params?: Record<string, unknown> };
+        // Patch the pending bubble so the panel shows the op-specific stages + ETA.
+        if (mine() && intent.op) setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, remixOpKind: intent.op }; return next; });
         const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType || 'video/mp4');
         if (!videoUrl) throw new Error('upload failed');
         const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op: intent.op || 'color_grade', videoUrl, text, ...(intent.params || {}) }) });
@@ -2495,7 +2517,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal: ac.signal,
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev];
@@ -2503,12 +2525,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') {
             next[next.length - 1] =
               j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
+                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
                 : { role: 'assistant', text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.error || t.musicFailed}` };
           }
           return next;
         });
-        if (mine() && j.success && j.url) notifyCredit('music', { seconds: musicDuration });
+        // Full song (duration 0 = full ~2-4 min track) bills at the top 90s tier, not 0.
+        if (mine() && j.success && j.url) notifyCredit('music', { seconds: musicDuration === 0 ? 90 : musicDuration });
       } catch {
         if (!mine()) return;
         setMessages((prev) => {
@@ -2742,7 +2765,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
     setOptionsOpen(false);
-    setMessages((prev) => [...prev, { role: 'user', text: `🎬 ${label}` }, { role: 'assistant', text: t.remixRunning }]);
+    setMessages((prev) => [...prev, { role: 'user', text: `🎬 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: remixOp }]);
     setRemixBusy(true); setBusy(true);
     try {
       const payload: Record<string, unknown> = { op: remixOp, videoUrl: remixVideo.url };
@@ -3176,6 +3199,47 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [t.linkCopied]);
 
+  // FIX 5 — explicitly file a result into the user's Library. Optimistic ✓; on a miss
+  // the URL is dropped from the saved set so the button returns to its idle state.
+  const saveToLibrary = useCallback(async (url: string, kind: 'film' | 'image' | 'music', prompt?: string) => {
+    if (!url || savedUrls.has(url)) return;
+    setSavedUrls((s) => new Set(s).add(url));
+    try {
+      const r = await fetch('/api/studio/library', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ url, kind, ...(prompt ? { prompt } : {}) }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean };
+      if (j.success) {
+        setShareToast(locale === 'en' ? '📚 Saved to library' : locale === 'ru' ? '📚 Сохранено в библиотеку' : '📚 ბიბლიოთეკაში შენახულია');
+        setTimeout(() => setShareToast((s) => (/library|библиоте|ბიბლიოთეკ/i.test(s ?? '') ? null : s)), 2200);
+      } else {
+        setSavedUrls((s) => { const n = new Set(s); n.delete(url); return n; });
+      }
+    } catch {
+      setSavedUrls((s) => { const n = new Set(s); n.delete(url); return n; });
+    }
+  }, [savedUrls, locale]);
+
+  // FIX 5 — the shared "📚 ბიბლიოთეკაში შენახვა" result action (consistent across every
+  // result card). Shows a ✓ saved state once filed.
+  const saveLibButton = useCallback((url: string, kind: 'film' | 'image' | 'music', prompt?: string) => {
+    const saved = savedUrls.has(url);
+    return (
+      <button
+        type="button"
+        onClick={() => void saveToLibrary(url, kind, prompt)}
+        disabled={saved}
+        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+      >
+        {saved ? <Check size={13} className="text-app-accent" /> : <BookmarkPlus size={13} />}
+        {saved
+          ? (locale === 'en' ? 'Saved' : locale === 'ru' ? 'Сохранено' : 'შენახულია')
+          : (locale === 'en' ? 'Save' : locale === 'ru' ? 'В библиотеку' : 'ბიბლიოთეკაში')}
+      </button>
+    );
+  }, [savedUrls, saveToLibrary, locale]);
+
   // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
   const writeLyrics = useCallback(async () => {
     if (writingLyrics) return;
@@ -3307,6 +3371,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
                       <Pencil size={13} /> {t.editImage}
                     </button>
+                    {saveLibButton(m.imageUrl, 'image', m.regen?.kind === 'image' ? m.regen.prompt : undefined)}
                   </div>
                 </div>
               )}
@@ -3339,7 +3404,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.audioUrl && (
                 <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                   {/* Polished Suno-style player (album art + play/scrub/time). */}
-                  <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} />
+                  <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} />
                   <div className="mt-2.5 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -3358,6 +3423,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <RotateCcw size={13} /> {t.regenerate}
                       </button>
                     )}
+                    {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
                   </div>
                 </div>
               )}
@@ -3368,7 +3434,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       black box); preload=metadata forces that frame to load up front. */}
                   {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
                       pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                  {/* FIX 4 — result meta: real clip length read from the player. */}
+                  {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
+                    <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'} · {(m.orientation ?? videoOrientation) === 'vertical' ? '9:16' : (m.orientation ?? videoOrientation) === 'square' ? '1:1' : (m.orientation ?? videoOrientation) === 'portrait' ? '4:5' : '16:9'}</div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -3381,6 +3451,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
                       <Share2 size={13} /> {t.share}
                     </button>
+                    {saveLibButton(m.videoUrl, 'film', m.filmPrompt)}
                   </div>
                   {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
                       shown once the film captured its landed clips + brief. */}
@@ -3439,6 +3510,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
               {(() => {
                 const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
+                // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
+                // staged-timer console. Checked first so it wins in chat mode too.
+                if (pending && m.remixOpKind) {
+                  return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
+                }
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
                 if (pending && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0)) {
@@ -3510,6 +3586,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   )
                   : <span className="whitespace-pre-wrap">{m.text}</span>;
               })()}
+              {/* FIX 4 — one-click retry on a failed video render (reuses the stored
+                  prompt + refs + orientation; no re-typing / re-uploading). */}
+              {m.retryVideo && !busy && (
+                <button
+                  type="button"
+                  onClick={() => { const r = lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                >
+                  {t.retry}
+                </button>
+              )}
               {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
                   could copy assistant replies but not their own messages. On desktop
                   the row reveals on hover / keyboard focus (group-hover); on mobile
@@ -4166,7 +4253,35 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {productBusy ? (productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')) : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
                 </button>
                 {productResultUrl && (
-                  <video src={productResultUrl} controls playsInline className="w-full rounded-xl border border-app-border/20" />
+                  <div className="space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                    <video
+                      src={productResultUrl}
+                      controls
+                      playsInline
+                      onLoadedMetadata={(e) => setProductResultDur(e.currentTarget.duration)}
+                      className="w-full rounded-xl border border-app-border/20"
+                    />
+                    {/* FIX 3 — provenance + meta badges: engine, real duration, audio state. */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">🎬 Generated with Kling AI</span>
+                      {productResultDur != null && productResultDur > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted tabular-nums">⏱ {Math.round(productResultDur)}{locale === 'en' ? 's' : ' წმ'}</span>
+                      )}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">{productHasAudio ? '🔊 ' + (locale === 'en' ? 'With music' : locale === 'ru' ? 'С музыкой' : 'მუსიკით') : '🔇 ' + (locale === 'en' ? 'No audio' : locale === 'ru' ? 'Без звука' : 'უხმო')}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void dl(productResultUrl, 'myavatar-product-ad.mp4')} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]">
+                        <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
+                      </button>
+                      <button type="button" onClick={() => void share(productResultUrl, 'myavatar-product-ad.mp4')} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                        <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
+                      </button>
+                      <button type="button" onClick={generateProductAd} disabled={productBusy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        <RotateCcw size={13} /> {locale === 'en' ? 'Regenerate' : locale === 'ru' ? 'Заново' : 'თავიდან'}
+                      </button>
+                      {saveLibButton(productResultUrl, 'film')}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -4197,8 +4312,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
+                  {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
+                  <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>🎵 {locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
                 </div>
               </div>
               <div>
@@ -4270,17 +4387,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* E — Result (hidden until a track exists): audio player + download/share */}
             {lastMusic?.audioUrl && (
-              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <div className="space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="block text-[12.5px] font-semibold text-app-text">🎧 {locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <audio src={lastMusic.audioUrl} controls className="w-full" />
+                {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
+                <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} />
                 <div className="flex gap-2">
-                  <a href={lastMusic.audioUrl} download className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                  <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                     <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
-                  </a>
-                  <button type="button" onClick={() => { void navigator.clipboard?.writeText(lastMusic.audioUrl ?? ''); }} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                  </button>
+                  <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                     <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
                   </button>
+                  {saveLibButton(lastMusic.audioUrl, 'music')}
                 </div>
               </div>
             )}

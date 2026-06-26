@@ -11,10 +11,12 @@
  * route (recordCompletedFilm), alongside any avatar/image/music/voice produce
  * jobs — one unified per-user media history.
  */
+import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
-import { JOB_COLUMNS, type GenerationJobRow } from '@/lib/orchestrator/jobs';
+import { JOB_COLUMNS, recordCompletedAsset, type GenerationJobRow } from '@/lib/orchestrator/jobs';
+import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -89,6 +91,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, max-age=30' } });
   } catch {
     return NextResponse.json({ items: [] });
+  }
+}
+
+/**
+ * POST /api/studio/library — explicitly file a generated media URL into the user's
+ * Library (FIX 5 "📚 ბიბლიოთეკაში შენახვა"). Most generators auto-record, but
+ * remix / product-ad / lip-sync results don't — this gives the user a one-click save
+ * for ANY result. Anonymous saves land under the shared demo identity (same as the
+ * GET fallback) so they still appear in the demo Library. Fail-open with a clear 200.
+ */
+const VALID_KINDS: ProduceKind[] = ['film', 'avatar', 'interior', 'image', 'music', 'voice'];
+export async function POST(req: NextRequest) {
+  const { user } = await authedClientFromRequest(req);
+  const uid = user?.id ?? DEMO_VOICE_USER_ID;
+  const body = (await req.json().catch(() => ({}))) as { url?: unknown; kind?: unknown; prompt?: unknown };
+  const url = typeof body.url === 'string' ? body.url.trim() : '';
+  if (!url || !/^https?:\/\//i.test(url)) return NextResponse.json({ success: false, error: 'A valid media URL is required.' }, { status: 400 });
+  // Normalize the client's kind to a valid service_type; anything else → 'film' (video).
+  const rawKind = typeof body.kind === 'string' ? body.kind.trim() : '';
+  const kind: ProduceKind = (VALID_KINDS as string[]).includes(rawKind) ? (rawKind as ProduceKind) : 'film';
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 500) : null;
+  try {
+    const ok = await recordCompletedAsset({ id: randomUUID(), userId: uid, serviceType: kind, url, prompt, source: 'manual-save' });
+    return ok
+      ? NextResponse.json({ success: true })
+      : NextResponse.json({ success: false, error: 'Could not save to the library.' }, { status: 502 });
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e instanceof Error ? e.message : 'save failed' }, { status: 502 });
   }
 }
 
