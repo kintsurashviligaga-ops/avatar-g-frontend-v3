@@ -224,6 +224,83 @@ export async function changeSpeed(videoUrl: string, factor: number): Promise<str
   }
 }
 
+// Probe a media duration (s) by parsing ffmpeg -i stderr. `ffmpeg -i` with no output exits
+// non-zero, so the duration is read off the THROWN error's stderr. Returns 0 on a miss.
+async function probeDurationSec(url: string): Promise<number> {
+  if (!BIN) return 0;
+  try {
+    await exec(BIN, ['-i', url], { timeout: 30_000 });
+    return 0;
+  } catch (e) {
+    const stderr = String((e as { stderr?: string })?.stderr ?? '');
+    const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (!m) return 0;
+    return Number(m[1]) * 3600 + Number(m[2]) * 60 + parseFloat(m[3]!);
+  }
+}
+
+/**
+ * TASK 2 — cinematic SPEED RAMP: slow-in (first 20%), full speed (middle), slow-out
+ * (last 20%) via a piecewise setpts. Video-only (the original audio cannot stay synced to
+ * a variable-speed video, and ramps are scored with music anyway) → muted output. `factor`
+ * (>1) is how much the ends are slowed (1.5 default). Fail-open → null.
+ */
+export async function changeSpeedRamp(videoUrl: string, factor = 1.5): Promise<string | null> {
+  if (!BIN || !videoUrl) return null;
+  const f = Math.max(1.05, Math.min(4, Number(factor) || 1.5));
+  const dur = await probeDurationSec(videoUrl);
+  if (dur <= 0) return changeSpeed(videoUrl, 1 / f); // no duration → graceful uniform slow-mo
+  const a = (0.2 * dur).toFixed(3);
+  const b = (0.8 * dur).toFixed(3);
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'remix-ramp-'));
+    const out = join(dir, 'out.mp4');
+    // T = presentation timestamp (s): slow the head + tail by `f`, keep the middle at 1x.
+    const expr = `if(lt(T,${a}),${f.toFixed(3)}*PTS,if(gt(T,${b}),${f.toFixed(3)}*PTS,PTS))`;
+    await exec(BIN, ['-y', '-i', videoUrl, '-filter_complex', `[0:v]setpts='${expr}'[v]`, '-map', '[v]', ...X264, '-an', '-movflags', '+faststart', out], { maxBuffer: 1 << 26, timeout: 180_000 });
+    const buf = await readFile(out);
+    return await hostMp4(buf, 'ramp');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.ramp] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * TASK 2 — VIDEO STABILIZATION via the single-pass `deshake` filter (+ a light unsharp).
+ * We use `deshake`, NOT vidstab: this ffmpeg-static build's vid.stab has a serialization
+ * bug ("Cannot parse localmotion!") that makes the two-pass detect→transform unusable;
+ * deshake needs no transforms file and works reliably. Audio is copied through; fail-open
+ * → null (the caller keeps the shaky original — never a hard error).
+ */
+export async function stabilizeClip(videoUrl: string): Promise<string | null> {
+  if (!BIN || !videoUrl) return null;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'remix-stab-'));
+    const out = join(dir, 'out.mp4');
+    // deshake rx/ry MUST be a multiple of 16 (else "rx must be a multiple of 16").
+    const stabVf = 'deshake=rx=32:ry=32:edge=clamp,unsharp=5:5:0.6:3:3:0.3';
+    let buf = await exec(BIN, ['-y', '-i', videoUrl, '-vf', stabVf, ...X264, '-c:a', 'copy', '-movflags', '+faststart', out], { maxBuffer: 1 << 26, timeout: 180_000 }).then(() => readFile(out)).catch(() => null);
+    if (!buf) {
+      // Source may have no audio → retry video-only.
+      await exec(BIN, ['-y', '-i', videoUrl, '-vf', stabVf, ...X264, '-an', '-movflags', '+faststart', out], { maxBuffer: 1 << 26, timeout: 180_000 });
+      buf = await readFile(out);
+    }
+    return await hostMp4(buf, 'stab');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.stabilize] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 const I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
 const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed';
 
@@ -233,7 +310,7 @@ const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed'
  * Returns null on no token / create / poll failure so the caller falls back to
  * kenBurnsClip. Self-contained create+poll (bounded to ~4 min).
  */
-export async function klingI2v(startImage: string, prompt: string, aspect: '9:16' | '16:9' | '1:1' = '9:16'): Promise<string | null> {
+export async function klingI2v(startImage: string, prompt: string, aspect: '9:16' | '16:9' | '1:1' = '9:16', referenceImages?: string[]): Promise<string | null> {
   const token = (process.env.REPLICATE_API_TOKEN || '').trim();
   if (!token || !startImage) return null;
   try {
@@ -243,6 +320,10 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
       negative_prompt: I2V_NEGATIVE,
       duration: 5,
     };
+    // Character-swap: kling-v1.6 accepts reference_images as an IDENTITY anchor — pass the
+    // new-character photo so the re-animated clip carries that person's face/identity.
+    const refs = (referenceImages ?? []).filter((u) => typeof u === 'string' && /^https?:\/\//.test(u));
+    if (refs.length) input.reference_images = refs;
     if (/v1\.6|v1-6|kling-v1/.test(I2V_MODEL.toLowerCase())) { input.aspect_ratio = aspect; input.cfg_scale = 0.5; }
     const create = await fetch(`https://api.replicate.com/v1/models/${I2V_MODEL}/predictions`, {
       method: 'POST',

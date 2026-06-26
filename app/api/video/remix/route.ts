@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   // Accept both the panel's op names AND the chat-intent (Claude) op names.
   const OP_ALIASES: Record<string, string> = {
-    add_music: 'music', face_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
+    add_music: 'music', face_swap: 'character', character_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
   };
   // Accept both shapes: { op, grade, text, … } (the client) AND { operation, params:{…} }.
   const rawOp = String(body.op || body.operation || '').trim();
@@ -115,6 +115,9 @@ export async function POST(req: NextRequest) {
   if (body.startSec === undefined && p.startSec !== undefined) body.startSec = p.startSec;
   if (body.durationSec === undefined && p.durationSec !== undefined) body.durationSec = p.durationSec;
   if (body.aspect === undefined && p.aspect !== undefined) body.aspect = p.aspect;
+  // character_swap identity photo + speed_ramp factor (flattened from params.*).
+  if (body.characterRef === undefined && p.characterRef !== undefined) body.characterRef = p.characterRef;
+  if (body.factor === undefined && p.factor !== undefined) body.factor = p.factor;
 
   // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.
   // Branches BEFORE the videoUrl guard: there is no source video; the product photo
@@ -227,7 +230,20 @@ export async function POST(req: NextRequest) {
       case 'speed_change': {
         const speed = Number.isFinite(Number(body.speed)) && Number(body.speed) > 0 ? Number(body.speed) : 2;
         const url = await changeSpeed(videoUrl, speed);
-        return url ? ok(url) : fail('Speed change failed.');
+        return url ? ok(url) : fail('სიჩქარის შეცვლა ვერ მოხერხდა.');
+      }
+
+      case 'speed_ramp': {
+        // Cinematic slow-in / slow-out ramp (video-only). `factor` = how much the ends slow.
+        const factor = Number.isFinite(Number(body.factor)) && Number(body.factor) > 1 ? Number(body.factor) : 1.5;
+        const url = await changeSpeedRamp(videoUrl, factor);
+        return url ? ok(url) : fail('სიჩქარის რემპი ვერ მოხერხდა.');
+      }
+
+      case 'stabilize': {
+        // vidstab two-pass; fail-open keeps the original if stabilization can't run.
+        const url = await stabilizeClip(videoUrl);
+        return url ? ok(url) : fail('ვიდეოს სტაბილიზაცია ვერ მოხერხდა.');
       }
 
       case 'restyle':
@@ -235,13 +251,18 @@ export async function POST(req: NextRequest) {
       case 'background_remove': {
         // Anchor frame → image model (restyle / character swap / bg removal) → re-animate.
         const frame = await extractFrame(videoUrl, 0.5);
-        if (!frame) return fail('Could not read a frame from the video.');
+        if (!frame) return fail('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.');
+        // TASK 1 — character swap with an UPLOADED PHOTO: resolve the new person's photo and
+        // anchor the re-animated clip's identity to it via kling reference_images. Honest
+        // capability: this regenerates a fresh ~5s clip seeded by the source frame (Kling is
+        // image-to-video only — there is no motion-preserving v2v), NOT a frame-perfect swap.
+        const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef) : null;
         const editPrompt =
           op === 'restyle'
             ? `Restyle this exact scene: ${text || 'cinematic, film-grade color grade'}. Keep the composition and subjects, change only the visual style.`
             : op === 'background_remove'
               ? `Remove the background behind the subject and replace it with ${text || 'a clean, plain neutral studio backdrop'}. Keep the subject exactly as-is.`
-              : `${text || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character to match this description.`;
+              : `${text || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character${swapPhoto ? ' to the reference person, preserving their face and identity' : ' to match this description'}.`;
         const styled = await generateNanoBananaImage({
           prompt: editPrompt,
           referenceImageDataUrl: frame,
@@ -250,13 +271,14 @@ export async function POST(req: NextRequest) {
         const startImage = styled?.url || frame;
         const motionPrompt = op === 'restyle' ? (text || 'cinematic motion') : (text || 'natural character motion');
         // Premium i2v if a token is set, else a guaranteed Ken-Burns animation so the
-        // user ALWAYS gets a moving, restyled clip.
-        const url = (await klingI2v(startImage, motionPrompt, aspect)) || (await kenBurnsClip(startImage, 5, aspect));
-        return url ? ok(url, { still: styled?.url ?? null }) : fail('Restyle failed.');
+        // user ALWAYS gets a moving, restyled clip. The swap photo (if any) rides along as
+        // the kling identity reference.
+        const url = (await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined)) || (await kenBurnsClip(startImage, 5, aspect));
+        return url ? ok(url, { still: styled?.url ?? null }) : fail(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
       }
 
       default:
-        return fail(`Unknown remix operation: ${op || '(none)'}`);
+        return fail(`უცნობი ოპერაცია: ${op || '(none)'}`);
     }
   } catch (err) {
     // eslint-disable-next-line no-console

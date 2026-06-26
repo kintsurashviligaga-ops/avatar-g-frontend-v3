@@ -15,7 +15,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const OPS = ['add_subtitles', 'color_grade', 'add_music', 'add_text_overlay', 'trim', 'speed_change', 'face_swap', 'background_remove'] as const;
+const OPS = ['add_subtitles', 'color_grade', 'add_music', 'add_text_overlay', 'trim', 'speed_change', 'speed_ramp', 'stabilize', 'face_swap', 'background_remove'] as const;
 type Op = (typeof OPS)[number];
 
 /** Deterministic ka/en/ru keyword classifier — the reliable fallback. */
@@ -28,6 +28,10 @@ function keywordIntent(message: string): { op: Op; params: Record<string, unknow
   if (/პერსონაჟ|character|face\s*swap|swap|лицо|персонаж/.test(m)) return { op: 'face_swap', params: {} };
   if (/მუსიკ|music|музык|track|ბიტ|beat/.test(m)) return { op: 'add_music', params: {} };
   if (/ფერ|color|grade|vintage|cinematic|neon|цвет|грейд/.test(m)) return { op: 'color_grade', params: { grade } };
+  // Stabilization + speed-ramp checked BEFORE the generic speed cue so a "ramp" / "shaky"
+  // request isn't swallowed by plain speed_change.
+  if (/სტაბილ|stabil|стабил|shake|აქანავ|ანძრევ|gimbal|jitter/.test(m)) return { op: 'stabilize', params: {} };
+  if (/რემპ|ramp|speed.?ramp|slow.?in|slow.?out/.test(m)) return { op: 'speed_ramp', params: { factor: 1.5 } };
   if (/სიჩქარ|speed|ნელ|სწრაფ|fast|slow|скорост|быстр|медлен|გაზარდე|შეანელე|2x|2х/.test(m)) {
     // "faster" cues win; "slower" cues fall through to 0.5×.
     const slow = /შეანელე|ნელ|slow|медлен|замедл/.test(m);
