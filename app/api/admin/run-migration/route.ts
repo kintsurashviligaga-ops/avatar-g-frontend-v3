@@ -35,6 +35,10 @@ const ALLOWED: Record<string, string> = {
   // Phase 7 — persistent notification feed (the bell falls back to generation_jobs
   // until this lands; applying it upgrades to server-side read-state + payment notices).
   '20260626_notifications.sql': 'supabase/migrations/20260626_notifications.sql',
+  // Iteration 2 — first-party analytics log (admin) + add_credits() RPC (referral bonuses
+  // currently no-op because the function is missing on prod).
+  '20260626b_analytics_events.sql': 'supabase/migrations/20260626b_analytics_events.sql',
+  '20260626c_add_credits.sql': 'supabase/migrations/20260626c_add_credits.sql',
   '006_gemini_chat_history.sql': 'migrations/006_gemini_chat_history.sql',
 };
 
@@ -45,6 +49,8 @@ const EXPECTED_FNS: Record<string, string[]> = {
   '20260602_free_film_promo.sql': ['consume_free_film', 'restore_free_film'],
   '20260623_free_films_starter_3.sql': [], // DDL + backfill only, no new functions
   '20260626_notifications.sql': [], // table + RLS only, no new functions
+  '20260626b_analytics_events.sql': [], // table + RLS only, no new functions
+  '20260626c_add_credits.sql': ['add_credits'],
   '006_gemini_chat_history.sql': [],
 };
 
