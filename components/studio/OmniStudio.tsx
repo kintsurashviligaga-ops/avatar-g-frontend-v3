@@ -107,7 +107,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -128,7 +128,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -149,7 +149,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -170,7 +170,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -1019,15 +1019,15 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
         {/* P9 — reorder (earlier/later) + delete, enabled once frames have settled. */}
         {structEnabled && (
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label="Move earlier" title="Move earlier"
+            <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label={t.sbMoveEarlier} title={t.sbMoveEarlier}
               className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
               <ChevronLeft size={14} />
             </button>
-            <button type="button" onClick={() => onMove(s.ordinal, 1)} disabled={busy || index === total - 1} aria-label="Move later" title="Move later"
+            <button type="button" onClick={() => onMove(s.ordinal, 1)} disabled={busy || index === total - 1} aria-label={t.sbMoveLater} title={t.sbMoveLater}
               className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
               <ChevronRight size={14} />
             </button>
-            <button type="button" onClick={() => onDelete(s.ordinal)} disabled={busy || total <= 2} aria-label="Delete scene" title="Delete scene"
+            <button type="button" onClick={() => onDelete(s.ordinal)} disabled={busy || total <= 2} aria-label={t.sbDeleteScene} title={t.sbDeleteScene}
               className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-400 disabled:opacity-30 touch-manipulation">
               <Trash2 size={13} />
             </button>
@@ -1117,7 +1117,7 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
                 className={`flex ${portrait ? 'aspect-[9/16]' : 'aspect-video'} flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-app-border/25 bg-app-elevated/40 text-app-muted transition-colors hover:border-app-accent/50 hover:bg-app-accent/[0.06] hover:text-app-accent disabled:opacity-40 touch-manipulation`}
               >
                 <Plus size={22} />
-                <span className="text-[11px] font-medium">{locale === 'en' ? 'Add scene' : locale === 'ru' ? 'Добавить сцену' : 'სცენის დამატება'}</span>
+                <span className="text-[11px] font-medium">{t.sbAddScene}</span>
               </button>
             )}
           </div>
@@ -4493,7 +4493,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     />
                     {/* FIX 3 — provenance + meta badges: engine, real duration, audio state. */}
                     <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">🎬 Generated with Kling AI</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">🎬 {locale === 'en' ? 'Generated with Kling AI' : locale === 'ru' ? 'Сгенерировано Kling AI' : 'შექმნილია Kling AI-ით'}</span>
                       {productResultDur != null && productResultDur > 0 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted tabular-nums">⏱ {Math.round(productResultDur)}{locale === 'en' ? 's' : ' წმ'}</span>
                       )}
@@ -4548,7 +4548,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                       <video src={swapSourceVideo.previewUrl || swapSourceVideo.url} muted playsInline preload="metadata" className="h-28 w-full object-cover" />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 p-1.5"><p className="truncate text-[10px] text-white">{swapSourceVideo.name}</p></div>
-                      <button type="button" aria-label="remove video" onClick={() => setSwapSourceVideo((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; })}
+                      <button type="button" aria-label={locale === 'en' ? 'remove video' : locale === 'ru' ? 'удалить видео' : 'ვიდეოს მოცილება'} onClick={() => setSwapSourceVideo((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; })}
                         className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[11px] text-white hover:bg-black/80 touch-manipulation before:absolute before:-inset-2 before:content-['']">✕</button>
                     </div>
                   )}
@@ -4565,7 +4565,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={videoCharacterRef} alt="" loading="lazy" decoding="async" className="h-11 w-11 rounded-lg object-cover ring-1 ring-orange-400/40" />
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-400"><Check size={12} /> {locale === 'en' ? 'Character set' : locale === 'ru' ? 'Персонаж задан' : 'პერსონაჟი დაყენდა'}</span>
-                        <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
+                        <button type="button" aria-label={locale === 'en' ? 'remove character' : locale === 'ru' ? 'удалить персонажа' : 'პერსონაჟის მოცილება'} onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
                           className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                       </>
                     ) : (

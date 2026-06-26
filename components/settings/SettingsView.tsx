@@ -601,7 +601,7 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
               <div className="flex items-start justify-between gap-3">
                 <h3 className="text-lg font-semibold">{t.modalTitle}</h3>
                 {!busy && !done && (
-                  <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="rounded-full p-1 text-app-muted transition-colors hover:bg-app-bg/40 hover:text-app-text">
+                  <button type="button" onClick={() => setOpen(false)} aria-label={loc === 'en' ? 'Close' : loc === 'ru' ? 'Закрыть' : 'დახურვა'} className="rounded-full p-1 text-app-muted transition-colors hover:bg-app-bg/40 hover:text-app-text">
                     <X size={16} />
                   </button>
                 )}
