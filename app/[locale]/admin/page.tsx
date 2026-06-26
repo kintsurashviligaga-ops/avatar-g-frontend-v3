@@ -27,12 +27,13 @@ export default async function AdminPage({ params }: Props) {
   const isAdmin = isAdminUser(user) || (user?.email?.toLowerCase() === ADMIN_EMAIL);
   if (!isAdmin) redirect(`/${locale}/dashboard`);
 
+  const EMPTY_STATS: AdminStats = { totalUsers: 0, gensToday: 0, gensWeek: 0, gensAllTime: 0, failedGens: 0, revenueGel: 0, byService: [], recentSignups: [], recentGenerations: [], dau: 0, successRate: 0, recentFailures: [] };
   let stats: AdminStats;
   try {
     const svc = createServiceRoleClient();
-    stats = svc ? await gatherAdminStats(svc) : ({ totalUsers: 0, gensToday: 0, gensWeek: 0, gensAllTime: 0, failedGens: 0, revenueGel: 0, byService: [], recentSignups: [], recentGenerations: [] } as AdminStats);
+    stats = svc ? await gatherAdminStats(svc) : EMPTY_STATS;
   } catch {
-    stats = { totalUsers: 0, gensToday: 0, gensWeek: 0, gensAllTime: 0, failedGens: 0, revenueGel: 0, byService: [], recentSignups: [], recentGenerations: [] };
+    stats = EMPTY_STATS;
   }
 
   const ka = locale === 'ka';
@@ -52,6 +53,9 @@ export default async function AdminPage({ params }: Props) {
           <Card label={ka ? 'გენერაცია (სულ)' : 'Gens all time'} value={stats.gensAllTime} />
           <Card label={ka ? 'წარუმატებელი' : 'Failed gens'} value={stats.failedGens} />
           <Card label={ka ? 'პოპულარული' : 'Top service'} value={top ? top.kind : '—'} sub={top ? `${top.count}` : undefined} />
+          {/* PHASE 8 — operational health */}
+          <Card label={ka ? 'აქტიური (დღეს)' : 'Active today'} value={stats.dau} sub={ka ? 'DAU' : 'DAU'} />
+          <Card label={ka ? 'წარმატება' : 'Success rate'} value={`${stats.successRate}%`} sub={ka ? 'შესრულდა/სულ' : 'done / terminal'} />
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -89,6 +93,24 @@ export default async function AdminPage({ params }: Props) {
               </ul>
             )}
           </div>
+        </div>
+
+        {/* PHASE 8 — recent failures panel (diagnose what's breaking) */}
+        <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/[0.05] p-4">
+          <p className="mb-2 text-[13px] font-semibold text-red-300">{ka ? '⚠️ ბოლო წარუმატებლები' : '⚠️ Recent failures'} ({stats.recentFailures.length})</p>
+          {stats.recentFailures.length === 0 ? (
+            <p className="text-[12px] text-gray-500">{ka ? 'წარუმატებლობა არ არის — სუფთაა 🎉' : 'No failures — all clear 🎉'}</p>
+          ) : (
+            <ul className="space-y-1 text-[12px] text-gray-300">
+              {stats.recentFailures.map((f) => (
+                <li key={f.id} className="flex items-center justify-between gap-2">
+                  <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10.5px] text-red-300">{f.kind}</span>
+                  <span className="truncate font-mono text-gray-500">{(f.user_id ?? 'anon').slice(0, 8)}</span>
+                  <span className="shrink-0 text-gray-500">{fmtDate(f.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </main>
