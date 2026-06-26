@@ -28,6 +28,8 @@ import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { track } from '@/lib/analytics/track';
+import { useStudioBridge } from '@/store/useStudioBridge';
+import { useServiceBridge } from '@/hooks/useServiceBridge';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -1585,6 +1587,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       window.scrollTo(0, scrollY);
     };
   }, [optionsOpen]);
+
+  // ── Cross-service Studio Bridge ────────────────────────────────────────────────
+  // A generated image (→ character ref) or music track (→ music-video soundtrack) handed
+  // over from another service lands in the bridge store; consume it here, drop it into the
+  // right Video slot, switch to video mode, flash a welcome toast, then clear the store.
+  // Strictly additive — no-op unless a bridge button fired.
+  const { sendImageToVideo, sendMusicToMusicVideo } = useServiceBridge();
+  const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, clearCharacter, clearAudio } = useStudioBridge();
+  useEffect(() => {
+    if (transitCharacterUrl) {
+      setMode('video');
+      setOptionsOpen(true);
+      setVideoCharacterRef(transitCharacterUrl); // image → locked character identity
+      clearCharacter();
+      setShareToast(locale === 'en' ? '🎬 Character sent to the Video studio' : locale === 'ru' ? '🎬 Персонаж перенесён в видео-студию' : '🎬 პერსონაჟი ვიდეო სტუდიაში გადმოტანილია!');
+      setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), 2600);
+      // Briefly highlight the character slot so the user sees where it landed.
+      setTimeout(() => {
+        const el = document.getElementById('character-ref-zone');
+        if (el) { el.style.outline = '2px solid var(--app-accent, #22d3ee)'; el.style.outlineOffset = '2px'; setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 2000); }
+      }, 400);
+    }
+    if (transitAudioUrl && transitAudioMeta) {
+      setMode('video');
+      setOptionsOpen(true);
+      setVideoMode('musicvideo'); // a handed-over track implies a music video
+      setVideoSoundtrack({
+        name: transitAudioMeta.filename,
+        url: transitAudioUrl,
+        ...(transitAudioMeta.duration ? { durationSec: transitAudioMeta.duration } : {}),
+        peaks: transitAudioMeta.waveform,
+        previewUrl: transitAudioUrl, // remote signed URL is directly playable for preview
+      });
+      clearAudio();
+      setShareToast(locale === 'en' ? '🎵 Track sent to the Video studio' : locale === 'ru' ? '🎵 Трек перенесён в видео-студию' : '🎵 სიმღერა ვიდეო სტუდიაში გადმოტანილია!');
+      setTimeout(() => setShareToast((s) => (/🎵/.test(s ?? '') ? null : s)), 2600);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transitCharacterUrl, transitAudioUrl]);
+
   // Track the composer's live height so the scroll-to-bottom FAB always floats just
   // above it (a fixed 104px offset overlapped a multi-line / attachments / open-options composer).
   useEffect(() => {
@@ -3414,10 +3456,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
               {m.imageUrl && (
                 <div className="space-y-1.5">
-                  <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
-                  </button>
+                  <div className="group relative">
+                    <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
+                    </button>
+                    {/* Cross-service bridge — send this image to the Video studio as the character ref.
+                        Corner badge (always visible) + a hover pill (always shown on touch). */}
+                    <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
+                      title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
+                      onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
+                      className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/70 text-[15px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation before:absolute before:-inset-2 before:content-['']">
+                      🎬
+                    </button>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
+                        className="pointer-events-auto inline-flex min-h-[44px] sm:min-h-0 items-center gap-1.5 rounded-full bg-app-bg/85 px-3.5 py-1.5 text-[12px] font-semibold text-app-text shadow-lg backdrop-blur ring-1 ring-app-border/15 transition-colors hover:bg-app-elevated hover:text-app-accent active:scale-[0.98]">
+                        🎬 <span>{locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}</span>
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -3498,6 +3556,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       </button>
                     )}
                     {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
+                    {/* Cross-service bridge — turn this track into a music video (Video studio). */}
+                    <button type="button" onClick={() => sendMusicToMusicVideo(m.audioUrl!, 0, m.regen?.kind === 'music' ? (m.regen.prompt || 'Generated Track') : 'Generated Track')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                      🎤 <span>{locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკ. კლიპი'}</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -4014,7 +4077,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* 2 · ASSET SLOTS — Character Reference + Audio Track ingest (responsive 2-up) */}
             <div className="grid grid-cols-2 gap-2">
               {/* Character Reference slot */}
-              <div role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
+              <div id="character-ref-zone" role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charFileRef.current?.click(); } }}
                 className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
                 {videoCharacterRef ? (
@@ -4516,6 +4579,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
                   </button>
                   {saveLibButton(lastMusic.audioUrl, 'music')}
+                  {/* Cross-service bridge — turn this track into a music video. */}
+                  <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, 'Generated Track')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                    🎤 {locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკ. კლიპი'}
+                  </button>
                 </div>
               </div>
             )}
