@@ -301,6 +301,52 @@ export async function stabilizeClip(videoUrl: string): Promise<string | null> {
   }
 }
 
+// REAL video face-swap (roop): swap_image (new face) + target_video → the SAME video with
+// the face replaced THROUGHOUT, preserving the original motion. This is the closer-to-source
+// path the keyframe-regenerate `character` op can't give. Community model → pinned version
+// via /v1/predictions (env-overridable). Bounded create+poll; result re-hosted to Supabase.
+// Returns null on no-token / restriction / timeout so the caller falls back. ~9 min poll cap.
+const FACESWAP_MODEL_VERSION = (process.env.REPLICATE_FACESWAP_VERSION || '11b6bf0f4e14d808f655e87e5448233cceff10a45f659d71539cafb7163b2e84').trim();
+export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: string): Promise<string | null> {
+  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
+  if (!token || !targetVideoUrl || !swapImageUrl) return null;
+  if (!/^https?:\/\//i.test(targetVideoUrl) || !/^https?:\/\//i.test(swapImageUrl)) return null; // replicate fetches by URL
+  try {
+    const create = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ version: FACESWAP_MODEL_VERSION, input: { swap_image: swapImageUrl, target_video: targetVideoUrl } }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!create.ok) return null;
+    const pred = (await create.json().catch(() => ({}))) as { status?: string; output?: unknown; urls?: { get?: string } };
+    const pollUrl = pred.urls?.get;
+    const pick = (o: unknown): string | null => typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
+    let output = pred.output;
+    let status = pred.status;
+    const deadline = Date.now() + 540_000;
+    while (pollUrl && status !== 'succeeded' && status !== 'failed' && status !== 'canceled' && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4_000));
+      const poll = await fetch(pollUrl, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) }).catch(() => null);
+      if (!poll || !poll.ok) continue;
+      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown };
+      status = j.status; output = j.output;
+    }
+    const outUrl = status === 'succeeded' ? pick(output) : null;
+    if (!outUrl) return null;
+    // Re-host to Supabase (the replicate.delivery URL is short-lived + CSP-blocked in-app).
+    const r = await fetch(outUrl, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+    if (!r || !r.ok) return outUrl; // fail-open: return the provider URL if re-host fetch misses
+    const buf = Buffer.from(await r.arrayBuffer());
+    return (await hostMp4(buf, 'faceswap')) ?? outUrl;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.faceswap] failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 const I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
 const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed';
 
