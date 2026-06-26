@@ -22,6 +22,7 @@ import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
+import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -1148,6 +1149,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number }) => {
     const credits = creditCostFor(kind, opts);
     if (credits <= 0) return;
+    // PHASE 4 Task 1 — track the generation (fail-silent). One hook covers every kind.
+    // notifyCredit is declared before the video panel state, so only call params are
+    // referenced here (duration rides in via opts.seconds); the event + credits cost
+    // is the core metric.
+    if (kind === 'music') track('music_generated', { credits });
+    else if (kind === 'image') track('image_generated', { count: opts?.count ?? 1 });
+    else if (kind === 'video' || kind === 'avatar') track('video_generated', { duration: opts?.seconds ?? null, credits });
     setCreditToast({ credits, balanceGel: null });
     // PHASE 3 Task 3 — file a "your <kind> is ready" notification (fail-open if the
     // notifications table isn't migrated). avatar/remix read as video to the user.

@@ -24,6 +24,7 @@ import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import NotificationBell from '@/components/notifications/NotificationBell';
+import { track } from '@/lib/analytics/track';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useTheme } from '@/lib/theme/ThemeContext';
@@ -164,6 +165,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
     if (typeof window === 'undefined' || !authed) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('topup') !== 'success') return;
+    track('payment_completed', {}); // PHASE 4 Task 1 — landed back from Stripe Checkout
     let n = 0;
     const id = window.setInterval(() => { n += 1; void refreshBalance(); if (n >= 5) window.clearInterval(id); }, 1500);
     void refreshBalance();

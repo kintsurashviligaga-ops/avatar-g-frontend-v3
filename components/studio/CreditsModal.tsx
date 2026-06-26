@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Loader2, LogIn, CreditCard, Check } from 'lucide-react';
 import { CREDIT_PACKAGES, CREDIT_COSTS, creditsToGel } from '@/lib/credits/pricing';
+import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -120,6 +121,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
   const startCheckout = useCallback(async (pkg: { id: string; gel: number }) => {
     if (busyId) return;
     setBusyId(pkg.id);
+    track('payment_initiated', { package: pkg.id, amount: pkg.gel }); // PHASE 4 Task 1
     try {
       const res = await fetch('/api/billing/wallet-topup', {
         method: 'POST',

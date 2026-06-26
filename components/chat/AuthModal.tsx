@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft } from 'lucide-react';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
+import { track } from '@/lib/analytics/track';
 import { SUPPORT_EMAIL, buildSupportMailto } from '@/lib/support';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -192,6 +193,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
           const j = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string };
           if (res.ok && j.ok) {
             registered = true;
+            track('user_signup', { method: 'email' }); // PHASE 4 Task 1
           } else if (j.code === 'exists') {
             setError(t.errEmailInUse);
             return;
@@ -218,8 +220,8 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
           });
           if (error) throw error;
-          if (data.session) { onAuthed?.(); onClose(); router.refresh(); }
-          else setNotice(t.registerCheckEmail);
+          if (data.session) { track('user_signup', { method: 'email' }); onAuthed?.(); onClose(); router.refresh(); }
+          else { track('user_signup', { method: 'email', pending_confirm: true }); setNotice(t.registerCheckEmail); }
         }
       } else if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
