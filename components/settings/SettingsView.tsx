@@ -595,7 +595,7 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
               transition={{ duration: 0.22, ease: 'easeOut' }}
-              className="w-full max-w-md rounded-2xl bg-app-elevated p-6 text-app-text ring-1 ring-app-border/60 shadow-2xl"
+              className="w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain rounded-2xl bg-app-elevated p-6 text-app-text ring-1 ring-app-border/60 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">

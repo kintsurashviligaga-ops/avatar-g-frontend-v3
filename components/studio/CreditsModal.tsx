@@ -158,7 +158,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         aria-modal="true"
         aria-label={t.title}
         onClick={(e) => e.stopPropagation()}
-        className="relative z-[111] w-full max-w-[420px] overflow-hidden rounded-3xl border border-app-border/15 bg-app-surface shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)]"
+        className="relative z-[111] max-h-[90dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-3xl border border-app-border/15 bg-app-surface shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5">
