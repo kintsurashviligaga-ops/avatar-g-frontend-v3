@@ -1,4 +1,5 @@
 import 'server-only';
+import { withRetry } from '@/lib/utils/withRetry';
 
 // ElevenLabs Music — the v330 master audio layer. Unlike the legacy Udio path
 // (async start → workId → poll), ElevenLabs Music returns the finished track
@@ -37,24 +38,29 @@ export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<
   const key = (process.env.ELEVENLABS_API_KEY || '').trim();
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured');
   const music_length_ms = Math.max(3_000, Math.min(600_000, Math.round(input.lengthMs)));
-  const res = await fetch(EL_MUSIC_URL, {
-    method: 'POST',
-    headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({
-      prompt: input.prompt.slice(0, 2_000),
-      music_length_ms,
-      model_id: input.modelId ?? 'music_v1',
-      output_format: 'mp3_44100_128',
-      ...(input.instrumental ? { force_instrumental: true } : {}),
-    }),
-    ...(input.signal ? { signal: input.signal } : {}),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`ElevenLabs Music ${res.status}: ${detail.slice(0, 300)}`);
-  }
-  const audio = Buffer.from(await res.arrayBuffer());
-  if (audio.length < 1_024) throw new Error('ElevenLabs Music returned an empty track');
+  // Retry transient failures (5xx / network) before the caller falls back to MusicGen.
+  // A caller-aborted request (input.signal) bails immediately inside withRetry.
+  const audio = await withRetry(async () => {
+    const res = await fetch(EL_MUSIC_URL, {
+      method: 'POST',
+      headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+      body: JSON.stringify({
+        prompt: input.prompt.slice(0, 2_000),
+        music_length_ms,
+        model_id: input.modelId ?? 'music_v1',
+        output_format: 'mp3_44100_128',
+        ...(input.instrumental ? { force_instrumental: true } : {}),
+      }),
+      ...(input.signal ? { signal: input.signal } : {}),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`ElevenLabs Music ${res.status}: ${detail.slice(0, 300)}`);
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 1_024) throw new Error('ElevenLabs Music returned an empty track');
+    return buf;
+  }, { maxAttempts: 3, baseDelayMs: 2000, label: 'elevenlabs-music' });
   return { audio, contentType: 'audio/mpeg' };
 }
 

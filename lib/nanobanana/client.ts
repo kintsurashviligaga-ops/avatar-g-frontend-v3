@@ -3,6 +3,7 @@ import {
   type NanoBananaEndpoint,
   resolveNanoBananaEndpoint,
 } from '@/lib/nanobanana/endpoints';
+import { withRetry } from '@/lib/utils/withRetry';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -493,7 +494,16 @@ export async function generateNanoBananaImage(input: NanoBananaGenerateInput): P
 
   const createUrl = directUrl || composeUrl(baseUrl, resolveEndpointPath(endpoint));
   const createPayload = buildCreatePayload(endpoint, input);
-  const createResult = await requestNanoBanana(createUrl, apiKey, 'POST', createPayload);
+  // Retry only transient create failures (5xx / network throw) — a 5xx means nothing
+  // was created yet, so a re-POST is safe. 4xx falls straight through to the throw below.
+  const createResult = await withRetry(
+    async () => {
+      const r = await requestNanoBanana(createUrl, apiKey, 'POST', createPayload);
+      if (!r.ok && r.status >= 500) throw new Error(buildRequestError(r));
+      return r;
+    },
+    { maxAttempts: 3, baseDelayMs: 2000, label: 'nanobanana-create' },
+  );
 
   if (!createResult.ok) {
     throw new Error(buildRequestError(createResult));

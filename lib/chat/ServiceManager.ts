@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { z } from 'zod';
 
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { withRetry } from '@/lib/utils/withRetry';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { generateGrokImage, hasXaiApiKey } from '@/lib/ai/xaiImage';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
@@ -381,13 +382,24 @@ export class ServiceManager {
     const promptHash = this.hashPrompt(request.userPrompt);
 
     try {
-      const res = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({ input }),
-        signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
-      });
+      // One quick retry on a transient 5xx/network blip before falling back to LTX —
+      // each attempt gets a fresh timeout; a real timeout (TimeoutError) bails fast so
+      // the LTX fallback isn't delayed. The never-throws contract is preserved by the
+      // outer catch (a final failure → thrown → caught → null).
+      const res = await withRetry(
+        async () => {
+          const r = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            body: JSON.stringify({ input }),
+            signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
+          });
+          if (!r.ok && r.status >= 500) throw new Error(`i2v create ${r.status}`);
+          return r;
+        },
+        { maxAttempts: 2, baseDelayMs: 800, label: `i2v-${model}` },
+      );
       if (!res.ok) {
         // eslint-disable-next-line no-console
         console.warn(`[i2v] ${model} create ${res.status} → LTX fallback`);

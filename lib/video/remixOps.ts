@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { withRetry } from '@/lib/utils/withRetry';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
@@ -371,13 +372,21 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
     const refs = (referenceImages ?? []).filter((u) => typeof u === 'string' && /^https?:\/\//.test(u));
     if (refs.length) input.reference_images = refs;
     if (/v1\.6|v1-6|kling-v1/.test(I2V_MODEL.toLowerCase())) { input.aspect_ratio = aspect; input.cfg_scale = 0.5; }
-    const create = await fetch(`https://api.replicate.com/v1/models/${I2V_MODEL}/predictions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ input }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    // One quick retry on a transient 5xx/network blip; a real timeout bails fast.
+    const create = await withRetry(
+      async () => {
+        const r = await fetch(`https://api.replicate.com/v1/models/${I2V_MODEL}/predictions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ input }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!r.ok && r.status >= 500) throw new Error(`kling create ${r.status}`);
+        return r;
+      },
+      { maxAttempts: 2, baseDelayMs: 800, label: 'remix-kling-i2v' },
+    );
     if (!create.ok) return null;
     const pred = (await create.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
     const pollUrl = pred.urls?.get;
