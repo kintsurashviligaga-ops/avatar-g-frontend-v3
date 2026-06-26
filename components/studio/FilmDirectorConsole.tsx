@@ -94,7 +94,27 @@ const MICRO: Partial<Record<FilmAgentId, { processing: Record<Loc, string>; comp
   lipsync: { processing: { en: 'Syncing lips…', ru: 'Синхрон губ…', ka: 'ლიპსინკი…' }, completed: { en: 'Lips synced', ru: 'Губы готовы', ka: 'ტუჩები სინქრ.' } },
 };
 
+// Phase 6 — music-video relabel: the SAME roster, but the agents that mean something
+// different in a music video read with music-video names/icons (Audio/Clips/Master/
+// Lip-Sync). Additive overlay — only the LABEL + ICON change; status/progress logic is
+// untouched. Agents not listed keep their film labels.
+const MV_LABELS: Partial<Record<FilmAgentId, Record<Loc, string>>> = {
+  voice: { en: 'Audio', ru: 'Аудио', ka: 'აუდიო' },
+  sfx: { en: 'Music', ru: 'Музыка', ka: 'მუსიკა' },
+  video: { en: 'Clips', ru: 'Клипы', ka: 'კლიპები' },
+  montage: { en: 'Master', ru: 'Мастер', ka: 'მასტერი' },
+  lipsync: { en: 'Lip-Sync', ru: 'Липсинк', ka: 'ლიპსინკი' },
+};
+const MV_ICONS: Partial<Record<FilmAgentId, typeof Clapperboard>> = {
+  voice: Music,
+  video: Film,
+  montage: Scissors,
+  lipsync: Waves,
+};
+
 const TITLE: Record<Loc, string> = { en: "Director's Console", ru: 'Пульт режиссёра', ka: 'რეჟისორის პულტი' };
+const MV_TITLE: Record<Loc, string> = { en: 'Music Video Studio', ru: 'Студия клипа', ka: 'მუსიკ. ვიდეო სტუდია' };
+const MV_SUBTITLE: Record<Loc, string> = { en: 'AI lip-sync · live', ru: 'ИИ-липсинк · в эфире', ka: 'AI ლიპსინკი · ლაივი' };
 const SUBTITLE: Record<Loc, string> = {
   en: 'AI crew · live',
   ru: 'ИИ-команда · в эфире',
@@ -143,8 +163,9 @@ function StatusIcon({ status }: { status: FilmAgentStatus }) {
   return <span className="h-[7px] w-[7px] rounded-full border border-app-muted/40" />;
 }
 
-function AgentCard({ agent, loc }: { agent: FilmAgentVM; loc: Loc }) {
-  const Icon = ICONS[agent.id];
+function AgentCard({ agent, loc, musicVideo = false }: { agent: FilmAgentVM; loc: Loc; musicVideo?: boolean }) {
+  const Icon = (musicVideo && MV_ICONS[agent.id]) || ICONS[agent.id];
+  const label = (musicVideo && MV_LABELS[agent.id]?.[loc]) || LABELS[agent.id][loc];
   const s = STATUS_STYLE[agent.status];
   const micro = MICRO[agent.id];
   const detail =
@@ -163,7 +184,7 @@ function AgentCard({ agent, loc }: { agent: FilmAgentVM; loc: Loc }) {
           <Icon size={14} className={agent.status === 'idle' ? 'text-app-muted/60' : 'text-app-text'} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[11.5px] font-semibold leading-tight text-app-text">{LABELS[agent.id][loc]}</p>
+          <p className="truncate text-[11.5px] font-semibold leading-tight text-app-text">{label}</p>
           <p className="truncate text-[10px] leading-tight text-app-muted">{detail}</p>
         </div>
         <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${s.pill}`}>
@@ -268,6 +289,7 @@ export default function FilmDirectorConsole({
   locale,
   onCancel,
   stopLabel,
+  musicVideo = false,
 }: {
   /** Pre-derived roster from the live message; falls back to deriving from `progress`. */
   roster?: FilmAgentVM[];
@@ -284,6 +306,8 @@ export default function FilmDirectorConsole({
   onCancel?: () => void;
   /** Localized "Stop" label for the Cancel control. */
   stopLabel?: string;
+  /** Phase 6 — relabel agents for the music-video flow (Audio/Clips/Master/Lip-Sync). */
+  musicVideo?: boolean;
 }) {
   const loc = asLoc(locale);
   const list = roster && roster.length ? roster : deriveFilmRoster(progress ?? null);
@@ -309,8 +333,8 @@ export default function FilmDirectorConsole({
             <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${anyWorking ? 'bg-red-500' : 'bg-app-muted/50'}`} />
           </span>
           <div className="min-w-0">
-            <p className="text-[13px] font-bold leading-tight text-app-text">{TITLE[loc]}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{SUBTITLE[loc]}</p>
+            <p className="text-[13px] font-bold leading-tight text-app-text">{(musicVideo ? MV_TITLE : TITLE)[loc]}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{(musicVideo ? MV_SUBTITLE : SUBTITLE)[loc]}</p>
           </div>
         </div>
         <div className="flex items-end gap-3">
@@ -355,7 +379,7 @@ export default function FilmDirectorConsole({
       {/* 9-agent crew grid */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {list.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} loc={loc} />
+          <AgentCard key={agent.id} agent={agent} loc={loc} musicVideo={musicVideo} />
         ))}
       </div>
 

@@ -56,6 +56,44 @@ async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string 
   }
 }
 
+// Phase 6 polish — decode an uploaded audio File entirely client-side to get its real
+// duration + a downsampled waveform (N peaks in 0..1) for the music-video preview. Pure
+// browser Web Audio; fail-soft to null so a decode miss never blocks the upload.
+async function decodeAudioMeta(file: File, buckets = 48): Promise<{ durationSec: number; peaks: number[] } | null> {
+  try {
+    const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    try {
+      const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+      const ch = buf.getChannelData(0);
+      const block = Math.max(1, Math.floor(ch.length / buckets));
+      const peaks: number[] = [];
+      for (let i = 0; i < buckets; i += 1) {
+        let peak = 0;
+        const start = i * block;
+        for (let j = 0; j < block && start + j < ch.length; j += 1) { const v = Math.abs(ch[start + j]!); if (v > peak) peak = v; }
+        peaks.push(Math.min(1, peak));
+      }
+      // Normalize so the tallest bar reaches the top (quiet tracks still read well).
+      const max = Math.max(0.0001, ...peaks);
+      return { durationSec: buf.duration, peaks: peaks.map((p) => p / max) };
+    } finally {
+      try { await ctx.close(); } catch { /* noop */ }
+    }
+  } catch {
+    return null;
+  }
+}
+
+// mm:ss for a soundtrack duration chip.
+function fmtDur(sec: number): string {
+  if (!isFinite(sec) || sec <= 0) return '';
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 const COPY: Record<Lang, {
   title: string; subtitle: string; placeholder: string; empty: string; thinking: string; recording: string; micHint: string;
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string; remix: string; remixPlaceholder: string; remixGenerating: string;
@@ -1390,7 +1428,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // v330 — dedicated AUDIO INGEST slot: a user-uploaded beat/song. Once uploaded
   // (uploadBigFile → storage path) it becomes the master bed, bypassing ambient music
   // generation. `videoSoundtrackBusy` is true while the upload is in flight.
-  const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string } | null>(null);
+  // Phase 6 polish — also carry the real duration + a downsampled waveform (peaks 0..1)
+  // decoded client-side, so the music-video panel can show length + a waveform preview.
+  const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null>(null);
   const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
@@ -3577,7 +3617,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {kind === 'video' ? (
                         // The Master-Prompt Director's Console — the 9-agent crew,
                         // live, driven by the real film-pipeline matrix.
-                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} />
+                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
                       ) : (
                         <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
                       )}
@@ -4005,7 +4045,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
                     <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
-                    <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack(null); }}
+                    <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
                       className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
@@ -4017,6 +4057,47 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 )}
               </div>
             </div>
+
+            {/* 2b · Soundtrack detail — waveform + duration + preview (Phase 6 polish).
+                Shown once a track is uploaded; purely informative, never blocks generation. */}
+            {videoSoundtrack && (
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-app-text">
+                    <Music2 size={13} className="shrink-0 text-app-accent" />
+                    <span className="truncate">{videoSoundtrack.name}</span>
+                  </span>
+                  {videoSoundtrack.durationSec ? (
+                    <span className="shrink-0 tabular-nums text-[11px] font-medium text-app-muted">{fmtDur(videoSoundtrack.durationSec)}</span>
+                  ) : null}
+                </div>
+                {videoSoundtrack.peaks && videoSoundtrack.peaks.length > 0 && (
+                  <div className="flex h-9 items-end gap-[2px]" aria-hidden="true">
+                    {videoSoundtrack.peaks.map((p, k) => (
+                      <span key={k} className="flex-1 rounded-sm bg-app-accent/55" style={{ height: `${Math.max(8, Math.round(p * 100))}%` }} />
+                    ))}
+                  </div>
+                )}
+                {videoSoundtrack.previewUrl && (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <audio src={videoSoundtrack.previewUrl} controls className="h-8 w-full" />
+                )}
+              </div>
+            )}
+
+            {/* 2c · Character-photo guidance for music video — lip-sync keys a face, so a
+                character reference gives the best result. A WARNING (not a hard block): the
+                pipeline still derives a face if none is given, so generation is never blocked. */}
+            {videoMode === 'musicvideo' && !videoCharacterRef && (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] px-3 py-2.5 text-[11.5px] leading-snug text-amber-600 dark:text-amber-400">
+                <span className="shrink-0">📸</span>
+                <span>{locale === 'en'
+                  ? 'Add a character photo above for accurate lip-sync (otherwise a face is auto-generated).'
+                  : locale === 'ru'
+                    ? 'Добавьте фото персонажа выше для точного липсинка (иначе лицо создаётся автоматически).'
+                    : 'lip-sync-ისთვის ატვირთე პერსონაჟის ფოტო ზემოთ (თუ არა — სახე ავტომატურად შეიქმნება).'}</span>
+              </div>
+            )}
 
             {/* 3 · Length + Format, side by side */}
             <div className="grid grid-cols-2 gap-2">
@@ -4600,16 +4681,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           } catch { /* ignore unreadable file */ }
         }} />
         {/* v330 — dedicated Audio Track ingest (single beat/song → uploadBigFile → master bed). */}
-        <input ref={audioFileRef} type="file" accept="audio/*" className="hidden" onChange={async (e) => {
+        <input ref={audioFileRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,.mp3,.wav,.m4a" className="hidden" onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
           if (!f) return;
+          // Phase 6 polish — validate BEFORE the upload so we never burn a round-trip on a
+          // file the pipeline can't use. Format (mp3/wav/m4a/aac) + ≤50MB. Clear toast on a miss.
+          const okType = /audio\/(mpeg|mp3|wav|x-wav|mp4|x-m4a|aac)/i.test(f.type) || /\.(mp3|wav|m4a|aac)$/i.test(f.name);
+          if (!okType) {
+            setShareToast(locale === 'en' ? 'Use an MP3, WAV or M4A file' : locale === 'ru' ? 'Нужен MP3, WAV или M4A' : 'საჭიროა MP3, WAV ან M4A ფაილი');
+            setTimeout(() => setShareToast((s) => (/MP3|M4A/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
+          if (f.size > 50 * 1024 * 1024) {
+            setShareToast(locale === 'en' ? 'Audio is too large (max 50MB)' : locale === 'ru' ? 'Файл слишком большой (макс 50МБ)' : 'ფაილი ძალიან დიდია (მაქს 50MB)');
+            setTimeout(() => setShareToast((s) => (/50/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
           setVideoSoundtrackBusy(true);
           try {
-            const dataUrl = await fileToDataUrl(f);
+            // Decode metadata locally (duration + waveform) in parallel with the upload.
+            const [meta, dataUrl] = await Promise.all([decodeAudioMeta(f), fileToDataUrl(f)]);
             const url = await uploadBigFile(dataUrl, f.type || 'audio/mpeg');
             if (url) {
-              setVideoSoundtrack({ name: f.name, url });
+              // Local blob URL for in-panel preview (the stored `url` is a storage PATH, not playable).
+              let previewUrl: string | undefined;
+              try { previewUrl = URL.createObjectURL(f); } catch { /* noop */ }
+              setVideoSoundtrack({ name: f.name, url, ...(meta ? { durationSec: meta.durationSec, peaks: meta.peaks } : {}), ...(previewUrl ? { previewUrl } : {}) });
               setVideoMode('musicvideo'); // an uploaded soundtrack implies music-video intent
             }
           } catch { /* ignore */ } finally {
