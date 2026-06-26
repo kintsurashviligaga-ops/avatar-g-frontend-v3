@@ -17,6 +17,7 @@ import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, 
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import FilmDirectorConsole from './FilmDirectorConsole';
+import RemixStudioConsole from './RemixStudioConsole';
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
@@ -661,7 +662,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean;
+interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -2372,11 +2373,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // surfaces a clean retry notice and keeps the original.
     if (mode === 'chat' && text && attachments.some((a) => isVideo(a.mimeType))) {
       const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
-      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', text: t.remixRunning }]);
+      // remixOpKind drives the Remix Studio staged-timer panel; starts generic, then
+      // gets patched to the classified op once the intent call resolves (~1s).
+      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'remix' }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
         const intentRes = await fetch('/api/video/remix-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ message: text }) });
         const intent = (await intentRes.json().catch(() => ({}))) as { op?: string; params?: Record<string, unknown> };
+        // Patch the pending bubble so the panel shows the op-specific stages + ETA.
+        if (mine() && intent.op) setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, remixOpKind: intent.op }; return next; });
         const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType || 'video/mp4');
         if (!videoUrl) throw new Error('upload failed');
         const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op: intent.op || 'color_grade', videoUrl, text, ...(intent.params || {}) }) });
@@ -2760,7 +2765,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
     setOptionsOpen(false);
-    setMessages((prev) => [...prev, { role: 'user', text: `🎬 ${label}` }, { role: 'assistant', text: t.remixRunning }]);
+    setMessages((prev) => [...prev, { role: 'user', text: `🎬 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: remixOp }]);
     setRemixBusy(true); setBusy(true);
     try {
       const payload: Record<string, unknown> = { op: remixOp, videoUrl: remixVideo.url };
@@ -3505,6 +3510,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
               {(() => {
                 const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
+                // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
+                // staged-timer console. Checked first so it wins in chat mode too.
+                if (pending && m.remixOpKind) {
+                  return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
+                }
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
                 if (pending && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0)) {
