@@ -30,7 +30,7 @@ function NotFound() {
         ეს გაზიარება არ არსებობს ან გახდა პირადი.
       </p>
       <a href="https://myavatar.ge" style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#0369a1,#0ea5e9)', borderRadius: 10, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>
-        Avatar G-ზე დაბრუნება
+        MyAvatar.ge-ზე დაბრუნება
       </a>
     </div>
   );
@@ -96,10 +96,10 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
       <header style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)', background: 'rgba(10,10,14,0.7)' }}>
         <a href="https://myavatar.ge" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit' }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#0284c7,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff' }}>G</div>
-          <span style={{ fontWeight: 700, fontSize: 15, color: '#fff' }}>Avatar G</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: '#fff' }}>MyAvatar.ge</span>
         </a>
         <a href="https://myavatar.ge" style={{ padding: '7px 16px', background: 'linear-gradient(135deg,#0369a1,#0ea5e9)', borderRadius: 8, color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
-          Avatar G-ში გახსნა →
+          MyAvatar.ge-ში გახსნა →
         </a>
       </header>
 
@@ -116,7 +116,7 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
 
         {/* Title */}
         <h1 style={{ fontSize: 'clamp(20px,4vw,28px)', fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: creation.prompt ? 12 : 20 }}>
-          {creation.title ?? `AI ${KIND_KA[creation.kind as Kind]} - Avatar G`}
+          {creation.title ?? `AI ${KIND_KA[creation.kind as Kind]} - MyAvatar.ge`}
         </h1>
 
         {/* Prompt */}
@@ -151,7 +151,7 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
           onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1)'; }}
         >
           <span style={{ fontSize: 20 }}>{KIND_ICON[creation.kind as Kind] ?? '✨'}</span>
-          ამის მსგავსი შევქმნა Avatar G-ით →
+          ამის მსგავსი შევქმნა MyAvatar.ge-ით →
         </a>
 
         {/* Secondary action buttons */}
@@ -177,14 +177,14 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
             href="https://myavatar.ge"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.25)', borderRadius: 10, color: '#7dd3fc', textDecoration: 'none', fontSize: 13, fontWeight: 500 }}
           >
-            🏠 Avatar G-ის მთავარი
+            🏠 MyAvatar.ge-ის მთავარი
           </a>
         </div>
 
         {/* Footer credit */}
         <div style={{ marginTop: 48, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 24, height: 24, borderRadius: 6, background: 'linear-gradient(135deg,#0284c7,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>G</div>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>შექმნილია Avatar G AI-ით · myavatar.ge</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>შექმნილია MyAvatar.ge AI-ით · myavatar.ge</span>
         </div>
       </main>
     </div>
