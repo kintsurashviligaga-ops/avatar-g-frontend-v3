@@ -1363,6 +1363,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // photo, varied scene prompts) stitched + scored via the assemble pipeline.
   const [productDuration, setProductDuration] = useState<6 | 30 | 60>(6);
   const [productProgress, setProductProgress] = useState<string | null>(null);
+  // FIX 3 — product-ad result meta for the result card: real clip duration (read from
+  // the <video>) + whether a music bed was laid (single-clip ads now carry a score).
+  const [productResultDur, setProductResultDur] = useState<number | null>(null);
+  const [productHasAudio, setProductHasAudio] = useState(false);
   // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
   // separate from the generic attachment tray so it reads as its own asset slot.
   const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
@@ -1819,30 +1823,32 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setProductBusy(true);
     setProductResultUrl(null);
     setProductProgress(null);
+    setProductResultDur(null);
+    setProductHasAudio(false);
     const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
-    // One i2v clip per ~5s. 6s → single clip (shown directly); 30/60s → N clips
-    // (same product photo, varied scene prompts) generated in parallel, then stitched
-    // + scored by the assemble pipeline (ElevenLabs music bed).
-    const genClip = async (sceneIndex: number): Promise<string | null> => {
+    // One i2v clip per ~5s. 6s → single clip (now scored with a preset music bed by the
+    // route); 30/60s → N clips (same product photo, varied scene prompts) generated in
+    // parallel, then stitched + scored by the assemble pipeline (ElevenLabs music bed).
+    const genClip = async (sceneIndex: number): Promise<{ url: string; music: boolean } | null> => {
       try {
         const r = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
-        const j = (await r.json().catch(() => null)) as { url?: string } | null;
-        return r.ok && j?.url ? j.url : null;
+        const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
+        return r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
       } catch { return null; }
     };
     try {
       if (productDuration <= 6) {
-        const url = await genClip(-1);
-        if (url) { setProductResultUrl(url); notifyCredit('video', { seconds: 6 }); }
+        const res = await genClip(-1);
+        if (res) { setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); }
         return;
       }
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
       setProductProgress(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
-      const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((u): u is string => !!u);
-      if (clips.length < 2) { if (clips[0]) setProductResultUrl(clips[0]); return; }
+      const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
+      if (clips.length < 2) { if (clips[0]) { setProductResultUrl(clips[0]); } return; }
       setProductProgress(locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…');
       const ar = await fetch('/api/video/assemble', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -1854,7 +1860,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }),
       });
       const aj = (await ar.json().catch(() => null)) as { url?: string } | null;
-      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); notifyCredit('video', { seconds: productDuration }); }
+      // Assembled master carries the ElevenLabs music bed → audio present.
+      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); }
       else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
     } catch {
       /* fail-open — the panel just stays on its previous state */
@@ -4168,7 +4175,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {productBusy ? (productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')) : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
                 </button>
                 {productResultUrl && (
-                  <video src={productResultUrl} controls playsInline className="w-full rounded-xl border border-app-border/20" />
+                  <div className="space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
+                    <video
+                      src={productResultUrl}
+                      controls
+                      playsInline
+                      onLoadedMetadata={(e) => setProductResultDur(e.currentTarget.duration)}
+                      className="w-full rounded-xl border border-app-border/20"
+                    />
+                    {/* FIX 3 — provenance + meta badges: engine, real duration, audio state. */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">🎬 Generated with Kling AI</span>
+                      {productResultDur != null && productResultDur > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted tabular-nums">⏱ {Math.round(productResultDur)}{locale === 'en' ? 's' : ' წმ'}</span>
+                      )}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">{productHasAudio ? '🔊 ' + (locale === 'en' ? 'With music' : locale === 'ru' ? 'С музыкой' : 'მუსიკით') : '🔇 ' + (locale === 'en' ? 'No audio' : locale === 'ru' ? 'Без звука' : 'უხმო')}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void dl(productResultUrl, 'myavatar-product-ad.mp4')} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]">
+                        <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
+                      </button>
+                      <button type="button" onClick={() => void share(productResultUrl, 'myavatar-product-ad.mp4')} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
+                        <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
+                      </button>
+                      <button type="button" onClick={generateProductAd} disabled={productBusy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
+                        <RotateCcw size={13} /> {locale === 'en' ? 'Regenerate' : locale === 'ru' ? 'Заново' : 'თავიდან'}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
