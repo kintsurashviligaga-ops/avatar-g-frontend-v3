@@ -1243,6 +1243,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }).catch(() => {});
     setTimeout(() => setCreditToast(null), 4000);
   }, [locale]);
+  // Iteration 2 Phase 6 — silently file a result into the Library. Image / music / film
+  // already persist server-side via the produce routes; remix / character-swap / product-ad
+  // results do NOT, so they'd be lost on reload. Fail-open + silent (the explicit "save"
+  // button at saveToLibrary stays for everything else). Stable ([] deps) so call sites can
+  // use it freely without dependency churn.
+  const autoSaveToLibrary = useCallback((url: string | null | undefined, kind: 'film' | 'image' | 'music' = 'film', prompt?: string) => {
+    if (!url || !/^https?:\/\//.test(url)) return;
+    void fetch('/api/studio/library', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ url, kind, ...(prompt ? { prompt } : {}) }),
+    }).catch(() => {});
+  }, []);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   // Read-aloud phase for the speaking bubble — 'loading' while eleven_v3 synthesises
   // (a few seconds), 'playing' once audio starts. Drives the dynamic listen button.
@@ -1971,7 +1983,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     try {
       if (productDuration <= 6) {
         const res = await genClip(-1);
-        if (res) { setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); }
+        if (res) { setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film'); }
         return;
       }
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
@@ -1990,7 +2002,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
       const aj = (await ar.json().catch(() => null)) as { url?: string } | null;
       // Assembled master carries the ElevenLabs music bed → audio present.
-      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); }
+      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(aj.url, 'film'); }
       else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
     } catch {
       /* fail-open — the panel just stays on its previous state */
@@ -2513,7 +2525,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: '', videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
           return next;
         });
-        if (mine() && j.url) notifyCredit('remix');
+        if (mine() && j.url) { notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
       } catch {
         if (!mine()) return;
         setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
@@ -2909,7 +2921,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
         return next;
       });
-      if (mine() && j.url) notifyCredit('remix');
+      if (mine() && j.url) { notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
     } catch {
       if (!mine()) return;
       setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
@@ -2949,7 +2961,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
         return next;
       });
-      if (mine() && j.url) notifyCredit('remix');
+      if (mine() && j.url) { notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
     } catch {
       if (!mine()) return;
       setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
