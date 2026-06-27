@@ -609,9 +609,16 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // FAILS instead of falling to the working (direct) LTX text-to-video. Turn this on once
     // Replicate has ≥$5 credit. Fail-open: a miss leaves sceneFrames null → unchanged LTX path.
     const autoAnchorOn = /^(1|true|on)$/i.test((process.env.AUTO_ANCHOR_FRAME || '').trim());
-    if (autoAnchorOn && characterLock && hostedCount === 0 && !sceneFrames.some(Boolean)) {
+    // Source for the anchor portrait: the Prompt Agent's character fragment is often EMPTY
+    // (the character lives in the scene scripts), so fall back to the first scene prompt,
+    // then the raw brief — otherwise the anchor silently skips and clips drop to LTX.
+    const anchorDesc =
+      (characterLock && characterLock.trim()) ||
+      (Array.isArray(sceneScripts) && sceneScripts.find((s) => typeof s === 'string' && s.trim())) ||
+      input.message.slice(0, 400);
+    if (autoAnchorOn && anchorDesc && hostedCount === 0 && !sceneFrames.some(Boolean)) {
       const tAnchor = Date.now();
-      const anchor = await generateAnchorFrame(characterLock, orientation === 'vertical' ? '9:16' : '16:9');
+      const anchor = await generateAnchorFrame(anchorDesc, orientation === 'vertical' ? '9:16' : '16:9');
       if (anchor) {
         sceneFrames = plan.scenes.map(() => anchor);
         // eslint-disable-next-line no-console
