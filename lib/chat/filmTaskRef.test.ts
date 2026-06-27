@@ -120,12 +120,44 @@ describe('computeFilmUnion — the heart of the Union Poll Codec', () => {
     expect(u.readyToStitch).toBe(true);
   });
 
-  it('fails the union — but does NOT discard — when a settled clip leg failed', () => {
-    const u = computeFilmUnion(['succeeded', 'failed', 'succeeded', 'succeeded', 'succeeded'], 'succeeded');
+  it('PARTIAL SALVAGE — 5/6 clips (1 failed) still stitches the survivors', () => {
+    const u = computeFilmUnion(['succeeded', 'failed', 'succeeded', 'succeeded', 'succeeded', 'succeeded'], 'succeeded');
+    expect(u.filmStatus).toBe('succeeded');
+    expect(u.readyToStitch).toBe(true);
+    expect(u.stitchStatus).toBe('ready');
+    expect(u.anyClipFailed).toBe(true);
+    expect(u.allClipsSucceeded).toBe(false);
+    expect(u.salvaged).toBe(true);
+    expect(u.succeededCount).toBe(5);
+  });
+
+  it('PARTIAL SALVAGE — exactly at the floor (4/6) still stitches', () => {
+    const u = computeFilmUnion(['succeeded', 'succeeded', 'succeeded', 'succeeded', 'failed', 'failed'], 'succeeded');
+    expect(u.readyToStitch).toBe(true);
+    expect(u.filmStatus).toBe('succeeded');
+    expect(u.salvaged).toBe(true);
+  });
+
+  it('still BLOCKS when below the salvage floor (3/6 succeeded)', () => {
+    const u = computeFilmUnion(['succeeded', 'succeeded', 'succeeded', 'failed', 'failed', 'failed'], 'succeeded');
     expect(u.filmStatus).toBe('failed');
     expect(u.readyToStitch).toBe(false);
-    expect(u.anyClipFailed).toBe(true);
     expect(u.stitchStatus).toBe('blocked');
+    expect(u.salvaged).toBe(false);
+  });
+
+  it('waits (processing) for pending clips before salvaging, even past the floor', () => {
+    // 5 succeeded but 1 still pending → do NOT salvage yet; wait for the matrix to settle.
+    const u = computeFilmUnion(['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded', 'pending'], 'succeeded');
+    expect(u.readyToStitch).toBe(false);
+    expect(u.filmStatus).toBe('processing');
+  });
+
+  it('a full 6/6 cut is not flagged as salvaged', () => {
+    const u = computeFilmUnion(['succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded', 'succeeded'], 'succeeded');
+    expect(u.readyToStitch).toBe(true);
+    expect(u.salvaged).toBe(false);
+    expect(u.allClipsSucceeded).toBe(true);
   });
 
   it('keeps a failed clip in `processing` while siblings are still pending (lets them finish)', () => {

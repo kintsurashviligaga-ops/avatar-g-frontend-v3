@@ -571,8 +571,14 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
 
   const summaryLines = [
     `🎬 Film render: ${succeededClips}/${activeClips} clips ready`,
+    // PARTIAL SALVAGE — surface that the film stitches with fewer scenes (1+ skipped).
+    ...(union.salvaged ? [`⚠️ ${activeClips - succeededClips}/${activeClips} სცენა გამოტოვდა — ნაწილობრივი მონტაჟი`] : []),
     `🎵 Score: ${audioStatus}`,
-    readyToStitch ? '✂️ Editor ready — stitching final cut' : '⏳ Awaiting clips',
+    readyToStitch
+      ? (union.salvaged ? `✂️ Editor ready — stitching ${succeededClips} survivors` : '✂️ Editor ready — stitching final cut')
+      : filmStatus === 'failed'
+        ? '⚠️ ვერ აეწყო — ძალიან ცოტა კლიპი დარჩა'
+        : '⏳ Awaiting clips',
   ];
 
   return {

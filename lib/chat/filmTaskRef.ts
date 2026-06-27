@@ -118,12 +118,24 @@ export interface FilmUnion {
   allClipsSucceeded: boolean;
   anyClipPending: boolean;
   anyClipFailed: boolean;
-  /** True only when every non-skipped clip landed AND audio is terminal. */
+  /** True when the matrix is settled AND ≥ the salvage floor of clips landed AND audio
+   *  is terminal — the editor can stitch the survivors even if one clip failed. */
   readyToStitch: boolean;
   /** Overall render-phase status surfaced as predictionStatus. */
   filmStatus: 'processing' | 'succeeded' | 'failed';
   stitchStatus: FilmStitchStatus;
+  /** How many clip legs succeeded (for the "5/6" Director's Console copy). */
+  succeededCount: number;
+  /** Total non-skipped clip legs (the denominator). */
+  clipCount: number;
+  /** True when stitching with FEWER than all clips (a survivor cut). */
+  salvaged: boolean;
 }
+
+/** PARTIAL-SALVAGE floor — a film stitches once at least this many clips land, even if
+ *  the rest failed (capped at the planned clip count). 1 transient clip failure no longer
+ *  kills a 5/6 film. Configurable via FILM_MIN_SALVAGE_CLIPS (default 4). */
+const MIN_SALVAGE_CLIPS = Math.max(1, Math.floor(Number(process.env.FILM_MIN_SALVAGE_CLIPS) || 4));
 
 /**
  * Compute the union status of the film matrix from the legs' runtime statuses.
@@ -141,24 +153,37 @@ export function computeFilmUnion(
 ): FilmUnion {
   const clipLegs = clipStatuses.filter((s) => s !== 'skipped');
   const anyClipPending = clipLegs.some((s) => s === 'pending');
-  const allClipsSucceeded = clipLegs.length > 0 && clipLegs.every((s) => s === 'succeeded');
+  const succeededCount = clipLegs.filter((s) => s === 'succeeded').length;
+  const allClipsSucceeded = clipLegs.length > 0 && succeededCount === clipLegs.length;
   const anyClipFailed = clipLegs.some((s) => s === 'failed');
   const audioTerminal = audioStatus !== 'pending'; // succeeded | failed | skipped
 
   const renderSettled = !anyClipPending && audioTerminal;
-  const readyToStitch = allClipsSucceeded && audioTerminal;
+
+  // PARTIAL SALVAGE — once the matrix is SETTLED (no clip still pending), stitch the
+  // survivors if at least `salvageFloor` landed. A single transient clip failure no
+  // longer blocks a 5/6 film. The floor is min(FILM_MIN_SALVAGE_CLIPS, planned clips) so
+  // a 2-clip film still needs both. The assemble route drops the failed (null-URL)
+  // segments, so the survivors stitch into a slightly-shorter but complete cut.
+  const salvageFloor = Math.min(MIN_SALVAGE_CLIPS, clipLegs.length || MIN_SALVAGE_CLIPS);
+  const enoughToStitch = clipLegs.length > 0 && succeededCount >= salvageFloor;
+  const readyToStitch = renderSettled && enoughToStitch;
+  const salvaged = readyToStitch && !allClipsSucceeded;
 
   const filmStatus: FilmUnion['filmStatus'] = !renderSettled
     ? 'processing'
-    : allClipsSucceeded
+    : enoughToStitch
       ? 'succeeded'
       : 'failed';
 
   const stitchStatus: FilmStitchStatus = readyToStitch
     ? 'ready'
-    : anyClipFailed && !anyClipPending
+    : renderSettled && !enoughToStitch
       ? 'blocked'
       : 'pending';
 
-  return { renderSettled, allClipsSucceeded, anyClipPending, anyClipFailed, readyToStitch, filmStatus, stitchStatus };
+  return {
+    renderSettled, allClipsSucceeded, anyClipPending, anyClipFailed, readyToStitch,
+    filmStatus, stitchStatus, succeededCount, clipCount: clipLegs.length, salvaged,
+  };
 }
