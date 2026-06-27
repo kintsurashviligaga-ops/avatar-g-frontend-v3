@@ -34,6 +34,22 @@ export default function GenerationHistory({ locale }: { locale: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
+
+  // Viewport-aware open: this trigger sits on the LEFT of the composer, so a right-aligned
+  // (right-0) menu ran 113px OFF the left edge on a 375px screen, covering content. Compute a
+  // FIXED position clamped into the viewport [8 .. winW-width-8] and open ABOVE the button, so
+  // the menu is always fully on-screen regardless of where the trigger sits.
+  const toggle = useCallback(() => {
+    if (!open && btnRef.current && typeof window !== 'undefined') {
+      const r = btnRef.current.getBoundingClientRect();
+      const width = Math.min(290, window.innerWidth - 16);
+      const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
+      setPos({ left, bottom: window.innerHeight - r.top + 8, width });
+    }
+    setOpen((o) => !o);
+  }, [open]);
 
   const load = useCallback(async () => {
     try {
@@ -54,12 +70,18 @@ export default function GenerationHistory({ locale }: { locale: string }) {
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-label={label}
+      <button type="button" ref={btnRef} onClick={toggle} aria-label={label}
         className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
         <History size={13} /> 📜
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 z-[80] mb-2 w-[290px] max-w-[88vw] overflow-hidden rounded-2xl border border-app-border/15 bg-app-surface shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]">
+        <>
+        {/* Tap-outside backdrop (mobile-safe close). */}
+        <div className="fixed inset-0 z-[79]" onClick={() => setOpen(false)} aria-hidden />
+        <div
+          style={pos ? { position: 'fixed', left: pos.left, bottom: pos.bottom, width: pos.width } : undefined}
+          className={`z-[80] overflow-hidden rounded-2xl border border-app-border/15 bg-app-surface shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] ${pos ? '' : 'absolute bottom-full right-0 mb-2 w-[290px] max-w-[88vw]'}`}
+        >
           <div className="border-b border-app-border/10 px-4 py-2.5 text-[12.5px] font-semibold text-app-text">{label}</div>
           {loaded && items.length === 0 ? (
             <div className="px-4 py-6 text-center text-[12.5px] text-app-muted">{empty}</div>
@@ -80,6 +102,7 @@ export default function GenerationHistory({ locale }: { locale: string }) {
             </ul>
           )}
         </div>
+        </>
       )}
     </div>
   );
