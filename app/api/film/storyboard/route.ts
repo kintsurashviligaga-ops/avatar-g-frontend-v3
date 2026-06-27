@@ -375,13 +375,19 @@ export async function POST(req: NextRequest) {
     ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
     : plan;
 
-  const frames = await mapWithConcurrency(storyPlan.scenes, 3, (scene) => genFrame(scene.prompt));
+  // Frame dispatch concurrency. NanoBanana tolerates 3 in flight, but flux-schnell runs
+  // on Replicate whose free tier is BURST-1 (a 2nd concurrent createPrediction → 429). At
+  // concurrency 3 only ~2/6 flux creates landed (the rest 429'd → NanoBanana fallback). So
+  // in FAST mode we SERIALIZE (1): each flux-schnell create fires alone (~3.65s, Prefer:wait
+  // naturally spaces them), so all frames take the fast path. Non-FAST keeps the proven 3.
+  const frameConcurrency = FAST_IMAGE_MODEL ? 1 : 3;
+  const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene) => genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
   // generate"). One extra attempt per missing frame; still fail-soft to null.
   const missing = frames.map((f, i) => (f ? -1 : i)).filter((i) => i >= 0);
   if (missing.length) {
-    const retried = await mapWithConcurrency(missing.map((i) => storyPlan.scenes[i]!), 3, (scene) => genFrame(scene.prompt));
+    const retried = await mapWithConcurrency(missing.map((i) => storyPlan.scenes[i]!), frameConcurrency, (scene) => genFrame(scene.prompt));
     missing.forEach((sceneI, k) => { if (retried[k]) frames[sceneI] = retried[k]; });
   }
 
