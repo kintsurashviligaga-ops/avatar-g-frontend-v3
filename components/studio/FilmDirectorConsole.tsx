@@ -246,7 +246,7 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="max-h-[124px] overflow-y-auto rounded-b-lg border border-app-border/12 bg-black/25 p-2"
+        className="max-h-[124px] overflow-y-auto overscroll-contain rounded-b-lg border border-app-border/12 bg-black/25 p-2"
       >
         <div className="space-y-0.5 font-mono">
           {log.map((l) => (
@@ -255,7 +255,7 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
                 <span className="shrink-0 tabular-nums text-app-muted/45">{fmtClock(l.ts)}</span>
               ) : null}
               <span className="shrink-0">{l.icon}</span>
-              <span className="text-app-text/85">{l.text}</span>
+              <span className="break-words text-app-text/85">{l.text}</span>
             </div>
           ))}
           <div className="flex items-center pt-0.5">
