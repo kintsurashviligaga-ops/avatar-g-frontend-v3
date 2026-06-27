@@ -121,6 +121,11 @@ interface AssembleBody {
   globalRender?: Record<string, string | number | boolean>;
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: string;
+  /** Aliases for `orientation` — some callers send `aspect:"9:16"` / `format:"9:16"`.
+   *  Resolved into the canonical orientation so a vertical request actually renders
+   *  1080×1920 (the assembler accepts these, but the route used to drop them). */
+  aspect?: string;
+  format?: string;
   /** PHASE 47 §1 — the film's unified status-tracker id. When present, the
    *  finished master is stamped onto the storage-backed record so any client /
    *  reload can recover it via GET /api/video/status/[tokenId]. */
@@ -225,10 +230,38 @@ async function assembleImpl(req: NextRequest) {
   const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
+  // Resolve the output orientation from the explicit key OR the aspect/format
+  // aliases (the assembler accepts `orientation`; callers sometimes send
+  // `aspect:"9:16"` / `format:"9:16"` — those were silently dropped, so a vertical
+  // request rendered 16:9). Canonicalise once here so BOTH the idempotency key and
+  // the render manifest agree. Empty string → assembler default (landscape).
+  const resolvedOrientation = (() => {
+    const direct = String(body.orientation || '').toLowerCase();
+    if (['vertical', 'square', 'portrait', 'landscape'].includes(direct)) return direct;
+    const a = String(body.orientation || body.aspect || body.format || '').replace(':', 'x');
+    if (a === '9x16') return 'vertical';
+    if (a === '1x1') return 'square';
+    if (a === '4x5') return 'portrait';
+    if (a === '16x9') return 'landscape';
+    return direct;
+  })();
+
   // Idempotency — block duplicate submissions of the same composition. Anonymous
   // callers key off the film token (or a constant) since there is no user id.
+  // The key MUST include every input that changes the OUTPUT bytes — orientation
+  // (canvas size), music-video mode (audio mix + brand overlay) and the brief
+  // (drives the LUT grade) — otherwise re-submitting the SAME segments with a new
+  // orientation returns the cached wrong-size master (the 9:16→16:9 bug).
   const idemOwner = uid ?? `anon:${filmTokenId ?? 'session'}`;
-  const idemKey = await hashPayload({ u: idemOwner, segs: segments.map(s => s.url), v: body.voiceoverUrl, m: body.musicUrl });
+  const idemKey = await hashPayload({
+    u: idemOwner,
+    segs: segments.map(s => s.url),
+    v: body.voiceoverUrl,
+    m: body.musicUrl,
+    o: resolvedOrientation,
+    mv: body.musicVideoMode ?? null,
+    b: typeof body.scorePrompt === 'string' ? body.scorePrompt : null,
+  });
   const fresh = await claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, 60);
   if (!fresh) {
     return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
@@ -410,7 +443,7 @@ async function assembleImpl(req: NextRequest) {
       // faded over the opening ~4s by the assembler.
       ...(musicBugSpec ? { musicBug: JSON.stringify(musicBugSpec) } : {}),
       ...(body.globalRender ?? {}),
-      ...(body.orientation ? { orientation: String(body.orientation) } : {}),
+      ...(resolvedOrientation ? { orientation: resolvedOrientation } : {}),
       // SONG-MASTER audio mix (narrator omitted, SFX ducked −12 dB) — asserted AFTER
       // the client globalRender spread so the resolved mode is authoritative. Gated on a
       // resolved song: if BOTH score providers failed (no music bed), don't claim
@@ -633,7 +666,7 @@ async function assembleImpl(req: NextRequest) {
       userId: uid,
       url: resultUrl,
       prompt: typeof body.scorePrompt === 'string' ? body.scorePrompt : null,
-      orientation: body.orientation ? String(body.orientation) : 'landscape',
+      orientation: resolvedOrientation || 'landscape',
       result: { url: resultUrl, qa: qaSummary, kind: 'film', costUsd: cost.usd, costGel: cost.gel, costBreakdown: cost.breakdown, durationMs },
       // Dedicated columns (admin queryability) — falls back to the base row if unmigrated.
       costUsd: cost.usd,
