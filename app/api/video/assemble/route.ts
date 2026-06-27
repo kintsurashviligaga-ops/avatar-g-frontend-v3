@@ -36,6 +36,7 @@ import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/li
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
+import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
 import { generateMusic } from '@/lib/ai/replicate';
 // ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY (MusicGen as the silent-
 // safety last resort). Udio is intentionally NOT imported here so it can never score a
@@ -598,6 +599,13 @@ async function assembleImpl(req: NextRequest) {
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary);
+
+  // Phase 7B — checkpoint the surviving clip URLs (keyed by the film token) so a later
+  // re-render / re-assemble of the same film can reuse them instead of re-paying. Fail-
+  // open: a missing generation_checkpoints table (un-migrated) is a silent no-op.
+  if (filmTokenId && resultUrl) {
+    void saveClipCheckpoints(filmTokenId, segments.map((s, i) => ({ sceneIndex: i, clipUrl: s.url })));
+  }
 
   // Task 2 — persist the finished film into the user's durable per-user Library
   // (generation_jobs). The studio renders through orchestrate→assemble, not the

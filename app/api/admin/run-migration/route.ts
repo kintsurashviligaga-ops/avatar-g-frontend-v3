@@ -39,6 +39,8 @@ const ALLOWED: Record<string, string> = {
   // currently no-op because the function is missing on prod).
   '20260626b_analytics_events.sql': 'supabase/migrations/20260626b_analytics_events.sql',
   '20260626c_add_credits.sql': 'supabase/migrations/20260626c_add_credits.sql',
+  // Pipeline Iteration — per-clip checkpoints + clip_cache + generation_jobs cost columns.
+  '20260627_pipeline_checkpoints.sql': 'supabase/migrations/20260627_pipeline_checkpoints.sql',
   '006_gemini_chat_history.sql': 'migrations/006_gemini_chat_history.sql',
 };
 
@@ -51,6 +53,7 @@ const EXPECTED_FNS: Record<string, string[]> = {
   '20260626_notifications.sql': [], // table + RLS only, no new functions
   '20260626b_analytics_events.sql': [], // table + RLS only, no new functions
   '20260626c_add_credits.sql': ['add_credits'],
+  '20260627_pipeline_checkpoints.sql': [], // tables + columns only, no new functions
   '006_gemini_chat_history.sql': [],
 };
 
