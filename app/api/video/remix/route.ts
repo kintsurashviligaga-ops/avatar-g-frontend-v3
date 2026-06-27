@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, type GradeStyle } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -224,7 +224,8 @@ export async function POST(req: NextRequest) {
       }
 
       case 'color_grade': {
-        const grade = body.grade === 'vintage' || body.grade === 'neon' ? body.grade : 'cinematic';
+        const g = String(body.grade ?? '');
+        const grade = (['vintage', 'neon', 'noir', 'dramatic'].includes(g) ? g : 'cinematic') as GradeStyle;
         const url = await colorGrade(videoUrl, grade);
         return url ? ok(url) : fail('Color grade failed.');
       }

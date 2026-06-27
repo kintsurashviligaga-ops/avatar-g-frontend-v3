@@ -155,15 +155,19 @@ export async function kenBurnsClip(image: string, durationSec = 5, aspect: '9:16
   }
 }
 
-/** Per-style color-grade ffmpeg filter chains (the spec's vintage / cinematic / neon). */
-const GRADE_VF: Record<'vintage' | 'cinematic' | 'neon', string> = {
+export type GradeStyle = 'vintage' | 'cinematic' | 'neon' | 'noir' | 'dramatic';
+/** Per-style color-grade ffmpeg filter chains. `cinematic` is a proper Hollywood teal &
+ *  orange (cool shadows + warm highlights), plus noir (high-contrast B&W) and dramatic. */
+const GRADE_VF: Record<GradeStyle, string> = {
   vintage: 'curves=vintage',
-  cinematic: 'eq=contrast=1.1:saturation=0.9,vignette',
+  cinematic: 'colorbalance=rs=-0.08:bs=0.08:rh=0.08:bh=-0.08,eq=contrast=1.08:saturation=1.06,vignette=PI/5',
   neon: 'hue=s=2,eq=contrast=1.2:brightness=0.1',
+  noir: 'hue=s=0,eq=contrast=1.25:brightness=-0.02,vignette=PI/4',
+  dramatic: 'eq=contrast=1.2:saturation=0.96,vignette=PI/4',
 };
 
-/** Apply a cinematic color grade (vintage / cinematic / neon) — keeps the audio. */
-export async function colorGrade(videoUrl: string, style: 'vintage' | 'cinematic' | 'neon'): Promise<string | null> {
+/** Apply a cinematic color grade (vintage / cinematic / neon / noir / dramatic) — keeps the audio. */
+export async function colorGrade(videoUrl: string, style: GradeStyle): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
   let dir: string | null = null;
   try {
