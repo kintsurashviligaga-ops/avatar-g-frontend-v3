@@ -8,7 +8,10 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const params = useParams<{ locale?: string }>();
   const locale = params?.locale || 'ka';
-  const redirectTo = searchParams.get('redirect') ?? '/';
+  // Default the post-login landing to the CURRENT locale's dashboard (not '/', which
+  // bounced through the middleware to the preferred locale) so OAuth + email login keep
+  // the user on the locale they signed in from.
+  const redirectTo = searchParams.get('redirect') ?? `/${locale}/dashboard`;
 
   return <AuthScreen mode="login" locale={locale} redirectTo={redirectTo} />;
 }

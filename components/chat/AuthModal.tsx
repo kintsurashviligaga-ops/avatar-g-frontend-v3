@@ -219,7 +219,10 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
       // existing route exchanges the code for a session). Nothing else to do here.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+        // Preserve the user's CURRENT locale through the OAuth round-trip: pass it as
+        // `next` so /auth/callback lands them back on /{locale}/dashboard instead of the
+        // default locale (a ka user stayed on ka, but en/ru users were dumped on /ka).
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/${locale}/dashboard`)}` },
       });
       if (error) throw error;
     } catch (err) {
