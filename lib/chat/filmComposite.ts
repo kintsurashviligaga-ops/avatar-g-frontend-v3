@@ -36,6 +36,7 @@ import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger
 import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { PipelineTimer } from '@/lib/pipeline/timing';
+import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, generateDialogueVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
@@ -271,6 +272,15 @@ async function renderClip(
   const billable = realUser && forecastClipRetail > 0;
   let debited = false;
 
+  // PHASE 4A — preview-tier model gate: the premium i2v upgrade (Kling/Hailuo) is only
+  // honored for a signed-in, non-preview render; anon trials + preview-quality renders
+  // fall through to the cheap LTX default and never burn the premium budget.
+  const clipModel = selectClipVideoModel({
+    requested: typeof input.metadata?.videoModel === 'string' ? input.metadata.videoModel : null,
+    isSignedIn: realUser,
+    preview: input.metadata?.quality === 'preview',
+  });
+
   // PHASE 58 — the clips dispatch through a bounded concurrency pool (see
   // CLIP_DISPATCH_CONCURRENCY) so at most a couple of createPrediction calls are
   // ever in flight at once — the live failure showed the provider throttling the
@@ -326,10 +336,9 @@ async function renderClip(
             userPrompt: clipReq.userPrompt,
             selectedOptions: clipReq.selectedOptions,
             locale: input.locale,
-            // PHASE 2 L5 — per-render i2v model (Cinema panel Kling/Hailuo toggle).
-            ...(input.metadata?.videoModel === 'hailuo' || input.metadata?.videoModel === 'kling'
-              ? { videoModel: input.metadata.videoModel }
-              : {}),
+            // PHASE 2 L5 / 4A — per-render i2v model (Cinema panel Kling/Hailuo toggle),
+            // gated by selectClipVideoModel so anon/preview renders stay on cheap LTX.
+            ...(clipModel ? { videoModel: clipModel } : {}),
           }),
         (r) => r.predictionId || r.assetUrl || null,
       ).then((r) => r.predictionId || r.assetUrl || null);
