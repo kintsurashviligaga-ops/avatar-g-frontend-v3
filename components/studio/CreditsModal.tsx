@@ -199,8 +199,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
               </p>
             </div>
 
-            {/* Top-up packages */}
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            {/* Top-up packages — stack to one readable column at 375px (cards were ~95px /
+                pay buttons ~26px in a 3-col grid), expand to 3 across on sm+ (>=640px). */}
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {PACKAGES.map((p) => (
                 <div key={p.id}
                   className={`relative flex flex-col items-center gap-1 rounded-2xl border p-3 text-center ${p.highlight ? 'border-app-accent/60 bg-app-accent/10 ring-1 ring-app-accent/30' : 'border-app-border/15 bg-app-bg/40'}`}>
@@ -213,7 +214,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                   <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.video_30s)} {t.videos}</span>
                   <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.image_generate)} {t.images}</span>
                   <button type="button" onClick={() => startCheckout(p)} disabled={busyId !== null}
-                    className={`mt-1 inline-flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 ${p.highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
+                    className={`mt-1 inline-flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 sm:min-h-0 sm:px-2 sm:py-1.5 ${p.highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
                     {busyId === p.id ? <><Loader2 size={12} className="animate-spin" /> {t.redirecting}</> : t.pay}
                   </button>
                   <span className="text-[9px] leading-tight text-app-muted">{t.cardHint}</span>
