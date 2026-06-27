@@ -60,7 +60,7 @@ const PROVIDER_CREATE_TIMEOUT_MS = 25_000;
 const VIDEO_I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
 const VIDEO_I2V_DISABLED = process.env.VIDEO_I2V_DISABLED === '1';
 const VIDEO_I2V_NEGATIVE =
-  'blurry, distorted face, different person, deformed, low quality, cartoon, illustration, morphing, flickering, extra limbs';
+  'blurry, distorted face, different person, deformed, low quality, cartoon, illustration, morphing, flickering, extra limbs, watermark, text overlay, bad anatomy, deformed hands, glitch, artifact, overexposed, underexposed, inconsistent clothing';
 
 // PHASE 51 §2 — Re-hosted LTX render URLs live for 7 days. A sync LTX call
 // returns the MP4 *binary*; turning that into a multi-MB `data:` URL is the
