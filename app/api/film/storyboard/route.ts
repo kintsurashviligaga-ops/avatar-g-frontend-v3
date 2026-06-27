@@ -242,6 +242,9 @@ export async function POST(req: NextRequest) {
   // One preview frame for a scene — 1K (fastest tier) so six land well within
   // maxDuration, and v2-1k still honours the reference-image (selfie) anchor.
   // Fail-open: any miss returns null and the scene plan still surfaces.
+  // Diagnostic — which provider produced each frame (returned in the response so a
+  // benchmark can confirm flux-schnell is actually firing; the re-host hides the source URL).
+  const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0 };
   const genFrame = async (scenePrompt: string): Promise<string | null> => {
     try {
       const framePrompt = selfie
@@ -252,9 +255,10 @@ export async function POST(req: NextRequest) {
       // returns nothing, we still fall through to the Replicate FLUX fallback below —
       // FLUX backs the film clips too, so its key is present wherever clips render.
       let raw: string | null = null;
+      let source: 'fluxSchnell' | 'nanobanana' | 'replicateFlux' | null = null;
       // FAST path (gated by FAST_IMAGE_MODEL): flux-schnell renders in ~3.65s; on any
       // miss/429 it returns null and we fall through to the NanoBanana primary below.
-      if (FAST_IMAGE_MODEL) raw = await genFrameViaFluxSchnell(framePrompt, aspect);
+      if (FAST_IMAGE_MODEL) { raw = await genFrameViaFluxSchnell(framePrompt, aspect); if (raw) source = 'fluxSchnell'; }
       if (!raw) {
         try {
           const r = await serviceManager.execute({
@@ -267,9 +271,12 @@ export async function POST(req: NextRequest) {
             locale,
           });
           raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+          if (raw) source = 'nanobanana';
         } catch { raw = null; }
       }
-      const resolved = raw ?? (await genFrameViaReplicate(framePrompt, aspect));
+      let resolved = raw;
+      if (!resolved) { resolved = await genFrameViaReplicate(framePrompt, aspect); if (resolved) source = 'replicateFlux'; }
+      if (source) frameSourceTally[source] += 1;
       // Re-host to a CSP-allowed Supabase URL (a raw provider temp URL is blocked by
       // img-src AND expires, which would break the render anchor too).
       return resolved ? await reHostFrame(resolved) : null;
@@ -398,5 +405,8 @@ export async function POST(req: NextRequest) {
     // Prompt-Agent locked character fragment — threaded to the render so the
     // protagonist's appearance is identical across every clip.
     character: characterLock,
+    // Diagnostic — provider that produced each frame (confirms flux-schnell vs the
+    // NanoBanana/Replicate-FLUX fallback; the re-host hides it from the frame URLs).
+    frameSources: frameSourceTally,
   });
 }
