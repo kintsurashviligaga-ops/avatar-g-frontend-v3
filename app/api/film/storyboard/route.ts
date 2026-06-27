@@ -29,6 +29,11 @@ import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
+import { withRetry } from '@/lib/utils/withRetry';
+
+/** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
+ *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
+const FAST_IMAGE_MODEL = /^(1|true|on|flux|flux-schnell)$/i.test((process.env.FAST_IMAGE_MODEL || '').trim());
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -143,6 +148,38 @@ async function genFrameViaReplicate(framePrompt: string, aspect: string): Promis
   }
 }
 
+/**
+ * Storyboard-frame FAST path (gated by FAST_IMAGE_MODEL) — Replicate `flux-schnell`
+ * renders a frame in ~3–4s vs NanoBanana's ~30s+ (benchmarked at 3.65s on prod). Uses
+ * `Prefer: wait` so the create blocks until the image is ready in ONE round-trip, with a
+ * short backoff retry on Replicate's 6/min create throttle (429). Fail-open: any miss
+ * returns null and genFrame falls through to the unchanged NanoBanana → Replicate-FLUX chain.
+ */
+async function genFrameViaFluxSchnell(framePrompt: string, aspect: string): Promise<string | null> {
+  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
+  if (!token) return null;
+  const aspect_ratio = aspect === '9:16' ? '9:16' : aspect === '1:1' ? '1:1' : '16:9';
+  try {
+    return await withRetry(async () => {
+      const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait' },
+        cache: 'no-store',
+        body: JSON.stringify({ input: { prompt: framePrompt.slice(0, 2_000), aspect_ratio, num_outputs: 1, output_format: 'jpg' } }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (res.status === 429 || res.status >= 500) throw new Error(`flux-schnell ${res.status}`);
+      if (!res.ok) return null;
+      const j = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown };
+      const pick = (o: unknown): string | null =>
+        typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
+      return j.status === 'succeeded' ? pick(j.output) : null;
+    }, { maxAttempts: 2, baseDelayMs: 1500, label: 'flux-schnell-frame' });
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   // STORYBOARD tier (not EXPENSIVE): one board fans out into plan + 6 per-scene
   // frame calls + retries, which tripped the 5/min EXPENSIVE limit (blank frames).
@@ -215,18 +252,23 @@ export async function POST(req: NextRequest) {
       // returns nothing, we still fall through to the Replicate FLUX fallback below —
       // FLUX backs the film clips too, so its key is present wherever clips render.
       let raw: string | null = null;
-      try {
-        const r = await serviceManager.execute({
-          sessionId,
-          serviceContext: 'image',
-          intent: 'image_generation',
-          userPrompt: framePrompt,
-          ...(selfie ? { imageUrl: selfie } : {}),
-          selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
-          locale,
-        });
-        raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
-      } catch { raw = null; }
+      // FAST path (gated by FAST_IMAGE_MODEL): flux-schnell renders in ~3.65s; on any
+      // miss/429 it returns null and we fall through to the NanoBanana primary below.
+      if (FAST_IMAGE_MODEL) raw = await genFrameViaFluxSchnell(framePrompt, aspect);
+      if (!raw) {
+        try {
+          const r = await serviceManager.execute({
+            sessionId,
+            serviceContext: 'image',
+            intent: 'image_generation',
+            userPrompt: framePrompt,
+            ...(selfie ? { imageUrl: selfie } : {}),
+            selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
+            locale,
+          });
+          raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
+        } catch { raw = null; }
+      }
       const resolved = raw ?? (await genFrameViaReplicate(framePrompt, aspect));
       // Re-host to a CSP-allowed Supabase URL (a raw provider temp URL is blocked by
       // img-src AND expires, which would break the render anchor too).
