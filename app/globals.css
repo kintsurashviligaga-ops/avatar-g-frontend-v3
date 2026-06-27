@@ -1214,6 +1214,17 @@ a:focus-visible {
   .hide-scrollbar::-webkit-scrollbar { display: none; }
   .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+  /* scrollbar-hide / scrollbar-none: aliases for the same utility. These class names
+     are referenced by the services + hub surfaces (UnifiedServiceLayout,
+     ServiceCommandBar, ServiceOrbitDock, UnifiedServiceShell, AgentGPanel) but
+     Tailwind ships no such utility and no plugin defines them, so the scrollbar was
+     still showing. Defined here (additive) so those horizontal tab/dock strips hide
+     their scrollbar instead of overflowing visibly on mobile. */
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
   /* Ã¢â€â‚¬Ã¢â€â‚¬ Focus ring for keyboard accessibility */
   .focus-ring:focus-visible {
     outline: 2px solid rgba(34,211,238,0.6);
