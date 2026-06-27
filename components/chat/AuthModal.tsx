@@ -49,6 +49,18 @@ type Strings = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Official Google brand mark (4-colour 'G'). */
+function GoogleIcon() {
+  return (
+    <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" aria-hidden>
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    </svg>
+  );
+}
+
 /**
  * Map a provider/network error to an elegant, localised line. Anything that
  * looks like a raw JSON/HTML payload (or is suspiciously long) is collapsed to
@@ -179,6 +191,42 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   }, [open, initialMode]);
 
   const reset = useCallback(() => { setError(null); setNotice(null); }, []);
+
+  // OAuth (Google): only render the button when the Supabase project ACTUALLY has the
+  // provider enabled (asked from GoTrue's public /settings), so we never show a dead
+  // button that 400s with "provider is not enabled". It auto-lights-up the moment Google
+  // is enabled server-side — no further code change needed. Fail-soft → stays hidden.
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anon) return;
+    const ctrl = new AbortController();
+    fetch(`${url}/auth/v1/settings`, { headers: { apikey: anon }, signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { external?: Record<string, boolean> } | null) => setGoogleEnabled(Boolean(j?.external?.google)))
+      .catch(() => { /* fail-soft → keep the button hidden */ });
+    return () => ctrl.abort();
+  }, [open]);
+
+  const handleGoogle = useCallback(async () => {
+    const supabase = createBrowserClient();
+    if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
+    setBusy(true);
+    try {
+      // signInWithOAuth redirects the browser to Google → back to /auth/callback (the
+      // existing route exchanges the code for a session). Nothing else to do here.
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err) {
+      setBusy(false);
+      setError(humanizeAuthError(err, t));
+    }
+  }, [t]);
 
   const submit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,8 +424,22 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                 {mode === 'login' && (
                   <button type="button" onClick={() => { setMode('reset'); reset(); }} className="mt-2 block w-full text-center text-[12px] text-app-muted hover:text-app-text transition">{t.forgot}</button>
                 )}
-                {/* Google sign-in is not enabled on the project yet — set expectations. */}
-                <p className="mt-3 text-center text-[11px] text-app-muted">{locale === 'en' ? 'Google sign-in coming soon' : locale === 'ru' ? 'Вход через Google скоро' : 'Google-ით შესვლა მალე'}</p>
+                {/* Google OAuth — only rendered once the provider is enabled on Supabase
+                    (auto-detected via GoTrue /settings), so it is never a dead button.
+                    Until then, a "coming soon" note sets expectations. */}
+                {googleEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleGoogle()}
+                    disabled={busy}
+                    className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl border border-app-border/15 bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-900 transition-colors hover:bg-slate-100 disabled:opacity-60"
+                  >
+                    <GoogleIcon />
+                    {locale === 'en' ? 'Continue with Google' : locale === 'ru' ? 'Войти через Google' : 'Google-ით შესვლა'}
+                  </button>
+                ) : (
+                  <p className="mt-3 text-center text-[11px] text-app-muted">{locale === 'en' ? 'Google sign-in coming soon' : locale === 'ru' ? 'Вход через Google скоро' : 'Google-ით შესვლა მალე'}</p>
+                )}
               </>
             )}
             {mode === 'magic' && (
