@@ -3920,7 +3920,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible`}>
+        {/* Mobile: collapsible sheet (max-h-58dvh when open). Desktop (lg+): cap the inline
+            options panel at 58dvh + its own scroll so the chat/results stay visible above it
+            instead of the fully-expanded panel dominating the column. */}
+        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}>
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
             affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
             collapses it. Lives at the top of the scroll area so it's always reachable. */}
