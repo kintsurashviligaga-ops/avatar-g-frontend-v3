@@ -1277,6 +1277,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Character Reference image and a custom Audio Track (beat/song), each kept
   // separate from the shared attachment picker so they read as their own slots.
   const charFileRef = useRef<HTMLInputElement | null>(null);
+  // When true, the next character-photo upload REPLACES the array (videoswap = single
+  // photo); when false it APPENDS (film character-ref = up to 3 slots).
+  const charReplaceRef = useRef(false);
   const audioFileRef = useRef<HTMLInputElement | null>(null);
   // Camera capture (mobile): shoot a photo in-app → it seeds the attachment tray (and,
   // in Video mode, becomes the start image that anchors the storyboard).
@@ -1444,7 +1447,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [productHasAudio, setProductHasAudio] = useState(false);
   // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
   // separate from the generic attachment tray so it reads as its own asset slot.
-  const [videoCharacterRef, setVideoCharacterRef] = useState<string | null>(null);
+  // Up to 3 character-reference photos (multi-angle identity lock). The FIRST is the
+  // primary — it becomes the Kling i2v start_image; all are sent to the pipeline +
+  // stored in the job's referenceImages metadata. `videoCharacterRef` (the primary) is
+  // kept as a derived value so the videoswap sub-mode (single photo) reads it unchanged.
+  const [videoCharacterRefs, setVideoCharacterRefs] = useState<string[]>([]);
+  const videoCharacterRef = videoCharacterRefs[0] ?? null;
   // v330 — dedicated AUDIO INGEST slot: a user-uploaded beat/song. Once uploaded
   // (uploadBigFile → storage path) it becomes the master bed, bypassing ambient music
   // generation. `videoSoundtrackBusy` is true while the upload is in flight.
@@ -1617,7 +1625,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (transitCharacterUrl) {
       setMode('video');
       setOptionsOpen(true);
-      setVideoCharacterRef(transitCharacterUrl); // image → locked character identity
+      setVideoCharacterRefs([transitCharacterUrl]); // image → locked character identity (primary)
       clearCharacter();
       setShareToast(locale === 'en' ? '🎬 Character sent to the Video studio' : locale === 'ru' ? '🎬 Персонаж перенесён в видео-студию' : '🎬 პერსონაჟი ვიდეო სტუდიაში გადმოტანილია!');
       setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), 2600);
@@ -2689,7 +2697,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // v330 — the dedicated Character Reference slot leads the identity-lock refs,
       // followed by any generic image attachments (back-compat).
       const refs = [
-        ...(videoCharacterRef ? [videoCharacterRef] : []),
+        ...videoCharacterRefs,
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
       ];
       // A music video has no spoken narrator → never append the narration cue in that mode.
@@ -2862,7 +2870,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
       const routeOrientation = musicVideo ? 'vertical' : videoOrientation;
       const routeRefs = [
-        ...(videoCharacterRef ? [videoCharacterRef] : []),
+        ...videoCharacterRefs,
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
       ];
       const routeNote = locale === 'en'
@@ -2879,7 +2887,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRef, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -4140,30 +4148,45 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* 2 · ASSET SLOTS — Character Reference + Audio Track ingest (responsive 2-up) */}
-            <div className="grid grid-cols-2 gap-2">
-              {/* Character Reference slot */}
-              <div id="character-ref-zone" role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charFileRef.current?.click(); } }}
-                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
-                {videoCharacterRef ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={videoCharacterRef} alt="" loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Character locked' : locale === 'ru' ? 'Персонаж зафиксирован' : 'პერსონაჟი ჩაკეტილია'}</span>
-                    <button type="button" aria-label="remove character" onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={16} /></span>
-                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Character ref' : locale === 'ru' ? 'Реф. персонажа' : 'პერსონაჟის რეფ.'}</span>
-                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'lock the identity' : locale === 'ru' ? 'зафиксировать лицо' : 'ჩაკეტე ვინაობა'}</span>
-                  </>
-                )}
+            {/* 2 · CHARACTER REFERENCE — up to 3 photos. The FIRST is the main identity →
+                Kling i2v start_image; all are sent to the pipeline (referenceImages) + stored
+                in the job metadata for multi-angle character lock. */}
+            <div id="character-ref-zone" className="space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 px-0.5 text-[12.5px] font-semibold text-app-text">
+                🎭 {locale === 'en' ? 'Character ref' : locale === 'ru' ? 'Реф. персонажа' : 'პერსონაჟის რეფ.'}
+                <span className="text-[10px] font-normal text-app-muted">{videoCharacterRefs.length}/3</span>
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {[0, 1, 2].map((i) => {
+                  const url = videoCharacterRefs[i];
+                  if (url) {
+                    return (
+                      <div key={i} className="relative aspect-square overflow-hidden rounded-xl border border-app-accent/50 bg-app-accent/8">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                        {i === 0 && <span className="absolute left-1 top-1 rounded bg-app-accent px-1 py-[1px] text-[8px] font-bold uppercase text-app-bg">{locale === 'en' ? 'Main' : locale === 'ru' ? 'Гл.' : 'მთავ.'}</span>}
+                        <button type="button" aria-label="remove character" onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
+                      </div>
+                    );
+                  }
+                  const isAdd = i === videoCharacterRefs.length;
+                  return (
+                    <div key={i} role={isAdd ? 'button' : undefined} tabIndex={isAdd ? 0 : undefined}
+                      onClick={isAdd ? () => { charReplaceRef.current = false; charFileRef.current?.click(); } : undefined}
+                      onKeyDown={isAdd ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charReplaceRef.current = false; charFileRef.current?.click(); } } : undefined}
+                      className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed text-center transition ${isAdd ? 'cursor-pointer border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70 active:scale-[0.99]' : 'border-app-border/15 bg-app-elevated/20'}`}>
+                      {isAdd && <span className="flex h-8 w-8 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><ImageIcon size={15} /></span>}
+                      {isAdd && <span className="text-[10px] font-medium text-app-muted">{locale === 'en' ? 'Add' : locale === 'ru' ? 'Добавить' : 'დამატება'}</span>}
+                    </div>
+                  );
+                })}
               </div>
+              <p className="px-0.5 text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'First = main identity (Kling start frame); up to 3 angles.' : locale === 'ru' ? 'Первое = главная личность (старт Kling); до 3 ракурсов.' : 'პირველი = მთავარი ვინაობა (Kling-ის საწყისი); 3 რაკურსამდე.'}</p>
+            </div>
 
-              {/* Audio Track ingest slot */}
+            {/* 2a · Audio Track ingest slot (full width) */}
+            <div className="grid grid-cols-1 gap-2">
               <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
                 onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoSoundtrackBusy) { e.preventDefault(); audioFileRef.current?.click(); } }}
                 className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoSoundtrack ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
@@ -4573,15 +4596,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* 2 — new character photo (reuses charFileRef + videoCharacterRef) */}
                 <div>
                   <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">👤 {locale === 'en' ? 'New character (photo)' : locale === 'ru' ? 'Новый персонаж (фото)' : 'ახალი პერსონაჟი (ფოტო)'}</span>
-                  <div role="button" tabIndex={0} onClick={() => charFileRef.current?.click()}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charFileRef.current?.click(); } }}
+                  <div role="button" tabIndex={0} onClick={() => { charReplaceRef.current = true; charFileRef.current?.click(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charReplaceRef.current = true; charFileRef.current?.click(); } }}
                     className={`relative flex min-h-[80px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-orange-400/50 bg-orange-500/[0.06]' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
                     {videoCharacterRef ? (
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={videoCharacterRef} alt="" loading="lazy" decoding="async" className="h-11 w-11 rounded-lg object-cover ring-1 ring-orange-400/40" />
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-400"><Check size={12} /> {locale === 'en' ? 'Character set' : locale === 'ru' ? 'Персонаж задан' : 'პერსონაჟი დაყენდა'}</span>
-                        <button type="button" aria-label={locale === 'en' ? 'remove character' : locale === 'ru' ? 'удалить персонажа' : 'პერსონაჟის მოცილება'} onClick={(e) => { e.stopPropagation(); setVideoCharacterRef(null); }}
+                        <button type="button" aria-label={locale === 'en' ? 'remove character' : locale === 'ru' ? 'удалить персонажа' : 'პერსონაჟის მოცილება'} onClick={(e) => { e.stopPropagation(); setVideoCharacterRefs([]); }}
                           className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                       </>
                     ) : (
@@ -4889,7 +4912,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (!f) return;
           try {
             const dataUrl = await fileToDataUrl(f);
-            setVideoCharacterRef(await downscaleDataUrl(dataUrl));
+            const url = await downscaleDataUrl(dataUrl);
+            setVideoCharacterRefs((prev) => {
+              if (charReplaceRef.current) { charReplaceRef.current = false; return [url]; } // videoswap: single
+              return prev.length >= 3 ? prev : [...prev, url]; // film: append up to 3
+            });
           } catch { /* ignore unreadable file */ }
         }} />
         {/* v330 — dedicated Audio Track ingest (single beat/song → uploadBigFile → master bed). */}
