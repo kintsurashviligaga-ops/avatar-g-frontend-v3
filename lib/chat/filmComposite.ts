@@ -37,6 +37,7 @@ import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { PipelineTimer } from '@/lib/pipeline/timing';
 import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
+import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, generateDialogueVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
@@ -598,6 +599,22 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     let sceneFrames = approvedFrames && approvedFrames.length === plan.scenes.length
       ? approvedFrames
       : await Promise.all(plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)));
+    // AUTO CHARACTER-ANCHOR — a text-only brief (no uploaded photo, no storyboard frames)
+    // has no i2v start image, so clips fall to LTX text-to-video even when Kling is selected.
+    // Generate ONE flux-schnell portrait (~3.65s) from the locked character and reuse it as
+    // the start image for EVERY clip → the i2v (Kling/LTX-2) path fires with a consistent
+    // identity. Only when there's nothing better already. Default-on; disable via
+    // AUTO_ANCHOR_FRAME=0. Fail-open: a miss leaves sceneFrames null → unchanged LTX path.
+    const autoAnchorOn = !/^(0|false|off)$/i.test((process.env.AUTO_ANCHOR_FRAME || '').trim());
+    if (autoAnchorOn && characterLock && hostedCount === 0 && !sceneFrames.some(Boolean)) {
+      const tAnchor = Date.now();
+      const anchor = await generateAnchorFrame(characterLock, orientation === 'vertical' ? '9:16' : '16:9');
+      if (anchor) {
+        sceneFrames = plan.scenes.map(() => anchor);
+        // eslint-disable-next-line no-console
+        console.log(`[filmComposite] auto-anchor ready in ${Date.now() - tAnchor}ms → i2v start image set for all ${plan.scenes.length} clips`);
+      }
+    }
     // Vision QA heal pass (env-gated FILM_VISION_QA=1) — inspect each storyboard keyframe
     // for severe artifacts/face-melting and regenerate failures via the SAME stylizeSceneFrame
     // path BEFORE the costly render. Fail-OPEN per scene; structured report logged.
