@@ -3947,7 +3947,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   const bh = ah >= aw ? max : Math.round((max * ah) / aw);
                   const on = imgAspect === a;
                   return (
-                    <button key={a} type="button" onClick={() => setImgAspect(a)} aria-label={a} className="flex shrink-0 flex-col items-center gap-1 transition active:scale-95">
+                    <button key={a} type="button" onClick={() => setImgAspect(a)} aria-label={a} className="flex min-h-[44px] min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 transition active:scale-95 touch-manipulation">
                       <span className="flex h-7 w-7 items-center justify-center">
                         <span className={`block rounded-[2px] border-2 transition-colors ${on ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: bw, height: bh }} />
                       </span>
@@ -4240,19 +4240,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* ISSUE 4 — flex-wrap so all 4 formats (16:9·9:16·1:1·4:5) stay visible in
                     the half-width grid column on a 375px phone (1:1 + 4:5 were clipping off-screen). */}
                 <div className={`flex flex-wrap items-end gap-x-3 gap-y-2 ${videoMode === 'musicvideo' ? 'opacity-70' : ''}`}>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
                     <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
                     <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
                   </button>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
                     <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
                     <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
                   </button>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('square')} aria-label="1:1" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('square')} aria-label="1:1" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
                     <span className={`block rounded-[3px] border-2 transition-colors ${videoMode !== 'musicvideo' && videoOrientation === 'square' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 30, height: 30 }} />
                     <span className={`text-[10.5px] font-medium ${videoMode !== 'musicvideo' && videoOrientation === 'square' ? 'text-app-accent' : 'text-app-muted'}`}>1:1</span>
                   </button>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('portrait')} aria-label="4:5" className="flex flex-col items-center gap-1 transition active:scale-95 disabled:cursor-not-allowed">
+                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('portrait')} aria-label="4:5" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
                     <span className={`block rounded-[3px] border-2 transition-colors ${videoMode !== 'musicvideo' && videoOrientation === 'portrait' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 26, height: 32 }} />
                     <span className={`text-[10.5px] font-medium ${videoMode !== 'musicvideo' && videoOrientation === 'portrait' ? 'text-app-accent' : 'text-app-muted'}`}>4:5</span>
                   </button>
