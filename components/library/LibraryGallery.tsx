@@ -196,7 +196,9 @@ export default function LibraryGallery({ locale }: { locale: string }) {
               return (
                 <div key={it.id} className="group flex flex-col overflow-hidden rounded-2xl border border-app-border/15 bg-app-elevated/40">
                   <div className={`relative w-full overflow-hidden bg-app-bg/60 ${it.orientation === 'vertical' ? 'aspect-[9/16]' : isMusic ? 'aspect-square' : 'aspect-video'}`}>
-                    {isVideo && <video src={it.url} controls playsInline preload="metadata" className="h-full w-full object-cover" />}
+                    {/* #t=0.1 makes the browser seek to 0.1s and paint THAT frame as the
+                        poster — without it many browsers show a black thumbnail until play. */}
+                    {isVideo && <video src={`${it.url}#t=0.1`} controls playsInline preload="metadata" className="h-full w-full object-cover" />}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     {isImage && <img src={it.url} alt={it.prompt ?? 'image'} className="h-full w-full object-cover" loading="lazy" />}
                     {isMusic && (

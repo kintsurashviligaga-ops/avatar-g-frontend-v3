@@ -118,10 +118,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Routes that own their full layout — no app shell chrome
+  // Routes that own their full layout — no app shell chrome. `library` is in here
+  // because it wraps itself in the ChatChrome studio shell (dark sidebar + header), so
+  // the marketing TopNavbar/SidebarMenu/BottomNav would double up on top of it.
   const isImmersiveWorkspace = !!pathname && (
     /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
-    /\/(dashboard|hub|workspace)\/?$/.test(pathname)
+    /\/(dashboard|hub|workspace|library)\/?$/.test(pathname)
   );
 
   // Landing & auth pages manage their own navbar — strip the app shell
