@@ -375,12 +375,13 @@ export async function POST(req: NextRequest) {
     ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
     : plan;
 
-  // Frame dispatch concurrency. NanoBanana tolerates 3 in flight, but flux-schnell runs
-  // on Replicate whose free tier is BURST-1 (a 2nd concurrent createPrediction → 429). At
-  // concurrency 3 only ~2/6 flux creates landed (the rest 429'd → NanoBanana fallback). So
-  // in FAST mode we SERIALIZE (1): each flux-schnell create fires alone (~3.65s, Prefer:wait
-  // naturally spaces them), so all frames take the fast path. Non-FAST keeps the proven 3.
-  const frameConcurrency = FAST_IMAGE_MODEL ? 1 : 3;
+  // Frame dispatch concurrency = 3. NOTE (benchmarked): on a Replicate token with the
+  // reduced 6/min + burst-1 limit, flux-schnell only lands ~2-3 of 6 frames (the rest
+  // 429 → NanoBanana fallback) REGARDLESS of concurrency — and serializing to 1 was
+  // strictly WORSE (295s vs 164s) because it stops the NanoBanana fallbacks from
+  // overlapping. So we keep 3 (overlaps the fallbacks) and the real lever for full
+  // flux-schnell coverage is a higher Replicate rate-limit tier, not a concurrency knob.
+  const frameConcurrency = 3;
   const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene) => genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
