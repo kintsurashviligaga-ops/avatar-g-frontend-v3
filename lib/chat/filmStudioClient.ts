@@ -580,8 +580,10 @@ async function assembleMaster(
       const sj = (await start.json().catch(() => null)) as { jobId?: string | null } | null;
       const jobId = sj?.jobId;
       if (jobId) {
-        // Poll up to ~4 min (a 30s master syncs in ~1–3 min). Fail-open on timeout.
-        for (let i = 0; i < 48; i += 1) {
+        // Poll up to ~8 min. A prod e2e run of a 30s master measured ~6.3 min on
+        // sync/lipsync-2, so a 4-min budget timed out before the job finished — this
+        // headroom lets the synced master actually land. Still fail-open on timeout.
+        for (let i = 0; i < 96; i += 1) {
           await new Promise((r) => setTimeout(r, 5000));
           if (signal?.aborted) break;
           const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
