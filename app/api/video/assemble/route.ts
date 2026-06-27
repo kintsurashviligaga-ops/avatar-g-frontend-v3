@@ -33,6 +33,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt }
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
+import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
@@ -191,12 +192,18 @@ async function assembleImpl(req: NextRequest) {
   // chunk and shift every index after it. We keep the caller's order, drop
   // url-less entries, and de-duplicate by URL so the timeline is contiguous.
   const seenUrls = new Set<string>();
-  const segments = (body.segments ?? []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput => {
+  const dedupedSegments = (body.segments ?? []).filter((s): s is Required<Pick<SegmentInput, 'url'>> & SegmentInput => {
     if (typeof s.url !== 'string' || s.url.length === 0) return false;
     if (seenUrls.has(s.url)) return false;
     seenUrls.add(s.url);
     return true;
   });
+  // QA pass: drop any clip whose URL is DEFINITIVELY dead (hard 403/404/410) so a single
+  // expired/missing clip can't make ffmpeg fail the whole stitch — the survivors still
+  // assemble (partial salvage). STRICTLY fail-open: keeps clips on 200/timeout/5xx/error
+  // and never empties a non-empty list. (Auto-retry can't run here — clips are dispatched
+  // async and only have URLs by assemble time; see lib/pipeline/qaAgent.ts.)
+  const segments = await keepLiveClips(dedupedSegments);
   // ≥1 segment. A SINGLE segment (6s film, sceneCount=1) takes the lightweight
   // single-clip path below (mux music, no multi-clip xfade stitch); ≥2 keeps the
   // full filtergraph stitch. Zero segments is still a hard error.
