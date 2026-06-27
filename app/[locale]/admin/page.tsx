@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/admin/guard';
 import { gatherAdminStats, type AdminStats } from '@/lib/admin/stats';
+import { checkPipelineHealth, type PipelineHealth } from '@/lib/pipeline/statusAgent';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,9 @@ export default async function AdminPage({ params }: Props) {
   } catch {
     stats = EMPTY_STATS;
   }
+
+  // Pipeline health (env-derived service readiness) — fail-open, never blocks the page.
+  const pipelineHealth: PipelineHealth | null = await checkPipelineHealth().catch(() => null);
 
   const ka = locale === 'ka';
   const top = stats.byService[0];
@@ -112,6 +116,43 @@ export default async function AdminPage({ params }: Props) {
             </ul>
           )}
         </div>
+
+        {/* Pipeline status — env-derived readiness of every media service */}
+        {pipelineHealth && (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[13px] font-semibold">{ka ? 'Pipeline სტატუსი' : 'Pipeline status'}</p>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${pipelineHealth.overall === 'healthy' ? 'bg-green-500/20 text-green-400' : pipelineHealth.overall === 'degraded' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
+                {pipelineHealth.overall === 'healthy' ? (ka ? '✅ ჯანმრთელი' : '✅ Healthy') : pipelineHealth.overall === 'degraded' ? (ka ? '⚠️ დეგრადირებული' : '⚠️ Degraded') : (ka ? '🔴 კრიტიკული' : '🔴 Critical')}
+              </span>
+            </div>
+            <div className="grid gap-1 sm:grid-cols-2">
+              {pipelineHealth.services.map((s) => (
+                <div key={s.service} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="text-[13px]">{s.icon}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-medium text-white">{s.service}</p>
+                      <p className="truncate text-[10.5px] text-gray-500">{s.provider}</p>
+                    </div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold ${s.tier === 'high' ? 'bg-green-500/10 text-green-400' : s.tier === 'medium' ? 'bg-yellow-500/10 text-yellow-400' : s.tier === 'low' ? 'bg-orange-500/10 text-orange-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {s.tier === 'high' ? 'HD' : s.tier === 'medium' ? 'SD' : s.tier === 'low' ? 'LOW' : 'OFF'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {pipelineHealth.warnings.length > 0 && (
+              <div className="mt-3 rounded-lg border border-yellow-500/20 bg-yellow-950/30 p-2.5">
+                <p className="mb-1 text-[11px] font-medium text-yellow-400">{ka ? '⚠️ გაფრთხილებები' : '⚠️ Warnings'}</p>
+                {pipelineHealth.warnings.map((w) => (
+                  <p key={w} className="text-[10.5px] text-yellow-300/70">• {w}</p>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-gray-600">{ka ? 'განახლდა' : 'Updated'}: {fmtDate(pipelineHealth.checkedAt)}</p>
+          </div>
+        )}
       </div>
     </main>
   );
