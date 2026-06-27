@@ -25,6 +25,7 @@ const RemixStudioConsole = dynamic(() => import('./RemixStudioConsole'), { ssr: 
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
+import GenerationHistory from './GenerationHistory';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { track } from '@/lib/analytics/track';
@@ -5012,6 +5013,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Camera size={19} />
             </button>
+
+            {/* Phase 7C — recent generations (📜): opens a compact dropdown of the user's
+                last 5 items from /api/studio/library. Fail-open + self-contained. */}
+            <GenerationHistory locale={locale} />
 
             {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+]/📷 stay on
                 the left and the mode dropdown sits between the text and the mic. */}
