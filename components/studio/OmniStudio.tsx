@@ -5038,7 +5038,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {modeMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
-                  <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+                  <div role="menu" className="absolute bottom-full right-0 z-20 mb-2 w-48 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
                     {MODES.map(({ id, Icon, key: lk }) => (
                       <button
                         key={id}
