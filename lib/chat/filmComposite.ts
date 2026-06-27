@@ -35,6 +35,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
+import { PipelineTimer } from '@/lib/pipeline/timing';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, generateDialogueVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
@@ -362,6 +363,7 @@ async function renderClip(
  * `metadata.film` for the progressive agent timeline.
  */
 export async function handleFilmComposite(input: OrchestratorInput): Promise<ChatResponse> {
+  const timer = new PipelineTimer('film'); // Phase 6A — stage timing → [film] logs
   // ── STRICT PRE-FLIGHT: video provider gate ─────────────────────────────────
   // Halt the ENTIRE pipeline at the door when no render provider is wired (no
   // LTX alias AND no Replicate failover token). This runs BEFORE the storyboard
@@ -715,6 +717,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     }),
   ]);
 
+  timer.mark('clips-dispatched+voice+sfx');
+
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
   // full matrix in lock-step instead of tracking a single clip.
@@ -755,6 +759,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     '✂️ Editor will stitch the final cut',
     musicWorkId ? '🎵 Score generation started' : '⚠️ Score skipped',
   ].join('\n');
+
+  timer.mark('dispatch-complete');
+  // eslint-disable-next-line no-console
+  console.log('[film] timing', JSON.stringify(timer.summary()));
 
   return {
     success: true,

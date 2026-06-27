@@ -35,6 +35,7 @@ import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
 import { generateMusic } from '@/lib/ai/replicate';
 // ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY (MusicGen as the silent-
 // safety last resort). Udio is intentionally NOT imported here so it can never score a
@@ -604,13 +605,21 @@ async function assembleImpl(req: NextRequest) {
   // for signed-in users (anonymous trials have no account to file it under).
   // Best-effort + fail-open: keyed by the film token so a re-stamp upserts.
   if (uid && resultUrl) {
+    // Phase 6B — estimate the wholesale cost + record wall-clock duration into the
+    // result JSONB (no schema change). Pure estimate for the admin cost view; never bills.
+    const clipSecTotal = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
+    const cost = estimateFilmCostUsd({
+      clipCount: segments.length,
+      musicSec: resolvedMusicUrl ? clipSecTotal : 0,
+    });
+    const durationMs = Date.now() - fnT0;
     await recordCompletedFilm({
       id: filmTokenId || saga.sagaId,
       userId: uid,
       url: resultUrl,
       prompt: typeof body.scorePrompt === 'string' ? body.scorePrompt : null,
       orientation: body.orientation ? String(body.orientation) : 'landscape',
-      result: { url: resultUrl, qa: qaSummary, kind: 'film' },
+      result: { url: resultUrl, qa: qaSummary, kind: 'film', costUsd: cost.usd, costGel: cost.gel, costBreakdown: cost.breakdown, durationMs },
     });
   }
 
