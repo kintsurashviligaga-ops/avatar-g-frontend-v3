@@ -13,10 +13,10 @@
  * in a native slide-over (no iframe).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Download, Settings, FolderOpen, Monitor, Moon, Sun,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, Check, Camera,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
@@ -78,6 +78,51 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   );
 }
 
+// Top-bar flag language switcher (replaces the old Settings → Language list). Preserves
+// the current path, just swaps the locale segment.
+const LANGS = [
+  { code: 'ka', flag: '🇬🇪', label: 'ქარ' },
+  { code: 'en', flag: '🇬🇧', label: 'ENG' },
+  { code: 'ru', flag: '🇷🇺', label: 'РУС' },
+] as const;
+
+function LanguageSwitcher({ locale }: { locale: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const current = LANGS.find((l) => l.code === locale) ?? LANGS[0];
+  const go = (code: string) => {
+    setOpen(false);
+    if (code === locale) return;
+    const next = (pathname || `/${locale}/dashboard`).replace(/^\/(ka|en|ru)(?=\/|$)/, `/${code}`);
+    router.push(next.startsWith(`/${code}`) ? next : `/${code}/dashboard`);
+  };
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Language" aria-haspopup="menu" aria-expanded={open}
+        className="flex min-h-[44px] items-center gap-1 rounded-full px-2 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
+        <span className="text-[15px] leading-none">{current.flag}</span>
+        <ChevronDown size={13} className={`text-app-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} aria-hidden />
+          <div role="menu" className="absolute right-0 top-full z-[61] mt-1.5 w-36 overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+            {LANGS.map((l) => (
+              <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === locale} onClick={() => go(l.code)}
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${l.code === locale ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}>
+                <span className="text-[16px] leading-none">{l.flag}</span>
+                <span className="flex-1 text-left font-medium">{l.label}</span>
+                {l.code === locale && <Check size={14} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -107,7 +152,10 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   const [userName, setUserName] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  // Profile photo (FIX 2): current URL + in-flight upload state + the hidden file input.
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   // Theme (Dark / Light / System) for the Appearance section. ThemeContext is binary
   // (dark|light); "System" resolves the OS preference once via matchMedia.
@@ -141,7 +189,14 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       setUserName(user?.user_metadata?.name ?? null);
       if (!user) setBalanceGel(null);
     };
-    supabase.auth.getUser().then(({ data }) => apply(data.user)).catch(() => {});
+    supabase.auth.getUser().then(({ data }) => {
+      apply(data.user);
+      // Pull the saved profile photo so the header avatar shows it (RLS: own profile).
+      if (data.user) {
+        supabase.from('profiles').select('avatar_url').eq('id', data.user.id).maybeSingle()
+          .then(({ data: p }) => { if (alive && p?.avatar_url) setAvatarUrl(p.avatar_url); });
+      }
+    }).catch(() => {});
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => apply(session?.user ?? null));
     return () => { alive = false; sub?.subscription?.unsubscribe(); };
   }, []);
@@ -253,21 +308,28 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
     finally { setSavingProfile(false); }
   }, [displayName]);
 
-  // Fetch + download the user's full data as JSON (#4).
-  const exportData = useCallback(async () => {
-    setExporting(true);
+  // FIX 2 — profile photo upload: read the file as a data URL → POST to /api/profile/avatar
+  // (service-role upload to the public `avatars` bucket + profiles.avatar_url) → reflect it
+  // in the header + profile modal. Optimistic preview; fail-soft.
+  const uploadAvatar = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) return;
+    setAvatarBusy(true);
     try {
-      const res = await fetch('/api/account/export', { credentials: 'include', cache: 'no-store' });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'myavatar-data.json';
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-      }
-    } catch { /* noop */ }
-    finally { setExporting(false); }
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      setAvatarUrl(dataUrl); // optimistic
+      const res = await fetch('/api/profile/avatar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ dataUrl }),
+      });
+      const j = (await res.json().catch(() => null)) as { url?: string } | null;
+      if (res.ok && j?.url) setAvatarUrl(j.url);
+    } catch { /* keep the optimistic preview */ }
+    finally { setAvatarBusy(false); }
   }, []);
 
   const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';
@@ -379,6 +441,8 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
+              {/* FIX 3 — language switcher moved here from Settings (flag dropdown). */}
+              <LanguageSwitcher locale={locale} />
               {/* PHASE 3 Task 3 — notification bell (signed-in users). */}
               {authed && <NotificationBell locale={locale} />}
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
@@ -391,8 +455,11 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                   avatar initial (→ settings) once signed in. The modal itself is AuthModal. */}
               {authed ? (
                 <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.account} title={userEmail ?? t.account}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
-                  {userName?.[0] || userEmail?.[0] || 'U'}
+                  className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                  ) : (userName?.[0] || userEmail?.[0] || 'U')}
                 </button>
               ) : (
                 <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} aria-label={t.login}
@@ -441,7 +508,6 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
-                  <button type="button" onClick={() => void exportData()} disabled={exporting} className={`${drawerRow} disabled:opacity-50`}>{exporting ? <Loader2 className="h-[18px] w-[18px] animate-spin text-app-muted" /> : <Download className="h-[18px] w-[18px] text-app-muted" />} {locale === 'en' ? 'Download my data' : locale === 'ru' ? 'Скачать мои данные' : 'მონაცემების ჩამოტვირთვა'}</button>
                   <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (
@@ -465,12 +531,6 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
                     </button>
                   );
                 })}
-              </div>
-              <p className="px-2 pb-1.5 pt-3 text-[12px] text-app-muted">{t.language}</p>
-              <div className="grid grid-cols-3 gap-1.5 px-1">
-                {([['ka', 'ქართული'], ['en', 'English'], ['ru', 'Русский']] as const).map(([code, label]) => (
-                  <a key={code} href={`/${code}/dashboard`} className={`inline-flex items-center justify-center rounded-xl border px-2 py-2 text-center text-[12.5px] font-medium transition-colors ${lang === code ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>{label}</a>
-                ))}
               </div>
 
               <div className={settingsDivider} />
@@ -532,6 +592,27 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[15px] font-semibold text-app-text">{locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Редактировать профиль' : 'პროფილის რედაქტირება'}</span>
               <button type="button" onClick={() => setProfileOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
+            </div>
+            {/* Profile photo (FIX 2) — click to upload; service-role route stores it. */}
+            <div className="mb-4 flex flex-col items-center gap-2">
+              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label="Change photo"
+                className="group relative h-20 w-20 overflow-hidden rounded-full bg-app-accent/15 ring-2 ring-app-border/15 transition hover:ring-app-accent/40">
+                {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[26px] font-bold uppercase text-app-accent">{userName?.[0] || userEmail?.[0] || 'U'}</span>
+                )}
+                <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+                  {avatarBusy ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
+                </span>
+              </button>
+              <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy}
+                className="text-[12px] font-medium text-app-accent transition hover:opacity-80 disabled:opacity-50">
+                {avatarBusy ? (locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…') : (locale === 'en' ? 'Change photo' : locale === 'ru' ? 'Сменить фото' : 'ფოტოს შეცვლა')}
+              </button>
+              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadAvatar(f); e.target.value = ''; }} />
             </div>
             <p className="mb-1.5 text-[12px] text-app-muted">{locale === 'en' ? 'Display name' : locale === 'ru' ? 'Отображаемое имя' : 'სახელი'}</p>
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={60} placeholder={userEmail ?? ''} className="w-full rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[14px] text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25" />
