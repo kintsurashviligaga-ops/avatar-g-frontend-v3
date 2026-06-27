@@ -35,6 +35,12 @@ import { withRetry } from '@/lib/utils/withRetry';
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
 const FAST_IMAGE_MODEL = /^(1|true|on|flux|flux-schnell)$/i.test((process.env.FAST_IMAGE_MODEL || '').trim());
 
+/** Prompt-Agent model for the STORYBOARD PREVIEW only (haiku ≈ 5–10s vs sonnet ≈ 80s for a
+ *  6-scene brief). The actual film render (filmComposite) is untouched → keeps sonnet for the
+ *  character-lock reasoning. Override with STORYBOARD_PROMPT_MODEL=claude-sonnet-4-6 for max
+ *  preview quality. */
+const STORYBOARD_PROMPT_MODEL = process.env.STORYBOARD_PROMPT_MODEL ?? 'claude-haiku-4-5-20251001';
+
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
@@ -322,16 +328,23 @@ export async function POST(req: NextRequest) {
     // as `sceneScripts` (the existing render channel) and the locked character fragment
     // as `character`, which the client threads to the render so the protagonist never
     // drifts. Fail-open: a miss falls back to the haiku Script Agent.
+    const tPA = Date.now();
     const brief = await runPromptAgent({
       brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
       length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
+      model: STORYBOARD_PROMPT_MODEL,
     });
+    const promptAgentMs = Date.now() - tPA;
+    // eslint-disable-next-line no-console
+    console.log(`[storyboard] scriptsOnly prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms`);
     if (brief) {
       return NextResponse.json({
         success: true,
         sceneScripts: brief.scenes.map((s) => s.imagePrompt),
         character: brief.character.imagePromptFragment,
         masterBrief: brief,
+        scriptModel: STORYBOARD_PROMPT_MODEL,
+        timings: { promptAgentMs },
       });
     }
     const scripts = (await generateSceneScripts(prompt, sceneCount)) ?? null;
@@ -363,10 +376,13 @@ export async function POST(req: NextRequest) {
   // Full board (legacy single-shot path) — enrich with the Master Prompt Agent (locked
   // character + per-scene image prompts), fail-open to the haiku Script Agent, then
   // render all frames in one request. Fail-open: a miss leaves `plan` in place.
+  const tPromptAgent = Date.now();
   const masterBrief: MasterFilmBrief | null = await runPromptAgent({
     brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
     length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
+    model: STORYBOARD_PROMPT_MODEL,
   });
+  const promptAgentMs = Date.now() - tPromptAgent;
   const sceneScripts = masterBrief
     ? masterBrief.scenes.map((s) => s.imagePrompt)
     : ((await generateSceneScripts(prompt, sceneCount)) ?? null);
@@ -382,6 +398,7 @@ export async function POST(req: NextRequest) {
   // overlapping. So we keep 3 (overlaps the fallbacks) and the real lever for full
   // flux-schnell coverage is a higher Replicate rate-limit tier, not a concurrency knob.
   const frameConcurrency = 3;
+  const tFrames = Date.now();
   const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene) => genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
@@ -391,6 +408,9 @@ export async function POST(req: NextRequest) {
     const retried = await mapWithConcurrency(missing.map((i) => storyPlan.scenes[i]!), frameConcurrency, (scene) => genFrame(scene.prompt));
     missing.forEach((sceneI, k) => { if (retried[k]) frames[sceneI] = retried[k]; });
   }
+  const framesMs = Date.now() - tFrames;
+  // eslint-disable-next-line no-console
+  console.log(`[storyboard] prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms · frames: ${framesMs}ms · sources ${JSON.stringify(frameSourceTally)}`);
 
   const scenes = storyPlan.scenes.map((s, i) => ({
     ordinal: s.ordinal,
@@ -415,5 +435,9 @@ export async function POST(req: NextRequest) {
     // Diagnostic — provider that produced each frame (confirms flux-schnell vs the
     // NanoBanana/Replicate-FLUX fallback; the re-host hides it from the frame URLs).
     frameSources: frameSourceTally,
+    // Diagnostic — the Prompt-Agent model used + the script/frames time split (the script
+    // step was the dominant cost; haiku cuts it from ~80s to ~5-10s).
+    scriptModel: STORYBOARD_PROMPT_MODEL,
+    timings: { promptAgentMs, framesMs },
   });
 }

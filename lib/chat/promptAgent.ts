@@ -94,6 +94,9 @@ export interface PromptAgentInput {
   effect: string;
   language: string;
   dialogue?: string | null;
+  /** Optional primary-model override. The storyboard PREVIEW passes haiku (fast); the
+   *  actual film render (filmComposite) omits it → keeps the sonnet default for quality. */
+  model?: string;
 }
 
 const SYSTEM_PROMPT = `You are a Master Film Director.
@@ -325,7 +328,8 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
   // prod (the storyboard's Script Agent uses it). The fallback covers BOTH failure
   // modes I can't introspect from here: a slow/timed-out Sonnet AND a Sonnet that
   // isn't entitled on this key — either way the character lock still engages.
-  const primary = process.env.ANTHROPIC_PROMPT_AGENT_MODEL ?? 'claude-sonnet-4-6';
+  // Per-call override (storyboard preview → haiku) wins; else the env default; else sonnet.
+  const primary = input.model ?? process.env.ANTHROPIC_PROMPT_AGENT_MODEL ?? 'claude-sonnet-4-6';
   const fallback = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
   const userContent =
     `Brief: ${input.brief.trim().slice(0, 1800)}\n` +
