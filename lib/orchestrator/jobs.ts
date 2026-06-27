@@ -147,28 +147,45 @@ export async function recordCompletedFilm(input: {
   prompt?: string | null;
   orientation?: string | null;
   result?: Record<string, unknown>;
+  /** Estimated wholesale cost (USD/GEL) + wall-clock duration. Written to the dedicated
+   *  generation_jobs columns when they exist; the upsert falls back to the base row if
+   *  they don't, so a pre-migration DB never drops the film record. */
+  costUsd?: number;
+  costGel?: number;
+  durationMs?: number;
 }): Promise<boolean> {
   const sb = client();
   if (!sb) return false;
+  // Base row (always valid). Cost/duration ride in dedicated columns + result JSONB.
+  const base = {
+    id: input.id,
+    user_id: input.userId,
+    service_type: 'film' as ProduceKind,
+    status: 'completed' as JobStatus,
+    current_stage: 'completed',
+    pct: 100,
+    params: {
+      prompt: input.prompt ?? null,
+      orientation: input.orientation ?? 'landscape',
+      source: 'film-studio',
+    },
+    result: input.result ?? { url: input.url },
+    signed_url: input.url,
+  };
+  const withCost = {
+    ...base,
+    ...(input.costUsd != null ? { cost_usd: input.costUsd } : {}),
+    ...(input.costGel != null ? { cost_gel: input.costGel } : {}),
+    ...(input.durationMs != null ? { duration_ms: input.durationMs } : {}),
+  };
+  const hasCostCols = withCost !== base && (input.costUsd != null || input.costGel != null || input.durationMs != null);
   try {
-    const { error } = await sb.from(TABLE).upsert(
-      {
-        id: input.id,
-        user_id: input.userId,
-        service_type: 'film' as ProduceKind,
-        status: 'completed' as JobStatus,
-        current_stage: 'completed',
-        pct: 100,
-        params: {
-          prompt: input.prompt ?? null,
-          orientation: input.orientation ?? 'landscape',
-          source: 'film-studio',
-        },
-        result: input.result ?? { url: input.url },
-        signed_url: input.url,
-      },
-      { onConflict: 'id' },
-    );
+    let { error } = await sb.from(TABLE).upsert(withCost, { onConflict: 'id' });
+    // Defensive fallback: if the cost columns aren't migrated yet, the upsert errors on
+    // the unknown column — retry with the base row so the film is still recorded.
+    if (error && hasCostCols) {
+      ({ error } = await sb.from(TABLE).upsert(base, { onConflict: 'id' }));
+    }
     if (!error) await fireCompletionNotification(sb, input.userId, 'film', 'film-studio');
     return !error;
   } catch {

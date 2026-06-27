@@ -628,6 +628,10 @@ async function assembleImpl(req: NextRequest) {
       prompt: typeof body.scorePrompt === 'string' ? body.scorePrompt : null,
       orientation: body.orientation ? String(body.orientation) : 'landscape',
       result: { url: resultUrl, qa: qaSummary, kind: 'film', costUsd: cost.usd, costGel: cost.gel, costBreakdown: cost.breakdown, durationMs },
+      // Dedicated columns (admin queryability) — falls back to the base row if unmigrated.
+      costUsd: cost.usd,
+      costGel: cost.gel,
+      durationMs,
     });
   }
 
