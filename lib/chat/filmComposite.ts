@@ -603,9 +603,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // has no i2v start image, so clips fall to LTX text-to-video even when Kling is selected.
     // Generate ONE flux-schnell portrait (~3.65s) from the locked character and reuse it as
     // the start image for EVERY clip → the i2v (Kling/LTX-2) path fires with a consistent
-    // identity. Only when there's nothing better already. Default-on; disable via
-    // AUTO_ANCHOR_FRAME=0. Fail-open: a miss leaves sceneFrames null → unchanged LTX path.
-    const autoAnchorOn = !/^(0|false|off)$/i.test((process.env.AUTO_ANCHOR_FRAME || '').trim());
+    // identity. DEFAULT-OFF (opt-in via AUTO_ANCHOR_FRAME=1): enabling it routes text-only
+    // films onto the i2v path, but Kling is Replicate-only and the prod Replicate account is
+    // currently throttled to 6/min+burst-1 (<$5 credit) → Kling creates 429 and the film
+    // FAILS instead of falling to the working (direct) LTX text-to-video. Turn this on once
+    // Replicate has ≥$5 credit. Fail-open: a miss leaves sceneFrames null → unchanged LTX path.
+    const autoAnchorOn = /^(1|true|on)$/i.test((process.env.AUTO_ANCHOR_FRAME || '').trim());
     if (autoAnchorOn && characterLock && hostedCount === 0 && !sceneFrames.some(Boolean)) {
       const tAnchor = Date.now();
       const anchor = await generateAnchorFrame(characterLock, orientation === 'vertical' ? '9:16' : '16:9');
