@@ -157,6 +157,19 @@ SFX CUES (every scene):
 5. For Georgian content: include authentic Georgian visual elements
    (architecture, lighting, culture).
 
+6. CINEMATOGRAPHY (add to EVERY scene.imagePrompt, and VARY it per scene so the film
+   has motion and rhythm — do not repeat the same camera on every scene):
+   - CAMERA MOVEMENT: name one per scene, e.g. slow dolly push-in, smooth tracking shot,
+     gentle pan, locked-off static (composed like a photograph), slow crane/tilt up, or
+     drone pull-back. Pair it with the scene's shot type from rule 4 (e.g. Scene 1 wide +
+     drone descent; Scene 3 close-up + slow push-in; Scene 6 pull-back + crane up).
+   - LENS + DEPTH OF FIELD: "85mm portrait lens, f/1.8 shallow depth of field, soft bokeh"
+     for close-ups; "wide 24mm" for establishing shots.
+   - LIGHTING: name the source + colour temperature, e.g. "warm 3200K golden-hour key from
+     upper-left, soft fill" or "cool 5600K overcast daylight".
+   - QUALITY TAGS: end each imagePrompt with "photorealistic, 8K, cinematic color grade,
+     volumetric lighting, film grain, sharp focus, professional cinematography".
+
 Return ONLY valid JSON. No markdown. No explanation.
 
 JSON structure:
