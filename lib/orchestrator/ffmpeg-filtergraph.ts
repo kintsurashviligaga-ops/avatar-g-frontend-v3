@@ -23,6 +23,11 @@ export interface FilterGraphOpts {
   duckPct: number;      // 0–100, background attenuation under the voice
   clipSec?: number;     // per-clip seconds (default 6)
   transition?: string;  // crossfade | dissolve | zoom | slide | wipe | fade_to_black | cut
+  /** PHASE 5A — per-join transition override (content/beat-aware). transitions[i]
+   *  is the transition for the join between clip i and i+1; falls back to `transition`
+   *  when absent. When undefined the single-`transition` path is byte-identical (so the
+   *  filtergraph snapshot tests are unaffected). Ignored for the hard-`cut` master. */
+  transitions?: string[];
   /** Output orientation. landscape 16:9 · vertical 9:16 · square 1:1 · portrait 4:5. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** Absolute path to a .cube 3D LUT. When set, a `lut3d=file=…` pass is applied
@@ -81,6 +86,24 @@ const CANVAS: Record<string, readonly [number, number]> = {
   portrait: [1080, 1350],
 };
 const TRANSITION_SEC = 1; // 1s crossfade (offset = clipSec - 1)
+
+/**
+ * PHASE 5A — beat-aware transitions for an N-clip film. The film's cinematic beats run
+ * Establishing → Medium → Arc-Reveal → Close → Wide → Resolution; this softens the two
+ * emotional joins (into the arc-reveal and into the closing resolution) to a `dissolve`
+ * and keeps a clean `crossfade` everywhere else, instead of one uniform crossfade. Pure
+ * + deterministic. Returns `transitions[]` aligned to the (N−1) joins.
+ */
+export function sceneAwareTransitions(nClips: number): string[] {
+  const joins = Math.max(0, Math.floor(nClips) - 1);
+  const out: string[] = [];
+  for (let j = 0; j < joins; j++) {
+    const isFinalJoin = j === joins - 1; // into the resolution beat — soften
+    const isArcReveal = j === 2;         // into the arc-reveal beat — soften
+    out.push(isFinalJoin || isArcReveal ? 'dissolve' : 'crossfade');
+  }
+  return out;
+}
 
 export function buildFilterComplex(opts: FilterGraphOpts): {
   filter: string;
@@ -153,7 +176,10 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     let offset = clipSec - TRANSITION_SEC;
     for (let i = 1; i < nClips; i++) {
       const out = `vx${i}`;
-      parts.push(`[${prev}][v${i}]xfade=transition=${trans}:duration=${TRANSITION_SEC}:offset=${offset.toFixed(2)}[${out}]`);
+      // PHASE 5A — per-join transition: use the content-aware override for this join
+      // when supplied, else the single `trans`. undefined transitions → identical output.
+      const pairTrans = opts.transitions?.[i - 1] ? (XFADE[opts.transitions[i - 1]!] ?? trans) : trans;
+      parts.push(`[${prev}][v${i}]xfade=transition=${pairTrans}:duration=${TRANSITION_SEC}:offset=${offset.toFixed(2)}[${out}]`);
       prev = out;
       offset += clipSec - TRANSITION_SEC;
     }

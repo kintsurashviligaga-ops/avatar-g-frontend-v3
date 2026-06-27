@@ -17,7 +17,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { buildFilterComplex } from './ffmpeg-filtergraph';
+import { buildFilterComplex, sceneAwareTransitions } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
@@ -237,6 +237,10 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       fps,
       duckPct,
       transition,
+      // PHASE 5A — beat-aware per-join transitions for the xfade master (soften the
+      // arc-reveal + closing joins to a dissolve). Skipped for the hard-cut music-video
+      // master and single-clip films, where it's a no-op.
+      ...(transition !== 'cut' && inputs.length >= 2 ? { transitions: sceneAwareTransitions(inputs.length) } : {}),
       clipSec,
       lut3dPath,
       hasBrandOverlay: Boolean(brandPngPath),
