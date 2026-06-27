@@ -151,7 +151,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       // FIX 4 — backdrop is rgba(0,0,0,0.6) with NO blur, so the sidebar + chat stay
       // visible (dimmed) behind the modal instead of the page going black. z-[110] keeps
       // it above the app's cookie banner (z-[60]); the panel below stacks above this.
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
     >
       <div
@@ -159,7 +159,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         aria-modal="true"
         aria-label={t.title}
         onClick={(e) => e.stopPropagation()}
-        className="relative z-[111] max-h-[90dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-3xl border border-app-border/15 bg-app-surface shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="relative z-[111] max-h-[90dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-3xl border border-app-border/15 bg-app-surface shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:rounded-3xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5">
