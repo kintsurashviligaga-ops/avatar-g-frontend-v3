@@ -20,6 +20,7 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { sanitizePrompt } from '@/lib/security/apiGuard';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { retrieveContext } from '@/lib/rag/retrieve';
 
@@ -145,7 +146,19 @@ export async function POST(req: NextRequest) {
       return handlePoll(data.predictionId, data.sessionId);
     }
 
-    const userId = gate.auth?.userId || 'anonymous';
+    // The gate's auth (getAuthContext → createServerClient) only reads the SSR COOKIE
+    // session — correct for the browser UI, which is how logged-in users already get the
+    // premium (Kling) tier. But an API / mobile / headless caller that authenticates with
+    // an `Authorization: Bearer` token would be seen as anonymous here and downgraded to
+    // the LTX preview model. Recover the real user from the Bearer so EVERY authenticated
+    // caller (cookie or token) gets their proper tier. Cookie callers already resolved above.
+    let userId = gate.auth?.userId || 'anonymous';
+    if (userId === 'anonymous') {
+      try {
+        const { user } = await authedClientFromRequest(req);
+        if (user?.id) userId = user.id;
+      } catch { /* no valid Bearer → stays anonymous (LTX preview), as intended */ }
+    }
 
     // Guaranteed present here: the poll path returned above, and the schema
     // refine requires `message` whenever there's no predictionId. The `?? ''`
