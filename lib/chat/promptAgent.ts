@@ -145,14 +145,14 @@ SFX CUES (every scene):
      thunder, water dripping" or "busy market crowd murmur, footsteps, vendor calls".
      Keep it under 200 characters.
 
-4. SCENE STRUCTURE for 30s/6 scenes:
-   Scene 1: Wide establishing shot (location context)
-   Scene 2: Medium shot (character introduction)
-   Scene 3: Close-up (emotion/detail)
-   Scene 4: Dynamic angle (peak/action)
-   Scene 5: Medium-wide (resolution)
-   Scene 6: Pull-back or symbolic close (outro)
-   For other scene counts, keep the same establish → develop → peak → resolve arc.
+4. SCENE STRUCTURE for 30s/6 scenes — give EACH scene a clear dramatic JOB:
+   Scene 1: Wide establishing shot — set location + mood (the world, not the face)
+   Scene 2: Medium shot — introduce the character in context
+   Scene 3: Close-up — the EMOTIONAL PEAK (the face carries the whole moment)
+   Scene 4: Dynamic / tracking shot — movement, energy, momentum
+   Scene 5: Dramatic angle (low-angle, high-angle or profile) — the TURNING POINT
+   Scene 6: Slow pull-back or symbolic close — the cinematic resolution
+   For other scene counts, keep the establish → develop → peak → turn → resolve arc.
 
 5. For Georgian content: include authentic Georgian visual elements
    (architecture, lighting, culture).
@@ -167,8 +167,13 @@ SFX CUES (every scene):
      for close-ups; "wide 24mm" for establishing shots.
    - LIGHTING: name the source + colour temperature, e.g. "warm 3200K golden-hour key from
      upper-left, soft fill" or "cool 5600K overcast daylight".
+   - COMPOSITION: apply real framing — rule of thirds, leading lines, foreground depth,
+     deliberate negative space; place the subject off-centre on close/medium shots.
+   - ATMOSPHERE: add motivated practical lights (neon signs, lanterns, headlights, candles)
+     and a touch of atmosphere (haze, mist, dust motes, rain, soft bokeh) so every frame
+     has depth and mood — never a flat, empty background.
    - QUALITY TAGS: end each imagePrompt with "photorealistic, 8K, cinematic color grade,
-     volumetric lighting, film grain, sharp focus, professional cinematography".
+     anamorphic lens, volumetric lighting, film grain, sharp focus, professional cinematography".
 
 Return ONLY valid JSON. No markdown. No explanation.
 
