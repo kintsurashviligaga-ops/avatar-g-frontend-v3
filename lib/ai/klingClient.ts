@@ -98,6 +98,69 @@ export async function klingVideoToVideo(p: KlingV2VInput): Promise<string> {
   });
 }
 
+const REPLICATE_API = 'https://api.replicate.com/v1';
+
+/**
+ * Submit an I2V (or V2V→I2V) Kling job WITHOUT waiting — returns the Replicate
+ * prediction id. The async /api/motion-control route uses this so the HTTP request
+ * returns in ~2s; Kling itself takes 3-7 min, and a blocking wait (replicate.run /
+ * klingImageToVideo) 504s on Vercel. Poll progress with klingPoll(id). A reference
+ * video degrades to motion-prompt I2V (Replicate has no true V2V Kling).
+ */
+export async function klingSubmit(p: KlingI2VInput & { videoUrl?: string }): Promise<string> {
+  if (!klingConfigured()) throw new Error('REPLICATE_API_TOKEN not configured');
+  const model = (p.modelName || KLING_MODELS.BEST);
+  const isV16 = /v1[.\-]6/.test(model);
+  const prompt = p.videoUrl?.trim()
+    ? `${p.prompt}, dynamic fluid movement, identity preserved, photorealistic`
+    : p.prompt;
+  const input: Record<string, unknown> = {
+    start_image: p.imageUrl,
+    prompt,
+    negative_prompt: p.negativePrompt ?? KLING_NEGATIVE,
+    duration: p.duration ?? 5,
+    aspect_ratio: p.aspectRatio ?? '9:16',
+    // cfg_scale ONLY exists on v1.6 — sending it to v2.1-master 422s (not in schema).
+    ...(isV16 ? { cfg_scale: typeof p.cfgScale === 'number' ? p.cfgScale : 0.5 } : {}),
+  };
+  const res = await fetch(`${REPLICATE_API}/models/${model}/predictions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify({ input }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`kling submit ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+  const pred = (await res.json().catch(() => ({}))) as { id?: string };
+  if (!pred.id) throw new Error('kling submit: no prediction id');
+  return pred.id;
+}
+
+/** Poll a Kling prediction ONCE → normalized status + output URL when finished. A
+ *  transient fetch miss is reported as 'processing' so the caller keeps polling. */
+export async function klingPoll(id: string): Promise<{ status: 'processing' | 'succeeded' | 'failed'; url: string | null; error?: string }> {
+  if (!klingConfigured()) return { status: 'failed', url: null, error: 'REPLICATE_API_TOKEN not configured' };
+  try {
+    const res = await fetch(`${REPLICATE_API}/predictions/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return { status: 'processing', url: null };
+    const d = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown; error?: unknown };
+    if (d.status === 'succeeded') {
+      const url = pickUrl(d.output);
+      return url ? { status: 'succeeded', url } : { status: 'failed', url: null, error: 'kling: no output url' };
+    }
+    if (d.status === 'failed' || d.status === 'canceled') {
+      return { status: 'failed', url: null, error: typeof d.error === 'string' ? d.error : 'kling generation failed' };
+    }
+    return { status: 'processing', url: null };
+  } catch {
+    return { status: 'processing', url: null };
+  }
+}
+
 /** Cheap connectivity probe. */
 export async function klingAuthOk(): Promise<boolean> {
   if (!klingConfigured()) return false;

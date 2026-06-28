@@ -112,6 +112,10 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
     try {
       // Lip-sync drives the audio (spoken voice), so the music bed is skipped when it's on.
       const wantLipsync = enableLipsync && !!lipsyncText.trim();
+      const wantMusic = enableMusic && !wantLipsync;
+
+      // 1) SUBMIT — returns a Kling job id in ~2s. The old synchronous wait on Kling
+      //    (3-7 min) blew past Vercel's function ceiling → HTTP 504. Now we poll.
       const res = await fetch('/api/motion-control', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({
@@ -120,13 +124,30 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
           motionPrompt: motionPrompt.trim(),
           duration: 5,
           aspectRatio,
-          enableMusic: enableMusic && !wantLipsync,
-          musicMood,
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { videoUrl?: string; error?: string };
-      if (!res.ok || !data.videoUrl) throw new Error(data.error || `HTTP ${res.status}`);
-      let url = data.videoUrl;
+      const sub = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string };
+      if (!res.ok || !sub.jobId) throw new Error(sub.error || `HTTP ${res.status}`);
+
+      // 2) POLL SEQUENTIALLY until done. Each request is short (never times out); the
+      //    single "succeeded" poll re-hosts + muxes music server-side, so it can take
+      //    ~1 min — fine under the gateway limit. Sequential (await each) so that
+      //    finalizing poll never overlaps another (no duplicate re-host / music gen).
+      const qs = new URLSearchParams({ id: sub.jobId, music: wantMusic ? '1' : '0', mood: musicMood, duration: '5' });
+      let url: string | null = null;
+      for (let i = 0; i < 70; i++) { // ~70 × 7s ≈ 8 min headroom
+        await new Promise((r) => setTimeout(r, 7000));
+        const pr = await fetch(`/api/motion-control/status?${qs.toString()}`, { credentials: 'include' });
+        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; videoUrl?: string; error?: string };
+        if (pj.done) {
+          if (pj.error || !pj.videoUrl) throw new Error(pj.error || 'generation failed');
+          url = pj.videoUrl;
+          break;
+        }
+      }
+      if (!url) throw new Error(lang === 'en' ? 'Timed out — please try again.' : lang === 'ru' ? 'Время вышло — попробуйте снова.' : 'დრო ამოიწურა — სცადე თავიდან.');
+
+      // 3) Lip-sync post-step (unchanged — already async/poll-based).
       if (wantLipsync) { setStage('lipsync'); url = await applyLipsync(url); }
       setResult(url);
       onVideoGenerated?.(url);
