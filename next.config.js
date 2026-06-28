@@ -71,6 +71,10 @@ const nextConfig = {
       // (overlayMasterUrl → resvg SVG→PNG) runs here. Without the binary + resvg the
       // lambda ENOENTs and every remix silently fails — the users' "broken remix".
       '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // Motion Control: optional background-music pass muxes a MusicGen bed onto the
+      // Kling clip via ffmpeg-static (muxAudioOntoVideo). Without the binary the mux
+      // ENOENTs and the music is silently dropped — force-trace it into this lambda.
+      '/api/motion-control': ['./node_modules/ffmpeg-static/**'],
     },
   },
   eslint: {
