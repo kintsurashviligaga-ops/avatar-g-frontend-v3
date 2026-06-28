@@ -1696,11 +1696,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
       // mode keeps narration-forward behaviour (voice-over + ducked score).
       const isMusicVideo = videoMode === 'musicvideo';
-      // Director's-Console Lip-Sync agent (dialogue-driven). RUN when there's actual
-      // dialogue/narration to sync: a music video with character dialogue + lip-sync ON, OR
-      // a documentary with dialogue. A PURE music video (no dialogue) shows "Skipped".
+      // Director's-Console Lip-Sync agent. DEFAULT-ON for music videos: the SONG itself
+      // is the vocal, so the singer-performance path (HeyGen close-up → isolated vocal →
+      // composited into the montage) runs whenever Lip-Sync is toggled on (default true) —
+      // no typed dialogue required. Documentary still needs typed dialogue/narration
+      // (compositeDocumentary speaks videoSpeech via a talking photo).
       const hasDialogue = videoSpeech.trim().length > 0;
-      const wantsLipsync = (isMusicVideo && videoLipsync && hasDialogue) || (!isMusicVideo && hasDialogue);
+      const wantsLipsync = (isMusicVideo && videoLipsync) || (!isMusicVideo && hasDialogue);
       lipsyncStageRef.current = wantsLipsync ? 'queued' : 'skipped';
       // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
       // music video we build the song ourselves (Georgian rap on the cloned KA voice over a

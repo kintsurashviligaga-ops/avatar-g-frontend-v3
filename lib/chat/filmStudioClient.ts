@@ -486,7 +486,6 @@ async function assembleMaster(
   captionLang?: 'ka' | 'en' | 'ru',
   vocalGender?: 'male' | 'female' | 'duet',
   audioMix?: AudioMixOptions,
-  lipsyncNarration?: boolean,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -561,40 +560,7 @@ async function assembleMaster(
   if (!(json && typeof json.url === 'string' && json.url.length > 0)) {
     return { url: null, error: 'The editor finished but returned no playable master URL.' };
   }
-  let masterUrl = json.url;
-
-  // AUTO LIP-SYNC (opt-in, STRICTLY fail-open) — once the master is ready, key the
-  // on-screen singer's mouth to the embedded vocal via the VIDEO-input engine
-  // (sync/lipsync-2, `kind:'film'`). The /api/video/lipsync path is isolated from the
-  // proven assemble path: any miss (no provider, timeout, empty result) leaves the
-  // ORIGINAL master untouched, so this can never break a finished film. Auto-enabled
-  // for music videos (the character IS the singer); documentary narration stays opt-in
-  // because the narrator is usually off-screen. audioUrl defaults to the master's own
-  // embedded soundtrack, so the lips track the actual song.
-  if (lipsyncNarration) {
-    try {
-      const start = await fetch('/api/video/lipsync', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-        body: JSON.stringify({ videoUrl: masterUrl, kind: 'film' }),
-      });
-      const sj = (await start.json().catch(() => null)) as { jobId?: string | null } | null;
-      const jobId = sj?.jobId;
-      if (jobId) {
-        // Poll up to ~8 min. A prod e2e run of a 30s master measured ~6.3 min on
-        // sync/lipsync-2, so a 4-min budget timed out before the job finished — this
-        // headroom lets the synced master actually land. Still fail-open on timeout.
-        for (let i = 0; i < 96; i += 1) {
-          await new Promise((r) => setTimeout(r, 5000));
-          if (signal?.aborted) break;
-          const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
-          const pj = (await pr.json().catch(() => null)) as { done?: boolean; url?: string | null } | null;
-          if (pj?.done) { if (typeof pj.url === 'string' && pj.url.length > 0) masterUrl = pj.url; break; }
-        }
-      }
-    } catch { /* keep the original (un-synced) master */ }
-  }
-
-  return { url: masterUrl, qa: asQa(json.qa), musicUrl: typeof json.musicUrl === 'string' ? json.musicUrl : null };
+  return { url: json.url, qa: asQa(json.qa), musicUrl: typeof json.musicUrl === 'string' ? json.musicUrl : null };
 }
 
 /** Recover an already-hosted master (+ its QA verdict) from the durable tracker. */
@@ -839,11 +805,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const captionLang: 'ka' | 'en' | 'ru' = opts.locale === 'ka' ? 'ka' : opts.locale === 'ru' ? 'ru' : 'en';
     // The full transition (crossfade/cut/dissolve/zoom/slide) flows to the assembler
     // → globalRender.transition → buildFilterComplex's XFADE map.
-    // AUTO LIP-SYNC: on by default for music videos (the on-screen character IS the
-    // singer), overridable via opts.lipsyncNarration. Fail-open downstream, so a miss
-    // never blocks the film. Narration-only documentary films stay opt-in.
-    const autoLipsync = opts.lipsyncNarration ?? musicVideoMode;
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, autoLipsync);
+    // Lip-sync is NOT done here (a whole-master sync/lipsync-2 pass warps the wide/
+    // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
+    // compositeDocumentary path, which lip-syncs a clean close-up face and composites
+    // it back in-place instead).
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
