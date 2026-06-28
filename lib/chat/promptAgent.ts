@@ -111,6 +111,15 @@ CRITICAL RULES:
    "character"; ALL people (including the primary) go in the "characters" array. Set
    "isMultiCharacter" true when there is more than one recurring person.
 
+1b. THEME → CAST: When the brief is a THEME or song rather than a described scene
+   (e.g. "friendship song", "love ballad", "a mother's pride", "freedom"), POPULATE the
+   cast + action to MATCH the theme — friendship → two or more friends together; love →
+   a couple; family → a family; celebration → a group; loss → a solitary grieving figure.
+   NEVER default to a single unrelated stranger (e.g. a random man) when the theme implies
+   specific people or relationships. For mode "music_video" the brief IS the song's
+   subject: EVERY scene must visually tell THAT song's story (its mood, relationships and
+   imagery), not a generic portrait.
+
 2. VISUAL LOCK: Define ONE color grade, lighting style, and camera aesthetic.
    Apply to ALL scenes.
 
