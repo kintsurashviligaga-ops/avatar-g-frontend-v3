@@ -360,7 +360,9 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
   const primary = input.model ?? process.env.ANTHROPIC_PROMPT_AGENT_MODEL ?? 'claude-sonnet-4-6';
   const fallback = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
   const userContent =
-    `Brief: ${input.brief.trim().slice(0, 1800)}\n` +
+    // 4000 (was 1800) so an attached SCRIPT baked into the brief reaches the Director
+    // intact — a short prompt is unaffected; only script-driven films use the headroom.
+    `Brief: ${input.brief.trim().slice(0, 4000)}\n` +
     `Mode: ${input.mode}\n` +
     `Scenes: ${sceneCount}\n` +
     `Length: ${input.length}s\n` +

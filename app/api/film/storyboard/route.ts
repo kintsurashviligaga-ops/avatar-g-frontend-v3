@@ -61,7 +61,7 @@ async function generateSceneScripts(brief: string, count: number): Promise<strin
     `Keep ONE consistent protagonist, location, time-of-day and colour palette across EVERY shot — describe the protagonist's key, memorable features in shot 1 (exact clothing, age, look) and carry them VERBATIM through every later shot; never swap the person. ` +
     `Each shot is a vivid, self-contained visual description: subject + specific action + setting + lighting + a deliberate camera move + shot size. ` +
     `Keep it period- and world-accurate to the brief; NO neon, glowing light-streaks, lens flares, HUD or sci-fi effects and NO anachronistic/modern objects unless the brief explicitly asks. ` +
-    `Brief: "${brief.trim().slice(0, 1500)}". ` +
+    `Brief: "${brief.trim().slice(0, 4000)}". ` +
     `Return ONLY a JSON array of exactly ${count} strings (one shot description each, in order) — no prose, no keys.`;
   const parseScripts = (text: string): string[] | null => {
     const parsed = extractJson(text);
@@ -363,18 +363,25 @@ export async function POST(req: NextRequest) {
   // story enrichment arrives separately (scriptsOnly). Each scene carries its full
   // frame prompt (the summary `prompt` is truncated for display).
   if (body.planOnly) {
+    // ANCHOR MODE — the user uploaded MULTIPLE reference images: use them directly as
+    // the ordered per-scene frames (scene 1 → image 1, scene 2 → image 2, …), skipping
+    // FLUX for those scenes. The client renders them immediately AND threads them to the
+    // render as per-scene anchors, so the film matches the uploaded images. A SINGLE
+    // image stays a character-lock reference (unchanged behaviour).
+    const anchorMode = hostedRefs.length >= 2;
     return NextResponse.json({
       success: true,
       sessionId,
       seed: plan.shared.seed,
       orientation,
       planOnly: true,
-      scenes: plan.scenes.map((s) => ({
+      anchorMode,
+      scenes: plan.scenes.map((s, i) => ({
         ordinal: s.ordinal,
         beat: s.beat,
         prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
         framePrompt: s.prompt,
-        frameUrl: null,
+        frameUrl: anchorMode && i < hostedRefs.length ? hostedRefs[i]! : null,
       })),
       sceneScripts: null,
     });
@@ -419,12 +426,15 @@ export async function POST(req: NextRequest) {
   // eslint-disable-next-line no-console
   console.log(`[storyboard] prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms · frames: ${framesMs}ms · sources ${JSON.stringify(frameSourceTally)}`);
 
+  // ANCHOR MODE (full path) — ≥2 uploaded images override the generated frames as the
+  // ordered per-scene anchors, mirroring the planOnly path.
+  const anchorModeFull = hostedRefs.length >= 2;
   const scenes = storyPlan.scenes.map((s, i) => ({
     ordinal: s.ordinal,
     beat: s.beat,
     // A short, human-readable shot summary (the full enriched prompt is long).
     prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
-    frameUrl: frames[i] ?? null,
+    frameUrl: anchorModeFull && i < hostedRefs.length ? hostedRefs[i]! : (frames[i] ?? null),
   }));
 
   return NextResponse.json({

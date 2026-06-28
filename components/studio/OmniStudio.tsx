@@ -1980,6 +1980,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
+  // Decode an attached SCRIPT file (.md/.txt/etc.) to text so the film Director actually
+  // reads it. Media only carries a base64 dataUrl + mimeType (no filename), so we decode
+  // any non-image/audio/video attachment as UTF-8 and keep it only if it's mostly
+  // printable (skips binary). This is what makes "attach a script → Director follows it"
+  // work — before, non-image attachments were silently dropped from the film path.
+  const extractScriptText = useCallback((atts: Media[]): string => {
+    for (const a of atts) {
+      if (/^(image|audio|video)\//.test(a.mimeType)) continue;
+      try {
+        const comma = a.dataUrl.indexOf(',');
+        if (comma < 0) continue;
+        const bytes = Uint8Array.from(atob(a.dataUrl.slice(comma + 1)), (c) => c.charCodeAt(0));
+        const txt = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        // count non-control chars → printable ratio (Georgian/UTF-8 included)
+        const printable = (txt.match(/[^\u0000-\u0008\u000B\u000C\u000E-\u001F]/g) || []).length;
+        if (txt.length > 0 && txt.indexOf('\u0000') < 0 && printable / txt.length > 0.85) return txt.trim();
+      } catch { /* not a text file — skip */ }
+    }
+    return '';
+  }, []);
+
   const onProductPhoto = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return;
     const reader = new FileReader();
@@ -2170,10 +2191,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return;
       }
       const planned = j.scenes;
-      const scenes: StoryboardScene[] = planned.map((s) => ({ ordinal: s.ordinal, beat: s.beat, prompt: s.prompt, frameUrl: null }));
+      // ANCHOR MODE — when ≥2 reference images were uploaded the route returns them as
+      // the ordered per-scene frames (scene 1 → image 1, …). Use them directly and DON'T
+      // stream a FLUX frame over them; they also become the render's per-scene anchors.
+      const scenes: StoryboardScene[] = planned.map((s) => ({ ordinal: s.ordinal, beat: s.beat, prompt: s.prompt, frameUrl: s.frameUrl ?? null }));
       const framePrompts: Record<number, string> = {};
       planned.forEach((s) => { framePrompts[s.ordinal] = (s.framePrompt && s.framePrompt.trim()) || s.prompt; });
-      const ordinals = scenes.map((s) => s.ordinal);
+      const ordinals = scenes.filter((s) => !s.frameUrl).map((s) => s.ordinal); // only un-anchored scenes stream a generated frame
       // STEP 2 — open the review board NOW with skeleton tiles + an N/M counter.
       setStoryboard({
         filmPrompt, refs, orientation,
@@ -2773,7 +2797,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Reuses the proven driveFilmStudio client (orchestrate → poll → assemble),
     // streams its live status into the assistant bubble, then renders the master
     // inline — so the full film service lives in this one chatbox.
-    if (mode === 'video' && text) {
+    // BUGFIX — the Director ignored attached scripts/images: the film path only fired on
+    // typed text and dropped non-image attachments. Now it also runs on a script/image-
+    // only request, READS the attached script (.md/.txt) into the brief, and passes the
+    // images through as anchors (≥2 → ordered per-scene anchors, handled server-side).
+    const videoScript = mode === 'video' ? extractScriptText(attachments) : '';
+    const videoHasImages = mode === 'video' && (videoCharacterRefs.length > 0 || attachments.some((a) => isImage(a.mimeType)));
+    if (mode === 'video' && (text || videoScript || videoHasImages)) {
       // v330 — the dedicated Character Reference slot leads the identity-lock refs,
       // followed by any generic image attachments (back-compat).
       const refs = [
@@ -2782,8 +2812,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ];
       // A music video has no spoken narrator → never append the narration cue in that mode.
       const wantNarration = videoMode === 'documentary' && (videoNarration || (videoMyVoiceNarration && hasTrainedVoice));
-      const filmPrompt = `${videoStyle ? `${text}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : text}${wantNarration ? t.narrationCue : ''}`;
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }]);
+      // The typed prompt (or a sensible default when only a script/images were given).
+      const baseText = text || (videoScript
+        ? (locale === 'en' ? 'Make a cinematic film that follows the attached script.' : locale === 'ru' ? 'Сними фильм строго по приложенному сценарию.' : 'შექმენი კინო ზუსტად ატაჩ სკრიპტის მიხედვით.')
+        : (locale === 'en' ? 'A cinematic film' : locale === 'ru' ? 'Кинематографичный фильм' : 'კინემატოგრაფიული ფილმი'));
+      const styledText = videoStyle ? `${baseText}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : baseText;
+      // The attached script is made AUTHORITATIVE in the brief → the Director (runPromptAgent)
+      // follows it instead of inventing a different story/characters/setting.
+      const filmPrompt = `${styledText}${videoScript ? `\n\nSCRIPT (follow this EXACTLY — do not invent different characters, era, or setting):\n${videoScript.slice(0, 3500)}` : ''}${wantNarration ? t.narrationCue : ''}`;
+      const bubbleText = text || (videoScript ? '📄 ' + (locale === 'en' ? 'Film from attached script' : locale === 'ru' ? 'Фильм по сценарию' : 'ფილმი ატაჩ სკრიპტით') : baseText);
+      setMessages((prev) => [...prev, { role: 'user', text: bubbleText, ...(attachments.length ? { medias: attachments } : {}) }]);
       setInput(''); setAttachments([]);
       // Storyboard-FIRST: plan the scenes + a frame each for the user to review; the
       // approved frames then anchor the full render. Music Video Mode is forced 9:16
