@@ -1577,23 +1577,48 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages([]);
     setHistoryOpen(false);
   }, [conversationId, messages]);
+  const removeConversation = useCallback((id: string) => {
+    deleteConversation(id);
+    // Deleting the OPEN chat → discard it to a FRESH EMPTY conversation WITHOUT re-saving.
+    // (startNewConversation upserts the current first, and the idle auto-save effect would
+    // too — either one resurrects the just-deleted chat. A fresh empty id auto-saves to
+    // nothing.) Non-active deletes don't touch conversationId/messages, so no re-save fires.
+    if (id === conversationId) {
+      const fresh = newConversationId();
+      setConversationId(fresh);
+      setCurrentConversationId(fresh);
+      setMessages([]);
+    }
+    setHistoryList(loadConversations());
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
+  }, [conversationId]);
+  const clearAllConversations = useCallback(() => {
+    try { window.localStorage.removeItem(OMNI_CONVERSATIONS_KEY); } catch { /* ignore */ }
+    const fresh = newConversationId();
+    setConversationId(fresh);
+    setCurrentConversationId(fresh);
+    setMessages([]);
+    setHistoryList([]);
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
+  }, []);
   // Bridge: the persistent left sidebar (ChatChrome) drives chat-history resume + new-chat
   // via window events — so the sidebar works without prop-threading through the chrome.
   useEffect(() => {
     const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) resumeConversation(id); };
     const onNew = () => startNewConversation();
+    const onDelete = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) removeConversation(id); };
+    const onClear = () => clearAllConversations();
     window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
     window.addEventListener('myavatar:new-chat', onNew);
+    window.addEventListener('myavatar:delete-conversation', onDelete as EventListener);
+    window.addEventListener('myavatar:clear-conversations', onClear);
     return () => {
       window.removeEventListener('myavatar:resume-conversation', onResume as EventListener);
       window.removeEventListener('myavatar:new-chat', onNew);
+      window.removeEventListener('myavatar:delete-conversation', onDelete as EventListener);
+      window.removeEventListener('myavatar:clear-conversations', onClear);
     };
-  }, [resumeConversation, startNewConversation]);
-  const removeConversation = useCallback((id: string) => {
-    deleteConversation(id);
-    setHistoryList(loadConversations());
-    if (id === conversationId) startNewConversation();
-  }, [conversationId, startNewConversation]);
+  }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations]);
 
   // Tick the elapsed clock while a generation OR the storyboard build is in flight
   // (so the storyboard overlay can show a live % too, not just a spinner).

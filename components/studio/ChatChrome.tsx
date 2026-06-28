@@ -326,6 +326,45 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     }
     setSidebarOpen(false);
   }, [pathname, router, locale]);
+  // Delete ONE conversation from the shared localStorage store (history lives entirely
+  // in localStorage — no Supabase). Optimistic local removal + a re-sync event for any
+  // other mounted listener. If the deleted chat is the ACTIVE one, drop the pointer and
+  // (on the dashboard) reset the open chat so the next message doesn't re-save it.
+  // On the DASHBOARD OmniStudio owns the active conversation + an idle auto-save effect,
+  // so mutating storage here would be resurrected on its next render — let OmniStudio do
+  // the delete (it also resets the open chat if that's the one deleted). On a secondary
+  // surface (e.g. /library) OmniStudio isn't mounted, so mutate localStorage directly.
+  const onDashboard = (pathname ?? '').includes('/dashboard');
+  const handleDeleteConversation = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConversations((prev) => prev.filter((c) => c.id !== id)); // optimistic
+    if (onDashboard) {
+      window.dispatchEvent(new CustomEvent('myavatar:delete-conversation', { detail: { id } }));
+      return;
+    }
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as Array<{ id?: string }>;
+      const next = Array.isArray(raw) ? raw.filter((c) => c?.id !== id) : [];
+      window.localStorage.setItem(OMNI_CONVERSATIONS_KEY, JSON.stringify(next));
+      if (window.localStorage.getItem(OMNI_CURRENT_ID_KEY) === id) window.localStorage.removeItem(OMNI_CURRENT_ID_KEY);
+    } catch { /* ignore */ }
+    window.dispatchEvent(new Event('myavatar:conversations-updated'));
+  }, [onDashboard]);
+  // Wipe ALL conversations (confirm first — irreversible). Resets the active chat too.
+  const handleClearAll = useCallback(() => {
+    const msg = locale === 'en' ? 'Delete ALL conversations? This cannot be undone.' : locale === 'ru' ? 'Удалить ВСЕ чаты? Это необратимо.' : 'ყველა ჩატი წაიშლება და ვერ აღდგება. გავაგრძელო?';
+    if (typeof window !== 'undefined' && !window.confirm(msg)) return;
+    setConversations([]); // optimistic
+    if (onDashboard) {
+      window.dispatchEvent(new Event('myavatar:clear-conversations'));
+      return;
+    }
+    try {
+      window.localStorage.removeItem(OMNI_CONVERSATIONS_KEY);
+      window.localStorage.removeItem(OMNI_CURRENT_ID_KEY);
+    } catch { /* ignore */ }
+    window.dispatchEvent(new Event('myavatar:conversations-updated'));
+  }, [onDashboard, locale]);
 
   // Save the display name to Supabase user_metadata (#3).
   const saveProfile = useCallback(async () => {
@@ -365,6 +404,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
+  const tClearAll = locale === 'en' ? 'Clear all' : locale === 'ru' ? 'Очистить' : 'გასუფთავება';
+  const tDelete = locale === 'en' ? 'Delete' : locale === 'ru' ? 'Удалить' : 'წაშლა';
 
   // FIX 6E — bucket the history into Today / Yesterday / Previous 7 days / Older so the
   // sidebar reads like ChatGPT/Claude. Only non-empty groups render (each already sorted
@@ -464,7 +505,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
         {/* Chat history list */}
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <p className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</p>
+          <div className="flex items-center justify-between gap-1.5 px-2 pb-1.5">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</span>
+            {conversations.length > 0 && (
+              <button type="button" onClick={handleClearAll} title={tClearAll}
+                className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-app-muted/80 transition-colors hover:bg-red-500/10 hover:text-red-400 touch-manipulation">
+                <Trash2 className="h-3 w-3" /> {tClearAll}
+              </button>
+            )}
+          </div>
           {conversations.length === 0 ? (
             <p className="px-2 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
           ) : (
@@ -473,9 +522,17 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 <div key={g.key} className="space-y-0.5">
                   <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-app-muted/70">{g.label}</p>
                   {g.items.map((c) => (
-                    <button key={c.id} type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-[14px] text-app-text/90 transition-colors hover:bg-app-elevated">
-                      {c.title}
-                    </button>
+                    <div key={c.id} className="group relative">
+                      {/* pr-8 leaves room for the delete control so the title never sits under it. */}
+                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg py-2 pl-2.5 pr-8 text-left text-[14px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                        {c.title}
+                      </button>
+                      {/* Delete: always tappable on mobile; hover-reveal on desktop (md). */}
+                      <button type="button" onClick={(e) => handleDeleteConversation(c.id, e)} aria-label={tDelete} title={tDelete}
+                        className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-app-muted/70 opacity-100 transition-colors hover:bg-red-500/15 hover:text-red-400 touch-manipulation md:opacity-0 md:group-hover:opacity-100">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               ))}
