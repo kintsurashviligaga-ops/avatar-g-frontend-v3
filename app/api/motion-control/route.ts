@@ -40,10 +40,21 @@ export async function POST(req: Request) {
   // (~12 min, best-looking). klingSubmit auto-adds cfg_scale for the v1.6 model.
   const modelName = body?.qualityMode === 'quality' ? KLING_MODELS.V21_MASTER : KLING_MODELS.V16_PRO;
 
+  // Compose hint matching the chosen format. Kling ignores aspect_ratio with a
+  // start_image (we post-fit via center-crop), but steering the SHOT to the target
+  // framing keeps the subject upright + fully in-frame so the crop doesn't clip it.
+  // Aspect-aware on purpose — a hardcoded "vertical/portrait" would mislabel 16:9/1:1.
+  const ORIENT_HINT: Record<'9:16' | '16:9' | '1:1', string> = {
+    '9:16': 'vertical portrait composition, subject upright and centered, full body in frame',
+    '16:9': 'wide horizontal cinematic composition, subject centered and fully in frame',
+    '1:1': 'square composition, subject centered and fully in frame',
+  };
+  const framedPrompt = `${motionPrompt}, ${ORIENT_HINT[aspectRatio]}`;
+
   try {
     const jobId = await klingSubmit({
       imageUrl: characterImageUrl,
-      prompt: motionPrompt,
+      prompt: framedPrompt,
       duration,
       aspectRatio,
       modelName,
