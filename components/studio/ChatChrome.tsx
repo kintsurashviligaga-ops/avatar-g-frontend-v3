@@ -406,9 +406,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const onLibrary = (pathname ?? '').includes('/library');
   const showBack = Boolean(onBack) || onLibrary;
   const goBack = onBack ?? (() => router.push(`/${locale}/dashboard`));
-  const backLabel = onBack
-    ? (lang === 'en' ? 'Back' : lang === 'ru' ? 'Назад' : 'უკან')
-    : (lang === 'en' ? 'Chat' : lang === 'ru' ? 'Чат' : 'ჩატი');
+  // Secondary surfaces opened ON TOP of the studio (e.g. /library) get a CLOSE (X)
+  // control that returns to the dashboard — semantically "close this overlay", not a
+  // history "back" that could land on the wrong page. An explicit onBack (the lipsync
+  // studio's exit-to-hub) still renders as a labelled chevron.
+  const isCloseControl = onLibrary && !onBack;
+  const backLabel = lang === 'en' ? 'Back' : lang === 'ru' ? 'Назад' : 'უკან';
+  const closeLabel = lang === 'en' ? 'Close' : lang === 'ru' ? 'Закрыть' : 'დახურვა';
 
   return (
     <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
@@ -499,12 +503,19 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   whenever a parent passes onBack. Visible on ALL viewports so mobile
                   users aren't stranded behind the hamburger. */}
               {showBack && (
-                <button type="button" onClick={goBack}
-                  className="-ml-1 flex h-10 shrink-0 items-center gap-1 rounded-full pl-1.5 pr-2.5 text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
-                  <ChevronLeft className="h-[18px] w-[18px]" />
-                  {/* Visible text IS the accessible name — no aria-label needed. */}
-                  <span className="text-[13.5px] font-medium">{backLabel}</span>
-                </button>
+                isCloseControl ? (
+                  <button type="button" onClick={goBack} aria-label={closeLabel}
+                    className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
+                    <X className="h-[18px] w-[18px]" />
+                  </button>
+                ) : (
+                  <button type="button" onClick={goBack}
+                    className="-ml-1 flex h-10 shrink-0 items-center gap-1 rounded-full pl-1.5 pr-2.5 text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
+                    <ChevronLeft className="h-[18px] w-[18px]" />
+                    {/* Visible text IS the accessible name — no aria-label needed. */}
+                    <span className="text-[13.5px] font-medium">{backLabel}</span>
+                  </button>
+                )
               )}
               {/* Mobile: open the sidebar drawer. Desktop: sidebar is persistent. */}
               <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">

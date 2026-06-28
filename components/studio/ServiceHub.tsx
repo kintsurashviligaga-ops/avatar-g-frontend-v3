@@ -100,7 +100,11 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     return (
       <ChatChrome
         locale={locale}
-        onBack={() => go('hub')}
+        // The assistant chatbox IS the home — it has nothing to go "back" to, so it
+        // gets NO back control (the old one routed to the #hub card grid, which read
+        // as a "ghost page" landing on every press/refresh). Lipsync is a secondary
+        // surface reached only from the hub, so it keeps an explicit exit-to-hub.
+        onBack={service === 'lipsync' ? () => go('hub') : undefined}
         title={service === 'lipsync' ? t.lipTitle : undefined}
         onNewChat={service === 'omni' ? () => { try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ } setChatResetKey((k) => k + 1); } : undefined}
         scrollBody={service === 'lipsync'}
