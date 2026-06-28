@@ -24,7 +24,7 @@ import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
+import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusic } from '@/lib/ai/replicate';
@@ -54,7 +54,12 @@ const fail = (error: string) => NextResponse.json({ url: null, error });
 
 // Lip-sync (Wav2Lip) create + bounded poll — the redub op's engine.
 async function runLipsync(videoUrl: string, audioUrl: string): Promise<string | null> {
-  const id = await lipsyncCreate(videoUrl, audioUrl).catch(() => null);
+  // Redub lip-syncs an existing VIDEO master to new audio. SadTalker/HeyGen
+  // (lipsyncCreate) are TALKING-PHOTO engines — they take a still IMAGE, so feeding
+  // them a video silently fails ("Lip-sync is unavailable right now"). The correct
+  // engine for a video→audio relip is sync/lipsync-2 (filmLipsyncCreate), which takes
+  // { video, audio }. lipsyncFetch already polls its "sync:<id>" jobs.
+  const id = await filmLipsyncCreate(videoUrl, audioUrl).catch(() => null);
   if (!id) return null;
   const deadline = Date.now() + 240_000;
   while (Date.now() < deadline) {

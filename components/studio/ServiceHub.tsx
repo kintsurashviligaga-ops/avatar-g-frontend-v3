@@ -142,7 +142,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     // layout's `min-h-screen flex items-center justify-center` wrapper that
     // otherwise centred this panel and let the page gradient bleed in above and
     // below (the "opens broken / dead space" report). Mirrors the film studio shell.
-    <div className="fixed inset-0 z-0 overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="fixed inset-0 z-[2] overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         <div className="mb-8 flex items-center gap-2">
           <span className="text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>

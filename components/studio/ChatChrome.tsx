@@ -415,7 +415,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const closeLabel = lang === 'en' ? 'Close' : lang === 'ru' ? 'Закрыть' : 'დახურვა';
 
   return (
-    <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
+    <div className="fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
       {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
       {genBusy && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[999]" aria-hidden style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
