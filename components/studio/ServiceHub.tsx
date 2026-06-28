@@ -17,12 +17,35 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Film, Sparkles, ChevronRight } from 'lucide-react';
-import { ConversationalFilmStudio } from './ConversationalFilmStudio';
-import OmniStudio, { OMNI_CURRENT_ID_KEY } from './OmniStudio';
-import LipsyncStudio from './LipsyncStudio';
+import dynamic from 'next/dynamic';
+import { Film, Sparkles, ChevronRight, Loader2 } from 'lucide-react';
 import { ChatChrome } from './ChatChrome';
 import ErrorBoundary from '@/components/ErrorBoundary';
+
+// PERF: lazy-load each studio so the dashboard's initial JS ships only the shell +
+// the studio actually on screen — not all ~8.2k lines of the three studios at once
+// (the "opens slowly" report). Omni (~5.6k lines) is the default landing content;
+// Film/Lipsync are secondary surfaces reached via the hub. OMNI_CURRENT_ID_KEY is
+// INLINED here (matching the literal in ChatChrome) — a static named import would
+// drag the whole 5.6k-line OmniStudio back into the initial chunk, defeating the split.
+const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
+
+// In-shell loader (omni/lipsync render INSIDE ChatChrome, which paints instantly).
+const InShellLoading = () => (
+  <div className="flex min-h-[60dvh] w-full items-center justify-center">
+    <Loader2 className="h-6 w-6 animate-spin text-app-accent" />
+  </div>
+);
+// Full-screen loader (the film studio owns the whole viewport, no surrounding shell).
+const FullLoading = () => (
+  <div className="fixed inset-0 z-[2] flex items-center justify-center bg-app-bg">
+    <Loader2 className="h-6 w-6 animate-spin text-app-accent" />
+  </div>
+);
+
+const OmniStudio = dynamic(() => import('./OmniStudio'), { ssr: false, loading: InShellLoading });
+const LipsyncStudio = dynamic(() => import('./LipsyncStudio'), { ssr: false, loading: InShellLoading });
+const ConversationalFilmStudio = dynamic(() => import('./ConversationalFilmStudio'), { ssr: false, loading: FullLoading });
 
 type Lang = 'ka' | 'en' | 'ru';
 type Service = 'hub' | 'film' | 'omni' | 'lipsync';
