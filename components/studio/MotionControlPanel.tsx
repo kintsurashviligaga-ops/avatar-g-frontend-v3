@@ -92,7 +92,10 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
     try {
       const start = await fetch('/api/video/lipsync', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ videoUrl, text: lipsyncText.trim(), orientation: ORIENT[aspectRatio] }),
+        // kind:'film' → the motion clip is a VIDEO, so it must use the video-input engine
+        // (sync/lipsync-2). Without it the route falls to SadTalker (a talking-PHOTO engine,
+        // image input) which silently fails on a video → the clip came back un-synced + silent.
+        body: JSON.stringify({ videoUrl, text: lipsyncText.trim(), kind: 'film', orientation: ORIENT[aspectRatio] }),
       });
       const sj = (await start.json().catch(() => ({}))) as { jobId?: string | null };
       if (!sj.jobId) return videoUrl;
@@ -133,7 +136,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
       //    single "succeeded" poll re-hosts + muxes music server-side, so it can take
       //    ~1 min — fine under the gateway limit. Sequential (await each) so that
       //    finalizing poll never overlaps another (no duplicate re-host / music gen).
-      const qs = new URLSearchParams({ id: sub.jobId, music: wantMusic ? '1' : '0', mood: musicMood, duration: '5' });
+      const qs = new URLSearchParams({ id: sub.jobId, aspect: aspectRatio, music: wantMusic ? '1' : '0', mood: musicMood, duration: '5' });
       let url: string | null = null;
       for (let i = 0; i < 70; i++) { // ~70 × 7s ≈ 8 min headroom
         await new Promise((r) => setTimeout(r, 7000));

@@ -189,6 +189,41 @@ export async function colorGrade(videoUrl: string, style: GradeStyle): Promise<s
 }
 
 /**
+ * Normalize a clip to an EXACT target aspect (9:16 / 16:9 / 1:1) at standard dims.
+ * Kling i2v IGNORES aspect_ratio when a start_image is given (its output ratio = the
+ * source photo's — verified in the Replicate schema), so Motion Control post-fits here.
+ * Uses a blurred-fill background (the modern Reels look): the full clip is centered at
+ * the target ratio with nothing cropped and no black bars (the bars are a blurred,
+ * zoomed copy of the same footage). Keeps audio if present. Fail-open → null.
+ */
+export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string | null> {
+  if (!BIN || !videoUrl) return null;
+  const [w, h] = ASPECT_DIMS[aspect] ?? ASPECT_DIMS['9:16']!;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'remix-fit-'));
+    const out = join(dir, 'out.mp4');
+    const fc =
+      `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},gblur=sigma=24[bg];` +
+      `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]`;
+    // `0:a?` keeps audio when present and is a no-op when the source is silent (Kling clips are).
+    await exec(BIN, [
+      '-y', '-i', videoUrl, '-filter_complex', fc, '-map', '[v]', '-map', '0:a?',
+      ...X264, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    const buf = await readFile(out);
+    return await hostMp4(buf, `fit-${aspect.replace(':', 'x')}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.fit] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
  * Change playback speed by `factor` (2 = 2× faster, 0.5 = half-speed). Video via
  * setpts; audio via atempo (chained so factors outside the 0.5–2.0 atempo window
  * still work). Clamped to a sane 0.25×–4× range.

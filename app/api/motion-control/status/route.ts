@@ -21,7 +21,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingPoll } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { generateMusic } from '@/lib/ai/replicate';
-import { muxAudioOntoVideo } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 
 // Mood → instrumental MusicGen prompt (no vocals, so the bed never fights the visuals).
 const MOOD_PROMPTS: Record<string, string> = {
@@ -54,16 +54,25 @@ export async function GET(req: Request) {
   const t0 = Date.now();
   let finalUrl = poll.url;
 
-  // Re-host the Replicate output (expires ~24h) to a durable 7-day signed URL.
-  try {
-    const res = await fetch(poll.url);
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      const path = `motion-control/${user.id}/${Date.now()}.mp4`;
-      const signed = await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800);
-      if (signed) finalUrl = signed;
-    }
-  } catch { /* keep the Replicate URL */ }
+  // Normalize to the REQUESTED aspect. Kling i2v ignores aspect_ratio when a start_image
+  // is given (output ratio = the source photo's), so the chosen 9:16/1:1/16:9 is only
+  // honoured by post-fitting here. fitAspect re-hosts to a durable 7-day signed URL, so
+  // this also covers the re-host. Fail-open → manually re-host the raw Kling output.
+  const aspect = (['9:16', '16:9', '1:1'].includes(String(searchParams.get('aspect'))) ? searchParams.get('aspect') : '9:16') as '9:16' | '16:9' | '1:1';
+  const fitted = await fitAspect(poll.url, aspect).catch(() => null);
+  if (fitted) {
+    finalUrl = fitted;
+  } else {
+    try {
+      const res = await fetch(poll.url);
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        const path = `motion-control/${user.id}/${Date.now()}.mp4`;
+        const signed = await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800);
+        if (signed) finalUrl = signed;
+      }
+    } catch { /* keep the Replicate URL */ }
+  }
 
   // Optional instrumental background music, muxed onto the silent clip (mode 'replace').
   // Bounded by the route's remaining time budget; fail-open → silent clip.
