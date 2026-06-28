@@ -44,7 +44,7 @@ const nextConfig = {
     // ffmpeg-static ships a native binary — don't let webpack bundle it; load it
     // from node_modules at runtime and force-trace it into the assemble lambda
     // so the CPU FFmpeg fallback (Option B) has its binary in production.
-    serverComponentsExternalPackages: ['ffmpeg-static', 'sharp', '@resvg/resvg-js', 'pdf-parse', 'mammoth'],
+    serverComponentsExternalPackages: ['ffmpeg-static', 'sharp', '@resvg/resvg-js', 'mammoth'],
     outputFileTracingIncludes: {
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
       '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**'],

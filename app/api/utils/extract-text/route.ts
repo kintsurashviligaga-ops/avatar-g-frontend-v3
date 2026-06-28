@@ -39,12 +39,14 @@ export async function POST(req: Request) {
 
     if (isPdf) {
       try {
-        const { PDFParse } = await import('pdf-parse');
-        const parser = new PDFParse({ data: buf });
-        const r = await parser.getText();
-        // Strip the "-- N of M --" page markers pdf-parse inserts between pages.
-        const text = String(r?.text ?? '').replace(/^-- \d+ of \d+ --$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-        return NextResponse.json({ text });
+        // unpdf bundles a SERVERLESS-safe pdfjs build — pdf-parse worked locally but
+        // returned EMPTY in the Vercel lambda (its pdfjs worker/assets aren't bundled),
+        // which is exactly why uploaded PDFs silently failed and the storyboard went generic.
+        const { extractText, getDocumentProxy } = await import('unpdf');
+        const pdf = await getDocumentProxy(new Uint8Array(buf));
+        const { text } = await extractText(pdf, { mergePages: true });
+        const out = String(Array.isArray(text) ? text.join('\n') : text ?? '').replace(/\n{3,}/g, '\n\n').trim();
+        return NextResponse.json({ text: out });
       } catch {
         return NextResponse.json({ text: '' });
       }
