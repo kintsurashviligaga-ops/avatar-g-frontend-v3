@@ -34,6 +34,9 @@ export interface GeminiRequest {
   history?: { role: 'user' | 'model'; parts: { text: string }[] }[];
   maxTokens?: number;
   temperature?: number;
+  /** gemini-2.5-* "thinking" budget in tokens. Omit = model default (can add many seconds
+   *  of latency). Set 0 to DISABLE thinking for fast, latency-sensitive calls. */
+  thinkingBudget?: number;
 }
 
 export interface GeminiResponse {
@@ -101,6 +104,9 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
     generationConfig: {
       maxOutputTokens: req.maxTokens ?? 4096,
       temperature: req.temperature ?? 0.7,
+      // Disable/limit gemini-2.5 "thinking" when a budget is given — thinking can add tens
+      // of seconds, which breaks latency-bounded callers (e.g. the storyboard decomposer).
+      ...(req.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: req.thinkingBudget } } : {}),
     },
   };
 

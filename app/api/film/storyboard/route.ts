@@ -76,7 +76,9 @@ async function generateSceneScripts(brief: string, count: number): Promise<strin
   // Try Gemini first so the script is actually decomposed. Fail-open → Anthropic → Atlas.
   if (process.env.GEMINI_API_KEY) {
     try {
-      const r = await generateWithGemini({ prompt: USER, systemPrompt: SYS, tier: 'flash' });
+      // thinkingBudget:0 — disable gemini-2.5 "thinking" (it was adding ~60s+); this is a
+      // structured creative task that doesn't need it, and the board waits on this call.
+      const r = await generateWithGemini({ prompt: USER, systemPrompt: SYS, tier: 'flash', maxTokens: 2000, temperature: 0.6, thinkingBudget: 0 });
       const scripts = parseScripts(r.text);
       if (scripts) return scripts;
     } catch { /* fall through to Anthropic */ }
@@ -398,7 +400,7 @@ export async function POST(req: NextRequest) {
     if (hasUploadedScript && !anchorMode) {
       const llmScripts = await Promise.race([
         generateSceneScripts(prompt, sceneCount).catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 14_000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
       ]);
       if (Array.isArray(llmScripts) && llmScripts.length) {
         boardScripts = llmScripts;
