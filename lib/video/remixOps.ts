@@ -192,9 +192,9 @@ export async function colorGrade(videoUrl: string, style: GradeStyle): Promise<s
  * Normalize a clip to an EXACT target aspect (9:16 / 16:9 / 1:1) at standard dims.
  * Kling i2v IGNORES aspect_ratio when a start_image is given (its output ratio = the
  * source photo's — verified in the Replicate schema), so Motion Control post-fits here.
- * Uses a blurred-fill background (the modern Reels look): the full clip is centered at
- * the target ratio with nothing cropped and no black bars (the bars are a blurred,
- * zoomed copy of the same footage). Keeps audio if present. Fail-open → null.
+ * Center-crop (fill): the clip is scaled up to COVER the target ratio and the overflow
+ * is cropped, so the frame is fully filled with no bars (edges may be trimmed). Keeps
+ * audio if present. Fail-open → null.
  */
 export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
@@ -203,15 +203,14 @@ export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1
   try {
     dir = await mkdtemp(join(tmpdir(), 'remix-fit-'));
     const out = join(dir, 'out.mp4');
-    // ROTATION: expressed as a SIMPLE -vf graph (split→overlay), NOT -filter_complex.
-    // ffmpeg auto-applies a clip's rotation display-matrix ONLY for simple filtergraphs;
-    // -filter_complex DISABLES autorotation, which baked Kling clips that carry a rotate
-    // flag in sideways (the "video is rotated 90°" report). -vf keeps the picture upright.
+    // CENTER-CROP (fill): scale up to COVER the target then crop the overflow → the
+    // whole 9:16/1:1/16:9 frame is filled, no bars (edges may be cut). Kept as a SIMPLE
+    // -vf graph, NOT -filter_complex: ffmpeg auto-applies a clip's rotation display-matrix
+    // only for simple filtergraphs (-filter_complex DISABLES autorotation, which baked
+    // Kling clips that carry a rotate flag in sideways — the "video rotated 90°" report).
     const vf =
-      `split=2[a][b];` +
-      `[a]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},gblur=sigma=24[bg];` +
-      `[b]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];` +
-      `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p`;
+      `scale=${w}:${h}:force_original_aspect_ratio=increase,` +
+      `crop=${w}:${h},format=yuv420p`;
     // `-c:a copy` is a no-op for the silent Kling clip and preserves audio if present.
     await exec(BIN, [
       '-y', '-i', videoUrl, '-vf', vf,
