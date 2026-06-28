@@ -169,13 +169,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Settings prefs (Notifications + Generation defaults) — localStorage only, no API.
   const [emailNotif, setEmailNotif] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
-  const [defaultVideoLen, setDefaultVideoLen] = useState<10 | 30 | 60>(30);
   useEffect(() => {
     try {
       setEmailNotif(localStorage.getItem('mya:notif-email') === '1');
       setAutoSave(localStorage.getItem('mya:autosave') !== '0');
-      const len = Number(localStorage.getItem('mya:default-video-len'));
-      if (len === 10 || len === 30 || len === 60) setDefaultVideoLen(len);
     } catch { /* private mode — defaults stand */ }
   }, []);
   const persist = useCallback((key: string, val: string) => { try { localStorage.setItem(key, val); } catch { /* ignore */ } }, []);
@@ -600,11 +597,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {/* SECTION 2 — APPEARANCE */}
               <p className={sectionHdr}>{locale === 'en' ? 'Appearance' : locale === 'ru' ? 'Внешний вид' : 'გარეგნობა'}</p>
               <p className="px-2 pb-1.5 pt-1 text-[12px] text-app-muted">{t.theme}</p>
-              <div className="grid grid-cols-3 gap-1.5 px-1">
-                {([['dark', Moon, locale === 'en' ? 'Dark' : locale === 'ru' ? 'Тёмная' : 'მუქი'], ['light', Sun, locale === 'en' ? 'Light' : locale === 'ru' ? 'Светлая' : 'ნათელი'], ['system', Monitor, locale === 'en' ? 'System' : locale === 'ru' ? 'Система' : 'სისტემა']] as const).map(([id, Icon, label]) => {
-                  const on = id !== 'system' && theme === id;
+              <div className="grid grid-cols-2 gap-1.5 px-1">
+                {([['dark', Moon, locale === 'en' ? 'Dark' : locale === 'ru' ? 'Тёмная' : 'მუქი'], ['light', Sun, locale === 'en' ? 'Light' : locale === 'ru' ? 'Светлая' : 'ნათელი']] as const).map(([id, Icon, label]) => {
+                  const on = theme === id;
                   return (
-                    <button key={id} type="button" onClick={() => (id === 'system' ? pickSystemTheme() : setTheme(id))}
+                    <button key={id} type="button" onClick={() => setTheme(id)}
                       className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[12px] font-medium transition-colors ${on ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>
                       <Icon size={16} /> {label}
                     </button>
@@ -626,14 +623,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <div className={settingsDivider} />
               {/* SECTION 4 — GENERATION DEFAULTS */}
               <p className={sectionHdr}>{locale === 'en' ? 'Generation defaults' : locale === 'ru' ? 'Параметры генерации' : 'გენერაციის პარამეტრები'}</p>
-              <p className="px-2 pb-1.5 pt-1 text-[12px] text-app-muted">{locale === 'en' ? 'Default video length' : locale === 'ru' ? 'Длина видео по умолчанию' : 'ვიდეოს ნაგულისხმევი ხანგრძლივობა'}</p>
-              <div className="grid grid-cols-3 gap-1.5 px-1">
-                {([10, 30, 60] as const).map((len) => (
-                  <button key={len} type="button" onClick={() => { setDefaultVideoLen(len); persist('mya:default-video-len', String(len)); }}
-                    className={`rounded-xl border px-2 py-2 text-[12.5px] font-medium transition-colors ${defaultVideoLen === len ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>{len}s</button>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3 px-2 py-2">
+              <div className="flex items-center justify-between gap-3 px-2 py-2">
                 <p className="text-[14px] text-app-text">{locale === 'en' ? 'Auto-save generations' : locale === 'ru' ? 'Автосохранение' : 'ავტო-შენახვა'}</p>
                 <Toggle on={autoSave} label="Auto-save" onClick={() => { const v = !autoSave; setAutoSave(v); persist('mya:autosave', v ? '1' : '0'); }} />
               </div>
