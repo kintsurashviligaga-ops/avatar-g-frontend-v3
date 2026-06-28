@@ -1454,6 +1454,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [productCta, setProductCta] = useState<ProductCtaOption>('shop_now');
   const [productCtaCustom, setProductCtaCustom] = useState('');
   const [productVoiceover, setProductVoiceover] = useState(true);
+  // Dedicated product-ad output format (independent of the film tab's videoOrientation),
+  // multi-shot photo list (each clip can anchor a different product photo), and an error
+  // surface so a failed generation isn't silent.
+  const [productAspect, setProductAspect] = useState<'9:16' | '1:1' | '16:9'>('9:16');
+  const [productImages, setProductImages] = useState<string[]>([]); // EXTRA shots beyond productImage (shot 1)
+  const [productError, setProductError] = useState<string | null>(null);
   // FIX 3 — product-ad result meta for the result card: real clip duration (read from
   // the <video>) + whether a music bed was laid (single-clip ads now carry a score).
   const [productResultDur, setProductResultDur] = useState<number | null>(null);
@@ -1980,6 +1986,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     reader.onload = () => setProductImage(typeof reader.result === 'string' ? reader.result : null);
     reader.readAsDataURL(file);
   }, []);
+  // Multi-shot: append an EXTRA product photo (max 5 extra → 6 total). Each clip in a
+  // 30/60s ad anchors a different shot (rotated), so the ad shows the product from
+  // several angles instead of one photo N times.
+  const addProductShot = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => setProductImages((prev) => (typeof reader.result === 'string' && prev.length < 5 ? [...prev, reader.result] : prev));
+    reader.readAsDataURL(file);
+  }, []);
 
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
@@ -1990,7 +2005,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setProductProgress(null);
     setProductResultDur(null);
     setProductHasAudio(false);
-    const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
+    setProductError(null);
+    // Dedicated product aspect → the remix op's aspect AND the assemble orientation.
+    // ('vertical' renders 1080×1920; 'portrait' would be 4:5 — so map 9:16 → vertical.)
+    const aspect = productAspect;
+    const orientationForAssemble = productAspect === '16:9' ? 'landscape' : productAspect === '1:1' ? 'square' : 'vertical';
+    // Multi-shot: shot 1 (productImage) + extra shots, rotated across the clips so a
+    // 30/60s ad shows several angles. A single photo keeps the original behaviour.
+    const photos = [productImage, ...productImages].filter((p): p is string => !!p);
     // ── Brand context → marketing overlay + auto voiceover ──────────────────────────
     // The optional brand/price/hook/CTA fields drive (a) the EXISTING assemble marketing
     // overlay (price chip + CTA pill + brand lower-third, SVG→PNG burn) and (b) a short
@@ -2013,10 +2035,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // varied scene prompts) generated in parallel. `noMusic` lets the remix op return a
     // silent clip when we'll re-score it in assemble (avoids a wasted MusicGen call).
     const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
+      // Pick the shot for this clip — rotate through the uploaded photos by scene index.
+      const imageUrl = photos[(sceneIndex >= 0 ? sceneIndex : 0) % photos.length] ?? productImage;
       try {
         const r = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
+          body: JSON.stringify({ op: 'productad', imageUrl, preset: productPreset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
         return r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
@@ -2029,7 +2053,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({
             segments,
-            orientation: videoOrientation,
+            orientation: orientationForAssemble,
             scorePrompt,
             ...(marketing ? { marketing } : {}),
             ...(voiceoverScript.trim() ? { voiceoverScript: voiceoverScript.trim() } : {}),
@@ -2045,7 +2069,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // With brand context: silent clip → assemble (music + VO + overlays). Without:
         // the original fast path (remix lays a preset score, no extra round-trip).
         const res = await genClip(-1, enrich);
-        if (!res) return;
+        if (!res) { setProductError(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.'); return; }
         if (enrich) {
           setProductProgress(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
           const finalUrl = await assemble([{ url: res.url, durationSec: 6 }]);
@@ -2057,7 +2081,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
       setProductProgress(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
       const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
-      if (clips.length < 2) { if (clips[0]) { setProductResultUrl(clips[0]); } return; }
+      if (clips.length < 2) {
+        if (clips[0]) { setProductResultUrl(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); }
+        else setProductError(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
+        return;
+      }
       setProductProgress(enrich
         ? (locale === 'en' ? 'Stitching + voiceover + branding…' : locale === 'ru' ? 'Сборка + озвучка + брендинг…' : 'შეერთება + გახმოვანება + ბრენდინგი…')
         : (locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…'));
@@ -2065,13 +2093,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Assembled master carries the ElevenLabs music bed (+ VO/overlays) → audio present.
       if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(finalUrl, 'film'); }
       else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
-    } catch {
-      /* fail-open — the panel just stays on its previous state */
+    } catch (e) {
+      setProductError(e instanceof Error ? e.message : (locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.'));
     } finally {
       setProductBusy(false);
       setProductProgress(null);
     }
-  }, [productImage, productBusy, productPreset, productDuration, videoOrientation, locale, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
+  }, [productImage, productImages, productBusy, productPreset, productDuration, productAspect, locale, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -4563,6 +4591,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   )}
                   <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onProductPhoto(f); }} />
                 </label>
+                {/* Multi-shot — extra product photos. Each clip in a 30/60s ad anchors a
+                    different angle (rotated), so the ad shows the product from several sides. */}
+                {productImage && (
+                  <div>
+                    <span className="mb-1.5 block text-[11px] text-app-muted">
+                      📸 {locale === 'en' ? `Shots ${1 + productImages.length}/6 — more angles (30/60s)` : locale === 'ru' ? `Кадры ${1 + productImages.length}/6 — больше ракурсов` : `კადრები ${1 + productImages.length}/6 — მეტი რაკურსი (30/60წმ)`}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={productImage} alt="shot 1" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                      {productImages.map((src, i) => (
+                        <div key={i} className="relative h-12 w-12 overflow-hidden rounded-lg ring-1 ring-app-border/20">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={src} alt={`shot ${i + 2}`} className="h-full w-full object-cover" />
+                          <button type="button" aria-label="remove shot" onClick={() => setProductImages((p) => p.filter((_, j) => j !== i))}
+                            className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-md bg-black/70 text-[9px] text-white">✕</button>
+                        </div>
+                      ))}
+                      {productImages.length < 5 && (
+                        <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-app-border/30 bg-app-bg/40 text-app-muted transition hover:border-app-accent/40 hover:text-app-accent">
+                          <Plus size={16} />
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) addProductShot(f); e.target.value = ''; }} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* Output format — dedicated to the product ad (9:16 default). */}
+                <div>
+                  <span className="mb-1.5 block text-[11px] text-app-muted">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([['9:16', 'h-4 w-2.5'], ['1:1', 'h-3.5 w-3.5'], ['16:9', 'h-3 w-5']] as const).map(([id, box]) => (
+                      <button key={id} type="button" onClick={() => setProductAspect(id)}
+                        className={`flex flex-col items-center gap-1 rounded-xl border py-2 text-center transition ${productAspect === id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
+                        <span className="flex h-6 items-center justify-center"><span className={`rounded-sm border border-current ${box}`} /></span>
+                        <span className="text-[11px] font-medium">{id}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {/* Commercial presets */}
                 <div>
                   <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Commercial style' : locale === 'ru' ? 'Стиль рекламы' : 'რეკლამის სტილი'}</span>
@@ -4626,9 +4694,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
                 {/* Generate */}
                 <button type="button" disabled={!productImage || productBusy} onClick={generateProductAd}
-                  className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage || productBusy ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  {productBusy ? (productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')) : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
+                  className={`flex w-full items-center justify-center gap-2 rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage || productBusy ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
+                  {productBusy
+                    ? <><Loader2 size={15} className="animate-spin" /> {productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')}</>
+                    : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
                 </button>
+                {/* Animated progress bar while generating (indeterminate). */}
+                {productBusy && (
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated">
+                    <div className="h-full w-2/3 animate-pulse rounded-full bg-app-accent" />
+                  </div>
+                )}
+                {/* Error state + retry (generation no longer fails silently). */}
+                {productError && !productBusy && (
+                  <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 p-3">
+                    <span className="mt-0.5 shrink-0 text-[13px]">⚠️</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-medium text-red-500 dark:text-red-400">{locale === 'en' ? 'Generation failed' : locale === 'ru' ? 'Ошибка генерации' : 'გენერაცია ვერ მოხდა'}</p>
+                      <p className="mt-0.5 break-words text-[11px] text-red-500/80 dark:text-red-400/80">{productError}</p>
+                      <button type="button" onClick={generateProductAd} className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-app-accent transition hover:opacity-80">
+                        <RotateCcw size={11} /> {locale === 'en' ? 'Retry' : locale === 'ru' ? 'Повторить' : 'ხელახლა'}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {productResultUrl && (
                   <div className="space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
                     <video
