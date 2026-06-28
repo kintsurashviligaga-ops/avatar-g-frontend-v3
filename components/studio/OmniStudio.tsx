@@ -26,6 +26,7 @@ import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, ty
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import GenerationHistory from './GenerationHistory';
+import { MotionControlPanel } from './MotionControlPanel';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { track } from '@/lib/analytics/track';
@@ -1400,6 +1401,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // P8 — selected built-in avatar preset (a /public path used as the talking face).
   // Mutually exclusive with an uploaded face: picking one clears the other.
   const [lipPreset, setLipPreset] = useState<string | null>(null);
+  // Lip-sync mode sub-tab: 'avatar' (talking photo) vs 'motion' (Kling Motion Control).
+  const [lipTab, setLipTab] = useState<'avatar' | 'motion'>('avatar');
   // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
   const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide'>('crossfade');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
@@ -4013,6 +4016,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
         {mode === 'lipsync' && (
           <div className="mb-2 space-y-2">
+            <div className="grid grid-cols-2 gap-1.5">
+              <button type="button" onClick={() => setLipTab('avatar')}
+                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'avatar' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                👄 {t.modeLipsync}
+              </button>
+              <button type="button" onClick={() => setLipTab('motion')}
+                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'motion' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                🎭 Motion
+              </button>
+            </div>
+            {lipTab === 'motion' ? (
+              <MotionControlPanel locale={locale} onVideoGenerated={(url) => setMessages((prev) => [...prev, { role: 'assistant', text: '', videoUrl: url, orientation: 'vertical' }])} />
+            ) : (<>
             {(() => {
               const face = attachments.find((a) => isImage(a.mimeType) || isVideo(a.mimeType));
               const presetSrc = !face ? lipPreset : null; // a chosen preset stands in as the face
@@ -4105,6 +4121,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               </div>
             )}
+            </>)}
           </div>
         )}
 
