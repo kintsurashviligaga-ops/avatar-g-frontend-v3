@@ -29,6 +29,7 @@ import GenerationHistory from './GenerationHistory';
 import { MotionControlPanel } from './MotionControlPanel';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
+import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
@@ -1444,6 +1445,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // photo, varied scene prompts) stitched + scored via the assemble pipeline.
   const [productDuration, setProductDuration] = useState<6 | 30 | 60>(6);
   const [productProgress, setProductProgress] = useState<string | null>(null);
+  // Product-Ad context — brand/price/hook + CTA + Georgian voiceover. Optional; when set
+  // they feed the EXISTING assemble marketing overlay (price chip + CTA pill + brand
+  // lower-third) and an auto voiceover script (TTS'd server-side on the cloned KA voice).
+  const [productBrand, setProductBrand] = useState('');
+  const [productPrice, setProductPrice] = useState('');
+  const [productHook, setProductHook] = useState('');
+  const [productCta, setProductCta] = useState<ProductCtaOption>('shop_now');
+  const [productCtaCustom, setProductCtaCustom] = useState('');
+  const [productVoiceover, setProductVoiceover] = useState(true);
   // FIX 3 — product-ad result meta for the result card: real clip duration (read from
   // the <video>) + whether a music bed was laid (single-clip ads now carry a score).
   const [productResultDur, setProductResultDur] = useState<number | null>(null);
@@ -1981,42 +1991,79 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setProductResultDur(null);
     setProductHasAudio(false);
     const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
-    // One i2v clip per ~5s. 6s → single clip (now scored with a preset music bed by the
-    // route); 30/60s → N clips (same product photo, varied scene prompts) generated in
-    // parallel, then stitched + scored by the assemble pipeline (ElevenLabs music bed).
-    const genClip = async (sceneIndex: number): Promise<{ url: string; music: boolean } | null> => {
+    // ── Brand context → marketing overlay + auto voiceover ──────────────────────────
+    // The optional brand/price/hook/CTA fields drive (a) the EXISTING assemble marketing
+    // overlay (price chip + CTA pill + brand lower-third, SVG→PNG burn) and (b) a short
+    // Georgian voiceover script TTS'd server-side on the cloned KA voice. Both are
+    // applied by /api/video/assemble — so when ANY of them is set we route the clip(s)
+    // through assemble (the single-clip path now dubs + overlays too). With none set the
+    // fast remix-only 6s path is preserved exactly.
+    const ctaText = productCtaText(productCta, productCtaCustom, locale);
+    const lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
+    const overlayText = (productBrand.trim() || productHook.trim()) || undefined;
+    const marketing = (productBrand.trim() || productHook.trim() || productPrice.trim() || ctaText)
+      ? { overlayText, priceTag: productPrice.trim() || undefined, cta: ctaText || undefined, lang }
+      : null;
+    const voiceoverScript = productVoiceover
+      ? generateVoiceoverScript({ brandName: productBrand, productPrice, productHook, ctaText, locale })
+      : '';
+    const enrich = Boolean(marketing || voiceoverScript.trim());
+    const scorePrompt = `${productPreset} product commercial, premium, uplifting`;
+    // One i2v clip per ~5s. 6s → single clip; 30/60s → N clips (same product photo,
+    // varied scene prompts) generated in parallel. `noMusic` lets the remix op return a
+    // silent clip when we'll re-score it in assemble (avoids a wasted MusicGen call).
+    const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
       try {
         const r = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
+          body: JSON.stringify({ op: 'productad', imageUrl: productImage, preset: productPreset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
         return r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
       } catch { return null; }
     };
+    // Send finished clip(s) to /api/video/assemble for music + voiceover + overlays.
+    const assemble = async (segments: { url: string; durationSec: number }[]): Promise<string | null> => {
+      try {
+        const ar = await fetch('/api/video/assemble', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({
+            segments,
+            orientation: videoOrientation,
+            scorePrompt,
+            ...(marketing ? { marketing } : {}),
+            ...(voiceoverScript.trim() ? { voiceoverScript: voiceoverScript.trim() } : {}),
+            globalRender: { transition: 'dissolve' },
+          }),
+        });
+        const aj = (await ar.json().catch(() => null)) as { url?: string } | null;
+        return ar.ok && aj?.url ? aj.url : null;
+      } catch { return null; }
+    };
     try {
       if (productDuration <= 6) {
-        const res = await genClip(-1);
-        if (res) { setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film'); }
+        // With brand context: silent clip → assemble (music + VO + overlays). Without:
+        // the original fast path (remix lays a preset score, no extra round-trip).
+        const res = await genClip(-1, enrich);
+        if (!res) return;
+        if (enrich) {
+          setProductProgress(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
+          const finalUrl = await assemble([{ url: res.url, durationSec: 6 }]);
+          if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(finalUrl, 'film'); return; }
+        }
+        setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film');
         return;
       }
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
       setProductProgress(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
       const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
       if (clips.length < 2) { if (clips[0]) { setProductResultUrl(clips[0]); } return; }
-      setProductProgress(locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…');
-      const ar = await fetch('/api/video/assemble', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({
-          segments: clips.map((url) => ({ url, durationSec: 5 })),
-          orientation: videoOrientation,
-          scorePrompt: `${productPreset} product commercial, premium, uplifting`,
-          globalRender: { transition: 'dissolve' },
-        }),
-      });
-      const aj = (await ar.json().catch(() => null)) as { url?: string } | null;
-      // Assembled master carries the ElevenLabs music bed → audio present.
-      if (ar.ok && aj?.url) { setProductResultUrl(aj.url); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(aj.url, 'film'); }
+      setProductProgress(enrich
+        ? (locale === 'en' ? 'Stitching + voiceover + branding…' : locale === 'ru' ? 'Сборка + озвучка + брендинг…' : 'შეერთება + გახმოვანება + ბრენდინგი…')
+        : (locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…'));
+      const finalUrl = await assemble(clips.map((url) => ({ url, durationSec: 5 })));
+      // Assembled master carries the ElevenLabs music bed (+ VO/overlays) → audio present.
+      if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(finalUrl, 'film'); }
       else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
     } catch {
       /* fail-open — the panel just stays on its previous state */
@@ -2024,7 +2071,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setProductBusy(false);
       setProductProgress(null);
     }
-  }, [productImage, productBusy, productPreset, productDuration, videoOrientation, locale, notifyCredit]);
+  }, [productImage, productBusy, productPreset, productDuration, videoOrientation, locale, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -4525,6 +4572,48 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <Chip active={productPreset === 'luxury'} onClick={() => setProductPreset('luxury')}>✨ {locale === 'en' ? 'Luxury' : locale === 'ru' ? 'Люкс' : 'ლუქსი'}</Chip>
                     <Chip active={productPreset === 'nature'} onClick={() => setProductPreset('nature')}>🍃 {locale === 'en' ? 'Nature' : locale === 'ru' ? 'Природа' : 'ბუნება'}</Chip>
                   </div>
+                </div>
+                {/* Brand context → price/CTA overlay (burned) + auto Georgian voiceover.
+                    All optional: leave blank for a clean cinematic clip; fill any field
+                    and the ad gets a price chip, a CTA pill, a brand lower-third and a
+                    short spoken voiceover (cloned KA voice), applied by /api/video/assemble. */}
+                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-bg/30 p-2.5">
+                  <span className="block text-[11px] font-semibold text-app-text">
+                    🏷️ {locale === 'en' ? 'Brand & voiceover (optional)' : locale === 'ru' ? 'Бренд и озвучка (опц.)' : 'ბრენდი და გახმოვანება (არასავალდ.)'}
+                  </span>
+                  <input type="text" value={productBrand} onChange={(e) => setProductBrand(e.target.value)} maxLength={40}
+                    placeholder={locale === 'en' ? 'Brand name' : locale === 'ru' ? 'Название бренда' : 'ბრენდის სახელი'}
+                    className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
+                  <input type="text" value={productHook} onChange={(e) => setProductHook(e.target.value)} maxLength={70}
+                    placeholder={locale === 'en' ? 'Tagline / hook' : locale === 'ru' ? 'Слоган' : 'სლოგანი / მესიჯი'}
+                    className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
+                  <input type="text" value={productPrice} onChange={(e) => setProductPrice(e.target.value)} maxLength={20}
+                    placeholder={locale === 'en' ? 'Price e.g. 99₾' : locale === 'ru' ? 'Цена напр. 99₾' : 'ფასი მაგ. 99₾'}
+                    className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
+                  {/* CTA — preset pills + a custom override */}
+                  <span className="block pt-0.5 text-[10.5px] text-app-muted">{locale === 'en' ? 'Call to action' : locale === 'ru' ? 'Призыв к действию' : 'მოწოდება'}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['shop_now', 'order_now', 'book_now', 'learn_more', 'try_free', 'custom'] as ProductCtaOption[]).map((opt) => (
+                      <Chip key={opt} active={productCta === opt} onClick={() => setProductCta(opt)}>
+                        {opt === 'custom' ? (locale === 'en' ? '✏️ Custom' : locale === 'ru' ? '✏️ Свой' : '✏️ სხვა') : productCtaText(opt, '', locale)}
+                      </Chip>
+                    ))}
+                  </div>
+                  {productCta === 'custom' && (
+                    <input type="text" value={productCtaCustom} onChange={(e) => setProductCtaCustom(e.target.value)} maxLength={24}
+                      placeholder={locale === 'en' ? 'Custom button text' : locale === 'ru' ? 'Текст кнопки' : 'ღილაკის ტექსტი'}
+                      className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
+                  )}
+                  {/* Georgian voiceover toggle */}
+                  <button type="button" onClick={() => setProductVoiceover((v) => !v)}
+                    className="flex w-full items-center justify-between rounded-lg border border-app-border/12 bg-app-bg/40 px-2.5 py-2 text-left transition active:scale-[0.99]">
+                    <span className="flex items-center gap-1.5 text-[12px] font-medium text-app-text">
+                      🎙️ {locale === 'en' ? 'Auto voiceover' : locale === 'ru' ? 'Авто-озвучка' : 'ავტო-გახმოვანება'}
+                    </span>
+                    <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${productVoiceover ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${productVoiceover ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </span>
+                  </button>
                 </div>
                 {/* PHASE 4 — duration: 6s single clip · 30/60s multi-clip stitch */}
                 <div>

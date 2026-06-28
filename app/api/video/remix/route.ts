@@ -158,8 +158,11 @@ export async function POST(req: NextRequest) {
       // FIX 3 — SINGLE-clip ads (sceneIdx < 0) come back silent; lay a preset score
       // under them so the 6s ad isn't mute. Multi-clip (sceneIdx >= 0) skips this — the
       // assemble pipeline scores the stitched master, so per-clip music would clash.
+      // `noMusic` ALSO skips it: the caller (Product-Ad with a voiceover/overlay) sends
+      // this clip straight to /api/video/assemble, which scores + dubs + overlays in one
+      // pass — baking music here would only be replaced and waste a MusicGen call.
       // Fail-open: any music miss returns the (silent) clip — still a working ad.
-      if (sceneIdx < 0) {
+      if (sceneIdx < 0 && body.noMusic !== true) {
         const music = await presetAdMusicUrl(presetKey, 8);
         if (music) {
           const scored = await muxAudioOntoVideo(url, music, 'replace', 12);

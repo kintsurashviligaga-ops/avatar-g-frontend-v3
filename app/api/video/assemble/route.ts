@@ -35,6 +35,7 @@ import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
+import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
 import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
@@ -114,6 +115,10 @@ interface SegmentInput {
 interface AssembleBody {
   segments?: SegmentInput[];
   voiceoverUrl?: string | null;
+  /** Product-Ad / commercial — a voiceover SCRIPT to speak (cloned KA voice) when no
+   *  ready voiceoverUrl is supplied. TTS'd server-side via textToHostedSpeech; the
+   *  master then ducks the music under it exactly like an uploaded voiceover. Fail-open. */
+  voiceoverScript?: string | null;
   musicUrl?: string | null;
   /** Music OFF → skip score generation entirely (voice-only film). */
   noMusic?: boolean;
@@ -385,8 +390,33 @@ async function assembleImpl(req: NextRequest) {
       const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'replace').catch(() => null);
       if (muxed) master = muxed;
     }
+    // PRODUCT-AD (6s) — a spoken voiceover (a ready URL, or a SCRIPT we TTS on the
+    // cloned KA voice) is mixed ON TOP of the music bed (music ducked ~12 dB). When
+    // there's no music yet, the VO is muxed straight on. Additive: with no voiceover
+    // the master is exactly the music-muxed clip as before.
+    const voUrl = body.voiceoverUrl
+      ? await reSignIfInternal(body.voiceoverUrl)
+      : (typeof body.voiceoverScript === 'string' && body.voiceoverScript.trim()
+          ? await textToHostedSpeech(body.voiceoverScript.trim().slice(0, 800)).catch(() => null)
+          : null);
+    if (voUrl) {
+      const dubbed = await muxAudioOntoVideo(master, voUrl, master === clipUrl ? 'replace' : 'mix', 12).catch(() => null);
+      if (dubbed) master = dubbed;
+    }
+    // PRODUCT-AD overlays — price chip + CTA pill + brand lower-third burned onto the
+    // master (the same SVG→PNG overlay the multi-clip B2B path uses below). Bounded +
+    // fail-open: a miss keeps the clean master. Only fires when the caller passed copy.
+    if (body.marketing && hasOverlayContent(body.marketing)) {
+      try {
+        const overlaid = await Promise.race([
+          overlayMasterUrl(master, body.marketing),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000)),
+        ]);
+        if (overlaid) master = overlaid;
+      } catch { /* keep the clean master */ }
+    }
     // eslint-disable-next-line no-console
-    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', muxed: master !== clipUrl }));
+    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), muxed: master !== clipUrl }));
     if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
     return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: false, single: true });
   }
@@ -418,9 +448,18 @@ async function assembleImpl(req: NextRequest) {
     musicVideoMode,
   }));
 
+  // Product-Ad voiceover: if no ready voiceoverUrl but a SCRIPT was supplied, speak it
+  // on the cloned KA voice (textToHostedSpeech). Fail-open → null (master stays
+  // music-only). The assembler then ducks the music under it like any voiceover.
+  const resolvedVoiceoverUrl = body.voiceoverUrl
+    ? await reSignIfInternal(body.voiceoverUrl)
+    : (typeof body.voiceoverScript === 'string' && body.voiceoverScript.trim()
+        ? await textToHostedSpeech(body.voiceoverScript.trim().slice(0, 800)).catch(() => null)
+        : null);
+
   const manifest: RunPodManifest = {
     segments: signedSegments,
-    voiceoverUrl: body.voiceoverUrl ? await reSignIfInternal(body.voiceoverUrl) : null,
+    voiceoverUrl: resolvedVoiceoverUrl,
     musicUrl: resolvedMusicUrl,
     sfxUrl: body.sfxUrl ? await reSignIfInternal(body.sfxUrl) : null,
     globalRender: {
