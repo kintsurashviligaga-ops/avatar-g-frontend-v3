@@ -1291,6 +1291,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // photo); when false it APPENDS (film character-ref = up to 3 slots).
   const charReplaceRef = useRef(false);
   const audioFileRef = useRef<HTMLInputElement | null>(null);
+  const scriptFileRef = useRef<HTMLInputElement | null>(null);
   // Camera capture (mobile): shoot a photo in-app → it seeds the attachment tray (and,
   // in Video mode, becomes the start image that anchors the storyboard).
   const cameraRef = useRef<HTMLInputElement | null>(null);
@@ -1504,6 +1505,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // decoded client-side, so the music-video panel can show length + a waveform preview.
   const [videoSoundtrack, setVideoSoundtrack] = useState<{ name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null>(null);
   const [videoSoundtrackBusy, setVideoSoundtrackBusy] = useState(false);
+  // Dedicated SCRIPT for the video service — uploaded INTO the panel (not the chat
+  // composer), so the Director/Storyboard agents always read it regardless of chat mode.
+  // .txt/.md are decoded in-browser; .pdf/.docx go through /api/utils/extract-text.
+  const [videoScriptDoc, setVideoScriptDoc] = useState<{ name: string; text: string } | null>(null);
+  const [videoScriptBusy, setVideoScriptBusy] = useState(false);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
@@ -2872,7 +2878,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // typed text and dropped non-image attachments. Now it also runs on a script/image-
     // only request, READS the attached script (.md/.txt) into the brief, and passes the
     // images through as anchors (≥2 → ordered per-scene anchors, handled server-side).
-    let videoScript = mode === 'video' ? extractScriptText(attachments) : '';
+    // The dedicated video-panel script slot wins; fall back to a chat-composer text attachment.
+    let videoScript = mode === 'video' ? (videoScriptDoc?.text?.trim() || extractScriptText(attachments)) : '';
     // extractScriptText only decodes PLAIN text (.txt/.md). For a BINARY script — PDF or
     // DOCX — decode it server-side so the Director still reads it. Fail-open: any miss
     // leaves videoScript empty and the film proceeds from the typed brief as before.
@@ -3092,7 +3099,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -4418,6 +4425,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <p className="px-0.5 text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.'}</p>
             </div>
 
+            {/* 2-script · SCRIPT ingest slot — the Director follows this verbatim. Lives in the
+                video panel (not the chat composer) so the script ALWAYS reaches the storyboard,
+                independent of chat mode. .txt/.md/.pdf/.docx. */}
+            <div className="grid grid-cols-1 gap-2">
+              <div role="button" tabIndex={0} onClick={() => { if (!videoScriptBusy) scriptFileRef.current?.click(); }}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoScriptBusy) { e.preventDefault(); scriptFileRef.current?.click(); } }}
+                className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoScriptDoc ? 'border-app-accent/50 bg-app-accent/8' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
+                {videoScriptBusy ? (
+                  <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reading script…' : locale === 'ru' ? 'Читаю сценарий…' : 'სცენარს ვკითხულობ…'}</span></>
+                ) : videoScriptDoc ? (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Script loaded' : locale === 'ru' ? 'Сценарий загружен' : 'სცენარი ჩაიტვირთა'}</span>
+                    <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoScriptDoc.name} · {videoScriptDoc.text.length.toLocaleString()} {locale === 'en' ? 'chars' : locale === 'ru' ? 'симв.' : 'სიმბ.'}</span>
+                    <button type="button" aria-label="remove script" onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
+                    <span className="text-[12px] font-semibold text-app-text">{locale === 'en' ? 'Script / scenario' : locale === 'ru' ? 'Сценарий' : 'სცენარი'}</span>
+                    <span className="text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'upload .txt / .pdf / .docx — the film follows it' : locale === 'ru' ? 'загрузите .txt / .pdf / .docx — фильм по нему' : 'ატვირთე .txt / .pdf / .docx — ფილმი მის მიხედვით'}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* 2a · Audio Track ingest slot (full width) */}
             <div className="grid grid-cols-1 gap-2">
               <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
@@ -5254,6 +5288,39 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               return prev.length >= sceneFrameCount ? prev : [...prev, url]; // film: one frame per scene
             });
           } catch { /* ignore unreadable file */ }
+        }} />
+        {/* Dedicated SCRIPT ingest for the video service — the Director reads this verbatim. */}
+        <input ref={scriptFileRef} type="file" accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          if (f.size > 15 * 1024 * 1024) {
+            setShareToast(locale === 'en' ? 'Script is too large (max 15MB)' : locale === 'ru' ? 'Файл слишком большой (макс 15МБ)' : 'ფაილი ძალიან დიდია (მაქს 15MB)');
+            setTimeout(() => setShareToast((s) => (/15|MB/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
+          setVideoScriptBusy(true);
+          try {
+            const name = f.name;
+            const isText = /\.(txt|md|markdown)$/i.test(name) || /^text\//.test(f.type);
+            let text = '';
+            if (isText) {
+              text = (await f.text()).trim();
+            } else {
+              // PDF / DOCX → server-side extraction (fail-open to empty).
+              const dataUrl = await fileToDataUrl(f);
+              const r = await fetch('/api/utils/extract-text', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, mimeType: f.type }) });
+              const j = (await r.json().catch(() => ({}))) as { text?: string };
+              text = (j.text || '').trim();
+            }
+            if (text) {
+              setVideoScriptDoc({ name, text });
+            } else {
+              setShareToast(locale === 'en' ? "Couldn't read that file — try .txt or .pdf" : locale === 'ru' ? 'Не удалось прочитать файл — попробуйте .txt или .pdf' : 'ფაილი ვერ წავიკითხე — სცადე .txt ან .pdf');
+              setTimeout(() => setShareToast((s) => (/read|прочитать|წავიკითხე/i.test(s ?? '') ? null : s)), 2800);
+            }
+          } catch { /* ignore unreadable file */ }
+          finally { setVideoScriptBusy(false); }
         }} />
         {/* v330 — dedicated Audio Track ingest (single beat/song → uploadBigFile → master bed). */}
         <input ref={audioFileRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,.mp3,.wav,.m4a" className="hidden" onChange={async (e) => {
