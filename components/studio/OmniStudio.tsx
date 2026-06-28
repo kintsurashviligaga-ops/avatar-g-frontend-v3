@@ -849,24 +849,6 @@ function deleteConversation(id: string): void {
   saveConversations(loadConversations().filter((c) => c.id !== id));
 }
 
-// Deterministic split of an uploaded script into `n` per-scene chunks — the no-LLM
-// fallback that keeps storyboard frames script-faithful when the decomposer is down.
-// Prefers paragraph/scene boundaries; falls back to sentence buckets; caps each chunk.
-function splitScriptIntoScenes(script: string, n: number): string[] {
-  const body = (script || '').trim();
-  if (!body || n <= 0) return [];
-  let parts = body.split(/\n\s*\n+/).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (parts.length < n) parts = body.replace(/\s+/g, ' ').split(/(?<=[.!?…])\s+/).map((s) => s.trim()).filter(Boolean);
-  if (!parts.length) return [];
-  const per = Math.max(1, Math.ceil(parts.length / n));
-  const out: string[] = [];
-  for (let i = 0; i < n; i++) {
-    const chunk = parts.slice(i * per, (i + 1) * per).join(' ').trim().slice(0, 600);
-    out.push(chunk || parts[Math.min(parts.length - 1, i)]!.slice(0, 600));
-  }
-  return out;
-}
-
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
 interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean; /** True when this scene's frame is a USER-uploaded anchor (vs AI-generated). */ anchored?: boolean; /** Per-scene base image (data URL) the user supplied to override this scene's identity reference. */ baseImage?: string }
 interface StoryboardState {
@@ -2304,55 +2286,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
       setStoryboardBusy(false);
 
-      // STEP 2.5 — LLM story enrichment: decompose the brief/SCRIPT into per-scene shots.
-      // CRUCIAL: when the user uploaded a SCRIPT, run this SYNCHRONOUSLY (before the frames
-      // stream) and feed the per-scene shots into the FRAME prompts — otherwise the preview
-      // frames are generic camera beats (planFilmScenes' fixed BEATS) that ignore the script
-      // entirely (the reported "storyboard generates unrelated scenes" bug). Without a
-      // script, keep it in the BACKGROUND: frames stay fast deterministic stills and only
-      // the render is enriched. Detected from the marker handleSend embeds in filmPrompt.
-      const hasScript = /SCRIPT \(follow this EXACTLY/i.test(filmPrompt);
-      const enrichStory = async () => {
-        let scripts: string[] | null = null;
-        let character: string | null = null;
-        try {
-          const sr = await fetch('/api/film/storyboard', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
-          });
-          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
-          if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
-          if (typeof sj.character === 'string' && sj.character.trim()) character = sj.character.trim();
-        } catch { /* best-effort; fall through to the deterministic split below */ }
-        // DETERMINISTIC FALLBACK — a SCRIPT was uploaded but the LLM decomposer was
-        // unavailable (dead key / timeout). Split the raw script into sceneCount chunks so
-        // the storyboard frames STILL reflect the script instead of generic camera beats.
-        if (hasScript && (!scripts || !scripts.length)) {
-          const body = (filmPrompt.match(/SCRIPT \(follow this EXACTLY[^\n]*\n([\s\S]*)$/i)?.[1] || '').trim();
-          const split = splitScriptIntoScenes(body, sceneCount);
-          if (split.length) scripts = split;
-        }
-        if (!scripts || !scripts.length) return;
-        const finalScripts = scripts;
-        if (hasScript) {
-          // The per-scene shots BECOME the frame prompts (so each storyboard image depicts
-          // the script's story), unless the user typed a per-scene action (which wins).
-          finalScripts.forEach((sc, i) => { const ord = i + 1; if (!userAction(ord) && sc && sc.trim()) framePrompts[ord] = sc.trim(); });
-        }
-        setStoryboard((prev) => (prev ? {
-          ...prev,
-          sceneScripts: finalScripts,
-          ...(character ? { character } : {}),
-          // Show the script's scene descriptions in the cards too (skip user-edited scenes).
-          ...(hasScript ? { scenes: prev.scenes.map((s, i) => (userAction(s.ordinal) || !finalScripts[i]?.trim() ? s : { ...s, prompt: finalScripts[i].trim() })) } : {}),
-        } : prev));
-      };
-      // SCRIPT → await (bounded) so the frames below use the script-derived prompts; the
-      // board already opened with skeletons, so this only delays frame FILL. The race caps
-      // the wait (haiku is ~3-5s; the Atlas fallback can be slower) — on timeout the frames
-      // stream with the generic prompts (no worse than before) while enrichment still lands
-      // for the render. Without a script, enrichment stays fully in the background.
-      if (hasScript) { await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, 15000))]); } else { void enrichStory(); }
+      // STEP 2.5 — story enrichment for the RENDER (per-scene LLM shots + locked character).
+      // When a SCRIPT was uploaded, the SERVER already decomposed it in the planOnly call
+      // (j.sceneScripts present AND the returned frame prompts already depict the script —
+      // see the planOnly branch in /api/film/storyboard), so there is nothing more to fetch
+      // and the preview frames below are already script-faithful. Otherwise (typed brief)
+      // enrich in the BACKGROUND so the render tells a richer story while the fast
+      // deterministic preview frames stand.
+      const serverDecomposed = Array.isArray(j.sceneScripts) && j.sceneScripts.length > 0;
+      if (!serverDecomposed) {
+        void (async () => {
+          try {
+            const sr = await fetch('/api/film/storyboard', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+            });
+            const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
+            if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {
+              const scripts = sj.sceneScripts;
+              const character = typeof sj.character === 'string' && sj.character.trim() ? sj.character.trim() : null;
+              setStoryboard((prev) => (prev ? { ...prev, sceneScripts: scripts, ...(character ? { character } : {}) } : prev));
+            }
+          } catch { /* best-effort; render falls back to deterministic beats */ }
+        })();
+      }
 
       // STEP 2.6 — CHARACTER LOCK. Derive ONE protagonist anchor portrait from the
       // brief, then condition EVERY scene frame on it so the character stays identical
