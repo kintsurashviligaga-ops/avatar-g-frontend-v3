@@ -243,7 +243,10 @@ export async function POST(req: NextRequest) {
 
   // Host any uploaded reference photos so the storyboard frames can lock the
   // protagonist's identity (and so the SAME selfie anchors the final render).
-  const refList = normalizeReferenceImages(body.referenceImages);
+  // NOTE: these double as PER-SCENE anchors (scene i → image i), so the cap must be
+  // sceneCount, NOT the legacy 3-photo identity limit — otherwise a 4th+ uploaded scene
+  // frame was silently dropped and that scene got an AI-generated frame instead.
+  const refList = normalizeReferenceImages(body.referenceImages, sceneCount);
   const hostedRefs = refList.length ? await Promise.all(refList.map((r, i) => hostRef(r, i))) : [];
   const selfie = hostedRefs.find((r) => /^https?:\/\//i.test(r)) ?? null;
 

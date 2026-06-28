@@ -2847,7 +2847,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // typed text and dropped non-image attachments. Now it also runs on a script/image-
     // only request, READS the attached script (.md/.txt) into the brief, and passes the
     // images through as anchors (≥2 → ordered per-scene anchors, handled server-side).
-    const videoScript = mode === 'video' ? extractScriptText(attachments) : '';
+    let videoScript = mode === 'video' ? extractScriptText(attachments) : '';
+    // extractScriptText only decodes PLAIN text (.txt/.md). For a BINARY script — PDF or
+    // DOCX — decode it server-side so the Director still reads it. Fail-open: any miss
+    // leaves videoScript empty and the film proceeds from the typed brief as before.
+    if (mode === 'video' && !videoScript) {
+      const binScript = attachments.find((a) => /pdf|wordprocessingml|officedocument|msword/.test(a.mimeType));
+      if (binScript) {
+        try {
+          const xr = await fetch('/api/utils/extract-text', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl: binScript.dataUrl, mimeType: binScript.mimeType }),
+          });
+          const xj = (await xr.json().catch(() => ({}))) as { text?: string };
+          if (typeof xj.text === 'string' && xj.text.trim()) videoScript = xj.text.trim();
+        } catch { /* fail-open — no script */ }
+      }
+    }
     const videoHasImages = mode === 'video' && (videoCharacterRefs.length > 0 || attachments.some((a) => isImage(a.mimeType)));
     if (mode === 'video' && (text || videoScript || videoHasImages)) {
       // v330 — the dedicated Character Reference slot leads the identity-lock refs,
