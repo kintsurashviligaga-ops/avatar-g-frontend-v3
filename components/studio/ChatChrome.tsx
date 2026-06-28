@@ -289,9 +289,13 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   }, [refreshConversations]);
   const handleNewChat = useCallback(() => {
     window.dispatchEvent(new Event('myavatar:new-chat'));
-    onNewChat?.();
+    // On the studio surface onNewChat resets the chat in place. On OTHER surfaces that
+    // render ChatChrome WITHOUT it (e.g. /library), "New chat" must actually NAVIGATE
+    // back to the chat — otherwise the button does nothing and the user is stuck.
+    if (onNewChat) onNewChat();
+    else router.push(`/${locale}/dashboard`);
     setSidebarOpen(false);
-  }, [onNewChat]);
+  }, [onNewChat, router, locale]);
   const handleSelectConversation = useCallback((id: string) => {
     window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
     setSidebarOpen(false);
@@ -537,7 +541,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
               {/* SECTION 3 — NOTIFICATIONS */}
               <p className={sectionHdr}>{locale === 'en' ? 'Notifications' : locale === 'ru' ? 'Уведомления' : 'შეტყობინებები'}</p>
               <div className="flex items-center justify-between gap-3 px-2 py-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[14px] text-app-text">{locale === 'en' ? 'Updates' : locale === 'ru' ? 'Новости' : 'სიახლეები'}</p>
                   <p className="text-[12px] text-app-muted">{locale === 'en' ? 'Receive news about new features' : locale === 'ru' ? 'Новости о новых функциях' : 'მიიღე სიახლეები ახალ ფუნქციებზე'}</p>
                 </div>

@@ -8,10 +8,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 interface Item { id: string; type: string; message: string; read: boolean; created_at: string }
+
+// Where a notification leads when tapped: a finished render → Library; a billing
+// notice → the dashboard (credits modal lives there). Default → Library.
+function notifHref(type: string, locale: string): string {
+  if (type === 'credits_low' || type === 'payment') return `/${locale}/dashboard`;
+  return `/${locale}/library`;
+}
 
 const ICON: Record<string, string> = { video: '🎬', music: '🎵', image: '🖼', credits_low: '⚠️', payment: '✅' };
 
@@ -37,6 +45,7 @@ export default function NotificationBell({ locale }: { locale: string }) {
   const empty = lang === 'en' ? 'No notifications' : lang === 'ru' ? 'Нет уведомлений' : 'შეტყობინებები არ არის';
   const title = lang === 'en' ? 'Notifications' : lang === 'ru' ? 'Уведомления' : 'შეტყობინებები';
 
+  const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -118,12 +127,16 @@ export default function NotificationBell({ locale }: { locale: string }) {
           ) : (
             <ul className="max-h-[60vh] overflow-y-auto">
               {items.map((it) => (
-                <li key={it.id} className="flex items-start gap-2.5 border-b border-app-border/8 px-4 py-2.5 last:border-0">
-                  <span className="mt-0.5 text-[15px]">{ICON[it.type] ?? '🔔'}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[12.5px] leading-snug text-app-text">{it.message}</span>
-                    <span className="mt-0.5 block text-[10.5px] text-app-muted">{rel(it.created_at, lang)}</span>
-                  </span>
+                <li key={it.id} className="border-b border-app-border/8 last:border-0">
+                  <button type="button"
+                    onClick={() => { setOpen(false); router.push(notifHref(it.type, locale)); }}
+                    className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-app-elevated active:scale-[0.99]">
+                    <span className="mt-0.5 text-[15px]">{ICON[it.type] ?? '🔔'}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12.5px] leading-snug text-app-text">{it.message}</span>
+                      <span className="mt-0.5 block text-[10.5px] text-app-muted">{rel(it.created_at, lang)}</span>
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>

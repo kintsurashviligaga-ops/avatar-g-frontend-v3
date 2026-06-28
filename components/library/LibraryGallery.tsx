@@ -16,6 +16,32 @@ import { Film, ImageIcon, Music2, Star, Download, Trash2, Play, Loader2, Chevron
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
 
+// Save a media item. On mobile, the Web Share API hands the FILE to the OS share
+// sheet → "Save to Photos/Gallery" (a plain <a download> only ever lands in Files).
+// Desktop / unsupported → blob download. Any miss → open the URL. Fail-open throughout.
+async function saveMedia(url: string): Promise<void> {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const t = blob.type || '';
+    const ext = /mp4|video/.test(t) ? 'mp4' : /audio|mpeg|mp3/.test(t) ? 'mp3' : /png/.test(t) ? 'png' : 'jpg';
+    const name = `myavatar-${Date.now()}.${ext}`;
+    const file = new File([blob], name, { type: t || 'application/octet-stream' });
+    const nav = navigator as Navigator & { canShare?: (d?: { files?: File[] }) => boolean };
+    if (typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
+      await nav.share({ files: [file], title: name });
+      return;
+    }
+    const burl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = burl; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(burl);
+  } catch {
+    try { window.open(url, '_blank', 'noopener'); } catch { /* give up */ }
+  }
+}
+
 interface LibraryItem {
   id: string;
   kind: string; // film | avatar | image | interior | music | voice
@@ -216,10 +242,10 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                   <div className="flex items-center justify-between gap-1 p-2">
                     <span className="truncate text-[10.5px] text-app-muted">{fmtDate(it.createdAt, lang)}</span>
                     <div className="flex shrink-0 items-center gap-0.5">
-                      <a href={it.url} download target="_blank" rel="noopener noreferrer" aria-label={t.download} title={t.download}
+                      <button type="button" onClick={() => void saveMedia(it.url)} aria-label={t.download} title={t.download}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-app-bg hover:text-app-text">
                         <Download size={15} />
-                      </a>
+                      </button>
                       <button type="button" onClick={() => del(it.id)} disabled={busyId === it.id} aria-label={t.del} title={t.del}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
                         {busyId === it.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
