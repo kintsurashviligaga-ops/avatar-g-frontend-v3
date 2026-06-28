@@ -78,6 +78,9 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
   const [musicMood, setMusicMood] = useState<Mood>('energetic');
   const [enableLipsync, setEnableLipsync] = useState(false);
   const [lipsyncText, setLipsyncText] = useState('');
+  // Speed/quality tradeoff → picks the Kling model server-side (fast = v1.6-pro,
+  // quality = v2.1-master, the slower but best-looking model).
+  const [qualityMode, setQualityMode] = useState<'fast' | 'quality'>('fast');
   const [stage, setStage] = useState<string | null>(null); // sub-status during the multi-step run
   const imgRef = useRef<HTMLInputElement>(null);
   const vidRef = useRef<HTMLInputElement>(null);
@@ -127,6 +130,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
           motionPrompt: motionPrompt.trim(),
           duration: 5,
           aspectRatio,
+          qualityMode,
         }),
       });
       const sub = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string };
@@ -281,6 +285,23 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
             )}
           </>
         )}
+      </div>
+
+      {/* Speed vs quality — picks the Kling model server-side. */}
+      <div className="space-y-1.5 border-t border-app-border/10 pt-3">
+        <span className="text-[11px] uppercase tracking-wider text-app-muted">⚡ {lang === 'en' ? 'Speed / Quality' : lang === 'ru' ? 'Скорость / Качество' : 'სიჩქარე / ხარისხი'}</span>
+        <div className="grid grid-cols-2 gap-1.5">
+          {([
+            { id: 'fast' as const, emoji: '🚀', ka: 'სწრაფი', en: 'Fast', ru: 'Быстро', eta: '~3წთ', etaEn: '~3 min', etaRu: '~3 мин' },
+            { id: 'quality' as const, emoji: '⭐', ka: 'ხარისხი', en: 'Quality', ru: 'Качество', eta: '~12წთ', etaEn: '~12 min', etaRu: '~12 мин' },
+          ]).map((m) => (
+            <button key={m.id} type="button" onClick={() => setQualityMode(m.id)} disabled={busy}
+              className={`flex flex-col items-center gap-0.5 rounded-xl border py-2 transition disabled:opacity-50 ${qualityMode === m.id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
+              <span className="text-[13px] font-medium">{m.emoji} {m[lang]}</span>
+              <span className="text-[10px] opacity-70">{lang === 'en' ? m.etaEn : lang === 'ru' ? m.etaRu : m.eta}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <button type="button" onClick={generate} disabled={!canGen}

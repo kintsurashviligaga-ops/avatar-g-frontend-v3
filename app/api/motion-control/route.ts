@@ -12,7 +12,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { klingSubmit, klingConfigured } from '@/lib/ai/klingClient';
+import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => null)) as {
     characterImageUrl?: string; referenceVideoUrl?: string; motionPrompt?: string;
-    duration?: number; aspectRatio?: string;
+    duration?: number; aspectRatio?: string; qualityMode?: string;
   } | null;
   const characterImageUrl = body?.characterImageUrl?.trim();
   const motionPrompt = body?.motionPrompt?.trim();
@@ -36,6 +36,9 @@ export async function POST(req: Request) {
   const aspectRatio = (['9:16', '16:9', '1:1'].includes(String(body?.aspectRatio)) ? body!.aspectRatio : '9:16') as '9:16' | '16:9' | '1:1';
   const referenceVideoUrl = body?.referenceVideoUrl?.trim();
   const method: 'v2v' | 'i2v' = referenceVideoUrl ? 'v2v' : 'i2v';
+  // Speed/quality → Kling model. fast = v1.6-pro (~3 min), quality = v2.1-master
+  // (~12 min, best-looking). klingSubmit auto-adds cfg_scale for the v1.6 model.
+  const modelName = body?.qualityMode === 'quality' ? KLING_MODELS.V21_MASTER : KLING_MODELS.V16_PRO;
 
   try {
     const jobId = await klingSubmit({
@@ -43,6 +46,7 @@ export async function POST(req: Request) {
       prompt: motionPrompt,
       duration,
       aspectRatio,
+      modelName,
       ...(referenceVideoUrl ? { videoUrl: referenceVideoUrl } : {}),
     });
     return NextResponse.json({ success: true, jobId, method });
