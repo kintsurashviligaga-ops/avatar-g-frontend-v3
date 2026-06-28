@@ -132,6 +132,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // visible (the same fix the sibling chat surface already uses).
   const { keyboardOffset } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
+  // GLOBAL LOADING BAR — a thin top progress bar shown during ANY generation. OmniStudio
+  // (and other surfaces) emit `myavatar:busy` {active, service}; the shell just renders.
+  const [genBusy, setGenBusy] = useState(false);
+  const [genService, setGenService] = useState<string | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -288,6 +292,17 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       window.removeEventListener('focus', onUpd);
     };
   }, [refreshConversations]);
+
+  // Global loading bar — listen for generation activity emitted by OmniStudio.
+  useEffect(() => {
+    const onBusy = (e: Event) => {
+      const d = (e as CustomEvent<{ active?: boolean; service?: string | null }>).detail;
+      setGenBusy(!!d?.active);
+      setGenService(d?.active ? (d?.service ?? null) : null);
+    };
+    window.addEventListener('myavatar:busy', onBusy as EventListener);
+    return () => window.removeEventListener('myavatar:busy', onBusy as EventListener);
+  }, []);
   // OmniStudio's active-conversation pointer (localStorage). Kept as a literal (not an
   // import) so a secondary surface like /library doesn't pull the whole 5k-line studio
   // into its bundle just for this key. MUST match OMNI_CURRENT_ID_KEY in OmniStudio.tsx.
@@ -403,6 +418,26 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
   return (
     <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
+      {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
+      {genBusy && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[999]" aria-hidden style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <div className="relative h-[3px] w-full overflow-hidden bg-app-accent/15">
+            <span className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-app-accent" style={{ animation: 'mya-loadbar 1.1s ease-in-out infinite' }} />
+          </div>
+          {genService && (
+            <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full border border-app-border/15 bg-app-surface/95 px-3 py-1 text-[11px] font-medium text-app-text shadow-lg backdrop-blur-sm">
+              <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-app-accent align-middle motion-safe:animate-pulse" />
+              {genService === 'video' ? `🎬 ${lang === 'en' ? 'Video' : lang === 'ru' ? 'Видео' : 'ვიდეო'}`
+                : genService === 'image' ? `🖼 ${lang === 'en' ? 'Image' : lang === 'ru' ? 'Фото' : 'სურათი'}`
+                : genService === 'music' ? `🎵 ${lang === 'en' ? 'Music' : lang === 'ru' ? 'Музыка' : 'მუსიკა'}`
+                : genService === 'lipsync' ? `👄 ${lang === 'en' ? 'Avatar' : lang === 'ru' ? 'Аватар' : 'ავატარი'}`
+                : genService === 'product' ? `📦 ${lang === 'en' ? 'Product ad' : lang === 'ru' ? 'Реклама' : 'რეკლამა'}`
+                : genService === 'remix' ? `✂️ ${lang === 'en' ? 'Remix' : lang === 'ru' ? 'Ремикс' : 'რემიქსი'}`
+                : `💬 ${lang === 'en' ? 'Working' : lang === 'ru' ? 'Работаю' : 'მუშავდება'}`}…
+            </div>
+          )}
+        </div>
+      )}
       {/* Mobile backdrop for the slide-over sidebar. */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} aria-hidden />

@@ -1607,6 +1607,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
   }, [mode]);
+  // GLOBAL LOADING BAR — surface the active generation to the ChatChrome shell so a thin
+  // top progress bar shows during ANY generation (chat/image/music/video/storyboard/
+  // product), regardless of which panel is open. Event-driven (no prop/context refactor):
+  // the shell just listens for `myavatar:busy`.
+  useEffect(() => {
+    const active = busy || storyboardBusy || productBusy || remixBusy;
+    const label = storyboardBusy ? (mode === 'video' ? 'video' : 'video')
+      : productBusy ? 'product'
+      : remixBusy ? 'remix'
+      : mode; // chat · image · music · video · lipsync
+    try { window.dispatchEvent(new CustomEvent('myavatar:busy', { detail: { active, service: active ? label : null } })); } catch { /* ignore */ }
+  }, [busy, storyboardBusy, productBusy, remixBusy, mode]);
   // ISSUE 1 — lock the PAGE behind the options drawer on mobile. The drawer itself
   // already scrolls (overflow-y-auto + overscroll-contain + touch-pan-y), but without
   // pinning the body a swipe still bubbled to the html/body and scrolled the whole page.
