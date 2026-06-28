@@ -30,6 +30,7 @@ import { MotionControlPanel } from './MotionControlPanel';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
+import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
@@ -4486,10 +4487,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] text-app-muted">🎚 {locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
-                        <button type="button" role="switch" aria-checked={videoSmartDuck} aria-label="smart ducking" onClick={() => setVideoSmartDuck((v) => !v)}
-                          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${videoSmartDuck ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${videoSmartDuck ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-                        </button>
+                        <AppToggle on={videoSmartDuck} onChange={setVideoSmartDuck} label="smart ducking" />
                       </div>
                       {videoSmartDuck && (
                         <label className="flex items-center gap-2">
@@ -4511,8 +4509,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">💬 {locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
                     <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Each speaker gets their own voice.' : locale === 'ru' ? 'У каждого говорящего свой голос.' : 'თითო პერსონაჟს თავისი ხმა.'}</span>
                   </span>
-                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoMultiChar ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoMultiChar ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                  {/* Inline-styled visual track (the card button handles the click). */}
+                  <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoMultiChar ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
+                    <span style={{ position: 'absolute', top: 3, left: videoMultiChar ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
                   </span>
                 </button>
                 {/* Dialogue — single narrator (verbatim) OR a multi-character script. */}
@@ -4573,8 +4572,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
                     <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'A lip-sync pass after the film assembles (adds time).' : locale === 'ru' ? 'Липсинк после сборки фильма (дольше).' : 'ლიპსინკი ფილმის აწყობის შემდეგ (დრო ემატება).'}</span>
                   </span>
-                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoLipsync ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                  {/* Inline-styled visual track (the card button handles the click). */}
+                  <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoLipsync ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
+                    <span style={{ position: 'absolute', top: 3, left: videoLipsync ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
                   </span>
                 </button>
               </>
@@ -4728,8 +4728,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex items-center gap-1.5 text-[12px] font-medium text-app-text">
                       🎙️ {locale === 'en' ? 'Auto voiceover' : locale === 'ru' ? 'Авто-озвучка' : 'ავტო-გახმოვანება'}
                     </span>
-                    <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${productVoiceover ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${productVoiceover ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    {/* Inline-styled visual track (the row button handles the click). */}
+                    <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: productVoiceover ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
+                      <span style={{ position: 'absolute', top: 3, left: productVoiceover ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
                     </span>
                   </button>
                 </div>

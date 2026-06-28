@@ -7,6 +7,7 @@
  */
 import { useRef, useState } from 'react';
 import { Upload, Video, Sparkles, Loader2, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { AppToggle } from '@/components/ui/AppToggle';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
@@ -219,10 +220,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
               <p className="text-[10px] text-app-muted">{lang === 'en' ? 'AI-generated, instrumental' : lang === 'ru' ? 'ИИ, инструментал' : 'AI, ინსტრუმენტალი'}</p>
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={enableMusic} aria-label="music" onClick={() => setEnableMusic((v) => !v)}
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${enableMusic ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${enableMusic ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-          </button>
+          <AppToggle on={enableMusic} onChange={setEnableMusic} label="music" />
         </div>
         {enableMusic && (
           <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -247,10 +245,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
               <p className="text-[10px] text-app-muted">{lang === 'en' ? 'AI voice + mouth sync' : lang === 'ru' ? 'ИИ-голос + синхрон губ' : 'AI ხმა + ტუჩების სინქრონი'}</p>
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={enableLipsync} aria-label="lipsync" onClick={() => setEnableLipsync((v) => !v)}
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${enableLipsync ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${enableLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-          </button>
+          <AppToggle on={enableLipsync} onChange={setEnableLipsync} label="lipsync" />
         </div>
         {enableLipsync && (
           <>

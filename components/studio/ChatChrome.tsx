@@ -28,6 +28,7 @@ import { track } from '@/lib/analytics/track';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useTheme } from '@/lib/theme/ThemeContext';
+import { AppToggle } from '@/components/ui/AppToggle';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
@@ -69,13 +70,9 @@ interface ChatChromeProps {
 }
 
 // On/off switch used by the Settings → Notifications + Generation-defaults toggles.
+// Delegates to the inline-styled AppToggle so it can never render "washed out" again.
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onClick}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
-    </button>
-  );
+  return <AppToggle on={on} onChange={() => onClick()} label={label} />;
 }
 
 // Top-bar flag language switcher (replaces the old Settings → Language list). Preserves
