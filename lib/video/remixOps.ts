@@ -203,14 +203,19 @@ export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1
   try {
     dir = await mkdtemp(join(tmpdir(), 'remix-fit-'));
     const out = join(dir, 'out.mp4');
-    const fc =
-      `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},gblur=sigma=24[bg];` +
-      `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];` +
-      `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]`;
-    // `0:a?` keeps audio when present and is a no-op when the source is silent (Kling clips are).
+    // ROTATION: expressed as a SIMPLE -vf graph (split→overlay), NOT -filter_complex.
+    // ffmpeg auto-applies a clip's rotation display-matrix ONLY for simple filtergraphs;
+    // -filter_complex DISABLES autorotation, which baked Kling clips that carry a rotate
+    // flag in sideways (the "video is rotated 90°" report). -vf keeps the picture upright.
+    const vf =
+      `split=2[a][b];` +
+      `[a]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},gblur=sigma=24[bg];` +
+      `[b]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p`;
+    // `-c:a copy` is a no-op for the silent Kling clip and preserves audio if present.
     await exec(BIN, [
-      '-y', '-i', videoUrl, '-filter_complex', fc, '-map', '[v]', '-map', '0:a?',
-      ...X264, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
+      '-y', '-i', videoUrl, '-vf', vf,
+      ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
     ], { maxBuffer: 1 << 26, timeout: 180_000 });
     const buf = await readFile(out);
     return await hostMp4(buf, `fit-${aspect.replace(':', 'x')}`);
