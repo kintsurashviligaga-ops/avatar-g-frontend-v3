@@ -20,6 +20,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
+import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
 
 export interface MasterFilmCharacter {
   /** Stable role id when a brief has several people ("mother" | "father" | "child"). */
@@ -399,6 +400,27 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
       catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[promptAgent] fallback failed (fail-open):', err instanceof Error ? err.message : err);
+      }
+    }
+    // FINAL fallback — Atlas Cloud DeepSeek-V3 (OpenAI-compatible) when BOTH Anthropic
+    // models miss (dead/un-entitled key, timeout). Keeps the character-lock brief alive
+    // instead of dropping to the deterministic plan. Only runs when Anthropic failed AND
+    // Atlas is configured; same SYSTEM_PROMPT + user content. Fail-open → null.
+    if (!brief && atlasConfigured()) {
+      try {
+        const text = await atlasChat({
+          system: SYSTEM_PROMPT,
+          user: userContent,
+          maxTokens: Math.min(8000, 1500 + sceneCount * 400),
+          temperature: 0.6,
+          timeoutMs: Math.min(40_000, timeoutMs),
+        });
+        if (text) brief = coerceBrief(extractJson(text), sceneCount);
+        // eslint-disable-next-line no-console
+        console.log(`[promptAgent] atlas deepseek-v3 ${brief ? 'ok' : 'miss'} (${brief?.scenes.length ?? 0} scenes)`);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[promptAgent] atlas fallback failed (fail-open):', err instanceof Error ? err.message : err);
       }
     }
     settled = true;
