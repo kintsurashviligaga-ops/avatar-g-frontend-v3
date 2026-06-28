@@ -112,9 +112,51 @@ export async function uploadAndSign(
   try {
     const bytes = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
     const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
-    if (error) return null;
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[storage] upload to ${bucket}/${path} failed:`, error.message);
+      return null;
+    }
     return createSignedAssetUrl(bucket, path, expiresSec);
-  } catch {
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(`[storage] upload to ${bucket}/${path} threw:`, e instanceof Error ? e.message : e);
     return null;
   }
+}
+
+/**
+ * Upload a raw Buffer (no base64 round-trip) + return its signed URL. Preferred for
+ * LARGE assets like the 30s film master: `uploadAndSign` takes base64, so a caller
+ * holding a Buffer must `.toString('base64')` it and we then `Buffer.from()` it back —
+ * holding the video ~2× in memory, which can OOM/fail the upload on a big master (the
+ * "master upload failed (Storage not configured)" report, which was actually an upload
+ * error, not a missing client). This path streams the Buffer straight through and retries
+ * once on a transient failure. Returns null only when Storage is truly unavailable or
+ * both attempts fail.
+ */
+export async function uploadBufferAndSign(
+  bucket: string,
+  path: string,
+  buffer: Buffer,
+  contentType: string,
+  expiresSec: number = SIGNED_URL_TTL_SEC,
+): Promise<string | null> {
+  const sb = client();
+  if (!sb) return null;
+  try {
+    await sb.storage.createBucket(bucket, { public: false });
+  } catch { /* exists / no perms — upload surfaces any real failure */ }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } = await sb.storage.from(bucket).upload(path, buffer, { contentType, upsert: true });
+      if (!error) return createSignedAssetUrl(bucket, path, expiresSec);
+      // eslint-disable-next-line no-console
+      console.warn(`[storage] buffer upload to ${bucket}/${path} failed (attempt ${attempt + 1}/2):`, error.message);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`[storage] buffer upload to ${bucket}/${path} threw (attempt ${attempt + 1}/2):`, e instanceof Error ? e.message : e);
+    }
+  }
+  return null;
 }

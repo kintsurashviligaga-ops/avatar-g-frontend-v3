@@ -21,7 +21,7 @@ import { buildFilterComplex, sceneAwareTransitions } from './ffmpeg-filtergraph'
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
-import { uploadAndSign } from './storage-adapter';
+import { uploadBufferAndSign } from './storage-adapter';
 
 const exec = promisify(execFile);
 
@@ -324,8 +324,12 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // + overlay convention). The default 15-min TTL expired while the film sat in chat
     // history, producing a blank player (MEDIA_ERR 4) on revisit. The status route also
     // re-signs on read-back as a second layer of defence.
-    const url = await uploadAndSign(RENDER_BUCKET, objectPath, data.toString('base64'), 'video/mp4', 604_800);
-    if (!url) throw new Error('master upload failed (Supabase Storage not configured)');
+    // Upload the master Buffer DIRECTLY (no base64 round-trip) — a 30–60s 1080p master
+    // held twice in memory (string + buffer) was failing the upload on larger films,
+    // surfacing as the misleading "Storage not configured" error. uploadBufferAndSign
+    // streams the Buffer and retries once on a transient failure.
+    const url = await uploadBufferAndSign(RENDER_BUCKET, objectPath, data, 'video/mp4', 604_800);
+    if (!url) throw new Error('master upload failed (storage rejected the file or is unavailable — check service-role key + project upload size limit)');
     return { url, qa };
   } finally {
     await rm(dir, { recursive: true, force: true });
