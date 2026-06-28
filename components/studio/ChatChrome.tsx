@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, Check, Camera,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
@@ -123,7 +123,7 @@ function LanguageSwitcher({ locale }: { locale: string }) {
   );
 }
 
-export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
+export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
@@ -140,6 +140,7 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
   // they paint in one frame instead of flashing an iframe-loaded page.
   const [sheet, setSheet] = useState<null | 'library'>(null);
   const router = useRouter();
+  const pathname = usePathname();
   const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
   const [authed, setAuthed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -287,19 +288,35 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       window.removeEventListener('focus', onUpd);
     };
   }, [refreshConversations]);
+  // OmniStudio's active-conversation pointer (localStorage). Kept as a literal (not an
+  // import) so a secondary surface like /library doesn't pull the whole 5k-line studio
+  // into its bundle just for this key. MUST match OMNI_CURRENT_ID_KEY in OmniStudio.tsx.
+  const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
   const handleNewChat = useCallback(() => {
     window.dispatchEvent(new Event('myavatar:new-chat'));
     // On the studio surface onNewChat resets the chat in place. On OTHER surfaces that
     // render ChatChrome WITHOUT it (e.g. /library), "New chat" must actually NAVIGATE
-    // back to the chat — otherwise the button does nothing and the user is stuck.
+    // back to the chat — otherwise the button does nothing and the user is stuck. Drop
+    // the active pointer first so the dashboard mounts a genuinely fresh chat.
     if (onNewChat) onNewChat();
-    else router.push(`/${locale}/dashboard`);
+    else {
+      try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* ignore */ }
+      router.push(`/${locale}/dashboard`);
+    }
     setSidebarOpen(false);
   }, [onNewChat, router, locale]);
   const handleSelectConversation = useCallback((id: string) => {
-    window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
+    // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
+    // secondary surface (e.g. /library) nothing listens → persist the choice as the
+    // active conversation and navigate; OmniStudio restores it from localStorage on mount.
+    if ((pathname ?? '').includes('/dashboard')) {
+      window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
+    } else {
+      try { window.localStorage.setItem(OMNI_CURRENT_ID_KEY, id); } catch { /* ignore */ }
+      router.push(`/${locale}/dashboard`);
+    }
     setSidebarOpen(false);
-  }, []);
+  }, [pathname, router, locale]);
 
   // Save the display name to Supabase user_metadata (#3).
   const saveProfile = useCallback(async () => {
@@ -369,6 +386,21 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
       .map((k) => ({ key: k, label: label(k), items: buckets[k] }));
   }, [conversations, lang]);
 
+  // ── Back control — the recurring "stuck on /library" bug ────────────────────────
+  // ChatChrome is the shared shell for the dashboard assistant (ServiceHub passes
+  // onBack → return to the card hub) AND secondary surfaces like /library that render
+  // it with NO prop. The onBack prop existed in the interface but was never destructured
+  // or rendered, so it did nothing — and /library passed nothing — leaving the user with
+  // no header back button on either desktop or mobile. Fix: render a header back button
+  // (visible on ALL viewports — the header is always sticky) whenever an explicit onBack
+  // is given OR we're on a non-dashboard surface, defaulting the action to the chat home.
+  const onLibrary = (pathname ?? '').includes('/library');
+  const showBack = Boolean(onBack) || onLibrary;
+  const goBack = onBack ?? (() => router.push(`/${locale}/dashboard`));
+  const backLabel = onBack
+    ? (lang === 'en' ? 'Back' : lang === 'ru' ? 'Назад' : 'უკან')
+    : (lang === 'en' ? 'Chat' : lang === 'ru' ? 'Чат' : 'ჩატი');
+
   return (
     <div className="fixed inset-0 z-0 flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
       {/* Mobile backdrop for the slide-over sidebar. */}
@@ -434,11 +466,22 @@ export function ChatChrome({ locale = 'ka', onNewChat, title, scrollBody = false
         <header className="sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
             <div className="flex min-w-0 items-center gap-1.5">
+              {/* Back to chat / hub — shown on a secondary surface (e.g. /library) or
+                  whenever a parent passes onBack. Visible on ALL viewports so mobile
+                  users aren't stranded behind the hamburger. */}
+              {showBack && (
+                <button type="button" onClick={goBack}
+                  className="-ml-1 flex h-10 shrink-0 items-center gap-1 rounded-full pl-1.5 pr-2.5 text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
+                  <ChevronLeft className="h-[18px] w-[18px]" />
+                  {/* Visible text IS the accessible name — no aria-label needed. */}
+                  <span className="text-[13.5px] font-medium">{backLabel}</span>
+                </button>
+              )}
               {/* Mobile: open the sidebar drawer. Desktop: sidebar is persistent. */}
               <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
-              <span className="truncate text-[16px] font-semibold tracking-tight text-app-text md:hidden">
+              <span className={`truncate text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
                 {title ?? <>MyAvatar<span className="text-app-accent">.ge</span></>}
               </span>
               {title && <span className="hidden truncate text-[16px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
