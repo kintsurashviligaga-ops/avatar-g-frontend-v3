@@ -61,7 +61,7 @@ async function generateSceneScripts(brief: string, count: number): Promise<strin
     `Keep ONE consistent protagonist, location, time-of-day and colour palette across EVERY shot — describe the protagonist's key, memorable features in shot 1 (exact clothing, age, look) and carry them VERBATIM through every later shot; never swap the person. ` +
     `Each shot is a vivid, self-contained visual description: subject + specific action + setting + lighting + a deliberate camera move + shot size. ` +
     `Keep it period- and world-accurate to the brief; NO neon, glowing light-streaks, lens flares, HUD or sci-fi effects and NO anachronistic/modern objects unless the brief explicitly asks. ` +
-    `Brief: "${brief.trim().slice(0, 4000)}". ` +
+    `Brief: "${brief.trim().slice(0, 6000)}". ` +
     `Return ONLY a JSON array of exactly ${count} strings (one shot description each, in order) — no prose, no keys.`;
   const parseScripts = (text: string): string[] | null => {
     const parsed = extractJson(text);
