@@ -11,12 +11,44 @@
  */
 import 'server-only';
 import { NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
+import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // submit-only — returns fast; the wait happens via /status polling
+
+/**
+ * Bake EXIF orientation into the START photo's pixels before Kling sees it. iPhone
+ * photos store sideways pixels + an EXIF "rotate" tag; Kling's image loader reads raw
+ * pixels and IGNORES EXIF → the generated video is born sideways (and carries no video
+ * rotation flag, so the downstream -vf autorotate can't recover it). sharp's `.rotate()`
+ * (no args) auto-applies the EXIF orientation and strips the tag → an upright frame.
+ * Accepts data:/https/bare-storage-path. Fail-open → returns the original on any miss.
+ */
+async function normalizeStartImage(src: string, userId: string): Promise<string> {
+  try {
+    let buf: Buffer | null = null;
+    if (src.startsWith('data:')) {
+      const b64 = src.includes(',') ? src.split(',')[1] ?? '' : '';
+      if (b64) buf = Buffer.from(b64, 'base64');
+    } else if (/^https?:\/\//i.test(src)) {
+      const r = await fetch(src);
+      if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+    } else {
+      const signed = await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', src, 3600);
+      if (signed) { const r = await fetch(signed); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }
+    }
+    if (!buf?.byteLength) return src;
+    const fixed = await sharp(buf).rotate().jpeg({ quality: 92 }).toBuffer();
+    const path = `motion-control/${userId}/start-${Date.now()}.jpg`;
+    return (await uploadBufferAndSign('renders', path, fixed, 'image/jpeg', 86_400)) || src;
+  } catch {
+    return src; // fail-open — Kling still gets the original photo
+  }
+}
 
 export async function POST(req: Request) {
   const { user } = await authedClientFromRequest(req);
@@ -51,9 +83,13 @@ export async function POST(req: Request) {
   };
   const framedPrompt = `${motionPrompt}, ${ORIENT_HINT[aspectRatio]}`;
 
+  // Bake the photo's EXIF orientation into its pixels BEFORE Kling (iPhone photos are
+  // sideways pixels + a rotate tag Kling ignores). Fail-open → original photo.
+  const startImage = await normalizeStartImage(characterImageUrl, user.id);
+
   try {
     const jobId = await klingSubmit({
-      imageUrl: characterImageUrl,
+      imageUrl: startImage,
       prompt: framedPrompt,
       duration,
       aspectRatio,
