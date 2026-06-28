@@ -72,7 +72,7 @@ interface ChatChromeProps {
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onClick}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-app-accent' : 'bg-app-border/30'}`}>
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
     </button>
   );

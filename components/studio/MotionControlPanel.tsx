@@ -220,8 +220,8 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
             </div>
           </div>
           <button type="button" role="switch" aria-checked={enableMusic} aria-label="music" onClick={() => setEnableMusic((v) => !v)}
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${enableMusic ? 'bg-app-accent' : 'bg-app-border/40'}`}>
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${enableMusic ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${enableMusic ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${enableMusic ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
           </button>
         </div>
         {enableMusic && (
@@ -248,8 +248,8 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
             </div>
           </div>
           <button type="button" role="switch" aria-checked={enableLipsync} aria-label="lipsync" onClick={() => setEnableLipsync((v) => !v)}
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${enableLipsync ? 'bg-app-accent' : 'bg-app-border/40'}`}>
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${enableLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${enableLipsync ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${enableLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
           </button>
         </div>
         {enableLipsync && (

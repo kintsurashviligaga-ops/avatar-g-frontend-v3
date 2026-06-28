@@ -4487,7 +4487,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] text-app-muted">🎚 {locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
                         <button type="button" role="switch" aria-checked={videoSmartDuck} aria-label="smart ducking" onClick={() => setVideoSmartDuck((v) => !v)}
-                          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${videoSmartDuck ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${videoSmartDuck ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
                           <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${videoSmartDuck ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
                         </button>
                       </div>
@@ -4511,7 +4511,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">💬 {locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
                     <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Each speaker gets their own voice.' : locale === 'ru' ? 'У каждого говорящего свой голос.' : 'თითო პერსონაჟს თავისი ხმა.'}</span>
                   </span>
-                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoMultiChar ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoMultiChar ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
                     <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoMultiChar ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
                   </span>
                 </button>
@@ -4573,7 +4573,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
                     <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'A lip-sync pass after the film assembles (adds time).' : locale === 'ru' ? 'Липсинк после сборки фильма (дольше).' : 'ლიპსინკი ფილმის აწყობის შემდეგ (დრო ემატება).'}</span>
                   </span>
-                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoLipsync ? 'bg-app-accent' : 'bg-app-border/40'}`}>
+                  <span className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${videoLipsync ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
                     <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${videoLipsync ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
                   </span>
                 </button>
@@ -4728,8 +4728,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span className="flex items-center gap-1.5 text-[12px] font-medium text-app-text">
                       🎙️ {locale === 'en' ? 'Auto voiceover' : locale === 'ru' ? 'Авто-озвучка' : 'ავტო-გახმოვანება'}
                     </span>
-                    <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${productVoiceover ? 'bg-app-accent' : 'bg-app-border/40'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${productVoiceover ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${productVoiceover ? 'bg-app-accent' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${productVoiceover ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </span>
                   </button>
                 </div>
