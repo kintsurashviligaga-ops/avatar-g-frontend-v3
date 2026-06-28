@@ -2286,30 +2286,42 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
       setStoryboardBusy(false);
 
-      // STEP 2.5 — story enrichment for the RENDER (per-scene LLM shots + locked character).
-      // When a SCRIPT was uploaded, the SERVER already decomposed it in the planOnly call
-      // (j.sceneScripts present AND the returned frame prompts already depict the script —
-      // see the planOnly branch in /api/film/storyboard), so there is nothing more to fetch
-      // and the preview frames below are already script-faithful. Otherwise (typed brief)
-      // enrich in the BACKGROUND so the render tells a richer story while the fast
-      // deterministic preview frames stand.
-      const serverDecomposed = Array.isArray(j.sceneScripts) && j.sceneScripts.length > 0;
-      if (!serverDecomposed) {
-        void (async () => {
-          try {
-            const sr = await fetch('/api/film/storyboard', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
-            });
-            const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
-            if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {
-              const scripts = sj.sceneScripts;
-              const character = typeof sj.character === 'string' && sj.character.trim() ? sj.character.trim() : null;
-              setStoryboard((prev) => (prev ? { ...prev, sceneScripts: scripts, ...(character ? { character } : {}) } : prev));
-            }
-          } catch { /* best-effort; render falls back to deterministic beats */ }
-        })();
-      }
+      // STEP 2.5 — story enrichment. Decompose the brief into per-scene shots (Gemini-first;
+      // it's the LIVE provider — Anthropic/Atlas are dead in prod). The board already opened
+      // with SKELETON tiles above, so:
+      //  • SCRIPT uploaded → AWAIT the decomposition (bounded ~55s; the live decomposer is
+      //    ~45s) and use the shots as the FRAME prompts BEFORE the frames stream below, so
+      //    every storyboard image depicts the script instead of generic camera beats.
+      //  • typed brief → enrich in the BACKGROUND (frames stay fast deterministic stills;
+      //    only the render gets the richer story).
+      const hasScript = /SCRIPT \(follow this EXACTLY/i.test(filmPrompt);
+      const enrichStory = async () => {
+        let scripts: string[] | null = null;
+        let character: string | null = null;
+        try {
+          const sr = await fetch('/api/film/storyboard', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+          });
+          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
+          if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
+          if (typeof sj.character === 'string' && sj.character.trim()) character = sj.character.trim();
+        } catch { /* best-effort; frames fall back to deterministic beats */ }
+        if (!scripts || !scripts.length) return;
+        const finalScripts = scripts;
+        if (hasScript) {
+          // The per-scene shots BECOME the frame prompts (so each storyboard image depicts
+          // the script), unless the user typed a per-scene action (which wins).
+          finalScripts.forEach((sc, i) => { const ord = i + 1; if (!userAction(ord) && sc && sc.trim()) framePrompts[ord] = sc.trim(); });
+        }
+        setStoryboard((prev) => (prev ? {
+          ...prev,
+          sceneScripts: finalScripts,
+          ...(character ? { character } : {}),
+          ...(hasScript ? { scenes: prev.scenes.map((s, i) => (userAction(s.ordinal) || !finalScripts[i]?.trim() ? s : { ...s, prompt: finalScripts[i].trim() })) } : {}),
+        } : prev));
+      };
+      if (hasScript) { await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, 55000))]); } else { void enrichStory(); }
 
       // STEP 2.6 — CHARACTER LOCK. Derive ONE protagonist anchor portrait from the
       // brief, then condition EVERY scene frame on it so the character stays identical

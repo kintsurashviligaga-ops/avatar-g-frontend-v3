@@ -386,43 +386,21 @@ export async function POST(req: NextRequest) {
     // render as per-scene anchors, so the film matches the uploaded images. A SINGLE
     // image stays a character-lock reference (unchanged behaviour).
     const anchorMode = hostedRefs.length >= 2;
-
-    // SCRIPT-AWARE BOARD: when the brief carries an uploaded SCRIPT, the generic camera
-    // BEATS ignore it (the "storyboard generates unrelated scenes" bug). Decompose the
-    // script into real per-scene STORY shots with the LLM (haiku→Atlas, bounded ~14s) and
-    // re-plan so each FRAME depicts the script. This is the ONLY reliable path for a
-    // structured brief (a naive text split surfaces non-scene junk like camera/upload
-    // notes). LLM unavailable → keep the generic plan (still clean cinematic stills, never
-    // junk). The same scripts are returned for the render so it isn't re-derived.
-    let boardPlan = plan;
-    let boardScripts: string[] | null = null;
-    const hasUploadedScript = /SCRIPT \(follow this EXACTLY/i.test(prompt);
-    if (hasUploadedScript && !anchorMode) {
-      const llmScripts = await Promise.race([
-        generateSceneScripts(prompt, sceneCount).catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
-      ]);
-      if (Array.isArray(llmScripts) && llmScripts.length) {
-        boardScripts = llmScripts;
-        boardPlan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec, musicVideo, sceneScripts: llmScripts });
-      }
-    }
-
     return NextResponse.json({
       success: true,
       sessionId,
-      seed: boardPlan.shared.seed,
+      seed: plan.shared.seed,
       orientation,
       planOnly: true,
       anchorMode,
-      scenes: boardPlan.scenes.map((s, i) => ({
+      scenes: plan.scenes.map((s, i) => ({
         ordinal: s.ordinal,
         beat: s.beat,
         prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
         framePrompt: s.prompt,
         frameUrl: anchorMode && i < hostedRefs.length ? hostedRefs[i]! : null,
       })),
-      sceneScripts: boardScripts,
+      sceneScripts: null,
     });
   }
 
