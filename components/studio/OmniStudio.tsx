@@ -1510,6 +1510,49 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // .txt/.md are decoded in-browser; .pdf/.docx go through /api/utils/extract-text.
   const [videoScriptDoc, setVideoScriptDoc] = useState<{ name: string; text: string } | null>(null);
   const [videoScriptBusy, setVideoScriptBusy] = useState(false);
+  // Is this attachment/file a SCRIPT document (not media)? Matched by mime OR extension.
+  const isScriptFile = useCallback((nameOrType: { name?: string; type?: string }) => {
+    const n = (nameOrType.name || '').toLowerCase();
+    const t = (nameOrType.type || '').toLowerCase();
+    return /\.(txt|md|markdown|pdf|docx|doc|rtf)$/i.test(n) || /pdf|wordprocessing|officedocument|msword|^text\/|rtf/.test(t);
+  }, []);
+  // Load a SCRIPT file into the dedicated slot — shared by the Script slot AND the composer
+  // "+" (so however the user attaches a doc, in video mode it becomes the script). .txt/.md
+  // decode in-browser; .pdf/.docx go through /api/utils/extract-text. Clear toasts on every
+  // failure mode (too large · empty/iCloud-not-downloaded · unreadable) so it's never silent.
+  const loadScriptFile = useCallback(async (f: File): Promise<boolean> => {
+    const toast = (en: string, ru: string, ka: string, tag: RegExp) => {
+      setShareToast(locale === 'en' ? en : locale === 'ru' ? ru : ka);
+      setTimeout(() => setShareToast((s) => (tag.test(s ?? '') ? null : s)), 2800);
+    };
+    if (!f.size) { // 0 bytes → typically an iCloud file that wasn't downloaded on the device
+      toast('That file is empty — open it once in Files so it downloads, then retry', 'Файл пуст — откройте его в «Файлах», затем повторите', 'ფაილი ცარიელია — ჯერ გახსენი Files-ში (ჩამოიტვირთოს), მერე სცადე', /empty|пуст|ცარიელ/);
+      return false;
+    }
+    if (f.size > 15 * 1024 * 1024) {
+      toast('Script is too large (max 15MB)', 'Файл слишком большой (макс 15МБ)', 'ფაილი ძალიან დიდია (მაქს 15MB)', /15|MB/);
+      return false;
+    }
+    setVideoScriptBusy(true);
+    try {
+      const isText = /\.(txt|md|markdown)$/i.test(f.name) || /^text\//.test(f.type);
+      let text = '';
+      if (isText) {
+        text = (await f.text()).trim();
+      } else {
+        const dataUrl = await fileToDataUrl(f);
+        const r = await fetch('/api/utils/extract-text', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, mimeType: f.type }) });
+        const j = (await r.json().catch(() => ({}))) as { text?: string };
+        text = (j.text || '').trim();
+      }
+      if (text) { setVideoScriptDoc({ name: f.name, text }); return true; }
+      toast("Couldn't read that file — try a .txt or .pdf", 'Не удалось прочитать файл — попробуйте .txt или .pdf', 'ფაილი ვერ წავიკითხე — სცადე .txt ან .pdf', /read|прочитать|წავიკითხე/);
+      return false;
+    } catch {
+      toast('Upload failed — please try again', 'Не удалось загрузить — попробуйте снова', 'ატვირთვა ვერ მოხერხდა — სცადე თავიდან', /failed|загрузить|ატვირთვა/);
+      return false;
+    } finally { setVideoScriptBusy(false); }
+  }, [locale]);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
@@ -5281,15 +5324,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
         {/* Input surface — one clean rounded pill. The picker accepts MULTIPLE files
             (images / video / audio / pdf), capped at MAX_ATTACHMENTS. */}
-        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf" className="hidden" onChange={(e) => {
+        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,.txt,.md,.pdf,.docx,.doc,.rtf" className="hidden" onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
-          if (files.length) {
-            files.forEach((f) => {
-              const r = new FileReader();
-              r.onload = () => setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }]);
-              r.readAsDataURL(f);
-            });
-          }
+          files.forEach((f) => {
+            // In VIDEO mode a document attached via the "+" IS the film script → load it into
+            // the dedicated Script slot (with feedback) instead of a silent generic attachment.
+            if (mode === 'video' && isScriptFile(f)) { void loadScriptFile(f); return; }
+            const r = new FileReader();
+            r.onload = () => setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }]);
+            r.readAsDataURL(f);
+          });
           e.target.value = '';
         }} />
         {/* v330 — dedicated Character Reference picker (single image, downscaled + locked). */}
@@ -5307,37 +5351,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           } catch { /* ignore unreadable file */ }
         }} />
         {/* Dedicated SCRIPT ingest for the video service — the Director reads this verbatim. */}
-        <input ref={scriptFileRef} type="file" accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={async (e) => {
+        {/* accept = extensions only (iOS maps these to UTIs reliably; the long docx MIME
+            could make the Files picker offer nothing). */}
+        <input ref={scriptFileRef} type="file" accept=".txt,.md,.pdf,.docx,.doc,.rtf" className="hidden" onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          if (!f) return;
-          if (f.size > 15 * 1024 * 1024) {
-            setShareToast(locale === 'en' ? 'Script is too large (max 15MB)' : locale === 'ru' ? 'Файл слишком большой (макс 15МБ)' : 'ფაილი ძალიან დიდია (მაქს 15MB)');
-            setTimeout(() => setShareToast((s) => (/15|MB/i.test(s ?? '') ? null : s)), 2600);
-            return;
-          }
-          setVideoScriptBusy(true);
-          try {
-            const name = f.name;
-            const isText = /\.(txt|md|markdown)$/i.test(name) || /^text\//.test(f.type);
-            let text = '';
-            if (isText) {
-              text = (await f.text()).trim();
-            } else {
-              // PDF / DOCX → server-side extraction (fail-open to empty).
-              const dataUrl = await fileToDataUrl(f);
-              const r = await fetch('/api/utils/extract-text', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, mimeType: f.type }) });
-              const j = (await r.json().catch(() => ({}))) as { text?: string };
-              text = (j.text || '').trim();
-            }
-            if (text) {
-              setVideoScriptDoc({ name, text });
-            } else {
-              setShareToast(locale === 'en' ? "Couldn't read that file — try .txt or .pdf" : locale === 'ru' ? 'Не удалось прочитать файл — попробуйте .txt или .pdf' : 'ფაილი ვერ წავიკითხე — სცადე .txt ან .pdf');
-              setTimeout(() => setShareToast((s) => (/read|прочитать|წავიკითხე/i.test(s ?? '') ? null : s)), 2800);
-            }
-          } catch { /* ignore unreadable file */ }
-          finally { setVideoScriptBusy(false); }
+          if (f) void loadScriptFile(f);
         }} />
         {/* v330 — dedicated Audio Track ingest (single beat/song → uploadBigFile → master bed). */}
         <input ref={audioFileRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,.mp3,.wav,.m4a" className="hidden" onChange={async (e) => {
