@@ -23,6 +23,10 @@ import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/cha
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { retrieveContext } from '@/lib/rag/retrieve';
+// The film pipeline renders up to MAX_SEGMENTS scenes (60s = 12 × 5s). Cap the
+// per-scene dispatch arrays at the SAME ceiling the renderer uses so a 60s render
+// (12 scenes) isn't rejected at the API boundary with "Invalid request".
+import { MAX_SEGMENTS } from '@/lib/orchestrator/script-breakdown';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -62,10 +66,13 @@ const orchestrateSchema = z.object({
   // so the stitched cut keeps ONE shape (was always 9:16 regardless of choice).
   orientation: z.enum(['landscape', 'vertical', 'square', 'portrait']).optional(),
   // Approved storyboard frames (ordered by scene) → per-scene identity anchors so
-  // the rendered film matches the storyboard the user reviewed. Capped at 8.
-  sceneFrames: z.array(z.string().min(1)).max(8).optional(),
+  // the rendered film matches the storyboard the user reviewed. Capped at the
+  // renderer's MAX_SEGMENTS (12) so the 60s variant's 12 frames aren't rejected.
+  sceneFrames: z.array(z.string().min(1)).max(MAX_SEGMENTS).optional(),
   // Approved LLM story scenes (ordered) → the clips render from these exact scenes.
-  sceneScripts: z.array(z.string().min(1).max(2000)).max(8).optional(),
+  // Capped at MAX_SEGMENTS (12) — a 60s render passes 12 scripts (was .max(8),
+  // which 400'd every 60s dispatch before any provider was called).
+  sceneScripts: z.array(z.string().min(1).max(2000)).max(MAX_SEGMENTS).optional(),
   // Verbatim dialogue the user typed in the video panel → spoken as the film's voice.
   narrationScript: z.string().max(2000).optional(),
   // Explicit narrator gender (video panel 👩/👨) → selects the cloned female/male voice.
