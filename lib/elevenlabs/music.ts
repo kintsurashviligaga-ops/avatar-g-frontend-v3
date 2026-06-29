@@ -1,5 +1,6 @@
 import 'server-only';
 import { withRetry } from '@/lib/utils/withRetry';
+import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
 
 // ElevenLabs Music — the v330 master audio layer. Unlike the legacy Udio path
 // (async start → workId → poll), ElevenLabs Music returns the finished track
@@ -40,7 +41,9 @@ export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<
   const music_length_ms = Math.max(3_000, Math.min(600_000, Math.round(input.lengthMs)));
   // Retry transient failures (5xx / network) before the caller falls back to MusicGen.
   // A caller-aborted request (input.signal) bails immediately inside withRetry.
-  const audio = await withRetry(async () => {
+  // Each attempt runs inside the shared ElevenLabs concurrency gate so a Music call
+  // can't collide with a concurrent TTS call and trip the account's 2-concurrent 429.
+  const audio = await withRetry(() => withElevenLabsSlot(async () => {
     const res = await fetch(EL_MUSIC_URL, {
       method: 'POST',
       headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
@@ -60,7 +63,7 @@ export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 1_024) throw new Error('ElevenLabs Music returned an empty track');
     return buf;
-  }, { maxAttempts: 3, baseDelayMs: 2000, label: 'elevenlabs-music' });
+  }), { maxAttempts: 3, baseDelayMs: 2000, label: 'elevenlabs-music' });
   return { audio, contentType: 'audio/mpeg' };
 }
 

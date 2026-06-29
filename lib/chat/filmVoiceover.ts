@@ -33,6 +33,7 @@ import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-t
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
 
 /**
  * Strong-signal commentator / narration intent across Georgian, English and
@@ -238,25 +239,32 @@ async function synthesizeVoiceover(
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 30_000);
       try {
-        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-          method: 'POST',
-          headers: {
-            'xi-api-key': apiKey,
-            'Content-Type': 'application/json',
-            Accept: 'audio/mpeg',
-          },
-          body: JSON.stringify({
-            text,
-            model_id: modelId,
-            voice_settings: { ...voiceSettingsForModel(modelId), ...(extraVoiceSettings ?? {}) },
-          }),
-          signal: ac.signal,
+        // Hold a shared ElevenLabs concurrency slot for the whole request+read so a
+        // TTS call can't collide with a concurrent Music call (the song build fires
+        // both) and trip the account's 2-concurrent 429.
+        const out = await withElevenLabsSlot(async () => {
+          const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: {
+              'xi-api-key': apiKey,
+              'Content-Type': 'application/json',
+              Accept: 'audio/mpeg',
+            },
+            body: JSON.stringify({
+              text,
+              model_id: modelId,
+              voice_settings: { ...voiceSettingsForModel(modelId), ...(extraVoiceSettings ?? {}) },
+            }),
+            signal: ac.signal,
+          });
+          if (res.ok) {
+            const buf = Buffer.from(await res.arrayBuffer());
+            // Guard against an empty / error-page body masquerading as audio.
+            if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' as const };
+          }
+          return null;
         });
-        if (res.ok) {
-          const buf = Buffer.from(await res.arrayBuffer());
-          // Guard against an empty / error-page body masquerading as audio.
-          if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
-        }
+        if (out) return out;
       } catch {
         /* fall through to the Google fallback below */
       } finally {
