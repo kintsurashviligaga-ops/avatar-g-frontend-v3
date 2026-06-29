@@ -18,9 +18,8 @@
  * because the Prompt Agent had a bad day.
  */
 import 'server-only';
-import Anthropic from '@anthropic-ai/sdk';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
-import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
+import { llmText } from '@/lib/ai/llmText';
 
 export interface MasterFilmCharacter {
   /** Stable role id when a brief has several people ("mother" | "father" | "child"). */
@@ -343,22 +342,13 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
  * board-open hot-path (it runs in the background scriptsOnly step).
  */
 export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFilmBrief | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
   // Floor 1 (was 2) so a 6s single-scene Cinema clip can be planned. NOTE: the
   // /api/video/assemble stitch requires ≥2 segments, so a true 1-scene film must use
   // the single-clip return path — callers that go through assembly still pass ≥2.
   const sceneCount = Math.max(1, Math.min(12, Math.round(input.sceneCount)));
-  const timeoutMs = Number(process.env.PROMPT_AGENT_TIMEOUT_MS) || 45_000;
-  let settled = false;
-
-  // Primary = Sonnet (best extraction); FALLBACK = the haiku model already proven on
-  // prod (the storyboard's Script Agent uses it). The fallback covers BOTH failure
-  // modes I can't introspect from here: a slow/timed-out Sonnet AND a Sonnet that
-  // isn't entitled on this key — either way the character lock still engages.
-  // Per-call override (storyboard preview → haiku) wins; else the env default; else sonnet.
-  const primary = input.model ?? process.env.ANTHROPIC_PROMPT_AGENT_MODEL ?? 'claude-sonnet-4-6';
-  const fallback = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
+  // 90s default (was 45s): DeepSeek-V3 leads this chain for character-lock quality and needs
+  // ~75s for a 10-scene ensemble brief; this is a background/render call (maxDuration 300).
+  const timeoutMs = Number(process.env.PROMPT_AGENT_TIMEOUT_MS) || 90_000;
   const userContent =
     // 4000 (was 1800) so an attached SCRIPT baked into the brief reaches the Director
     // intact — a short prompt is unaffected; only script-driven films use the headroom.
@@ -370,73 +360,25 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
     `Language: ${input.language}` +
     (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
     `\n\nProduce EXACTLY ${sceneCount} scenes.`;
+  // Output budget scales with scene count (a 12-scene ensemble repeats each person's full
+  // wardrobe in every scene.imagePrompt → a flat cap truncates the JSON).
+  const maxTokens = Math.min(8000, 1500 + sceneCount * 400);
 
-  const tryModel = async (model: string, perCallMs: number): Promise<MasterFilmBrief | null> => {
-    const t0 = Date.now();
-    const client = new Anthropic({ apiKey, maxRetries: 0, timeout: perCallMs });
-    // Scale the output budget with scene count: a 12-scene ENSEMBLE brief repeats each
-    // on-screen person's full wardrobe in every scene.imagePrompt, which overflows a flat
-    // 3000 cap → truncated JSON → wasted Sonnet call + haiku fallback. Sonnet/Haiku 4.x
-    // support far more, so size the cap to the request (small briefs stay cheap).
-    const msg = await client.messages.create({
-      model, max_tokens: Math.min(8000, 1500 + sceneCount * 400), system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
-    });
-    const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');
-    const brief = coerceBrief(extractJson(text), sceneCount);
-    // eslint-disable-next-line no-console
-    console.log(`[promptAgent] ${model} ${brief ? 'ok' : 'unparseable'} in ${Date.now() - t0}ms (${brief?.scenes.length ?? 0} scenes)`);
-    return brief;
-  };
-
+  // ONE live-provider chain: DeepSeek-V3 (Atlas) → Gemini → Anthropic. This is the
+  // character-lock / master-brief brain; it MUST hit a live model or the render loses
+  // identity consistency (Anthropic is dead in prod, which is why this used to fail-open
+  // to the deterministic plan). Backstop race guards against any provider hanging.
   const work = (async (): Promise<MasterFilmBrief | null> => {
-    let brief: MasterFilmBrief | null = null;
-    try {
-      brief = await tryModel(primary, timeoutMs - 4_000);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(`[promptAgent] primary ${primary} failed → trying ${fallback}:`, err instanceof Error ? err.message : err);
-    }
-    if (!brief && primary !== fallback) {
-      try { brief = await tryModel(fallback, Math.min(20_000, timeoutMs)); }
-      catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[promptAgent] fallback failed (fail-open):', err instanceof Error ? err.message : err);
-      }
-    }
-    // FINAL fallback — Atlas Cloud DeepSeek-V3 (OpenAI-compatible) when BOTH Anthropic
-    // models miss (dead/un-entitled key, timeout). Keeps the character-lock brief alive
-    // instead of dropping to the deterministic plan. Only runs when Anthropic failed AND
-    // Atlas is configured; same SYSTEM_PROMPT + user content. Fail-open → null.
-    if (!brief && atlasConfigured()) {
-      try {
-        const text = await atlasChat({
-          system: SYSTEM_PROMPT,
-          user: userContent,
-          maxTokens: Math.min(8000, 1500 + sceneCount * 400),
-          temperature: 0.6,
-          timeoutMs: Math.min(40_000, timeoutMs),
-        });
-        if (text) brief = coerceBrief(extractJson(text), sceneCount);
-        // eslint-disable-next-line no-console
-        console.log(`[promptAgent] atlas deepseek-v3 ${brief ? 'ok' : 'miss'} (${brief?.scenes.length ?? 0} scenes)`);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[promptAgent] atlas fallback failed (fail-open):', err instanceof Error ? err.message : err);
-      }
-    }
-    settled = true;
+    const t0 = Date.now();
+    const text = await llmText({ system: SYSTEM_PROMPT, user: userContent, maxTokens, temperature: 0.6, timeoutMs: timeoutMs - 4_000 });
+    const brief = text ? coerceBrief(extractJson(text), sceneCount) : null;
+    // eslint-disable-next-line no-console
+    console.log(`[promptAgent] ${brief ? 'ok' : 'miss'} in ${Date.now() - t0}ms (${brief?.scenes.length ?? 0} scenes)`);
     return brief;
   })();
 
-  // Backstop race: the per-call timeouts already bound each request, but this guards
-  // against the SDK hanging past them so the caller never waits unbounded.
   return Promise.race([
     work,
-    new Promise<null>((resolve) => setTimeout(() => {
-      // eslint-disable-next-line no-console
-      if (!settled) console.warn(`[promptAgent] hard backstop hit after ${timeoutMs + 22_000}ms (fail-open)`);
-      resolve(null);
-    }, timeoutMs + 22_000)),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs + 22_000)),
   ]);
 }

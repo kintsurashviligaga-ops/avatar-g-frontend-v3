@@ -2364,7 +2364,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           ...(hasScript ? { scenes: prev.scenes.map((s, i) => (userAction(s.ordinal) || !finalScripts[i]?.trim() ? s : { ...s, prompt: finalScripts[i].trim() })) } : {}),
         } : prev));
       };
-      if (hasScript) { await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, 55000))]); } else { void enrichStory(); }
+      if (hasScript) { await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, 90000))]); } else { void enrichStory(); }
 
       // STEP 2.6 — CHARACTER LOCK. Derive ONE protagonist anchor portrait from the
       // brief, then condition EVERY scene frame on it so the character stays identical

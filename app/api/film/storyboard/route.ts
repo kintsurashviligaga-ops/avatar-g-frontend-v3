@@ -17,12 +17,10 @@
  * scene plan still returns so the user always sees the storyboard.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 import { planFilmScenes, normalizeReferenceImages, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
-import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
-import { generateWithGemini } from '@/lib/gemini/client';
+import { llmText } from '@/lib/ai/llmText';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -70,41 +68,12 @@ async function generateSceneScripts(brief: string, count: number): Promise<strin
     const scripts = parsed.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
     return scripts.length >= Math.min(3, count) ? scripts.slice(0, count) : null;
   };
-  // PRIMARY — Gemini (gemini-2.5-flash). It is the LIVE provider in prod (it also powers
-  // the chat); Anthropic + Atlas have been returning null (≈80s to fail), which is exactly
-  // why uploaded scripts never became scenes and the storyboard fell back to generic beats.
-  // Try Gemini first so the script is actually decomposed. Fail-open → Anthropic → Atlas.
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      // thinkingBudget:0 — disable gemini-2.5 "thinking" (it was adding ~60s+); this is a
-      // structured creative task that doesn't need it, and the board waits on this call.
-      const r = await generateWithGemini({ prompt: USER, systemPrompt: SYS, tier: 'flash', maxTokens: 2000, temperature: 0.6, thinkingBudget: 0 });
-      const scripts = parseScripts(r.text);
-      if (scripts) return scripts;
-    } catch { /* fall through to Anthropic */ }
-  }
-  // SECONDARY — Anthropic (haiku). On a missing/dead key or any miss, fall through to Atlas.
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (apiKey) {
-    try {
-      const client = new Anthropic({ apiKey });
-      const msg = await client.messages.create({
-        model: process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
-        max_tokens: 1500, system: SYS,
-        messages: [{ role: 'user', content: USER }],
-      });
-      const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');
-      const scripts = parseScripts(text);
-      if (scripts) return scripts;
-    } catch { /* fall through to Atlas */ }
-  }
-  // FALLBACK — Atlas Cloud DeepSeek-V3 (OpenAI-compatible). Keeps storyboard scripts
-  // alive when Anthropic is absent/down. Fail-open → null (caller uses deterministic plan).
-  if (atlasConfigured()) {
-    const text = await atlasChat({ system: SYS, user: USER, maxTokens: 1500, temperature: 0.6, timeoutMs: 30_000 });
-    if (text) return parseScripts(text);
-  }
-  return null;
+  // Live-provider chain. The storyboard board AWAITS this, so lead with Gemini (≈45s,
+  // excellent + reliably fast); DeepSeek-V3 is the deep-quality fallback (≈75s for 10 scenes —
+  // too slow to lead the board, but superb when Gemini is down). Generous timeout so the
+  // fallback can still complete within the client's wait window. (Anthropic is dead in prod.)
+  const text = await llmText({ system: SYS, user: USER, maxTokens: 2000, temperature: 0.6, geminiFirst: true, timeoutMs: 85_000 });
+  return text ? parseScripts(text) : null;
 }
 
 /**

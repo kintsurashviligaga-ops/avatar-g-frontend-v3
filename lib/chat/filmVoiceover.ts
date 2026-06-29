@@ -26,17 +26,13 @@
  */
 
 import 'server-only';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-
-/** Same model ladder the script agent uses, so narration matches the storyboard's voice. */
-const NARRATION_MODEL =
-  process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 /**
  * Strong-signal commentator / narration intent across Georgian, English and
@@ -68,44 +64,32 @@ export function wantsCommentary(message: string | null | undefined): boolean {
  * Returns null on any failure (fail-open).
  */
 async function generateNarrationScript(brief: string, totalSec: number): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
   // ~2.4 spoken words/sec is a comfortable broadcast pace; keep it tight so the
   // synthesised track does not overrun the stitched cut.
   const targetWords = Math.max(12, Math.round(totalSec * 2.4));
-  try {
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({
-      model: NARRATION_MODEL,
-      max_tokens: 500,
-      system: [
-        'You are a professional voice-over scriptwriter for short cinematic videos.',
-        'Output ONLY the words to be spoken aloud — no scene numbers, no stage directions,',
-        'no speaker labels, no quotation marks, no markdown, no notes.',
-        'Write in the SAME language as the brief (Georgian brief → Georgian; English → English; Russian → Russian).',
-        'One continuous, energetic, vivid spoken piece tied to the on-screen action that reads naturally within the given duration.',
-      ].join(' '),
-      messages: [{
-        role: 'user',
-        content:
-          `Brief: "${brief.trim()}"\n` +
-          `Spoken duration: about ${totalSec} seconds (~${targetWords} words).\n` +
-          'Write the voice-over narration now — spoken words only.',
-      }],
-    });
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-      .trim();
-    // Strip accidental wrapping quotes / smart-quotes the model sometimes adds.
-    const cleaned = text.replace(/^["'“”«»\s]+|["'“”«»\s]+$/g, '').trim();
-    if (cleaned.length < 3) return null;
-    // Hard cap so a runaway response can never produce a minutes-long track.
-    return cleaned.slice(0, 800);
-  } catch {
-    return null;
-  }
+  // Live-provider chain: DeepSeek-V3 (Atlas) → Gemini → Anthropic (Anthropic is dead in prod).
+  const text = await llmText({
+    system: [
+      'You are a professional voice-over scriptwriter for short cinematic videos.',
+      'Output ONLY the words to be spoken aloud — no scene numbers, no stage directions,',
+      'no speaker labels, no quotation marks, no markdown, no notes.',
+      'Write in the SAME language as the brief (Georgian brief → Georgian; English → English; Russian → Russian).',
+      'One continuous, energetic, vivid spoken piece tied to the on-screen action that reads naturally within the given duration.',
+    ].join(' '),
+    user:
+      `Brief: "${brief.trim()}"\n` +
+      `Spoken duration: about ${totalSec} seconds (~${targetWords} words).\n` +
+      'Write the voice-over narration now — spoken words only.',
+    maxTokens: 500,
+    temperature: 0.7,
+    timeoutMs: 30_000,
+  });
+  if (!text) return null;
+  // Strip accidental wrapping quotes / smart-quotes the model sometimes adds.
+  const cleaned = text.replace(/^["'“”«»\s]+|["'“”«»\s]+$/g, '').trim();
+  if (cleaned.length < 3) return null;
+  // Hard cap so a runaway response can never produce a minutes-long track.
+  return cleaned.slice(0, 800);
 }
 
 /**
