@@ -2721,7 +2721,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string }) => {
     const text = (opts?.promptOverride ?? input).trim();
-    if ((!text && attachments.length === 0) || busy) return;
+    // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
+    // attachment — otherwise this guard silently blocked a script-only run from starting.
+    const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
+    if ((!text && attachments.length === 0 && !videoOnlyInputs) || busy) return;
     // MOBILE FIX — collapse the settings panel on generation so the result (video +
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
     // then fills the screen; the user re-opens settings to tweak the next run.
@@ -3604,7 +3607,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Sendable when there's text OR any attachment — in EVERY mode. An attachment
   // in Image/Music mode routes to multimodal chat (see send), so it must be able
   // to trigger a send; this is also what clears the lingering attachment.
-  const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice);
+  // In VIDEO mode a loaded SCRIPT or uploaded scene frames are enough to generate — without
+  // this the Send button hid when the text box was empty, so a script-only run couldn't START.
+  const videoReadyToSend = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
+  const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
 
   // Force a REAL download. The <a download> attribute is ignored cross-origin (Supabase
   // signed URLs), so the old button just opened the file in a new tab. Fetch → blob →
