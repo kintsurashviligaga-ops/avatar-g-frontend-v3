@@ -78,11 +78,65 @@ export function ffmpegAssemblyAvailable(): boolean {
   return Boolean(ffmpegStatic);
 }
 
+// Per-asset download cap. A clip is ~10MB and lands in a few seconds on the
+// node's egress; 45s is generous headroom. Its REAL job is to stop ONE stalled
+// fetch (a clip URL that connects but never streams from the serverless node)
+// from pinning the whole function until the platform hard-kills it at
+// maxDuration — the root cause of the 60s/12-clip assemble hang. On trip the
+// asset fails fast with a named error so the saga compensate runs.
+const DOWNLOAD_TIMEOUT_MS = 45_000;
+
+const hostOf = (url: string): string => {
+  try { return new URL(url).host; } catch { return 'asset'; }
+};
+
 async function download(url: string, dest: string, signal?: AbortSignal): Promise<string> {
-  const r = await fetch(url, signal ? { signal } : {});
-  if (!r.ok) throw new Error(`asset download failed (${r.status})`);
-  await writeFile(dest, Buffer.from(await r.arrayBuffer()));
-  return dest;
+  // Combine the caller's deadline signal with a per-request timeout: whichever
+  // fires first aborts THIS fetch. Without the timeout, only the route's ~525s
+  // dispatch deadline could free a stalled download — long enough to look like a
+  // hang and (if it didn't propagate) let the platform kill the function first.
+  const ac = new AbortController();
+  let timedOut = false;
+  const onAbort = () => ac.abort((signal as { reason?: unknown } | undefined)?.reason);
+  if (signal) {
+    if (signal.aborted) ac.abort((signal as { reason?: unknown }).reason);
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
+  const timer = setTimeout(() => { timedOut = true; ac.abort(); }, DOWNLOAD_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { signal: ac.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    await writeFile(dest, Buffer.from(await r.arrayBuffer()));
+    return dest;
+  } catch (err) {
+    const reason = timedOut
+      ? `timed out after ${DOWNLOAD_TIMEOUT_MS}ms`
+      : signal?.aborted
+        ? 'cancelled by assemble deadline'
+        : err instanceof Error ? err.message : String(err);
+    throw new Error(`asset download failed (${hostOf(url)}): ${reason}`);
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+/** Bounded-concurrency clip downloads that PRESERVE input order. Parallelism
+ *  reclaims the largest fixed chunk of wall-clock for the 12-clip master (12
+ *  sequential fetches → ~6 in flight); the per-download timeout above means one
+ *  bad URL fails the batch fast instead of serializing into a hang. */
+async function downloadAllOrdered(
+  urls: string[], dir: string, signal?: AbortSignal, concurrency = 6,
+): Promise<string[]> {
+  const out: string[] = new Array(urls.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let i = next++; i < urls.length; i = next++) {
+      out[i] = await download(urls[i]!, join(dir, `seg${i}.mp4`), signal);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, urls.length) }, worker));
+  return out;
 }
 
 /**
@@ -104,13 +158,18 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
 
   const dir = await mkdtemp(join(tmpdir(), 'asm_'));
   try {
-    const inputs: string[] = [];
-    for (let i = 0; i < segs.length; i++) {
-      inputs.push(await download(segs[i]!.url, join(dir, `seg${i}.mp4`), signal));
-    }
-    const voice = m.voiceoverUrl ? await download(m.voiceoverUrl, join(dir, 'voice.m4a'), signal) : null;
-    const music = m.musicUrl ? await download(m.musicUrl, join(dir, 'music.m4a'), signal) : null;
-    const sfx = m.sfxUrl ? await download(m.sfxUrl, join(dir, 'sfx.m4a'), signal) : null;
+    // Download the clips in parallel (order-preserving) and the audio lanes
+    // alongside them — all share the caller's deadline signal AND a per-asset
+    // timeout, so the download phase can no longer silently pin the function.
+    const tDl = Date.now();
+    const [inputs, voice, music, sfx] = await Promise.all([
+      downloadAllOrdered(segs.map(s => s!.url), dir, signal),
+      m.voiceoverUrl ? download(m.voiceoverUrl, join(dir, 'voice.m4a'), signal) : Promise.resolve(null),
+      m.musicUrl ? download(m.musicUrl, join(dir, 'music.m4a'), signal) : Promise.resolve(null),
+      m.sfxUrl ? download(m.sfxUrl, join(dir, 'sfx.m4a'), signal) : Promise.resolve(null),
+    ]);
+    // eslint-disable-next-line no-console
+    console.log(`[assemble] downloaded ${segs.length} clips + ${[voice, music, sfx].filter(Boolean).length} audio lanes in ${Date.now() - tDl}ms`);
 
     const g = m.globalRender ?? {};
     const fps = String(g.fps) === '60' ? 60 : 24;
@@ -295,7 +354,10 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       '-movflags', '+faststart', out,
     );
 
+    const tEnc = Date.now();
     await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });
+    // eslint-disable-next-line no-console
+    console.log(`[assemble] ffmpeg encode (${inputs.length} clips → master) in ${Date.now() - tEnc}ms`);
 
     const data = await readFile(out);
 

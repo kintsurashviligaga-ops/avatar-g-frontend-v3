@@ -138,11 +138,25 @@ export async function generateGeorgianSong(
   const bin = ffmpegStatic as unknown as string | null;
   if (!bin) return null;
   // 1. Georgian vocal (cloned KA voice) + 2. funk instrumental bed, concurrently.
+  // Each leg is bounded by its OWN timeout: ElevenLabs TTS / Music have no native
+  // timeout, so a single slow leg used to pin the route until its 240s maxDuration
+  // (the georgian-song timeout). Now a slow leg resolves to null within budget and
+  // the route degrades gracefully (caller falls back to the assemble EL-Music bed).
+  const LEG_TIMEOUT_MS = 110_000;
+  const withTimeout = <T,>(p: Promise<T>, label: string): Promise<T | null> =>
+    Promise.race([
+      p,
+      new Promise<null>((resolve) => setTimeout(() => {
+        // eslint-disable-next-line no-console
+        console.warn(`[ka-song] ${label} leg timed out after ${LEG_TIMEOUT_MS}ms → degrading`);
+        resolve(null);
+      }, LEG_TIMEOUT_MS)),
+    ]);
   const lyrics = generateGeorgianLyrics(brief);
   const voiceId = gender === 'male' ? KA_VOICE_MALE : KA_VOICE_FEMALE;
   const [vocalUrl, bedUrl] = await Promise.all([
-    textToHostedSpeech(lyrics, voiceId).catch(() => null),
-    instrumentalBed(brief, totalSec, signal),
+    withTimeout(textToHostedSpeech(lyrics, voiceId).catch(() => null), 'vocal'),
+    withTimeout(instrumentalBed(brief, totalSec, signal), 'instrumental-bed'),
   ]);
   if (!vocalUrl || !bedUrl) {
     // eslint-disable-next-line no-console

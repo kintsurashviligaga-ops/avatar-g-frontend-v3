@@ -147,9 +147,19 @@ export async function uploadBufferAndSign(
   try {
     await sb.storage.createBucket(bucket, { public: false });
   } catch { /* exists / no perms — upload surfaces any real failure */ }
+  // The Supabase storage client takes no AbortSignal, so bound each attempt with
+  // a race-timeout: a stalled upload (the master is tens of MB) must not pin the
+  // serverless function until the platform hard-kills it at maxDuration — the
+  // same hang class the assemble clip-downloads were hardened against. On trip we
+  // fall through to the retry / null so the route's saga can compensate.
+  const UPLOAD_TIMEOUT_MS = 90_000;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { error } = await sb.storage.from(bucket).upload(path, buffer, { contentType, upsert: true });
+      const { error } = await Promise.race([
+        sb.storage.from(bucket).upload(path, buffer, { contentType, upsert: true }),
+        new Promise<{ error: { message: string } }>((resolve) =>
+          setTimeout(() => resolve({ error: { message: `upload timed out after ${UPLOAD_TIMEOUT_MS}ms` } }), UPLOAD_TIMEOUT_MS)),
+      ]);
       if (!error) return createSignedAssetUrl(bucket, path, expiresSec);
       // eslint-disable-next-line no-console
       console.warn(`[storage] buffer upload to ${bucket}/${path} failed (attempt ${attempt + 1}/2):`, error.message);
