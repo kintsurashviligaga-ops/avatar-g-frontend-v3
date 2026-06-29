@@ -144,8 +144,13 @@ export async function uploadBufferAndSign(
 ): Promise<string | null> {
   const sb = client();
   if (!sb) return null;
+  // Video masters are tens of MB (a 60s 1080×1920 cut ≈ 32MB); a bucket created
+  // with a smaller cap rejects them with "exceeded the maximum allowed size" — the
+  // break that let 30s masters (~16MB) deliver while 60s masters never could.
+  // Create new buckets generous, and self-heal an existing too-small one below.
+  const LARGE_FILE_LIMIT = '256MB';
   try {
-    await sb.storage.createBucket(bucket, { public: false });
+    await sb.storage.createBucket(bucket, { public: false, fileSizeLimit: LARGE_FILE_LIMIT });
   } catch { /* exists / no perms — upload surfaces any real failure */ }
   // The Supabase storage client takes no AbortSignal, so bound each attempt with
   // a race-timeout: a stalled upload (the master is tens of MB) must not pin the
@@ -163,6 +168,20 @@ export async function uploadBufferAndSign(
       if (!error) return createSignedAssetUrl(bucket, path, expiresSec);
       // eslint-disable-next-line no-console
       console.warn(`[storage] buffer upload to ${bucket}/${path} failed (attempt ${attempt + 1}/2):`, error.message);
+      // SELF-HEAL the canonical 60s-master blocker: an existing bucket whose
+      // fileSizeLimit predates large video masters rejects them for size. Raise
+      // the cap once and let the next attempt retry. Fail-open: a perms error just
+      // falls through to null and the saga compensates.
+      if (/maximum allowed size|exceeded|too large|payload too large/i.test(error.message)) {
+        try {
+          await sb.storage.updateBucket(bucket, { public: false, fileSizeLimit: LARGE_FILE_LIMIT });
+          // eslint-disable-next-line no-console
+          console.warn(`[storage] raised ${bucket} fileSizeLimit → ${LARGE_FILE_LIMIT}, retrying`);
+        } catch (ue) {
+          // eslint-disable-next-line no-console
+          console.warn(`[storage] could not raise ${bucket} fileSizeLimit:`, ue instanceof Error ? ue.message : ue);
+        }
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn(`[storage] buffer upload to ${bucket}/${path} threw (attempt ${attempt + 1}/2):`, e instanceof Error ? e.message : e);

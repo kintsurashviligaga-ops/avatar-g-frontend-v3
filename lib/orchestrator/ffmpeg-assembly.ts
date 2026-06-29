@@ -328,6 +328,13 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     if (musicBugPath) args.push('-loop', '1', '-t', '5', '-i', musicBugPath);
     args.push('-filter_complex', filter, '-map', vmap);
     if (amap) args.push('-map', amap);
+    // Target byte budget for the master so it fits under the storage upload limit
+    // (~50MB project cap). Derived per-runtime: a 30s master (~40MB) is barely
+    // touched; a 49s/60s master is capped from ~70MB down to ~MASTER_TARGET_MB.
+    const masterDurSec = expectedMasterDuration(inputs.length, clipSec, transSec);
+    const MASTER_TARGET_MB = 42;
+    const AUDIO_KBPS = 256;
+    const masterMaxrateKbps = Math.max(2_000, Math.round((MASTER_TARGET_MB * 8192) / masterDurSec) - AUDIO_KBPS);
     args.push(
       // v331 (FIX 5) — CPU-FALLBACK FRUGAL ENCODE. The previous 'fast' + CRF 18 +
       // High@L4.2 encode of a 1080×1920 30s master OOM-killed the serverless
@@ -343,6 +350,15 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       // universally playable.
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20',
       '-threads', '2', '-pix_fmt', 'yuv420p',
+      // SIZE BOUND (the 60s-master delivery fix). 'ultrafast' is bitrate-INEFFICIENT:
+      // an uncapped 49s/1080×1920 CRF20 master balloons to ~70MB, which Supabase
+      // Storage rejects with "exceeded the maximum allowed size" (the project upload
+      // limit is ~50MB) — the exact break that let 30s masters (~40MB) deliver while
+      // 60s masters never could. A VBV cap keeps CRF quality where it fits and only
+      // trims bitrate spikes, targeting ~MASTER_TARGET_MB regardless of runtime so the
+      // master always lands under the limit. maxrate adds no memory → OOM tuning above
+      // is unaffected. (Raise the Supabase project upload limit to restore full bitrate.)
+      '-maxrate', `${masterMaxrateKbps}k`, '-bufsize', `${masterMaxrateKbps * 2}k`,
       // 256 kbps / 48 kHz AAC for clean, full-bandwidth film audio.
       '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
       // Hard-cap the container to the EXACT compiled target so the video and audio
@@ -350,7 +366,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       // guarantee on top of the per-clip trim that the master is exactly this long
       // (30s for a full ≥4-clip film). `-t` truncates only if longer, so it can't
       // shorten a correctly-built timeline; it just enforces the contract.
-      '-t', String(expectedMasterDuration(inputs.length, clipSec, transSec)),
+      '-t', String(masterDurSec),
       '-movflags', '+faststart', out,
     );
 
