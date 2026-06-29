@@ -26,11 +26,12 @@ function decodeDataUrl(dataUrl: string): Buffer | null {
 }
 
 export async function POST(req: Request) {
+  const debug = String(req.url || '').includes('debug=1');
   try {
     const body = (await req.json().catch(() => ({}))) as { dataUrl?: unknown; mimeType?: unknown };
-    if (typeof body.dataUrl !== 'string') return NextResponse.json({ text: '' });
+    if (typeof body.dataUrl !== 'string') return NextResponse.json({ text: '', ...(debug ? { _d: 'no-dataurl' } : {}) });
     const buf = decodeDataUrl(body.dataUrl);
-    if (!buf) return NextResponse.json({ text: '' });
+    if (!buf) return NextResponse.json({ text: '', ...(debug ? { _d: 'no-buf' } : {}) });
 
     const mt = String(body.mimeType ?? '').toLowerCase();
     const isPdf = /pdf/.test(mt) || buf.subarray(0, 5).toString('latin1') === '%PDF-';
@@ -46,9 +47,9 @@ export async function POST(req: Request) {
         const pdf = await getDocumentProxy(new Uint8Array(buf));
         const { text } = await extractText(pdf, { mergePages: true });
         const out = String(Array.isArray(text) ? text.join('\n') : text ?? '').replace(/\n{3,}/g, '\n\n').trim();
-        return NextResponse.json({ text: out });
-      } catch {
-        return NextResponse.json({ text: '' });
+        return NextResponse.json({ text: out, ...(debug ? { _d: `unpdf-ok bytes=${buf.length} chars=${out.length}` } : {}) });
+      } catch (e) {
+        return NextResponse.json({ text: '', ...(debug ? { _d: `unpdf-throw bytes=${buf.length}: ${e instanceof Error ? (e.stack || e.message) : String(e)}`.slice(0, 600) } : {}) });
       }
     }
 
