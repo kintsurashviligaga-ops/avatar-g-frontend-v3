@@ -29,6 +29,7 @@ import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { muxAudioOntoVideo } from '@/lib/video/remixOps';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
@@ -157,6 +158,9 @@ interface AssembleBody {
   /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer).
    *  'duet' → a male + female duet. */
   vocalGender?: 'male' | 'female' | 'duet';
+  /** STEP 2.3 — ElevenLabs with-timestamps alignment → word-synced burned captions on
+   *  the CPU-FFmpeg master (fail-open; absent → no captions, path unchanged). */
+  captionAlignment?: ElevenAlignment | null;
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
@@ -580,7 +584,7 @@ async function assembleImpl(req: NextRequest) {
           // GPU worker when configured; else stitch on this node with CPU FFmpeg.
           const work = cfg
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
-            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId }, ac.signal);
+            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null }, ac.signal);
           const res = await Promise.race([work, deadline]);
           ctx.bag.tempUrl = res.url;
           // Supervisor QA verdict (CPU path only; RunPod path returns no qa).
