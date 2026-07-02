@@ -7,7 +7,7 @@
  * as a console. The loop is always bounded + terminal server-side, so the UI just reflects the
  * returned steps. Social publishing is prepare-only end-to-end — the UI surfaces that explicitly.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Step {
   thought?: string;
@@ -52,6 +52,16 @@ export default function AgentTerminal({ locale, embedded = false, onExit }: { lo
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Prompt handoff: when the user types in the "Ask Agent G" bar (which redirects here with
+  // ?prompt=…), carry that text straight into the goal box — the request lands in-place, in the
+  // same window they typed it. Pre-fill only (no auto-run); the user still hits Run. Client-only.
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('prompt');
+      if (p && p.trim()) setGoal((g) => g || p.trim().slice(0, 2000));
+    } catch { /* no-op */ }
+  }, []);
 
   async function run(g: string) {
     const trimmed = g.trim();
