@@ -45,7 +45,9 @@ function pretty(v: unknown, max = 1200): string {
 const card: React.CSSProperties = { border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', borderRadius: 14 };
 const mono = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
-export default function AgentTerminal({ locale }: { locale: string }) {
+// `embedded` = mounted in-place inside the main /dashboard window (ServiceHub → ChatChrome),
+// where the shell already owns the top bar + scroll. Standalone (route) is the fallback.
+export default function AgentTerminal({ locale, embedded = false, onExit }: { locale: string; embedded?: boolean; onExit?: () => void }) {
   const [goal, setGoal] = useState('');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -78,7 +80,7 @@ export default function AgentTerminal({ locale }: { locale: string }) {
   } as const)[result.stopReason];
 
   return (
-    <main style={{ maxWidth: 860, margin: '0 auto', padding: '28px 20px 72px', color: '#fff', minHeight: '100vh' }}>
+    <main style={{ maxWidth: 860, margin: '0 auto', padding: '28px 20px 72px', color: '#fff', minHeight: embedded ? '100%' : '100vh' }}>
       <header style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ width: 10, height: 10, borderRadius: 999, background: running ? '#f59e0b' : '#10b981', boxShadow: `0 0 10px ${running ? '#f59e0b' : '#10b981'}` }} />
@@ -198,7 +200,13 @@ export default function AgentTerminal({ locale }: { locale: string }) {
       )}
 
       <style>{`.ag-pulse{animation:agpulse 1s steps(2) infinite}@keyframes agpulse{50%{opacity:0.2}}`}</style>
-      <a href={`/${locale}/dashboard`} style={{ position: 'fixed', top: 16, right: 18, fontSize: 13, color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>✕ Close</a>
+      {embedded ? (
+        onExit ? (
+          <button type="button" onClick={onExit} style={{ position: 'absolute', top: 8, right: 12, fontSize: 13, color: 'rgba(255,255,255,0.5)', background: 'transparent', border: 'none', cursor: 'pointer' }}>✕ Close</button>
+        ) : null
+      ) : (
+        <a href={`/${locale}/dashboard`} style={{ position: 'fixed', top: 16, right: 18, fontSize: 13, color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>✕ Close</a>
+      )}
     </main>
   );
 }
