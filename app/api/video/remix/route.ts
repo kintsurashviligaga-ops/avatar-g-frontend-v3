@@ -29,6 +29,7 @@ import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orc
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusic } from '@/lib/ai/replicate';
 import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
+import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -166,6 +167,18 @@ export async function POST(req: NextRequest) {
       const style = PRESETS[presetKey] ?? PRESETS.luxury!;
       const scenes = PRESET_SCENES[presetKey] ?? PRESET_SCENES.luxury!;
       const sceneIdx = Number.isFinite(Number(body.sceneIndex)) ? Math.max(0, Math.floor(Number(body.sceneIndex))) : -1;
+      // STEP 2.5 — OPT-IN server-side budget cap, checked HERE (the spend point) before the
+      // paid Kling call. Activated only when a cap is supplied (request `budgetCapUsd` or env
+      // AD_SESSION_BUDGET_CAP_USD), so production ads are unaffected; it guards the 2.6 paid
+      // test. Over-budget (or a single scene above the cap) → 402 top-up, never spends.
+      const capUsd = Number(body.budgetCapUsd) || Number(process.env.AD_SESSION_BUDGET_CAP_USD) || 0;
+      if (capUsd > 0) {
+        const adScenes = Number.isFinite(Number(body.sceneCount))
+          ? Math.max(1, Math.floor(Number(body.sceneCount)))
+          : sceneIdx >= 0 ? sceneIdx + 1 : 1;
+        const budget = checkAdBudget({ scenes: adScenes, withTts: false, withMusic: sceneIdx < 0 && body.noMusic !== true }, { capUsd });
+        if (!budget.ok) return NextResponse.json({ url: null, error: budget.message, topUpNeeded: true }, { status: 402 });
+      }
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
       const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
