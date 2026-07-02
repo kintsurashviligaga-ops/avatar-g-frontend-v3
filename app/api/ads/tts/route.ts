@@ -30,8 +30,9 @@ export async function POST(req: NextRequest) {
   const voiceId = (typeof body.voiceId === 'string' && body.voiceId.trim()) || georgianVoiceId(gender);
 
   const r = await synthesizeWithTimestamps(text, voiceId, { stability: 0.48 });
-  if (!r) {
-    return NextResponse.json({ error: 'TTS unavailable (missing ELEVENLABS_API_KEY, voice, or upstream error)' }, { status: 502 });
+  if (!r.ok) {
+    // Surface the real reason (EL status / voice / config) — the key value is never included.
+    return NextResponse.json({ error: 'TTS unavailable', reason: r.error, voiceId }, { status: 502 });
   }
   const path = `ad-tts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
   const audioUrl = await uploadAndSign('uploads', path, r.audioBase64, 'audio/mpeg', 7200);

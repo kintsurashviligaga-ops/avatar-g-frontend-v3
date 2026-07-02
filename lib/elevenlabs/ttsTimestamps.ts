@@ -20,6 +20,11 @@ export interface TtsTimestampsResult {
   alignment: ElevenAlignment;
 }
 
+/** Outcome carrying the real failure reason (so the route can surface WHY, not a blank 502). */
+export type TtsTimestampsOutcome =
+  | ({ ok: true } & TtsTimestampsResult)
+  | { ok: false; error: string };
+
 /** True when the parsed body has the with-timestamps alignment shape we depend on. */
 export function isElevenAlignment(a: unknown): a is ElevenAlignment {
   const o = a as ElevenAlignment | undefined;
@@ -36,11 +41,13 @@ export async function synthesizeWithTimestamps(
   text: string,
   voiceId: string,
   opts?: { modelId?: string; stability?: number; signal?: AbortSignal },
-): Promise<TtsTimestampsResult | null> {
+): Promise<TtsTimestampsOutcome> {
   const key = (process.env.ELEVENLABS_API_KEY || '').trim();
-  if (!key || !text.trim() || !voiceId) return null;
+  if (!key) return { ok: false, error: 'missing ELEVENLABS_API_KEY' };
+  if (!text.trim()) return { ok: false, error: 'empty text' };
+  if (!voiceId) return { ok: false, error: 'missing voiceId' };
   try {
-    return await withRetry(
+    const result = await withRetry(
       () =>
         withElevenLabsSlot(async () => {
           const res = await fetch(endpoint(voiceId), {
@@ -64,7 +71,11 @@ export async function synthesizeWithTimestamps(
         }),
       { maxAttempts: 2, baseDelayMs: 1500, label: 'el-tts-timestamps' },
     );
-  } catch {
-    return null;
+    return { ok: true, ...result };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    // Surface the reason (EL status/message — never the key) so the caller can report WHY.
+    console.error('[el-tts-timestamps] failed:', error);
+    return { ok: false, error };
   }
 }
