@@ -1,37 +1,14 @@
-import Link from 'next/link'
-import { getLocalizedMeta, getAgentIdForService } from '@/lib/services/metadata'
-import AgentGPageClient from './AgentGPageClient'
+import { redirect } from 'next/navigation'
 
-type AgentGPageProps = {
-  params: Promise<{ locale: string }>
-}
+// RETIRED (One Window): the agent + its live process now render IN-PLACE inside the main
+// /dashboard window (ServiceHub → ChatChrome, #agent), not on this /services/agent-g surface
+// (the "unused services surface" the product moved away from). Kept as a redirect so the old
+// nav target / bookmarks land on the in-place agent. The old client is preserved in /_graveyard.
+export const dynamic = 'force-dynamic'
 
-export default async function AgentGPage({ params }: AgentGPageProps) {
+type Props = { params: Promise<{ locale: string }> }
+
+export default async function AgentGRedirect({ params }: Props) {
   const { locale } = await params
-  const meta = getLocalizedMeta('agent-g', locale)
-
-  if (!meta) {
-    return (
-      <section className="min-h-screen flex items-center justify-center bg-transparent" style={{ color: 'var(--color-text)' }}>
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-semibold">Agent G</h1>
-          <Link href={`/${locale}/services`} className="text-sm" style={{ color: 'var(--color-accent)' }}>← Back</Link>
-        </div>
-      </section>
-    )
-  }
-
-  const agentId = getAgentIdForService('agent-g')
-
-  return (
-    <AgentGPageClient
-      serviceId="agent-g"
-      serviceName={meta.headline}
-      serviceIcon={meta.icon}
-      agentId={agentId}
-      locale={locale}
-      features={meta.features}
-      description={meta.description}
-    />
-  )
+  redirect(`/${locale}/dashboard#agent`)
 }
