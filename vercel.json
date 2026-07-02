@@ -153,5 +153,11 @@
   ],
   "alias": [
     "myavatar.ge"
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/optimize-agents",
+      "schedule": "0 6 * * *"
+    }
   ]
 }
