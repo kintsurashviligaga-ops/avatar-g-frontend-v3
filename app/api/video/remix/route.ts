@@ -28,6 +28,7 @@ import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusic } from '@/lib/ai/replicate';
+import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -133,6 +134,15 @@ export async function POST(req: NextRequest) {
     try {
       const aspectP: Aspect = body.aspect === '16:9' || body.aspect === '1:1' ? body.aspect : '9:16';
       const img = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
+      // STEP 2.1 — server-authoritative ad-image guard for a data:image payload
+      // (jpeg/png/webp, ≤10MB). This is the real ad path (images arrive as data URLs,
+      // bypassing /api/upload), so the strict marketing profile is enforced HERE too.
+      if (/^data:/i.test(img)) {
+        const mt = img.match(/^data:([^;,]+)[;,]/);
+        const b64 = img.includes(',') ? img.split(',')[1] ?? '' : '';
+        const v = validateAdImageMeta({ contentType: mt?.[1] ?? '', sizeBytes: base64ByteLength(b64) });
+        if (!v.ok) return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 });
+      }
       // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
       const startImg = /^data:image\//i.test(img) ? img : await resolveMedia(img);
       if (!startImg) return fail('Add a product photo.');
