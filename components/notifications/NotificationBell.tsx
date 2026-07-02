@@ -12,7 +12,10 @@ import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
-interface Item { id: string; type: string; message: string; read: boolean; created_at: string }
+// `link` (optional) lets a notification deep-link to its own asset (e.g. the finished render).
+// Backward-safe: absent → falls back to the by-type destination below. Populating it is a
+// follow-up in the notification-creation sites (+ a `link` column via migration).
+interface Item { id: string; type: string; message: string; read: boolean; created_at: string; link?: string }
 
 // Where a notification leads when tapped: a finished render → Library; a billing
 // notice → the dashboard (credits modal lives there). Default → Library.
@@ -129,7 +132,7 @@ export default function NotificationBell({ locale }: { locale: string }) {
               {items.map((it) => (
                 <li key={it.id} className="border-b border-app-border/8 last:border-0">
                   <button type="button"
-                    onClick={() => { setOpen(false); router.push(notifHref(it.type, locale)); }}
+                    onClick={() => { setOpen(false); router.push(it.link || notifHref(it.type, locale)); }}
                     className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-app-elevated active:scale-[0.99]">
                     <span className="mt-0.5 text-[15px]">{ICON[it.type] ?? '🔔'}</span>
                     <span className="min-w-0 flex-1">
