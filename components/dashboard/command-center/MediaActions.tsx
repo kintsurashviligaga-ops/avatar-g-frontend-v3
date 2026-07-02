@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Download, Share2, RefreshCw, Bookmark, Check, Copy, X, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { shareOrDownload } from '@/lib/share/nativeShare';
+import { recordFeedback } from '@/lib/agent/feedbackClient';
 
 interface MediaActionsProps {
   kind: 'image' | 'video' | 'audio' | 'avatar' | 'text';
@@ -348,6 +349,7 @@ export default function MediaActions({
       a.download = `${name}.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
+      recordFeedback(kind, 'download', prompt ? { promptSnapshot: prompt } : undefined);
     } catch {
       /* silently fail — user can right-click save */
     }
@@ -386,6 +388,7 @@ export default function MediaActions({
       setShareUrl(url);
     }
     setShareModal(true);
+    recordFeedback(kind, 'share', prompt ? { promptSnapshot: prompt } : undefined);
   };
 
   const handleSaveChar = async (name: string, description: string) => {
@@ -409,7 +412,10 @@ export default function MediaActions({
   };
 
   const handleRemix = () => {
-    if (onRemix && prompt) onRemix(prompt);
+    if (onRemix && prompt) {
+      recordFeedback(kind, 'remix', { promptSnapshot: prompt });
+      onRemix(prompt);
+    }
   };
 
   return (
