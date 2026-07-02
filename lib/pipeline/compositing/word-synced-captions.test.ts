@@ -88,3 +88,37 @@ function words_end(a: ElevenAlignment, word: string): number {
   const w = alignmentToWords(a).find((x) => x.text === word);
   return w ? w.endSec : 0;
 }
+
+// End-to-end confidence for the 2.6 caption path, which has NEVER run against live TTS: drive a
+// full realistic Georgian ad hook through the whole chain and assert temporal correctness.
+describe('2.6 caption pipeline — full-hook integration (path never run live)', () => {
+  const HOOK = 'ახალი დღე ახალი ფასდაკლება დღეს მხოლოდ';
+  const a = fixture(HOOK);
+
+  it('segments form a gap-free, ordered timeline that covers the whole audio and drops no word', () => {
+    const words = alignmentToWords(a);
+    const segs = alignmentToCaptionSegments(a, { maxWords: 3 });
+    expect(segs.length).toBeGreaterThan(1);
+    // spans first word start → last word end
+    expect(segs[0]!.startSec).toBeCloseTo(words[0]!.startSec, 3);
+    expect(segs.at(-1)!.endSec).toBeCloseTo(words.at(-1)!.endSec, 3);
+    // ordered, non-overlapping (only one caption visible at a time)
+    for (let i = 1; i < segs.length; i++) expect(segs[i]!.startSec).toBeGreaterThanOrEqual(segs[i - 1]!.endSec - 1e-6);
+    // every word lands in exactly one segment — nothing dropped or duplicated
+    expect(segs.flatMap((s) => s.text.split(' '))).toEqual(words.map((w) => w.text));
+  });
+
+  it('overlay filter emits one enable window per segment, matching the segment times, ending in [vout]', () => {
+    const segs = alignmentToCaptionSegments(a, { maxWords: 3 });
+    const f = buildCaptionOverlayFilter(segs);
+    const windows = [...f.matchAll(/between\(t,([\d.]+),([\d.]+)\)/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
+    expect(windows.length).toBe(segs.length);
+    windows.forEach(([s, e], i) => {
+      expect(s).toBeCloseTo(Math.max(0, segs[i]!.startSec), 2);
+      expect(e).toBeCloseTo(segs[i]!.endSec, 2);
+    });
+    expect(f.endsWith('[vout]')).toBe(true);
+    // one caption strip input per segment, indexed sequentially [1:v]..[N:v]
+    for (let i = 0; i < segs.length; i++) expect(f).toContain(`[${i + 1}:v]`);
+  });
+});
