@@ -14,6 +14,19 @@ import type { ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-cap
 const endpoint = (voiceId: string) =>
   `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps`;
 
+/**
+ * Default with-timestamps model. `eleven_multilingual_v2` is reliable + supports with-timestamps,
+ * but reads Georgian with an accent (ka is not in its official language list). To switch, set the
+ * ELEVENLABS_TTS_MODEL env var (global) or pass opts.modelId (per-call) — a clean config flip, no
+ * code change. See NOTES_TTS_GEORGIAN.md for the ka-capable alternatives.
+ */
+export const DEFAULT_TTS_MODEL = 'eleven_multilingual_v2';
+
+/** Resolve the model id: per-call override → ELEVENLABS_TTS_MODEL env → default. */
+export function resolveTtsModel(override?: string): string {
+  return (override || '').trim() || (process.env.ELEVENLABS_TTS_MODEL || '').trim() || DEFAULT_TTS_MODEL;
+}
+
 export interface TtsTimestampsResult {
   audioBase64: string;
   contentType: string;
@@ -55,7 +68,7 @@ export async function synthesizeWithTimestamps(
             headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({
               text: text.slice(0, 2000),
-              model_id: opts?.modelId ?? 'eleven_multilingual_v2',
+              model_id: resolveTtsModel(opts?.modelId),
               voice_settings: { stability: opts?.stability ?? 0.48, similarity_boost: 0.8 },
             }),
             ...(opts?.signal ? { signal: opts.signal } : {}),
