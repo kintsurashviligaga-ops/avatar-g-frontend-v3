@@ -46,9 +46,12 @@ const FullLoading = () => (
 const OmniStudio = dynamic(() => import('./OmniStudio'), { ssr: false, loading: InShellLoading });
 const LipsyncStudio = dynamic(() => import('./LipsyncStudio'), { ssr: false, loading: InShellLoading });
 const ConversationalFilmStudio = dynamic(() => import('./ConversationalFilmStudio'), { ssr: false, loading: FullLoading });
+// One Window: the STEP 3 agent + its live process mount IN-PLACE here (inside the same
+// ChatChrome shell as the assistant), not on a separate /agent-terminal or /services/agent-g route.
+const AgentTerminal = dynamic(() => import('@/components/agent/AgentTerminal'), { ssr: false, loading: InShellLoading });
 
 type Lang = 'ka' | 'en' | 'ru';
-type Service = 'hub' | 'film' | 'omni' | 'lipsync';
+type Service = 'hub' | 'film' | 'omni' | 'lipsync' | 'agent';
 
 const COPY: Record<Lang, {
   heading: string; sub: string;
@@ -96,7 +99,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   useEffect(() => {
     const read = () => {
       const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
-      setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' ? (h as Service) : 'omni');
+      setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' || h === 'agent' ? (h as Service) : 'omni');
     };
     read();
     window.addEventListener('hashchange', read);
@@ -119,18 +122,19 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   // Cards B & C — wrapped in the full modern-chatbot chrome (top bar with brand +
   // live GEL balance + top-up + hamburger drawer + New Chat). The assistant is the
   // default one-window landing; the back control returns to the card hub.
-  if (service === 'omni' || service === 'lipsync') {
+  if (service === 'omni' || service === 'lipsync' || service === 'agent') {
     return (
       <ChatChrome
         locale={locale}
         // The assistant chatbox IS the home — it has nothing to go "back" to, so it
         // gets NO back control (the old one routed to the #hub card grid, which read
         // as a "ghost page" landing on every press/refresh). Lipsync is a secondary
-        // surface reached only from the hub, so it keeps an explicit exit-to-hub.
-        onBack={service === 'lipsync' ? () => go('hub') : undefined}
-        title={service === 'lipsync' ? t.lipTitle : undefined}
+        // surface reached only from the hub, so it keeps an explicit exit-to-hub. The
+        // agent (STEP 3) mounts IN-PLACE here too — its back returns to the assistant.
+        onBack={service === 'lipsync' ? () => go('hub') : service === 'agent' ? () => go('omni') : undefined}
+        title={service === 'lipsync' ? t.lipTitle : service === 'agent' ? 'Agent G' : undefined}
         onNewChat={service === 'omni' ? () => { try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ } setChatResetKey((k) => k + 1); } : undefined}
-        scrollBody={service === 'lipsync'}
+        scrollBody={service === 'lipsync' || service === 'agent'}
       >
         {/* PHASE 3 Task 5 — a render crash in the studio keeps the ChatChrome shell +
             shows a localized, friendly retry card instead of blanking the route. */}
@@ -147,7 +151,9 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
             </div>
           }
         >
-          {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} /> : <LipsyncStudio locale={lang} />}
+          {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} />
+            : service === 'lipsync' ? <LipsyncStudio locale={lang} />
+            : <AgentTerminal embedded locale={lang} onExit={() => go('omni')} />}
         </ErrorBoundary>
       </ChatChrome>
     );
