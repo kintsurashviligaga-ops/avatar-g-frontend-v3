@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, type GradeStyle } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, type GradeStyle } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -145,7 +145,12 @@ export async function POST(req: NextRequest) {
         if (!v.ok) return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 });
       }
       // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
-      const startImg = /^data:image\//i.test(img) ? img : await resolveMedia(img);
+      const startImgRaw = /^data:image\//i.test(img) ? img : await resolveMedia(img);
+      // STEP 2.6 — pre-fit a product image to the target aspect so Kling i2v (output ratio =
+      // start-image ratio) renders NATIVE 9:16, not a square that later needs letterboxing.
+      const startImg = startImgRaw && /^data:image\//i.test(startImgRaw)
+        ? await fitImageToAspect(startImgRaw, aspectP)
+        : startImgRaw;
       if (!startImg) return fail('Add a product photo.');
       // Per-preset visual STYLE (the look) + per-scene ACTIONS (the multi-clip arc).
       // Single-clip (no sceneIndex) → just the style. Multi-clip (sceneIndex set) →
