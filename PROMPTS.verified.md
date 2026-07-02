@@ -11,6 +11,7 @@ This supersedes assumptions in `PROMPTS.md`. Where they conflict, **this file wi
 | BullMQ/Upstash queue | **Upstash Redis only** (`lib/platform/queues.ts`; QueueNames `webhooks_ingest\|processing_jobs\|billing_events`) + durable `generation_jobs` | STEP 2/3/5 "enqueue via BullMQ" → Upstash queue helpers + `generation_jobs` rows (Agent G stays sole job creator) |
 | AI SDK `ai` v4/v5 | **v6.0.172** (`@ai-sdk/react@^3`) | STEP 3 — **read `node_modules/ai` exports + the v6 migration guide; do NOT assume the API** |
 | 6-service registry (Chat/Image/Music/Video/Avatar/Remix) | **3 registry files**, 14–22 services; `lib/registry.ts` most-imported | "the Video service" = the film pipeline (below); registry key stays stable, only labels change |
+| Kling v2.1 (STEP 3) | **`kling-v1.6-standard`** (repo default; `REPLICATE_VIDEO_MODEL` override) | STEP 3 `orchestrate_media` uses the v1.6-standard model name, not v2.1 |
 | `src/` tree | **No `src/`** — app dir at repo root | all paths resolve at root (`app/`, `lib/`, `components/`) |
 | ATLAS_CLOUD_API_KEY | code uses **`ATLAS_API_KEY`** (+ `ATLAS_KLING_API_KEY`) | STEP 2/3 scripting env name |
 
