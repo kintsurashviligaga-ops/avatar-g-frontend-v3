@@ -30,6 +30,7 @@ import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adap
 import { muxAudioOntoVideo } from '@/lib/video/remixOps';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
+import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
@@ -419,8 +420,15 @@ async function assembleImpl(req: NextRequest) {
         if (overlaid) master = overlaid;
       } catch { /* keep the clean master */ }
     }
+    // STEP 2.6 fix — word-synced captions on the SINGLE-CLIP ad too. The multi-clip path
+    // burns them inside ffmpeg-assembly; the 1-scene path is URL-based, so a real 1-scene ad
+    // used to get NO captions. Burn via URL here (fail-open: a miss keeps the master).
+    if (body.captionAlignment) {
+      const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
+      if (captioned) master = captioned;
+    }
     // eslint-disable-next-line no-console
-    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), muxed: master !== clipUrl }));
+    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl }));
     if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
     return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: false, single: true });
   }
