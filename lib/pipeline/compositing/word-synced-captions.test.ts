@@ -3,6 +3,7 @@ import {
   wordsToSegments,
   alignmentToCaptionSegments,
   enableBetween,
+  buildCaptionOverlayFilter,
   type ElevenAlignment,
 } from './word-synced-captions';
 
@@ -60,6 +61,20 @@ describe('word-synced captions (Georgian fixture, no live TTS)', () => {
   it('enableBetween emits a clamped, compact ffmpeg expression', () => {
     expect(enableBetween({ startSec: 0, endSec: 0.2 })).toBe('between(t,0,0.2)');
     expect(enableBetween({ startSec: -1, endSec: 0.5 })).toBe('between(t,0,0.5)');
+  });
+
+  it('buildCaptionOverlayFilter chains one gated overlay per segment → [vout]', () => {
+    const segs = [
+      { startSec: 0, endSec: 1 },
+      { startSec: 1, endSec: 2.5 },
+    ];
+    const f = buildCaptionOverlayFilter(segs);
+    // input order: [0:v]=video, [1:v],[2:v]=strips; single visible caption at a time
+    expect(f).toBe(
+      "[0:v][1:v]overlay=0:H-h:enable='between(t,0,1)'[cap0];" +
+        "[cap0][2:v]overlay=0:H-h:enable='between(t,1,2.5)'[vout]",
+    );
+    expect(buildCaptionOverlayFilter([])).toBe(''); // no captions → no-op
   });
 
   it('handles empty / malformed alignment without throwing', () => {

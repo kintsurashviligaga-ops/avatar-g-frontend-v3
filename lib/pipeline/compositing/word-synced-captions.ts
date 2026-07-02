@@ -117,3 +117,24 @@ export function enableBetween(seg: { startSec: number; endSec: number }): string
   const r = (x: number) => x.toFixed(3).replace(/\.?0+$/, '') || '0';
   return `between(t,${r(s)},${r(e)})`;
 }
+
+/**
+ * Build the `filter_complex` that overlays ONE bottom-strip PNG per caption segment,
+ * each gated to its own [start,end] window. Input mapping (the caller supplies inputs in
+ * this exact order): [0:v] = the master video, [1:v..N:v] = the segment strips (in
+ * `segments` order). Chained so only one caption is visible at a time; output is `[vout]`.
+ * Overlaid at y = H-h (the strip's own height) so it sits flush on the bottom edge and
+ * never covers more than the strip. Returns '' when there are no segments (no-op burn).
+ */
+export function buildCaptionOverlayFilter(segments: Array<{ startSec: number; endSec: number }>): string {
+  if (!segments.length) return '';
+  const parts: string[] = [];
+  let prev = '0:v';
+  segments.forEach((seg, i) => {
+    const input = `${i + 1}:v`;
+    const out = i === segments.length - 1 ? 'vout' : `cap${i}`;
+    parts.push(`[${prev}][${input}]overlay=0:H-h:enable='${enableBetween(seg)}'[${out}]`);
+    prev = out;
+  });
+  return parts.join(';');
+}
