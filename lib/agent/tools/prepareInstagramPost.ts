@@ -15,10 +15,23 @@ import { z } from 'zod';
 export const IG_CAPTION_MAX = 2200; // Instagram hard limit
 export const IG_HASHTAG_MAX = 30; // Instagram hard limit
 
+// Real LLM output is messy: it sends hashtags as a space/comma string, caption as an array of
+// lines, and mediaUrl as an explicit null. Coerce those shapes so the agent can actually USE the
+// tool (an E2E caught the agent looping to max_steps because strict types rejected every call).
 export const prepareInstagramPostInput = z.object({
-  caption: z.string().min(1).max(IG_CAPTION_MAX),
-  hashtags: z.array(z.string()).max(60).optional(),
-  mediaUrl: z.string().url().optional(),
+  caption: z.preprocess(
+    (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').join(' ') : v),
+    z.string().min(1).max(IG_CAPTION_MAX),
+  ),
+  hashtags: z.preprocess(
+    (v) => (typeof v === 'string' ? v.split(/[\s,]+/).filter(Boolean) : v),
+    z.array(z.string()).max(60).optional(),
+  ),
+  mediaUrl: z
+    .string()
+    .url()
+    .nullish()
+    .transform((v) => v ?? undefined),
 });
 export type PrepareInstagramPostInput = z.infer<typeof prepareInstagramPostInput>;
 
