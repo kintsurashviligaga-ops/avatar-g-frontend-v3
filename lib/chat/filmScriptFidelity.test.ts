@@ -1,4 +1,26 @@
-import { planFilmScenes } from './filmPipeline';
+import { planFilmScenes, splitStructuredScript } from './filmPipeline';
+
+describe('splitStructuredScript (attach a real screenplay → its own scenes)', () => {
+  const script = `🎬 „ის დილა" — THAT MORNING 60-second trailer | 10 scenes
+მთავარი პრომპტი: შექმენი 60-წამიანი ისტორიული ეპიკური დრამა.
+🎬 სცენა 1 (0:00–0:06) — „გამთენია" ვიზუალი: AERIAL SHOT: camera descends through clouds over Tbilisi, Narikala fortress silhouette, Mtkvari river, fog over old town rooftops down to a cobblestone street. კამერა: Drone descent. 🔊 SFX: wind.
+🎬 სცენა 2 (0:06–0:12) — „უკანასკნელი მშვიდობა" ვიზუალი: STEADICAM tracking a waking street: an old man at a cafe with tea and a newspaper, a woman hanging white laundry on a balcony, children playing football. განათება: golden hour.
+🎬 სცენა 3 (0:12–0:18) — „რადიო" ვიზუალი: EXTREME CLOSE-UP of a Soviet Bakelite radio glowing amber, a finger turning the dial, static then a stern official voice. 🔊 SFX: static.`;
+
+  it('extracts one visual prompt per scene marker (no LLM), metadata stripped', () => {
+    const scenes = splitStructuredScript(script, 12);
+    expect(scenes).not.toBeNull();
+    expect(scenes!.length).toBe(3);
+    expect(scenes![0]!.toLowerCase()).toMatch(/aerial|tbilisi|narikala/);
+    expect(scenes![0]!).not.toMatch(/\bSFX\b/i);
+    expect(scenes![1]!.toLowerCase()).toMatch(/old man|laundry|children/);
+    expect(scenes![2]!.toLowerCase()).toMatch(/radio|dial|bakelite/);
+  });
+
+  it('returns null for unstructured prose (falls back to the LLM scene-writer)', () => {
+    expect(splitStructuredScript('a moody film about a man in a city at night', 12)).toBeNull();
+  });
+});
 
 /**
  * Regression guard for the "one man in every shot" bug: when a real per-scene

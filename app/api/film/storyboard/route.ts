@@ -17,7 +17,7 @@
  * scene plan still returns so the user always sees the storyboard.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { planFilmScenes, normalizeReferenceImages, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
+import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
@@ -316,6 +316,18 @@ export async function POST(req: NextRequest) {
   // threads the scripts into the render, so the ~10-15s LLM call never blocks the
   // board from appearing. Fail-open: a miss returns null (render uses deterministic).
   if (body.scriptsOnly) {
+    // RELIABLE FAST PATH — if the brief carries an explicit multi-scene script
+    // (the user attached a screenplay/shot-list), split it deterministically and
+    // render THOSE scenes verbatim. This never loses the user's script to a flaky
+    // or timed-out LLM scene-writer (the failure that rendered an attached 10-scene
+    // trailer as the generic music-video orbit). The prompt builder renders each
+    // scene faithfully (protagonist only where the script places them).
+    const structured = splitStructuredScript(prompt, sceneCount);
+    if (structured && structured.length >= 2) {
+      // eslint-disable-next-line no-console
+      console.log(`[storyboard] scriptsOnly used ${structured.length} scenes from the attached structured script (no LLM)`);
+      return NextResponse.json({ success: true, sceneScripts: structured, source: 'structured-script' });
+    }
     // PROMPT AGENT (Sonnet) — produce the Master Film Brief: ONE locked character +
     // per-scene image prompts that embed it VERBATIM. The scene imagePrompts ride back
     // as `sceneScripts` (the existing render channel) and the locked character fragment

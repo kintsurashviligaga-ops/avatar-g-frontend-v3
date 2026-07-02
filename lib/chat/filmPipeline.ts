@@ -198,6 +198,52 @@ export function sceneBeat(index: number, count: number): CinematicBeat {
   return CINEMATIC_BEATS[Math.round(pos * last)]!;
 }
 
+// ─── Structured-script splitter ──────────────────────────────────────────────
+//
+// When the user ATTACHES a real screenplay/shot-list, its scenes must reach the
+// render verbatim — NOT be lost to a flaky/timed-out LLM scene-writer (the failure
+// that made an attached 10-scene trailer render as the deterministic music-video
+// orbit). If the brief carries explicit scene markers (🎬 სცენა N / Scene N /
+// Сцена N / SHOT N), split on them deterministically and hand each scene's VISUAL
+// description straight through as a per-scene render prompt.
+
+/** Strip a scene block down to its visual description (drop the header, timecode,
+ *  title and the audio/lighting/tempo metadata a shot-list carries). */
+function cleanSceneBlock(block: string): string {
+  let b = block
+    // drop the leading marker "🎬 სცენა 3 (0:12–0:18) — „title""
+    .replace(/^\s*(?:🎬|🎥|🎞️?)?\s*(?:სცენა|сцена|scene|shot|кадр)\s*#?\s*\d+\s*/i, '')
+    .replace(/^\s*\([^)]*\)\s*/, '') // timecode "(0:12–0:18)"
+    .replace(/^\s*[—–-]+\s*/, '')
+    .replace(/^\s*[„"“][^"”“]{0,80}[""”«»]\s*/, ''); // scene title in quotes
+  // Prefer the explicit VISUAL section when present.
+  const vis = b.match(/(?:ვიზუალი|visual|визуал)\s*[:：]?\s*([\s\S]+)/i);
+  if (vis && vis[1]) b = vis[1];
+  // Cut off the non-visual metadata that follows (SFX / lighting / tempo / colour / camera specs).
+  b = b.split(/🔊|🎵|\bSFX\b|\bVFX\b|განათება|ტემპი|ფერ[ია]|დიალოგ|კამერა\s*[:：]|lighting\s*[:：]|camera\s*[:：]|tempo\s*[:：]|color\s*grade|музык|звук/i)[0] ?? b;
+  return b.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Split a structured script into up to `maxScenes` per-scene visual prompts.
+ * Returns null when the text has no explicit multi-scene structure (so the caller
+ * falls back to the LLM scene-writer / deterministic beats).
+ */
+export function splitStructuredScript(text: string, maxScenes: number): string[] | null {
+  if (!text || maxScenes < 2) return null;
+  const markerRx = /(?:🎬|🎥|🎞️?)?\s*(?:სცენა|сцена|scene|shot|кадр)\s*#?\s*\d+\b/gi;
+  const idxs: number[] = [];
+  for (const m of text.matchAll(markerRx)) if (typeof m.index === 'number') idxs.push(m.index);
+  if (idxs.length < 2) return null; // not a structured multi-scene script
+  idxs.push(text.length);
+  const scenes: string[] = [];
+  for (let i = 0; i < idxs.length - 1 && scenes.length < maxScenes; i++) {
+    const block = cleanSceneBlock(text.slice(idxs[i]!, idxs[i + 1]!)).slice(0, 600);
+    if (block.length >= 20) scenes.push(block);
+  }
+  return scenes.length >= 2 ? scenes : null;
+}
+
 // ─── Plan model ──────────────────────────────────────────────────────────────
 
 /** PHASE 45 §2/§3 — a film accepts up to THREE user reference images that lock

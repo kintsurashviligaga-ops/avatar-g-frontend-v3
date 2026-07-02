@@ -45,6 +45,7 @@ import {
   planFilmScenes,
   buildFilmClipRequest,
   normalizeReferenceImages,
+  splitStructuredScript,
   FILM_SCENE_COUNT,
   FILM_CLIP_SEC,
   type FilmScene,
@@ -443,20 +444,31 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // fallback). Used below to make the SFX bed scene-aware instead of one generic bed.
   let sfxCues: MasterFilmSfxCue[] | undefined;
   if (!characterLock && (!sceneScripts || sceneScripts.length === 0)) {
-    const brief = await runPromptAgent({
-      brief: input.message,
-      mode: input.metadata?.musicVideoMode ? 'music_video' : 'documentary',
-      sceneCount: FILM_SCENE_COUNT,
-      length: FILM_SCENE_COUNT * FILM_CLIP_SEC,
-      effect: style ?? 'Cinematic',
-      language: input.locale,
-    }).catch(() => null);
-    if (brief) {
-      characterLock = brief.character.imagePromptFragment;
-      sceneScripts = brief.scenes.map((s) => s.imagePrompt);
-      sfxCues = brief.sfxCues;
+    // FIRST honour the user's OWN scenes: if the brief embeds an explicit
+    // multi-scene script (an attached screenplay/shot-list), split it deterministically
+    // — the render then follows the script exactly instead of losing it to a flaky/
+    // timed-out LLM scene-writer (which fell back to the generic music-video orbit).
+    const fromScript = splitStructuredScript(input.message, 12);
+    if (fromScript && fromScript.length >= 2) {
+      sceneScripts = fromScript;
       // eslint-disable-next-line no-console
-      console.log('[filmComposite] Prompt Agent fallback produced a locked character + scene prompts');
+      console.log(`[filmComposite] used ${fromScript.length} scenes from the attached structured script (no LLM)`);
+    } else {
+      const brief = await runPromptAgent({
+        brief: input.message,
+        mode: input.metadata?.musicVideoMode ? 'music_video' : 'documentary',
+        sceneCount: FILM_SCENE_COUNT,
+        length: FILM_SCENE_COUNT * FILM_CLIP_SEC,
+        effect: style ?? 'Cinematic',
+        language: input.locale,
+      }).catch(() => null);
+      if (brief) {
+        characterLock = brief.character.imagePromptFragment;
+        sceneScripts = brief.scenes.map((s) => s.imagePrompt);
+        sfxCues = brief.sfxCues;
+        // eslint-disable-next-line no-console
+        console.log('[filmComposite] Prompt Agent fallback produced a locked character + scene prompts');
+      }
     }
   }
   // PHASE 45 §2/§3 — accept 1–3 multimodal reference images from the composer.
