@@ -235,8 +235,14 @@ const sentryConfig = {
   authToken: process.env.SENTRY_AUTH_TOKEN,
   widenClientFileUpload: true,
   hideSourceMaps: true,
-  disableLogger: true,
-  automaticVercelMonitors: true,
+  // Moved under `webpack` per @sentry/nextjs 10.x deprecation (disableLogger →
+  // webpack.treeshake.removeDebugLogging; automaticVercelMonitors → webpack.automaticVercelMonitors).
+  webpack: {
+    automaticVercelMonitors: true,
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 };
 
 // Only wrap with Sentry if auth token is present (avoids build errors without token)

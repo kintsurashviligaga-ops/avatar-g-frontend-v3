@@ -1,6 +1,5 @@
 import Icon from '../icon';
 
-export const runtime = 'edge';
 export const contentType = 'image/png';
 export const size = {
 	width: 192,

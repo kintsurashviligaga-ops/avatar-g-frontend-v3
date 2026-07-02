@@ -1,6 +1,8 @@
 import { ImageResponse } from 'next/og';
 
-export const runtime = 'edge';
+// nodejs runtime (Next 14 supports ImageResponse on node) so the icon is statically
+// generated at build time instead of per-request — clears the "edge disables static
+// generation" build warning and avoids a runtime cost for a static asset.
 export const size = {
   width: 192,
   height: 192,
