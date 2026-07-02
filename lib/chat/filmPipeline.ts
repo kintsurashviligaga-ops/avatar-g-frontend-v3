@@ -121,6 +121,25 @@ export function buildStyleGuide(shared: FilmShared): string {
   );
 }
 
+/**
+ * WORLD-only continuity guide — for SCRIPT-DRIVEN scenes (a real per-scene script
+ * supplied). Locks the era, palette, lighting, lens and film grain across the whole
+ * film WITHOUT the "same single protagonist in every shot" clause. A film trailer's
+ * scenes have DIFFERENT subjects (an aerial city, a radio close-up, a crowd, another
+ * character); forcing the protagonist into all of them is exactly what collapsed the
+ * trailer into "one man in every shot". Here the SCRIPT decides who/what is in frame;
+ * this only keeps the world coherent.
+ */
+export function buildWorldStyleGuide(shared: FilmShared): string {
+  const aesthetic = shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
+  return (
+    `Rigid visual world — identical across every shot: ${aesthetic}; one consistent colour palette and grade; `
+    + `consistent lighting; the same lens family, depth of field and film grain; period-accurate props and set dressing. `
+    + `Render EXACTLY the subject and action THIS scene describes — do not add a person, performer or singer the scene does not call for. `
+    + `Use only lighting and elements that belong to the world of the brief: NO neon, glowing light-streaks, lens flares, HUD overlays or sci-fi effects unless the brief explicitly asks for them.`
+  );
+}
+
 // ─── Cinematic shot progression (the real Storyboard arc) ────────────────────
 //
 // PHASE 44 §2 / Task 5 — Without a Claude scene-writer the planner used to emit
@@ -356,6 +375,10 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   const referenceImages = normalizeReferenceImages(opts.referenceImages);
   const avatarReference = opts.avatarReference ?? referenceImages[0] ?? null;
   const characterAnchor = buildCharacterAnchor(prompt, { ...opts, avatarReference });
+  // Raw locked-appearance fragment (without the "in every shot" clause) — used to
+  // keep the protagonist consistent WHERE the script places them, without forcing
+  // them into scenes that don't feature them.
+  const lockText = typeof opts.characterLock === 'string' ? opts.characterLock.trim() : '';
   const traits = extractPromptTraits(prompt, { defaultAudio: true });
   // The core subject, stripped of the splitter's " — shot N of N" suffix so each
   // scene reframes the SAME subject under a different cinematic beat.
@@ -420,8 +443,18 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
           ? `Cinematic aerial drone shot at night flying high over ${placeHint}, glowing streets, rooftops and warm windows, slowly descending toward a lively music venue — atmospheric wide establishing shot, NO people in frame, neon and golden light, photorealistic${styled}`
           : `Cinematic camera move arriving INTO a warm, lively bar at night — golden string lights, exposed brick, a small crowd with drinks, a stage with a vintage microphone, anticipation just before the performance${styled}`)
       : (llmScene && llmScene.length > 0 ? llmScene : `${beat.framing} — ${subject}${styled}`);
-    // …while the seed + style guide + character anchor hold the world CONSTANT.
-    const continuity = `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
+    // SCRIPT-DRIVEN scene: a real per-scene script decides who/what is in frame. Lock
+    // only the WORLD and keep the protagonist consistent CONDITIONALLY (wherever the
+    // script places them) — never force the "same protagonist in every shot" clause,
+    // which turned an aerial / a radio close-up / a crowd into the same man performing.
+    const scriptDriven = Boolean(llmScene && llmScene.length > 0) && !mvIntro;
+    const conditionalCharacter = lockText
+      ? ` Character consistency: whenever the film's protagonist appears, they are ${lockText}; keep any recurring person's face, hair and wardrobe consistent across shots — but only feature the people this scene actually describes.`
+      : '';
+    // …while the seed + style/world guide hold the world CONSTANT.
+    const continuity = scriptDriven
+      ? `${buildWorldStyleGuide(shared)}${conditionalCharacter} (consistency seed ${seed}).`
+      : `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
     // Inject the explicit camera move + subject energy + a clean-frame guard (no
     // AI-burned text/titles), so the model actually MOVES and doesn't paint captions.
     // Music-Video INTRO scenes are a PURE establishing location (drone over the city,
@@ -433,10 +466,18 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
           `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. NO people, NO performer, NO singer anywhere in frame — a pure establishing location shot only. No on-screen text, titles, captions, subtitles, watermarks or logos. ${styleGuide} (consistency seed ${seed}).`,
           traits, 1500,
         )
-      : enrichVideoPrompt(
-          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
-          traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
-        );
+      : scriptDriven
+        // Trailer/film scene: play the scene the SCRIPT describes. No "subject performs
+        // with energy" (that forced a singer into every frame) — the action comes from
+        // the scene text itself; only the camera + clean-frame + world-continuity ride along.
+        ? enrichVideoPrompt(
+            `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, continuous cinematic camera movement true to the scene, never a static frozen frame. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            traits, 1500,
+          )
+        : enrichVideoPrompt(
+            `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
+          );
     return {
       index: seg.index,
       ordinal: seg.index + 1,
