@@ -1,4 +1,18 @@
-import { computeNextVersion, buildPromotedConfig, canTransition, rollbackTargetVersion, OPEN_PROPOSAL_STATUS } from './configVersioning';
+import { computeNextVersion, buildPromotedConfig, canTransition, rollbackTargetVersion, OPEN_PROPOSAL_STATUS, hasConcreteChange } from './configVersioning';
+
+describe('hasConcreteChange — never promote an empty config (audit HIGH regression)', () => {
+  it('false for a diagnostic-only proposal (no params, no prompt) → approve must NOT promote', () => {
+    expect(hasConcreteChange(null, null)).toBe(false);
+    expect(hasConcreteChange({}, null)).toBe(false);
+    expect(hasConcreteChange({}, '   ')).toBe(false);
+    expect(hasConcreteChange(undefined, undefined)).toBe(false);
+  });
+  it('true when a concrete params object OR a non-blank prompt is present', () => {
+    expect(hasConcreteChange({ cfg_scale: 0.6 }, null)).toBe(true);
+    expect(hasConcreteChange(null, 'cinematic, high detail')).toBe(true);
+    expect(hasConcreteChange({ x: 1 }, 'p')).toBe(true);
+  });
+});
 
 describe('OPEN_PROPOSAL_STATUS — single source (audit regression)', () => {
   it("is 'proposed' (the value the optimizer writes) — approve AND reject must both filter on this", () => {

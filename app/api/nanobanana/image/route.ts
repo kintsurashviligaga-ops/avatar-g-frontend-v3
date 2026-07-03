@@ -6,7 +6,8 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { randomUUID } from 'node:crypto';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { applyApiGuards } from '@/lib/api/guard';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -56,8 +57,11 @@ async function hostReferenceImage(dataUrl: string): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
-  if (rl) return rl;
+  // applyApiGuards = EXPENSIVE rate-limit + per-user daily AI budget. This paid route previously
+  // ran only checkRateLimit, so it was exempt from the daily cap the sibling /api/replicate/image
+  // enforces — a ×4 image batch was 4 uncounted paid generations (audit MED). Match the sibling.
+  const gate = await applyApiGuards(req, { limit: RATE_LIMITS.EXPENSIVE, label: 'nanobanana.image' });
+  if (gate.response) return gate.response;
 
   const apiKey = process.env.NANOBANANA_API_KEY;
   if (!apiKey) {
@@ -77,7 +81,9 @@ export async function POST(req: NextRequest) {
       negativePrompt?: string;
     };
 
-    const prompt = (body.prompt ?? '').trim();
+    // Cap the prompt server-side before enrichment (mirrors lib/replicate/schemas.ts) so a
+    // multi-megabyte prompt can't be shipped to the paid provider (audit MED).
+    const prompt = (body.prompt ?? '').trim().slice(0, 2000);
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
     }

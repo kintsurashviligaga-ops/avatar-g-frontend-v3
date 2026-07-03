@@ -3,25 +3,33 @@ import 'server-only';
 /**
  * Approve/reject a prompt_optimization_proposal (STEP 5 admin gate).
  *
- * approveProposal PROMOTES the proposal's concrete change into a NEW active agent_configs version
- * (deactivating the prior, which stays for rollback) and marks the proposal approved. It CLAIMS
- * the proposal atomically first (update … WHERE status='pending') so two concurrent approvals
- * can't double-promote; on promotion failure it reverts the claim. Nothing is promoted without
- * this explicit admin call — the optimizer only ever writes 'pending' proposals.
+ * approveProposal PROMOTES the proposal's concrete change (proposed_params / proposed_prompt) into
+ * a NEW active agent_configs version (deactivating the prior, which stays for rollback) and marks
+ * the proposal approved. It CLAIMS the proposal atomically first (update … WHERE status='proposed')
+ * so two concurrent approvals can't double-promote; on promotion failure it reverts the claim.
+ * Nothing is promoted without this explicit admin call — the optimizer only ever writes 'proposed'
+ * proposals.
+ *
+ * SAFETY (audit HIGH): the optimizer's default proposals are DIAGNOSTIC — they flag a problem but
+ * carry NO concrete change. Approving one is ACKNOWLEDGED (status→approved) but NEVER promoted,
+ * because promoting an empty params/prompt would overwrite the live agent's config with {}/null
+ * and silently degrade it. Promotion requires a concrete change (see hasConcreteChange).
  */
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { OPEN_PROPOSAL_STATUS } from './configVersioning';
+import { OPEN_PROPOSAL_STATUS, hasConcreteChange } from './configVersioning';
 
 export interface ApproveResult {
   ok: boolean;
   target?: string;
   version?: number;
+  /** true when a concrete change was promoted; false when a diagnostic-only proposal was merely acknowledged. */
+  promoted?: boolean;
   error?: string;
 }
 
 const PROPOSALS = 'prompt_optimization_proposals';
 
-/** Claim (pending→approved) → promote via RPC → on failure revert. Fail-soft; never throws. */
+/** Claim (proposed→approved) → promote a concrete change via RPC → on failure revert. Fail-soft; never throws. */
 export async function approveProposal(proposalId: string, reviewerId: string, opts?: { target?: string }): Promise<ApproveResult> {
   try {
     const sb = createServiceRoleClient();
@@ -42,6 +50,13 @@ export async function approveProposal(proposalId: string, reviewerId: string, op
     const revert = async () => { await sb.from(PROPOSALS).update({ status: OPEN_PROPOSAL_STATUS, reviewed_by: null, reviewed_at: null }).eq('id', proposalId); };
     if (!target) { await revert(); return { ok: false, error: 'no target to promote (proposal lacks model/agent_type)' }; }
 
+    // A diagnostic-only proposal (no concrete change attached) is ACKNOWLEDGED as approved but
+    // NEVER promoted — promoting {}/null would overwrite the live agent's config and silently
+    // degrade it (audit HIGH). Promotion requires a concrete proposed_params/proposed_prompt.
+    if (!hasConcreteChange(p.proposed_params, p.proposed_prompt)) {
+      return { ok: true, target, promoted: false };
+    }
+
     // Atomic promotion (deactivate prior + insert next active version) in one transaction.
     const { data: version, error: promoteErr } = await sb.rpc('promote_agent_config', {
       p_target: target,
@@ -50,7 +65,7 @@ export async function approveProposal(proposalId: string, reviewerId: string, op
     });
     if (promoteErr) { await revert(); return { ok: false, error: promoteErr.message }; }
 
-    return { ok: true, target, version: typeof version === 'number' ? version : undefined };
+    return { ok: true, target, version: typeof version === 'number' ? version : undefined, promoted: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

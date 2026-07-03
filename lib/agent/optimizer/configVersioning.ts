@@ -58,3 +58,19 @@ export function rollbackTargetVersion(existing: Array<{ version: number; is_acti
   const active = existing.find((r) => r.is_active);
   return active ? active.version : null;
 }
+
+/**
+ * True when a proposal carries a CONCRETE change worth promoting — a non-empty params object OR a
+ * non-blank prompt. The optimizer's default proposals are DIAGNOSTIC ("users discard 50% — review
+ * the prompt"): they flag a problem but attach no concrete change. Approving one must NOT promote,
+ * because promote_agent_config('{}', null) would overwrite the live config with an empty params +
+ * null prompt and silently degrade the agent on the first admin approval (audit HIGH). Pure.
+ */
+export function hasConcreteChange(
+  params: Record<string, unknown> | null | undefined,
+  prompt: string | null | undefined,
+): boolean {
+  const hasParams = !!params && typeof params === 'object' && Object.keys(params).length > 0;
+  const hasPrompt = typeof prompt === 'string' && prompt.trim().length > 0;
+  return hasParams || hasPrompt;
+}
