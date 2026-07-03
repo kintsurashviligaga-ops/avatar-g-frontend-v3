@@ -47,6 +47,10 @@ export async function runAgentOptimizer(opts?: { sinceDays?: number; minSamples?
         rationale: p.rationale,
         evidence: p.evidence,
         status: 'proposed',
+        // CONCRETE change to promote on approval (STEP 5 self-improving). Diagnostic-only
+        // proposals carry nulls → approving is acknowledged but never promotes an empty config.
+        proposed_params: p.proposedParams,
+        proposed_prompt: p.proposedPrompt,
       });
       if (!insErr) written++;
     }

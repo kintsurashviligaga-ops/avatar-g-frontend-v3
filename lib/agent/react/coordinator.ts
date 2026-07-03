@@ -113,6 +113,10 @@ export interface ReActLoopOpts {
   userGoal: string;
   maxSteps?: number;
   systemExtra?: string;
+  /** Optional wall-clock deadline (epoch ms). When reached the loop stops gracefully with the
+   *  partial trace as 'max_steps' — so a slow LLM/tool step can't blow past the function's
+   *  maxDuration into a hard 504 that returns nothing (audit MED). */
+  deadlineMs?: number;
 }
 
 /**
@@ -129,6 +133,11 @@ export async function runReActLoop(opts: ReActLoopOpts): Promise<ReActResult> {
   const steps: ReActStep[] = [];
 
   for (let i = 0; i < maxSteps; i++) {
+    // Deadline guard (audit MED): stop gracefully with the partial trace ('max_steps') before a
+    // slow next step can exceed the function's maxDuration → a hard 504 that returns nothing.
+    if (opts.deadlineMs && Date.now() >= opts.deadlineMs) {
+      return { answer: null, steps, stopReason: 'max_steps' };
+    }
     const text = await opts.llm(messages);
     if (text == null) return { answer: null, steps, stopReason: 'llm_error' };
     const turn = parseAgentTurn(text);
