@@ -14,7 +14,12 @@ export async function GET(request: NextRequest) {
     const user = await requireAuthenticatedUser(request);
     const supabase = createRouteHandlerClient();
 
-    await supabase.rpc('reset_user_credits_if_due', { p_user_id: user.id });
+    // audit LOW — NO reset-on-read: this hot, no-store-polled path used to run a serial RPC WRITE
+    // (reset_user_credits_if_due) before every read. That reset already fires reliably in the WRITE
+    // paths — every spend (lib/billing/enforce) and every top-up (api/billing/webhook), plus inside
+    // the spend RPC — so the balance read stays purely read-only (no serial round-trip on the
+    // response). The wallet balance below is always current; at worst a read-only user's displayed
+    // monthly allowance lags until their next spend, acceptable at LOW severity.
 
     // BALANCE OF RECORD = profiles.credits_balance — the GEL wallet the spend saga
     // (deduct_credits) draws from AND the Stripe top-up webhook (credit_wallet_gel)
