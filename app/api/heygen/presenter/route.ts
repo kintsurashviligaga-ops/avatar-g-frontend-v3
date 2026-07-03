@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       : { width: 1280, height: 720 };
   const genRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ video_inputs: [{ character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: 'square' }, voice: { type: 'audio', audio_url: audioUrl } }], dimension }),
+    body: JSON.stringify({ video_inputs: [{ character: { type: 'talking_photo', talking_photo_id: talkingPhotoId, talking_photo_style: body.orientation === 'square' ? 'square' : 'normal' }, voice: { type: 'audio', audio_url: audioUrl } }], dimension }),
     signal: AbortSignal.timeout(20_000),
   }).catch(() => null);
   const genText = genRes ? await genRes.text().catch(() => '') : '';

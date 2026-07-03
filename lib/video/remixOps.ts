@@ -12,6 +12,7 @@
  * fallback so restyle/character ALWAYS return a moving result even with no token.
  */
 import 'server-only';
+import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -426,9 +427,13 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
   const token = (process.env.REPLICATE_API_TOKEN || '').trim();
   if (!token || !startImage) return null;
   try {
+    // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'video' config, apply its learned
+    // prompt directive as a suffix so the loop's improvement reaches every clip. Fail-soft.
+    const activeVideoCfg = await getActiveConfig('video').catch(() => null);
+    const base4k = `${prompt}, photorealistic, cinematic, natural lighting, sharp focus, 4k`;
     const input: Record<string, unknown> = {
       start_image: startImage,
-      prompt: `${prompt}, photorealistic, cinematic, natural lighting, sharp focus, 4k`,
+      prompt: activeVideoCfg?.prompt ? `${base4k} ${activeVideoCfg.prompt}` : base4k,
       negative_prompt: I2V_NEGATIVE,
       duration: 5,
     };

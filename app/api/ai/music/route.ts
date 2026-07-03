@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
 import { generateUdioTrack } from '@/lib/udio/client';
@@ -204,7 +205,11 @@ export async function POST(req: NextRequest) {
 
   // Fold the tempo selection into the brief as a feel/BPM hint (empty for 'medium').
   const tempoHint = tempo === 'slow' ? 'Slow tempo, around 70 BPM. ' : tempo === 'fast' ? 'Fast, upbeat tempo, around 140 BPM. ' : '';
-  const capped = (tempoHint + prompt).slice(0, 1000);
+  let capped = (tempoHint + prompt).slice(0, 1000);
+  // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'audio' config, apply its learned
+  // prompt directive as a suffix so the loop's improvement reaches generation. Fail-soft.
+  const activeAudioCfg = await getActiveConfig('audio').catch(() => null);
+  if (activeAudioCfg?.prompt) capped = `${capped} ${activeAudioCfg.prompt}`;
 
   // Sung-vocal gender → prompt engineering. The music engine (ElevenLabs Music /
   // MusicGen) is steered by the text prompt, so the singer's gender rides in the
