@@ -94,6 +94,12 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   // FIX 2 — lengthSec === 0 means "full song": keep Udio's full ~2–4 min output (no
   // trim). Otherwise clamp to a 15–90s window. secs===0 is the skip-trim sentinel.
   const secs = lengthSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
+  // Udio ignores length (it returns a full ~2–4 min song), so secs===0 is Udio's "full song"
+  // sentinel. But EL Music and MusicGen REQUIRE an explicit length — passing 0 there returns a
+  // ~3s clip (audit HIGH: "full song" was broken on the primary engine). Map the sentinel to a
+  // real full-song target for those engines, bounded well under the 300s function budget.
+  const elMusicSec = secs === 0 ? 120 : secs; // ElevenLabs Music: ~2-min full song
+  const musicgenSec = secs === 0 ? 90 : secs; // MusicGen fallback: bounded so it finishes in time
 
   // PRIMARY: Udio (the founder's funded song engine — better sung vocals). Retired in
   // v330 (daf02eb) for ElevenLabs Music; restored here as the DEFAULT primary whenever
@@ -132,7 +138,7 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
     try {
       const { audio, contentType } = await composeElevenLabsMusic({
         prompt: style ? `${prompt}. Style: ${style}.` : prompt,
-        lengthMs: secs * 1000,
+        lengthMs: elMusicSec * 1000,
         instrumental,
       });
       const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
@@ -143,7 +149,7 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
       console.warn('[ai/music] ElevenLabs Music failed → MusicGen fallback:', e instanceof Error ? e.message : e);
     }
   }
-  const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, secs);
+  const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, musicgenSec);
   if (!score.audioUrl) throw new Error('Music generation did not complete in time.');
   return { url: score.audioUrl, engine: 'MusicGen' };
 }
