@@ -1,4 +1,14 @@
-import { computeNextVersion, buildPromotedConfig, canTransition, rollbackTargetVersion } from './configVersioning';
+import { computeNextVersion, buildPromotedConfig, canTransition, rollbackTargetVersion, OPEN_PROPOSAL_STATUS } from './configVersioning';
+
+describe('OPEN_PROPOSAL_STATUS — single source (audit regression)', () => {
+  it("is 'proposed' (the value the optimizer writes) — approve AND reject must both filter on this", () => {
+    // A prior bug: reject filtered 'pending' (never written) → silently no-op'd. Single-sourcing
+    // this constant + using it in both approve/reject prevents that divergence.
+    expect(OPEN_PROPOSAL_STATUS).toBe('proposed');
+    expect(canTransition(OPEN_PROPOSAL_STATUS, 'approved')).toBe(true);
+    expect(canTransition(OPEN_PROPOSAL_STATUS, 'rejected')).toBe(true);
+  });
+});
 
 describe('agent_configs versioning (STEP 5 apply-side, pure)', () => {
   it('computeNextVersion = max+1, or 1 when empty', () => {

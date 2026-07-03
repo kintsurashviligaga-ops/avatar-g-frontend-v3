@@ -10,6 +10,7 @@ import 'server-only';
  * this explicit admin call — the optimizer only ever writes 'pending' proposals.
  */
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { OPEN_PROPOSAL_STATUS } from './configVersioning';
 
 export interface ApproveResult {
   ok: boolean;
@@ -31,14 +32,14 @@ export async function approveProposal(proposalId: string, reviewerId: string, op
       .from(PROPOSALS)
       .update({ status: 'approved', reviewed_by: reviewerId, reviewed_at: now })
       .eq('id', proposalId)
-      .eq('status', 'proposed')
+      .eq('status', OPEN_PROPOSAL_STATUS)
       .select('id, agent_type, model, proposed_params, proposed_prompt');
     if (claimErr) return { ok: false, error: claimErr.message };
     if (!claimed || claimed.length === 0) return { ok: false, error: 'proposal not open (not found or already reviewed)' };
 
     const p = claimed[0] as { agent_type?: string; model?: string; proposed_params?: Record<string, unknown> | null; proposed_prompt?: string | null };
     const target = (opts?.target || p.model || p.agent_type || '').trim();
-    const revert = async () => { await sb.from(PROPOSALS).update({ status: 'proposed', reviewed_by: null, reviewed_at: null }).eq('id', proposalId); };
+    const revert = async () => { await sb.from(PROPOSALS).update({ status: OPEN_PROPOSAL_STATUS, reviewed_by: null, reviewed_at: null }).eq('id', proposalId); };
     if (!target) { await revert(); return { ok: false, error: 'no target to promote (proposal lacks model/agent_type)' }; }
 
     // Atomic promotion (deactivate prior + insert next active version) in one transaction.
@@ -55,7 +56,7 @@ export async function approveProposal(proposalId: string, reviewerId: string, op
   }
 }
 
-/** Mark a pending proposal rejected (no config change). Fail-soft. */
+/** Mark an OPEN ('proposed') proposal rejected (no config change). Fail-soft. */
 export async function rejectProposal(proposalId: string, reviewerId: string): Promise<ApproveResult> {
   try {
     const sb = createServiceRoleClient();
@@ -63,10 +64,10 @@ export async function rejectProposal(proposalId: string, reviewerId: string): Pr
       .from(PROPOSALS)
       .update({ status: 'rejected', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
       .eq('id', proposalId)
-      .eq('status', 'pending')
+      .eq('status', OPEN_PROPOSAL_STATUS) // was 'pending' — never matched → reject silently no-op'd (audit fix)
       .select('id');
     if (error) return { ok: false, error: error.message };
-    if (!data || data.length === 0) return { ok: false, error: 'proposal not pending' };
+    if (!data || data.length === 0) return { ok: false, error: 'proposal not open (not found or already reviewed)' };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
