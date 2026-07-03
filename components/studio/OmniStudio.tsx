@@ -16,7 +16,7 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
-import { FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
+import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
 // initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
 // out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
@@ -35,8 +35,25 @@ import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
+import { toast } from 'sonner';
 
 type Lang = 'ka' | 'en' | 'ru';
+
+/**
+ * The platform serializes generation to ONE render at a time. When a user tries to
+ * start a SECOND generation (e.g. a music track while a video is still rendering) the
+ * request used to be dropped SILENTLY (the guard returned with no feedback), which read
+ * as a hung/spinning button. Surface a friendly, localized toast instead so the busy
+ * state is explicit. Reused by every generation entry point (chat/image/music/video,
+ * product ad, character swap).
+ */
+function busyToastMessage(locale: Lang): string {
+  return locale === 'en'
+    ? 'Another generation is currently in progress. Please wait for it to complete.'
+    : locale === 'ru'
+    ? 'Уже выполняется другая генерация. Пожалуйста, дождитесь её завершения.'
+    : 'უკვე მიმდინარეობს სხვა გენერაცია. გთხოვთ, დაელოდოთ დასრულებას.';
+}
 
 // Upload a (possibly large) file straight to Supabase via a signed upload URL —
 // browser → Supabase, BYPASSING Vercel's ~4.5MB function-body limit (a real song
@@ -1329,6 +1346,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // superseded request can never clobber a newer message (or re-clear `busy`).
   const abortRef = useRef<AbortController | null>(null);
   const genIdRef = useRef(0);
+  // Always-current mirror of `busy || storyboardBusy || productBusy || remixBusy` (set by
+  // the loading-bar effect below) so any generation entry point can reject a second
+  // parallel run with a friendly toast, stale-closure-free.
+  const genActiveRef = useRef(false);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
@@ -1713,6 +1734,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // the shell just listens for `myavatar:busy`.
   useEffect(() => {
     const active = busy || storyboardBusy || productBusy || remixBusy;
+    // Mirror the combined generation state into a ref so every generation entry point
+    // (send / product ad / character swap) can cheaply guard against a SECOND parallel
+    // run without adding four state deps to each callback (a stale closure would let a
+    // second render slip through). The ref is always current — updated on every state flip.
+    genActiveRef.current = active;
     const label = storyboardBusy ? (mode === 'video' ? 'video' : 'video')
       : productBusy ? 'product'
       : remixBusy ? 'remix'
@@ -2149,6 +2175,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
   const generateProductAd = useCallback(async () => {
     if (!productImage || productBusy) return;
+    // Reject a product render while another generation (chat/image/music/video/remix) is
+    // still in flight — with a clear toast, not a silent no-op.
+    if (genActiveRef.current) { toast(busyToastMessage(locale)); return; }
     setProductBusy(true);
     setProductResultUrl(null);
     setProductProgress(null);
@@ -2378,7 +2407,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           ...prev,
           sceneScripts: finalScripts,
           ...(character ? { character } : {}),
-          ...(hasScript ? { scenes: prev.scenes.map((s, i) => (userAction(s.ordinal) || !finalScripts[i]?.trim() ? s : { ...s, prompt: finalScripts[i].trim() })) } : {}),
+          // Reflect the STORY-SPECIFIC per-scene shots in the editable scene captions for
+          // EVERY brief — not just attached scripts. A typed brief's scenes used to keep the
+          // generic deterministic beat framing on screen (identical across unrelated briefs,
+          // e.g. a WWII teaser reading the same as a coffee ad) even though these
+          // story-specific scripts already existed and drove the render. Surface them so the
+          // storyboard the user reviews matches the actual scene content. User-edited scenes
+          // and blank script slots are preserved (see mergeSceneCaptions). NOTE: the FRAME
+          // prompts stay gated on `hasScript` above — a typed brief keeps its fast
+          // deterministic stills; only the on-screen caption becomes story-specific.
+          scenes: mergeSceneCaptions(prev.scenes, finalScripts, (ord) => Boolean(userAction(ord))),
         } : prev));
       };
       if (hasScript) { await Promise.race([enrichStory(), new Promise<void>((r) => setTimeout(r, 90000))]); } else { void enrichStory(); }
@@ -2741,7 +2779,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
     // attachment — otherwise this guard silently blocked a script-only run from starting.
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
-    if ((!text && attachments.length === 0 && !videoOnlyInputs) || busy) return;
+    // Nothing to send → return quietly (no toast for an empty box).
+    if (!text && attachments.length === 0 && !videoOnlyInputs) return;
+    // A generation is already running (this mode OR another — e.g. a video render still in
+    // flight while the user switches to Music and hits send). Don't silently swallow it:
+    // tell the user why, then bail. `busy` is kept explicit for this mode; genActiveRef
+    // catches the cross-mode cases (storyboard/product/remix).
+    if (busy || genActiveRef.current) { toast(busyToastMessage(locale)); return; }
     // MOBILE FIX — collapse the settings panel on generation so the result (video +
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
     // then fills the screen; the user re-opens settings to tweak the next run.
@@ -3235,7 +3279,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // (frame → swap → re-animate via Kling, identity anchored by the photo). The result lands
   // in the chat with the Remix Studio staged-timer (remixOpKind: 'character'). Mirrors runRemix.
   const runVideoSwap = useCallback(async () => {
-    if (!swapSourceVideo?.url || !videoCharacterRef || busy) return;
+    if (!swapSourceVideo?.url || !videoCharacterRef) return;
+    // A generation is already running — surface it instead of silently dropping the click.
+    if (busy || genActiveRef.current) { toast(busyToastMessage(locale)); return; }
     const label = locale === 'en' ? 'Character swap' : locale === 'ru' ? 'Замена персонажа' : 'პერსონაჟის შეცვლა';
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
@@ -4955,6 +5001,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     ? <><Loader2 size={15} className="animate-spin" /> {productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')}</>
                     : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
                 </button>
+                {/* Upload hint — the Generate button is gated on a product photo (the locked
+                    foreground); say so instead of leaving the button silently disabled. */}
+                {!productImage && !productBusy && (
+                  <p className="text-center text-[11px] text-app-muted">
+                    {locale === 'en' ? 'Please upload a product photo first' : locale === 'ru' ? 'Сначала загрузите фото продукта' : 'ჯერ ატვირთეთ პროდუქტის ფოტო'}
+                  </p>
+                )}
                 {/* Animated progress bar while generating (indeterminate). */}
                 {productBusy && (
                   <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated">
@@ -5068,6 +5121,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
 
                 {/* 3 — status */}
+                {/* No source video yet — the button is gated on it, so say so up front
+                    rather than leaving it silently disabled. */}
+                {!swapSourceVideo && (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.08] px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+                    <span>⚠️</span><span>{locale === 'en' ? 'Please upload a source video first.' : locale === 'ru' ? 'Сначала загрузите исходное видео.' : 'ჯერ ატვირთეთ საწყისი ვიდეო.'}</span>
+                  </div>
+                )}
                 {swapSourceVideo && !videoCharacterRef && (
                   <div className="flex items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.08] px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
                     <span>⚠️</span><span>{locale === 'en' ? 'A character photo is required to swap.' : locale === 'ru' ? 'Нужно фото персонажа для замены.' : 'პერსონაჟის შესაცვლელად საჭიროა ფოტო.'}</span>

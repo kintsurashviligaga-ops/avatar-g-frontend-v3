@@ -244,6 +244,42 @@ export function splitStructuredScript(text: string, maxScenes: number): string[]
   return scenes.length >= 2 ? scenes : null;
 }
 
+// ─── Storyboard caption enrichment ───────────────────────────────────────────
+//
+// The storyboard board opens INSTANTLY on the deterministic camera beats (planOnly),
+// then the Prompt/Script Agent's per-scene STORY shots arrive a few seconds later
+// (scriptsOnly). Those story shots always drove the RENDER, but the on-screen editable
+// captions used to keep the generic beat framing for a TYPED brief — so a WWII teaser's
+// captions read identically to a coffee ad's. This merge folds the story shots into the
+// captions for every brief, positionally (index = scene slot), WITHOUT ever clobbering a
+// scene the user has already edited or a slot whose script came back blank.
+
+/** A storyboard scene as far as caption-merging is concerned. */
+export interface CaptionMergeScene {
+  ordinal: number;
+  prompt: string;
+  /** True once the user has hand-edited this scene's description (textarea). */
+  edited?: boolean;
+}
+
+/**
+ * Return `scenes` with each non-edited scene's `prompt` replaced by its positional story
+ * script (`scripts[i]`). Scenes are left untouched when: the user edited them (`edited`),
+ * the caller's `isEdited(ordinal)` predicate is true (a per-scene action the user typed
+ * before the board opened), or the script slot is empty/blank. Pure — no mutation.
+ */
+export function mergeSceneCaptions<T extends CaptionMergeScene>(
+  scenes: readonly T[],
+  scripts: readonly (string | null | undefined)[],
+  isEdited: (ordinal: number) => boolean = () => false,
+): T[] {
+  return scenes.map((s, i) => {
+    const script = scripts[i]?.trim();
+    if (s.edited || isEdited(s.ordinal) || !script) return s;
+    return { ...s, prompt: script };
+  });
+}
+
 // ─── Plan model ──────────────────────────────────────────────────────────────
 
 /** PHASE 45 §2/§3 — a film accepts up to THREE user reference images that lock
