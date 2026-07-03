@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
+import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import {
   buildScriptSystemPrompt,
@@ -149,10 +150,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const client = new Anthropic({ apiKey });
+    // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'script' config, append its learned
+    // directive to the system prompt so the loop's improvement reaches generation. Fail-soft.
+    const activeScriptCfg = await getActiveConfig('script').catch(() => null);
+    const scriptSystem = activeScriptCfg?.prompt ? `${buildScriptSystemPrompt()} ${activeScriptCfg.prompt}` : buildScriptSystemPrompt();
     const msg = await client.messages.create({
       model: SCRIPT_MODEL,
       max_tokens: 1500,
-      system: buildScriptSystemPrompt(),
+      system: scriptSystem,
       messages: [{ role: 'user', content: buildScriptUserPrompt(effectivePrompt, totalSec) }],
     });
     const text = msg.content

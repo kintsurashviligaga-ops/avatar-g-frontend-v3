@@ -68,7 +68,9 @@ export interface ChatEngineStreamCallbacks {
 
 const MODEL_GPT41 = process.env.EXECUTIVE_MODEL || 'gpt-4.1';
 const MODEL_GPT4O = process.env.DEFAULT_MODEL || 'gpt-4o';
-const MODEL_OPENROUTER = process.env.OPENROUTER_MODEL || 'claude-opus-4.6-fast';
+// A REAL OpenRouter model slug (vendor-prefixed). The old default 'claude-opus-4.6-fast' was not a
+// valid OpenRouter id, so OpenRouter mode 400'd unless OPENROUTER_MODEL was set (audit LOW).
+const MODEL_OPENROUTER = process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet';
 const OPENROUTER_API_URL = process.env.OPENROUTER_API_URL?.replace(/\/+$/, '') || 'https://api.openrouter.ai/v1';
 const DAILY_AI_LIMIT = parseInt(process.env.DAILY_AI_LIMIT || '500', 10);
 const MAX_CONTEXT_TOKENS = 120000;
