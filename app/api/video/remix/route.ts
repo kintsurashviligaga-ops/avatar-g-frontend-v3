@@ -30,6 +30,10 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/
 import { generateMusic } from '@/lib/ai/replicate';
 import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { isAdminUser } from '@/lib/chat/filmComposite';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { CREDIT_COSTS } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -127,6 +131,28 @@ export async function POST(req: NextRequest) {
   // character_swap identity photo + speed_ramp factor (flattened from params.*).
   if (body.characterRef === undefined && p.characterRef !== undefined) body.characterRef = p.characterRef;
   if (body.factor === undefined && p.factor !== undefined) body.factor = p.factor;
+
+  // AUTH + CREDIT GATE (audit HIGH): remix reached paid providers with NO auth or credit
+  // check — an anonymous free bypass. Paid ops now REQUIRE a signed-in user; the standard
+  // paid edits debit CREDIT_COSTS.remix_video up front (matching the client's on-submit credit
+  // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize) are untouched.
+  // productad keeps its own ad-budget guard (checkAdBudget) but now also requires auth.
+  const PAID_REMIX_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
+  const CREDIT_CHARGED_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove']);
+  const { user: remixUser } = await authedClientFromRequest(req);
+  const remixUid = remixUser?.id ?? null;
+  if (PAID_REMIX_OPS.has(op) && !remixUid) {
+    return NextResponse.json({ url: null, error: 'Sign in to use this edit.', authRequired: true }, { status: 401 });
+  }
+  if (CREDIT_CHARGED_OPS.has(op) && remixUid && !(await isAdminUser(remixUid))) {
+    const debit = await deductCredits(remixUid, CREDIT_COSTS.remix_video, `remix:${op}`);
+    if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
+      const message = debit.reason === 'insufficient'
+        ? 'Not enough credits for this edit. Top up to continue.'
+        : 'Credit ledger unavailable — please retry.';
+      return NextResponse.json({ url: null, error: message, topUpNeeded: debit.reason === 'insufficient' }, { status: 402 });
+    }
+  }
 
   // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.
   // Branches BEFORE the videoUrl guard: there is no source video; the product photo
