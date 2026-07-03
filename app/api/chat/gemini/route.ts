@@ -318,6 +318,7 @@ export async function POST(req: NextRequest) {
 
           let geminiOk = false;
           for (const modelName of GEMINI_MODELS) {
+            let streamed = 0; // hoisted so the catch can tell if the turn already partly committed
             try {
               const google = getGeminiClient();
               const result = streamText({
@@ -328,7 +329,6 @@ export async function POST(req: NextRequest) {
                 temperature: 0.7,
                 maxRetries: 0, // fail instantly on quota/error — we rotate ourselves
               });
-              let streamed = 0;
               for await (const chunk of result.textStream) {
                 if (chunk) {
                   send(chunk);
@@ -351,6 +351,15 @@ export async function POST(req: NextRequest) {
                 console.warn('[/api/chat/gemini] Safety block on', modelName);
                 send(SAFETY_MESSAGE_KA + '\n\n' + SAFETY_MESSAGE_EN);
                 return;
+              }
+              // audit MED — if this model ALREADY streamed text before erroring, the turn is
+              // partially committed to the client. Rotating to another model (or the Anthropic
+              // fallback) would append a SECOND full answer on top of the partial one → duplicated,
+              // garbled output. Keep the partial answer and stop.
+              if (streamed > 0) {
+                console.warn('[/api/chat/gemini]', modelName, kind, '— erred after partial stream; keeping partial (no rotation)');
+                geminiOk = true;
+                break;
               }
               console.warn('[/api/chat/gemini]', modelName, kind, '— trying next model');
             }

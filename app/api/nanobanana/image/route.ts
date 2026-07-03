@@ -8,6 +8,7 @@ import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { randomUUID } from 'node:crypto';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { applyApiGuards } from '@/lib/api/guard';
+import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -99,6 +100,11 @@ export async function POST(req: NextRequest) {
     // avoid are appended as an explicit exclusion clause the model honours.
     const negative    = typeof body.negativePrompt === 'string' ? body.negativePrompt.trim().slice(0, 400) : '';
     const enriched    = negative ? `${base}. Do NOT include: ${negative}.` : base;
+    // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'image' config, apply its learned
+    // prompt directive as a suffix so the loop's improvement actually reaches generation. Fail-soft
+    // — no active config (or table not migrated) → generation is exactly as before.
+    const activeImageCfg = await getActiveConfig('image').catch(() => null);
+    const finalPrompt = activeImageCfg?.prompt ? `${enriched} ${activeImageCfg.prompt}` : enriched;
 
     // Img2img / edit — resolve the reference image to an https URL the provider
     // accepts: data: uploads are hosted to Supabase; https URLs (e.g. editing a
@@ -111,7 +117,7 @@ export async function POST(req: NextRequest) {
     // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
     // than timing out; 1K finishes far sooner and exits the poll early.
     const result = await generateNanoBananaImage({
-      prompt:      enriched,
+      prompt:      finalPrompt,
       endpoint,
       aspectRatio: body.aspectRatio ?? '1:1',
       style:       styleLabel || undefined,

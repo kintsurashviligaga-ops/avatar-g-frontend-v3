@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const sb = createServiceRoleClient();
     const { data, error } = await sb
       .from('prompt_optimization_proposals')
-      .select('id, agent_type, model, kind, priority, rationale, evidence, status, created_at')
+      .select('id, agent_type, model, kind, priority, rationale, evidence, status, created_at, proposed_params, proposed_prompt')
       .eq('status', status)
       .order('created_at', { ascending: false })
       .limit(200);

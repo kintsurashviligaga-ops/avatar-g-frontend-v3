@@ -74,7 +74,7 @@ export function buildLiveToolRegistry(ctx: AgentContext): AgentTool[] {
 export async function runLiveAgent(
   userGoal: string,
   ctx: AgentContext,
-  opts?: { maxSteps?: number; systemExtra?: string },
+  opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number },
 ): Promise<ReActResult> {
   return runReActLoop({
     llm: llmAdapter,
@@ -82,5 +82,6 @@ export async function runLiveAgent(
     userGoal,
     maxSteps: opts?.maxSteps,
     systemExtra: opts?.systemExtra,
+    deadlineMs: opts?.deadlineMs,
   });
 }

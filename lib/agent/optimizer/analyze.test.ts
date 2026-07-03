@@ -47,6 +47,20 @@ describe('agent optimizer analysis (STEP 5, pure)', () => {
     expect(props[0].priority).toBe('low');
   });
 
+  it('SELF-IMPROVING: high-discard/high-edit proposals carry a CONCRETE directive; investigate stays diagnostic', () => {
+    // discard-heavy image (no model) → concrete quality directive is attached (promotable on approval)
+    const discardImg = proposeOptimizations(aggregateSignals(rows('image', null, Array(20).fill('discard'))));
+    expect(discardImg[0].proposedPrompt).toMatch(/focus|anatomy|artifact/i);
+    expect(discardImg[0].proposedParams).toBeNull();
+    // high-edit script → concrete revise directive
+    const editScript = proposeOptimizations(aggregateSignals(rows('script', null, [...Array(10).fill('edit'), ...Array(10).fill('download')])));
+    expect(editScript[0].proposedPrompt).toBeTruthy();
+    // net-negative (discard 0.4 / edit 0.6) → 'investigate' is DIAGNOSTIC: no concrete change to promote
+    const inv = proposeOptimizations(aggregateSignals(rows('audio', 'eleven', [...Array(8).fill('discard'), ...Array(12).fill('edit')])));
+    expect(inv[0].kind).toBe('investigate');
+    expect(inv[0].proposedPrompt).toBeNull();
+  });
+
   it('SAFETY INVARIANT: every proposal is status "proposed" — never auto-applied', () => {
     const data = [
       ...rows('video', 'kling', Array(20).fill('discard')),

@@ -43,7 +43,10 @@ export async function POST(req: NextRequest) {
       ? Math.min(Math.max(1, Math.floor(body.maxSteps)), MAX_STEPS_CAP)
       : undefined;
 
-  const result = await runLiveAgent(goal, { userId: user.id }, { maxSteps });
+  // Deadline (audit MED): stop the loop with a partial trace ~20s before the 120s maxDuration so a
+  // slow LLM/tool step returns a graceful 'max_steps' result instead of a hard 504 with nothing.
+  const deadlineMs = Date.now() + 100_000;
+  const result = await runLiveAgent(goal, { userId: user.id }, { maxSteps, deadlineMs });
   const status = result.stopReason === 'llm_error' ? 502 : 200;
   return NextResponse.json(result, { status });
 }
