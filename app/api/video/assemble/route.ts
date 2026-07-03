@@ -29,6 +29,8 @@ import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { muxAudioOntoVideo } from '@/lib/video/remixOps';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
+import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
@@ -157,6 +159,9 @@ interface AssembleBody {
   /** v330 — selected sung-vocal gender for ElevenLabs Music (steers the AI singer).
    *  'duet' → a male + female duet. */
   vocalGender?: 'male' | 'female' | 'duet';
+  /** STEP 2.3 — ElevenLabs with-timestamps alignment → word-synced burned captions on
+   *  the CPU-FFmpeg master (fail-open; absent → no captions, path unchanged). */
+  captionAlignment?: ElevenAlignment | null;
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
@@ -415,8 +420,15 @@ async function assembleImpl(req: NextRequest) {
         if (overlaid) master = overlaid;
       } catch { /* keep the clean master */ }
     }
+    // STEP 2.6 fix — word-synced captions on the SINGLE-CLIP ad too. The multi-clip path
+    // burns them inside ffmpeg-assembly; the 1-scene path is URL-based, so a real 1-scene ad
+    // used to get NO captions. Burn via URL here (fail-open: a miss keeps the master).
+    if (body.captionAlignment) {
+      const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
+      if (captioned) master = captioned;
+    }
     // eslint-disable-next-line no-console
-    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), muxed: master !== clipUrl }));
+    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl }));
     if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
     return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: false, single: true });
   }
@@ -580,7 +592,7 @@ async function assembleImpl(req: NextRequest) {
           // GPU worker when configured; else stitch on this node with CPU FFmpeg.
           const work = cfg
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
-            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId }, ac.signal);
+            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null }, ac.signal);
           const res = await Promise.race([work, deadline]);
           ctx.bag.tempUrl = res.url;
           // Supervisor QA verdict (CPU path only; RunPod path returns no qa).

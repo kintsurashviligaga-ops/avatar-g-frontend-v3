@@ -22,6 +22,8 @@ import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinema
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadBufferAndSign } from './storage-adapter';
+import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
+import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 
 const exec = promisify(execFile);
 
@@ -71,6 +73,10 @@ export interface FfmpegManifest {
   sfxUrl?: string | null;
   globalRender?: Record<string, string | number | boolean>;
   pipelineId?: string;
+  /** STEP 2.3 — ElevenLabs with-timestamps alignment for word-synced burned captions.
+   *  When present, timed FiraGO caption strips are burned into the master AFTER the
+   *  stitch (fail-open: a miss ships the un-captioned master, byte-for-byte as before). */
+  captionAlignment?: ElevenAlignment | null;
 }
 
 /** True when the CPU assembler can run (binary bundled). */
@@ -374,6 +380,23 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });
     // eslint-disable-next-line no-console
     console.log(`[assemble] ffmpeg encode (${inputs.length} clips → master) in ${Date.now() - tEnc}ms`);
+
+    // STEP 2.3 — word-synced caption burn (FAIL-OPEN). Only runs when the caller supplied
+    // a with-timestamps alignment; otherwise `out` is untouched → zero blast radius on all
+    // existing (music-video / film / product-ad) traffic. Rewrites `out` in place so the QA
+    // probe + upload below see the captioned master. A burn miss keeps the original.
+    if (m.captionAlignment) {
+      const segs = alignmentToCaptionSegments(m.captionAlignment);
+      const pre = segs.length ? await probeMaster(bin, out) : null;
+      if (pre?.width && pre?.height) {
+        const captioned = await burnCaptionSegments(out, segs, { width: pre.width, height: pre.height });
+        if (captioned) {
+          await writeFile(out, captioned);
+          // eslint-disable-next-line no-console
+          console.log(`[assemble] burned ${segs.length} word-synced caption segments`);
+        }
+      }
+    }
 
     const data = await readFile(out);
 

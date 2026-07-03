@@ -117,6 +117,28 @@ const ASPECT_DIMS: Record<string, [number, number]> = {
 };
 
 /**
+ * Pre-fit a product image (data: URL) to the target aspect so Kling i2v — whose output ratio
+ * FOLLOWS the start image — renders NATIVE 9:16 instead of a square that later needs padding.
+ * `cover` fills the frame (centre), which suits a hero product; fail-open → returns the input.
+ */
+export async function fitImageToAspect(dataUrl: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string> {
+  try {
+    if (!/^data:image\//i.test(dataUrl)) return dataUrl;
+    const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] ?? '' : '';
+    if (!b64) return dataUrl;
+    const [w, h] = ASPECT_DIMS[aspect] ?? ASPECT_DIMS['9:16']!;
+    const sharp = (await import('sharp')).default;
+    const out = await sharp(Buffer.from(b64, 'base64'))
+      .resize(w, h, { fit: 'cover', position: 'centre' })
+      .jpeg({ quality: 88 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${out.toString('base64')}`;
+  } catch {
+    return dataUrl; // fail-open: Kling still runs on the original image
+  }
+}
+
+/**
  * Ken-Burns a still image into a `durationSec` clip (slow zoom). The reliable
  * fallback for restyle/character when no i2v token is configured, so the user
  * always gets a moving, restyled result. `image` may be a data: URL or https.

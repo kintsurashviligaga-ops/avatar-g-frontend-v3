@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,12 +41,15 @@ export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'auth required' }, { status: 401 });
 
-  let body: { dataUrl?: unknown; contentType?: unknown };
+  let body: { dataUrl?: unknown; contentType?: unknown; adImage?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: 'invalid body' }, { status: 400 });
   }
+  // STEP 2.1 — an ad-generator reference image is held to the STRICT marketing profile
+  // (jpeg/png/webp, ≤10MB) SERVER-SIDE, independent of what the client claims.
+  const isAdImage = body.adImage === true;
 
   const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
   if (!dataUrl.startsWith('data:')) {
@@ -60,6 +64,15 @@ export async function POST(req: NextRequest) {
   if (!b64) return NextResponse.json({ error: 'empty payload' }, { status: 400 });
   if (b64.length * 0.75 > MAX_BYTES) {
     return NextResponse.json({ error: 'file too large (60MB max)' }, { status: 413 });
+  }
+  // STEP 2.1 — server-authoritative ad-image guard (mime allowlist + 10MB), never
+  // trusting the client. Rejects with 415/413 before touching storage.
+  if (isAdImage) {
+    const v = validateAdImageMeta({ contentType, sizeBytes: base64ByteLength(b64) });
+    if (!v.ok) {
+      const status = /too large/i.test(v.error) ? 413 : 415;
+      return NextResponse.json({ error: v.error }, { status });
+    }
   }
 
   // Owner-scoped, collision-resistant path → a private bucket; an hour-long URL.

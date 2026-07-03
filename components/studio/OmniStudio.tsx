@@ -30,6 +30,7 @@ import { MotionControlPanel } from './MotionControlPanel';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
+import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
@@ -2112,21 +2113,37 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     return '';
   }, []);
 
+  // STEP 2.1 — client-side ad-image validation (the server re-checks; never trusted).
+  // Only jpeg/png/webp, ≤10MB; the server /api/upload adImage guard is authoritative.
+  const rejectAdImage = useCallback((file: File): boolean => {
+    if (!isAdImageMime(file.type)) {
+      setShareToast(locale === 'en' ? 'Use a JPG, PNG or WebP image' : locale === 'ru' ? 'Используйте JPG, PNG или WebP' : 'გამოიყენე JPG, PNG ან WebP');
+      return true;
+    }
+    if (file.size > AD_IMAGE_MAX_BYTES) {
+      setShareToast(locale === 'en' ? 'Image too large (max 10MB)' : locale === 'ru' ? 'Изображение слишком большое (макс 10МБ)' : 'სურათი ძალიან დიდია (მაქს 10MB)');
+      return true;
+    }
+    return false;
+  }, [locale]);
   const onProductPhoto = useCallback((file: File) => {
-    if (!file.type.startsWith('image/')) return;
+    if (rejectAdImage(file)) return;
     const reader = new FileReader();
     reader.onload = () => setProductImage(typeof reader.result === 'string' ? reader.result : null);
     reader.readAsDataURL(file);
-  }, []);
-  // Multi-shot: append an EXTRA product photo (max 5 extra → 6 total). Each clip in a
-  // 30/60s ad anchors a different shot (rotated), so the ad shows the product from
-  // several angles instead of one photo N times.
+  }, [rejectAdImage]);
+  // Multi-shot: append an EXTRA product photo. STEP 2.1 caps the ad at MAX_AD_IMAGES
+  // (3) total = primary + (MAX_AD_IMAGES-1) extras; each clip rotates a different shot.
   const addProductShot = useCallback((file: File) => {
-    if (!file.type.startsWith('image/')) return;
+    if (rejectAdImage(file)) return;
+    if (productImages.length >= MAX_AD_IMAGES - 1) {
+      setShareToast(locale === 'en' ? `Up to ${MAX_AD_IMAGES} images` : locale === 'ru' ? `До ${MAX_AD_IMAGES} изображений` : `მაქს ${MAX_AD_IMAGES} სურათი`);
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => setProductImages((prev) => (typeof reader.result === 'string' && prev.length < 5 ? [...prev, reader.result] : prev));
+    reader.onload = () => setProductImages((prev) => (typeof reader.result === 'string' && prev.length < MAX_AD_IMAGES - 1 ? [...prev, reader.result] : prev));
     reader.readAsDataURL(file);
-  }, []);
+  }, [rejectAdImage, productImages.length, locale]);
 
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
@@ -4890,7 +4907,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <input type="text" value={productBrand} onChange={(e) => setProductBrand(e.target.value)} maxLength={40}
                     placeholder={locale === 'en' ? 'Brand name' : locale === 'ru' ? 'Название бренда' : 'ბრენდის სახელი'}
                     className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
-                  <input type="text" value={productHook} onChange={(e) => setProductHook(e.target.value)} maxLength={70}
+                  <input type="text" value={productHook} onChange={(e) => setProductHook(e.target.value)} maxLength={AD_HOOK_MAX_CHARS}
                     placeholder={locale === 'en' ? 'Tagline / hook' : locale === 'ru' ? 'Слоган' : 'სლოგანი / მესიჯი'}
                     className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
                   <input type="text" value={productPrice} onChange={(e) => setProductPrice(e.target.value)} maxLength={20}

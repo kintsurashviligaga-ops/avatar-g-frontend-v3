@@ -30,10 +30,15 @@ describe('formatGEL', () => {
 });
 
 describe('refill tiers', () => {
-  test('exactly 5/10/20/50/500 with 5 as the minimum', () => {
-    expect([...REFILL_TIERS_GEL]).toEqual([5, 10, 20, 50, 500]);
+  test('legacy 5/10/20/50/500 + credit-pack tiers (9/29/89), 5 as the minimum', () => {
+    // Source of truth is gel.ts (updated in d0f3f46 credits-modal-prices); this assertion had
+    // gone stale. Legacy round tiers stay for back-compat; 9/29/89 are the credit-pack prices.
+    expect([...REFILL_TIERS_GEL]).toEqual([5, 9, 10, 20, 29, 50, 89, 500]);
     expect(MIN_REFILL_GEL).toBe(5);
     expect(Math.min(...REFILL_TIERS_GEL)).toBe(MIN_REFILL_GEL);
+    expect(Math.max(...REFILL_TIERS_GEL)).toBe(500);
+    // legacy round tiers must remain valid (back-compat)
+    for (const legacy of [5, 10, 20, 50, 500]) expect(REFILL_TIERS_GEL).toContain(legacy);
   });
 });
 

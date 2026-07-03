@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { Download, Share2, RefreshCw, Bookmark, Check, Copy, X, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { shareOrDownload } from '@/lib/share/nativeShare';
+import { recordFeedback } from '@/lib/agent/feedbackClient';
 
 interface MediaActionsProps {
   kind: 'image' | 'video' | 'audio' | 'avatar' | 'text';
@@ -16,10 +18,14 @@ interface MediaActionsProps {
 
 interface ShareModalProps {
   shareUrl: string;
+  /** The actual media asset URL — enables native file-share (Save to Photos) + download fallback. */
+  mediaUrl?: string;
+  mediaKind?: 'image' | 'video' | 'audio' | 'avatar' | 'text';
+  mediaTitle?: string;
   onClose: () => void;
 }
 
-function ShareModal({ shareUrl, onClose }: ShareModalProps) {
+function ShareModal({ shareUrl, mediaUrl, mediaKind, mediaTitle, onClose }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -30,9 +36,16 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
     } catch { /* ignore */ }
   };
 
-  // Web Share API — native iOS / Android share sheet when available. Falls
-  // back to per-network deep links below.
+  // Web Share API — native iOS / Android share sheet when available. Prefers sharing the actual
+  // media FILE (so mobile "Save to Photos" works) with a MANDATORY <a download> fallback; if we
+  // don't hold the asset URL, shares the link instead. Falls back to per-network deep links below.
   const nativeShare = async () => {
+    if (mediaUrl) {
+      const shareKind = mediaKind === 'avatar' ? 'video' : mediaKind === 'text' ? 'file' : mediaKind;
+      const r = await shareOrDownload({ url: mediaUrl, title: mediaTitle || 'MyAvatar.ge', text: 'შევქმენი MyAvatar.ge-ზე — გადახედე', kind: shareKind });
+      if (r.ok && !r.cancelled) onClose();
+      return;
+    }
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share({
@@ -56,7 +69,8 @@ function ShareModal({ shareUrl, onClose }: ShareModalProps) {
     { name: 'Instagram', bg: '#E1306C', href: null }, // Copy link — IG doesn't accept compose URL
   ];
 
-  const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  // With a media URL the Save/Share button always works (file-share or the download fallback).
+  const canNativeShare = !!mediaUrl || (typeof navigator !== 'undefined' && typeof navigator.share === 'function');
 
   return (
     <motion.div
@@ -335,6 +349,7 @@ export default function MediaActions({
       a.download = `${name}.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
+      recordFeedback(kind, 'download', prompt ? { promptSnapshot: prompt } : undefined);
     } catch {
       /* silently fail — user can right-click save */
     }
@@ -373,6 +388,7 @@ export default function MediaActions({
       setShareUrl(url);
     }
     setShareModal(true);
+    recordFeedback(kind, 'share', prompt ? { promptSnapshot: prompt } : undefined);
   };
 
   const handleSaveChar = async (name: string, description: string) => {
@@ -396,7 +412,10 @@ export default function MediaActions({
   };
 
   const handleRemix = () => {
-    if (onRemix && prompt) onRemix(prompt);
+    if (onRemix && prompt) {
+      recordFeedback(kind, 'remix', { promptSnapshot: prompt });
+      onRemix(prompt);
+    }
   };
 
   return (
@@ -474,6 +493,9 @@ export default function MediaActions({
         {shareModal && (
           <ShareModal
             shareUrl={shareUrl}
+            mediaUrl={url}
+            mediaKind={kind}
+            mediaTitle={title}
             onClose={() => setShareModal(false)}
           />
         )}

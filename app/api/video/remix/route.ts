@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, type GradeStyle } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, type GradeStyle } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -28,6 +28,8 @@ import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusic } from '@/lib/ai/replicate';
+import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
+import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -133,8 +135,22 @@ export async function POST(req: NextRequest) {
     try {
       const aspectP: Aspect = body.aspect === '16:9' || body.aspect === '1:1' ? body.aspect : '9:16';
       const img = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
+      // STEP 2.1 — server-authoritative ad-image guard for a data:image payload
+      // (jpeg/png/webp, ≤10MB). This is the real ad path (images arrive as data URLs,
+      // bypassing /api/upload), so the strict marketing profile is enforced HERE too.
+      if (/^data:/i.test(img)) {
+        const mt = img.match(/^data:([^;,]+)[;,]/);
+        const b64 = img.includes(',') ? img.split(',')[1] ?? '' : '';
+        const v = validateAdImageMeta({ contentType: mt?.[1] ?? '', sizeBytes: base64ByteLength(b64) });
+        if (!v.ok) return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 });
+      }
       // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
-      const startImg = /^data:image\//i.test(img) ? img : await resolveMedia(img);
+      const startImgRaw = /^data:image\//i.test(img) ? img : await resolveMedia(img);
+      // STEP 2.6 — pre-fit a product image to the target aspect so Kling i2v (output ratio =
+      // start-image ratio) renders NATIVE 9:16, not a square that later needs letterboxing.
+      const startImg = startImgRaw && /^data:image\//i.test(startImgRaw)
+        ? await fitImageToAspect(startImgRaw, aspectP)
+        : startImgRaw;
       if (!startImg) return fail('Add a product photo.');
       // Per-preset visual STYLE (the look) + per-scene ACTIONS (the multi-clip arc).
       // Single-clip (no sceneIndex) → just the style. Multi-clip (sceneIndex set) →
@@ -156,6 +172,18 @@ export async function POST(req: NextRequest) {
       const style = PRESETS[presetKey] ?? PRESETS.luxury!;
       const scenes = PRESET_SCENES[presetKey] ?? PRESET_SCENES.luxury!;
       const sceneIdx = Number.isFinite(Number(body.sceneIndex)) ? Math.max(0, Math.floor(Number(body.sceneIndex))) : -1;
+      // STEP 2.5 — OPT-IN server-side budget cap, checked HERE (the spend point) before the
+      // paid Kling call. Activated only when a cap is supplied (request `budgetCapUsd` or env
+      // AD_SESSION_BUDGET_CAP_USD), so production ads are unaffected; it guards the 2.6 paid
+      // test. Over-budget (or a single scene above the cap) → 402 top-up, never spends.
+      const capUsd = Number(body.budgetCapUsd) || Number(process.env.AD_SESSION_BUDGET_CAP_USD) || 0;
+      if (capUsd > 0) {
+        const adScenes = Number.isFinite(Number(body.sceneCount))
+          ? Math.max(1, Math.floor(Number(body.sceneCount)))
+          : sceneIdx >= 0 ? sceneIdx + 1 : 1;
+        const budget = checkAdBudget({ scenes: adScenes, withTts: false, withMusic: sceneIdx < 0 && body.noMusic !== true }, { capUsd });
+        if (!budget.ok) return NextResponse.json({ url: null, error: budget.message, topUpNeeded: true }, { status: 402 });
+      }
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
       const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
