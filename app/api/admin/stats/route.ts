@@ -54,15 +54,15 @@ export async function GET(): Promise<NextResponse> {
     const aliveWorkers = workers?.filter((w) => w.last_seen_at > cutoff) ?? []
     const deadWorkers = workers?.filter((w) => w.last_seen_at <= cutoff) ?? []
 
-    // Queue depth by status
+    // Queue depth by status — the 6 counts run CONCURRENTLY (was 6 serial round-trips; audit LOW).
+    const jobStatuses = ['queued', 'claimed', 'processing', 'failed', 'dead', 'completed'] as const
+    const statusCountResults = await Promise.all(
+      jobStatuses.map((status) =>
+        adminClient.from('jobs').select('*', { count: 'exact', head: true }).eq('status', status)
+      )
+    )
     const statusCounts: Record<string, number> = {}
-    for (const status of ['queued', 'claimed', 'processing', 'failed', 'dead', 'completed'] as const) {
-      const { count } = await adminClient
-        .from('jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', status)
-      statusCounts[status] = count ?? 0
-    }
+    jobStatuses.forEach((status, i) => { statusCounts[status] = statusCountResults[i]?.count ?? 0 })
 
     // Throughput: jobs completed in last 24h
     const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString()

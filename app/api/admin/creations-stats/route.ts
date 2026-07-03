@@ -52,35 +52,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .from('profiles')
       .select('*', { count: 'exact', head: true });
 
-    // 3. Creations by kind
+    // 3. Creations by kind — the 6 counts run CONCURRENTLY (was 6 serial round-trips; audit LOW).
     const kinds = ['image', 'video', 'audio', 'avatar', 'text', 'code'];
+    const kindResults = await Promise.all(
+      kinds.map((kind) =>
+        supabase.from('user_creations').select('*', { count: 'exact', head: true }).eq('kind', kind)
+      )
+    );
     const kindCounts: Record<string, number> = {};
-    for (const kind of kinds) {
-      const { count } = await supabase
-        .from('user_creations')
-        .select('*', { count: 'exact', head: true })
-        .eq('kind', kind);
-      kindCounts[kind] = count ?? 0;
-    }
+    kinds.forEach((kind, i) => { kindCounts[kind] = kindResults[i]?.count ?? 0; });
 
-    // 4. Daily creations last 14 days
+    // 4. Daily creations last 14 days — ONE windowed query bucketed in JS (was 14 serial queries;
+    // audit LOW). Bucketed by UTC day for consistency between the query and the labels.
+    const windowStart = new Date(Date.now() - 14 * 86_400_000).toISOString();
+    const { data: windowRows } = await supabase
+      .from('user_creations')
+      .select('created_at, credits_used')
+      .gte('created_at', windowStart);
+    const byDay = new Map<string, { count: number; credits: number }>();
+    for (const r of windowRows ?? []) {
+      const day = String(r.created_at ?? '').slice(0, 10);
+      if (!day) continue;
+      const cur = byDay.get(day) ?? { count: 0, credits: 0 };
+      cur.count += 1;
+      cur.credits += Number(r.credits_used ?? 0);
+      byDay.set(day, cur);
+    }
     const days: Array<{ date: string; count: number; credits: number }> = [];
     for (let i = 13; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-      const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString();
-      const { data: dayRows } = await supabase
-        .from('user_creations')
-        .select('credits_used')
-        .gte('created_at', start)
-        .lt('created_at', end);
-      const dayCredits = (dayRows ?? []).reduce((s, r) => s + (r.credits_used ?? 0), 0);
-      days.push({
-        date: d.toISOString().slice(0, 10),
-        count: dayRows?.length ?? 0,
-        credits: dayCredits,
-      });
+      const key = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+      const e = byDay.get(key) ?? { count: 0, credits: 0 };
+      days.push({ date: key, count: e.count, credits: e.credits });
     }
 
     // 5. Agent G tasks overview
