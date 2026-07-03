@@ -130,9 +130,12 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Start the async lip-sync job. The route returns { jobId } — NOT a url;
       // the rendered result is delivered only by polling GET ?id=. (The old code
       // read j.url here, which is always undefined → every run showed "failed".)
+      // kind:'photo' — declare the PHOTO lip-sync engine (SadTalker/HeyGen talking-photo)
+      // explicitly, matching the engine's expectations. The route routes kind:'film' to the
+      // video-input engine (sync/lipsync-2); everything else (incl. 'photo') takes the photo path.
       const startRes = await fetch('/api/video/lipsync', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url }), credentials: 'include',
+        body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url, kind: 'photo' }), credentials: 'include',
       });
       const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
       if (!startJson.jobId) { setError(startJson.error || t.failed); return; }

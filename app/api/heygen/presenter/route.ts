@@ -32,31 +32,12 @@ const HEYGEN_BASE = 'https://api.heygen.com';
  *  deployment host, which 401s the self-fetch). Overridable via env. */
 const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || 'https://myavatar.ge/presenter/default-female.jpg';
 
-// HeyGen caps photo avatars (talking_photos) at 3 on this plan. Uploading a NEW one
-// per call exhausts that cap (error 401028) — so REUSE: resolve a talking_photo_id
-// from the account's existing photos and cache it; only upload the default face if
-// none exist. Cached for the life of the (warm) instance.
+// SECURITY (audit HIGH — cross-tenant leak): the presenter face is a DEDICATED, non-user photo,
+// NEVER an arbitrary account photo. HeyGen's talking_photo.list is shared across ALL users of
+// this account, so reusing data[0] could serve another user's uploaded selfie as the "default
+// presenter". We resolve a PINNED env photo, else a cached default-face upload, else upload the
+// canonical placeholder — we NEVER enumerate the shared account's photos. Cached per warm instance.
 let cachedTalkingPhotoId: string | null = null;
-
-/** Pull the first existing talking_photo_id from the account.
- *  Endpoint: GET /v1/talking_photo.list → { data: [{ id, image_url, … }, …] }.
- *  The field is `id` (not `talking_photo_id`) on the list shape — a HeyGen quirk
- *  that previously missed the available IDs and fell through to a new upload. */
-async function firstExistingTalkingPhoto(apiKey: string): Promise<string | null> {
-  try {
-    const r = await fetch('https://api.heygen.com/v1/talking_photo.list', { headers: { 'X-Api-Key': apiKey }, signal: AbortSignal.timeout(15_000) });
-    if (!r.ok) return null;
-    const j = (await r.json().catch(() => null)) as { data?: Array<{ id?: string; talking_photo_id?: string }> } | null;
-    const list = j?.data ?? [];
-    for (const item of list) {
-      const id = item?.id || item?.talking_photo_id;
-      if (id) return id;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 /** Re-host a finished HeyGen presenter video to a stable 7-day Supabase URL. HeyGen's
  *  result URL expires (~1h) → blank player on revisit (the same issue the photo lip-sync
@@ -102,12 +83,14 @@ export async function POST(req: NextRequest) {
   const audioUrl = body.audioUrl;
   const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;
 
-  // Resolve a talking_photo_id WITHOUT creating new assets when possible:
-  //   1) cached → use it
-  //   2) reuse an existing account talking_photo (no new upload → no cap hit)
-  //   3) only if the account has none, upload the default face
-  let talkingPhotoId = cachedTalkingPhotoId;
-  if (!talkingPhotoId) talkingPhotoId = await firstExistingTalkingPhoto(apiKey);
+  // Resolve a talking_photo_id SCOPED to a dedicated presenter face — never an arbitrary
+  // shared-account photo (audit HIGH cross-tenant leak):
+  //   1) PRESENTER_TALKING_PHOTO_ID env — a dedicated pinned presenter photo (the real fix)
+  //   2) cached default-face upload from this warm instance
+  //   3) upload the canonical DEFAULT_FACE_URL placeholder (or the caller's OWN faceUrl) — never
+  //      another user's photo. We do NOT enumerate the shared account's talking_photo.list.
+  const pinnedPhotoId = process.env.PRESENTER_TALKING_PHOTO_ID?.trim() || null;
+  let talkingPhotoId = pinnedPhotoId || cachedTalkingPhotoId;
   if (!talkingPhotoId) {
     const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
     if (!faceRes || !faceRes.ok) return NextResponse.json({ success: false, error: 'presenter face unreachable', detail: `${faceUrl.slice(0, 100)} → ${faceRes?.status ?? 'fetch error'}` }, { status: 502 });
@@ -120,8 +103,9 @@ export async function POST(req: NextRequest) {
     if (!tpRes || !tpRes.ok) return NextResponse.json({ success: false, error: `HeyGen talking_photo ${tpRes?.status ?? 'timeout'}`, detail: tpText.slice(0, 300) }, { status: 502 });
     try { talkingPhotoId = JSON.parse(tpText)?.data?.talking_photo_id ?? null; } catch { talkingPhotoId = null; }
   }
-  if (!talkingPhotoId) return NextResponse.json({ success: false, error: 'no talking_photo available (account photo-avatar cap reached and none reusable)' }, { status: 502 });
-  cachedTalkingPhotoId = talkingPhotoId;
+  if (!talkingPhotoId) return NextResponse.json({ success: false, error: 'no dedicated presenter photo available — set PRESENTER_TALKING_PHOTO_ID' }, { status: 502 });
+  // Cache ONLY a self-provisioned default-face upload; a pinned env id is already stable.
+  if (!pinnedPhotoId) cachedTalkingPhotoId = talkingPhotoId;
 
   // 2) Generate the audio-driven video. Capture HeyGen's actual reply.
   const dimension = body.orientation === 'vertical'

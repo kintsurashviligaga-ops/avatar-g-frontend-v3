@@ -388,49 +388,95 @@ async function assembleImpl(req: NextRequest) {
   // The graphics agent runs as the usual OmniStudio post-step on this master.
   // Strictly additive: the ≥2 path below is untouched.
   if (segments.length === 1) {
-    const clipUrl = await reSignIfInternal(segments[0]!.url);
-    const { url: musicUrl, fallback } = await resolveMusicBed();
-    let master = clipUrl;
-    if (musicUrl) {
-      const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'replace').catch(() => null);
-      if (muxed) master = muxed;
+    // BILLING (audit HIGH): a 6s single-clip film costs the SAME as a multi-clip master, so it
+    // must reserve/charge the wallet BEFORE the paid render — this path used to return with no
+    // debit (a free-render bypass). Anonymous trials + founder/admin skip billing (same rule as
+    // the multi-clip saga's reserve-credits step). Reserve up front → commit on success → roll
+    // back on failure, so a failed render never strands the user's credits / free slot.
+    const scSkipBilling = uid === null ? true : await isAdminUser(uid);
+    let scFreeFilm = false;
+    let scDebited = false;
+    let scLock: TokenLock | null = null;
+    if (!scSkipBilling && uid) {
+      scLock = await lockTokens(uid, ASSEMBLE_COST, 900);
+      const freeFilm = await consumeFreeFilm(uid);
+      if (typeof freeFilm === 'number' && freeFilm >= 0) {
+        scFreeFilm = true; // first free film waives the charge (fail-safe: only when the DB confirms)
+      } else {
+        const debit = await deductCredits(uid, ASSEMBLE_COST, `assemble-single:${idemKey}`);
+        scDebited = debit.ok;
+        // 'skipped' (ledger RPC absent) is the only non-fatal miss — charge best-effort like the saga.
+        if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
+          if (scLock) await releaseTokenLock(scLock);
+          await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`);
+          const message = debit.reason === 'insufficient'
+            ? 'Not enough credits for this render. Top up to continue.'
+            : 'Credit ledger unavailable — please retry.';
+          if (filmTokenId) await recordFilmFailed(filmTokenId, message);
+          return NextResponse.json({ error: 'insufficient_credits', reason: 'insufficient_credits', message }, { status: 402 });
+        }
+      }
+    } else {
+      scFreeFilm = true; // anon trial / founder — no charge (mirrors saga bag.freeFilm)
     }
-    // PRODUCT-AD (6s) — a spoken voiceover (a ready URL, or a SCRIPT we TTS on the
-    // cloned KA voice) is mixed ON TOP of the music bed (music ducked ~12 dB). When
-    // there's no music yet, the VO is muxed straight on. Additive: with no voiceover
-    // the master is exactly the music-muxed clip as before.
-    const voUrl = body.voiceoverUrl
-      ? await reSignIfInternal(body.voiceoverUrl)
-      : (typeof body.voiceoverScript === 'string' && body.voiceoverScript.trim()
-          ? await textToHostedSpeech(body.voiceoverScript.trim().slice(0, 800)).catch(() => null)
-          : null);
-    if (voUrl) {
-      const dubbed = await muxAudioOntoVideo(master, voUrl, master === clipUrl ? 'replace' : 'mix', 12).catch(() => null);
-      if (dubbed) master = dubbed;
+
+    try {
+      const clipUrl = await reSignIfInternal(segments[0]!.url);
+      const { url: musicUrl, fallback } = await resolveMusicBed();
+      let master = clipUrl;
+      if (musicUrl) {
+        const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'replace').catch(() => null);
+        if (muxed) master = muxed;
+      }
+      // PRODUCT-AD (6s) — a spoken voiceover (a ready URL, or a SCRIPT we TTS on the
+      // cloned KA voice) is mixed ON TOP of the music bed (music ducked ~12 dB). When
+      // there's no music yet, the VO is muxed straight on. Additive: with no voiceover
+      // the master is exactly the music-muxed clip as before.
+      const voUrl = body.voiceoverUrl
+        ? await reSignIfInternal(body.voiceoverUrl)
+        : (typeof body.voiceoverScript === 'string' && body.voiceoverScript.trim()
+            ? await textToHostedSpeech(body.voiceoverScript.trim().slice(0, 800)).catch(() => null)
+            : null);
+      if (voUrl) {
+        const dubbed = await muxAudioOntoVideo(master, voUrl, master === clipUrl ? 'replace' : 'mix', 12).catch(() => null);
+        if (dubbed) master = dubbed;
+      }
+      // PRODUCT-AD overlays — price chip + CTA pill + brand lower-third burned onto the
+      // master (the same SVG→PNG overlay the multi-clip B2B path uses below). Bounded +
+      // fail-open: a miss keeps the clean master. Only fires when the caller passed copy.
+      if (body.marketing && hasOverlayContent(body.marketing)) {
+        try {
+          const overlaid = await Promise.race([
+            overlayMasterUrl(master, body.marketing),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000)),
+          ]);
+          if (overlaid) master = overlaid;
+        } catch { /* keep the clean master */ }
+      }
+      // STEP 2.6 fix — word-synced captions on the SINGLE-CLIP ad too. The multi-clip path
+      // burns them inside ffmpeg-assembly; the 1-scene path is URL-based, so a real 1-scene ad
+      // used to get NO captions. Burn via URL here (fail-open: a miss keeps the master).
+      if (body.captionAlignment) {
+        const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
+        if (captioned) master = captioned;
+      }
+      // Master produced → COMMIT the credit reservation (the charge is now earned).
+      if (scLock) await commitTokenLock(scLock).catch(() => {});
+      // eslint-disable-next-line no-console
+      console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl, billed: !scSkipBilling && !scFreeFilm }));
+      if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
+      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm, single: true });
+    } catch (err) {
+      // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
+      if (!scSkipBilling && uid) {
+        if (scLock) await releaseTokenLock(scLock).catch(() => {});
+        if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
+        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `assemble-single-rollback:${idemKey}`).catch(() => {});
+      }
+      await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});
+      if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});
+      return NextResponse.json({ error: 'assemble_failed', message: err instanceof Error ? err.message : 'assemble failed' }, { status: 500 });
     }
-    // PRODUCT-AD overlays — price chip + CTA pill + brand lower-third burned onto the
-    // master (the same SVG→PNG overlay the multi-clip B2B path uses below). Bounded +
-    // fail-open: a miss keeps the clean master. Only fires when the caller passed copy.
-    if (body.marketing && hasOverlayContent(body.marketing)) {
-      try {
-        const overlaid = await Promise.race([
-          overlayMasterUrl(master, body.marketing),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000)),
-        ]);
-        if (overlaid) master = overlaid;
-      } catch { /* keep the clean master */ }
-    }
-    // STEP 2.6 fix — word-synced captions on the SINGLE-CLIP ad too. The multi-clip path
-    // burns them inside ffmpeg-assembly; the 1-scene path is URL-based, so a real 1-scene ad
-    // used to get NO captions. Burn via URL here (fail-open: a miss keeps the master).
-    if (body.captionAlignment) {
-      const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
-      if (captioned) master = captioned;
-    }
-    // eslint-disable-next-line no-console
-    console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl }));
-    if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
-    return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: false, single: true });
   }
 
   // Media-flow sanitization (Task 3): re-sign any internal Supabase Storage object so
