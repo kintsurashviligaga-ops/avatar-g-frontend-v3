@@ -271,6 +271,15 @@ async function assembleImpl(req: NextRequest) {
     o: resolvedOrientation,
     mv: body.musicVideoMode ?? null,
     b: typeof body.scorePrompt === 'string' ? body.scorePrompt : null,
+    // audit MED — include EVERY other output-changing input so re-submitting the same segments
+    // with a different soundtrack / voiceover / mix / captions inside the 60s window can't return
+    // the cached wrong master.
+    ca: body.customAudioUrl ?? null,
+    vs: typeof body.voiceoverScript === 'string' ? body.voiceoverScript.slice(0, 200) : null,
+    vg: body.vocalGender ?? null,
+    nm: body.noMusic ?? null,
+    mk: body.marketing && hasOverlayContent(body.marketing) ? 1 : 0,
+    cap: body.captionAlignment ? 1 : 0,
   });
   const fresh = await claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, 60);
   if (!fresh) {
