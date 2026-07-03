@@ -14,6 +14,10 @@
 // default + its partial unique index); admins move it to a terminal state.
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected';
 
+// Single source of truth for the open/reviewable status. Both approve AND reject filter on this
+// — a hardcoded literal here once caused reject to silently no-op ('pending' ≠ 'proposed').
+export const OPEN_PROPOSAL_STATUS: ProposalStatus = 'proposed';
+
 export interface AgentConfigRow {
   target: string;
   version: number;
