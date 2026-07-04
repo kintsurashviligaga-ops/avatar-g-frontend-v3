@@ -3477,7 +3477,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         });
         const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
         if (j.url) {
-          updateBubble(bubbleId, { text: '', videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : 'vertical' });
+          updateBubble(bubbleId, { text: '', videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : orient === 'square' ? 'square' : 'vertical' });
           notifyCredit('remix');
           autoSaveToLibrary(j.url, 'film');
           return j.url;
@@ -5260,9 +5260,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                 )}
 
-                {/* 4 — generate */}
-                <button type="button" disabled={!swapSourceVideo || !videoCharacterRef || busy} onClick={() => void runVideoSwap()}
-                  className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef || busy) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
+                {/* 4 — generate. NO `busy` gate: a character swap runs PER-JOB through the Cap-3
+                    queue (its own bubble by id), so it's always available + N swaps run concurrently
+                    (independent of the legacy single-render `busy` used by chat/storyboard/lipsync). */}
+                <button type="button" disabled={!swapSourceVideo || !videoCharacterRef} onClick={() => void runVideoSwap()}
+                  className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
                   🔄 {locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა'}
                 </button>
               </div>
