@@ -746,6 +746,35 @@ interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 // render path until `NEXT_PUBLIC_PARALLEL_CINEMA=1` is set (safe to deploy + type/Jest verify).
 const ENABLE_PARALLEL_CINEMA = process.env.NEXT_PUBLIC_PARALLEL_CINEMA === '1';
 
+// STEP 2 — immutable per-job snapshot of the ENTIRE video panel, captured at the millisecond of
+// submit (startFilmRender) so a QUEUED cinema render uses the settings from its submit moment and
+// NEVER inherits edits the user makes afterwards for their next film. Mirrors the product/swap
+// snapshot pattern. renderFilm reads exclusively from this — no live-closure panel reads.
+interface FilmSnap {
+  videoTransition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide';
+  videoMode: 'musicvideo' | 'documentary';
+  videoStyle: string;
+  videoDuration: 6 | 30 | 60;
+  videoVocalGender: 'male' | 'female' | 'duet';
+  videoLipsync: boolean;
+  videoSoundtrack: { name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null;
+  videoMyVoiceNarration: boolean;
+  videoSpeech: string;
+  videoMusic: boolean;
+  videoNarratorGender: 'male' | 'female';
+  videoMultiChar: boolean;
+  videoDialogue: string;
+  videoSmartDuck: boolean;
+  videoDuckDb: number;
+  voiceLanguage: 'ka' | 'en' | 'ru';
+  voicePersona: 'male' | 'female' | 'child' | 'elderly';
+  voiceTone: 'epic' | 'emotional' | 'energetic';
+  videoCameraMove: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down';
+  videoMotionIntensity: number;
+  videoModel: 'kling' | 'hailuo';
+  hasTrainedVoice: boolean;
+}
+
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
@@ -1858,7 +1887,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string, characterPortrait?: string, jobCtx?: { signal: AbortSignal; jobId: string; onProgress?: (pct: number) => void }): Promise<string | void> => {
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', sceneFrames: string[] | undefined, sceneScripts: string[] | undefined, storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined, characterLock: string | undefined, characterPortrait: string | undefined, jobCtx: { signal: AbortSignal; jobId: string; onProgress?: (pct: number) => void } | null, snap: FilmSnap): Promise<string | void> => {
+    // SNAPSHOT-AT-SUBMIT (Step 2) — read the video panel from the IMMUTABLE per-job snapshot captured
+    // at startFilmRender's submit, NOT the live component closure, so a QUEUED film never inherits
+    // edits the user makes afterwards. These locals shadow the same-named closure state for the body.
+    const {
+      videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
+      videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
+      videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
+      voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice,
+    } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
     // genIdRef/abortRef/last-bubble globals, so N cinema renders run in parallel without
@@ -2174,7 +2212,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Queued success → resolve with the final (possibly lip-synced/graphics-upgraded) URL so the
     // job's result carries it into onSettle → trackJobComplete(url).
     if (jobCtx) return finalUrl ?? undefined;
-  }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+    // NB: the 22 video-panel vars are NOT deps — renderFilm reads them from the immutable `snap`
+    // param (captured at submit by startFilmRender), so it no longer re-creates on every panel edit.
+  }, [locale, notifyCredit, t.generatingVideo, t.videoFailed]);
 
   // TASK 4 — the single dispatch point for a cinema render. Legacy path (flag OFF): call
   // renderFilm directly and RETURN its promise, so existing `await`/`void` call sites behave
@@ -2191,8 +2231,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     characterLock?: string,
     characterPortrait?: string,
   ): Promise<string | void> => {
+    // SNAPSHOT-AT-SUBMIT (Step 2): capture the WHOLE video panel NOW (the submit millisecond) into one
+    // immutable object; renderFilm renders from this exact snapshot, so a queued film never inherits a
+    // later edit made for the next film. Mirrors generateProductAd / runVideoSwap.
+    const snap: FilmSnap = {
+      videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
+      videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
+      videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
+      voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice,
+    };
     if (!ENABLE_PARALLEL_CINEMA) {
-      return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait);
+      return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
     try {
       const label = locale === 'en' ? 'Cinema video' : locale === 'ru' ? 'Кино-видео' : 'კინო ვიდეო';
@@ -2206,15 +2255,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             signal,
             jobId,
             onProgress: (pct) => onProgress({ pct }),
-          }),
+          }, snap),
       });
       return Promise.resolve();
     } catch {
       // The queue should never throw on submit — but if it does, render directly so the user's
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
-      return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait);
+      return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).

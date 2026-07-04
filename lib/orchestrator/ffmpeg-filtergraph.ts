@@ -305,12 +305,27 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // lower (volume 0.6); (2) it's HARD-ducked under the voice via a fast sidechain
     // compressor (lower threshold, higher ratio, quick attack); (3) the voice is
     // lifted a touch. loudnorm later sets the overall level + ceiling.
-    const ratio = Math.max(8, Math.round(8 + duck * 12)); // strong: 0%→8 … 100%→20
-    parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
-    parts.push(`[vraw]volume=1.25[vmix]`);
-    parts.push(`${bgLabel}volume=0.6[bglow]`);
-    parts.push(`[bglow][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[bgduck]`);
-    parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[apre]`);
+    // STEP 2 (L6) — the smart-duck / duck-dB sliders now drive THIS common 2-track
+    // (voice + music/sfx bed) path too, not only the rare 3-lane master:
+    //  • smartDuck:false → a STATIC low bed with NO sidechain pumping;
+    //  • duckDb scales the ducking depth, ANCHORED so the default −12 dB reproduces the
+    //    prior fixed ratio (12) → existing/default films render byte-identically.
+    // No slider provided (a bare server call) → depth 1 → the prior duckPct ratio, unchanged.
+    const smart = opts.smartDuck !== false;
+    const depth = typeof opts.duckDb === 'number' ? Math.abs(opts.duckDb) / 12 : 1; // −12 dB ⇒ 1.0
+    const ratio = Math.max(8, Math.min(30, Math.round((8 + duck * 12) * depth))); // −12→12 · −18→17 · −6→8
+    if (smart) {
+      parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
+      parts.push(`[vraw]volume=1.25[vmix]`);
+      parts.push(`${bgLabel}volume=0.6[bglow]`);
+      parts.push(`[bglow][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[bgduck]`);
+      parts.push(`[bgduck][vmix]amix=inputs=2:normalize=0[apre]`);
+    } else {
+      // Smart-duck OFF → static mix: voice lifted on top, bed low + constant (no sidechain).
+      parts.push(`[${voiceIdx}:a]volume=1.25[vmix]`);
+      parts.push(`${bgLabel}volume=0.6[bglow]`);
+      parts.push(`[bglow][vmix]amix=inputs=2:normalize=0[apre]`);
+    }
     apre = '[apre]';
   } else if (voiceIdx !== null) {
     apre = `[${voiceIdx}:a]`;

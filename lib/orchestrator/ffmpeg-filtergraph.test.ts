@@ -198,4 +198,28 @@ describe('buildFilterComplex', () => {
     expect(g.filter).not.toContain('[vbrand]');
     expect(g.vmap).toBe('[vmbug]');
   });
+
+  // STEP 2 (L6) — the smart-duck / duck-dB sliders now drive the COMMON 2-track (voice + music bed)
+  // narration-forward mix, not just the rare 3-lane master. The dB→ratio map is anchored so the UI
+  // default (−12 dB) reproduces the prior FIXED ratio (12) → existing/default films are byte-identical.
+  const twoTrack = (over: Record<string, unknown> = {}) =>
+    buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, ...over }).filter;
+
+  test('2-track duck-dB: default (no slider) AND −12 dB both reproduce the prior ratio 12 (zero regression)', () => {
+    expect(twoTrack()).toContain('sidechaincompress=threshold=0.03:ratio=12:attack=5:release=250');
+    expect(twoTrack({ duckDb: -12 })).toContain('sidechaincompress=threshold=0.03:ratio=12:attack=5:release=250');
+  });
+
+  test('2-track duck-dB slider changes the ducking depth (−18 → deeper 17 · −6 → floor 8)', () => {
+    expect(twoTrack({ duckDb: -18 })).toContain('sidechaincompress=threshold=0.03:ratio=17:');
+    expect(twoTrack({ duckDb: -6 })).toContain('sidechaincompress=threshold=0.03:ratio=8:');
+  });
+
+  test('2-track smart-duck OFF → static mix, NO sidechain pumping', () => {
+    const off = twoTrack({ smartDuck: false });
+    expect(off).not.toContain('sidechaincompress');   // no ducking
+    expect(off).not.toContain('[vkey]');              // voice is not split for a sidechain key
+    expect(off).toContain('volume=1.25');             // voice still lifted on top
+    expect(off).toContain('amix=inputs=2:normalize=0[apre]'); // static voice+bed mix
+  });
 });
