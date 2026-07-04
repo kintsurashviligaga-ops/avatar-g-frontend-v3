@@ -2717,7 +2717,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal,
-          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
         });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
         onProgress({ pct: 100 });

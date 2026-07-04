@@ -80,7 +80,12 @@ export async function POST(req: NextRequest) {
       referenceImage?: string;
       /** P7 — what to AVOID in the image (folded into the prompt as a negative clause). */
       negativePrompt?: string;
+      /** DURABLE PROGRESS — the composer's tray jobId. When present the completed row is
+       *  UPSERTED under this id (converging with the client's placeholder row) so an image
+       *  produces exactly ONE generation_jobs row, not a client + server duplicate. */
+      jobId?: string;
     };
+    const clientJobId = typeof body.jobId === 'string' ? body.jobId.slice(0, 120) : '';
 
     // Cap the prompt server-side before enrichment (mirrors lib/replicate/schemas.ts) so a
     // multi-megabyte prompt can't be shipped to the paid provider (audit MED).
@@ -167,7 +172,9 @@ export async function POST(req: NextRequest) {
     // Library-write failure never blocks returning the image.
     try {
       const { user } = await authedClientFromRequest(req);
-      await recordCompletedAsset({ id: randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'image', url: hostedUrl, prompt });
+      // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
+      // row (one row, not a duplicate); direct/other callers still get a fresh UUID.
+      await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'image', url: hostedUrl, prompt });
     } catch {
       /* fail-open */
     }
