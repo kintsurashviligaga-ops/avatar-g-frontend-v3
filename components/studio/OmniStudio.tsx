@@ -3402,7 +3402,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const aspect = orient === 'landscape' ? '16:9' : orient === 'square' ? '1:1' : '9:16';
         const res = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-          body: JSON.stringify({ op: 'character', videoUrl: source, characterRef: photoRef, aspect }),
+          // jobId → the remix route's refund-compensation log carries the tray transaction id.
+          body: JSON.stringify({ op: 'character', videoUrl: source, characterRef: photoRef, aspect, jobId }),
         });
         const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
         if (j.url) {

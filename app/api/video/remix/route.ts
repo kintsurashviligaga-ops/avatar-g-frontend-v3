@@ -32,7 +32,7 @@ import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidati
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/chat/filmComposite';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { CREDIT_COSTS } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
@@ -141,9 +141,14 @@ export async function POST(req: NextRequest) {
   const CREDIT_CHARGED_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove']);
   const { user: remixUser } = await authedClientFromRequest(req);
   const remixUid = remixUser?.id ?? null;
+  // Transaction context for compensation logging (the client's tray jobId when present).
+  const jobId = typeof body.jobId === 'string' ? body.jobId.slice(0, 120) : null;
   if (PAID_REMIX_OPS.has(op) && !remixUid) {
     return NextResponse.json({ url: null, error: 'Sign in to use this edit.', authRequired: true }, { status: 401 });
   }
+  // Did we actually take an up-front credit off the wallet? (Only then must a downstream
+  // miss REFUND it.) Admins + the ad-budget-guarded productad op are never charged here.
+  let charged = false;
   if (CREDIT_CHARGED_OPS.has(op) && remixUid && !(await isAdminUser(remixUid))) {
     const debit = await deductCredits(remixUid, CREDIT_COSTS.remix_video, `remix:${op}`);
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
@@ -152,7 +157,36 @@ export async function POST(req: NextRequest) {
         : 'Credit ledger unavailable — please retry.';
       return NextResponse.json({ url: null, error: message, topUpNeeded: debit.reason === 'insufficient' }, { status: 402 });
     }
+    charged = debit.ok; // a 'skipped' ledger (no RPC) also leaves charged=false → nothing to refund
   }
+
+  // ── BILLING SAGA COMPENSATION ────────────────────────────────────────────────
+  // The credit is debited UP FRONT (above), but the heavy roop/kling render below can
+  // still fail, time out, or throw. Without a refund the user pays for nothing (the
+  // audit's lost-credit edge). `refundCharge` restores the exact debit on ANY downstream
+  // miss — idempotent (refunds at most once), and a refund that itself fails (e.g. Postgres
+  // write-lock / RPC cliff) is logged LOUDLY with the op + uid + jobId so ops can reconcile
+  // a stranded charge from the logs. Fail-open: a refund miss never changes the response.
+  let refunded = false;
+  const refundCharge = async (why: string): Promise<void> => {
+    if (!charged || refunded || !remixUid) return;
+    refunded = true;
+    try {
+      const r = await refundCredits(remixUid, CREDIT_COSTS.remix_video, `remix:${op}:refund:${why}`);
+      if (!r.ok) {
+        // eslint-disable-next-line no-console
+        console.error(`[video/remix] REFUND FAILED op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why} reason=${r.reason} — ${CREDIT_COSTS.remix_video} credit(s) may be STRANDED, manual reconcile needed`);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`[video/remix] REFUND THREW op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why}:`, e instanceof Error ? e.message : e);
+    }
+  };
+  /** Refund the up-front charge (if any) then return the standard failure body. */
+  const failRefund = async (error: string, why = 'render-miss'): Promise<NextResponse> => {
+    await refundCharge(why);
+    return fail(error);
+  };
 
   // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.
   // Branches BEFORE the videoUrl guard: there is no source video; the product photo
@@ -261,28 +295,28 @@ export async function POST(req: NextRequest) {
       }
 
       case 'voiceover': {
-        if (!text) return fail('Add the narration text.');
+        if (!text) return failRefund('Add the narration text.', 'no-text');
         const vo = await textToHostedSpeech(text, georgianVoiceId(gender));
-        if (!vo) return fail('Voice synthesis is unavailable.');
+        if (!vo) return failRefund('Voice synthesis is unavailable.');
         const url = await muxAudioOntoVideo(videoUrl, vo, 'mix', 12);
-        return url ? ok(url) : fail('Mixing the voice-over failed.');
+        return url ? ok(url) : failRefund('Mixing the voice-over failed.');
       }
 
       case 'music': {
         const audioUrl = await resolveMedia(body.audioUrl);
-        if (!audioUrl) return fail('Add a music track.');
+        if (!audioUrl) return failRefund('Add a music track.', 'no-track');
         const replace = body.mix !== true; // default: replace the original audio
         const url = await muxAudioOntoVideo(videoUrl, audioUrl, replace ? 'replace' : 'mix', 12);
-        return url ? ok(url) : fail('Adding the music failed.');
+        return url ? ok(url) : failRefund('Adding the music failed.');
       }
 
       case 'redub': {
         // Audio source: synthesized from text in the chosen voice, or an upload.
         const uploaded = await resolveMedia(body.audioUrl);
         const audioUrl = uploaded || (text ? await textToHostedSpeech(text, georgianVoiceId(gender)) : null);
-        if (!audioUrl) return fail('Add redub text or an audio track.');
+        if (!audioUrl) return failRefund('Add redub text or an audio track.', 'no-audio');
         const url = await runLipsync(videoUrl, audioUrl);
-        return url ? ok(url) : fail('Lip-sync is unavailable right now.');
+        return url ? ok(url) : failRefund('Lip-sync is unavailable right now.');
       }
 
       case 'color_grade': {
@@ -316,7 +350,7 @@ export async function POST(req: NextRequest) {
       case 'background_remove': {
         // Anchor frame → image model (restyle / character swap / bg removal) → re-animate.
         const frame = await extractFrame(videoUrl, 0.5);
-        if (!frame) return fail('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.');
+        if (!frame) return failRefund('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.', 'frame-read');
         // TASK 1 — character swap with an UPLOADED PHOTO.
         const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef) : null;
         // PRIMARY (closer-to-source): roop video face-swap — the SAME video with the face
@@ -344,15 +378,17 @@ export async function POST(req: NextRequest) {
         // user ALWAYS gets a moving, restyled clip. The swap photo (if any) rides along as
         // the kling identity reference.
         const url = (await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined)) || (await kenBurnsClip(startImage, 5, aspect));
-        return url ? ok(url, { still: styled?.url ?? null }) : fail(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
+        return url ? ok(url, { still: styled?.url ?? null }) : failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
       }
 
       default:
-        return fail(`უცნობი ოპერაცია: ${op || '(none)'}`);
+        // Unknown op AFTER a debit (a charged alias that fell through) still refunds.
+        return failRefund(`უცნობი ოპერაცია: ${op || '(none)'}`, 'unknown-op');
     }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[video/remix]', op, err instanceof Error ? err.message : err);
-    return fail('The remix could not be completed.');
+    // A downstream throw (roop/kling/ffmpeg exception, timeout abort) refunds the up-front charge.
+    return failRefund('The remix could not be completed.', 'exception');
   }
 }
