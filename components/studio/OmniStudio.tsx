@@ -738,6 +738,12 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
+// TASK 4 — Cinema-video parallelism gate. When ON, the flagship `renderFilm` dispatches
+// through the Cap-3 queue (per-job signal + durable row + tray progress) so multiple films
+// render at once. Default OFF via env → production is byte-identical to the legacy single-
+// render path until `NEXT_PUBLIC_PARALLEL_CINEMA=1` is set (safe to deploy + type/Jest verify).
+const ENABLE_PARALLEL_CINEMA = process.env.NEXT_PUBLIC_PARALLEL_CINEMA === '1';
+
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
@@ -1857,16 +1863,66 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
   // fallback. `sceneFrames` (the approved storyboard frames) anchor each scene.
-  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string, characterPortrait?: string) => {
-    const myGen = ++genIdRef.current;
+  const renderFilm = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', sceneFrames: string[] | undefined, sceneScripts?: string[] | undefined, storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[], characterLock?: string, characterPortrait?: string, jobCtx?: { signal: AbortSignal; jobId: string; onProgress?: (pct: number) => void }): Promise<string | void> => {
+    // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
+    // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
+    // genIdRef/abortRef/last-bubble globals, so N cinema renders run in parallel without
+    // clobbering each other. Without jobCtx the legacy single-render path is byte-identical.
+    const myGen = jobCtx ? 0 : ++genIdRef.current;
     const ac = new AbortController();
-    abortRef.current = ac;
-    const mine = () => genIdRef.current === myGen;
+    if (!jobCtx) abortRef.current = ac;
+    const signal = jobCtx?.signal ?? ac.signal;
+    const mine = jobCtx ? () => !jobCtx.signal.aborted : () => genIdRef.current === myGen;
+    // Lip-sync stage + elapsed clock are per-render when queued (a shared ref would let two
+    // parallel films fight over the same roster/elapsed state); the legacy path keeps the refs.
+    const lipStage: { current: FilmAgentStatus } = jobCtx ? { current: 'idle' } : lipsyncStageRef;
+    const startedAt = jobCtx ? Date.now() : genStartRef.current;
+    const bubbleId = jobCtx?.jobId;
+    let finalUrl: string | null = null;
+    let lastPostedPct = -1;
+    // Patch THIS film's bubble — by stable jobId when queued, else the last assistant bubble
+    // (legacy). Guarded by the per-job alive check; `fn` may return null to skip.
+    const patchFilmBubble = (fn: (last: Msg) => Msg | null) => {
+      setMessages((prev) => {
+        if (!mine()) return prev;
+        const idx = bubbleId ? prev.findIndex((m) => m.id === bubbleId) : prev.length - 1;
+        if (idx < 0) return prev;
+        const cur = prev[idx];
+        if (!cur) return prev;
+        const patched = fn(cur);
+        if (!patched) return prev;
+        const next = prev.slice();
+        next[idx] = patched;
+        return next;
+      });
+    };
+    // In-place upgrade of a bubble found by a legacy backward-search predicate (videoUrl /
+    // filmRoster), or directly by jobId when queued. Used by the video/lip-sync card upgrades.
+    const patchFilmBubbleBy = (matchLegacy: (m: Msg) => boolean, fn: (m: Msg) => Msg) => {
+      if (!mine()) return;
+      setMessages((prev) => {
+        const next = prev.slice();
+        if (bubbleId) {
+          const i = next.findIndex((m) => m.id === bubbleId);
+          const cur = i >= 0 ? next[i] : undefined;
+          if (cur) next[i] = fn(cur);
+        } else {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            const m = next[i];
+            if (m && matchLegacy(m)) { next[i] = fn(m); break; }
+          }
+        }
+        return next;
+      });
+    };
     // Keep the approved storyboard frames VISIBLE in the bubble while the film
     // renders (~7 min), so the preview shows every scene + the live progress —
     // the storyboard no longer just disappears on "Generate Video".
-    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
-    setBusy(true);
+    setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(bubbleId ? { id: bubbleId } : {}), ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
+    // DURABLE PROGRESS (Task 4) — persist a placeholder row (id === jobId) the instant the
+    // render dispatches, so a mid-render reload rehydrates this cinema job from the DB.
+    if (jobCtx) trackJobCreate(jobCtx.jobId, 'video', { prompt: filmPrompt });
+    if (!jobCtx) setBusy(true);
     try {
       // v330 — Music Video mode: the song rules, so the standalone narrator is
       // omitted and a soundtrack (if uploaded) becomes the master bed. Documentary
@@ -1879,7 +1935,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // (compositeDocumentary speaks videoSpeech via a talking photo).
       const hasDialogue = videoSpeech.trim().length > 0;
       const wantsLipsync = (isMusicVideo && videoLipsync) || (!isMusicVideo && hasDialogue);
-      lipsyncStageRef.current = wantsLipsync ? 'queued' : 'skipped';
+      lipStage.current = wantsLipsync ? 'queued' : 'skipped';
       // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
       // music video we build the song ourselves (Georgian rap on the cloned KA voice over a
       // funk bed) and use it as the soundtrack. Fail-open → normal EL Music (English).
@@ -1892,14 +1948,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const georgianBrief = !wantsEnglishVocals && (locale === 'ka' || /\bgeorgian\b/i.test(filmPrompt) || /[Ⴀ-ჿᲐ-Ჿ]/.test(filmPrompt));
       let kaSoundtrack: string | null = isMusicVideo && videoSoundtrack?.url ? videoSoundtrack.url : null;
       if (isMusicVideo && !kaSoundtrack && georgianBrief && mine()) {
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev]; const last = next[next.length - 1];
-          if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, text: locale === 'en' ? '🎤 Writing the Georgian vocal track…' : locale === 'ru' ? '🎤 Создаю грузинский вокал…' : '🎤 ვქმნი ქართულ ვოკალს…' };
-          return next;
-        });
+        patchFilmBubble((last) => (last.role === 'assistant' && !last.videoUrl) ? { ...last, text: locale === 'en' ? '🎤 Writing the Georgian vocal track…' : locale === 'ru' ? '🎤 Создаю грузинский вокал…' : '🎤 ვქმნი ქართულ ვოკალს…' } : null);
         try {
-          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: videoDuration }) });
+          const r = await fetch('/api/audio/georgian-song', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ brief: filmPrompt, gender: videoVocalGender === 'duet' ? 'female' : videoVocalGender, ...(videoVocalGender === 'duet' ? { genderSecondary: 'male' } : {}), totalSec: videoDuration }) });
           const j = (await r.json().catch(() => ({}))) as { url?: string | null };
           if (j.url) kaSoundtrack = j.url;
         } catch { /* fail-open → EL Music (English) */ }
@@ -1942,7 +1993,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
         locale,
-        signal: ac.signal,
+        signal,
         onProgress: (p) => {
           // Build a real progress %: scenes ready / total during the long render phase,
           // plus clear staged labels — so the ~5-7 min wait shows movement, not a wall.
@@ -1969,25 +2020,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // Fold the live matrix into the 9-agent roster + activity log so the
           // Director's Console renders real per-agent state and a streaming feed
           // (not a fake timer) right in the bubble.
-          const roster = deriveFilmRoster(p, lipsyncStageRef.current);
+          const roster = deriveFilmRoster(p, lipStage.current);
           const freshLog = deriveFilmLog(p, locale);
-          const nowElapsed = Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000));
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === 'assistant' && !last.videoUrl) {
-              // Stamp each log line with the elapsed seconds it FIRST appeared, so the
-              // terminal can show per-line timestamps without re-stamping on each tick.
-              // Clamp to the max existing stamp so timestamps stay monotonic even when
-              // the elapsed clock re-anchors between the storyboard build and the render.
-              const prevLog = last.filmLog ?? [];
-              const prevByKey = new Map(prevLog.map((l) => [l.key, l]));
-              const stampTs = Math.max(nowElapsed, prevLog.reduce((m, l) => Math.max(m, l.ts ?? 0), 0));
-              const filmLog = freshLog.map((l) => prevByKey.get(l.key) ?? { ...l, ts: stampTs });
-              next[next.length - 1] = { ...last, text: status, videoProgress: pct, filmRoster: roster, filmLog };
-            }
-            return next;
+          const nowElapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+          // Cap-3 tray bar + durable row (Task 4). Feed the tray every tick (cheap/local);
+          // throttle the fire-and-forget DB write to ≥8-point jumps so a 7-min render posts
+          // ~a dozen rows, not hundreds.
+          if (jobCtx) {
+            jobCtx.onProgress?.(pct);
+            if (pct - lastPostedPct >= 8 || pct >= 100) { lastPostedPct = pct; trackJobUpdate(jobCtx.jobId, baseStatus, pct); }
+          }
+          patchFilmBubble((last) => {
+            if (!(last.role === 'assistant' && !last.videoUrl)) return null;
+            // Stamp each log line with the elapsed seconds it FIRST appeared, so the
+            // terminal can show per-line timestamps without re-stamping on each tick.
+            // Clamp to the max existing stamp so timestamps stay monotonic even when
+            // the elapsed clock re-anchors between the storyboard build and the render.
+            const prevLog = last.filmLog ?? [];
+            const prevByKey = new Map(prevLog.map((l) => [l.key, l]));
+            const stampTs = Math.max(nowElapsed, prevLog.reduce((m, l) => Math.max(m, l.ts ?? 0), 0));
+            const filmLog = freshLog.map((l) => prevByKey.get(l.key) ?? { ...l, ts: stampTs });
+            return { ...last, text: status, videoProgress: pct, filmRoster: roster, filmLog };
           });
         },
       });
@@ -2002,33 +2055,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // whole master (sync/lipsync-2 warped the wide/aerial shots — "terrible"). Show the
       // cinematic video first, then generate a clean matched-lip SINGER PERFORMANCE via HeyGen
       // (a close-up storyboard face lip-synced to the song) as a COMPANION clip. Fail-open.
-      setMessages((prev) => {
-        if (!mine()) return prev;
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === 'assistant') {
-          next[next.length - 1] = res.ok && res.masterUrl
+      patchFilmBubble((last) => last.role === 'assistant'
+        ? (res.ok && res.masterUrl
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true };
-        }
-        return next;
-      });
-      if (mine() && res.ok && res.masterUrl) notifyCredit('video', { seconds: videoDuration });
+            // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
+            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
+            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true, ...(bubbleId ? { id: bubbleId } : {}) })
+        : null);
+      if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }
+      // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
+      // row flips to failed (the legacy path just leaves the ⚠️ bubble in place).
+      if (jobCtx && !(res.ok && res.masterUrl)) throw new Error(res.error || 'video failed');
 
       // Upgrade the result bubble's video IN PLACE (base master → lip-synced → graphics),
       // so the chain progressively replaces the shown video without spawning new bubbles.
       const setResultVideo = (url: string) => {
         if (!mine()) return;
-        setMessages((prev) => {
-          const next = [...prev];
-          for (let i = next.length - 1; i >= 0; i -= 1) {
-            const m = next[i];
-            if (m && m.role === 'assistant' && m.videoUrl) { next[i] = { ...m, videoUrl: url }; break; }
-          }
-          return next;
-        });
+        finalUrl = url;
+        patchFilmBubbleBy((m) => !!m && m.role === 'assistant' && !!m.videoUrl, (m) => ({ ...m, videoUrl: url }));
       };
       // A CLEAN front-facing face for any talking-head lip-sync — HeyGen's talking_photo
       // needs a clear portrait, not a stylized scene frame (that was the null bug). Prefer
@@ -2038,7 +2083,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (mine()) {
           try {
             const sc = videoDuration <= 6 ? 1 : Math.max(2, Math.min(12, Math.round(videoDuration / 5)));
-            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
+            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
             const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
             if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
           } catch { /* fall through */ }
@@ -2048,19 +2093,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       };
       // Patch the Lip-Sync card on whichever bubble carries the Director's Console roster.
       const patchLipsyncCard = (st: FilmAgentStatus) => {
-        lipsyncStageRef.current = st;
-        if (!mine()) return;
-        setMessages((prev) => {
-          const next = [...prev];
-          for (let i = next.length - 1; i >= 0; i -= 1) {
-            const m = next[i];
-            if (m && m.role === 'assistant' && m.filmRoster) {
-              next[i] = { ...m, filmRoster: m.filmRoster.map((a) => (a.id === 'lipsync' ? { ...a, status: st, pct: st === 'completed' || st === 'skipped' ? 100 : st === 'processing' ? 50 : 0 } : a)) };
-              break;
-            }
-          }
-          return next;
-        });
+        lipStage.current = st;
+        patchFilmBubbleBy(
+          (m) => !!m && m.role === 'assistant' && !!m.filmRoster,
+          (m) => ({ ...m, filmRoster: (m.filmRoster ?? []).map((a) => (a.id === 'lipsync' ? { ...a, status: st, pct: st === 'completed' || st === 'skipped' ? 100 : st === 'processing' ? 50 : 0 } : a)) }),
+        );
       };
       // GRAPHICS INPUT — defaults to the base master so the Graphics agent ALWAYS runs, even
       // when Lip-Sync is skipped (FIX 1: never break the graphics chain). Each lip-sync leg
@@ -2073,15 +2110,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const songUrl: string = res.musicUrl;
           let vocalForSync: string = songUrl;
           try {
-            const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
+            const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
             const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
             if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
           } catch { /* full mix */ }
           const face = await resolveCleanFace();
-          const perf = face ? await heygenSingerPerformance(face, vocalForSync, 'vertical', ac.signal, mine) : null;
+          const perf = face ? await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine) : null;
           const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
           const composited = (perfOk && perf && res.matrix && mine())
-            ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, ac.signal, mine)
+            ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine)
             : null;
           if (composited) { graphicsInput = composited; setResultVideo(composited); }
           patchLipsyncCard(composited ? 'completed' : 'skipped');
@@ -2102,7 +2139,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 videoVocalGender === 'male' ? 'male' : 'female',
                 orientation === 'vertical' ? 'vertical' : 'landscape',
                 videoTransition,
-                ac.signal,
+                signal,
                 mine,
               )
             : null;
@@ -2121,25 +2158,68 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             : /night|ღამ|neon|ნეონ/i.test(filmPrompt) ? (locale === 'ka' ? 'ღამის განწყობა' : locale === 'ru' ? 'НОЧНЫЕ ВАЙБЫ' : 'NIGHT VIBES')
             : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
           const gr = await fetch('/api/video/graphics', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
             body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: videoDuration <= 6 ? 2 : videoDuration === 60 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
           });
           const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
           if (gj.url) setResultVideo(gj.url);
         } catch { /* fail-open → graphicsInput already shown */ }
       }
-    } catch {
+    } catch (err) {
+      // Canceled render (own signal aborted / superseded genId): leave it — when queued the
+      // engine has already settled this job as canceled via its own cancel path.
       if (!mine()) return;
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true };
-        return next;
-      });
+      patchFilmBubble((last) => last.role === 'assistant' ? { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true, ...(bubbleId ? { id: bubbleId } : {}) } : null);
+      // Queued mode: propagate so the job settles FAILED (tray + durable row) via onSettle.
+      if (jobCtx) throw err instanceof Error ? err : new Error('video failed');
     } finally {
-      if (mine()) setBusy(false);
+      // Only the legacy single-render path owns the composer busy-gate; queued renders are
+      // governed by the Cap-3 engine, so they never touch it (that's what lets films run N-up).
+      if (!jobCtx && mine()) setBusy(false);
     }
+    // Queued success → resolve with the final (possibly lip-synced/graphics-upgraded) URL so the
+    // job's result carries it into onSettle → trackJobComplete(url).
+    if (jobCtx) return finalUrl ?? undefined;
   }, [locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice, notifyCredit, t.generatingVideo, t.videoFailed]);
+
+  // TASK 4 — the single dispatch point for a cinema render. Legacy path (flag OFF): call
+  // renderFilm directly and RETURN its promise, so existing `await`/`void` call sites behave
+  // byte-identically. Parallel path (flag ON): submit into the Cap-3 queue with a fresh per-job
+  // signal + jobId, so multiple films render at once with live tray progress + a durable row.
+  // Fully fail-open: a queue submit throw falls back to a direct render (the flagship never breaks).
+  const startFilmRender = useCallback((
+    filmPrompt: string,
+    refs: string[],
+    orientation: 'landscape' | 'vertical' | 'square' | 'portrait',
+    sceneFrames: string[] | undefined,
+    sceneScripts?: string[] | undefined,
+    storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[],
+    characterLock?: string,
+    characterPortrait?: string,
+  ): Promise<string | void> => {
+    if (!ENABLE_PARALLEL_CINEMA) {
+      return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait);
+    }
+    try {
+      const label = locale === 'en' ? 'Cinema video' : locale === 'ru' ? 'Кино-видео' : 'კინო ვიდეო';
+      submitJob({
+        kind: 'video',
+        label,
+        onSettle: trackJobSettle,
+        run: ({ signal, onProgress, jobId }) =>
+          renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, {
+            signal,
+            jobId,
+            onProgress: (pct) => onProgress({ pct }),
+          }),
+      });
+      return Promise.resolve();
+    } catch {
+      // The queue should never throw on submit — but if it does, render directly so the user's
+      // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
+      return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait);
+    }
+  }, [renderFilm, submitJob, trackJobSettle, locale]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -2381,7 +2461,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
-        await renderFilm(filmPrompt, refs, orientation, undefined); // plan miss → direct render
+        await startFilmRender(filmPrompt, refs, orientation, undefined); // plan miss → direct render (or queue when flag ON)
         return;
       }
       const planned = j.scenes;
@@ -2530,11 +2610,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }));
     } catch {
       if (ac.signal.aborted) return; // user cancelled — do nothing
-      await renderFilm(filmPrompt, refs, orientation, undefined);
+      await startFilmRender(filmPrompt, refs, orientation, undefined);
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, videoDuration, renderFilm, scenePrompts]);
+  }, [videoStyle, locale, videoDuration, startFilmRender, scenePrompts]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
   // a hot-reload of just this one scene's agent thread, never the master loop. An
@@ -5876,7 +5956,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void renderFilm(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0]);
+            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0]);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
