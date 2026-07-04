@@ -2732,48 +2732,60 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     });
   }, [submitJob, updateBubble, notifyCredit, trackJobSettle, t]);
 
-  const runImageBatch = useCallback(async (spec: ImageRegenSpec, count: number) => {
-    const myGen = ++genIdRef.current;
-    const ac = new AbortController();
-    abortRef.current = ac;
-    const mine = () => genIdRef.current === myGen;
-    setMessages((prev) => [...prev, { role: 'assistant', text: '', batch: { spec, tiles: Array.from({ length: count }, () => ({ status: 'pending' as const })) } }]);
-    setBusy(true);
+  /**
+   * ×2 / ×4 batch → ONE capped-parallel queue JOB PER TILE. Each tile is fully isolated
+   * (own AbortController + own jobId + own durable generation_jobs row), so a ×4 renders
+   * 3-at-a-time with the 4th showing "In Queue: #1" in the tray, and each tile survives a
+   * reload (hydration) + dedupes server-side (the tile's jobId is passed to the image route,
+   * which upserts its completed row under that id). Tiles paint into ONE batch bubble (keyed
+   * by a stable batchId) as they land. Replaces the old shared-abortRef/genIdRef Promise.all.
+   */
+  const runImageBatch = useCallback((spec: ImageRegenSpec, count: number) => {
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: spec.prompt },
+      { role: 'assistant', text: '', id: batchId, batch: { spec, tiles: Array.from({ length: count }, () => ({ status: 'pending' as const })) } },
+    ]);
+    // Update tile k of THIS batch bubble (by stable id — parallel tile jobs never clobber).
     const updateTile = (k: number, tile: BatchTile) => {
-      setMessages((prev) => {
-        if (!mine()) return prev;
-        const next = [...prev];
-        for (let i = next.length - 1; i >= 0; i--) {
-          const mm = next[i];
-          if (mm && mm.role === 'assistant' && mm.batch) {
-            const tiles = mm.batch.tiles.slice();
-            tiles[k] = tile;
-            next[i] = { ...mm, batch: { ...mm.batch, tiles } };
-            break;
-          }
-        }
-        return next;
-      });
+      setMessages((prev) => prev.map((m) => (m.id === batchId && m.batch ? { ...m, batch: { ...m.batch, tiles: m.batch.tiles.map((t, i) => (i === k ? tile : t)) } } : m)));
     };
-    await Promise.all(
-      Array.from({ length: count }, async (_unused, k) => {
-        try {
-          const res = await fetch('/api/nanobanana/image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
-            credentials: 'include',
-            signal: ac.signal,
-          });
-          const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string };
-          updateTile(k, j.success && j.url ? { status: 'done', url: j.url } : { status: 'failed' });
-        } catch {
-          updateTile(k, { status: 'failed' });
-        }
-      }),
-    );
-    if (mine()) { notifyCredit('image', { count }); setBusy(false); }
-  }, [notifyCredit]);
+    for (let k = 0; k < count; k++) {
+      const tileIdx = k;
+      submitJob({
+        kind: 'image',
+        label: `${(spec.prompt || 'Image').trim().slice(0, 32)} (${tileIdx + 1}/${count})`,
+        onSettle: trackJobSettle,
+        run: async ({ signal, onProgress, jobId }) => {
+          trackJobCreate(jobId, 'image', { prompt: spec.prompt });
+          trackJobUpdate(jobId, 'Rendering', 8);
+          onProgress({ pct: 8 });
+          try {
+            const res = await fetch('/api/nanobanana/image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              signal,
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+            });
+            const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+            onProgress({ pct: 100 });
+            if (j.success && j.url) {
+              updateTile(tileIdx, { status: 'done', url: j.url });
+              notifyCredit('image');
+              return j.url;
+            }
+            updateTile(tileIdx, { status: 'failed' });
+            throw new Error(j.error || 'image failed');
+          } catch (e) {
+            updateTile(tileIdx, { status: 'failed' });
+            throw e;
+          }
+        },
+      });
+    }
+  }, [submitJob, trackJobSettle, notifyCredit]);
 
   // Stream one chat turn from /api/chat/gemini into a fresh assistant bubble. Shared
   // by send (a new turn) and regenerateChat (re-roll the last answer). Owns its own
@@ -2865,17 +2877,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
-    // IMAGE (single) → the capped-parallel JOB QUEUE. This bypasses the single-slot busy
-    // gate below, so a user can fire several images (they render 3-at-a-time with live
-    // positions in the tray) AND start an image while a heavy video/avatar render is in
-    // flight. Batch ×2/×4 keeps its own concurrent-tiles path.
-    if (mode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType)) && imgCount === 1) {
+    // IMAGE (single OR ×2/×4 batch) → the capped-parallel JOB QUEUE. This bypasses the
+    // single-slot busy gate below, so a user can fire several images (they render 3-at-a-
+    // time with live positions in the tray) AND start an image while a heavy video/avatar
+    // render is in flight. A batch decomposes into ONE queue job PER TILE (each with its own
+    // jobId + durable row), so a ×4 shows "3 rendering + In Queue: #1" and the 4th promotes
+    // as a slot frees — instead of the old shared-ref Promise.all-of-4.
+    if (mode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       setOptionsOpen(false);
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
       const neg = imgNegative.trim();
       const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}) };
-      runImageJob(text, ref, spec);
+      if (imgCount > 1) runImageBatch(spec, imgCount);
+      else runImageJob(text, ref, spec);
       setInput('');
       setAttachments([]);
       return;
@@ -2948,70 +2963,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
-    // ── IMAGE GENERATION (NanoBanana) ──────────────────────────────────────────
-    // In image mode the typed prompt becomes a brand-new image: POST it to
-    // /api/nanobanana/image and render the returned URL as an assistant image
-    // bubble. Text prompt is required; fail-soft to a clean retry notice.
-    // NOTE: image generation is text-to-image — it cannot consume an uploaded
-    // file. So if the user attached photos/files, we DON'T run image gen here;
-    // we fall through to the multimodal CHAT branch, which sends the text + the
-    // attachments together (and clears them). This fixes "the file stays in the
-    // box and only the text is sent" when an attachment is present in Image mode.
-    // Image mode: an attached IMAGE becomes the img2img / EDIT source (the route hosts
-    // it + feeds NanoBanana); a file/audio attachment instead falls through to the
-    // multimodal chat branch (it can't be an image input).
-    const imgRefRaw = mode === 'image' ? attachments.find((a) => isImage(a.mimeType))?.dataUrl : undefined;
-    const nonImageAttach = attachments.some((a) => !isImage(a.mimeType));
-    if (mode === 'image' && text && !nonImageAttach) {
-      const isBatch = imgCount > 1;
-      // ×2 / ×4 → a grid; ×1 → one bubble. Push the user turn first (instant feedback).
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, ...(isBatch ? [] : [{ role: 'assistant' as const, text: '' }])]);
-      setInput(''); setAttachments([]);
-      if (!isBatch) setBusy(true);
-      // Downscale a data: reference so a full-res photo never exceeds the body limit;
-      // an https reference (the "Edit" action) is used as-is.
-      const imgRef = imgRefRaw ? await downscaleDataUrl(imgRefRaw) : undefined;
-      const neg = imgNegative.trim();
-      const imgSpec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}), ...(neg ? { negativePrompt: neg } : {}) };
-      if (isBatch) {
-        await runImageBatch(imgSpec, imgCount);
-        return;
-      }
-      try {
-        const res = await fetch('/api/nanobanana/image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text, quality: imgQuality, aspectRatio: imgAspect, style: imgStyle === 'Auto' ? undefined : imgStyle, ...(imgRef ? { referenceImage: imgRef } : {}), ...(neg ? { negativePrompt: neg } : {}) }),
-          credentials: 'include',
-          signal: ac.signal,
-        });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant') {
-            next[next.length - 1] =
-              j.success && j.url
-                ? { role: 'assistant', text: '', imageUrl: j.url, regen: imgSpec }
-                : { role: 'assistant', text: `⚠️ ${j.error || t.imageFailed}` };
-          }
-          return next;
-        });
-        if (mine() && j.success && j.url) notifyCredit('image');
-      } catch {
-        if (!mine()) return;
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.imageFailed}` };
-          return next;
-        });
-      } finally {
-        if (mine()) setBusy(false);
-      }
-      return;
-    }
+    // IMAGE GENERATION (single → runImageJob · ×2/×4 → runImageBatch) is handled entirely
+    // by the capped-parallel queue INTERCEPT above, which returns before this point. Both
+    // paths run per-job (own signal + jobId + durable row) through the tray, so there is no
+    // longer a shared-ref image branch here.
 
     // ── MUSIC GENERATION (Udio) ────────────────────────────────────────────────
     // In music mode the prompt describes a vibe; POST it to /api/ai/music (Udio →
