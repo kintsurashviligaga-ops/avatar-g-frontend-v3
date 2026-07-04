@@ -174,7 +174,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     <div className="fixed inset-0 z-[2] overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         <div className="mb-8 flex items-center gap-2">
-          <span className="text-[15px] font-semibold tracking-tight text-app-text">MyAvatar<span className="text-app-accent">.ge</span></span>
+          <span className="text-[15px] font-semibold tracking-tight text-app-text">My <span className="text-app-accent">Avatar</span></span>
         </div>
 
         <header className="mb-7">
