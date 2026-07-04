@@ -35,6 +35,8 @@ import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
+import { useJobQueue } from '@/store/useJobQueue';
+import { JobTray } from './JobTray';
 import { toast } from 'sonner';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -733,7 +735,7 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // fills in independently as its own parallel generation lands.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
-interface Msg { role: 'user' | 'assistant'; text: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -1778,6 +1780,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Strictly additive — no-op unless a bridge button fired.
   const { sendImageToVideo, sendMusicToMusicVideo } = useServiceBridge();
   const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, clearCharacter, clearAudio } = useStudioBridge();
+  // Capped-parallel render queue (Phase 1: the fast IMAGE flow runs 3-at-a-time through
+  // it while the tray shows live progress + queue positions).
+  const submitJob = useJobQueue((s) => s.submit);
   useEffect(() => {
     if (transitCharacterUrl) {
       setMode('video');
@@ -2648,6 +2653,49 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // ONE result grid, each tile filling in as its generation lands. Reused by send
   // (new batch) and the grid's "regenerate all". Mirrors send()'s gen-token / abort
   // discipline so Stop and superseded requests can never clobber a newer grid.
+  /** Replace a chat bubble by its stable id — parallel jobs each finalize their OWN
+   *  bubble (the single-slot flows update "the last bubble"; a queue of parallel jobs
+   *  cannot). */
+  const updateBubble = useCallback((id: string, patch: Partial<Msg>) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  }, []);
+
+  /**
+   * Run ONE image generation as a capped-parallel QUEUE JOB. Up to MAX_CONCURRENT_RENDERS
+   * render at once; the rest wait with a live "In Queue: #N" position, all surfaced in the
+   * JobTray. This path is INDEPENDENT of the single-slot `busy` gate that heavy renders
+   * (video/avatar) still use — so images never block, and are never blocked by, a heavy
+   * render. Billing is unchanged: each job calls the same /api/nanobanana/image that
+   * bills exactly as before; the queue only decides WHEN it starts + tracks its progress.
+   */
+  const runImageJob = useCallback((prompt: string, imgRef: string | undefined, spec: ImageRegenSpec) => {
+    const bubbleId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '', id: bubbleId, genKind: 'image' }]);
+    submitJob({
+      kind: 'image',
+      label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),
+      run: async ({ signal, onProgress }) => {
+        onProgress({ pct: 8 });
+        const res = await fetch('/api/nanobanana/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          signal,
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+        onProgress({ pct: 100 });
+        if (j.success && j.url) {
+          updateBubble(bubbleId, { text: '', imageUrl: j.url, regen: spec });
+          notifyCredit('image');
+          return j.url;
+        }
+        updateBubble(bubbleId, { text: `⚠️ ${j.error || t.imageFailed}` });
+        throw new Error(j.error || 'image failed');
+      },
+    });
+  }, [submitJob, updateBubble, notifyCredit, t]);
+
   const runImageBatch = useCallback(async (spec: ImageRegenSpec, count: number) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
@@ -2781,6 +2829,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
+    // IMAGE (single) → the capped-parallel JOB QUEUE. This bypasses the single-slot busy
+    // gate below, so a user can fire several images (they render 3-at-a-time with live
+    // positions in the tray) AND start an image while a heavy video/avatar render is in
+    // flight. Batch ×2/×4 keeps its own concurrent-tiles path.
+    if (mode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType)) && imgCount === 1) {
+      setOptionsOpen(false);
+      const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
+      const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
+      const neg = imgNegative.trim();
+      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}) };
+      runImageJob(text, ref, spec);
+      setInput('');
+      setAttachments([]);
+      return;
+    }
     // A generation is already running (this mode OR another — e.g. a video render still in
     // flight while the user switches to Music and hits send). Don't silently swallow it:
     // tell the user why, then bail. `busy` is kept explicit for this mode; genActiveRef
@@ -5677,6 +5740,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         );
       })()}
+      {/* Background-render tray — capped-parallel job queue (live progress + queue
+          positions). Portaled to document.body so it floats above the studio shell.
+          Renders nothing when there are no jobs. */}
+      <Portal><JobTray locale={locale} /></Portal>
       {/* Full-screen image lightbox — tap any chat image to open it edge-to-edge.
           Backdrop tap / the X button / Esc all close it; the picture itself swallows
           the click so it stays open while you inspect it. */}

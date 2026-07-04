@@ -11,6 +11,8 @@ import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { runWithLatencyFailover, type ProviderAttempt } from '@/lib/providers/latencyFailover';
+import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { randomUUID } from 'node:crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
@@ -102,57 +104,76 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   const elMusicSec = secs === 0 ? 120 : secs; // ElevenLabs Music: ~2-min full song
   const musicgenSec = secs === 0 ? 90 : secs; // MusicGen fallback: bounded so it finishes in time
 
-  // PRIMARY: Udio (the founder's funded song engine — better sung vocals). Retired in
-  // v330 (daf02eb) for ElevenLabs Music; restored here as the DEFAULT primary whenever
-  // UDIO_API_KEY is present — no MUSIC_PROVIDER flag needed. STRICTLY fallback-protected:
-  // any Udio miss falls through to ElevenLabs Music → MusicGen, so music ALWAYS generates.
-  // Kill-switch: set MUSIC_PROVIDER=elevenlabs to force EL Music and skip Udio entirely.
-  // Params map to buildGenerateBody (lib/udio/client): prompt → gpt_description_prompt,
-  // style → style, instrumental → make_instrumental. The Udio gateway (chirp-v4-5) has NO
-  // duration param, so `secs` only steers the EL/MusicGen fallbacks below.
-  if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
-    try {
-      const udio = await generateUdioTrack(
-        { prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental },
-        { maxAttempts: 45, pollIntervalMs: 4000 }, // ~180s, bounded under the 300s ceiling
-      );
-      if (udio.status === 'succeeded' && udio.audioUrl) {
-        // Udio ignores the requested length (no duration param) → returns a full
-        // ~2–4 min song. Trim it to `secs` (30/60/90) so the panel selection is
-        // honoured — UNLESS secs===0 ("full song"), where we keep the full track.
-        // Fail-open: if the trim misses, keep the full track.
-        if (secs > 0) {
-          const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
-          return { url: trimmed ?? udio.audioUrl, engine: 'Udio' }; // re-hosted by caller
-        }
-        return { url: udio.audioUrl, engine: 'Udio' }; // full song — no trim
-      }
-      // eslint-disable-next-line no-console
-      console.warn(`[ai/music] Udio did not complete (${udio.status}) → ElevenLabs Music fallback`);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[ai/music] Udio failed → ElevenLabs Music fallback:', e instanceof Error ? e.message : e);
-    }
-  }
+  type Track = { url: string; engine: string };
 
-  if (hasElevenLabsMusicKey()) {
-    try {
-      const { audio, contentType } = await composeElevenLabsMusic({
-        prompt: style ? `${prompt}. Style: ${style}.` : prompt,
-        lengthMs: elMusicSec * 1000,
-        instrumental,
-      });
-      const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604800);
-      if (url) return { url, engine: 'ElevenLabs Music' };
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[ai/music] ElevenLabs Music failed → MusicGen fallback:', e instanceof Error ? e.message : e);
+  // Each provider's EXACT existing logic, now expressed as a failover attempt. Order is
+  // unchanged: Udio (funded primary) → ElevenLabs Music → MusicGen. The chain is run
+  // through runWithLatencyFailover so a provider that ERRORS *or* exceeds its latency
+  // BUDGET (a "heavy bottleneck") reroutes to the next — sequentially, one at a time,
+  // so at most one provider serves the track (no double-submit). Fully fail-open: if the
+  // whole chain is exhausted we throw the same error the sequential version did.
+  const udioRun = async (): Promise<Track> => {
+    const udio = await generateUdioTrack(
+      { prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental },
+      { maxAttempts: 45, pollIntervalMs: 4000 }, // ~180s, bounded under the 300s ceiling
+    );
+    if (udio.status === 'succeeded' && udio.audioUrl) {
+      // Udio ignores the requested length (no duration param) → full ~2–4 min song. Trim
+      // to `secs` (30/60/90) so the panel selection is honoured — UNLESS secs===0 ("full
+      // song"). Fail-open: if the trim misses, keep the full track.
+      if (secs > 0) {
+        const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
+        return { url: trimmed ?? udio.audioUrl, engine: 'Udio' }; // re-hosted by caller
+      }
+      return { url: udio.audioUrl, engine: 'Udio' }; // full song — no trim
     }
+    throw new Error(`Udio did not complete (${udio.status})`);
+  };
+  const elRun = async (): Promise<Track> => {
+    const { audio, contentType } = await composeElevenLabsMusic({
+      prompt: style ? `${prompt}. Style: ${style}.` : prompt,
+      lengthMs: elMusicSec * 1000,
+      instrumental,
+    });
+    const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604800);
+    if (url) return { url, engine: 'ElevenLabs Music' };
+    throw new Error('ElevenLabs Music host failed');
+  };
+  const musicgenRun = async (): Promise<Track> => {
+    const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, musicgenSec);
+    if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen' };
+    throw new Error('MusicGen did not complete in time');
+  };
+
+  // Per-provider latency budgets (env-tunable, no deploy needed). Udio's is set just above
+  // its own ~180s internal poll cap so a normal run is UNAFFECTED — the budget only trips on
+  // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
+  const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
+  const providers: ProviderAttempt<Track>[] = [];
+  if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
+    providers.push({ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun });
   }
-  const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, musicgenSec);
-  if (!score.audioUrl) throw new Error('Music generation did not complete in time.');
-  return { url: score.audioUrl, engine: 'MusicGen' };
+  if (hasElevenLabsMusicKey()) {
+    providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
+  }
+  providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
+
+  // Pre-read the Redis circuit breaker ONCE (it's async; the failover's isTripped is sync)
+  // so a provider already tripped by recent failures is skipped without spending its budget.
+  const trippedSet = new Set<string>();
+  await Promise.all(providers.map(async (p) => { try { if (await isProviderTripped(p.name)) trippedSet.add(p.name); } catch { /* fail-open */ } }));
+
+  const res = await runWithLatencyFailover<Track>(providers, {
+    isTripped: (n) => trippedSet.has(n),
+    record: (n, ok) => { void recordProviderResult(n, ok); },
+    onReroute: ({ from, to, reason }) => {
+      // eslint-disable-next-line no-console
+      console.warn(`[ai/music] ${from} ${reason} → ${to ?? 'exhausted'}`);
+    },
+  });
+  if (res.ok && res.result) return res.result;
+  throw new Error('Music generation did not complete in time.');
 }
 
 export async function POST(req: NextRequest) {
