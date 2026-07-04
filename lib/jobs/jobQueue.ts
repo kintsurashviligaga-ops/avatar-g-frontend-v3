@@ -78,6 +78,13 @@ export interface SubmitInput {
   label: string;
   run: JobRunner;
   /**
+   * Params persisted into the DURABLE placeholder row the instant this job is submitted (id ===
+   * jobId), so a job WAITING in the queue survives a reload — not just one that has already
+   * started rendering. The engine ignores this; the store's `submit` reads it to fire the row
+   * create at the front-edge of submission. Typically `{ prompt }` / `{ title }` for the tray label.
+   */
+  createParams?: Record<string, unknown>;
+  /**
    * Fired ONCE when the job reaches a terminal state (done | failed | canceled), with the
    * final public job (result/error populated). Used by durable-progress to mark the
    * server `generation_jobs` row completed/failed without threading it through the runner's

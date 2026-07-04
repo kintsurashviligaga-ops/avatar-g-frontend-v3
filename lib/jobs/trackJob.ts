@@ -16,7 +16,7 @@
 
 import type { JobKind } from './jobQueue';
 
-type TrackOp = 'create' | 'update' | 'complete' | 'fail';
+type TrackOp = 'create' | 'update' | 'complete' | 'fail' | 'position';
 
 interface TrackPayload {
   op: TrackOp;
@@ -27,6 +27,8 @@ interface TrackPayload {
   url?: string;
   error?: string;
   params?: Record<string, unknown>;
+  /** 1-based queue position while waiting; null once rendering / terminal. */
+  position?: number | null;
 }
 
 function post(payload: TrackPayload): void {
@@ -43,9 +45,16 @@ function post(payload: TrackPayload): void {
   }
 }
 
-/** Insert the placeholder row (pending) the instant a job is triggered. */
-export function trackJobCreate(id: string, kind: JobKind, params?: Record<string, unknown>, stage?: string, pct?: number): void {
-  post({ op: 'create', id, kind, params, stage, pct });
+/** Insert the placeholder row (pending) the instant a job is SUBMITTED — including while it still
+ *  waits in the queue (`position` set), so a reload recovers queued jobs, not just rendering ones. */
+export function trackJobCreate(id: string, kind: JobKind, params?: Record<string, unknown>, stage?: string, pct?: number, position?: number | null): void {
+  post({ op: 'create', id, kind, params, stage, pct, position: position ?? null });
+}
+
+/** Sync ONLY the live queue position (→ position_in_queue) as jobs promote — isolated from the
+ *  status writes so a pre-migration column-miss can't break the core row lifecycle. */
+export function trackJobPosition(id: string, position: number | null): void {
+  post({ op: 'position', id, position: position ?? null });
 }
 
 /** Sync a mid-flight progress change (→ processing). */

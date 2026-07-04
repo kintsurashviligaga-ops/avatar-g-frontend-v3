@@ -54,6 +54,9 @@ export interface GenerationJobRow {
   error: string | null;
   created_at: string;
   updated_at: string;
+  /** 1-based queue position while a client job WAITS (status pending); null once rendering or
+   *  terminal. Optional — absent on rows read before the position_in_queue migration is applied. */
+  position_in_queue?: number | null;
 }
 
 const TABLE = 'generation_jobs';

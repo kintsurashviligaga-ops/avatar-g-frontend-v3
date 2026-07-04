@@ -23,7 +23,7 @@ const clampPct = (n: unknown): number => {
 };
 
 interface TrackBody {
-  op?: 'create' | 'update' | 'complete' | 'fail';
+  op?: 'create' | 'update' | 'complete' | 'fail' | 'position';
   id?: string;
   kind?: string;
   stage?: string;
@@ -31,6 +31,8 @@ interface TrackBody {
   url?: string;
   error?: string;
   params?: Record<string, unknown>;
+  /** 1-based queue position while waiting; null once rendering / terminal. */
+  position?: number | null;
 }
 
 /**
@@ -60,18 +62,28 @@ export async function POST(req: NextRequest) {
   try {
     if (body.op === 'create') {
       // Upsert a placeholder (pending). onConflict:id keeps a re-fired create idempotent.
-      const { error } = await supabase.from('generation_jobs').upsert(
-        {
-          id,
-          user_id: user.id,
-          service_type: serviceTypeForKind(body.kind),
-          status: 'pending',
-          current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : 'queued',
-          pct: clampPct(body.pct),
-          params: body.params && typeof body.params === 'object' ? body.params : {},
-        },
-        { onConflict: 'id' },
-      );
+      const base: Record<string, unknown> = {
+        id,
+        user_id: user.id,
+        service_type: serviceTypeForKind(body.kind),
+        status: 'pending',
+        current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : 'queued',
+        pct: clampPct(body.pct),
+        params: body.params && typeof body.params === 'object' ? body.params : {},
+      };
+      const pos = typeof body.position === 'number' && body.position > 0 ? Math.floor(body.position) : null;
+      // Try WITH the position column; if the migration hasn't landed yet the column is unknown, so
+      // retry WITHOUT it — the core placeholder row must always be written (migration-order-safe).
+      let { error } = await supabase.from('generation_jobs').upsert({ ...base, position_in_queue: pos }, { onConflict: 'id' });
+      if (error && /position_in_queue/i.test(error.message)) {
+        ({ error } = await supabase.from('generation_jobs').upsert(base, { onConflict: 'id' }));
+      }
+      if (error) return NextResponse.json({ ok: false, error: error.message });
+    } else if (body.op === 'position') {
+      // ISOLATED position write (Task 6): mirror the live queue position WITHOUT touching status,
+      // so a still-queued job stays pending. Best-effort — a pre-migration column-miss just no-ops.
+      const pos = typeof body.position === 'number' && body.position > 0 ? Math.floor(body.position) : null;
+      const { error } = await supabase.from('generation_jobs').update({ position_in_queue: pos }).eq('id', id);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'update') {
       // RLS scopes the update to the owner; we match by id only.
@@ -110,18 +122,26 @@ export async function GET(req: NextRequest) {
   const onlyActive = req.nextUrl.searchParams.get('status') === 'active';
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get('limit') ?? 12) || 12));
 
-  try {
+  // Include position_in_queue so the tray can restore the queue layout; fall back to the base
+  // columns if the migration hasn't landed yet (so hydration keeps working, just without positions).
+  const run = async (cols: string) => {
     let query = supabase
       .from('generation_jobs')
-      .select(JOB_COLUMNS)
+      .select(cols)
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
       .limit(limit);
     if (onlyActive) query = query.in('status', ['pending', 'processing']);
+    return query;
+  };
 
-    const { data, error } = await query;
+  try {
+    let { data, error } = await run(`${JOB_COLUMNS},position_in_queue`);
+    if (error && /position_in_queue/i.test(error.message ?? '')) {
+      ({ data, error } = await run(JOB_COLUMNS));
+    }
     if (error || !Array.isArray(data)) return NextResponse.json({ jobs: [] });
-    return NextResponse.json({ jobs: data as GenerationJobRow[] });
+    return NextResponse.json({ jobs: data as unknown as GenerationJobRow[] });
   } catch {
     return NextResponse.json({ jobs: [] });
   }

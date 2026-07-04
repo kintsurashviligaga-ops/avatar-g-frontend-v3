@@ -79,6 +79,35 @@ describe('durableJobs — hydrate the tray from generation_jobs', () => {
     expect(active.every((j) => j.status === 'rendering' && j.observed)).toBe(true);
   });
 
+  it('maps a pending row WITH a queue position to a queued job (reload recovers waiting jobs)', () => {
+    const j = mapDbJobToTrayJob(row({ status: 'pending', position_in_queue: 2, params: { prompt: 'lofi beat' } }), 'en');
+    expect(j.status).toBe('queued');
+    expect(j.position).toBe(2);
+    expect(j.pct).toBe(0);
+    expect(j.observed).toBe(true);
+  });
+
+  it('a pending row WITHOUT a real position stays rendering (job just starting, not waiting)', () => {
+    expect(mapDbJobToTrayJob(row({ status: 'pending' })).status).toBe('rendering');
+    expect(mapDbJobToTrayJob(row({ status: 'pending', position_in_queue: null })).status).toBe('rendering');
+    expect(mapDbJobToTrayJob(row({ status: 'pending', position_in_queue: 0 })).status).toBe('rendering'); // 0 ⇒ not a real position
+  });
+
+  it('mapActiveDbJobs restores the layout: rendering first (oldest-first), then queued by position', () => {
+    const rows = [
+      row({ id: 'q2', status: 'pending', position_in_queue: 2, created_at: '2026-07-04T00:00:05.000Z' }),
+      row({ id: 'r1', status: 'processing', created_at: '2026-07-04T00:00:02.000Z' }),
+      row({ id: 'q1', status: 'pending', position_in_queue: 1, created_at: '2026-07-04T00:00:04.000Z' }),
+      row({ id: 'r0', status: 'processing', created_at: '2026-07-04T00:00:01.000Z' }),
+      row({ id: 'gone', status: 'completed' }), // dropped
+    ];
+    const active = mapActiveDbJobs(rows);
+    expect(active.map((j) => j.id)).toEqual(['r0', 'r1', 'q1', 'q2']); // rendering oldest-first, then queue #1,#2
+    expect(active.map((j) => j.status)).toEqual(['rendering', 'rendering', 'queued', 'queued']);
+    expect(active[2]!.position).toBe(1);
+    expect(active[3]!.position).toBe(2);
+  });
+
   it('mergeTrayJobs dedups by id (local wins) and lists observed jobs first', () => {
     const durable = [mapDbJobToTrayJob(row({ id: 'x' })), mapDbJobToTrayJob(row({ id: 'image#1' }))];
     const local = [localJob({ id: 'image#1' })]; // same id as a durable row → local wins, no dup

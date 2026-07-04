@@ -77,23 +77,29 @@ function labelFor(row: GenerationJobRow, kind: JobKind, locale: Lang): string {
 }
 
 /**
- * Map one `generation_jobs` row to the tray `Job` shape. pending|processing → 'rendering';
- * completed → 'done' (pct forced 100); failed → 'failed'. `current_stage` becomes the
- * stage line, `pct` the bar. Always `observed: true` (no local runner).
+ * Map one `generation_jobs` row to the tray `Job` shape. completed → 'done' (pct forced 100);
+ * failed → 'failed'; a `pending` row that still carries a `position_in_queue` → 'queued' (a job
+ * WAITING in the queue, recovered across a reload); everything else in-flight → 'rendering'.
+ * `current_stage` becomes the stage line, `pct` the bar. Always `observed: true` (no local runner).
  */
 export function mapDbJobToTrayJob(row: GenerationJobRow, locale: Lang = 'ka'): Job {
   const kind = KIND_BY_SERVICE[row.service_type] ?? 'video';
+  const queuePos = typeof row.position_in_queue === 'number' && row.position_in_queue > 0 ? Math.floor(row.position_in_queue) : null;
   const status: Job['status'] =
-    row.status === 'completed' ? 'done' : row.status === 'failed' ? 'failed' : 'rendering';
-  const pct = status === 'done' ? 100 : clampPct(row.pct);
+    row.status === 'completed' ? 'done'
+    : row.status === 'failed' ? 'failed'
+    : (row.status === 'pending' && queuePos != null) ? 'queued'
+    : 'rendering';
+  const pct = status === 'done' ? 100 : status === 'queued' ? 0 : clampPct(row.pct);
   return {
     id: row.id,
     kind,
     label: labelFor(row, kind, locale),
     status,
     pct,
-    stage: row.current_stage ?? null,
-    position: null,
+    // A queued job shows its position, not a stage line.
+    stage: status === 'queued' ? null : (row.current_stage ?? null),
+    position: status === 'queued' ? queuePos : null,
     error: row.error ?? null,
     result: row.result ?? null,
     createdAt: Date.parse(row.created_at) || 0,
@@ -106,13 +112,16 @@ export function mapDbJobToTrayJob(row: GenerationJobRow, locale: Lang = 'ka'): J
 /**
  * Map the server's active rows to observed tray jobs, keeping ONLY still-running ones
  * (pending|processing) — a completed/failed render drops out on the next poll rather than
- * lingering. Sorted oldest-first so the tray order is stable across refreshes.
+ * lingering. Restores the QUEUE LAYOUT across a reload: rendering jobs first (oldest-first),
+ * then the waiting jobs ordered by their persisted queue position.
  */
 export function mapActiveDbJobs(rows: readonly GenerationJobRow[], locale: Lang = 'ka'): Job[] {
-  return rows
+  const jobs = rows
     .filter((r) => r.status === 'pending' || r.status === 'processing')
-    .map((r) => mapDbJobToTrayJob(r, locale))
-    .sort((a, b) => a.createdAt - b.createdAt);
+    .map((r) => mapDbJobToTrayJob(r, locale));
+  const rendering = jobs.filter((j) => j.status === 'rendering').sort((a, b) => a.createdAt - b.createdAt);
+  const queued = jobs.filter((j) => j.status === 'queued').sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.createdAt - b.createdAt);
+  return [...rendering, ...queued];
 }
 
 /**

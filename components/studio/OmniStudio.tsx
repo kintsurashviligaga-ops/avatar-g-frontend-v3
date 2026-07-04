@@ -37,7 +37,7 @@ import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
 import { useJobQueue } from '@/store/useJobQueue';
 import { useDurableProgress } from '@/hooks/useDurableProgress';
-import { trackJobCreate, trackJobUpdate, trackJobComplete, trackJobFail } from '@/lib/jobs/trackJob';
+import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { JobTray } from './JobTray';
@@ -1803,6 +1803,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const trackJobSettle = useCallback((job: QueueJob) => {
     if (job.status === 'done') trackJobComplete(job.id, typeof job.result === 'string' ? job.result : undefined);
     else trackJobFail(job.id, job.status === 'canceled' ? 'canceled' : (job.error ?? undefined));
+    // TASK 6 — a terminal job holds NO queue position; null it so no ghost "#N" lingers in the DB
+    // (isolated from the status write above so a pre-migration column-miss can't undo the terminal).
+    trackJobPosition(job.id, null);
   }, []);
   useEffect(() => {
     if (transitCharacterUrl) {
@@ -1920,9 +1923,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // renders (~7 min), so the preview shows every scene + the live progress —
     // the storyboard no longer just disappears on "Generate Video".
     setMessages((prev) => [...prev, { role: 'assistant', text: t.generatingVideo, genKind: 'video', ...(bubbleId ? { id: bubbleId } : {}), ...(storyboardScenes?.length ? { storyboard: storyboardScenes } : {}) }]);
-    // DURABLE PROGRESS (Task 4) — persist a placeholder row (id === jobId) the instant the
-    // render dispatches, so a mid-render reload rehydrates this cinema job from the DB.
-    if (jobCtx) trackJobCreate(jobCtx.jobId, 'video', { prompt: filmPrompt });
+    // DURABLE PROGRESS — the placeholder row is now created at SUBMIT (store.submit → trackJobCreate
+    // via startFilmRender's createParams, Task 6), so a QUEUED cinema job survives a reload too.
     if (!jobCtx) setBusy(true);
     try {
       // v330 — Music Video mode: the song rules, so the standalone narrator is
@@ -2206,6 +2208,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       submitJob({
         kind: 'video',
         label,
+        createParams: { prompt: filmPrompt },
         onSettle: trackJobSettle,
         run: ({ signal, onProgress, jobId }) =>
           renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, {
@@ -2287,11 +2290,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // the panel while one is in flight (so panel results never collide). Per-job `signal`
     // wires the tray's cancel. Billing is unchanged (same remix/assemble calls).
     const jobLabel = locale === 'en' ? 'Product ad' : locale === 'ru' ? 'Реклама товара' : 'პროდუქტის რეკლამა';
-    submitJob({ kind: 'product', label: jobLabel, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
+    submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Reports stage → tray, sets the panel result on success, throws on failure so the job
     // reflects done/failed.
-    // Durable-progress: persist a placeholder row (id === jobId) + flip to processing.
-    trackJobCreate(jobId, 'product', { title: productBrand.trim() || jobLabel });
+    // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
     trackJobUpdate(jobId, jobLabel, 10);
     setProductBusy(true);
     setProductResultUrl(null);
@@ -2827,10 +2829,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     submitJob({
       kind: 'image',
       label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),
+      createParams: { prompt },
       onSettle: trackJobSettle,
       run: async ({ signal, onProgress, jobId }) => {
-        // Durable-progress: persist a placeholder row (id === jobId) + flip to processing.
-        trackJobCreate(jobId, 'image', { prompt }, 'Rendering', 8);
+        // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
         trackJobUpdate(jobId, 'Rendering', 8);
         onProgress({ pct: 8 });
         const res = await fetch('/api/nanobanana/image', {
@@ -2877,9 +2879,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       submitJob({
         kind: 'image',
         label: `${(spec.prompt || 'Image').trim().slice(0, 32)} (${tileIdx + 1}/${count})`,
+        createParams: { prompt: spec.prompt },
         onSettle: trackJobSettle,
         run: async ({ signal, onProgress, jobId }) => {
-          trackJobCreate(jobId, 'image', { prompt: spec.prompt });
           trackJobUpdate(jobId, 'Rendering', 8);
           onProgress({ pct: 8 });
           try {
@@ -2929,9 +2931,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     submitJob({
       kind: 'music',
       label: m.prompt.trim().slice(0, 42) || (locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა'),
+      createParams: { prompt: m.prompt },
       onSettle: trackJobSettle,
       run: async ({ signal, onProgress, jobId }) => {
-        trackJobCreate(jobId, 'music', { prompt: m.prompt });
         trackJobUpdate(jobId, 'Composing', 10);
         onProgress({ pct: 10 });
         // Cover / voice: host the attached track first so the request body stays tiny.
@@ -3473,10 +3475,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     submitJob({
       kind: 'remix',
       label,
+      createParams: { title: label },
       onSettle: trackJobSettle,
       run: async ({ signal, jobId }) => {
-        // Durable-progress: persist a placeholder row (id === jobId) + flip to processing.
-        trackJobCreate(jobId, 'remix', { title: label });
+        // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
         trackJobUpdate(jobId, label, 20);
         // Host the character photo (a data URL) so kling can fetch it as a reference image.
         const photoRef = (await uploadBigFile(charRef, 'image/jpeg')) || charRef;
