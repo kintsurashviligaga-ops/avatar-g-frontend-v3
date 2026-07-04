@@ -26,6 +26,15 @@
 
 import { isThirtySecondFilm, FILM_SCENE_COUNT, FILM_CLIP_SEC } from './filmPipeline';
 import { GEL_COST } from '@/lib/billing/gel';
+import { StallDetector } from '@/lib/jobs/stallDetector';
+
+/** Poll-level failover early-flag: Kling made NO forward progress for this long → surface
+ *  a "provider slow" note (render continues; the terminal fail stays at `stallMs`). Kept
+ *  well under DEFAULT_FILM_STALL_MS; env-tunable without a deploy. */
+const FILM_SLOW_FLAG_MS = (() => {
+  const n = Number(process.env.NEXT_PUBLIC_FILM_SLOW_FLAG_MS);
+  return Number.isFinite(n) && n >= 1000 ? n : 90_000;
+})();
 
 // ─── Public types ──────────────────────────────────────────────────────────
 
@@ -70,6 +79,13 @@ export interface FilmStudioProgress {
   masterUrl: string | null;
   /** First ready clip — a graceful fallback to show while the editor finishes. */
   previewUrl: string | null;
+  /**
+   * The video provider (Kling) has made NO forward progress for the early-flag window
+   * (default 90s) — it's bottlenecked in the vendor's remote queue. The render is NOT
+   * abandoned (that's the separate terminal `stallMs`); this just lets the UI surface a
+   * "provider is slow, still working…" note. No re-submit → no double-charge.
+   */
+  slow?: boolean;
 }
 
 /** Supervisor-QA verdict on the assembled master (mirror of the server summary). */
@@ -608,13 +624,14 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
   const message = buildFilmPrompt(prompt);
   const refs = (referenceImages ?? []).filter((s) => typeof s === 'string' && s.length > 0).slice(0, 3);
 
-  const emit = (phase: FilmStudioPhase, matrix: FilmStudioMatrix | null, masterUrl: string | null) => {
+  const emit = (phase: FilmStudioPhase, matrix: FilmStudioMatrix | null, masterUrl: string | null, slow = false) => {
     onProgress?.({
       phase,
       matrix,
       message: summarizeProgress(matrix, phase, locale),
       masterUrl,
       previewUrl: firstPreviewUrl(matrix),
+      ...(slow ? { slow: true } : {}),
     });
   };
 
@@ -718,6 +735,13 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // its full patience; a render frozen at 0/5 trips the stall guard below.
     let lastProgressKey = filmProgressKey(matrix);
     let lastProgressAt = Date.now();
+    // POLL-LEVEL FAILOVER FLAG — an EARLY (90s) no-progress detector, separate from the
+    // terminal `stallMs` (12 min) fail. Ticked by a monotonic counter on every forward
+    // progress change; when Kling sits in the remote queue with no movement for 90s it
+    // fires ONCE → we surface a "provider slow" note (the render keeps polling; there is
+    // NO parallel re-submit, so no double-charge). Recovers + re-flags if it stalls again.
+    const slowDetector = new StallDetector({ stallMs: FILM_SLOW_FLAG_MS });
+    let progressTicks = 0;
     while (!matrix.readyToStitch && Date.now() < deadline) {
       if (predictionId === undefined) break;
       await sleep(pollIntervalMs, signal);
@@ -730,6 +754,11 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       if (progressKey !== lastProgressKey) {
         lastProgressKey = progressKey;
         lastProgressAt = Date.now();
+        slowDetector.tick(++progressTicks); // forward progress resets the slow clock
+      }
+      // Early "provider is slow" flag (fires once per stall episode; render continues).
+      if (!matrix.readyToStitch && slowDetector.shouldFlag()) {
+        emit('rendering', matrix, null, true);
       }
       if (poll.predictionStatus && TERMINAL_FAIL.has(poll.predictionStatus) && !matrix.readyToStitch) {
         // A leg reported terminal failure. The server union flips to `failed`

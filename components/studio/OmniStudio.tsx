@@ -1939,13 +1939,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             : p.phase === 'stitching' ? 90
             : p.phase === 'rendering' ? Math.min(85, 25 + Math.round((ready / Math.max(1, total)) * 55))
             : p.phase === 'dispatching' ? 12 : 6;
-          const status = p.phase === 'rendering'
+          const baseStatus = p.phase === 'rendering'
             ? `🎬 ${locale === 'en' ? 'Rendering scenes' : locale === 'ru' ? 'Рендер сцен' : 'სცენების რენდერი'} ${ready}/${total}`
             : p.phase === 'stitching'
               ? `🎞 ${locale === 'en' ? 'Editing + adding music & narration' : locale === 'ru' ? 'Монтаж + музыка и озвучка' : 'მონტაჟი + მუსიკა და ნარაცია'}`
               : p.phase === 'dispatching'
                 ? `✨ ${locale === 'en' ? 'Preparing the scenes' : locale === 'ru' ? 'Подготовка сцен' : 'სცენების მომზადება'}`
                 : (p.message?.trim() || t.generatingVideo);
+          // POLL-LEVEL FAILOVER FLAG — the video provider (Kling) has been bottlenecked in
+          // its remote queue for 90s+ with no forward tick. Surface an honest note (the
+          // render keeps going — no re-submit, no double-charge) instead of a silent stall.
+          const status = p.slow
+            ? `${baseStatus} · ⏳ ${locale === 'en' ? 'provider is slow, still working…' : locale === 'ru' ? 'провайдер медленный, продолжаем…' : 'პროვაიდერი ნელია, ვაგრძელებთ…'}`
+            : baseStatus;
           // Fold the live matrix into the 9-agent roster + activity log so the
           // Director's Console renders real per-agent state and a streaming feed
           // (not a fake timer) right in the bubble.
@@ -2178,17 +2184,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
-  const generateProductAd = useCallback(async () => {
+  const generateProductAd = useCallback(() => {
     if (!productImage || productBusy) return;
-    // Reject a product render while another generation (chat/image/music/video/remix) is
-    // still in flight — with a clear toast, not a silent no-op.
-    if (genActiveRef.current) { toast(busyToastMessage(locale)); return; }
+    // PHASE 2 — the product ad now renders through the capped-parallel QUEUE so it runs
+    // ALONGSIDE other jobs (cap 3) instead of hard-blocking the composer. Its result still
+    // lands in the Product panel; `productBusy` prevents launching a SECOND product ad from
+    // the panel while one is in flight (so panel results never collide). Per-job `signal`
+    // wires the tray's cancel. Billing is unchanged (same remix/assemble calls).
+    const jobLabel = locale === 'en' ? 'Product ad' : locale === 'ru' ? 'Реклама товара' : 'პროდუქტის რეკლამა';
+    submitJob({ kind: 'product', label: jobLabel, run: async ({ signal, onProgress }): Promise<string> => {
+    // Reports stage → tray, sets the panel result on success, throws on failure so the job
+    // reflects done/failed.
     setProductBusy(true);
     setProductResultUrl(null);
     setProductProgress(null);
     setProductResultDur(null);
     setProductHasAudio(false);
     setProductError(null);
+    const setStage = (s: string) => { setProductProgress(s); onProgress({ stage: s }); };
     // Dedicated product aspect → the remix op's aspect AND the assemble orientation.
     // ('vertical' renders 1080×1920; 'portrait' would be 4:5 — so map 9:16 → vertical.)
     const aspect = productAspect;
@@ -2222,7 +2235,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const imageUrl = photos[(sceneIndex >= 0 ? sceneIndex : 0) % photos.length] ?? productImage;
       try {
         const r = await fetch('/api/video/remix', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
           body: JSON.stringify({ op: 'productad', imageUrl, preset: productPreset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
@@ -2233,7 +2246,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const assemble = async (segments: { url: string; durationSec: number }[]): Promise<string | null> => {
       try {
         const ar = await fetch('/api/video/assemble', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
           body: JSON.stringify({
             segments,
             orientation: orientationForAssemble,
@@ -2252,37 +2265,39 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // With brand context: silent clip → assemble (music + VO + overlays). Without:
         // the original fast path (remix lays a preset score, no extra round-trip).
         const res = await genClip(-1, enrich);
-        if (!res) { setProductError(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.'); return; }
+        if (!res) throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
         if (enrich) {
-          setProductProgress(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
+          setStage(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
           const finalUrl = await assemble([{ url: res.url, durationSec: 6 }]);
-          if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(finalUrl, 'film'); return; }
+          if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
         }
         setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film');
-        return;
+        return res.url;
       }
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
-      setProductProgress(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
+      setStage(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
       const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
       if (clips.length < 2) {
-        if (clips[0]) { setProductResultUrl(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); }
-        else setProductError(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
-        return;
+        if (clips[0]) { setProductResultUrl(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); return clips[0]; }
+        throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
       }
-      setProductProgress(enrich
+      setStage(enrich
         ? (locale === 'en' ? 'Stitching + voiceover + branding…' : locale === 'ru' ? 'Сборка + озвучка + брендинг…' : 'შეერთება + გახმოვანება + ბრენდინგი…')
         : (locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…'));
       const finalUrl = await assemble(clips.map((url) => ({ url, durationSec: 5 })));
       // Assembled master carries the ElevenLabs music bed (+ VO/overlays) → audio present.
-      if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(finalUrl, 'film'); }
-      else if (clips[0]) setProductResultUrl(clips[0]); // fail-open: show the first clip
+      if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+      if (clips[0]) { setProductResultUrl(clips[0]); return clips[0]; } // fail-open: show the first clip
+      throw new Error(locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.');
     } catch (e) {
       setProductError(e instanceof Error ? e.message : (locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.'));
+      throw e instanceof Error ? e : new Error('product ad failed'); // surface as a failed job in the tray
     } finally {
       setProductBusy(false);
       setProductProgress(null);
     }
-  }, [productImage, productImages, productBusy, productPreset, productDuration, productAspect, locale, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
+    } });
+  }, [productImage, productBusy, locale, submitJob, productImages, productPreset, productDuration, productAspect, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -3341,44 +3356,41 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // TASK 1 — Character swap: source video + new-character PHOTO → the remix `character` op
   // (frame → swap → re-animate via Kling, identity anchored by the photo). The result lands
   // in the chat with the Remix Studio staged-timer (remixOpKind: 'character'). Mirrors runRemix.
-  const runVideoSwap = useCallback(async () => {
+  const runVideoSwap = useCallback(() => {
     if (!swapSourceVideo?.url || !videoCharacterRef) return;
-    // A generation is already running — surface it instead of silently dropping the click.
-    if (busy || genActiveRef.current) { toast(busyToastMessage(locale)); return; }
+    // PHASE 2 — Character Swap now runs through the capped-parallel QUEUE (per-job signal
+    // + its OWN chat bubble by id), so it renders alongside other jobs (cap 3) instead of
+    // hard-blocking the whole composer. Billing unchanged (same /api/video/remix call).
     const label = locale === 'en' ? 'Character swap' : locale === 'ru' ? 'Замена персонажа' : 'პერსონაჟის შეცვლა';
-    const myGen = ++genIdRef.current;
-    const ac = new AbortController();
-    abortRef.current = ac;
-    const mine = () => genIdRef.current === myGen;
+    const bubbleId = `swap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const source = swapSourceVideo.url;
+    const charRef = videoCharacterRef;
+    const orient = videoOrientation;
     setOptionsOpen(false);
-    setMessages((prev) => [...prev, { role: 'user', text: `🔄 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'character' }]);
-    setBusy(true);
-    try {
-      // Host the character photo (a data URL) so kling can fetch it as a reference image.
-      const photoRef = (await uploadBigFile(videoCharacterRef, 'image/jpeg')) || videoCharacterRef;
-      const aspect = videoOrientation === 'landscape' ? '16:9' : videoOrientation === 'square' ? '1:1' : '9:16';
-      const res = await fetch('/api/video/remix', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-        body: JSON.stringify({ op: 'character', videoUrl: swapSourceVideo.url, characterRef: photoRef, aspect }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
-      setMessages((prev) => {
-        if (!mine()) return prev;
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === 'assistant') next[next.length - 1] = j.url
-          ? { role: 'assistant', text: '', videoUrl: j.url, orientation: videoOrientation === 'landscape' ? 'landscape' : 'vertical' }
-          : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
-        return next;
-      });
-      if (mine() && j.url) { notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
-    } catch {
-      if (!mine()) return;
-      setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
-    } finally {
-      if (mine()) setBusy(false);
-    }
-  }, [swapSourceVideo, videoCharacterRef, busy, videoOrientation, locale, notifyCredit, t.remixRunning, t.remixFailed]);
+    setMessages((prev) => [...prev, { role: 'user', text: `🔄 ${label}` }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'character', id: bubbleId }]);
+    submitJob({
+      kind: 'remix',
+      label,
+      run: async ({ signal }) => {
+        // Host the character photo (a data URL) so kling can fetch it as a reference image.
+        const photoRef = (await uploadBigFile(charRef, 'image/jpeg')) || charRef;
+        const aspect = orient === 'landscape' ? '16:9' : orient === 'square' ? '1:1' : '9:16';
+        const res = await fetch('/api/video/remix', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
+          body: JSON.stringify({ op: 'character', videoUrl: source, characterRef: photoRef, aspect }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
+        if (j.url) {
+          updateBubble(bubbleId, { text: '', videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : 'vertical' });
+          notifyCredit('remix');
+          autoSaveToLibrary(j.url, 'film');
+          return j.url;
+        }
+        updateBubble(bubbleId, { text: `⚠️ ${j.error || t.remixFailed}` });
+        throw new Error(j.error || 'character swap failed');
+      },
+    });
+  }, [swapSourceVideo, videoCharacterRef, videoOrientation, locale, submitJob, updateBubble, notifyCredit, t.remixRunning, t.remixFailed]);
 
   // Upload a remix video / music track → signed URL (auth-gated; null when not
   // signed in, in which case the picker stays empty and Run remains disabled).
