@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { FilmStudioHome } from '@/components/studio/FilmStudioHome';
 import { createServerClient } from '@/lib/supabase/server';
 
@@ -19,7 +18,6 @@ export default async function DashboardPage({ params }: Props) {
   let userName = 'Guest';
   let userEmail: string | undefined;
   let isAuthenticated = false;
-  let shouldOnboard = false;
 
   try {
     const supabase = createServerClient();
@@ -38,27 +36,17 @@ export default async function DashboardPage({ params }: Props) {
       isAuthenticated = true;
       userName = user.user_metadata?.full_name || user.email || 'Authenticated User';
       userEmail = user.email ?? undefined;
-
-      // First-login onboarding gate
-      const { data: avatar } = await supabase
-        .from('avatars')
-        .select('id')
-        .eq('user_id', user.id)
-        .not('name', 'is', null)
-        .limit(1)
-        .maybeSingle();
-
-      if (!avatar) {
-        shouldOnboard = true;
-      }
     }
   } catch {
     // Guest fallback
   }
 
-  if (shouldOnboard) {
-    redirect(`/${locale}/onboarding`);
-  }
+  // AUTH JOURNEY (product decision): a first-time sign-in now lands DIRECTLY in the chat
+  // workspace — no forced full-page /onboarding interstitial. The in-place WelcomeOnboarding
+  // overlay (ChatChrome) greets new users instead. The avatar-naming wizard at /{locale}/onboarding
+  // is no longer force-triggered but stays reachable by direct URL as an OPTIONAL step (it
+  // self-guards: named-avatar → dashboard, unauthed → login). This removes the post-OAuth
+  // "landing screen" bounce that made signing in feel like it took you somewhere else.
 
   return (
     <FilmStudioHome

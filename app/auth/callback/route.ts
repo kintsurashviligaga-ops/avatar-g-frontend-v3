@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { User } from '@supabase/supabase-js';
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { i18n } from '@/i18n.config';
+import { safeInternalPath } from '@/lib/auth/safeRedirect';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,13 +10,11 @@ export const dynamic = 'force-dynamic';
 // /{locale}/dashboard — NOT /services (which felt like "login took me elsewhere").
 const DEFAULT_POST_LOGIN = `/${i18n.defaultLocale}/dashboard`;
 
+// Shared open-redirect guard: the previous local check only blocked '//' and let control-char
+// bypasses (e.g. '/\t/evil.com', which the browser normalises to '//evil.com') resolve off-origin.
+// safeInternalPath uses the WHATWG URL parser + origin-equality, closing every off-origin vector.
 function resolveSafeNextPath(input: string | null) {
-  // Reject empty, non-absolute, or protocol-relative (//evil.com) targets — an
-  // open-redirect guard — and fall back to the home dashboard.
-  if (!input || !input.startsWith('/') || input.startsWith('//')) {
-    return DEFAULT_POST_LOGIN;
-  }
-  return input;
+  return safeInternalPath(input, DEFAULT_POST_LOGIN);
 }
 
 async function ensureProfile(user: User) {

@@ -1,29 +1,41 @@
-'use client';
-
-import { Suspense } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import AuthScreen from '@/components/auth/AuthScreen';
+import { createServerClient } from '@/lib/supabase/server';
+import { safeInternalPath } from '@/lib/auth/safeRedirect';
 
-function LoginForm() {
-  const searchParams = useSearchParams();
-  const params = useParams<{ locale?: string }>();
-  const locale = params?.locale || 'ka';
-  // Default the post-login landing to the CURRENT locale's dashboard (not '/', which
-  // bounced through the middleware to the preferred locale) so OAuth + email login keep
-  // the user on the locale they signed in from.
-  const redirectTo = searchParams.get('redirect') ?? `/${locale}/dashboard`;
+export const dynamic = 'force-dynamic';
 
-  return <AuthScreen mode="login" locale={locale} redirectTo={redirectTo} />;
-}
+type Props = {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ redirect?: string; error?: string }>;
+};
 
-export default function LocaleLoginPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <div className="text-white/40 text-sm">Loading...</div>
-      </div>
-    }>
-      <LoginForm />
-    </Suspense>
-  );
+// BOUNDARY LEAK GUARD: an ALREADY-authenticated visitor who lands on /login (or /auth) is
+// short-circuited straight into the workspace, server-side, so they never see the login form
+// flash. `getUser()` (not getSession()) makes the gate authoritative — a server-revoked session
+// can't slip through — and /login is not the hot launch path, so the extra round-trip is cheap.
+// The post-login target is sanitised (safeInternalPath) against open-redirect, defaulting to the
+// CURRENT locale's dashboard so OAuth + email login keep the user on the locale they signed in from.
+export default async function LocaleLoginPage({ params, searchParams }: Props) {
+  const { locale } = await params;
+  const sp = await searchParams;
+  const dest = safeInternalPath(sp?.redirect, `/${locale}/dashboard`);
+
+  let authed = false;
+  try {
+    const supabase = createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    authed = !!user;
+  } catch {
+    // Treat any auth-read failure as a guest → render the form.
+  }
+  // NOTE: redirect() throws NEXT_REDIRECT, so it MUST run OUTSIDE the try/catch above
+  // (a catch would swallow the control-flow throw and wrongly render the form to an
+  // authenticated user).
+  if (authed) redirect(dest);
+
+  // Surface an OAuth / code-exchange failure (the callback redirects here as ?error=…) instead
+  // of dead-ending on a blank login form.
+  const initialError = typeof sp?.error === 'string' && sp.error ? sp.error : undefined;
+  return <AuthScreen mode="login" locale={locale} redirectTo={dest} initialError={initialError} />;
 }

@@ -14,6 +14,8 @@ interface AuthScreenProps {
   mode: AuthMode;
   locale: string;
   redirectTo?: string;
+  /** Seed the error banner (e.g. an OAuth failure the /auth/callback redirected here as ?error=…). */
+  initialError?: string;
 }
 
 type OAuthProvider = 'apple' | 'google' | 'github' | 'facebook' | 'twitter' | 'linkedin_oidc' | 'discord';
@@ -245,7 +247,7 @@ function SpinnerIcon() {
 
 function DemoScreen({ locale }: { locale: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
+    <div className="min-h-[100dvh] flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
       <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
         <div className="text-4xl">🚀</div>
         <h2 className="text-2xl font-bold text-white">MyAvatar.ge</h2>
@@ -262,18 +264,20 @@ function DemoScreen({ locale }: { locale: string }) {
   );
 }
 
-export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/' }: AuthScreenProps) {
+export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/', initialError }: AuthScreenProps) {
   if (!isSupabaseConfigured()) {
     return <DemoScreen locale={locale} />;
   }
-  return <AuthScreenInner mode={initialMode} locale={locale} redirectTo={redirectTo} />;
+  return <AuthScreenInner mode={initialMode} locale={locale} redirectTo={redirectTo} initialError={initialError} />;
 }
 
-function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthScreenProps) {
+function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialError }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loading, setLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Seed with any callback-supplied error (?error=…) so a failed OAuth handshake shows a reason
+  // instead of a blank form; cleared as soon as the user retries (every handler calls setError(null)).
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -523,7 +527,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
   if (success) {
     const isForgot = loadingProvider === 'forgot';
     return (
-      <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden">
+      <div className="relative min-h-[100dvh] flex items-center justify-center px-4 overflow-hidden">
         <BgGlow />
         <div className="relative z-10 w-full max-w-[420px] text-center p-8 rounded-2xl holo-panel">
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)' }}>
@@ -555,7 +559,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/' }: AuthSc
   // ─── Main auth screen ────────────────────────────────────────────────────
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden">
+    <div className="relative min-h-[100dvh] flex items-center justify-center px-4 py-12 overflow-hidden">
       <BgGlow />
 
       <div className="relative z-10 w-full max-w-[420px]">
