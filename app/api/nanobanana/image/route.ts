@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
+import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
+import { generateGrokImage } from '@/lib/ai/xaiImage';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -119,22 +121,61 @@ export async function POST(req: NextRequest) {
     if (ref.startsWith('data:')) referenceImageUrl = (await hostReferenceImage(ref)) || undefined;
     else if (/^https?:\/\//i.test(ref)) referenceImageUrl = ref;
 
-    // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
-    // than timing out; 1K finishes far sooner and exits the poll early.
-    const result = await generateNanoBananaImage({
-      prompt:      finalPrompt,
-      endpoint,
-      aspectRatio: body.aspectRatio ?? '1:1',
-      style:       styleLabel || undefined,
-      ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
-      pollMaxAttempts: 100,
-      pollIntervalMs:  2500,
-    });
+    // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to the primary
+    // image provider. If NanoBanana has tripped (3 hard failures inside the cooldown) skip it and
+    // fail-FAST to the Grok backup, instead of burning ~50s on a known-bad provider. Every outcome
+    // is recorded so the breaker opens/closes itself. Fail-open: no Redis → primary always runs.
+    const nbTripped = await isProviderTripped('nanobanana').catch(() => false);
+    let providerUrl: string | null = null;
+    let backupB64: string | null = null;
+    let providerText: string | undefined;
+    let credits: number | undefined;
+    let model = `NanoBananaAI ${endpoint.toUpperCase()}`;
+    if (!nbTripped) {
+      try {
+        // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
+        // than timing out; 1K finishes far sooner and exits the poll early.
+        const primary = await generateNanoBananaImage({
+          prompt:      finalPrompt,
+          endpoint,
+          aspectRatio: body.aspectRatio ?? '1:1',
+          style:       styleLabel || undefined,
+          ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
+          pollMaxAttempts: 100,
+          pollIntervalMs:  2500,
+        });
+        providerUrl = primary.url ?? null;
+        providerText = primary.text;
+        credits = primary.credits;
+        await recordProviderResult('nanobanana', !!primary.url).catch(() => {});
+      } catch (e) {
+        await recordProviderResult('nanobanana', false).catch(() => {});
+        providerText = e instanceof Error ? e.message : undefined;
+      }
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[nanobanana/image] breaker OPEN for nanobanana → fail-fast to Grok backup');
+    }
 
-    if (!result.url) {
+    // BACKUP LEG — breaker OPEN or the primary returned no image → route to the Grok backup (the
+    // designed image fallback). Returns null when XAI_API_KEY isn't set (leg simply unavailable →
+    // the 502 below fires exactly as before, no regression).
+    if (!providerUrl) {
+      try {
+        const grok = await generateGrokImage(finalPrompt);
+        if (grok?.url) { providerUrl = grok.url; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
+        else if (grok?.b64) { backupB64 = grok.b64; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
+        else if (grok) { await recordProviderResult('grok', false).catch(() => {}); }
+      } catch (e) {
+        await recordProviderResult('grok', false).catch(() => {});
+        if (!providerText) providerText = e instanceof Error ? e.message : undefined;
+      }
+    }
+
+    if (!providerUrl && !backupB64) {
       return NextResponse.json({
         success: false,
-        error:   result.text ?? 'NanoBanana returned no image URL',
+        error:   providerText ?? 'Image provider returned no image URL',
       }, { status: 502 });
     }
 
@@ -144,27 +185,41 @@ export async function POST(req: NextRequest) {
     // the bytes to our `*.supabase.co` bucket (CSP-allowed) returns a stable,
     // signed URL the client can display + download. Fail-open: if the copy fails,
     // fall back to the raw provider URL (better than nothing).
-    let hostedUrl = result.url;
-    try {
-      // Time-box the copy: a slow provider CDN must NOT hang the function until the
-      // Vercel maxDuration limit (that surfaced as an intermittent platform 500).
-      const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 25_000);
-      const r = await fetch(result.url, { signal: ac.signal }).finally(() => clearTimeout(to));
-      if (r.ok) {
-        const ct = r.headers.get('content-type') || 'image/png';
-        const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
-        const buf = Buffer.from(await r.arrayBuffer());
-        // Guard against pathologically large payloads blowing the function's memory.
-        if (buf.byteLength <= 18 * 1024 * 1024) {
-          const b64 = buf.toString('base64');
-          const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-          const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
-          if (signed) hostedUrl = signed;
+    let hostedUrl = providerUrl ?? '';
+    if (backupB64) {
+      // Grok returned raw base64 (no provider CDN URL to re-fetch) → upload the bytes directly.
+      try {
+        const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        const signed = await uploadAndSign('uploads', path, backupB64, 'image/png', 604800);
+        if (signed) hostedUrl = signed;
+      } catch { /* fail-open — final guard below rejects an empty url */ }
+    } else if (providerUrl) {
+      try {
+        // Time-box the copy: a slow provider CDN must NOT hang the function until the
+        // Vercel maxDuration limit (that surfaced as an intermittent platform 500).
+        const ac = new AbortController();
+        const to = setTimeout(() => ac.abort(), 25_000);
+        const r = await fetch(providerUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
+        if (r.ok) {
+          const ct = r.headers.get('content-type') || 'image/png';
+          const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
+          const buf = Buffer.from(await r.arrayBuffer());
+          // Guard against pathologically large payloads blowing the function's memory.
+          if (buf.byteLength <= 18 * 1024 * 1024) {
+            const b64 = buf.toString('base64');
+            const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+            const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
+            if (signed) hostedUrl = signed;
+          }
         }
+      } catch {
+        /* fail-open — keep the provider URL */
       }
-    } catch {
-      /* fail-open — keep the provider URL */
+    }
+
+    // A backup-b64 upload miss can leave no usable URL → treat as a provider miss (502).
+    if (!hostedUrl) {
+      return NextResponse.json({ success: false, error: 'Image host failed' }, { status: 502 });
     }
 
     // Best-effort: file the image into the signed-in user's Library so it appears
@@ -182,9 +237,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success:   true,
       url:       hostedUrl,
-      model:     `NanoBananaAI ${endpoint.toUpperCase()}`,
+      model,
       endpoint,
-      credits:   result.credits,
+      credits,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Image generation failed';

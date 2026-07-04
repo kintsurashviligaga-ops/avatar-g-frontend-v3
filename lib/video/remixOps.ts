@@ -21,6 +21,25 @@ import { join } from 'node:path';
 import { withRetry } from '@/lib/utils/withRetry';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { StallDetector } from '@/lib/jobs/stallDetector';
+import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
+
+// TASK 5 — fault-tolerance for the async i2v/faceswap poll loops. Budgets are env-DECOUPLED so
+// each provider can be tuned independently; a StallDetector surfaces a "provider hung in queue"
+// bottleneck in the logs (once per stall episode, no re-submit → no double-charge); the Redis
+// circuit breaker lets a caller fail-FAST to the ffmpeg fallback while a provider is melting down.
+const KLING_BUDGET_MS = Number(process.env.REMIX_KLING_BUDGET_MS) || 240_000;
+const ROOP_BUDGET_MS = Number(process.env.REMIX_ROOP_BUDGET_MS) || 540_000;
+const REMIX_STALL_MS = Number(process.env.REMIX_STALL_MS) || 90_000;
+
+/** Monotonic progress proxy for a Replicate prediction poll: status ordinal (starting→processing
+ *  →succeeded) scaled above the growing `logs` length, so ANY real forward movement resets the
+ *  stall clock and a truly hung job (same status, no new logs) trips it. */
+function predictionProgress(status?: string, logs?: unknown): number {
+  const ord = status === 'succeeded' ? 3 : status === 'processing' ? 2 : status === 'starting' ? 1 : 0;
+  const logLen = typeof logs === 'string' ? logs.length : 0;
+  return ord * 1_000_000 + logLen;
+}
 
 const exec = promisify(execFile);
 const BIN = ffmpegStatic as unknown as string | null;
@@ -378,6 +397,17 @@ export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: st
   const token = (process.env.REPLICATE_API_TOKEN || '').trim();
   if (!token || !targetVideoUrl || !swapImageUrl) return null;
   if (!/^https?:\/\//i.test(targetVideoUrl) || !/^https?:\/\//i.test(swapImageUrl)) return null; // replicate fetches by URL
+  // CIRCUIT BREAKER (Task 5.3): if roop has tripped (3 hard fails in the cooldown), fail-FAST so
+  // the caller drops to its fallback instead of burning ~9 min on a known-bad provider. Fail-open.
+  if (await isProviderTripped('replicate-roop').catch(() => false)) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.faceswap] breaker OPEN for replicate-roop → skipping (fail-fast to fallback)');
+    return null;
+  }
+  // Track whether we've already fed the breaker one outcome for this call, so the catch below can
+  // record a failure ONLY when a create/poll THROW bypassed the inline records (exactly one record
+  // per call → the breaker counts create-timeouts/5xx/DNS, its primary target, without double-count).
+  let recorded = false;
   try {
     const create = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
@@ -386,21 +416,30 @@ export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: st
       body: JSON.stringify({ version: FACESWAP_MODEL_VERSION, input: { swap_image: swapImageUrl, target_video: targetVideoUrl } }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!create.ok) return null;
+    if (!create.ok) { recorded = true; await recordProviderResult('replicate-roop', false).catch(() => {}); return null; }
     const pred = (await create.json().catch(() => ({}))) as { status?: string; output?: unknown; urls?: { get?: string } };
     const pollUrl = pred.urls?.get;
     const pick = (o: unknown): string | null => typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
     let output = pred.output;
     let status = pred.status;
-    const deadline = Date.now() + 540_000;
+    const stall = new StallDetector({ stallMs: REMIX_STALL_MS, startPct: predictionProgress(status) });
+    const deadline = Date.now() + ROOP_BUDGET_MS;
     while (pollUrl && status !== 'succeeded' && status !== 'failed' && status !== 'canceled' && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 4_000));
       const poll = await fetch(pollUrl, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) }).catch(() => null);
       if (!poll || !poll.ok) continue;
-      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown };
+      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown; logs?: unknown };
       status = j.status; output = j.output;
+      stall.tick(predictionProgress(status, j.logs));
+      if (stall.shouldFlag()) {
+        // eslint-disable-next-line no-console
+        console.warn(`[remix.faceswap] replicate-roop stalled — no forward progress for ${Math.round(stall.check().msSinceProgress / 1000)}s (still polling, no re-submit)`);
+      }
     }
     const outUrl = status === 'succeeded' ? pick(output) : null;
+    // Record the provider outcome so the breaker opens after repeated hard failures / timeouts.
+    recorded = true;
+    await recordProviderResult('replicate-roop', !!outUrl).catch(() => {});
     if (!outUrl) return null;
     // Re-host to Supabase (the replicate.delivery URL is short-lived + CSP-blocked in-app).
     const r = await fetch(outUrl, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
@@ -408,6 +447,9 @@ export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: st
     const buf = Buffer.from(await r.arrayBuffer());
     return (await hostMp4(buf, 'faceswap')) ?? outUrl;
   } catch (err) {
+    // A create-fetch throw (30s timeout / 5xx / DNS) or a poll-loop throw lands here WITHOUT having
+    // hit an inline record — count it so the breaker actually opens on the hung-provider case.
+    if (!recorded) await recordProviderResult('replicate-roop', false).catch(() => {});
     // eslint-disable-next-line no-console
     console.warn('[remix.faceswap] failed:', err instanceof Error ? err.message : err);
     return null;
@@ -426,6 +468,15 @@ const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed'
 export async function klingI2v(startImage: string, prompt: string, aspect: '9:16' | '16:9' | '1:1' = '9:16', referenceImages?: string[]): Promise<string | null> {
   const token = (process.env.REPLICATE_API_TOKEN || '').trim();
   if (!token || !startImage) return null;
+  // CIRCUIT BREAKER (Task 5.3): Kling melting down (3 hard fails in cooldown) → fail-FAST so the
+  // caller drops to kenBurnsClip immediately instead of burning ~4 min on a known-bad provider.
+  if (await isProviderTripped('replicate-kling').catch(() => false)) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.i2v] breaker OPEN for replicate-kling → skipping (fail-fast to kenBurns fallback)');
+    return null;
+  }
+  // See roopFaceSwapVideo — exactly one breaker record per call, incl. the create/poll THROW path.
+  let recorded = false;
   try {
     // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'video' config, apply its learned
     // prompt directive as a suffix so the loop's improvement reaches every clip. Fail-soft.
@@ -457,22 +508,31 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
       },
       { maxAttempts: 2, baseDelayMs: 800, label: 'remix-kling-i2v' },
     );
-    if (!create.ok) return null;
+    if (!create.ok) { recorded = true; await recordProviderResult('replicate-kling', false).catch(() => {}); return null; }
     const pred = (await create.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
     const pollUrl = pred.urls?.get;
     const pickUrl = (o: unknown): string | null =>
       typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pickUrl(o[o.length - 1]) : null;
     let output = pred.output;
     let status = pred.status;
-    const deadline = Date.now() + 240_000;
+    const stall = new StallDetector({ stallMs: REMIX_STALL_MS, startPct: predictionProgress(status) });
+    const deadline = Date.now() + KLING_BUDGET_MS;
     while (pollUrl && status !== 'succeeded' && status !== 'failed' && status !== 'canceled' && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3_000));
       const poll = await fetch(pollUrl, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) }).catch(() => null);
       if (!poll || !poll.ok) continue;
-      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown };
+      const j = (await poll.json().catch(() => ({}))) as { status?: string; output?: unknown; logs?: unknown };
       status = j.status; output = j.output;
+      stall.tick(predictionProgress(status, j.logs));
+      if (stall.shouldFlag()) {
+        // eslint-disable-next-line no-console
+        console.warn(`[remix.i2v] replicate-kling stalled — no forward progress for ${Math.round(stall.check().msSinceProgress / 1000)}s (still polling, no re-submit)`);
+      }
     }
     const providerUrl = status === 'succeeded' ? pickUrl(output) : null;
+    // Record the outcome so the breaker opens after repeated hard failures / timeouts.
+    recorded = true;
+    await recordProviderResult('replicate-kling', !!providerUrl).catch(() => {});
     if (!providerUrl) return null;
     // Re-host to a CSP-allowed Supabase URL so the <video> plays + the clip persists.
     const r = await fetch(providerUrl, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
@@ -480,6 +540,9 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
     const buf = Buffer.from(await r.arrayBuffer());
     return (await hostMp4(buf, 'i2v')) ?? providerUrl;
   } catch (err) {
+    // A create-fetch throw (30s timeout / 5xx after retries / DNS) or a poll-loop throw lands here
+    // WITHOUT an inline record — count it so the breaker actually opens on the hung-provider case.
+    if (!recorded) await recordProviderResult('replicate-kling', false).catch(() => {});
     // eslint-disable-next-line no-console
     console.warn('[remix.i2v] failed:', err instanceof Error ? err.message : err);
     return null;

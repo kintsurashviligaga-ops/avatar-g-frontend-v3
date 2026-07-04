@@ -39,6 +39,7 @@ import { useJobQueue } from '@/store/useJobQueue';
 import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobCreate, trackJobUpdate, trackJobComplete, trackJobFail } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
+import { StallDetector } from '@/lib/jobs/stallDetector';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
 
@@ -2327,17 +2328,42 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // One i2v clip per ~5s. 6s → single clip; 30/60s → N clips (same product photo,
     // varied scene prompts) generated in parallel. `noMusic` lets the remix op return a
     // silent clip when we'll re-score it in assemble (avoids a wasted MusicGen call).
+    // FAULT-TOLERANCE (Task 5.1) — each clip gets its OWN AbortController chained to the job
+    // signal AND a strict per-clip timeout, so a SINGLE hung remote render self-releases (→ null)
+    // instead of freezing the whole multi-clip Promise.all. `onClipSettle` feeds the batch
+    // StallDetector below so a slow provider is surfaced mid-render. Never re-submits → the clip
+    // just drops; no double-charge.
+    const CLIP_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_TIMEOUT_MS) || 45_000;
+    let onClipSettle: (ok: boolean) => void = () => {};
     const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
       // Pick the shot for this clip — rotate through the uploaded photos by scene index.
       const imageUrl = photos[(sceneIndex >= 0 ? sceneIndex : 0) % photos.length] ?? productImage;
+      const clipAc = new AbortController();
+      const onAbort = () => clipAc.abort();
+      signal.addEventListener('abort', onAbort); // job-cancel → abort this clip too
+      const to = setTimeout(() => clipAc.abort(), CLIP_TIMEOUT_MS); // hard per-clip ceiling
       try {
         const r = await fetch('/api/video/remix', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: clipAc.signal,
           body: JSON.stringify({ op: 'productad', imageUrl, preset: productPreset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
-        return r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
-      } catch { return null; }
+        const out = r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
+        onClipSettle(!!out);
+        return out;
+      } catch {
+        // clip timed out (clipAc), the whole job was cancelled (signal), or a network miss —
+        // release this clip so the batch proceeds with whatever landed.
+        onClipSettle(false);
+        if (!signal.aborted) {
+          // eslint-disable-next-line no-console
+          console.warn(`[product] clip ${sceneIndex} released after ${CLIP_TIMEOUT_MS}ms (timeout/error) — batch continues`);
+        }
+        return null;
+      } finally {
+        clearTimeout(to);
+        signal.removeEventListener('abort', onAbort);
+      }
     };
     // Send finished clip(s) to /api/video/assemble for music + voiceover + overlays.
     const assemble = async (segments: { url: string; durationSec: number }[]): Promise<string | null> => {
@@ -2373,7 +2399,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }
       const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
       setStage(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
-      const clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
+      // Batch StallDetector (Task 5.1): tick as clips settle; a 5s watchdog surfaces a "provider
+      // slow" stage the FIRST time no clip has landed for the stall window — an honest bottleneck
+      // flag with NO re-submit (each clip already has its own 45s ceiling), so no double-charge.
+      const stall = new StallDetector({ stallMs: Number(process.env.NEXT_PUBLIC_PRODUCT_STALL_MS) || 30_000 });
+      let settled = 0;
+      onClipSettle = () => { settled += 1; stall.tick(Math.round((settled / n) * 100)); };
+      const slowStage = locale === 'en' ? `Generating ${n} clips… ⏳ provider is slow, still working`
+        : locale === 'ru' ? `Генерация ${n} клипов… ⏳ провайдер медленный, продолжаем`
+        : `${n} კლიპის გენერაცია… ⏳ პროვაიდერი ნელია, ვაგრძელებთ`;
+      const watchdog = setInterval(() => { if (!signal.aborted && stall.shouldFlag()) setStage(slowStage); }, 5_000);
+      let clips: string[];
+      try {
+        clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
+      } finally {
+        clearInterval(watchdog);
+      }
       if (clips.length < 2) {
         if (clips[0]) { setProductResultUrl(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); return clips[0]; }
         throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
