@@ -227,6 +227,35 @@ export function detectIntent(
 }
 
 /**
+ * Dispatch-only ALLOWLIST for the AUTONOMOUS chat dispatch (OmniStudio send()). detectIntent's regex
+ * banks are deliberately loose — bare model keywords ("flux"/"sdxl"), and `verb .* media-noun` — so a
+ * QUESTION ("is flux better than sdxl?"), a DECLARATIVE ("my client asked for a music video"), a
+ * COMPLAINT ("the app won't let me generate a video"), or a DELIBERATION ("i can't decide whether to
+ * generate a poster") all classify as a generation intent. Auto-firing a PAID render for those is a
+ * false-positive hijack, and a blocklist can't enumerate every non-command phrasing. So this returns
+ * true ONLY for an IMPERATIVE generate COMMAND — the message must LEAD with a generate verb (optionally
+ * a polite "can you …" prefix). Everything else (questions/declaratives/complaints/comparisons) falls
+ * through to the text stream. Bias: over-block (a real command not phrased imperatively falls to chat =
+ * safe) over over-fire (a wrong charge). NEVER changes detectIntent's classification — other callers
+ * keep the raw intent; this only decides whether the message is imperative enough to auto-spend a credit.
+ */
+export function isGenerativeCommand(text: string): boolean {
+  const s = text.trim();
+  if (!s) return false;
+  // Must LEAD with a generate verb, allowing a short chain of polite lead-ins first ("please generate
+  // …", "can you make …", "could you please generate …"). The polite set is specific, so a question
+  // that starts with how/what/is/should/which (not in the set) can't reach the verb → it isn't a command.
+  const leads = /^\s*((please|can|could|would|will|you|u|kindly)\s+){0,3}(make|create|generate|render|compose|design|draw|produce|animate|paint|write\s+me)\b/i.test(s);
+  if (!leads) return false;
+  // EXCLUDE an EDIT of an EXISTING asset ("make MY/THIS song sound better") — a mixing request with no
+  // source in chat → falls to chat. A FRESH generate with a quality descriptor ("make A poster that
+  // looks better", "…make it look better than the last one") uses an article/pronoun, not a possessive,
+  // so it is NOT excluded and still dispatches.
+  if (/^\s*make\s+(my|this|that|the)\b[^?]*\b(sounds?|looks?)\s+(better|good|nicer|louder|clearer|worse|sharper|cleaner)\b/i.test(s)) return false;
+  return true;
+}
+
+/**
  * Maps intent category to the Replicate service type
  * used by the /api/replicate/* routes.
  */

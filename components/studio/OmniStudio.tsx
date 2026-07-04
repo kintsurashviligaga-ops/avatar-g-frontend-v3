@@ -40,6 +40,7 @@ import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
+import { detectIntent, isGenerativeCommand } from '@/lib/chat/intentDetector';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
 
@@ -3084,6 +3085,49 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return;
       }
     }
+    // ── AUTONOMOUS CHAT DISPATCH (image · music) ───────────────────────────────
+    // STEP 1 (agency): in CHAT mode a natural generative ask — "generate a majestic tiger image",
+    // "make an epic lofi beat" — is classified by the shared detectIntent brain and dispatched to
+    // the SAME per-job Cap-3 queue the panels use, WITHOUT a manual mode switch. Only high-confidence
+    // action-verb matches fire; the result renders in its OWN chat bubble like every other job. Runs
+    // BEFORE the busy gate (like the mode intercepts) so it's queue-governed + concurrent. Anything
+    // else (questions, "describe this photo", chat) falls through to the multimodal stream, unchanged
+    // — fail-open, zero regression. Video keeps its isVideoIntent route below (broadened to honor this).
+    // Guard against FALSE-POSITIVE HIJACK with an ALLOWLIST: detectIntent's banks are loose (bare
+    // model keywords, verb + `.*` + media noun), so questions/declaratives/complaints ("is flux better
+    // than sdxl", "my client asked for a music video", "the app won't let me generate a video") would
+    // classify as generation. isGenerativeCommand dispatches ONLY an imperative command that LEADS with
+    // a generate verb; everything else stays in the text stream (no wrong render / no wrong charge).
+    const chatIntent = mode === 'chat' && text && isGenerativeCommand(text) ? detectIntent(text) : null;
+    if (chatIntent && chatIntent.confidence >= 0.7) {
+      // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
+      if (chatIntent.intent === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
+        setOptionsOpen(false);
+        const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
+        const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
+        const neg = imgNegative.trim();
+        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}) };
+        if (imgCount > 1) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
+        setInput(''); setAttachments([]);
+        return;
+      }
+      // MUSIC — text→music using the Music panel defaults (genre/duration/tempo). A non-audio
+      // attachment falls through to chat (an audio attachment is a cover/voice source).
+      if (chatIntent.intent === 'music_generation' && !attachments.some((a) => !isAudio(a.mimeType))) {
+        setOptionsOpen(false);
+        const mAudioRef = attachments.find((a) => isAudio(a.mimeType))?.dataUrl;
+        const mAudioMime = attachments.find((a) => isAudio(a.mimeType))?.mimeType;
+        const mUseTrained = (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice;
+        runMusicJob({
+          prompt: text, userBubble: text, medias: attachments, useTrained: mUseTrained,
+          audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
+          duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
+          voiceType: musicVoiceType, lyrics: musicLyrics.trim(),
+        });
+        setInput(''); setAttachments([]);
+        return;
+      }
+    }
     // A generation is already running (this mode OR another — e.g. a video render still in
     // flight while the user switches to Music and hits send). Don't silently swallow it:
     // tell the user why, then bail. `busy` is kept explicit for this mode; genActiveRef
@@ -3369,7 +3413,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // clear note, and fire the proven storyboard→render flow (createStoryboard) —
     // the same path the Video tab uses. Anything that is NOT a clear video brief
     // falls through to the normal multimodal chat below, unchanged.
-    if (mode === 'chat' && text && isVideoIntent(text)) {
+    if (mode === 'chat' && text && isGenerativeCommand(text) && (isVideoIntent(text) || (chatIntent?.intent === 'video_generation' && chatIntent.confidence >= 0.7))) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
