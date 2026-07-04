@@ -41,6 +41,9 @@ const ALLOWED: Record<string, string> = {
   '20260626c_add_credits.sql': 'supabase/migrations/20260626c_add_credits.sql',
   // Pipeline Iteration — per-clip checkpoints + clip_cache + generation_jobs cost columns.
   '20260627_pipeline_checkpoints.sql': 'supabase/migrations/20260627_pipeline_checkpoints.sql',
+  // Task 6 — durable queue position: generation_jobs.position_in_queue (nullable int). Additive +
+  // idempotent (ADD COLUMN IF NOT EXISTS); the app is already live + fail-open without it.
+  '20260704_generation_jobs_position.sql': 'supabase/migrations/20260704_generation_jobs_position.sql',
   '006_gemini_chat_history.sql': 'migrations/006_gemini_chat_history.sql',
 };
 
@@ -54,6 +57,7 @@ const EXPECTED_FNS: Record<string, string[]> = {
   '20260626b_analytics_events.sql': [], // table + RLS only, no new functions
   '20260626c_add_credits.sql': ['add_credits'],
   '20260627_pipeline_checkpoints.sql': [], // tables + columns only, no new functions
+  '20260704_generation_jobs_position.sql': [], // single ADD COLUMN, no new functions
   '006_gemini_chat_history.sql': [],
 };
 
