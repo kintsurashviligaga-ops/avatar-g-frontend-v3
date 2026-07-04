@@ -2787,6 +2787,62 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [submitJob, trackJobSettle, notifyCredit]);
 
+  /**
+   * MUSIC generation → a capped-parallel queue JOB (own signal + jobId + durable row), so a
+   * track renders ALONGSIDE images/product/swap through the tray instead of the old
+   * single-slot busy path. The server keeps its Udio→ElevenLabs→MusicGen latency-failover
+   * (/api/ai/music); we pass the jobId so its completion row upserts under the client id
+   * (one row, no duplicate). Result lands in its OWN chat bubble by id.
+   */
+  const runMusicJob = useCallback((m: {
+    prompt: string; userBubble: string; medias?: Media[]; useTrained: boolean;
+    audioRef?: string; audioMime?: string; audioMode: string; genre: string;
+    duration: number; tempo: string; instrumental: boolean; voiceType: string; lyrics: string;
+  }) => {
+    const bubbleId = `music_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: m.userBubble, ...(m.medias?.length ? { medias: m.medias } : {}) },
+      { role: 'assistant', text: m.useTrained ? t.generatingMyVoice : '', id: bubbleId, genKind: 'music' },
+    ]);
+    submitJob({
+      kind: 'music',
+      label: m.prompt.trim().slice(0, 42) || (locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა'),
+      onSettle: trackJobSettle,
+      run: async ({ signal, onProgress, jobId }) => {
+        trackJobCreate(jobId, 'music', { prompt: m.prompt });
+        trackJobUpdate(jobId, 'Composing', 10);
+        onProgress({ pct: 10 });
+        // Cover / voice: host the attached track first so the request body stays tiny.
+        const uploadedAudioUrl = m.audioRef ? await uploadBigFile(m.audioRef, m.audioMime || 'audio/mpeg') : undefined;
+        const isVoiceClone = !!uploadedAudioUrl && m.audioMode === 'voice' && !m.useTrained;
+        const res = await fetch('/api/ai/music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          signal,
+          body: JSON.stringify({
+            prompt: m.prompt, style: m.genre, durationSec: m.duration, tempo: m.tempo, jobId,
+            ...(m.useTrained ? { useMyVoice: true } : {}),
+            instrumental: (m.useTrained || isVoiceClone) ? false : m.instrumental,
+            ...(!m.instrumental && !m.useTrained && !isVoiceClone ? { voiceType: m.voiceType } : {}),
+            ...((m.useTrained || isVoiceClone || !m.instrumental) && m.lyrics ? { lyrics: m.lyrics } : {}),
+            ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
+          }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string };
+        onProgress({ pct: 100 });
+        if (j.success && j.url) {
+          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: m.prompt, genre: m.genre, instrumental: m.instrumental, ...(!m.instrumental && m.lyrics ? { lyrics: m.lyrics } : {}) } });
+          notifyCredit('music', { seconds: m.duration === 0 ? 90 : m.duration });
+          return j.url;
+        }
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.error || t.musicFailed}` });
+        throw new Error(j.error || 'music failed');
+      },
+    });
+  }, [submitJob, trackJobSettle, updateBubble, notifyCredit, locale, t]);
+
   // Stream one chat turn from /api/chat/gemini into a fresh assistant bubble. Shared
   // by send (a new turn) and regenerateChat (re-roll the last answer). Owns its own
   // gen token so Stop / a superseded request never clobbers a newer stream.
@@ -2895,6 +2951,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setAttachments([]);
       return;
     }
+    // MUSIC → the capped-parallel JOB QUEUE (also bypasses the busy gate below), so a track
+    // renders alongside images/product/swap. An attached AUDIO is a cover/voice source; a
+    // non-audio attachment falls through to multimodal chat (unchanged).
+    {
+      const mAudioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
+      const mAudioMime = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
+      const mBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
+      const mUseTrained = mode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice;
+      if (mode === 'music' && (text || mAudioRef || mUseTrained) && !mBlocked) {
+        setOptionsOpen(false);
+        const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
+        const userBubble = text || (mUseTrained ? t.voiceMode : mAudioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
+        runMusicJob({
+          prompt: musicPrompt, userBubble, medias: attachments, useTrained: mUseTrained,
+          audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
+          duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
+          voiceType: musicVoiceType, lyrics: musicLyrics.trim(),
+        });
+        setInput('');
+        setAttachments([]);
+        return;
+      }
+    }
     // A generation is already running (this mode OR another — e.g. a video render still in
     // flight while the user switches to Music and hits send). Don't silently swallow it:
     // tell the user why, then bail. `busy` is kept explicit for this mode; genActiveRef
@@ -2968,84 +3047,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // paths run per-job (own signal + jobId + durable row) through the tray, so there is no
     // longer a shared-ref image branch here.
 
-    // ── MUSIC GENERATION (Udio) ────────────────────────────────────────────────
-    // In music mode the prompt describes a vibe; POST it to /api/ai/music (Udio →
-    // re-hosted to Supabase) and render the track as an inline audio player.
-    // Same rule as Image: music is text-to-music. With attachments present, fall
-    // through to multimodal chat so the files are actually sent (and cleared).
-    // Music mode: an attached AUDIO becomes a COVER source (Udio reimagines it in the
-    // chosen genre/prompt); image/file/video attachments instead route to chat.
-    const audioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
-    const audioMime = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
-    const musicBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
-    // Generate music when there's a vibe typed OR a voice/cover attached — you should
-    // NOT have to type a prompt just to sing in your own voice (that was a dead end).
-    // Faithful trained-voice path needs neither typed text nor an upload — just the toggle.
-    const useTrained = mode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice;
-    if (mode === 'music' && (text || audioRef || useTrained) && !musicBlocked) {
-      // Always have a prompt for the API: the typed vibe, else the lyrics, else the genre.
-      const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
-      const userBubble = text || (useTrained ? t.voiceMode : audioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
-      setMessages((prev) => [...prev, { role: 'user', text: userBubble, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: useTrained ? t.generatingMyVoice : '' }]);
-      setInput(''); setAttachments([]); setBusy(true);
-      try {
-        // Cover: upload the attached track to Supabase first (browser → storage), so
-        // the request body stays tiny — the audio never hits the function-body limit.
-        const uploadedAudioUrl = audioRef ? await uploadBigFile(audioRef, audioMime || 'audio/mpeg') : undefined;
-        // Voice-clone path: the uploaded audio is the user's VOICE → MiniMax sings the
-        // lyrics in it. Otherwise the attached audio is a cover (melody) source.
-        const isVoiceClone = !!uploadedAudioUrl && musicAudioMode === 'voice' && !useTrained;
-        const res = await fetch('/api/ai/music', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: musicPrompt,
-            style: musicGenre,
-            durationSec: musicDuration,
-            tempo: musicTempo,
-            // Trained voice (RVC) → no upload needed; the server uses the user's model.
-            ...(useTrained ? { useMyVoice: true } : {}),
-            instrumental: (useTrained || isVoiceClone) ? false : musicInstrumental,
-            // Sung-vocal gender for a SONG (not the trained/clone paths, which carry
-            // their own voice) → the route appends the matching vocal descriptors.
-            ...(!musicInstrumental && !useTrained && !isVoiceClone ? { voiceType: musicVoiceType } : {}),
-            // Lyrics ride along for vocal tracks, voice clones AND the trained voice.
-            ...((useTrained || isVoiceClone || !musicInstrumental) && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}),
-            ...(useTrained ? {} : isVoiceClone
-              ? { voiceReference: uploadedAudioUrl }
-              : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
-          }),
-          credentials: 'include',
-          signal: ac.signal,
-        });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string };
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant') {
-            next[next.length - 1] =
-              j.success && j.url
-                ? { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: musicPrompt, genre: musicGenre, instrumental: musicInstrumental, ...(!musicInstrumental && musicLyrics.trim() ? { lyrics: musicLyrics.trim() } : {}) } }
-                : { role: 'assistant', text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.error || t.musicFailed}` };
-          }
-          return next;
-        });
-        // Full song (duration 0 = full ~2-4 min track) bills at the top 90s tier, not 0.
-        if (mine() && j.success && j.url) notifyCredit('music', { seconds: musicDuration === 0 ? 90 : musicDuration });
-      } catch {
-        if (!mine()) return;
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.musicFailed}` };
-          return next;
-        });
-      } finally {
-        if (mine()) setBusy(false);
-      }
-      return;
-    }
+    // MUSIC GENERATION is handled by the capped-parallel queue INTERCEPT above (runMusicJob),
+    // which returns before this point. A music request with a NON-audio attachment falls
+    // through here to the multimodal chat branch (unchanged) — the intercept's `!mBlocked`
+    // guard lets it pass.
 
     // ── VIDEO GENERATION (30-second film pipeline) ─────────────────────────────
     // In video mode the prompt is a scene; an attached photo locks the character.

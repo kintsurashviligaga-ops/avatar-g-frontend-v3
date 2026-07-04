@@ -190,8 +190,13 @@ export async function POST(req: NextRequest) {
   let durationSec = 30;
   let tempo = '';
   let voiceType: 'female' | 'male' | 'duet' | '' = '';
+  // DURABLE PROGRESS — the composer's tray jobId. When present the completed row is UPSERTED
+  // under this id (converging with the client's placeholder) so a track produces ONE
+  // generation_jobs row, not a client + server duplicate.
+  let clientJobId = '';
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; jobId?: unknown };
+    if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
@@ -341,7 +346,9 @@ export async function POST(req: NextRequest) {
     // identity when testing without sign-in (so anonymous generations still show up).
     try {
       const { user } = await authedClientFromRequest(req);
-      await recordCompletedAsset({ id: randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'music', url: hostedUrl, prompt: capped });
+      // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
+      // row (one row, no duplicate); direct/other callers still get a fresh UUID.
+      await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'music', url: hostedUrl, prompt: capped });
     } catch {
       /* fail-open */
     }
