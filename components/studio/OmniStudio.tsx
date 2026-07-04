@@ -3574,7 +3574,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       kind: 'remix',
       label,
       createParams: { title: label },
-      onSettle: trackJobSettle,
+      onSettle: (job) => {
+        trackJobSettle(job);
+        // Ghost-asset wipe (Step 5): once the swap SETTLES (done / canceled / error) drop the
+        // source video from the panel so no intermediate upload lingers as a stray ref. Guarded
+        // by url so a source the user has SINCE replaced isn't clobbered; the cleanup effect then
+        // revokes its blob previewUrl. (videoCharacterRef is shared with the Video panel + is a
+        // plain data-URL string, not a blob — GC'd normally — so it's intentionally left intact.)
+        setSwapSourceVideo((prev) => (prev && prev.url === source ? null : prev));
+      },
       run: async ({ signal, jobId }) => {
         // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
         trackJobUpdate(jobId, label, 20);
@@ -3598,6 +3606,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       },
     });
   }, [swapSourceVideo, videoCharacterRef, videoOrientation, locale, submitJob, updateBubble, notifyCredit, trackJobSettle, t.remixRunning, t.remixFailed]);
+
+  // Ghost-asset hygiene (Step 5): the swap source-video PREVIEW is a blob object URL
+  // (URL.createObjectURL). Revoke it whenever it changes (a replacement upload) or the studio
+  // unmounts (navigate away / leave mid-render), so a dismissed face-swap never leaks a dangling
+  // blob ref. This is the single revoker — the remove button + settle-wipe just null the state.
+  useEffect(() => {
+    const prevUrl = swapSourceVideo?.previewUrl;
+    return () => { if (prevUrl) { try { URL.revokeObjectURL(prevUrl); } catch { /* noop */ } } };
+  }, [swapSourceVideo?.previewUrl]);
 
   // Upload a remix video / music track → signed URL (auth-gated; null when not
   // signed in, in which case the picker stays empty and Run remains disabled).
@@ -5345,7 +5362,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                       <video src={swapSourceVideo.previewUrl || swapSourceVideo.url} muted playsInline preload="metadata" className="h-28 w-full object-cover" />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 p-1.5"><p className="truncate text-[10px] text-white">{swapSourceVideo.name}</p></div>
-                      <button type="button" aria-label={locale === 'en' ? 'remove video' : locale === 'ru' ? 'удалить видео' : 'ვიდეოს მოცილება'} onClick={() => setSwapSourceVideo((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; })}
+                      <button type="button" aria-label={locale === 'en' ? 'remove video' : locale === 'ru' ? 'удалить видео' : 'ვიდეოს მოცილება'} onClick={() => setSwapSourceVideo(null)}
                         className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-[11px] text-white hover:bg-black/80 touch-manipulation before:absolute before:-inset-2 before:content-['']">✕</button>
                     </div>
                   )}
