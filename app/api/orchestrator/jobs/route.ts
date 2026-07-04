@@ -12,9 +12,95 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { JOB_COLUMNS, type GenerationJobRow } from '@/lib/orchestrator/jobs';
+import { serviceTypeForKind } from '@/lib/jobs/durableJobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const clampPct = (n: unknown): number => {
+  const v = Number(n);
+  return !Number.isFinite(v) ? 0 : v < 0 ? 0 : v > 100 ? 100 : Math.round(v);
+};
+
+interface TrackBody {
+  op?: 'create' | 'update' | 'complete' | 'fail';
+  id?: string;
+  kind?: string;
+  stage?: string;
+  pct?: number;
+  url?: string;
+  error?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * POST /api/orchestrator/jobs — DURABLE PROGRESS write-side. The local composer persists a
+ * placeholder generation_jobs row for each Image / Product / Swap job (row `id` === the
+ * tray jobId, so the hydration poll dedupes it via mergeTrayJobs), then syncs stage/pct/
+ * result as the render progresses — so a mid-flight reload recovers the correct baseline.
+ *
+ * Writes go through the USER'S OWN session client, so RLS (owner insert/update) guarantees
+ * a caller can only touch their own rows. Fully fail-open + additive: any miss returns 200
+ * and NEVER blocks the render (the client fires these best-effort). Unauth → 200 no-op.
+ */
+export async function POST(req: NextRequest) {
+  const { supabase, user } = await authedClientFromRequest(req);
+  if (!user) return NextResponse.json({ ok: false, skipped: 'unauth' });
+
+  let body: TrackBody;
+  try {
+    body = (await req.json()) as TrackBody;
+  } catch {
+    return NextResponse.json({ ok: false, error: 'bad json' }, { status: 400 });
+  }
+
+  const id = typeof body.id === 'string' ? body.id.slice(0, 120) : '';
+  if (!id || !body.op) return NextResponse.json({ ok: false, error: 'id + op required' }, { status: 400 });
+
+  try {
+    if (body.op === 'create') {
+      // Upsert a placeholder (pending). onConflict:id keeps a re-fired create idempotent.
+      const { error } = await supabase.from('generation_jobs').upsert(
+        {
+          id,
+          user_id: user.id,
+          service_type: serviceTypeForKind(body.kind),
+          status: 'pending',
+          current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : 'queued',
+          pct: clampPct(body.pct),
+          params: body.params && typeof body.params === 'object' ? body.params : {},
+        },
+        { onConflict: 'id' },
+      );
+      if (error) return NextResponse.json({ ok: false, error: error.message });
+    } else if (body.op === 'update') {
+      // RLS scopes the update to the owner; we match by id only.
+      const { error } = await supabase
+        .from('generation_jobs')
+        .update({ status: 'processing', current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : null, pct: clampPct(body.pct) })
+        .eq('id', id);
+      if (error) return NextResponse.json({ ok: false, error: error.message });
+    } else if (body.op === 'complete') {
+      const { error } = await supabase
+        .from('generation_jobs')
+        .update({ status: 'completed', pct: 100, signed_url: typeof body.url === 'string' ? body.url.slice(0, 2000) : null })
+        .eq('id', id);
+      if (error) return NextResponse.json({ ok: false, error: error.message });
+    } else if (body.op === 'fail') {
+      const { error } = await supabase
+        .from('generation_jobs')
+        .update({ status: 'failed', error: typeof body.error === 'string' ? body.error.slice(0, 500) : 'failed' })
+        .eq('id', id);
+      if (error) return NextResponse.json({ ok: false, error: error.message });
+    } else {
+      return NextResponse.json({ ok: false, error: 'unknown op' }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    // Fail-open: a DB/table miss must never surface as a render error.
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'error' });
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { supabase, user } = await authedClientFromRequest(req);

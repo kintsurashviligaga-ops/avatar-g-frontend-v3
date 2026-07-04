@@ -29,6 +29,29 @@ const KIND_BY_SERVICE: Record<ProduceKind, JobKind> = {
   interior: 'image',
 };
 
+/**
+ * Inverse (write-side): a tray JobKind → a VALID generation_jobs.service_type. The table's
+ * CHECK constraint only allows film|avatar|interior|image|music|voice, so the composer's
+ * 'product'/'remix'/'video' kinds (all video renders) collapse to 'film'. Used when the
+ * local composer persists a placeholder row so its progress survives a reload.
+ */
+export function serviceTypeForKind(kind: JobKind | string | undefined): ProduceKind {
+  switch (kind) {
+    case 'image':
+      return 'image';
+    case 'music':
+      return 'music';
+    case 'avatar':
+    case 'lipsync':
+      return 'avatar';
+    case 'video':
+    case 'product':
+    case 'remix':
+    default:
+      return 'film';
+  }
+}
+
 /** Localized fallback label per kind (when the row carries no usable prompt). */
 const KIND_LABEL: Record<JobKind, Record<Lang, string>> = {
   video: { en: 'Video', ru: 'Видео', ka: 'ვიდეო' },

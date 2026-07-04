@@ -191,6 +191,51 @@ describe('JobQueue — capped-parallel with positions', () => {
     expect(q.activeCount()).toBe(3);
     expect(q.list().filter((j) => j.status === 'queued')).toHaveLength(5);
   });
+
+  it('fires onSettle exactly once with the final job on success (done + result)', async () => {
+    const { q } = makeQueue();
+    const a = deferredRunner();
+    const settled: Job[] = [];
+    q.submit({ kind: 'image', label: 'A', run: a.run, onSettle: (j) => settled.push(j) });
+    a.resolve('https://x/img.png');
+    await flush();
+    expect(settled).toHaveLength(1);
+    expect(settled[0]!.status).toBe('done');
+    expect(settled[0]!.result).toBe('https://x/img.png');
+    expect(settled[0]!.pct).toBe(100);
+  });
+
+  it('fires onSettle with failed + error, and with canceled', async () => {
+    const { q } = makeQueue(1);
+    const fail = deferredRunner();
+    const settledFail: Job[] = [];
+    q.submit({ kind: 'video', label: 'F', run: fail.run, onSettle: (j) => settledFail.push(j) });
+    fail.reject(new Error('boom'));
+    await flush();
+    expect(settledFail[0]!.status).toBe('failed');
+    expect(settledFail[0]!.error).toBe('boom');
+
+    // Cancel a QUEUED job → finalizes 'canceled' immediately (a rendering runner that
+    // ignores its abort signal would never settle, so we hold the single slot with an
+    // occupier and cancel the one still waiting).
+    const settledCancel: Job[] = [];
+    const { q: q2 } = makeQueue(1);
+    q2.submit({ kind: 'video', label: 'occupy', run: deferredRunner().run });
+    const cid = q2.submit({ kind: 'video', label: 'C', run: deferredRunner().run, onSettle: (j) => settledCancel.push(j) });
+    q2.cancel(cid);
+    expect(settledCancel[0]!.status).toBe('canceled');
+  });
+
+  it('an onSettle that throws never breaks the queue (next job still promotes)', async () => {
+    const { q } = makeQueue(1);
+    const a = deferredRunner();
+    const b = deferredRunner();
+    q.submit({ kind: 'image', label: 'A', run: a.run, onSettle: () => { throw new Error('telemetry down'); } });
+    q.submit({ kind: 'image', label: 'B', run: b.run });
+    a.resolve('x');
+    await flush();
+    expect(q.list()[1]!.status).toBe('rendering'); // B promoted despite A's onSettle throwing
+  });
 });
 
 /** Let queued microtasks (promise callbacks) flush. */

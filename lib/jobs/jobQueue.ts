@@ -77,6 +77,14 @@ export interface SubmitInput {
   kind: JobKind;
   label: string;
   run: JobRunner;
+  /**
+   * Fired ONCE when the job reaches a terminal state (done | failed | canceled), with the
+   * final public job (result/error populated). Used by durable-progress to mark the
+   * server `generation_jobs` row completed/failed without threading it through the runner's
+   * internal return points. Best-effort — a throw here is swallowed, never re-entering the
+   * queue.
+   */
+  onSettle?: (job: Job) => void;
 }
 
 export interface JobQueueOptions {
@@ -98,6 +106,7 @@ const clampPct = (n: number): number =>
 interface Internal extends Job {
   _run: JobRunner;
   _abort: AbortController | null;
+  _onSettle?: (job: Job) => void;
 }
 
 export class JobQueue {
@@ -149,6 +158,7 @@ export class JobQueue {
       endedAt: null,
       _run: input.run,
       _abort: null,
+      _onSettle: input.onSettle,
     };
     this.jobs.push(job);
     this.pump();
@@ -270,6 +280,13 @@ export class JobQueue {
     job.position = null;
     job.endedAt = this.now();
     job._abort = null;
+    // Terminal notification (durable-progress marks the DB row completed/failed). Best-
+    // effort: a throw here must never propagate back into the queue's pump.
+    try {
+      job._onSettle?.(publicView(job));
+    } catch {
+      /* swallow */
+    }
   }
 
   private recomputePositions(): void {

@@ -37,6 +37,8 @@ import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
 import { useJobQueue } from '@/store/useJobQueue';
 import { useDurableProgress } from '@/hooks/useDurableProgress';
+import { trackJobCreate, trackJobUpdate, trackJobComplete, trackJobFail } from '@/lib/jobs/trackJob';
+import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
 
@@ -1787,6 +1789,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // DURABLE PROGRESS — hydrate the tray from the server's active generation_jobs on mount
   // + poll, so an in-flight render survives a page reload (bars sync to DB pct/stage).
   useDurableProgress(locale);
+  // Write-side of durable progress: mark the persisted generation_jobs row terminal when a
+  // local job settles (done → completed+url · failed/canceled → failed). Fired by the queue
+  // engine's onSettle; best-effort (fire-and-forget POST). id === jobId, so the hydration
+  // poll dedupes it via mergeTrayJobs.
+  const trackJobSettle = useCallback((job: QueueJob) => {
+    if (job.status === 'done') trackJobComplete(job.id, typeof job.result === 'string' ? job.result : undefined);
+    else trackJobFail(job.id, job.status === 'canceled' ? 'canceled' : (job.error ?? undefined));
+  }, []);
   useEffect(() => {
     if (transitCharacterUrl) {
       setMode('video');
@@ -2196,16 +2206,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // the panel while one is in flight (so panel results never collide). Per-job `signal`
     // wires the tray's cancel. Billing is unchanged (same remix/assemble calls).
     const jobLabel = locale === 'en' ? 'Product ad' : locale === 'ru' ? 'Реклама товара' : 'პროდუქტის რეკლამა';
-    submitJob({ kind: 'product', label: jobLabel, run: async ({ signal, onProgress }): Promise<string> => {
+    submitJob({ kind: 'product', label: jobLabel, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Reports stage → tray, sets the panel result on success, throws on failure so the job
     // reflects done/failed.
+    // Durable-progress: persist a placeholder row (id === jobId) + flip to processing.
+    trackJobCreate(jobId, 'product', { title: productBrand.trim() || jobLabel });
+    trackJobUpdate(jobId, jobLabel, 10);
     setProductBusy(true);
     setProductResultUrl(null);
     setProductProgress(null);
     setProductResultDur(null);
     setProductHasAudio(false);
     setProductError(null);
-    const setStage = (s: string) => { setProductProgress(s); onProgress({ stage: s }); };
+    const setStage = (s: string) => { setProductProgress(s); onProgress({ stage: s }); trackJobUpdate(jobId, s, 50); };
     // Dedicated product aspect → the remix op's aspect AND the assemble orientation.
     // ('vertical' renders 1080×1920; 'portrait' would be 4:5 — so map 9:16 → vertical.)
     const aspect = productAspect;
@@ -2301,7 +2314,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setProductProgress(null);
     }
     } });
-  }, [productImage, productBusy, locale, submitJob, productImages, productPreset, productDuration, productAspect, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
+  }, [productImage, productBusy, locale, submitJob, trackJobSettle, productImages, productPreset, productDuration, productAspect, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -2693,7 +2706,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     submitJob({
       kind: 'image',
       label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),
-      run: async ({ signal, onProgress }) => {
+      onSettle: trackJobSettle,
+      run: async ({ signal, onProgress, jobId }) => {
+        // Durable-progress: persist a placeholder row (id === jobId) + flip to processing.
+        trackJobCreate(jobId, 'image', { prompt }, 'Rendering', 8);
+        trackJobUpdate(jobId, 'Rendering', 8);
         onProgress({ pct: 8 });
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
@@ -2713,7 +2730,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         throw new Error(j.error || 'image failed');
       },
     });
-  }, [submitJob, updateBubble, notifyCredit, t]);
+  }, [submitJob, updateBubble, notifyCredit, trackJobSettle, t]);
 
   const runImageBatch = useCallback(async (spec: ImageRegenSpec, count: number) => {
     const myGen = ++genIdRef.current;
@@ -3375,7 +3392,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     submitJob({
       kind: 'remix',
       label,
-      run: async ({ signal }) => {
+      onSettle: trackJobSettle,
+      run: async ({ signal, jobId }) => {
+        // Durable-progress: persist a placeholder row (id === jobId) + flip to processing.
+        trackJobCreate(jobId, 'remix', { title: label });
+        trackJobUpdate(jobId, label, 20);
         // Host the character photo (a data URL) so kling can fetch it as a reference image.
         const photoRef = (await uploadBigFile(charRef, 'image/jpeg')) || charRef;
         const aspect = orient === 'landscape' ? '16:9' : orient === 'square' ? '1:1' : '9:16';
@@ -3394,7 +3415,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         throw new Error(j.error || 'character swap failed');
       },
     });
-  }, [swapSourceVideo, videoCharacterRef, videoOrientation, locale, submitJob, updateBubble, notifyCredit, t.remixRunning, t.remixFailed]);
+  }, [swapSourceVideo, videoCharacterRef, videoOrientation, locale, submitJob, updateBubble, notifyCredit, trackJobSettle, t.remixRunning, t.remixFailed]);
 
   // Upload a remix video / music track → signed URL (auth-gated; null when not
   // signed in, in which case the picker stays empty and Run remains disabled).

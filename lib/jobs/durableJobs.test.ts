@@ -1,4 +1,4 @@
-import { mapDbJobToTrayJob, mapActiveDbJobs, mergeTrayJobs } from './durableJobs';
+import { mapDbJobToTrayJob, mapActiveDbJobs, mergeTrayJobs, serviceTypeForKind } from './durableJobs';
 import type { GenerationJobRow } from '@/lib/orchestrator/jobs';
 import type { Job } from './jobQueue';
 
@@ -92,5 +92,21 @@ describe('durableJobs — hydrate the tray from generation_jobs', () => {
     expect(mergeTrayJobs([], [])).toEqual([]);
     expect(mergeTrayJobs([localJob()], [])).toHaveLength(1);
     expect(mergeTrayJobs([], [mapDbJobToTrayJob(row())])).toHaveLength(1);
+  });
+
+  it('serviceTypeForKind (write-side) maps every JobKind to a VALID generation_jobs type', () => {
+    // Only film|avatar|interior|image|music|voice satisfy the table CHECK — the video-ish
+    // composer kinds collapse to 'film'.
+    expect(serviceTypeForKind('image')).toBe('image');
+    expect(serviceTypeForKind('music')).toBe('music');
+    expect(serviceTypeForKind('avatar')).toBe('avatar');
+    expect(serviceTypeForKind('lipsync')).toBe('avatar');
+    expect(serviceTypeForKind('product')).toBe('film');
+    expect(serviceTypeForKind('remix')).toBe('film');
+    expect(serviceTypeForKind('video')).toBe('film');
+    expect(serviceTypeForKind(undefined)).toBe('film');
+    // Round-trip: a written kind hydrates back to a sensible tray kind.
+    expect(mapDbJobToTrayJob(row({ service_type: serviceTypeForKind('image') })).kind).toBe('image');
+    expect(mapDbJobToTrayJob(row({ service_type: serviceTypeForKind('product') })).kind).toBe('video');
   });
 });
