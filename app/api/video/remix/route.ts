@@ -136,9 +136,10 @@ export async function POST(req: NextRequest) {
   // check — an anonymous free bypass. Paid ops now REQUIRE a signed-in user; the standard
   // paid edits debit CREDIT_COSTS.remix_video up front (matching the client's on-submit credit
   // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize) are untouched.
-  // productad keeps its own ad-budget guard (checkAdBudget) but now also requires auth.
+  // productad ALSO debits now (audit: it reached paid Kling with zero server-side charge) — see
+  // the once-per-ad gate below; it keeps its opt-in ad-budget guard (checkAdBudget) on top.
   const PAID_REMIX_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
-  const CREDIT_CHARGED_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove']);
+  const CREDIT_CHARGED_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
   const { user: remixUser } = await authedClientFromRequest(req);
   const remixUid = remixUser?.id ?? null;
   // Transaction context for compensation logging (the client's tray jobId when present).
@@ -146,10 +147,17 @@ export async function POST(req: NextRequest) {
   if (PAID_REMIX_OPS.has(op) && !remixUid) {
     return NextResponse.json({ url: null, error: 'Sign in to use this edit.', authRequired: true }, { status: 401 });
   }
-  // Did we actually take an up-front credit off the wallet? (Only then must a downstream
-  // miss REFUND it.) Admins + the ad-budget-guarded productad op are never charged here.
+  // ONCE-PER-AD BILLING: a product ad fires ONE /api/video/remix call PER CLIP (a 60s ad = up to 12
+  // genClip calls, sceneIndex 0..n-1; a single 6s ad has no sceneIndex). Charge the ad EXACTLY ONCE
+  // — on its primary clip (single-clip / clip 0) — so a multi-clip ad is billed PER-AD (one
+  // remix_video, matching the client's single credit toast), NOT 12× per clip. Secondary clips
+  // (sceneIndex >= 1) skip the debit; each is its own request with charged=false → nothing to refund.
+  const productAdSecondaryClip = op === 'productad'
+    && Number.isFinite(Number(body.sceneIndex)) && Math.floor(Number(body.sceneIndex)) >= 1;
+  // Did we actually take an up-front credit off the wallet? (Only then must a downstream miss
+  // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
-  if (CREDIT_CHARGED_OPS.has(op) && remixUid && !(await isAdminUser(remixUid))) {
+  if (CREDIT_CHARGED_OPS.has(op) && !productAdSecondaryClip && remixUid && !(await isAdminUser(remixUid))) {
     const debit = await deductCredits(remixUid, CREDIT_COSTS.remix_video, `remix:${op}`);
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
       const message = debit.reason === 'insufficient'
@@ -202,7 +210,7 @@ export async function POST(req: NextRequest) {
         const mt = img.match(/^data:([^;,]+)[;,]/);
         const b64 = img.includes(',') ? img.split(',')[1] ?? '' : '';
         const v = validateAdImageMeta({ contentType: mt?.[1] ?? '', sizeBytes: base64ByteLength(b64) });
-        if (!v.ok) return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 });
+        if (!v.ok) { await refundCharge('bad-image'); return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 }); }
       }
       // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
       const startImgRaw = /^data:image\//i.test(img) ? img : await resolveMedia(img);
@@ -211,7 +219,7 @@ export async function POST(req: NextRequest) {
       const startImg = startImgRaw && /^data:image\//i.test(startImgRaw)
         ? await fitImageToAspect(startImgRaw, aspectP)
         : startImgRaw;
-      if (!startImg) return fail('Add a product photo.');
+      if (!startImg) return failRefund('Add a product photo.', 'no-photo');
       // Per-preset visual STYLE (the look) + per-scene ACTIONS (the multi-clip arc).
       // Single-clip (no sceneIndex) → just the style. Multi-clip (sceneIndex set) →
       // a distinct scene action prepended, cycled, so a 30/60s ad reads as a sequence
@@ -242,12 +250,12 @@ export async function POST(req: NextRequest) {
           ? Math.max(1, Math.floor(Number(body.sceneCount)))
           : sceneIdx >= 0 ? sceneIdx + 1 : 1;
         const budget = checkAdBudget({ scenes: adScenes, withTts: false, withMusic: sceneIdx < 0 && body.noMusic !== true }, { capUsd });
-        if (!budget.ok) return NextResponse.json({ url: null, error: budget.message, topUpNeeded: true }, { status: 402 });
+        if (!budget.ok) { await refundCharge('over-budget'); return NextResponse.json({ url: null, error: budget.message, topUpNeeded: true }, { status: 402 }); }
       }
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
       const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
-      if (!url) return fail('Product ad generation failed.');
+      if (!url) return failRefund('Product ad generation failed.', 'render-null');
       // FIX 3 — SINGLE-clip ads (sceneIdx < 0) come back silent; lay a preset score
       // under them so the 6s ad isn't mute. Multi-clip (sceneIdx >= 0) skips this — the
       // assemble pipeline scores the stitched master, so per-clip music would clash.
@@ -267,7 +275,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[video/remix] productad', err instanceof Error ? err.message : err);
-      return fail('Product ad generation failed.');
+      return failRefund('Product ad generation failed.', 'render-error');
     }
   }
 
