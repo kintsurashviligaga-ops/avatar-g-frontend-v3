@@ -154,11 +154,19 @@ export async function POST(req: NextRequest) {
   // (sceneIndex >= 1) skip the debit; each is its own request with charged=false → nothing to refund.
   const productAdSecondaryClip = op === 'productad'
     && Number.isFinite(Number(body.sceneIndex)) && Math.floor(Number(body.sceneIndex)) >= 1;
+  // CRITICAL BILLING FIX — scope the idempotency ref PER-TRANSACTION. The deduct_credits RPC
+  // dedupes GLOBALLY on (user_id, metadata->>'ref') with no time window; a per-OP ref
+  // (`remix:${op}`) meant a user's SECOND ad/swap matched the FIRST ledger row and was silently
+  // NOT charged (revenue loss). Bind the ref to the client's jobId — all clips of one product ad
+  // share it, so a retry of the primary clip still dedupes, while a brand-new job → new ref →
+  // correctly charges. Fall back to a fresh uuid when no jobId is supplied (still fixes the
+  // under-charge; that path just isn't retry-idempotent, which is safe — none of these auto-retry).
+  const txnRef = `remix:${op}:${jobId ?? crypto.randomUUID()}`;
   // Did we actually take an up-front credit off the wallet? (Only then must a downstream miss
   // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
   if (CREDIT_CHARGED_OPS.has(op) && !productAdSecondaryClip && remixUid && !(await isAdminUser(remixUid))) {
-    const debit = await deductCredits(remixUid, CREDIT_COSTS.remix_video, `remix:${op}`);
+    const debit = await deductCredits(remixUid, CREDIT_COSTS.remix_video, txnRef);
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
       const message = debit.reason === 'insufficient'
         ? 'Not enough credits for this edit. Top up to continue.'
@@ -180,7 +188,7 @@ export async function POST(req: NextRequest) {
     if (!charged || refunded || !remixUid) return;
     refunded = true;
     try {
-      const r = await refundCredits(remixUid, CREDIT_COSTS.remix_video, `remix:${op}:refund:${why}`);
+      const r = await refundCredits(remixUid, CREDIT_COSTS.remix_video, `${txnRef}:refund:${why}`);
       if (!r.ok) {
         // eslint-disable-next-line no-console
         console.error(`[video/remix] REFUND FAILED op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why} reason=${r.reason} — ${CREDIT_COSTS.remix_video} credit(s) may be STRANDED, manual reconcile needed`);

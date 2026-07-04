@@ -41,6 +41,7 @@ import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand } from '@/lib/chat/intentDetector';
+import { createSession, saveMessage } from '@/lib/chat-history';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
@@ -2394,7 +2395,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       try {
         const r = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: clipAc.signal,
-          body: JSON.stringify({ op: 'productad', imageUrl, preset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
+          // jobId → the remix route's PER-TRANSACTION idempotency ref (remix:productad:<jobId>).
+          // All clips of one ad share it; only the primary clip is charged, so a retry of that clip
+          // dedupes while a NEW ad (new jobId) charges correctly — fixing the once-per-user under-charge.
+          body: JSON.stringify({ op: 'productad', imageUrl, preset, aspect, noMusic, jobId, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
         const out = r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
@@ -3021,6 +3025,60 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Stream one chat turn from /api/chat/gemini into a fresh assistant bubble. Shared
   // by send (a new turn) and regenerateChat (re-roll the last answer). Owns its own
   // gen token so Stop / a superseded request never clobbers a newer stream.
+  // ── Server-side chat persistence (cross-device / cross-reload durability) ──────────────────
+  // Chat previously lived ONLY in localStorage (device-local, lost on cache-clear). We now mirror
+  // each turn to Supabase (chat_sessions/chat_messages) via the fail-soft chat-history helpers.
+  // A session is minted LAZILY on the first authed chat turn; anonymous users skip entirely
+  // (fail-open — no server row, RLS would reject anyway). The session id is cached in a ref +
+  // localStorage (scoped to the signed-in user) so a reload on the SAME device keeps appending to
+  // the same server session; a different account on that device mints its own.
+  const chatSessionIdRef = useRef<string | null>(null);
+  const chatSessionInflightRef = useRef<Promise<string | null> | null>(null);
+  // Clear the cached session on ANY auth change so an IN-PLACE account switch (A signs out, B
+  // signs in with no page reload) never appends B's turns to A's cached session. ensureChatSession
+  // then re-resolves under B's identity (the localStorage pointer is uid-scoped, so same-user
+  // reloads still resume the same session).
+  useEffect(() => {
+    const sb = createBrowserClient();
+    if (!sb) return;
+    const { data } = sb.auth.onAuthStateChange(() => { chatSessionIdRef.current = null; });
+    return () => { try { data.subscription.unsubscribe(); } catch { /* noop */ } };
+  }, []);
+  const ensureChatSession = useCallback((): Promise<string | null> => {
+    if (chatSessionIdRef.current) return Promise.resolve(chatSessionIdRef.current);
+    // In-flight dedup: two concurrent first-turns share ONE createSession (no duplicate sessions).
+    if (chatSessionInflightRef.current) return chatSessionInflightRef.current;
+    const run = (async (): Promise<string | null> => {
+      try {
+        const sb = createBrowserClient();
+        if (!sb) return null;
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) return null; // anonymous → no server persistence (fail-open)
+        let sid: string | null = null;
+        try {
+          const raw = localStorage.getItem('myavatar:chat-session');
+          if (raw) { const p = JSON.parse(raw) as { uid?: string; sid?: string }; if (p?.uid === user.id && p.sid) sid = p.sid; }
+        } catch { /* ignore unreadable storage */ }
+        if (!sid) {
+          sid = await createSession(user.id, 'agent-g');
+          if (sid) { try { localStorage.setItem('myavatar:chat-session', JSON.stringify({ uid: user.id, sid })); } catch { /* ignore */ } }
+        }
+        chatSessionIdRef.current = sid;
+        return sid;
+      } catch { return null; }
+      finally { chatSessionInflightRef.current = null; }
+    })();
+    chatSessionInflightRef.current = run;
+    return run;
+  }, []);
+  // Fire-and-forget mirror of one chat turn to the server. Never blocks or throws into the chat
+  // UX; ensureChatSession + saveMessage are both fail-soft (anonymous / RLS / network → no-op).
+  const persistChatTurn = useCallback((role: 'user' | 'assistant', content: string) => {
+    const text = (content || '').trim();
+    if (!text) return;
+    void ensureChatSession().then((sid) => { if (sid) void saveMessage(sid, role, text); });
+  }, [ensureChatSession]);
+
   const streamChat = useCallback(async (history: Msg[]) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
@@ -3028,6 +3086,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const mine = () => genIdRef.current === myGen;
     setMessages([...history, { role: 'assistant', text: '' }]);
     setBusy(true);
+    let assistantText = ''; // accumulate the streamed reply so we can mirror it to the server on completion
     // Build the Gemini payload: text-only → string content; with media → native
     // multimodal parts (image / file) the route forwards as inline_data.
     const payload = history.map((m) => {
@@ -3064,6 +3123,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           try {
             const j = JSON.parse(mm[1]!) as { text?: string };
             if (j.text) {
+              assistantText += j.text;
               setMessages((prev) => {
                 if (!mine()) return prev;
                 const next = [...prev];
@@ -3075,6 +3135,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           } catch { /* ignore non-JSON keepalive lines */ }
         }
       }
+      // Stream finished cleanly (not superseded) → mirror the completed reply to the server.
+      if (mine() && assistantText.trim()) persistChatTurn('assistant', assistantText);
     } catch {
       if (!mine()) return; // stopped / superseded — keep the partial stream as-is
       setMessages((prev) => {
@@ -3086,7 +3148,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [chatLang, chatTier]);
+  }, [chatLang, chatTier, persistChatTurn]);
 
   // Regenerate the LAST assistant reply: re-stream from the conversation up to (and
   // including) the user turn that prompted it — the standard chat "try again" /
@@ -3502,8 +3564,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
     const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
+    persistChatTurn('user', text); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
