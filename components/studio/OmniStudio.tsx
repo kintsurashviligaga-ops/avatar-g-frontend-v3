@@ -1358,9 +1358,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // superseded request can never clobber a newer message (or re-clear `busy`).
   const abortRef = useRef<AbortController | null>(null);
   const genIdRef = useRef(0);
-  // Always-current mirror of `busy || storyboardBusy || productBusy || remixBusy` (set by
-  // the loading-bar effect below) so any generation entry point can reject a second
-  // parallel run with a friendly toast, stale-closure-free.
+  // Always-current mirror of `busy || storyboardBusy || remixBusy` (set by the loading-bar
+  // effect below) so the legacy single-render entry points can reject a second parallel run
+  // with a friendly toast, stale-closure-free. (Product ad is queue-governed now, not here.)
   const genActiveRef = useRef(false);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
@@ -1482,12 +1482,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // PHASE 2 L1 — Product-Ad mode: one product photo (hosted URL) + a commercial preset.
   const [productImage, setProductImage] = useState<string | null>(null);
   const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
-  const [productBusy, setProductBusy] = useState(false);
-  const [productResultUrl, setProductResultUrl] = useState<string | null>(null);
   // PHASE 4 — Product-Ad duration: 6s = one clip; 30/60s = N clips (same product
   // photo, varied scene prompts) stitched + scored via the assemble pipeline.
   const [productDuration, setProductDuration] = useState<6 | 30 | 60>(6);
-  const [productProgress, setProductProgress] = useState<string | null>(null);
   // Product-Ad context — brand/price/hook + CTA + Georgian voiceover. Optional; when set
   // they feed the EXISTING assemble marketing overlay (price chip + CTA pill + brand
   // lower-third) and an auto voiceover script (TTS'd server-side on the cloned KA voice).
@@ -1502,11 +1499,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // surface so a failed generation isn't silent.
   const [productAspect, setProductAspect] = useState<'9:16' | '1:1' | '16:9'>('9:16');
   const [productImages, setProductImages] = useState<string[]>([]); // EXTRA shots beyond productImage (shot 1)
-  const [productError, setProductError] = useState<string | null>(null);
-  // FIX 3 — product-ad result meta for the result card: real clip duration (read from
-  // the <video>) + whether a music bed was laid (single-clip ads now carry a score).
-  const [productResultDur, setProductResultDur] = useState<number | null>(null);
-  const [productHasAudio, setProductHasAudio] = useState(false);
   // v330 — dedicated CHARACTER REFERENCE slot: one identity-lock image (data URL),
   // separate from the generic attachment tray so it reads as its own asset slot.
   // Up to 3 character-reference photos (multi-angle identity lock). The FIRST is the
@@ -1745,18 +1737,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // product), regardless of which panel is open. Event-driven (no prop/context refactor):
   // the shell just listens for `myavatar:busy`.
   useEffect(() => {
-    const active = busy || storyboardBusy || productBusy || remixBusy;
-    // Mirror the combined generation state into a ref so every generation entry point
-    // (send / product ad / character swap) can cheaply guard against a SECOND parallel
-    // run without adding four state deps to each callback (a stale closure would let a
-    // second render slip through). The ref is always current — updated on every state flip.
+    const active = busy || storyboardBusy || remixBusy;
+    // Mirror the combined generation state into a ref so the legacy single-render entry points
+    // (send / character swap) can cheaply guard against a SECOND parallel run. Product ad is NO
+    // LONGER here — it runs per-job through the Cap-3 queue (tray-tracked), like image/music.
     genActiveRef.current = active;
     const label = storyboardBusy ? (mode === 'video' ? 'video' : 'video')
-      : productBusy ? 'product'
       : remixBusy ? 'remix'
       : mode; // chat · image · music · video · lipsync
     try { window.dispatchEvent(new CustomEvent('myavatar:busy', { detail: { active, service: active ? label : null } })); } catch { /* ignore */ }
-  }, [busy, storyboardBusy, productBusy, remixBusy, mode]);
+  }, [busy, storyboardBusy, remixBusy, mode]);
   // ISSUE 1 — lock the PAGE behind the options drawer on mobile. The drawer itself
   // already scrolls (overflow-y-auto + overscroll-contain + touch-pan-y), but without
   // pinning the body a swipe still bubbled to the html/body and scrolled the whole page.
@@ -2280,42 +2270,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     reader.readAsDataURL(file);
   }, [rejectAdImage, productImages.length, locale]);
 
+  // Patch an existing chat bubble by id — the basis of PER-JOB result isolation: every queue
+  // flow finalizes/updates its OWN bubble by id without ever touching another job's bubble.
+  const updateBubble = useCallback((id: string, patch: Partial<Msg>) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  }, []);
+
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
   const generateProductAd = useCallback(() => {
-    if (!productImage || productBusy) return;
-    // PHASE 2 — the product ad now renders through the capped-parallel QUEUE so it runs
-    // ALONGSIDE other jobs (cap 3) instead of hard-blocking the composer. Its result still
-    // lands in the Product panel; `productBusy` prevents launching a SECOND product ad from
-    // the panel while one is in flight (so panel results never collide). Per-job `signal`
-    // wires the tray's cancel. Billing is unchanged (same remix/assemble calls).
+    if (!productImage) return;
+    // The product ad renders PER-JOB in its OWN chat bubble (by id) through the Cap-3 queue —
+    // NO productBusy gate, so N product ads run CONCURRENTLY, each fully self-contained (its inputs
+    // are SNAPSHOTTED at click), so results never clobber a single panel slot. A per-clip 45s
+    // timeout + StallDetector (below) keep one hung scene from freezing the whole multi-clip job.
+    // Billing unchanged (same remix/assemble calls). Result lands in chat like image/music/swap.
     const jobLabel = locale === 'en' ? 'Product ad' : locale === 'ru' ? 'Реклама товара' : 'პროდუქტის რეკლამა';
-    submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
-    // Reports stage → tray, sets the panel result on success, throws on failure so the job
-    // reflects done/failed.
-    // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
-    trackJobUpdate(jobId, jobLabel, 10);
-    setProductBusy(true);
-    setProductResultUrl(null);
-    setProductProgress(null);
-    setProductResultDur(null);
-    setProductHasAudio(false);
-    setProductError(null);
-    const setStage = (s: string) => { setProductProgress(s); onProgress({ stage: s }); trackJobUpdate(jobId, s, 50); };
+    const bubbleId = `product_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    // ── SNAPSHOT every panel input NOW so this job is independent of later panel edits AND of
+    //    other concurrent product jobs (true per-job isolation via jobId/bubbleId). ────────────
+    const photos = [productImage, ...productImages].filter((p): p is string => !!p);
+    const firstPhoto = productImage;
+    const preset = productPreset;
+    const duration = productDuration;
     // Dedicated product aspect → the remix op's aspect AND the assemble orientation.
     // ('vertical' renders 1080×1920; 'portrait' would be 4:5 — so map 9:16 → vertical.)
     const aspect = productAspect;
     const orientationForAssemble = productAspect === '16:9' ? 'landscape' : productAspect === '1:1' ? 'square' : 'vertical';
-    // Multi-shot: shot 1 (productImage) + extra shots, rotated across the clips so a
-    // 30/60s ad shows several angles. A single photo keeps the original behaviour.
-    const photos = [productImage, ...productImages].filter((p): p is string => !!p);
-    // ── Brand context → marketing overlay + auto voiceover ──────────────────────────
-    // The optional brand/price/hook/CTA fields drive (a) the EXISTING assemble marketing
-    // overlay (price chip + CTA pill + brand lower-third, SVG→PNG burn) and (b) a short
-    // Georgian voiceover script TTS'd server-side on the cloned KA voice. Both are
-    // applied by /api/video/assemble — so when ANY of them is set we route the clip(s)
-    // through assemble (the single-clip path now dubs + overlays too). With none set the
-    // fast remix-only 6s path is preserved exactly.
+    // ── Brand context → marketing overlay + auto voiceover (all snapshotted). ────────────────
     const ctaText = productCtaText(productCta, productCtaCustom, locale);
     const lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
     const overlayText = (productBrand.trim() || productHook.trim()) || undefined;
@@ -2326,7 +2308,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ? generateVoiceoverScript({ brandName: productBrand, productPrice, productHook, ctaText, locale })
       : '';
     const enrich = Boolean(marketing || voiceoverScript.trim());
-    const scorePrompt = `${productPreset} product commercial, premium, uplifting`;
+    const scorePrompt = `${preset} product commercial, premium, uplifting`;
+    // Open the result in the chat (like image/music/swap): close the panel + drop a progress bubble.
+    setOptionsOpen(false);
+    setMessages((prev) => [...prev, { role: 'user', text: `🛍 ${productBrand.trim() || jobLabel}` }, { role: 'assistant', text: t.remixRunning, id: bubbleId }]);
+    submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
+    // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
+    trackJobUpdate(jobId, jobLabel, 10);
+    // Stage → THIS job's bubble (by id) + tray. Never touches shared panel state, so concurrent
+    // product jobs each report into their own bubble.
+    const setStage = (s: string) => { updateBubble(bubbleId, { text: s }); onProgress({ stage: s }); trackJobUpdate(jobId, s, 50); };
+    // Land the finished video INTO this job's bubble (never a shared slot).
+    const landVideo = (url: string) => updateBubble(bubbleId, { text: '', videoUrl: url, orientation: orientationForAssemble });
     // One i2v clip per ~5s. 6s → single clip; 30/60s → N clips (same product photo,
     // varied scene prompts) generated in parallel. `noMusic` lets the remix op return a
     // silent clip when we'll re-score it in assemble (avoids a wasted MusicGen call).
@@ -2339,7 +2332,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     let onClipSettle: (ok: boolean) => void = () => {};
     const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
       // Pick the shot for this clip — rotate through the uploaded photos by scene index.
-      const imageUrl = photos[(sceneIndex >= 0 ? sceneIndex : 0) % photos.length] ?? productImage;
+      const imageUrl = photos[(sceneIndex >= 0 ? sceneIndex : 0) % photos.length] ?? firstPhoto;
       const clipAc = new AbortController();
       const onAbort = () => clipAc.abort();
       signal.addEventListener('abort', onAbort); // job-cancel → abort this clip too
@@ -2347,7 +2340,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       try {
         const r = await fetch('/api/video/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: clipAc.signal,
-          body: JSON.stringify({ op: 'productad', imageUrl, preset: productPreset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
+          body: JSON.stringify({ op: 'productad', imageUrl, preset, aspect, noMusic, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
         const out = r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
@@ -2386,7 +2379,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       } catch { return null; }
     };
     try {
-      if (productDuration <= 6) {
+      if (duration <= 6) {
         // With brand context: silent clip → assemble (music + VO + overlays). Without:
         // the original fast path (remix lays a preset score, no extra round-trip).
         const res = await genClip(-1, enrich);
@@ -2394,12 +2387,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (enrich) {
           setStage(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
           const finalUrl = await assemble([{ url: res.url, durationSec: 6 }]);
-          if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+          if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
         }
-        setProductResultUrl(res.url); setProductHasAudio(res.music); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film');
+        landVideo(res.url); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film');
         return res.url;
       }
-      const n = Math.round(productDuration / 5); // 30→6, 60→12 clips of ~5s
+      const n = Math.round(duration / 5); // 30→6, 60→12 clips of ~5s
       setStage(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
       // Batch StallDetector (Task 5.1): tick as clips settle; a 5s watchdog surfaces a "provider
       // slow" stage the FIRST time no clip has landed for the stall window — an honest bottleneck
@@ -2418,26 +2411,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         clearInterval(watchdog);
       }
       if (clips.length < 2) {
-        if (clips[0]) { setProductResultUrl(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); return clips[0]; }
+        if (clips[0]) { landVideo(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); return clips[0]; }
         throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
       }
       setStage(enrich
         ? (locale === 'en' ? 'Stitching + voiceover + branding…' : locale === 'ru' ? 'Сборка + озвучка + брендинг…' : 'შეერთება + გახმოვანება + ბრენდინგი…')
         : (locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…'));
       const finalUrl = await assemble(clips.map((url) => ({ url, durationSec: 5 })));
-      // Assembled master carries the ElevenLabs music bed (+ VO/overlays) → audio present.
-      if (finalUrl) { setProductResultUrl(finalUrl); setProductHasAudio(true); notifyCredit('video', { seconds: productDuration }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
-      if (clips[0]) { setProductResultUrl(clips[0]); return clips[0]; } // fail-open: show the first clip
+      // Assembled master carries the ElevenLabs music bed (+ VO/overlays).
+      if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+      if (clips[0]) { landVideo(clips[0]); return clips[0]; } // fail-open: show the first clip
       throw new Error(locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.');
     } catch (e) {
-      setProductError(e instanceof Error ? e.message : (locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.'));
-      throw e instanceof Error ? e : new Error('product ad failed'); // surface as a failed job in the tray
-    } finally {
-      setProductBusy(false);
-      setProductProgress(null);
+      // Error lands in THIS job's bubble (never a shared panel slot); rethrow → tray shows failed.
+      updateBubble(bubbleId, { text: `⚠️ ${e instanceof Error ? e.message : (locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.')}` });
+      throw e instanceof Error ? e : new Error('product ad failed');
     }
     } });
-  }, [productImage, productBusy, locale, submitJob, trackJobSettle, productImages, productPreset, productDuration, productAspect, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover]);
+  }, [productImage, locale, submitJob, trackJobSettle, updateBubble, productImages, productPreset, productDuration, productAspect, notifyCredit, productBrand, productPrice, productHook, productCta, productCtaCustom, productVoiceover, autoSaveToLibrary, t.remixRunning]);
 
   // Remix a completed film: re-render ONLY the edited scene(s), reuse the rest
   // (POST /api/pipeline/remix with the bubble's stored landed clips + brief). The
@@ -2811,10 +2802,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   /** Replace a chat bubble by its stable id — parallel jobs each finalize their OWN
    *  bubble (the single-slot flows update "the last bubble"; a queue of parallel jobs
    *  cannot). */
-  const updateBubble = useCallback((id: string, patch: Partial<Msg>) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
-  }, []);
-
   /**
    * Run ONE image generation as a capped-parallel QUEUE JOB. Up to MAX_CONCURRENT_RENDERS
    * render at once; the rest wait with a live "In Queue: #N" position, all surfaced in the
@@ -5178,69 +5165,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <Chip active={productDuration === 60} onClick={() => setProductDuration(60)}>60{locale === 'en' ? 's' : 'წმ'}</Chip>
                   </div>
                 </div>
-                {/* Generate */}
-                <button type="button" disabled={!productImage || productBusy} onClick={generateProductAd}
-                  className={`flex w-full items-center justify-center gap-2 rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage || productBusy ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  {productBusy
-                    ? <><Loader2 size={15} className="animate-spin" /> {productProgress ?? (locale === 'en' ? 'Generating…' : locale === 'ru' ? 'Генерация…' : 'მიმდინარეობს…')}</>
-                    : `📦 ${locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}`}
+                {/* Generate — always enabled once a product photo is set (no busy gate). Progress +
+                    the finished ad land in the CHAT (a per-job bubble) + the tray, so several product
+                    ads can render concurrently without clobbering one shared panel slot. */}
+                <button type="button" disabled={!productImage} onClick={generateProductAd}
+                  className={`flex w-full items-center justify-center gap-2 rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
+                  📦 {locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}
                 </button>
                 {/* Upload hint — the Generate button is gated on a product photo (the locked
                     foreground); say so instead of leaving the button silently disabled. */}
-                {!productImage && !productBusy && (
+                {!productImage && (
                   <p className="text-center text-[11px] text-app-muted">
                     {locale === 'en' ? 'Please upload a product photo first' : locale === 'ru' ? 'Сначала загрузите фото продукта' : 'ჯერ ატვირთეთ პროდუქტის ფოტო'}
                   </p>
-                )}
-                {/* Animated progress bar while generating (indeterminate). */}
-                {productBusy && (
-                  <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated">
-                    <div className="h-full w-2/3 animate-pulse rounded-full bg-app-accent" />
-                  </div>
-                )}
-                {/* Error state + retry (generation no longer fails silently). */}
-                {productError && !productBusy && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 p-3">
-                    <span className="mt-0.5 shrink-0 text-[13px]">⚠️</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-medium text-red-500 dark:text-red-400">{locale === 'en' ? 'Generation failed' : locale === 'ru' ? 'Ошибка генерации' : 'გენერაცია ვერ მოხდა'}</p>
-                      <p className="mt-0.5 break-words text-[11px] text-red-500/80 dark:text-red-400/80">{productError}</p>
-                      <button type="button" onClick={generateProductAd} className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-app-accent transition hover:opacity-80">
-                        <RotateCcw size={11} /> {locale === 'en' ? 'Retry' : locale === 'ru' ? 'Повторить' : 'ხელახლა'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {productResultUrl && (
-                  <div className="space-y-2.5 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3">
-                    <video
-                      src={productResultUrl}
-                      controls
-                      playsInline
-                      onLoadedMetadata={(e) => setProductResultDur(e.currentTarget.duration)}
-                      className="w-full rounded-xl border border-app-border/20"
-                    />
-                    {/* FIX 3 — provenance + meta badges: engine, real duration, audio state. */}
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">🎬 {locale === 'en' ? 'Generated with Kling AI' : locale === 'ru' ? 'Сгенерировано Kling AI' : 'შექმნილია Kling AI-ით'}</span>
-                      {productResultDur != null && productResultDur > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted tabular-nums">⏱ {Math.round(productResultDur)}{locale === 'en' ? 's' : ' წმ'}</span>
-                      )}
-                      <span className="inline-flex items-center gap-1 rounded-full bg-app-bg/60 px-2 py-1 text-app-muted">{productHasAudio ? '🔊 ' + (locale === 'en' ? 'With music' : locale === 'ru' ? 'С музыкой' : 'მუსიკით') : '🔇 ' + (locale === 'en' ? 'No audio' : locale === 'ru' ? 'Без звука' : 'უხმო')}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void dl(productResultUrl, 'myavatar-product-ad.mp4')} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]">
-                        <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
-                      </button>
-                      <button type="button" onClick={() => void share(productResultUrl, 'myavatar-product-ad.mp4')} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
-                        <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
-                      </button>
-                      <button type="button" onClick={generateProductAd} disabled={productBusy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                        <RotateCcw size={13} /> {locale === 'en' ? 'Regenerate' : locale === 'ru' ? 'Заново' : 'თავიდან'}
-                      </button>
-                      {saveLibButton(productResultUrl, 'film')}
-                    </div>
-                  </div>
                 )}
               </div>
             )}
