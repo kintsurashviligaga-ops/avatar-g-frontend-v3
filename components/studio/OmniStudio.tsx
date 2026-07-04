@@ -618,9 +618,8 @@ type ImgAspect = (typeof IMG_ASPECTS)[number];
 const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as const;
 type ImgQuality = (typeof IMG_QUALITIES)[number][0];
 const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'] as const;
-const MUSIC_GENRES = ['cinematic', 'pop', 'electronic', 'lo-fi', 'rock', 'hip-hop', 'classical', 'ambient', 'jazz', 'folk', 'orchestral', 'trap', 'r&b', 'funk', 'reggae'] as const;
 // Curated style set for the redesigned Music panel (Section A). Each entry maps a
-// user-facing label (per locale) to a MUSIC_GENRES value the score engine understands.
+// user-facing label (per locale) to a genre value the score engine understands.
 const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru: string }]> = [
   ['folk', { ka: 'ქართული ფოლკი', en: 'Georgian Folk', ru: 'Грузинский фолк' }],
   ['r&b', { ka: 'R&B', en: 'R&B', ru: 'R&B' }],
@@ -3134,7 +3133,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const mAudioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
       const mAudioMime = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
       const mBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
-      const mUseTrained = mode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice;
+      // Trained voice sings — it's meaningless for an INSTRUMENTAL track, and useMyVoice
+      // persists across a Song→Instrumental switch (B4 just un-renders), so guard it here so
+      // an explicit Instrumental choice is never silently overridden into a sung trained track.
+      const mUseTrained = mode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice && !musicInstrumental;
       if (mode === 'music' && (text || mAudioRef || mUseTrained) && !mBlocked) {
         setOptionsOpen(false);
         const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
@@ -3182,7 +3184,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         setOptionsOpen(false);
         const mAudioRef = attachments.find((a) => isAudio(a.mimeType))?.dataUrl;
         const mAudioMime = attachments.find((a) => isAudio(a.mimeType))?.mimeType;
-        const mUseTrained = (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice;
+        const mUseTrained = (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice && !musicInstrumental;
         runMusicJob({
           prompt: text, userBubble: text, medias: attachments, useTrained: mUseTrained,
           audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
@@ -3815,6 +3817,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [addVoiceMedia, stopVoiceRecording]);
 
+  // Detect an existing TRAINED voice model (RVC) so the Music panel can surface a
+  // "sing in my trained voice" toggle. GET /api/voice/train reports the user's model
+  // status; 'completed' means a faithful RVC model is ready (the same probe VoiceTrainer
+  // uses). Fail-open — on any error the toggle simply never appears, and the one-shot
+  // upload/record voice-CLONE path (music-01) still works without it.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/voice/train', { credentials: 'include' });
+        const j = (await r.json().catch(() => ({}))) as { status?: string };
+        if (alive && j.status === 'completed') setHasTrainedVoice(true);
+      } catch { /* fail-open — no trained-voice toggle */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   // Record-and-transcribe (Whisper) — the RELIABLE path on iOS (the Web Speech API
   // doesn't work in the WKWebView app) and any browser without live recognition.
   // Records in a container the platform actually supports and labels the file with the
@@ -4046,7 +4065,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
   const writeLyrics = useCallback(async () => {
     if (writingLyrics) return;
-    const theme = input.trim() || musicLyrics.trim() || musicGenre;
+    // Theme priority: the Music panel's own Prompt (Section C) → the shared composer input →
+    // any lyrics already typed → the genre. The panel's prompt is the field the user actually
+    // fills, so a "✨ Write lyrics" tap writes ABOUT their song, not a generic genre stub.
+    const theme = musicPrompt.trim() || input.trim() || musicLyrics.trim() || musicGenre;
     setWritingLyrics(true);
     try {
       const r = await fetch('/api/ai/lyrics', {
@@ -4057,7 +4079,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       if (j.success && j.lyrics) setMusicLyrics(j.lyrics);
     } catch { /* fail-soft */ }
     setWritingLyrics(false);
-  }, [writingLyrics, input, musicLyrics, musicGenre, locale]);
+  }, [writingLyrics, musicPrompt, input, musicLyrics, musicGenre, locale]);
 
   // ⬆ Upscale a generated image to HD (Real-ESRGAN) → a fresh image bubble.
   const upscale = useCallback(async (url: string) => {
@@ -5384,6 +5406,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* ── Music panel · 5 clean sections (A Style · B Duration+Tempo · C Prompt · D Generate · E Result) ── */}
         {mode === 'music' && (() => {
           const lastMusic = [...messages].reverse().find((m) => m.audioUrl);
+          // A voice SAMPLE (recorded or uploaded) rides `attachments` as an audio entry — its
+          // presence flips the panel into cover/clone territory and enables Generate with no prompt.
+          const hasVoiceSample = attachments.some((a) => isAudio(a.mimeType));
           const tempos = [
             ['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'],
             ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'],
@@ -5445,6 +5470,74 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
             </div>
 
+            {/* B3 — Lyrics (song only): type your own words OR one-tap ✨ AI writer.
+                Empty = the model auto-writes lyrics from the prompt. Threaded to /api/ai/music
+                as `lyrics` via send()→runMusicJob (vocal / cover / clone / trained paths). */}
+            {!musicInstrumental && (
+              <div>
+                <span className="mb-1.5 flex items-center justify-between gap-2 text-[12.5px] font-semibold text-app-text">
+                  <span>📝 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ლირიკა'} <span className="font-normal text-app-muted/60">({locale === 'en' ? 'optional' : locale === 'ru' ? 'необязательно' : 'არჩევითი'})</span></span>
+                  <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-app-accent/40 px-2.5 py-1 text-[11px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 disabled:opacity-50">
+                    {writingLyrics ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t.writeLyricsBtn}
+                  </button>
+                </span>
+                <textarea
+                  value={musicLyrics}
+                  onChange={(e) => setMusicLyrics(e.target.value.slice(0, 1200))}
+                  maxLength={1200}
+                  rows={3}
+                  placeholder={t.lyricsPlaceholder}
+                  className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
+                />
+              </div>
+            )}
+
+            {/* B4 — Your voice (song only): record or upload a ≥15s sample → the song is sung
+                in YOUR cloned voice (music-01). A sample can instead be used as a COVER source
+                (remix its melody) via the cover/voice switch. With a completed TRAINED RVC model,
+                a toggle sings in your faithful trained voice (overrides the one-shot clone). The
+                attached sample renders as a removable chip in the composer tray above. */}
+            {!musicInstrumental && (
+              <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/30 p-3">
+                <span className="block text-[12.5px] font-semibold text-app-text">{t.voiceSecTitle}</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Record (toggle) — live seconds while capturing; ≥15s hint until enough. */}
+                  {voiceRecording ? (
+                    <button type="button" onClick={stopVoiceRecording}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-red-300 transition-colors hover:bg-red-500/20">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
+                      {voiceRecSec}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'} · {locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება'}{voiceRecSec < 15 ? ` (${t.need15})` : ''}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => void startVoiceRecording()}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                      <Mic size={13} /> {t.voiceRec}
+                    </button>
+                  )}
+                  {/* Upload a voice file (mp3/wav/m4a, ≤50MB). */}
+                  <button type="button" onClick={() => voiceFileRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                    <Upload size={13} /> {t.voiceUp}
+                  </button>
+                  {/* Trained RVC toggle — ONLY when a completed trained model exists (probed on mount). */}
+                  {hasTrainedVoice && (
+                    <Chip active={useMyVoice} onClick={() => setUseMyVoice((v) => !v)}>🎙 {t.voiceMode}</Chip>
+                  )}
+                </div>
+                {/* With a sample attached (and NOT overridden by the trained toggle): pick how it's used. */}
+                {hasVoiceSample && !(useMyVoice && hasTrainedVoice) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Chip active={musicAudioMode === 'voice'} onClick={() => setMusicAudioMode('voice')}>{t.voiceMode}</Chip>
+                    <Chip active={musicAudioMode === 'cover'} onClick={() => setMusicAudioMode('cover')}>{t.coverMode}</Chip>
+                  </div>
+                )}
+                <span className="block text-[11px] leading-relaxed text-app-muted/70">
+                  {(useMyVoice && hasTrainedVoice) || hasVoiceSample ? t.voiceReady : t.voiceRecHint}
+                </span>
+              </div>
+            )}
+
             {/* C — Prompt (max 300 chars, live counter bottom-right) */}
             <div>
               <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">✍️ {locale === 'en' ? 'Prompt' : locale === 'ru' ? 'Описание' : 'აღწერა'}</span>
@@ -5461,17 +5554,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* D — Generate (full width). Label reflects track type + vocal choice. */}
+            {/* D — Generate (full width). Label reflects the active path: trained voice →
+                one-shot clone → cover → instrumental/vocal-gender. A voice sample or trained
+                toggle lets it fire with NO typed prompt (the lyrics/genre become the brief). */}
             {(() => {
-              const genLabel = musicInstrumental
-                ? `🎵 ${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
-                : musicVoiceType === 'duet'
-                  ? `🎤 ${locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'}`
-                  : musicVoiceType === 'male'
-                    ? `🎤 ${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
-                    : `🎤 ${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
+              const trainedActive = useMyVoice && hasTrainedVoice && !musicInstrumental;
+              const genLabel = trainedActive
+                ? `🎙 ${t.voiceMode}`
+                : hasVoiceSample && musicAudioMode === 'voice'
+                  ? `🎤 ${t.voiceMode}`
+                  : hasVoiceSample && musicAudioMode === 'cover'
+                    ? t.coverMode
+                    : musicInstrumental
+                      ? `🎵 ${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
+                      : musicVoiceType === 'duet'
+                        ? `🎤 ${locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'}`
+                        : musicVoiceType === 'male'
+                          ? `🎤 ${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
+                          : `🎤 ${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
               return (
-                <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || !musicPrompt.trim()}
+                <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || (!musicPrompt.trim() && !hasVoiceSample && !trainedActive)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
                   {busy ? <Loader2 size={16} className="animate-spin" /> : <>{genLabel}</>}
                 </button>
@@ -5706,6 +5808,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           } catch { /* ignore */ } finally {
             setVideoSoundtrackBusy(false);
           }
+        }} />
+        {/* Music VOICE sample (record's sibling) — an uploaded ≥15s clip of the user's voice.
+            Validated (mp3/wav/m4a/aac, ≤50MB) BEFORE reading, then handed to addVoiceMedia →
+            rides `attachments` as the music voice reference (cover/clone). */}
+        <input ref={voiceFileRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,.mp3,.wav,.m4a" className="hidden" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          const okType = isAudio(f.type) || /\.(mp3|wav|m4a|aac)$/i.test(f.name);
+          if (!okType) {
+            setShareToast(locale === 'en' ? 'Use an MP3, WAV or M4A file' : locale === 'ru' ? 'Нужен MP3, WAV или M4A' : 'საჭიროა MP3, WAV ან M4A ფაილი');
+            setTimeout(() => setShareToast((s) => (/MP3|M4A/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
+          if (f.size > 50 * 1024 * 1024) {
+            setShareToast(locale === 'en' ? 'Audio is too large (max 50MB)' : locale === 'ru' ? 'Файл слишком большой (макс 50МБ)' : 'ფაილი ძალიან დიდია (მაქს 50MB)');
+            setTimeout(() => setShareToast((s) => (/50/i.test(s ?? '') ? null : s)), 2600);
+            return;
+          }
+          try { addVoiceMedia(await fileToDataUrl(f), f.type || 'audio/mpeg'); } catch { /* ignore unreadable file */ }
         }} />
         {/* TASK 1 — Character-Swap source video: ≤100MB mp4/mov → Supabase; keeps a local
             blob for the panel preview. */}
