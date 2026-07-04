@@ -41,6 +41,7 @@ import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand } from '@/lib/chat/intentDetector';
+import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
 
@@ -2381,6 +2382,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const CLIP_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_TIMEOUT_MS) || 45_000;
     let onClipSettle: (ok: boolean) => void = () => {};
     const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
+      // Job already cancelled → don't fire a LATER pool wave's paid Kling call. (A concurrency-
+      // bounded fan-out starts clips over time, so a clip picked up after the abort must short-circuit
+      // — addEventListener('abort') doesn't fire for an already-aborted signal.)
+      if (signal.aborted) { onClipSettle(false); return null; }
       // Pick the shot for this clip — rotate through the uploaded photos by scene index.
       const imageUrl = photos[(sceneIndex >= 0 ? sceneIndex : 0) % photos.length] ?? firstPhoto;
       const clipAc = new AbortController();
@@ -2454,9 +2459,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         : locale === 'ru' ? `Генерация ${n} клипов… ⏳ провайдер медленный, продолжаем`
         : `${n} კლიპის გენერაცია… ⏳ პროვაიდერი ნელია, ვაგრძელებთ`;
       const watchdog = setInterval(() => { if (!signal.aborted && stall.shouldFlag()) setStage(slowStage); }, 5_000);
+      // BOUND THE INNER CLIP FAN-OUT (Step 3): the outer Cap-3 queue governs the product JOB, but a
+      // 60s ad is up to 12 genClip calls — an unthrottled Promise.all could stampede Kling (rate-limit
+      // / silent drops). Run at most CLIP_CONCURRENCY (default 4) provider calls in flight at once via
+      // the shared order-preserving worker pool. Survivor set, StallDetector ticks, per-clip 45s
+      // ceiling and job-signal abort are ALL unchanged — only the peak in-flight count is capped.
+      const CLIP_CONCURRENCY = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_CONCURRENCY) || 4;
       let clips: string[];
       try {
-        clips = (await Promise.all(Array.from({ length: n }, (_, i) => genClip(i)))).filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
+        const settledClips = await mapWithConcurrency(
+          Array.from({ length: n }, (_, i) => i),
+          CLIP_CONCURRENCY,
+          (i) => genClip(i),
+        );
+        clips = settledClips.filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
       } finally {
         clearInterval(watchdog);
       }
