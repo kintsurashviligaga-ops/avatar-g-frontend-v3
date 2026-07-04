@@ -21,9 +21,17 @@ export const MAX_CONCURRENT_RENDERS = 3;
 
 interface JobQueueState {
   jobs: Job[];
+  /**
+   * Server-OBSERVED jobs hydrated from `generation_jobs` (DURABLE PROGRESS). These are
+   * renders that started server-side and survive a page reload — the hydration hook polls
+   * GET /api/orchestrator/jobs and republishes them here so the tray shows live bars synced
+   * to the DB `pct`/`current_stage`. They have no local runner (read-only in the tray).
+   */
+  durableJobs: Job[];
   submit: (input: SubmitInput) => string;
   cancel: (id: string) => void;
   clearFinished: () => void;
+  setDurableJobs: (jobs: Job[]) => void;
   /** Active (rendering) + waiting (queued) count — for the composer's soft gate. */
   inFlight: () => number;
 }
@@ -35,9 +43,11 @@ export const useJobQueue = create<JobQueueState>((set, get) => {
   });
   return {
     jobs: [],
+    durableJobs: [],
     submit: (input) => queue.submit(input),
     cancel: (id) => queue.cancel(id),
     clearFinished: () => queue.clearFinished(),
+    setDurableJobs: (durableJobs) => set({ durableJobs }),
     inFlight: () => get().jobs.filter((j) => j.status === 'rendering' || j.status === 'queued').length,
   };
 });

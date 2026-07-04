@@ -50,6 +50,13 @@ export interface Job {
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
+  /**
+   * True for a job HYDRATED from the server (`generation_jobs`) rather than run by this
+   * client — a reload-recovered render whose progress we OBSERVE via polling. Observed
+   * jobs have no local runner/AbortController, so the tray shows their progress but no
+   * cancel control (there's nothing local to abort). The engine never sets this.
+   */
+  observed?: boolean;
 }
 
 /** Progress the runner reports back as it works. */

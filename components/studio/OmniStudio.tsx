@@ -36,6 +36,7 @@ import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
 import { useJobQueue } from '@/store/useJobQueue';
+import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
 
@@ -1783,6 +1784,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Capped-parallel render queue (Phase 1: the fast IMAGE flow runs 3-at-a-time through
   // it while the tray shows live progress + queue positions).
   const submitJob = useJobQueue((s) => s.submit);
+  // DURABLE PROGRESS — hydrate the tray from the server's active generation_jobs on mount
+  // + poll, so an in-flight render survives a page reload (bars sync to DB pct/stage).
+  useDurableProgress(locale);
   useEffect(() => {
     if (transitCharacterUrl) {
       setMode('video');

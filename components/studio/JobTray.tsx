@@ -14,6 +14,7 @@
 
 import { useJobQueue } from '@/store/useJobQueue';
 import type { Job, JobKind, JobStatus } from '@/lib/jobs/jobQueue';
+import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
 import { Loader2, Check, X, AlertTriangle, Clock, Film, Music2, Image as ImageIcon, User, Wand2, type LucideIcon } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -117,7 +118,7 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
         <p className={`mt-0.5 truncate text-[10.5px] ${STATUS_TONE[job.status]}`}>{statusLine}</p>
       </div>
 
-      {(active || queued) && (
+      {(active || queued) && !job.observed && (
         <button
           type="button"
           onClick={() => onCancel(job.id)}
@@ -133,11 +134,15 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
 }
 
 export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
-  const jobs = useJobQueue((s) => s.jobs);
+  const localJobs = useJobQueue((s) => s.jobs);
+  const durableJobs = useJobQueue((s) => s.durableJobs);
   const cancel = useJobQueue((s) => s.cancel);
   const clearFinished = useJobQueue((s) => s.clearFinished);
   const t = tr(locale);
 
+  // Merge locally-run jobs with server-OBSERVED (reload-hydrated) ones — dedup by id so a
+  // job never renders twice. Observed rows sync to the DB pct/current_stage.
+  const jobs = mergeTrayJobs(localJobs, durableJobs);
   if (!jobs.length) return null;
 
   const anyFinished = jobs.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
