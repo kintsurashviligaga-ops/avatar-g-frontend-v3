@@ -34,10 +34,16 @@ it('reports a non-founder account distinctly', async () => {
   expect(String(r.diagnosis)).toContain('non-founder');
 });
 
-it('grants isAdmin via metadata role even for a non-founder email', async () => {
-  mockGetUser.mockResolvedValue({ data: { user: { email: 'ops@x.com', user_metadata: { role: 'admin' } } } });
+it('grants isAdmin via APP_metadata role (service-role-set) for a non-founder email', async () => {
+  mockGetUser.mockResolvedValue({ data: { user: { email: 'ops@x.com', app_metadata: { role: 'admin' }, user_metadata: {} } } });
   const r = await whoami();
   expect(r).toMatchObject({ hasUser: true, emailIsFounder: false, metaRole: true, isAdmin: true });
+});
+
+it('does NOT grant isAdmin via forged client-writable user_metadata (audit B2)', async () => {
+  mockGetUser.mockResolvedValue({ data: { user: { email: 'attacker@evil.com', app_metadata: {}, user_metadata: { is_admin: true, role: 'admin' } } } });
+  const r = await whoami();
+  expect(r).toMatchObject({ hasUser: true, emailIsFounder: false, metaRole: false, isAdmin: false });
 });
 
 it('fails open (never 500s) when getUser throws', async () => {

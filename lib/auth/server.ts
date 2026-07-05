@@ -26,10 +26,12 @@ export async function getAccessToken(): Promise<AccessToken | null> {
       return null;
     }
 
-    return  {
+    return {
       sub: user.id,
       email: user.email,
-      role: user.user_metadata?.role || 'user',
+      // role from app_metadata ONLY (service-role-set, not client-writable). user_metadata is
+      // user-writable via auth.updateUser, so it must never source a role/authz claim. (audit B2)
+      role: (user.app_metadata?.role as string | undefined) || 'user',
     };
   } catch (error) {
     console.error('Failed to get access token:', error);

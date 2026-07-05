@@ -33,11 +33,13 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 
     if (error || !user) return null;
 
+    // role/org are read from app_metadata ONLY (service-role-set, not client-writable). user_metadata
+    // is user-writable via auth.updateUser, so it must never source a role/scoping claim. (audit B2)
     return {
       userId: user.id,
       email: user.email || '',
-      orgId: (user.user_metadata?.org_id as string) || null,
-      role: (user.user_metadata?.role as string) || 'user',
+      orgId: (user.app_metadata?.org_id as string) || null,
+      role: (user.app_metadata?.role as string) || 'user',
     };
   } catch {
     return null;

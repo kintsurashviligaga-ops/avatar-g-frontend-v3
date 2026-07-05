@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getAccessToken } from '@/lib/auth/server';
+import { isAdminUser } from '@/lib/admin/guard';
 
 export const dynamic = 'force-dynamic';
 
+/** Server-truth admin gate (email allowlist ∪ app_metadata role) — never client-writable metadata. */
+async function requireAdmin() {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return { supabase, user, ok: isAdminUser(user) };
+}
+
 export async function GET() {
   try {
-    const token = await getAccessToken();
-    if (!token) {
+    const { supabase, user, ok } = await requireAdmin();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    if (token.role !== 'admin') {
+    if (!ok) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from('payout_requests')
       .select('*')
@@ -34,12 +39,11 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const token = await getAccessToken();
-    if (!token) {
+    const { supabase, user, ok } = await requireAdmin();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    if (token.role !== 'admin') {
+    if (!ok) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -54,7 +58,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'payout_request_id and status are required' }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from('payout_requests')
       .update({
