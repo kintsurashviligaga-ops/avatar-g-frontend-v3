@@ -101,3 +101,52 @@ export async function grantCredits(client: Client, userId: string, amount: numbe
     return { ok: false, newBalance: null, error: e instanceof Error ? e.message : 'grant_failed' };
   }
 }
+
+/**
+ * Adjust a user's credits BY EMAIL by a signed integer delta (v358 #2 — admin increment/decrement).
+ * |delta| is capped at MAX_GRANT. A DECREMENT goes through the existing `deduct_credits` RPC, which locks the
+ * balance row FOR UPDATE and rejects (insufficient_credits) when it would drop below zero — so concurrent
+ * debits can NEVER drive a wallet negative (no app-side TOCTOU). A grant is a raw constraint-valid
+ * `admin_adjustment` ledger row (a grant can't underflow). The email is matched case-insensitively with LIKE
+ * metacharacters ESCAPED, so a % / _ in the address can never wildcard-match a different account.
+ */
+export async function adjustCreditsByEmail(client: Client, email: string, amount: number, actorId: string): Promise<GrantResult> {
+  const em = (email ?? '').trim().toLowerCase();
+  const amt = Math.trunc(Number(amount));
+  if (!em || !Number.isFinite(amt) || amt === 0 || Math.abs(amt) > MAX_GRANT) {
+    return { ok: false, newBalance: null, error: 'invalid_amount' };
+  }
+  try {
+    // Exact, case-insensitive match: escape LIKE wildcards so the address is treated literally.
+    const safeEmail = em.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const { data: target } = await client.from('profiles').select('id, credits_balance').ilike('email', safeEmail).maybeSingle();
+    if (!target) return { ok: false, newBalance: null, error: 'user_not_found' };
+    const userId = (target as { id: string }).id;
+    const current = Number((target as { credits_balance?: number }).credits_balance) || 0;
+    const ref = `admin:adjust:${randomUUID()}`;
+
+    if (amt < 0) {
+      // Atomic locked debit (FOR UPDATE + insufficient_credits floor) — no read-then-insert race.
+      const { data, error } = await client.rpc('deduct_credits', { p_user_id: userId, p_amount: -amt, p_ref: ref });
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('insufficient')) return { ok: false, newBalance: current, error: 'insufficient_balance' };
+        return { ok: false, newBalance: null, error: error.message || 'adjust_failed' };
+      }
+      return { ok: true, newBalance: Number(data) || 0 };
+    }
+
+    const { error } = await client.from('credit_ledger').insert({
+      user_id: userId,
+      delta: amt,
+      reason: 'admin_adjustment',
+      metadata: { source: 'admin_grant', actor: actorId, ref },
+    });
+    if (error) return { ok: false, newBalance: null, error: error.message };
+
+    const { data } = await client.from('profiles').select('credits_balance').eq('id', userId).maybeSingle();
+    return { ok: true, newBalance: data ? Number((data as { credits_balance?: number }).credits_balance) || 0 : null };
+  } catch (e) {
+    return { ok: false, newBalance: null, error: e instanceof Error ? e.message : 'adjust_failed' };
+  }
+}

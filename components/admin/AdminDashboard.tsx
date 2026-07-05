@@ -9,11 +9,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import AdminSignOutButton from '@/components/admin/AdminSignOutButton';
 import FeatureFlags from '@/components/admin/FeatureFlags';
+import BillingConfig from '@/components/admin/BillingConfig';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
 
-type Tab = 'overview' | 'users' | 'activity' | 'flags';
+type Tab = 'overview' | 'users' | 'activity' | 'flags' | 'billing';
 type Accent = 'default' | 'green' | 'red' | 'cyan' | 'amber';
 
 const ACCENT: Record<Accent, string> = {
@@ -63,6 +64,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
     { id: 'overview', label: ka ? 'მიმოხილვა' : 'Overview' },
     { id: 'users', label: ka ? 'მომხმარებლები' : 'Users' },
     { id: 'activity', label: ka ? 'აქტივობა' : 'Activity' },
+    { id: 'billing', label: ka ? 'ბილინგი' : 'Billing' },
     { id: 'flags', label: ka ? 'დროშები' : 'Flags' },
   ];
 
@@ -93,13 +95,13 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
           </div>
         </header>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+        {/* Tab bar — fills on desktop, scrolls horizontally on a narrow phone */}
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex-1 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${tab === t.id ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              className={`flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${tab === t.id ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-gray-200'}`}
             >
               {t.label}
             </button>
@@ -109,6 +111,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
         {tab === 'overview' && <Overview ka={ka} stats={stats} top={top} pipelineHealth={pipelineHealth} fmt={fmt} />}
         {tab === 'users' && <Users ka={ka} initial={initialUsers} fmt={fmt} />}
         {tab === 'activity' && <Activity ka={ka} stats={stats} fmt={fmt} />}
+        {tab === 'billing' && <BillingConfig ka={ka} />}
         {tab === 'flags' && <FeatureFlags ka={ka} />}
       </div>
     </main>

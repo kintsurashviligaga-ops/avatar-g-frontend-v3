@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { REFILL_TIERS_GEL } from '@/lib/billing/gel';
+import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
 import { bogConfig, getBogAccessToken, createBogOrder } from '@/lib/billing/bogClient';
 
 export const dynamic = 'force-dynamic';
@@ -37,9 +37,11 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json().catch(() => ({}))) as { amountGel?: number };
     const amountGel = Number(body.amountGel);
-    if (!REFILL_TIERS_GEL.includes(amountGel as (typeof REFILL_TIERS_GEL)[number])) {
+    // v358 #2 — runtime-editable tier store, fail-open to REFILL_TIERS_GEL (identical pre-migration).
+    const tiers = await getActiveTiers();
+    if (!tiers.some((t) => t.gelAmount === amountGel)) {
       return NextResponse.json(
-        { error: `amountGel must be one of ${REFILL_TIERS_GEL.join(', ')}` },
+        { error: `amountGel must be one of ${tiers.map((t) => t.gelAmount).join(', ')}` },
         { status: 400 },
       );
     }

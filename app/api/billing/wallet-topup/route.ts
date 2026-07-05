@@ -11,7 +11,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createWalletTopupSession, getOrCreateCustomer } from '@/lib/billing/stripe';
 import { getBillingProvider, BillingProviderUnavailableError } from '@/lib/monetization/provider';
-import { REFILL_TIERS_GEL } from '@/lib/billing/gel';
+import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,8 +31,11 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json().catch(() => ({}))) as { amountGel?: number };
     const amountGel = Number(body.amountGel);
-    if (!REFILL_TIERS_GEL.includes(amountGel as (typeof REFILL_TIERS_GEL)[number])) {
-      return NextResponse.json({ error: `amountGel must be one of ${REFILL_TIERS_GEL.join(', ')}` }, { status: 400 });
+    // v358 #2 — validate against the runtime-editable tier store (fail-open to REFILL_TIERS_GEL when the
+    // pricing_tiers table is absent/empty, so this is identical to the hardcoded set pre-migration).
+    const tiers = await getActiveTiers();
+    if (!tiers.some((t) => t.gelAmount === amountGel)) {
+      return NextResponse.json({ error: `amountGel must be one of ${tiers.map((t) => t.gelAmount).join(', ')}` }, { status: 400 });
     }
 
     const { data: subscription } = await supabase

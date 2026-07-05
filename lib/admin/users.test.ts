@@ -1,7 +1,7 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
 
-import { listUsers, grantCredits, MAX_GRANT, USERS_PAGE_SIZE } from './users';
+import { listUsers, grantCredits, adjustCreditsByEmail, MAX_GRANT, USERS_PAGE_SIZE } from './users';
 
 /** Chainable Supabase mock. `listResult` feeds awaited queries; profiles maybeSingle #1 = target check, #2 = new balance. */
 function makeClient(cfg: { listResult?: unknown; targetExists?: boolean; insertError?: { message: string } | null; newBalance?: number; captureOr?: (s: string) => void }) {
@@ -94,5 +94,61 @@ describe('grantCredits', () => {
     const client = makeClient({ targetExists: true, newBalance: 10 });
     const r = await grantCredits(client, 'u1', 10.9, 'admin1');
     expect(r.ok).toBe(true); // 10.9 → 10, still valid
+  });
+});
+
+describe('adjustCreditsByEmail', () => {
+  /** maybeSingle #1 = the email lookup (id + balance); #2 = post-grant balance. rpc() = the atomic debit. */
+  function client(cfg: { profile?: { id: string; credits_balance: number } | null; newBalance?: number; insertError?: { message: string } | null; rpcData?: number; rpcError?: { message: string } | null; captureIlike?: (v: string) => void }) {
+    let single = 0;
+    const from = () => {
+      const p: Record<string, unknown> = {
+        select: () => p,
+        ilike: (_col: string, v: string) => { cfg.captureIlike?.(v); return p; },
+        eq: () => p,
+        maybeSingle: () => {
+          single += 1;
+          if (single === 1) return Promise.resolve({ data: cfg.profile ?? null });
+          return Promise.resolve({ data: { credits_balance: cfg.newBalance ?? 0 } });
+        },
+        insert: () => Promise.resolve({ error: cfg.insertError ?? null }),
+      };
+      return p;
+    };
+    const rpc = () => Promise.resolve({ data: cfg.rpcData ?? null, error: cfg.rpcError ?? null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { from, rpc } as any;
+  }
+
+  it('rejects zero, oversized, and empty-email before any DB write', async () => {
+    for (const bad of [0, MAX_GRANT + 1, -(MAX_GRANT + 1), Number.NaN]) {
+      expect((await adjustCreditsByEmail(client({}), 'a@b.com', bad, 'admin')).error).toBe('invalid_amount');
+    }
+    expect((await adjustCreditsByEmail(client({}), '', 5, 'admin')).error).toBe('invalid_amount');
+  });
+
+  it('404s an unknown email', async () => {
+    expect((await adjustCreditsByEmail(client({ profile: null }), 'x@y.com', 5, 'admin')).error).toBe('user_not_found');
+  });
+
+  it('escapes LIKE wildcards in the email before lookup', async () => {
+    let captured = '';
+    await adjustCreditsByEmail(client({ profile: null, captureIlike: (v) => { captured = v; } }), 'a_b%c@x.com', 5, 'admin');
+    expect(captured).toBe('a\\_b\\%c@x.com');
+  });
+
+  it('routes a decrement through the atomic deduct RPC and maps insufficient → 409 shape', async () => {
+    const r = await adjustCreditsByEmail(client({ profile: { id: 'u1', credits_balance: 10 }, rpcError: { message: 'insufficient_credits: have 10 need 50' } }), 'a@b.com', -50, 'admin');
+    expect(r).toEqual({ ok: false, newBalance: 10, error: 'insufficient_balance' });
+  });
+
+  it('applies a positive grant via a raw admin_adjustment row', async () => {
+    const r = await adjustCreditsByEmail(client({ profile: { id: 'u1', credits_balance: 10 }, newBalance: 60 }), 'a@b.com', 50, 'admin');
+    expect(r).toEqual({ ok: true, newBalance: 60 });
+  });
+
+  it('applies a valid decrement (RPC returns the new balance)', async () => {
+    const r = await adjustCreditsByEmail(client({ profile: { id: 'u1', credits_balance: 100 }, rpcData: 40 }), 'a@b.com', -60, 'admin');
+    expect(r).toEqual({ ok: true, newBalance: 40 });
   });
 });
