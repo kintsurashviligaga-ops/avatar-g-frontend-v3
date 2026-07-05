@@ -20,8 +20,8 @@
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
-import { consumeFreeAvatarChat } from '@/lib/billing/wallet-ledger';
+import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
+import { consumeFreeAvatarChat, restoreFreeAvatarChat } from '@/lib/billing/wallet-ledger';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import { buildSessionConfig } from '@/lib/orchestrator/avatar';
 
@@ -61,7 +61,22 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
+      const ref = idemRef('avatar', pipelineId, body);
+      let reservation: Reservation = { proceed: true, charged: false, reason: 'skipped' };
+      let useFreeSlot = false;
+      let succeeded = false;
       try {
+        // Reserve BEFORE render: atomically consume a free avatar-chat slot if the user has one (restored
+        // on failure), else debit credits up front and fail-fast if the balance is too low.
+        if (user) {
+          const free = await consumeFreeAvatarChat(user.id); // >=0 consumed, -1 none, null = RPC absent
+          if (free !== null && free >= 0) {
+            useFreeSlot = true;
+          } else {
+            reservation = await reserveProduce(user.id, PRODUCE_COST.avatar, ref);
+            if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+          }
+        }
         emit({ stage: 'initializing_session', pct: 8, ticker: '[Initializing HeyGen session…]' });
         emit({ stage: 'agent_syncing', pct: 18, ticker: '[Syncing MyAvatar context with the remote agent…]', persona: session.persona.expression, lighting: session.lighting.key });
         emit({ stage: 'generating_speech_matrix', pct: 30, ticker: `[Agent V + H: ${session.persona.expression} persona, ${session.persona.tone} vocal dynamics…]` });
@@ -71,15 +86,15 @@ export async function POST(req: NextRequest) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body.photoBase64 ? { script, photoBase64: body.photoBase64, photoMimeType: body.photoMimeType } : { script }),
         });
-        if (startRes.status === 429) { emit({ stage: 'failed', error: 'concurrency', ticker: '[Queue: HeyGen at capacity]' }); controller.close(); return; }
+        if (startRes.status === 429) { emit({ stage: 'failed', error: 'concurrency', ticker: '[Queue: HeyGen at capacity]' }); return; }
         if (!startRes.ok) {
           const detail = (await startRes.text().catch(() => '')).slice(0, 160);
           const concurrency = /concurr|limit|429|capacity/i.test(detail);
           emit({ stage: 'failed', error: concurrency ? 'concurrency' : `start_${startRes.status}` });
-          controller.close(); return;
+          return;
         }
         const startData = await startRes.json() as { videoId?: string; error?: string };
-        if (!startData.videoId) { emit({ stage: 'failed', error: startData.error ?? 'no_video_id' }); controller.close(); return; }
+        if (!startData.videoId) { emit({ stage: 'failed', error: startData.error ?? 'no_video_id' }); return; }
 
         emit({ stage: 'rendering_live_avatar', pct: 45, ticker: '[Rendering high-fidelity lip-sync…]' });
 
@@ -93,19 +108,21 @@ export async function POST(req: NextRequest) {
           if (!poll || !poll.ok) continue;
           const pd = await poll.json().catch(() => ({})) as { status?: string; url?: string; thumbnail?: string; error?: string };
           if (pd.status === 'completed' && pd.url) { url = pd.url; poster = pd.thumbnail ?? null; break; }
-          if (pd.status === 'failed') { emit({ stage: 'failed', error: pd.error ?? 'render_failed' }); controller.close(); return; }
+          if (pd.status === 'failed') { emit({ stage: 'failed', error: pd.error ?? 'render_failed' }); return; }
         }
-        if (!url) { emit({ stage: 'failed', error: 'timeout' }); controller.close(); return; }
+        if (!url) { emit({ stage: 'failed', error: 'timeout' }); return; }
 
-        if (user) {
-          // Server-authoritative free-counter (fail-open → charge as before).
-          const free = await consumeFreeAvatarChat(user.id);
-          if (free === null || free < 0) await deductCredits(user.id, PRODUCE_COST.avatar, `avatar:${Date.now()}`).catch(() => null);
-        }
+        // Free slot / credits were already reserved up front — nothing to charge on success.
         emit({ stage: 'completed', pct: 100, url, poster, persona: session.persona, lighting: session.lighting });
-        controller.close();
+        succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 160) : 'avatar pipeline failed' });
+      } finally {
+        // Compensate any non-success: restore the consumed free slot, else refund the debited credits.
+        if (user && !succeeded) {
+          if (useFreeSlot) await restoreFreeAvatarChat(user.id).catch(() => undefined);
+          else await refundProduce(user.id, PRODUCE_COST.avatar, ref, reservation.charged);
+        }
         controller.close();
       }
     },

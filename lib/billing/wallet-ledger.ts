@@ -88,6 +88,24 @@ export async function restoreFreeFilm(userId: string): Promise<number | null> {
   }
 }
 
+/**
+ * Compensation for consumeFreeAvatarChat: returns a free avatar-chat slot when a render that consumed it
+ * later fails (saga rollback). Best-effort + fail-open — if the `restore_free_avatar_chat` RPC isn't
+ * provisioned yet this simply no-ops (the user keeps having spent the slot, never a charge). Returns the
+ * new remaining count, or null when unavailable.
+ */
+export async function restoreFreeAvatarChat(userId: string): Promise<number | null> {
+  const sb = client();
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.rpc('restore_free_avatar_chat', { p_user_id: userId });
+    if (error) return null;
+    return typeof data === 'number' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Persist the avatar name + flip is_avatar_named server-side. Best-effort. */
 export async function setAvatarName(userId: string, name: string): Promise<boolean> {
   const sb = client();

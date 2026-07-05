@@ -1095,7 +1095,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt, totalDurationSec: 30 }),
+        body: JSON.stringify({ prompt, totalDurationSec: 30, idempotencyKey: crypto.randomUUID() }),
         signal: controller.signal,
       });
       if (res.status === 401) {
@@ -1183,7 +1183,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     try {
       const res = await fetch('/api/orchestrator/interior/produce', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ imageUrls: [imageUrl], brief }),
+        body: JSON.stringify({ imageUrls: [imageUrl], brief, idempotencyKey: crypto.randomUUID() }),
         signal: controller.signal,
       });
       if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); promptAuth(); return; }
@@ -1269,7 +1269,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
     try {
       const res = await fetch('/api/orchestrator/avatar/produce', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ script, ...(photo ? { photoBase64: photo.base64, photoMimeType: photo.type } : {}) }),
+        body: JSON.stringify({ script, idempotencyKey: crypto.randomUUID(), ...(photo ? { photoBase64: photo.base64, photoMimeType: photo.type } : {}) }),
         signal: controller.signal,
       });
       if (res.status === 401) { setMessages(m => m.filter(x => x.id !== pendId && x.id !== userId)); promptAuth(); return; }

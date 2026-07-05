@@ -12,7 +12,7 @@
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import { extractPersonaDirective } from '@/lib/orchestrator/avatar';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -45,7 +45,14 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
+      const ref = idemRef('voice', pipelineId, body);
+      let reservation: Reservation = { proceed: true, charged: false, reason: 'skipped' };
+      let succeeded = false;
       try {
+        if (user) {
+          reservation = await reserveProduce(user.id, PRODUCE_COST.voice, ref);
+          if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+        }
         emit({ stage: 'synthesizing', pct: 15, ticker: '[Agent H: Synthesizing Vocal Frequency Spectrum…]', expression: persona.expression });
         emit({ stage: 'cloning', pct: 40, ticker: '[ElevenLabs: Injecting Emotional Voice Clones…]' });
 
@@ -53,19 +60,20 @@ export async function POST(req: NextRequest) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, locale }),
         });
-        if (!res.ok) { emit({ stage: 'failed', error: `tts_${res.status}` }); controller.close(); return; }
+        if (!res.ok) { emit({ stage: 'failed', error: `tts_${res.status}` }); return; }
         const buf = Buffer.from(await res.arrayBuffer());
-        if (buf.length === 0) { emit({ stage: 'failed', error: 'empty_audio' }); controller.close(); return; }
+        if (buf.length === 0) { emit({ stage: 'failed', error: 'empty_audio' }); return; }
 
         emit({ stage: 'uploading', pct: 80, ticker: '[Mastering + publishing track…]' });
         const url = await uploadAndSign('renders', `voice/${Date.now()}.mp3`, buf.toString('base64'), 'audio/mpeg');
-        if (!url) { emit({ stage: 'failed', error: 'upload_failed' }); controller.close(); return; }
+        if (!url) { emit({ stage: 'failed', error: 'upload_failed' }); return; }
 
-        if (user) await deductCredits(user.id, PRODUCE_COST.voice, `voice:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, expression: persona.expression });
-        controller.close();
+        succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 160) : 'voice pipeline failed' });
+      } finally {
+        if (user && !succeeded) await refundProduce(user.id, PRODUCE_COST.voice, ref, reservation.charged);
         controller.close();
       }
     },

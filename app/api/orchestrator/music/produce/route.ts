@@ -12,7 +12,7 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   buildSongArchitectSystemPrompt, normalizeSongMetrics, deterministicSongMetrics, songGenerationPrompt,
@@ -54,7 +54,14 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
+      const ref = idemRef('music', pipelineId, body);
+      let reservation: Reservation = { proceed: true, charged: false, reason: 'skipped' };
+      let succeeded = false;
       try {
+        if (user) {
+          reservation = await reserveProduce(user.id, PRODUCE_COST.music, ref);
+          if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+        }
         emit({ stage: 'architecting', pct: 12, ticker: '[Agent S: Architecting Lyric/Vibe Matrix…]' });
 
         // Agent S — Claude metrics, fail-open to deterministic.
@@ -80,16 +87,17 @@ export async function POST(req: NextRequest) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: songGenerationPrompt(metrics), make_instrumental: metrics.instrumental }),
         });
-        if (!res.ok) { emit({ stage: 'failed', error: `worker_${res.status}` }); controller.close(); return; }
+        if (!res.ok) { emit({ stage: 'failed', error: `worker_${res.status}` }); return; }
         const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
         const url = data.url || data.audioUrl || null;
-        if (!url) { emit({ stage: 'failed', error: data.error ?? 'no_audio' }); controller.close(); return; }
+        if (!url) { emit({ stage: 'failed', error: data.error ?? 'no_audio' }); return; }
 
-        if (user) await deductCredits(user.id, PRODUCE_COST.music, `music:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, title: metrics.title, style: metrics.style, bpm: metrics.bpm });
-        controller.close();
+        succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 160) : 'music pipeline failed' });
+      } finally {
+        if (user && !succeeded) await refundProduce(user.id, PRODUCE_COST.music, ref, reservation.charged);
         controller.close();
       }
     },

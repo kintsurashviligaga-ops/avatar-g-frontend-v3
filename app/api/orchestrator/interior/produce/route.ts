@@ -17,7 +17,7 @@ import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   normalizeIntake, intakeHasMedia, normalizeRoomGeometry, normalizeStyleGuide,
@@ -87,7 +87,8 @@ export async function POST(req: NextRequest) {
   if (user) { const rate = await checkProduceRate(user.id); if (!rate.ok) return rateLimitedResponse(rate); }
 
   let intake;
-  try { intake = normalizeIntake(await req.json()); } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
+  let rawBody: unknown = null;
+  try { rawBody = await req.json(); intake = normalizeIntake(rawBody); } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
   if (!intakeHasMedia(intake)) return new Response(JSON.stringify({ error: 'at least 1 photo or a video is required' }), { status: 400 });
 
   // Durable job row (#5).
@@ -99,7 +100,14 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
+      const ref = idemRef('interior', pipelineId, rawBody);
+      let reservation: Reservation = { proceed: true, charged: false, reason: 'skipped' };
+      let succeeded = false;
       try {
+        if (user) {
+          reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref);
+          if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+        }
         emit({ stage: 'extracting', pct: 10, ticker: intake.videoUrl ? '[Extracting Spatial Matrix from Video Frames…]' : '[Extracting Spatial Matrix from Photos…]' });
 
         // Agent N. Video-only intake has no still frames for the VLM (frame
@@ -116,11 +124,12 @@ export async function POST(req: NextRequest) {
         emit({ stage: 'mounting', pct: 90, ticker: '[Agent L: Mounting 3D WebGL Three.js Container…]' });
         const walkthrough = buildWalkthroughPrompts(geometry, style);
 
-        if (user) await deductCredits(user.id, PRODUCE_COST.interior, `interior:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, geometry, style, walkthrough, degradedGeometry: degradedGeo });
-        controller.close();
+        succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 200) : 'interior pipeline failed' });
+      } finally {
+        if (user && !succeeded) await refundProduce(user.id, PRODUCE_COST.interior, ref, reservation.charged);
         controller.close();
       }
     },

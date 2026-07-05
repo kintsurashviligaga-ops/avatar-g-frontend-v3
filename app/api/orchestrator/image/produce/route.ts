@@ -12,7 +12,7 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   buildImageDirectorSystemPrompt, normalizeImageDirective, deterministicImageDirective,
@@ -54,7 +54,14 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (o: Record<string, unknown>) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* closed */ } recordJobEvent(jobId, o); };
+      const ref = idemRef('image', pipelineId, body);
+      let reservation: Reservation = { proceed: true, charged: false, reason: 'skipped' };
+      let succeeded = false;
       try {
+        if (user) {
+          reservation = await reserveProduce(user.id, PRODUCE_COST.image, ref);
+          if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+        }
         emit({ stage: 'directing', pct: 12, ticker: '[Agent P: Formulating Visual Prompt Matrix…]' });
 
         // Agent P — Claude expansion, fail-open to deterministic.
@@ -81,7 +88,7 @@ export async function POST(req: NextRequest) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: directive.prompt, quality: 'standard', ratio: directive.ratio }),
         });
-        if (!res.ok) { emit({ stage: 'failed', error: `worker_${res.status}` }); controller.close(); return; }
+        if (!res.ok) { emit({ stage: 'failed', error: `worker_${res.status}` }); return; }
         const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; predictionId?: string; error?: string };
         let url = data.url || data.imageUrl || data.output?.[0] || null;
         if (!url && data.predictionId) {
@@ -93,16 +100,17 @@ export async function POST(req: NextRequest) {
             const pd = await poll.json().catch(() => ({})) as { url?: string; output?: string[]; status?: string; error?: string };
             const u = pd.url || pd.output?.[0];
             if (u) { url = u; break; }
-            if (pd.status === 'failed') { emit({ stage: 'failed', error: pd.error ?? 'render_failed' }); controller.close(); return; }
+            if (pd.status === 'failed') { emit({ stage: 'failed', error: pd.error ?? 'render_failed' }); return; }
           }
         }
-        if (!url) { emit({ stage: 'failed', error: data.error ?? 'no_image' }); controller.close(); return; }
+        if (!url) { emit({ stage: 'failed', error: data.error ?? 'no_image' }); return; }
 
-        if (user) await deductCredits(user.id, PRODUCE_COST.image, `image:${Date.now()}`).catch(() => null);
         emit({ stage: 'completed', pct: 100, url, ratio: directive.ratio, style: directive.style });
-        controller.close();
+        succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 160) : 'image pipeline failed' });
+      } finally {
+        if (user && !succeeded) await refundProduce(user.id, PRODUCE_COST.image, ref, reservation.charged);
         controller.close();
       }
     },

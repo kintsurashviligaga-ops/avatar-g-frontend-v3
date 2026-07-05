@@ -17,8 +17,8 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
-import { consumeFreeAvatarChat } from '@/lib/billing/wallet-ledger';
+import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
+import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
 import {
   buildScriptSystemPrompt, buildScriptUserPrompt, extractJson, normalizeBreakdown,
@@ -109,7 +109,22 @@ export async function POST(req: NextRequest) {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ pipelineId, ...o })}\n\n`)); } catch { /* closed */ }
         recordJobEvent(jobId, o);
       };
+      const ref = idemRef('film', pipelineId, body);
+      let reservation: Reservation = { proceed: true, charged: false, reason: 'skipped' };
+      let useFreeSlot = false;
+      let succeeded = false;
       try {
+        // Reserve BEFORE render: atomically consume a FREE FILM if the user has one (restored on failure),
+        // else debit credits up front and fail-fast if the balance is too low — never render for free.
+        if (user) {
+          const free = await consumeFreeFilm(user.id); // >=0 consumed, -1 none, null = RPC absent
+          if (free !== null && free >= 0) {
+            useFreeSlot = true;
+          } else {
+            reservation = await reserveProduce(user.id, PRODUCE_COST.film, ref);
+            if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+          }
+        }
         emit({ stage: 'initiated', pct: 5 });
 
         // ── Agent A: script ──
@@ -122,7 +137,7 @@ export async function POST(req: NextRequest) {
         const clipUrls = (await Promise.all(segments.map((s, i) => genClip(origin, pipelineId, i, s))))
           .filter((u): u is string => Boolean(u));
         emit({ stage: 'video.segments.ready', pct: 65, ready: clipUrls.length, total: segments.length });
-        if (clipUrls.length < 2) { emit({ stage: 'failed', error: `only ${clipUrls.length} clip(s) rendered (need ≥2)` }); controller.close(); return; }
+        if (clipUrls.length < 2) { emit({ stage: 'failed', error: `only ${clipUrls.length} clip(s) rendered (need ≥2)` }); return; }
 
         // ── Agent H: voiceover (best-effort) ──
         let voiceUrl: string | null = null;
@@ -139,17 +154,17 @@ export async function POST(req: NextRequest) {
           globalRender: { transition: 'crossfade', vocal_ducking_pct: 30, fps: 24 },
           pipelineId,
         });
-        if (user) {
-          // Server-authoritative free-counter: burn a free response if one is
-          // available, else charge. Fail-open: RPC/migration absent (free === null)
-          // → charge, i.e. exactly the prior behavior (zero regression).
-          const free = await consumeFreeAvatarChat(user.id);
-          if (free === null || free < 0) await deductCredits(user.id, PRODUCE_COST.film, `film:${Date.now()}`).catch(() => null);
-        }
+        // Free film / credits were already reserved up front — nothing to charge on success.
         emit({ stage: 'completed', pct: 100, url, shots: clipUrls.length });
-        controller.close();
+        succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 200) : 'production failed' });
+      } finally {
+        // Compensate any non-success: restore the consumed free film, else refund the debited credits.
+        if (user && !succeeded) {
+          if (useFreeSlot) await restoreFreeFilm(user.id).catch(() => undefined);
+          else await refundProduce(user.id, PRODUCE_COST.film, ref, reservation.charged);
+        }
         controller.close();
       }
     },
