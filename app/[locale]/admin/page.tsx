@@ -25,8 +25,21 @@ export default async function AdminPage({ params }: Props) {
 
   const supabase = createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const isAdmin = isAdminUser(user) || (user?.email?.toLowerCase() === ADMIN_EMAIL);
-  if (!isAdmin) redirect(`/${locale}/dashboard`);
+
+  // Access is granted by EITHER the founder-email override OR a Supabase metadata role — OR-ed, so the
+  // email match alone is sufficient and can NEVER be revoked by the metadata branch (an OR only grants).
+  // The founder email is therefore already an unconditional bypass of role/header evaluation. If this
+  // redirect still fires for the founder account, the cause is upstream: `getUser()` returned null or a
+  // different account (e.g. an expired session the RSC can't refresh — cookie writes are a no-op here,
+  // see lib/supabase/server.ts setAll). The log turns that silent redirect into a diagnosable signal.
+  const emailIsFounder = user?.email?.trim().toLowerCase() === ADMIN_EMAIL;
+  const metaRole = isAdminUser(user);
+  const isAdmin = emailIsFounder || metaRole;
+  if (!isAdmin) {
+    // eslint-disable-next-line no-console
+    console.warn(`[admin] access denied → /dashboard | hasUser=${!!user} email=${user?.email ?? 'none'} metaRole=${metaRole}`);
+    redirect(`/${locale}/dashboard`);
+  }
 
   const EMPTY_STATS: AdminStats = { totalUsers: 0, gensToday: 0, gensWeek: 0, gensAllTime: 0, failedGens: 0, revenueGel: 0, byService: [], recentSignups: [], recentGenerations: [], dau: 0, successRate: 0, recentFailures: [] };
   let stats: AdminStats;
