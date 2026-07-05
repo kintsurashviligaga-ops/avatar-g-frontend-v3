@@ -133,7 +133,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     /\/(login|signup|auth|register)(\/|$)/.test(pathname)
   );
 
-  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isEmbed;
+  // Admin console owns its FULL layout (its own MyAvatar header) — strip ALL marketing shell chrome
+  // (navbar, sidebar, bottom nav, floating chat, cookie banner). Consumer chrome has no place here.
+  const isAdmin = !!pathname && /\/admin(\/|$)/.test(pathname);
+
+  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isAdmin || isEmbed;
 
   return (
     <div
@@ -141,7 +145,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       style={{ color: 'var(--color-text)', isolation: 'isolate' }}
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
-      <PageEnvironment reduced={isImmersiveWorkspace} />
+      <PageEnvironment reduced={isImmersiveWorkspace || isAdmin} />
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"
@@ -158,7 +162,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         style={
           isImmersiveWorkspace
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
-            : (isLandingOrAuth || isEmbed)
+            : (isLandingOrAuth || isEmbed || isAdmin)
             ? { zIndex: 2 }
             : {
                 paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))',
@@ -173,7 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {!hideShellChrome && <BottomNavigation />}
       {!hideShellChrome && <FloatingChatButton hidden={sidebarOpen} />}
-      {!isEmbed && <CookieConsent />}
+      {!isEmbed && !isAdmin && <CookieConsent />}
     </div>
   );
 }

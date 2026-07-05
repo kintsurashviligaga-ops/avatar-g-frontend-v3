@@ -6,6 +6,7 @@
  * All privileged data/actions go through admin-gated API routes; this component only renders + calls them.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
@@ -65,17 +66,27 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
   return (
     <main className="min-h-dvh bg-[#06060d] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        <header className="flex items-end justify-between gap-4">
-          <div>
-            <h1 className="text-[24px] font-bold tracking-tight">{ka ? 'ადმინი' : 'Admin'}</h1>
-            <p className="mt-0.5 text-[12.5px] text-gray-500">{ka ? 'პლატფორმის მართვის პანელი' : 'Platform control panel'}</p>
+        {/* Native admin top bar — official MyAvatar.ge wordmark, zero marketing chrome. */}
+        <header className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+          <div className="flex items-center gap-3">
+            <BrandLogo href={`/${locale}/dashboard`} size="nav" />
+            <span className="hidden h-6 w-px bg-white/[0.12] sm:block" />
+            <div className="hidden sm:block">
+              <p className="text-[13px] font-semibold leading-none text-white">{ka ? 'ადმინი' : 'Admin'}</p>
+              <p className="mt-1 text-[11px] leading-none text-gray-500">{ka ? 'მართვის პანელი' : 'Control panel'}</p>
+            </div>
           </div>
-          {health && (
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${healthClass}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${health === 'healthy' ? 'bg-emerald-400' : health === 'degraded' ? 'bg-amber-400' : 'bg-rose-400'}`} />
-              {healthLabel}
-            </span>
-          )}
+          <div className="flex items-center gap-2.5">
+            {health && (
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${healthClass}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${health === 'healthy' ? 'bg-emerald-400' : health === 'degraded' ? 'bg-amber-400' : 'bg-rose-400'}`} />
+                {healthLabel}
+              </span>
+            )}
+            <a href={`/${locale}/dashboard`} className="rounded-lg border border-white/10 px-3 py-1.5 text-[12px] text-gray-300 transition-colors hover:bg-white/5 hover:text-white">
+              {ka ? '← აპლიკაცია' : '← App'}
+            </a>
+          </div>
         </header>
 
         {/* Tab bar */}
