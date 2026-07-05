@@ -50,6 +50,7 @@
     "mix_master": "02_audio/mix/mix_master.wav"
   },
   "exports": {
+    "animatic_1080p": "06_exports/animatic/MyAvatar_60s_animatic_1080p.mp4",
     "master_prores": "05_masters/final_master.mov",
     "16x9_4k": "06_exports/16x9_4k/MyAvatar_60s_4K_16x9.mp4",
     "9x16": "06_exports/9x16/MyAvatar_9x16.mp4",

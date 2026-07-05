@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="void" cx="50%" cy="45%" r="75%"><stop offset="0%" stop-color="#111119"/><stop offset="70%" stop-color="#0A0A0F"/><stop offset="100%" stop-color="#050508"/></radialGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00D4FF"/><stop offset="100%" stop-color="#7A5CFF"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#void)"/><text x="960" y="84" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" fill="#5b6577" text-anchor="middle" font-weight="600">100% · MASTER</text>
+    <rect x="510" y="440" width="220" height="26" rx="13" fill="url(#cyan)"/><rect x="745" y="440" width="220" height="26" rx="13" fill="url(#cyan)"/><rect x="980" y="440" width="220" height="26" rx="13" fill="url(#cyan)"/><rect x="1215" y="440" width="220" height="26" rx="13" fill="url(#cyan)"/>
+    <rect x="800" y="550" width="320" height="180" rx="18" fill="#12131b" stroke="#00D4FF" stroke-width="3"/>
+    <text x="960" y="656" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="44" fill="#00D4FF" text-anchor="middle" font-weight="500">▶</text></svg>

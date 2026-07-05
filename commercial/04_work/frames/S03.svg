@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="void" cx="50%" cy="45%" r="75%"><stop offset="0%" stop-color="#111119"/><stop offset="70%" stop-color="#0A0A0F"/><stop offset="100%" stop-color="#050508"/></radialGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00D4FF"/><stop offset="100%" stop-color="#7A5CFF"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#void)"/><text x="960" y="84" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" fill="#5b6577" text-anchor="middle" font-weight="600">READY</text>
+    <rect x="340" y="470" width="1240" height="140" rx="28" fill="#12131b" stroke="#00D4FF" stroke-width="2.5"/>
+    <text x="372" y="556" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="30" fill="#E8ECF4" text-anchor="start" font-weight="500">კინემატოგრაფიული რგოლი ზამთრის თბილისზე…</text>
+    <circle cx="1520" cy="540" r="26" fill="url(#cyan)" filter="url(#glow)"/></svg>

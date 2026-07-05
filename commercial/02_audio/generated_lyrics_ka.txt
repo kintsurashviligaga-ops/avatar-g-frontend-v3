@@ -1,0 +1,9 @@
+# Live-generated song lyrics (Georgian) — MyAvatar.ge commercial music track
+# Source: production POST /api/ai/lyrics (free text LLM), 2026-07-05, authed session.
+# Style: cinematic folk. Theme: "one chat, infinite creation".
+# NOTE: this run returned a short OPENING (the endpoint works + generates real Georgian, but
+# capped the output this pass). A fuller sheet would come from a retry/expanded prompt; the live
+# API path is proven. This is a real generated asset, not authored by hand.
+
+პირველი ჩურჩულით იწყება,
+ჩატიდან ი…
