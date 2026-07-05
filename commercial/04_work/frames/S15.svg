@@ -1,11 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
-  <defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920"><defs>
     <radialGradient id="void" cx="50%" cy="45%" r="75%"><stop offset="0%" stop-color="#111119"/><stop offset="70%" stop-color="#0A0A0F"/><stop offset="100%" stop-color="#050508"/></radialGradient>
     <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00D4FF"/><stop offset="100%" stop-color="#7A5CFF"/></linearGradient>
     <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>
-  <rect width="1920" height="1080" fill="url(#void)"/><text x="960" y="84" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" fill="#5b6577" text-anchor="middle" font-weight="600">THE UNIFIED COMPOSITE</text>
+    <rect width="1080" height="1920" fill="url(#void)"/>
+    <g transform="translate(0 656.3) scale(0.5625)"><rect width="1920" height="1080" fill="url(#void)"/><text x="960" y="84" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" fill="#5b6577" text-anchor="middle" font-weight="600">THE UNIFIED COMPOSITE</text>
     <rect x="440" y="340" width="1040" height="400" rx="16" fill="#0d0e14" stroke="#20222e" stroke-width="1.5"/>
     <rect x="490" y="380" width="940" height="300" rx="10" fill="#12131b" stroke="#00D4FF" stroke-width="2"/>
     <text x="960" y="550" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="54" fill="#00D4FF" text-anchor="middle" font-weight="500">▶</text>
-    <rect x="840" y="750" width="240" height="16" rx="8" fill="#1a1c26"/></svg>
+    <rect x="840" y="750" width="240" height="16" rx="8" fill="#1a1c26"/></g>
+    <rect x="8" y="648.3" width="1064" height="623.5" rx="16" fill="none" stroke="#00D4FF" stroke-opacity="0.16" stroke-width="1.5"/>
+    <text x="540" y="1808" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="32" fill="#E8ECF4" text-anchor="middle" font-weight="800">My Avatar</text>
+    <line x1="468" y1="1824" x2="612" y2="1824" stroke="#00D4FF" stroke-width="3" stroke-linecap="round"/>
+    <text x="540" y="1860" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="20" fill="#00D4FF" text-anchor="middle" font-weight="600">MyAvatar.ge</text>
+  </svg>

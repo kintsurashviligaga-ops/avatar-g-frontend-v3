@@ -60,7 +60,8 @@ require() { for f in "$@"; do [ -f "$ROOT/$f" ] || { echo "✗ missing input: $f
 stitch() {
   banner "STITCH (concat, exact 60s skeleton; craft xfades/MoGraph layered in the NLE/AE — §10.1)"
   # Build the ordered concat list from the manifest; assert all 16 present first.
-  mapfile -t OUTS < <(q "for(const s of m.shots)console.log(s.output)")
+  # (portable array fill — macOS ships bash 3.2 which has no `mapfile`).
+  OUTS=(); while IFS= read -r line; do [ -n "$line" ] && OUTS+=("$line"); done < <(q "for(const s of m.shots)console.log(s.output)")
   require "${OUTS[@]}"
   local list="$ROOT/04_work/concat.txt"; : > "$list"
   for o in "${OUTS[@]}"; do printf "file '%s'\n" "$ROOT/$o" >> "$list"; done

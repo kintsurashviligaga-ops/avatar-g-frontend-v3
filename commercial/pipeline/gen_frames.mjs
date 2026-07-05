@@ -20,18 +20,37 @@ import { execFileSync } from 'node:child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(execFileSync('cat', [resolve(ROOT, 'asset_manifest.json')]).toString());
-const W = 1920, H = 1080, FPS = 24; // 1080p animatic proxy (final master is 2160p)
+// `--vertical` → native 9:16 1080×1920 mobile render (the landscape design is authored in a fixed
+// 1920×1080 space, then scaled + centered as a premium hero-card on the brand void, with a persistent
+// wordmark). Default → 16:9 1920×1080. Final master would be 2160p; this is the 1080p animatic.
+const VERTICAL = process.argv.includes('--vertical') || process.env.ORIENT === 'vertical';
+const W = 1920, H = 1080, FPS = 24;                               // design space (frame fns author here)
+const OW = VERTICAL ? 1080 : 1920, OH = VERTICAL ? 1920 : 1080;   // output canvas
 const BG = '#0A0A0F', CY = '#00D4FF', VI = '#7A5CFF', TX = '#E8ECF4', MUT = '#5b6577';
 const FRAMES = resolve(ROOT, '04_work/frames'); mkdirSync(FRAMES, { recursive: true });
 
 // ── shared SVG primitives ────────────────────────────────────────────────────
-const S = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
+const DEFS = `<defs>
     <radialGradient id="void" cx="50%" cy="45%" r="75%"><stop offset="0%" stop-color="#111119"/><stop offset="70%" stop-color="${BG}"/><stop offset="100%" stop-color="#050508"/></radialGradient>
     <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="${CY}"/><stop offset="100%" stop-color="${VI}"/></linearGradient>
     <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  </defs>
-  <rect width="${W}" height="${H}" fill="url(#void)"/>${inner}</svg>`;
+  </defs>`;
+const S = (inner) => {
+  const bg = `<rect width="${W}" height="${H}" fill="url(#void)"/>`;
+  if (!VERTICAL)
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${OW}" height="${OH}" viewBox="0 0 ${OW} ${OH}">${DEFS}${bg}${inner}</svg>`;
+  // 9:16 — scale the 1920×1080 design to the 1080 mobile width, center it as a hero card on the
+  // brand void, ring it in faint cyan, and hold the wordmark below (premium mobile treatment).
+  const K = OW / W, bandH = H * K, top = (OH - bandH) / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${OW}" height="${OH}" viewBox="0 0 ${OW} ${OH}">${DEFS}
+    <rect width="${OW}" height="${OH}" fill="url(#void)"/>
+    <g transform="translate(0 ${top.toFixed(1)}) scale(${K.toFixed(4)})">${bg}${inner}</g>
+    <rect x="8" y="${(top - 8).toFixed(1)}" width="${OW - 16}" height="${(bandH + 16).toFixed(1)}" rx="16" fill="none" stroke="${CY}" stroke-opacity="0.16" stroke-width="1.5"/>
+    ${label(OW / 2, OH - 112, 'My Avatar', 32, TX, 'middle', 800)}
+    <line x1="${OW / 2 - 72}" y1="${OH - 96}" x2="${OW / 2 + 72}" y2="${OH - 96}" stroke="${CY}" stroke-width="3" stroke-linecap="round"/>
+    ${label(OW / 2, OH - 60, 'MyAvatar.ge', 20, CY, 'middle', 600)}
+  </svg>`;
+};
 const tile = (x, y, w, h, r, fill, stroke, sw) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw || 1}"` : ''}/>`;
 const label = (x, y, t, size, fill, anchor, weight) => `<text x="${x}" y="${y}" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="${size}" fill="${fill || TX}" text-anchor="${anchor || 'start'}" font-weight="${weight || 500}">${t}</text>`;
 const kicker = (t) => label(W / 2, 84, t, 22, MUT, 'middle', 600);
@@ -113,7 +132,7 @@ const FRAME = {
 };
 
 // ── render each shot → SVG → PNG → static shot-duration .mov ──────────────────
-console.log(`▶ generating 16 on-brand frames @ ${W}×${H} · ${FPS}fps`);
+console.log(`▶ generating 16 on-brand frames @ ${OW}×${OH} · ${FPS}fps`);
 const slotMovs = [];
 for (const s of manifest.shots) {
   const svg = S((FRAME[s.id] || (() => kicker(s.id)))());
@@ -121,12 +140,12 @@ for (const s of manifest.shots) {
   const pngPath = resolve(FRAMES, `${s.id}.png`);
   const movPath = resolve(ROOT, s.output);
   writeFileSync(svgPath, svg);
-  const png = new Resvg(svg, { fitTo: { mode: 'width', value: W } }).render().asPng();
+  const png = new Resvg(svg, { fitTo: { mode: 'width', value: OW } }).render().asPng();
   writeFileSync(pngPath, png);
   mkdirSync(dirname(movPath), { recursive: true });
   // static frame held for the exact shot duration, uniform codec/params so concat is clean.
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-loop', '1', '-framerate', String(FPS), '-i', pngPath,
-    '-t', String(s.dur_sec), '-r', String(FPS), '-s', `${W}x${H}`, '-pix_fmt', 'yuv420p',
+    '-t', String(s.dur_sec), '-r', String(FPS), '-s', `${OW}x${OH}`, '-pix_fmt', 'yuv420p',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', movPath]);
   slotMovs.push(movPath);
   console.log(`  ✓ ${s.id}  ${s.dur_frames}f/${s.dur_sec}s  → ${s.output}`);
@@ -135,8 +154,8 @@ for (const s of manifest.shots) {
 // ── concat all 16 → exact-60s animatic ───────────────────────────────────────
 const listPath = resolve(ROOT, '04_work/animatic_concat.txt');
 writeFileSync(listPath, slotMovs.map((m) => `file '${m}'`).join('\n') + '\n');
-const outDir = resolve(ROOT, '06_exports/animatic'); mkdirSync(outDir, { recursive: true });
-const outMp4 = resolve(outDir, 'MyAvatar_60s_animatic_1080p.mp4');
+const outDir = resolve(ROOT, VERTICAL ? '06_exports/9x16' : '06_exports/animatic'); mkdirSync(outDir, { recursive: true });
+const outMp4 = resolve(outDir, VERTICAL ? 'MyAvatar_60s_9x16_1080x1920.mp4' : 'MyAvatar_60s_animatic_1080p.mp4');
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listPath,
   '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', outMp4]);
 rmSync(FRAMES + '/tmp', { recursive: true, force: true });
