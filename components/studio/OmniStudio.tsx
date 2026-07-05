@@ -41,7 +41,7 @@ import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand } from '@/lib/chat/intentDetector';
-import { createSession, saveMessage } from '@/lib/chat-history';
+import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
@@ -739,7 +739,7 @@ type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrument
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
 // fills in independently as its own parallel generation lands.
-interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string }
+interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string; jobId?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 // TASK 4 — Cinema-video parallelism gate. When ON, the flagship `renderFilm` dispatches
 // through the Cap-3 queue (per-job signal + durable row + tray progress) so multiple films
@@ -1222,6 +1222,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // The active conversation id + its messages (resumed from the saved history).
   const [conversationId, setConversationId] = useState<string>(currentConversationId);
   const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
+  // Mirror of `messages` for the mount-hydration effect below (reads the current view without a
+  // stale-closure / exhaustive-deps churn).
+  const messagesRef = useRef<Msg[]>(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   // Chat-history panel (list of past conversations) open state.
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyList, setHistoryList] = useState<Conversation[]>([]);
@@ -2940,6 +2944,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         run: async ({ signal, onProgress, jobId }) => {
           trackJobUpdate(jobId, 'Rendering', 8);
           onProgress({ pct: 8 });
+          // Stamp the tile with its durable jobId so a mid-render reload can reconcile it against
+          // the DB (restore a completed tile from signed_url, or clear the phantom spinner).
+          updateTile(tileIdx, { status: 'pending', jobId });
           try {
             const res = await fetch('/api/nanobanana/image', {
               method: 'POST',
@@ -2951,14 +2958,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
             onProgress({ pct: 100 });
             if (j.success && j.url) {
-              updateTile(tileIdx, { status: 'done', url: j.url });
+              updateTile(tileIdx, { status: 'done', url: j.url, jobId });
               notifyCredit('image');
               return j.url;
             }
-            updateTile(tileIdx, { status: 'failed' });
+            updateTile(tileIdx, { status: 'failed', jobId });
             throw new Error(j.error || 'image failed');
           } catch (e) {
-            updateTile(tileIdx, { status: 'failed' });
+            updateTile(tileIdx, { status: 'failed', jobId });
             throw e;
           }
         },
@@ -3078,6 +3085,70 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (!text) return;
     void ensureChatSession().then((sid) => { if (sid) void saveMessage(sid, role, text); });
   }, [ensureChatSession]);
+
+  // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────
+  // For an AUTHENTICATED user, once on mount:
+  //  • local view EMPTY (fresh device / cleared cache) → hydrate the text transcript from Supabase
+  //    (getMessages) so chat history follows the ACCOUNT cross-device, not just this device's
+  //    localStorage. (Media / generation bubbles aren't server-persisted, so this restores the
+  //    conversation text — the durable transcript — not device-local media tiles.)
+  //  • local view NON-EMPTY (same device) → keep the rich local view and instead RECONCILE any
+  //    still-pending image-batch tiles against the DB: a client-driven render can't resume after a
+  //    reload, so restore a completed tile from its signed_url or clear the phantom spinner (→ failed).
+  // Fully fail-open: anonymous / demo / no session / network → the localStorage view stands.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const sb = createBrowserClient();
+        if (!sb) return;
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user || !alive) return;
+        if (messagesRef.current.length === 0) {
+          // #1 — resume the text transcript from the server (cross-device).
+          let sid: string | null = null;
+          try {
+            const raw = localStorage.getItem('myavatar:chat-session');
+            if (raw) { const p = JSON.parse(raw) as { uid?: string; sid?: string }; if (p?.uid === user.id && p.sid) sid = p.sid; }
+          } catch { /* ignore */ }
+          if (!sid) {
+            const convos = await getConversations(user.id);
+            sid = convos[0]?.session_id ?? null;
+            if (sid) { try { localStorage.setItem('myavatar:chat-session', JSON.stringify({ uid: user.id, sid })); } catch { /* ignore */ } }
+          }
+          if (!sid || !alive) return;
+          chatSessionIdRef.current = sid; // reuse for the write path (continue the resumed session)
+          const rows = await getMessages(sid);
+          if (!alive || rows.length === 0) return;
+          const serverMsgs: Msg[] = rows
+            .filter((r) => r.role === 'user' || r.role === 'assistant')
+            .map((r) => ({ role: r.role as 'user' | 'assistant', text: r.content }));
+          // Guard against a race: only replace if the view is STILL empty (user hasn't typed yet).
+          if (serverMsgs.length && messagesRef.current.length === 0) setMessages(serverMsgs);
+        } else if (messagesRef.current.some((m) => m.batch?.tiles.some((t) => t.status === 'pending' && t.jobId))) {
+          // #3 — reconcile still-pending batch tiles against the durable generation_jobs rows.
+          const res = await fetch('/api/orchestrator/jobs?limit=50', { credentials: 'include' });
+          if (!res.ok || !alive) return;
+          const { jobs } = (await res.json().catch(() => ({ jobs: [] }))) as { jobs: { id: string; status: string; signed_url: string | null }[] };
+          const byId = new Map((jobs || []).map((j) => [j.id, j]));
+          setMessages((prev) => prev.map((m) => {
+            if (!m.batch) return m;
+            let changed = false;
+            const tiles = m.batch.tiles.map((t): BatchTile => {
+              if (t.status !== 'pending' || !t.jobId) return t;
+              changed = true;
+              const row = byId.get(t.jobId);
+              return row?.status === 'completed' && row.signed_url
+                ? { status: 'done', url: row.signed_url, jobId: t.jobId }
+                : { status: 'failed', jobId: t.jobId };
+            });
+            return changed ? { ...m, batch: { ...m.batch, tiles } } : m;
+          }));
+        }
+      } catch { /* fail-open → localStorage view */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const streamChat = useCallback(async (history: Msg[]) => {
     const myGen = ++genIdRef.current;

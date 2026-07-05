@@ -1,4 +1,4 @@
-import { buildFilterComplex } from './ffmpeg-filtergraph';
+import { buildFilterComplex, duckRatio } from './ffmpeg-filtergraph';
 
 describe('buildFilterComplex', () => {
   test('single clip → no xfade, routed through the cinematic master', () => {
@@ -221,5 +221,36 @@ describe('buildFilterComplex', () => {
     expect(off).not.toContain('[vkey]');              // voice is not split for a sidechain key
     expect(off).toContain('volume=1.25');             // voice still lifted on top
     expect(off).toContain('amix=inputs=2:normalize=0[apre]'); // static voice+bed mix
+  });
+
+  // FINAL SWEEP — the dB→ratio map is now UNIFIED via the shared duckRatio() helper, so the
+  // 2-track (voice + bed) and 3-track (dialogue + music + sfx) master duck IDENTICALLY for the
+  // same duck-dB input. Previously the 3-track used a divergent |duckDb|·(20/12) map → −12 dB
+  // produced ratio 20 there vs 12 in the 2-track; that asymmetry is the bug this closes.
+  const threeTrack = (over: Record<string, unknown> = {}) =>
+    buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: true, fps: 24, duckPct: 30, ...over }).filter;
+
+  test('3-track duck-dB now matches the 2-track ratio for identical input (unified map, was 20 not 12 at −12)', () => {
+    for (const [db, ratio] of [[-12, 12], [-18, 17], [-6, 8]] as const) {
+      const needle = `sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250`;
+      expect(threeTrack({ duckDb: db })).toContain(needle);
+      expect(twoTrack({ duckDb: db })).toContain(needle);
+    }
+  });
+
+  test('duckRatio() is the single source of truth: 2-track and 3-track agree across the dB range', () => {
+    for (const db of [-6, -9, -12, -15, -18, -24]) {
+      const r = duckRatio(db, 0.3); // duckPct 30 → duck 0.3, matching both helpers above
+      expect(twoTrack({ duckDb: db })).toContain(`ratio=${r}:`);
+      expect(threeTrack({ duckDb: db })).toContain(`ratio=${r}:`);
+    }
+  });
+
+  test('duckRatio() maths: anchor −12→12, scales with depth, clamps 8..30', () => {
+    expect(duckRatio(-12, 0.3)).toBe(12);       // anchor (round 11.6)
+    expect(duckRatio(-18, 0.3)).toBe(17);       // deeper (round 17.4)
+    expect(duckRatio(-6, 0.3)).toBe(8);         // floor clamp (5.8 → 6 → 8)
+    expect(duckRatio(-60, 0.3)).toBe(30);       // ceiling clamp
+    expect(duckRatio(undefined, 0.3)).toBe(12); // no dB → pure duckPct baseline
   });
 });

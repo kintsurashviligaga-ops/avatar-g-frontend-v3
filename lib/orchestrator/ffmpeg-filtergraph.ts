@@ -105,6 +105,23 @@ export function sceneAwareTransitions(nClips: number): string[] {
   return out;
 }
 
+/**
+ * Canonical ducking depth → `sidechaincompress` ratio, SHARED by the 2-track (voice + bed) and
+ * 3-track (dialogue + music + sfx) mix paths so identical user input yields identical ducking.
+ * Anchored on the proven narration-forward 2-track map: the default −12 dB → ratio 12, scaling
+ * linearly with depth off the duckPct baseline (8 + duck·12), clamped 8..30. No dB supplied →
+ * the pure duckPct-derived ratio (depth 1). Previously the 3-track path used a DIVERGENT
+ * |duckDb|·(20/12) map (−12 → 20) for the same input — that asymmetry is removed; both resolve here.
+ *
+ * @param duckDb ducking depth in dB (negative, e.g. −12); undefined → duckPct-only.
+ * @param duck   duckPct normalised to 0..1 (i.e. duckPct/100).
+ */
+export function duckRatio(duckDb: number | undefined, duck: number): number {
+  const base = 8 + duck * 12;                                            // duckPct baseline
+  const depth = typeof duckDb === 'number' ? Math.abs(duckDb) / 12 : 1;  // −12 dB ⇒ 1.0
+  return Math.max(8, Math.min(30, Math.round(base * depth)));
+}
+
 export function buildFilterComplex(opts: FilterGraphOpts): {
   filter: string;
   vmap: string;
@@ -274,11 +291,9 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     const musV = clampVol(opts.musicVolume ?? 0.7);
     const sfxV = clampVol(opts.sfxVolume ?? 0.8);
     const smart = opts.smartDuck !== false;
-    // dB→ratio: −12 dB ≈ ratio 20 (matches the music-video duck). Linear-ish around
-    // that anchor; clamped 8..30. Falls back to the duckPct-derived ratio.
-    const ratio = typeof opts.duckDb === 'number'
-      ? Math.max(8, Math.min(30, Math.round(Math.abs(opts.duckDb) * (20 / 12))))
-      : Math.max(8, Math.round(8 + duck * 12));
+    // dB→ratio via the SHARED duckRatio() map (unified with the 2-track path below) so the
+    // duck-dB slider produces identical ducking regardless of how many lanes are present.
+    const ratio = duckRatio(opts.duckDb, duck);
     parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
     parts.push(`[vraw]volume=1.0[vmix]`);
     parts.push(`[${sfxIdx}:a]volume=${sfxV}[sfxv]`);
@@ -312,8 +327,8 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     //    prior fixed ratio (12) → existing/default films render byte-identically.
     // No slider provided (a bare server call) → depth 1 → the prior duckPct ratio, unchanged.
     const smart = opts.smartDuck !== false;
-    const depth = typeof opts.duckDb === 'number' ? Math.abs(opts.duckDb) / 12 : 1; // −12 dB ⇒ 1.0
-    const ratio = Math.max(8, Math.min(30, Math.round((8 + duck * 12) * depth))); // −12→12 · −18→17 · −6→8
+    // dB→ratio via the SHARED duckRatio() map (identical to the 3-track path above). −12→12 · −18→17 · −6→8.
+    const ratio = duckRatio(opts.duckDb, duck);
     if (smart) {
       parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
       parts.push(`[vraw]volume=1.25[vmix]`);

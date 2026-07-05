@@ -374,68 +374,86 @@ export class ServiceManager {
     // PHASE 2 L5 — per-render i2v model: the Cinema panel's Kling/Hailuo toggle wins,
     // else the REPLICATE_VIDEO_MODEL env default. buildI2vInput already shapes the
     // input per model family (kling start_image / minimax first_frame_image).
+    const KLING_I2V = 'kwaivgi/kling-v1.6-standard';
     const model =
       request.videoModel === 'hailuo' ? 'minimax/hailuo-02'
-      : request.videoModel === 'kling' ? 'kwaivgi/kling-v1.6-standard'
+      : request.videoModel === 'kling' ? KLING_I2V
       : VIDEO_I2V_MODEL;
-    const input = this.buildI2vInput(model, request.userPrompt, aspect, startImage);
     const promptHash = this.hashPrompt(request.userPrompt);
 
-    try {
-      // One quick retry on a transient 5xx/network blip before falling back to LTX —
-      // each attempt gets a fresh timeout; a real timeout (TimeoutError) bails fast so
-      // the LTX fallback isn't delayed. The never-throws contract is preserved by the
-      // outer catch (a final failure → thrown → caught → null).
-      const res = await withRetry(
-        async () => {
-          const r = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            cache: 'no-store',
-            body: JSON.stringify({ input }),
-            signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
-          });
-          if (!r.ok && r.status >= 500) throw new Error(`i2v create ${r.status}`);
-          return r;
-        },
-        { maxAttempts: 2, baseDelayMs: 800, label: `i2v-${model}` },
-      );
-      if (!res.ok) {
-        // eslint-disable-next-line no-console
-        console.warn(`[i2v] ${model} create ${res.status} → LTX fallback`);
-        return null;
-      }
-      const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
-      if (!pred.id) return null;
+    // ONE create+accept attempt for a specific model. Returns the processing task-ref (or a rare
+    // immediate success), or null on ANY failure (create 4xx/5xx, timeout, no id, throw) so the
+    // caller can fail over. NEVER throws — the never-throws contract lives here.
+    const attempt = async (modelId: string): Promise<ServiceManagerResponse | null> => {
+      const input = this.buildI2vInput(modelId, request.userPrompt, aspect, startImage);
+      try {
+        // One quick retry on a transient 5xx/network blip; each attempt gets a fresh timeout so a
+        // real latency stall (TimeoutError) bails fast and hands off to the failover / LTX.
+        const res = await withRetry(
+          async () => {
+            const r = await fetch(`https://api.replicate.com/v1/models/${modelId}/predictions`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              cache: 'no-store',
+              body: JSON.stringify({ input }),
+              signal: AbortSignal.timeout(PROVIDER_CREATE_TIMEOUT_MS),
+            });
+            if (!r.ok && r.status >= 500) throw new Error(`i2v create ${r.status}`);
+            return r;
+          },
+          { maxAttempts: 2, baseDelayMs: 800, label: `i2v-${modelId}` },
+        );
+        if (!res.ok) {
+          // eslint-disable-next-line no-console
+          console.warn(`[i2v] ${modelId} create ${res.status}`);
+          return null;
+        }
+        const pred = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown };
+        if (!pred.id) return null;
 
-      // Rare immediate completion.
-      const immediateUrl = this.extractUrl(pred.output);
-      if (pred.status === 'succeeded' && immediateUrl) {
+        // Rare immediate completion.
+        const immediateUrl = this.extractUrl(pred.output);
+        if (pred.status === 'succeeded' && immediateUrl) {
+          return {
+            success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+            message: 'Video generation completed successfully.', assetUrl: immediateUrl, assetType: 'video',
+            predictionStatus: 'succeeded',
+            metadata: { provider: 'replicate', model: modelId, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, providerTaskId: pred.id, promptHash },
+          };
+        }
+        const taskRef = this.encodeTaskRef({
+          provider: 'replicate', providerTaskId: pred.id, sessionId: request.sessionId,
+          serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
+          responseType: 'video', promptHash, createdAt: Date.now(),
+        });
+        // eslint-disable-next-line no-console
+        console.log(`[i2v] ${modelId} accepted clip (${pred.id}) — photorealistic i2v engaged`);
         return {
           success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-          message: 'Video generation completed successfully.', assetUrl: immediateUrl, assetType: 'video',
-          predictionStatus: 'succeeded',
-          metadata: { provider: 'replicate', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, providerTaskId: pred.id, promptHash },
+          message: `${modelId} accepted the request. Polling for completion.`,
+          predictionId: taskRef, predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
+          metadata: { provider: 'replicate', model: modelId, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: pred.id, promptHash },
         };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[i2v] ${modelId} create error:`, err instanceof Error ? err.message : err);
+        return null;
       }
-      const taskRef = this.encodeTaskRef({
-        provider: 'replicate', providerTaskId: pred.id, sessionId: request.sessionId,
-        serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
-        responseType: 'video', promptHash, createdAt: Date.now(),
-      });
+    };
+
+    // CINEMA FAILSAFE MATRIX — the EXPERIMENTAL Hailuo leg fails over to the PROVEN Kling i2v
+    // BEFORE the caller drops to LTX, so a Hailuo latency spike / rate-limit never stalls the
+    // render nor silently skips the hardened Kling tier. Kling/env primaries are unchanged
+    // (a failure returns null → the caller's LTX fallback, exactly as before).
+    const primary = await attempt(model);
+    if (primary) return primary;
+    if (request.videoModel === 'hailuo' && model !== KLING_I2V) {
       // eslint-disable-next-line no-console
-      console.log(`[i2v] ${model} accepted clip (${pred.id}) — photorealistic i2v engaged`);
-      return {
-        success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-        message: `${model} accepted the request. Polling for completion.`,
-        predictionId: taskRef, predictionStatus: pred.status === 'failed' ? 'failed' : 'processing',
-        metadata: { provider: 'replicate', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: pred.id, promptHash },
-      };
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(`[i2v] create error → LTX fallback:`, err instanceof Error ? err.message : err);
-      return null;
+      console.warn('[i2v] hailuo unavailable → Kling failover (then LTX if that also fails)');
+      const failover = await attempt(KLING_I2V);
+      if (failover) return failover;
     }
+    return null; // → caller's LTX fallback
   }
 
   /**
