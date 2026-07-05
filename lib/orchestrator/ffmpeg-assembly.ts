@@ -24,6 +24,8 @@ import { validateMaster, expectedMasterDuration, type QaReport } from './masterQ
 import { uploadBufferAndSign } from './storage-adapter';
 import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
+import { compileAudioMix } from '@/lib/pipeline/audio/audioMix';
+import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
 
 const exec = promisify(execFile);
 
@@ -190,6 +192,22 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const sfxVolume = typeof g.sfx_volume === 'number' ? g.sfx_volume : undefined;
     const smartDuck = g.smart_duck === false || String(g.smart_duck) === 'false' ? false : undefined;
     const duckDb = typeof g.duck_db === 'number' ? g.duck_db : undefined;
+
+    // ── FEATURE GATES (additive; default OFF → this assembler is byte-identical when unset) ──────────
+    const AUDIO_MIX_ON = process.env.FILM_AUDIO_MIX_ENABLED === '1';
+    const LIPSYNC_ON = process.env.FILM_LIPSYNC_ENABLED === '1';
+    // FILM_AUDIO_MIX_ENABLED — the 4-field mixer compiler resolves the ducking depth (−12 dB by default)
+    // and the hard-mute window: the depth is threaded through the PROVEN filtergraph below, and the
+    // hard-mute is applied as a small fail-open post-pass (never a rewrite of the master graph).
+    let effectiveDuckDb = duckDb;
+    let hardMuteAf: string | null = null;
+    if (AUDIO_MIX_ON) {
+      const plan = compileAudioMix({ dialogue: voice, narrator: null, music, sfx }, typeof duckDb === 'number' ? { duckDb } : {});
+      effectiveDuckDb = plan.duckDb;
+      hardMuteAf = plan.hardMuteAf;
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] FILM_AUDIO_MIX_ENABLED duck=${effectiveDuckDb}dB hardMute=${Boolean(hardMuteAf)}`);
+    }
     // Derive the per-clip length from the segment durations so the master timeline
     // is correct for ANY cadence — a 6-scene · 5s film, a 5-shot · 6s video, etc.
     // (Average + round; all clips in a composition share one length.) Falls back to
@@ -316,7 +334,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       ...(musicVolume !== undefined ? { musicVolume } : {}),
       ...(sfxVolume !== undefined ? { sfxVolume } : {}),
       ...(smartDuck === false ? { smartDuck } : {}),
-      ...(duckDb !== undefined ? { duckDb } : {}),
+      ...(effectiveDuckDb !== undefined ? { duckDb: effectiveDuckDb } : {}),
     });
 
     const out = join(dir, 'master.mp4');
@@ -380,6 +398,41 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     await exec(bin, args, { maxBuffer: 1 << 28, timeout: 280_000, ...(signal ? { signal } : {}) });
     // eslint-disable-next-line no-console
     console.log(`[assemble] ffmpeg encode (${inputs.length} clips → master) in ${Date.now() - tEnc}ms`);
+
+    // FILM_AUDIO_MIX_ENABLED — enforce the hard-mute window (0:06–0:08) as a fail-open audio-only post-pass.
+    // NB: on the already-mixed master this silences the FULL mix for that window (a deliberate silence beat
+    // per the spec — NOT a per-lane score-only mute; per-lane muting with dialogue present would require
+    // threading into buildFilterComplex). Runs only when there is audio to mute; rewrites `out` in place;
+    // any failure keeps the original master.
+    if (AUDIO_MIX_ON && hardMuteAf && (music || voice)) {
+      try {
+        const muted = join(dir, 'master_mixed.mp4');
+        await exec(bin, ['-y', '-i', out, '-af', hardMuteAf, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', muted], { maxBuffer: 1 << 28, timeout: 120_000, ...(signal ? { signal } : {}) });
+        await writeFile(out, await readFile(muted));
+        // eslint-disable-next-line no-console
+        console.log('[assemble] applied audio-mix hard-mute window');
+      } catch (e) { console.warn('[assemble] hard-mute post-pass skipped:', e instanceof Error ? e.message : e); }
+    }
+
+    // FILM_LIPSYNC_ENABLED — post-render lip-sync stage (swappable provider; sub-floor confidence → raw
+    // clip). Default provider is a safe passthrough (no external call), so enabling the gate never alters
+    // the master until a real provider is wired (FILM_LIPSYNC_PROVIDER=replicate + REPLICATE_API_TOKEN).
+    // NOTE: the productive placement is per-clip pre-assembly (clips have URLs + known dialogue timing);
+    // here it runs over the master + voice lane and fail-opens to the raw master — the stage/interface is
+    // exercised and logged. Only a confident sync that yields a NEW local file replaces the master.
+    if (LIPSYNC_ON && voice) {
+      try {
+        const provider: LipsyncProvider = process.env.FILM_LIPSYNC_PROVIDER === 'replicate' && process.env.REPLICATE_API_TOKEN
+          ? replicateLipsyncProvider({ token: process.env.REPLICATE_API_TOKEN })
+          : passthroughLipsyncProvider;
+        const ls = await lipsyncNode({ clipUrl: out, audioUrl: voice }, { provider });
+        // eslint-disable-next-line no-console
+        console.log(`[assemble] lipsync provider=${ls.provider} fallback=${ls.usedFallback} conf=${ls.confidence}`);
+        if (!ls.usedFallback && ls.url && ls.url !== out) {
+          try { await writeFile(out, await readFile(ls.url)); } catch { /* remote/unreadable → keep raw master */ }
+        }
+      } catch (e) { console.warn('[assemble] lipsync stage skipped:', e instanceof Error ? e.message : e); }
+    }
 
     // STEP 2.3 — word-synced caption burn (FAIL-OPEN). Only runs when the caller supplied
     // a with-timestamps alignment; otherwise `out` is untouched → zero blast radius on all
