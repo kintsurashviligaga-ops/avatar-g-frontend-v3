@@ -86,6 +86,7 @@
       "dur_sec": 4.5,
       "hard_cut_in": false,
       "output": "01_source/capture/S02_macro_prompt_type.mov",
+      "live_ui_verified": "2026-07-05",
       "generative": false
     },
     {
@@ -101,6 +102,7 @@
       "dur_sec": 2.5,
       "hard_cut_in": false,
       "output": "01_source/capture/S03_prompt_complete_glow.mov",
+      "live_ui_verified": "2026-07-05",
       "generative": false
     },
     {
@@ -131,6 +133,7 @@
       "dur_sec": 3,
       "hard_cut_in": false,
       "output": "01_source/capture/S05_dashboard_6tiles.mov",
+      "live_ui_verified": "2026-07-05",
       "generative": false
     },
     {
@@ -146,6 +149,7 @@
       "dur_sec": 4,
       "hard_cut_in": false,
       "output": "01_source/hybrid/S06_image_grid_fill.mov",
+      "live_ui_verified": "2026-07-05",
       "generative": true,
       "prompt": "grid of photorealistic AI-generated images, diverse premium subjects (portrait, landscape, product, abstract), crisp 8k detail, consistent cinematic color, gallery-quality, cohesive palette with cyan undertone.",
       "negative": "watermark, text, garbled detail, low-res, duplicate, distorted faces.",
@@ -164,6 +168,7 @@
       "dur_sec": 4.5,
       "hard_cut_in": false,
       "output": "01_source/capture/S07_music_composer_waveform.mov",
+      "live_ui_verified": "2026-07-05",
       "generative": false
     },
     {
@@ -179,6 +184,7 @@
       "dur_sec": 4.5,
       "hard_cut_in": false,
       "output": "01_source/hybrid/S08_character_swap_wipe.mov",
+      "live_ui_verified": "2026-07-05",
       "generative": true,
       "prompt": "studio-lit portrait of a synthetic, non-identifiable human face, photorealistic, neutral expression, even soft key light, high detail skin texture, premium headshot, cohesive with cyan-accented dark set.",
       "negative": "real celebrity, recognizable person, distortion, artifacts, extra fingers, watermark, text.",
