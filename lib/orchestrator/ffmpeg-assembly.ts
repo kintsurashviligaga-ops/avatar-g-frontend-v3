@@ -24,7 +24,8 @@ import { validateMaster, expectedMasterDuration, type QaReport } from './masterQ
 import { uploadBufferAndSign } from './storage-adapter';
 import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
-import { compileAudioMix } from '@/lib/pipeline/audio/audioMix';
+import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pipeline/audio/audioMix';
+import { parseScript, scriptMixWindows } from '@/lib/pipeline/script/scriptSchema';
 import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
 
 const exec = promisify(execFile);
@@ -79,6 +80,11 @@ export interface FfmpegManifest {
    *  When present, timed FiraGO caption strips are burned into the master AFTER the
    *  stitch (fail-open: a miss ships the un-captioned master, byte-for-byte as before). */
   captionAlignment?: ElevenAlignment | null;
+  /** v357 — the parsed film script (scriptSchema shape). When present AND FILM_AUDIO_MIX_ENABLED
+   *  is on, its explicit muteWindows drive the hard-mute post-pass (silence beats) instead of any
+   *  hardcoded window. Validated fail-open via parseScript: a malformed payload is ignored, so the
+   *  master is byte-identical to the no-script path. */
+  script?: unknown;
 }
 
 /** True when the CPU assembler can run (binary bundled). */
@@ -200,13 +206,19 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // and the hard-mute window: the depth is threaded through the PROVEN filtergraph below, and the
     // hard-mute is applied as a small fail-open post-pass (never a rewrite of the master graph).
     let effectiveDuckDb = duckDb;
-    let hardMuteAf: string | null = null;
+    let scriptMuteWindows: MixWindow[] = [];
     if (AUDIO_MIX_ON) {
-      const plan = compileAudioMix({ dialogue: voice, narrator: null, music, sfx }, typeof duckDb === 'number' ? { duckDb } : {});
-      effectiveDuckDb = plan.duckDb;
-      hardMuteAf = plan.hardMuteAf;
+      // v357 — parse the script (fail-open) and DRIVE the silence-beat mute windows from it, never a
+      // hardcoded 6–8s guess. The score already ducks under dialogue via buildFilterComplex's voice-keyed
+      // sidechain, so the compiler's time-driven ducking (from dialogueSpans) is intentionally NOT layered
+      // on here — it would double-duck; dialogueSpans stays a standalone-compiler capability. The mute
+      // windows are clamped to the DERIVED master length + turned into hardMuteAf at the post-pass below
+      // (where masterDurSec is known). No script → no windows → post-pass skipped → master unchanged.
+      const parsed = m.script != null ? parseScript(m.script) : null;
+      scriptMuteWindows = parsed?.ok ? scriptMixWindows(parsed.script).muteWindows : [];
+      effectiveDuckDb = typeof duckDb === 'number' ? duckDb : DEFAULT_DUCK_DB;
       // eslint-disable-next-line no-console
-      console.log(`[assemble] FILM_AUDIO_MIX_ENABLED duck=${effectiveDuckDb}dB hardMute=${Boolean(hardMuteAf)}`);
+      console.log(`[assemble] FILM_AUDIO_MIX_ENABLED duck=${effectiveDuckDb}dB script=${parsed?.ok ? 'ok' : m.script != null ? 'invalid' : 'none'} muteWindows=${scriptMuteWindows.length}`);
     }
     // Derive the per-clip length from the segment durations so the master timeline
     // is correct for ANY cadence — a 6-scene · 5s film, a 5-shot · 6s video, etc.
@@ -399,18 +411,27 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // eslint-disable-next-line no-console
     console.log(`[assemble] ffmpeg encode (${inputs.length} clips → master) in ${Date.now() - tEnc}ms`);
 
-    // FILM_AUDIO_MIX_ENABLED — enforce the hard-mute window (0:06–0:08) as a fail-open audio-only post-pass.
-    // NB: on the already-mixed master this silences the FULL mix for that window (a deliberate silence beat
-    // per the spec — NOT a per-lane score-only mute; per-lane muting with dialogue present would require
-    // threading into buildFilterComplex). Runs only when there is audio to mute; rewrites `out` in place;
-    // any failure keeps the original master.
-    if (AUDIO_MIX_ON && hardMuteAf && (music || voice)) {
+    // FILM_AUDIO_MIX_ENABLED — enforce the SCRIPT's mute windows (silence beats) as a fail-open audio-only
+    // post-pass; there is no hardcoded window, so no script/windows → hardMuteAf null → this block is skipped.
+    // The windows are first CLAMPED to the derived master length (masterDurSec) because script.totalDurationSec
+    // is caller-declared and can diverge from the assembled length — an out-of-range window would otherwise
+    // silently no-op. NB: on the already-mixed master this silences the FULL mix in each window (a deliberate
+    // silence beat — NOT a per-lane score-only mute; per-lane muting would require threading into
+    // buildFilterComplex). Guarded on `amap` so it fires for ANY audible master (incl. sfx-only). Rewrites
+    // `out` in place; any failure keeps the original master.
+    const clampedMute = clampWindows(scriptMuteWindows, masterDurSec);
+    if (AUDIO_MIX_ON && clampedMute.dropped > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(`[assemble] hard-mute: dropped ${clampedMute.dropped} window(s) outside the ${masterDurSec}s master`);
+    }
+    const hardMuteAf = AUDIO_MIX_ON ? muteAf(clampedMute.windows) : null;
+    if (AUDIO_MIX_ON && hardMuteAf && amap) {
       try {
         const muted = join(dir, 'master_mixed.mp4');
         await exec(bin, ['-y', '-i', out, '-af', hardMuteAf, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', muted], { maxBuffer: 1 << 28, timeout: 120_000, ...(signal ? { signal } : {}) });
         await writeFile(out, await readFile(muted));
         // eslint-disable-next-line no-console
-        console.log('[assemble] applied audio-mix hard-mute window');
+        console.log(`[assemble] applied audio-mix hard-mute (${clampedMute.windows.length} window(s))`);
       } catch (e) { console.warn('[assemble] hard-mute post-pass skipped:', e instanceof Error ? e.message : e); }
     }
 

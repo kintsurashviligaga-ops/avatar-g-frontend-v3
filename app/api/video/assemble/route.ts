@@ -162,6 +162,10 @@ interface AssembleBody {
   /** STEP 2.3 — ElevenLabs with-timestamps alignment → word-synced burned captions on
    *  the CPU-FFmpeg master (fail-open; absent → no captions, path unchanged). */
   captionAlignment?: ElevenAlignment | null;
+  /** v357 — the structured film script (scriptSchema shape). Threaded to the assembler where
+   *  (under FILM_AUDIO_MIX_ENABLED) its explicit muteWindows drive the hard-mute post-pass.
+   *  Validated fail-open inside the assembler; absent/malformed → the master is unchanged. */
+  script?: unknown;
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
@@ -647,7 +651,7 @@ async function assembleImpl(req: NextRequest) {
           // GPU worker when configured; else stitch on this node with CPU FFmpeg.
           const work = cfg
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
-            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null }, ac.signal);
+            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null, script: body.script ?? null }, ac.signal);
           const res = await Promise.race([work, deadline]);
           ctx.bag.tempUrl = res.url;
           // Supervisor QA verdict (CPU path only; RunPod path returns no qa).

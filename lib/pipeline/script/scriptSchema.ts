@@ -30,11 +30,17 @@ export const scriptSegmentSchema = z.discriminatedUnion('kind', [dialogueToken, 
 export type ScriptSegment = z.infer<typeof scriptSegmentSchema>;
 export type DialogueSegment = z.infer<typeof dialogueToken>;
 
+/** An explicit [startSec, endSec] window on the master timeline (score hard-mute / silence beat). */
+export const timeWindowSchema = z.object({ startSec: timecode, endSec: timecode });
+export type TimeWindow = z.infer<typeof timeWindowSchema>;
+
 export const scriptSchema = z
   .object({
     title: z.string().trim().max(200).optional(),
     totalDurationSec: z.number().finite().positive().max(3600),
     segments: z.array(scriptSegmentSchema).min(1).max(500),
+    /** Explicit score hard-mute / silence-beat windows — the dynamic driver of the audio mixer. */
+    muteWindows: z.array(timeWindowSchema).max(50).optional(),
   })
   // Cross-field timing invariants — validated here (discriminatedUnion members can't carry .refine).
   .superRefine((s, ctx) => {
@@ -44,6 +50,14 @@ export const scriptSchema = z
       }
       if (seg.endSec > s.totalDurationSec) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['segments', i, 'endSec'], message: 'segment endSec exceeds totalDurationSec' });
+      }
+    });
+    (s.muteWindows ?? []).forEach((w, i) => {
+      if (w.endSec <= w.startSec) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['muteWindows', i, 'endSec'], message: 'endSec must be > startSec' });
+      }
+      if (w.endSec > s.totalDurationSec) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['muteWindows', i, 'endSec'], message: 'muteWindow exceeds totalDurationSec' });
       }
     });
   });
@@ -72,4 +86,18 @@ export function dialogueSpans(script: Script): { startSec: number; endSec: numbe
 /** True when any dialogue overlaps [aSec, bSec) — used to gate lip-sync / ducking on a window. */
 export function hasDialogueInWindow(script: Script, aSec: number, bSec: number): boolean {
   return script.segments.some((s) => s.kind === 'dialogue' && s.startSec < bSec && s.endSec > aSec);
+}
+
+/**
+ * The audio-mixer inputs derived from a parsed script: the dialogue spans and the explicit mute windows
+ * (silence beats). This is the single connection point between a parsed script and the audio stage.
+ * In the ffmpeg assembler the MUTE WINDOWS drive the hard-mute post-pass (script-driven, never a hardcoded
+ * window). The DIALOGUE SPANS feed the standalone compileAudioMix time-driven duck; the assembler itself
+ * ducks the score via buildFilterComplex's voice-keyed sidechain, so it does not re-apply span ducking.
+ */
+export function scriptMixWindows(script: Script): { dialogueSpans: TimeWindow[]; muteWindows: TimeWindow[] } {
+  return {
+    dialogueSpans: dialogueSpans(script).map((d) => ({ startSec: d.startSec, endSec: d.endSec })),
+    muteWindows: script.muteWindows ?? [],
+  };
 }
