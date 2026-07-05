@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import AdminSignOutButton from '@/components/admin/AdminSignOutButton';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
@@ -76,7 +77,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
               <p className="mt-1 text-[11px] leading-none text-gray-500">{ka ? 'მართვის პანელი' : 'Control panel'}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {health && (
               <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${healthClass}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${health === 'healthy' ? 'bg-emerald-400' : health === 'degraded' ? 'bg-amber-400' : 'bg-rose-400'}`} />
@@ -86,6 +87,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
             <a href={`/${locale}/dashboard`} className="rounded-lg border border-white/10 px-3 py-1.5 text-[12px] text-gray-300 transition-colors hover:bg-white/5 hover:text-white">
               {ka ? '← აპლიკაცია' : '← App'}
             </a>
+            <AdminSignOutButton locale={locale} className="rounded-lg border border-white/10 px-3 py-1.5 text-[12px] text-gray-300 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50" />
           </div>
         </header>
 
@@ -271,12 +273,12 @@ function UserRow({ ka, user, fmt, onGranted }: { ka: boolean; user: AdminUserRow
         <p className="truncate text-[11px] text-gray-500">{user.full_name || `${user.id.slice(0, 8)}…`} · {fmt(user.created_at)}</p>
       </div>
       <span className="text-right font-semibold tabular-nums text-cyan-400">{user.credits_balance}</span>
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {open ? (
           <div className="flex items-center gap-1">
             <input type="number" min={1} step={1} value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus
               onKeyDown={(e) => e.key === 'Enter' && grant()}
-              placeholder="₾" className="w-16 rounded-md border border-white/15 bg-white/[0.06] px-2 py-1 text-[12px] text-white focus:border-cyan-500/50 focus:outline-none" />
+              placeholder="₾" className="w-14 rounded-md border border-white/15 bg-white/[0.06] px-2 py-1 text-[12px] text-white focus:border-cyan-500/50 focus:outline-none" />
             <button disabled={busy} onClick={grant} className="rounded-md bg-cyan-500/20 px-2 py-1 text-[11px] font-medium text-cyan-300 hover:bg-cyan-500/30 disabled:opacity-50">
               {busy ? '…' : (ka ? 'მიცემა' : 'Grant')}
             </button>

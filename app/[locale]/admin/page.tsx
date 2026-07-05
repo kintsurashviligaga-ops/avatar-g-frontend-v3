@@ -1,10 +1,11 @@
-import { redirect } from 'next/navigation';
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { adminAllowlist } from '@/lib/auth/adminGuard';
+import { isAdminUser } from '@/lib/admin/guard';
 import { gatherAdminStats, type AdminStats } from '@/lib/admin/stats';
 import { listUsers, type AdminUserPage } from '@/lib/admin/users';
 import { checkPipelineHealth, type PipelineHealth } from '@/lib/pipeline/statusAgent';
 import AdminDashboard from '@/components/admin/AdminDashboard';
+import AdminLogin from '@/components/admin/AdminLogin';
+import AdminAccessDenied from '@/components/admin/AdminAccessDenied';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -19,15 +20,22 @@ export default async function AdminPage({ params }: Props) {
   const supabase = createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // SECURITY: authorize ONLY off the email allowlist (founder ∪ ADMIN_EMAILS) — the SAME gate the admin
-  // APIs use. Never trust user_metadata for authz: it is client-writable via supabase.auth.updateUser,
-  // so any signed-in user could forge is_admin/role and reach this page's service-role data + user PII.
-  const email = user?.email?.trim().toLowerCase() ?? '';
-  const isAdmin = email !== '' && adminAllowlist().includes(email);
-  if (!isAdmin) {
+  // SECURITY (v358): authorize with isAdminUser — the SAME allowlist ∪ app_metadata gate the admin APIs
+  // use. NEVER user_metadata: it is client-writable via supabase.auth.updateUser, so any signed-in user
+  // could forge is_admin/role and reach this page's service-role data + user PII.
+  //
+  // v358 replaces the old "bounce non-admins to /dashboard" behaviour with a STRICT sign-in gate:
+  //   • no session      → render the admin login screen (credentials + Google OAuth) in place;
+  //   • session, no auth → render access-denied WITH a Log out action (switch to an authorized account);
+  //   • session + admin  → render the panel. No redirect, so there is no bounce/loop and the operator can
+  //     always see what to do next.
+  if (!user) {
+    return <AdminLogin locale={locale} redirectTo={`/${locale}/admin`} />;
+  }
+  if (!isAdminUser(user)) {
     // eslint-disable-next-line no-console
-    console.warn(`[admin] access denied → /dashboard | hasUser=${!!user} email=${user?.email ?? 'none'}`);
-    redirect(`/${locale}/dashboard`);
+    console.warn(`[admin] access denied | email=${user.email ?? 'none'}`);
+    return <AdminAccessDenied locale={locale} email={user.email ?? null} />;
   }
 
   // All admin data via the service-role client (above RLS). Fail-open so the panel always renders.
