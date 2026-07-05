@@ -26,6 +26,7 @@ import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pipeline/audio/audioMix';
 import { parseScript, scriptMixWindows } from '@/lib/pipeline/script/scriptSchema';
+import { getFeatureFlag } from '@/lib/server/feature-flags';
 import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
 
 const exec = promisify(execFile);
@@ -200,8 +201,11 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const duckDb = typeof g.duck_db === 'number' ? g.duck_db : undefined;
 
     // ── FEATURE GATES (additive; default OFF → this assembler is byte-identical when unset) ──────────
-    const AUDIO_MIX_ON = process.env.FILM_AUDIO_MIX_ENABLED === '1';
-    const LIPSYNC_ON = process.env.FILM_LIPSYNC_ENABLED === '1';
+    // v358 #3 — resolved via the runtime flag store: ENV wins when set, else the feature_flags DB override,
+    // else the default (false). Timeout-bounded + fail-open to the env/default on any DB issue, so this
+    // matches the prior process.env reads for the canonical '1'/unset values and never hangs the render.
+    const AUDIO_MIX_ON = await getFeatureFlag('FILM_AUDIO_MIX_ENABLED', false);
+    const LIPSYNC_ON = await getFeatureFlag('FILM_LIPSYNC_ENABLED', false);
     // FILM_AUDIO_MIX_ENABLED — the 4-field mixer compiler resolves the ducking depth (−12 dB by default)
     // and the hard-mute window: the depth is threaded through the PROVEN filtergraph below, and the
     // hard-mute is applied as a small fail-open post-pass (never a rewrite of the master graph).

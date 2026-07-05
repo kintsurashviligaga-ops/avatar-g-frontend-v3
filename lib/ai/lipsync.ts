@@ -1,4 +1,5 @@
 import 'server-only';
+import { getFeatureFlag } from '@/lib/server/feature-flags';
 
 /**
  * Wav2Lip lip-sync — the OPT-IN, FAIL-OPEN final pass for a music film.
@@ -280,7 +281,7 @@ export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: {
   // if the HeyGen create path misses, we fall straight through to SadTalker.
   // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed,
   // so the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
-  if (!opts?.skipHeygen && heygenKey() && process.env.LIPSYNC_HEYGEN !== '0') {
+  if (!opts?.skipHeygen && heygenKey() && (await getFeatureFlag('LIPSYNC_HEYGEN', true))) {
     const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl, opts?.orientation);
     if (heygenId) return heygenId;
   }

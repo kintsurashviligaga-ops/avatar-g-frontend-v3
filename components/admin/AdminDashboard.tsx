@@ -8,11 +8,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import AdminSignOutButton from '@/components/admin/AdminSignOutButton';
+import FeatureFlags from '@/components/admin/FeatureFlags';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
 
-type Tab = 'overview' | 'users' | 'activity';
+type Tab = 'overview' | 'users' | 'activity' | 'flags';
 type Accent = 'default' | 'green' | 'red' | 'cyan' | 'amber';
 
 const ACCENT: Record<Accent, string> = {
@@ -62,6 +63,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
     { id: 'overview', label: ka ? 'მიმოხილვა' : 'Overview' },
     { id: 'users', label: ka ? 'მომხმარებლები' : 'Users' },
     { id: 'activity', label: ka ? 'აქტივობა' : 'Activity' },
+    { id: 'flags', label: ka ? 'დროშები' : 'Flags' },
   ];
 
   return (
@@ -107,6 +109,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
         {tab === 'overview' && <Overview ka={ka} stats={stats} top={top} pipelineHealth={pipelineHealth} fmt={fmt} />}
         {tab === 'users' && <Users ka={ka} initial={initialUsers} fmt={fmt} />}
         {tab === 'activity' && <Activity ka={ka} stats={stats} fmt={fmt} />}
+        {tab === 'flags' && <FeatureFlags ka={ka} />}
       </div>
     </main>
   );
