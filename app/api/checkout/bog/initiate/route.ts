@@ -71,8 +71,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const markInitFailed = async () => {
+      // Don't leave a stale 'pending' row masquerading as a live order when init fails downstream.
+      await svc.from('bog_orders').update({ status: 'init_failed', updated_at: new Date().toISOString() }).eq('shop_order_id', shopOrderId).then(
+        () => undefined,
+        () => undefined,
+      );
+    };
+
     const token = await getBogAccessToken(cfg, { fetch });
     if (!token) {
+      await markInitFailed();
       return NextResponse.json({ error: 'bog_auth_failed', error_code: 'BOG_OAUTH' }, { status: 502 });
     }
 
@@ -90,6 +99,7 @@ export async function POST(request: NextRequest) {
       { fetch },
     );
     if (!order) {
+      await markInitFailed();
       return NextResponse.json({ error: 'bog_order_failed', error_code: 'BOG_ORDER' }, { status: 502 });
     }
 

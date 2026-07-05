@@ -46,33 +46,30 @@ export async function POST(request: NextRequest) {
   // Raw body — MUST be the exact bytes the signature was computed over (never re-serialize).
   const rawBody = await request.text();
 
-  // ── Layered authentication ──────────────────────────────────────────────────────────────────
+  // ── Authentication: a verified RSA signature is REQUIRED (money-moving) ──────────────────────
+  // We NEVER authenticate on IP alone. The source IP is derived from a client-supplied
+  // X-Forwarded-For header, and on proxied hosting (Vercel) the platform APPENDS the real client IP
+  // rather than overwriting what the client sent — so the leftmost hop is attacker-controllable. An
+  // IP allowlist can therefore only *further restrict* a signature-verified callback (an additional
+  // AND-gate), never substitute for the asymmetric signature. Without a public key we cannot verify
+  // authenticity, so we refuse to process anything (no credit on an unverifiable callback).
   const ip = callbackSourceIp(request.headers.get('x-forwarded-for'), request.headers.get('x-real-ip'));
-  const signature = request.headers.get(cfg.callbackSignatureHeader) || request.headers.get(cfg.callbackSignatureHeader.toLowerCase());
+  const signature =
+    request.headers.get(cfg.callbackSignatureHeader) || request.headers.get(cfg.callbackSignatureHeader.toLowerCase());
 
-  let authenticated = false;
-  if (cfg.callbackPublicKey) {
-    // Primary path: signature must verify. IP allowlist (if set) is an additional gate.
-    const sigOk = verifyBogCallbackSignature(rawBody, signature, cfg.callbackPublicKey);
-    const ipOk = isAllowedBogCallbackIp(ip, cfg.callbackIpAllowlist);
-    authenticated = sigOk && ipOk;
-    if (!authenticated) {
-      return NextResponse.json({ error: 'unauthorized_callback', reason: sigOk ? 'ip' : 'signature' }, { status: 401 });
-    }
-  } else if (cfg.callbackIpAllowlist.length > 0) {
-    // Fallback path: no signing key → allow only from allowlisted IPs, and warn (weaker guard).
-    authenticated = isAllowedBogCallbackIp(ip, cfg.callbackIpAllowlist);
-    if (!authenticated) {
-      return NextResponse.json({ error: 'unauthorized_callback', reason: 'ip' }, { status: 401 });
-    }
-    // eslint-disable-next-line no-console
-    console.warn('[BOG webhook] crediting via IP-allowlist only — configure BOG_CALLBACK_PUBLIC_KEY for signature verification.');
-  } else {
-    // Nothing to authenticate against → refuse to move money.
+  if (!cfg.callbackPublicKey) {
     return NextResponse.json(
-      { error: 'callback_auth_not_configured', message: 'Set BOG_CALLBACK_PUBLIC_KEY or BOG_CALLBACK_IP_ALLOWLIST.' },
+      { error: 'callback_auth_not_configured', message: 'Set BOG_CALLBACK_PUBLIC_KEY to verify callbacks.' },
       { status: 401 },
     );
+  }
+  if (!verifyBogCallbackSignature(rawBody, signature, cfg.callbackPublicKey)) {
+    return NextResponse.json({ error: 'unauthorized_callback', reason: 'signature' }, { status: 401 });
+  }
+  // Supplementary hardening: when an allowlist is configured, the (signature-verified) callback must
+  // ALSO originate from an allowed IP. A spoofed XFF here can only wrongly *reject*, never credit.
+  if (cfg.callbackIpAllowlist.length > 0 && !isAllowedBogCallbackIp(ip, cfg.callbackIpAllowlist)) {
+    return NextResponse.json({ error: 'unauthorized_callback', reason: 'ip' }, { status: 401 });
   }
 
   // ── Parse ───────────────────────────────────────────────────────────────────────────────────
@@ -107,10 +104,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'order_not_found', credited: false }, { status: 404 });
   }
 
-  // Credit the recorded amount (server-side source of truth — never trust the callback's amount to
-  // set value; the mapping was written at initiate time from the validated tier).
-  const orderId = data.orderId ?? order.shop_order_id;
-  const newBalance = await creditWalletGel(order.user_id, order.amount_gel, bogCreditRef(orderId));
+  // Defense-in-depth: if the (signature-verified) callback reports an amount/currency, it MUST match
+  // the recorded order. A mismatch (partial capture, currency drift) means we must NOT credit the
+  // full recorded tier — flag it for manual review instead.
+  const amountMismatch = data.amountGel != null && Math.abs(data.amountGel - order.amount_gel) > 0.01;
+  const currencyMismatch = data.currency != null && data.currency.toUpperCase() !== 'GEL';
+  if (amountMismatch || currencyMismatch) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[BOG webhook] amount/currency mismatch order=${order.shop_order_id} recorded=${order.amount_gel}GEL ` +
+        `callback=${data.amountGel ?? '?'}${data.currency ?? ''} — NOT crediting (flagged for review)`,
+    );
+    await svc.from('bog_orders').update({ status: 'amount_mismatch', updated_at: new Date().toISOString() }).eq('shop_order_id', order.shop_order_id);
+    return NextResponse.json({ received: true, status: 'APPROVED', credited: false, reason: 'amount_mismatch' });
+  }
+
+  // Idempotency ref keyed on OUR OWN immutable id (shop_order_id = server-minted randomUUID), NOT the
+  // callback-supplied order_id. Every re-delivery/retry of the same payment then yields the SAME ref
+  // regardless of which envelope fields BOG populates → wallet_topups.ref PK dedupes → exactly-once.
+  // The amount is the server-recorded tier (never the callback's value).
+  const ref = bogCreditRef(order.shop_order_id);
+  const newBalance = await creditWalletGel(order.user_id, order.amount_gel, ref);
 
   await svc
     .from('bog_orders')
@@ -118,7 +132,7 @@ export async function POST(request: NextRequest) {
     .eq('shop_order_id', order.shop_order_id);
 
   // eslint-disable-next-line no-console
-  console.info(`[BOG webhook] APPROVED order=${orderId} user=${order.user_id} amount=${order.amount_gel}₾ balance=${newBalance ?? 'n/a'}`);
+  console.info(`[BOG webhook] APPROVED ref=${ref} user=${order.user_id} amount=${order.amount_gel}₾ balance=${newBalance ?? 'n/a'}`);
   return NextResponse.json({ received: true, status: 'APPROVED', credited: true });
 }
 

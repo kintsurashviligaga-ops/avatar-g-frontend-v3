@@ -22,16 +22,28 @@ Decoupled `initiate → hosted pay → signed callback → idempotent credit` fl
 | `BOG_CALLBACK_SIGNATURE_HEADER` | default | `Callback-Signature` |
 | `BOG_CALLBACK_IP_ALLOWLIST` | optional | Comma-list; defense-in-depth (or sole guard if no public key — logs a warning) |
 
-## Security model (spoof-resistant, layered)
-1. **RSA-SHA256 signature** over the raw callback body, verified against BOG's public key (asymmetric — unforgeable without BOG's private key). **Primary.**
-2. **Source-IP allowlist** — defense-in-depth, or a weaker sole guard if no key is configured (warns).
-3. **Never fully unauthenticated:** with neither key nor allowlist, the webhook returns `401` and credits nothing.
+## Security model (signature-required)
+1. **RSA-SHA256 signature** over the raw callback body, verified against BOG's public key (asymmetric —
+   unforgeable without BOG's private key) is **REQUIRED to process any callback**. No public key → `401`,
+   credits nothing.
+2. **Source-IP allowlist** — *supplementary* AND-gate only. We never authenticate on IP alone: the source
+   IP comes from a client-supplied `X-Forwarded-For` header and is spoofable on proxied hosting (the
+   platform appends the real IP rather than overwriting the leftmost hop). A spoofed IP can therefore only
+   wrongly *reject* a signature-verified callback, never credit. *(Hardened after the adversarial review
+   flagged IP-only mode as a wallet-credit-fraud vector.)*
 
 ## Idempotency (zero double-credit)
-`creditWalletGel(user, amount, 'bog:<orderId>')` → `credit_wallet_gel` RPC. `wallet_topups.ref` is a
+`creditWalletGel(user, amount, 'bog:<shop_order_id>')` → `credit_wallet_gel` RPC. `wallet_topups.ref` is a
 **PRIMARY KEY** with `ON CONFLICT (ref) DO NOTHING` — a re-delivered callback is a guaranteed no-op.
-This is a **CREDIT** ref, deliberately distinct from the `remix:*` **DEBIT** refs (`deduct_credits`).
-The credited amount is the **server-side recorded tier** (`bog_orders.amount_gel`), never the callback's amount.
+The ref is keyed on **our own immutable `shop_order_id`** (a server-minted UUID), NOT the callback-supplied
+`order_id` — so every retry/re-delivery of the same payment yields the *same* ref regardless of which
+envelope fields BOG populates (the review caught a double-credit window when these diverged). This is a
+**CREDIT** ref, deliberately distinct from the `remix:*` **DEBIT** refs (`deduct_credits`). The credited
+amount is the **server-side recorded tier** (`bog_orders.amount_gel`); if the callback reports an
+amount/currency it must match, else the credit is refused and the order is flagged `amount_mismatch`.
+
+> **Tiers stay whole GEL.** `credit_wallet_gel` reconciles at 1 credit ≈ 1 ₾; `REFILL_TIERS_GEL` are all
+> integers. Keep top-up tiers whole-GEL (or move the ledger to fractional `balance_gel`) to avoid rounding.
 
 ## ⚠️ Verify before live traffic
 BOG has shipped more than one API generation (legacy `ipay.ge/opay` vs newer `api.bog.ge/payments`);
