@@ -1,0 +1,21 @@
+# Media-pipeline hygiene: track the SCAFFOLD, config, scripts and docs — NEVER the heavy media.
+# Source clips, audio, captions, work renders, masters and exports are engine outputs, not source code.
+*.mov
+*.mp4
+*.mkv
+*.wav
+*.aif
+*.aiff
+*.mp3
+*.prores
+*.exr
+*.png
+*.jpg
+*.jpeg
+
+# ...but DO keep the structure + config + tooling.
+!.gitkeep
+!asset_manifest.json
+!AUTOMATION_MATRIX.md
+!pipeline/**
+!README.md
