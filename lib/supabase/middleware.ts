@@ -40,9 +40,19 @@ export async function updateSession(request: NextRequest): Promise<UpdateSession
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Refresh + validate the session. getUser() hits the Auth server over the network; if that call
+  // errors (transient outage, timeout, DNS blip) we MUST fail-open — return the response with a null
+  // user — rather than let the rejection bubble up through middleware and 500 EVERY matched page
+  // navigation at once. A single missed refresh just means the downstream RSC reads the existing
+  // (unrefreshed) cookies for this one request; the next navigation refreshes normally. Fail-open is
+  // the app-wide convention (see wallet-ledger, ledger, pipeline health, etc.).
+  let user: User | null = null;
+  try {
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+  } catch {
+    // transient auth-server error → keep navigation working with whatever cookies already exist
+  }
 
   return { response, user };
 }
