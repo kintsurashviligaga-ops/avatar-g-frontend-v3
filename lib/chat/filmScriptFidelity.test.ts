@@ -20,6 +20,56 @@ describe('splitStructuredScript (attach a real screenplay → its own scenes)', 
   it('returns null for unstructured prose (falls back to the LLM scene-writer)', () => {
     expect(splitStructuredScript('a moody film about a man in a city at night', 12)).toBeNull();
   });
+
+  // Real-world regression: a rich PRODUCTION shot-list (deepseek "ის დილა" master script) where each scene
+  // is a timeline TABLE — the visual content is in the ACTION column and "Visual:" is only a colour-grade
+  // note. The cleaner used to keep the grade note and drop the action, so every frame rendered as a generic
+  // golden-hour image with none of the scripted subjects. Each scene must now carry its ACTION verbatim.
+  it('parses a timeline-table production script: ACTION column drives the prompt, not the grade note', () => {
+    const script = [
+      'Scene 1: "უკანასკნელი მშვიდი დილა" (The Last Peaceful Morning)',
+      'Frames: 0–144 · Duration: 0:00–0:06 · Clips: 2',
+      '',
+      'TC          Shot      Camera        Action',
+      '00:00–00:02 S1.1      Drone aerial  Epic descent over old Tbilisi at dawn; Narikala silhouette against reddish sky; Mtkvari glittering silver',
+      '00:02–00:04 S1.2      Crane descent Mist on narrow streets; tram crawling with sparks',
+      '00:04–00:06 S1.3      Steadicam     Street-level: grandfather with tea/newspaper; woman hanging laundry; children with football',
+      '',
+      'Visual: Golden hour (3200K), volumetric god-rays, warm amber, anamorphic flares, 0.5× meditative tempo.',
+      'Overlay: "თბილისი · 22 ივნისი, 1941" — Cinzel Decorative, fade-in 2s / fade-out 1s.',
+      '',
+      'Scene 2: "ხმა, რომელმაც სამყარო გააჩერა" (The Voice That Stopped the World)',
+      'Frames: 144–288 · Duration: 0:06–0:12 · Clips: 3',
+      '',
+      'TC          Shot      Camera        Action',
+      '00:06–00:08 S2.1      Macro 100mm   ECU on Soviet bakelite radio; tube glowing red; Molotov voice in Russian',
+      '00:08–00:09 S2.2      Whip pan      Woman with headscarf; eyes widening, lips trembling',
+      '00:09–00:10 S2.3      35mm wide     Cherry basket falls in SLOW MOTION; cherries scatter like blood',
+      '',
+      'Visual: Red tube glow → natural morning; warm→cold shift.',
+    ].join('\n');
+
+    const scenes = splitStructuredScript(script, 6);
+    expect(scenes).not.toBeNull();
+    expect(scenes!.length).toBe(2);
+
+    // Scene 1 carries the ACTION verbatim (the scripted subjects), not just the grade note.
+    const s1 = scenes![0]!.toLowerCase();
+    expect(s1).toMatch(/tbilisi/);
+    expect(s1).toMatch(/narikala/);
+    expect(s1).toMatch(/descent/);
+    expect(s1).toMatch(/laundry|grandfather|children/);
+    // The grade note may ride along as a style hint, but must NOT be the ONLY content…
+    expect(s1).not.toMatch(/frames:|duration:|overlay:|cinzel/);
+    // …and the shot code / timecode noise is stripped.
+    expect(scenes![0]!).not.toMatch(/\bS1\.1\b/);
+    expect(scenes![0]!).not.toMatch(/00:00–00:02/);
+
+    // Scene 2 is its OWN content, not scene 1's.
+    const s2 = scenes![1]!.toLowerCase();
+    expect(s2).toMatch(/radio|molotov|cherry/);
+    expect(s2).not.toMatch(/tbilisi|narikala/);
+  });
 });
 
 /**

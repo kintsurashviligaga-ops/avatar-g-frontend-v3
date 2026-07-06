@@ -208,14 +208,42 @@ export function sceneBeat(index: number, count: number): CinematicBeat {
 // description straight through as a per-scene render prompt.
 
 /** Strip a scene block down to its visual description (drop the header, timecode,
- *  title and the audio/lighting/tempo metadata a shot-list carries). */
+ *  title and the audio/lighting/tempo metadata a shot-list carries).
+ *
+ *  Two script shapes are handled:
+ *   • TIMELINE-TABLE shot-lists — rows like "00:00–00:02 S1.1 Drone aerial <ACTION>". Here the real
+ *     visual content lives in the trailing ACTION column and the "Visual:" line is a COLOUR-GRADE note
+ *     (e.g. "Golden hour, amber, anamorphic flares"). We build the prompt from the row ACTIONS and append
+ *     the grade as a style hint. (Before this, the cleaner kept only the grade note → every scene rendered
+ *     as a generic golden-hour image with none of the scripted subjects — the "generic visuals" bug.)
+ *   • SINGLE-LINE format — "🎬 სცენა N (t) — „title" ვიზუალი: <DESCRIPTION> … metadata". Here "Visual:"/
+ *     "ვიზუალი:" IS the description, so we prefer it and cut the trailing SFX/lighting/tempo metadata.
+ */
 function cleanSceneBlock(block: string): string {
+  // TIMELINE-TABLE: pull the ACTION tail from every "TC  [shot]  [camera]  ACTION" row (a leading
+  // timecode range at line-start), stripping the timecode + an optional "S1.1" shot code.
+  const rowRx = /^[^\S\n]*\d{1,2}:\d{2}\s*[–—-]\s*\d{1,2}:\d{2}\s+(\S.*)$/gm;
+  const actions: string[] = [];
+  for (const m of block.matchAll(rowRx)) {
+    const tail = (m[1] ?? '').trim().replace(/^S\d+(?:\.\d+)?\b[\s.:—–-]*/i, '');
+    if (tail.length >= 8) actions.push(tail);
+  }
+  if (actions.length >= 1) {
+    let out = actions.join('. ');
+    const grade = block.match(/(?:ვიზუალი|visual|визуал)\s*[:：]\s*([^\n]+)/i);
+    if (grade && grade[1]) out += ` — ${grade[1].trim()}`;
+    return out.replace(/\s+/g, ' ').trim();
+  }
+
+  // SINGLE-LINE format: strip the marker/timecode/title, then prefer the explicit Visual section.
   let b = block
-    // drop the leading marker "🎬 სცენა 3 (0:12–0:18) — „title""
+    // drop the leading marker "🎬 სცენა 3 (0:12–0:18) — „title"" or "Scene 3: „title" (translation)"
     .replace(/^\s*(?:🎬|🎥|🎞️?)?\s*(?:სცენა|сцена|scene|shot|кадр)\s*#?\s*\d+\s*/i, '')
+    .replace(/^\s*[:：]\s*/, '') // "Scene 3:" colon
     .replace(/^\s*\([^)]*\)\s*/, '') // timecode "(0:12–0:18)"
     .replace(/^\s*[—–-]+\s*/, '')
-    .replace(/^\s*[„"“][^"”“]{0,80}[""”«»]\s*/, ''); // scene title in quotes
+    .replace(/^\s*[„"“][^"”“]{0,80}["”“»«]\s*/, '') // scene title in quotes
+    .replace(/^\s*\([^)]*\)\s*/, ''); // trailing "(English translation)"
   // Prefer the explicit VISUAL section when present.
   const vis = b.match(/(?:ვიზუალი|visual|визуал)\s*[:：]?\s*([\s\S]+)/i);
   if (vis && vis[1]) b = vis[1];
