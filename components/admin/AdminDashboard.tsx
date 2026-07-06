@@ -10,11 +10,12 @@ import { BrandLogo } from '@/components/ui/BrandLogo';
 import AdminSignOutButton from '@/components/admin/AdminSignOutButton';
 import FeatureFlags from '@/components/admin/FeatureFlags';
 import BillingConfig from '@/components/admin/BillingConfig';
+import JobsMonitor from '@/components/admin/JobsMonitor';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
 
-type Tab = 'overview' | 'users' | 'activity' | 'flags' | 'billing';
+type Tab = 'overview' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags';
 type Accent = 'default' | 'green' | 'red' | 'cyan' | 'amber';
 
 const ACCENT: Record<Accent, string> = {
@@ -65,6 +66,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
     { id: 'users', label: ka ? 'მომხმარებლები' : 'Users' },
     { id: 'activity', label: ka ? 'აქტივობა' : 'Activity' },
     { id: 'billing', label: ka ? 'ბილინგი' : 'Billing' },
+    { id: 'jobs', label: ka ? 'რიგი' : 'Queue' },
     { id: 'flags', label: ka ? 'დროშები' : 'Flags' },
   ];
 
@@ -112,6 +114,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
         {tab === 'users' && <Users ka={ka} initial={initialUsers} fmt={fmt} />}
         {tab === 'activity' && <Activity ka={ka} stats={stats} fmt={fmt} />}
         {tab === 'billing' && <BillingConfig ka={ka} />}
+        {tab === 'jobs' && <JobsMonitor ka={ka} />}
         {tab === 'flags' && <FeatureFlags ka={ka} />}
       </div>
     </main>
