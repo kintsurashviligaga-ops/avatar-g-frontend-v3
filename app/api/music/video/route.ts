@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { renderPhotoMusicVideo } from '@/lib/pipeline/photoMusicVideo';
+import { isAllowedAudioUrl, fetchAllowlistedAudio } from '@/lib/security/allowlistedAudioFetch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,19 +25,6 @@ const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', '
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
 const AUDIO_FETCH_TIMEOUT_MS = 45_000;
-
-/** SSRF guard: only fetch the audio from HTTPS Supabase-hosted URLs (where our generated tracks live) — never
- *  an arbitrary/internal host the client could smuggle in. */
-function isAllowedAudioUrl(raw: string): boolean {
-  let u: URL;
-  try { u = new URL(raw); } catch { return false; }
-  if (u.protocol !== 'https:') return false;
-  const host = u.host.toLowerCase();
-  let projectHost = '';
-  try { projectHost = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').host.toLowerCase(); } catch { /* unset */ }
-  if (projectHost && host === projectHost) return true;
-  return host.endsWith('.supabase.co') || host.endsWith('.supabase.in');
-}
 
 export async function POST(req: Request) {
   try {
@@ -57,8 +45,11 @@ export async function POST(req: Request) {
     const audioUrl = typeof body?.audioUrl === 'string' ? body.audioUrl.trim() : '';
     if (!audioUrl || !isAllowedAudioUrl(audioUrl)) return NextResponse.json({ error: 'invalid audio source' }, { status: 400 });
 
-    const ar = await fetch(audioUrl, { signal: AbortSignal.timeout(AUDIO_FETCH_TIMEOUT_MS) }).catch(() => null);
-    if (!ar || !ar.ok) return NextResponse.json({ error: 'could not fetch audio' }, { status: 502 });
+    const ar = await fetchAllowlistedAudio(audioUrl, { timeoutMs: AUDIO_FETCH_TIMEOUT_MS });
+    if (!ar) return NextResponse.json({ error: 'could not fetch audio' }, { status: 502 });
+    // Reject an oversized track BEFORE buffering it into memory when the server declared its length.
+    const declaredLen = Number(ar.headers.get('content-length'));
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_AUDIO_BYTES) return NextResponse.json({ error: 'audio too large' }, { status: 413 });
     const audioBuffer = Buffer.from(await ar.arrayBuffer());
     if (audioBuffer.byteLength < 128) return NextResponse.json({ error: 'empty audio' }, { status: 400 });
     if (audioBuffer.byteLength > MAX_AUDIO_BYTES) return NextResponse.json({ error: 'audio too large' }, { status: 413 });

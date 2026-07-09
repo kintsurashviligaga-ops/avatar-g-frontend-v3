@@ -351,7 +351,7 @@ export function MusicStudio() {
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    if (!f.type.startsWith('image/') || f.size > 8 * 1024 * 1024) { setVideoError(t.videoFailed); return; }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type) || f.size > 8 * 1024 * 1024) { setVideoError(t.videoFailed); return; }
     setPhotoBlob(f);
     setPhotoPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(f); });
     setVideoError('');
