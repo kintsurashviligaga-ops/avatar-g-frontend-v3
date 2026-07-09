@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Film, Sparkles, ChevronRight, Loader2 } from 'lucide-react';
+import { Film, Sparkles, ChevronRight, Loader2, Play } from 'lucide-react';
 import { ChatChrome } from './ChatChrome';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -55,6 +55,8 @@ type Service = 'hub' | 'film' | 'omni' | 'lipsync' | 'agent';
 
 const COPY: Record<Lang, {
   heading: string; sub: string;
+  heroTitle: string; heroSub: string; heroCta: string; heroNote: string;
+  showcaseTitle: string; assistantCta: string;
   filmTitle: string; filmSub: string; filmTag: string;
   omniTitle: string; omniSub: string; omniTag: string;
   lipTitle: string; lipSub: string; lipTag: string;
@@ -62,6 +64,12 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     heading: 'აირჩიე სერვისი', sub: 'სამი სტუდია — ერთ სივრცეში',
+    heroTitle: 'შენი ისტორია — 30 წამში ფილმად',
+    heroSub: 'ერთი ფოტო და რამდენიმე სიტყვა — ჩვენ ვაქცევთ კინოდ. ხმა, სცენები და მონტაჟი — ავტომატურად.',
+    heroCta: 'შექმენი შენი პირველი ფილმი',
+    heroNote: 'პირველი ფილმი — უფასოდ',
+    showcaseTitle: 'ნამუშევრები',
+    assistantCta: 'ან გახსენი ჭკვიანი ასისტენტი',
     filmTitle: 'კინო სტუდია', filmSub: 'ფოტო + სცენარი → 30-წამიანი ფილმი', filmTag: 'მთავარი',
     omniTitle: 'ჭკვიანი ასისტენტი', omniSub: 'ხმა · ტექსტი · სურათი → ჭკვიანი პასუხები', omniTag: 'ასისტენტი',
     lipTitle: 'ლიფსინქ სტუდია', lipSub: 'ვიდეო + აუდიო → ტუჩების სინქრონი', lipTag: 'ლიფსინქი',
@@ -69,6 +77,12 @@ const COPY: Record<Lang, {
   },
   en: {
     heading: 'Choose a service', sub: 'Three studios — one window',
+    heroTitle: 'Your story — a film in 30 seconds',
+    heroSub: 'One photo and a few words become cinema. Voice, scenes and editing — all automatic.',
+    heroCta: 'Create your first film',
+    heroNote: 'Your first film is free',
+    showcaseTitle: 'Showcase',
+    assistantCta: 'or open the Smart Assistant',
     filmTitle: 'Film Studio', filmSub: 'A photo + a script → a 30-second film', filmTag: 'Main',
     omniTitle: 'Smart Assistant', omniSub: 'Voice · text · image → smart answers', omniTag: 'Assistant',
     lipTitle: 'Lip-Sync Studio', lipSub: 'Video + audio → lip synchronization', lipTag: 'Lip-sync',
@@ -76,12 +90,29 @@ const COPY: Record<Lang, {
   },
   ru: {
     heading: 'Выберите сервис', sub: 'Три студии — одно окно',
+    heroTitle: 'Ваша история — фильм за 30 секунд',
+    heroSub: 'Одно фото и несколько слов превращаются в кино. Голос, сцены и монтаж — автоматически.',
+    heroCta: 'Создай свой первый фильм',
+    heroNote: 'Первый фильм бесплатно',
+    showcaseTitle: 'Работы',
+    assistantCta: 'или откройте умного ассистента',
     filmTitle: 'Кино-студия', filmSub: 'Фото + сценарий → 30-секундный фильм', filmTag: 'Главное',
     omniTitle: 'Умный ассистент', omniSub: 'Голос · текст · изображение → умные ответы', omniTag: 'Ассистент',
     lipTitle: 'Lip-Sync студия', lipSub: 'Видео + аудио → синхронизация губ', lipTag: 'Синхрон',
     open: 'Открыть',
   },
 };
+
+/** Showcase render posters — genre exemplars of what the film studio makes. Each opens the Film Studio.
+ *  Styled gradient posters (no fabricated asset URLs); a real render thumbnail can drop into `poster` later. */
+const SHOWCASE: { key: string; ka: string; en: string; ru: string; gradient: string }[] = [
+  { key: 'epic', ka: 'ისტორიული ეპოსი', en: 'Historical epic', ru: 'Исторический эпос', gradient: 'from-amber-500/40 via-orange-800/25 to-black' },
+  { key: 'music', ka: 'მუსიკალური ვიდეო', en: 'Music video', ru: 'Клип', gradient: 'from-fuchsia-500/40 via-purple-800/25 to-black' },
+  { key: 'product', ka: 'პროდუქტის რეკლამა', en: 'Product ad', ru: 'Реклама продукта', gradient: 'from-cyan-400/40 via-sky-800/25 to-black' },
+  { key: 'portrait', ka: 'პორტრეტული ისტორია', en: 'Portrait story', ru: 'Портретная история', gradient: 'from-emerald-400/35 via-teal-800/25 to-black' },
+  { key: 'travel', ka: 'მოგზაურობა', en: 'Travel reel', ru: 'Путешествие', gradient: 'from-blue-400/35 via-indigo-800/25 to-black' },
+  { key: 'drama', ka: 'მოკლემეტრაჟიანი დრამა', en: 'Short drama', ru: 'Короткая драма', gradient: 'from-rose-500/35 via-red-900/25 to-black' },
+];
 
 export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?: string; isAuthenticated?: boolean }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
@@ -159,57 +190,71 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     );
   }
 
-  // The hub grid.
-  const cards = [
-    { id: 'film' as const, icon: <Film size={22} />, title: t.filmTitle, sub: t.filmSub, tag: t.filmTag, primary: true },
-    { id: 'omni' as const, icon: <Sparkles size={22} />, title: t.omniTitle, sub: t.omniSub, tag: t.omniTag, primary: false },
-  ];
-
+  // The hub / landing — a conversion-focused hero around ONE central CTA (create your first film),
+  // backed by a high-fidelity showcase render grid. The fixed inset-0 + 100dvh shell pins it to the
+  // viewport like a native app; ag-fixed-shell (DAY-3) keeps it a strict, non-drifting bounding box.
   return (
-    // FULL-SCREEN APP SHELL — `fixed inset-0 + 100dvh` pins the hub to the visual
-    // viewport so it fills the screen like a native app, escaping the locale
-    // layout's `min-h-screen flex items-center justify-center` wrapper that
-    // otherwise centred this panel and let the page gradient bleed in above and
-    // below (the "opens broken / dead space" report). Mirrors the film studio shell.
-    <div className="fixed inset-0 z-[2] overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="ag-fixed-shell fixed inset-0 z-[2] overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         <div className="mb-8 flex items-center gap-2">
           <span className="text-[15px] font-semibold tracking-tight text-app-text">My <span className="text-app-accent">Avatar</span></span>
         </div>
 
-        <header className="mb-7">
-          <h1 className="text-2xl font-semibold tracking-tight text-app-text sm:text-3xl">{t.heading}</h1>
-          <p className="mt-1 text-sm text-app-muted">{t.sub}</p>
+        {/* HERO — one central, highly prominent CTA */}
+        <header className="mb-10 flex flex-col items-center text-center">
+          <h1 className="max-w-2xl text-balance text-3xl font-bold leading-[1.1] tracking-tight text-app-text sm:text-5xl">
+            {t.heroTitle}
+          </h1>
+          <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-app-muted sm:text-base">{t.heroSub}</p>
+          <button
+            type="button"
+            onClick={() => go('film')}
+            className="ag-no-drag group mt-8 inline-flex items-center gap-2.5 rounded-2xl bg-app-accent px-8 py-4 text-[16px] font-bold text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] transition-all hover:scale-[1.03] hover:shadow-[0_14px_50px_-6px_rgba(0,210,255,0.7)] active:scale-100 sm:text-[17px]"
+          >
+            <Film size={20} className="transition-transform group-hover:-rotate-6" />
+            {t.heroCta}
+            <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+          </button>
+          <span className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-app-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-app-accent" /> {t.heroNote}
+          </span>
         </header>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {cards.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => go(c.id)}
-              className={`group flex flex-col items-start gap-3 rounded-2xl p-5 text-left transition-colors ${
-                c.primary
-                  ? 'bg-app-accent/10 hover:bg-app-accent/15'
-                  : 'bg-app-elevated/60 hover:bg-app-elevated'
-              }`}
-            >
-              <div className="flex w-full items-center justify-between">
-                <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${c.primary ? 'bg-app-accent/15 text-app-accent' : 'bg-app-surface text-app-muted group-hover:text-app-accent'}`}>
-                  {c.icon}
+        {/* SHOWCASE — high-fidelity render grid; each poster opens the Film Studio */}
+        <section className="mb-8">
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.showcaseTitle}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {SHOWCASE.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => go('film')}
+                aria-label={s[lang]}
+                className={`ag-no-drag group relative aspect-[4/5] overflow-hidden rounded-2xl border border-app-border/10 bg-gradient-to-br ${s.gradient} text-left transition-transform hover:scale-[1.02]`}
+              >
+                {/* subtle film grain / vignette for a cinematic poster feel */}
+                <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(255,255,255,0.10),transparent_60%)]" />
+                <span className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/30 text-white/90 backdrop-blur-sm transition-colors group-hover:bg-app-accent group-hover:text-app-bg">
+                  <Play size={15} className="ml-0.5 fill-current" />
                 </span>
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-app-muted">{c.tag}</span>
-              </div>
-              <div className="space-y-1">
-                <h2 className="text-[15px] font-semibold leading-tight text-app-text">{c.title}</h2>
-                <p className="text-[12.5px] leading-snug text-app-muted">{c.sub}</p>
-              </div>
-              <span className={`mt-auto inline-flex items-center gap-1 text-[12px] font-semibold ${c.primary ? 'text-app-accent' : 'text-app-muted group-hover:text-app-accent'}`}>
-                {t.open} <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </button>
-          ))}
-        </div>
+                <span className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-gradient-to-t from-black/70 to-transparent p-3">
+                  <span className="text-[13px] font-semibold leading-tight text-white">{s[lang]}</span>
+                  <span className="text-[10.5px] font-medium uppercase tracking-wider text-white/60">30s · MyAvatar</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Secondary — the multimodal assistant, one tap away */}
+        <button
+          type="button"
+          onClick={() => go('omni')}
+          className="ag-no-drag group mx-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold text-app-muted transition-colors hover:text-app-accent"
+        >
+          <Sparkles size={16} /> {t.assistantCta}
+          <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+        </button>
       </div>
     </div>
   );
