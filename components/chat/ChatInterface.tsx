@@ -421,7 +421,7 @@ export default function ChatInterface({ locale = 'ka' }: ChatInterfaceProps) {
             </div>
             <div>
               <p className="text-white/90 text-sm font-semibold leading-none">Agent G</p>
-              <p className="text-white/40 text-[10px] mt-0.5">MyAvatar.ge · AI Pipeline</p>
+              <p className="text-white/40 text-[10px] mt-0.5">MyAvatar · AI Pipeline</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -451,7 +451,7 @@ export default function ChatInterface({ locale = 'ka' }: ChatInterfaceProps) {
               </h2>
               <p className="text-white/50 text-sm text-center max-w-sm mb-8">
                 {locale === 'ka'
-                  ? 'MyAvatar.ge-ის AI ორკესტრატორი — ავატარი, ვიდეო, სურათი, მუსიკა, თამაში, ინტერიერი, prompt, კოდი'
+                  ? 'MyAvatar-ის AI ორკესტრატორი — ავატარი, ვიდეო, სურათი, მუსიკა, თამაში, ინტერიერი, prompt, კოდი'
                   : 'AI orchestrator for Avatar, Video, Image, Music, Game, Interior, Prompt & Code'}
               </p>
               <div className="flex flex-wrap gap-2 justify-center max-w-lg">

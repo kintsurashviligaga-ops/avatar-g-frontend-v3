@@ -4161,7 +4161,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             if (nav.canShare?.({ files: [file] })) { await nav.share({ files: [file], title: 'MyAvatar' }); return; }
           }
         } catch { /* fall through to URL / clipboard */ }
-        try { await nav.share({ url, title: 'MyAvatar', text: 'MyAvatar.ge' }); return; }
+        try { await nav.share({ url, title: 'MyAvatar', text: 'MyAvatar' }); return; }
         catch (e) { if ((e as { name?: string })?.name === 'AbortError') return; /* else fall through */ }
       }
       await navigator.clipboard.writeText(url);

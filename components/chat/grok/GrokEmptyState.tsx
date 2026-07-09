@@ -64,7 +64,7 @@ export function GrokEmptyState({ serviceIcon: _serviceIcon, onSuggestionClick, a
         <div className="grok-empty-glow" />
         <Image
           src="/brand/gemini-rocket-clean.png"
-          alt="MyAvatar.ge"
+          alt="MyAvatar"
           width={56}
           height={56}
           className="object-contain relative z-10"

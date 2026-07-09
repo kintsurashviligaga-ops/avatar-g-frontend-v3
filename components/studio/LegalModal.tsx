@@ -21,7 +21,7 @@ const CONTENT: Record<LegalKind, { title: string; updated: string; body: string[
     updated: 'Last updated: June 2024',
     Icon: Shield,
     body: [
-      'MyAvatar.ge collects minimal data necessary to provide AI generation services.',
+      'MyAvatar collects minimal data necessary to provide AI generation services.',
       'We do not sell your data to third parties.',
       'Content you generate is stored securely and accessible only to you.',
       'For questions: support@myavatar.ge',
@@ -32,7 +32,7 @@ const CONTENT: Record<LegalKind, { title: string; updated: string; body: string[
     updated: 'Last updated: June 2024',
     Icon: FileText,
     body: [
-      'By using MyAvatar.ge you agree to use the service lawfully and responsibly.',
+      'By using MyAvatar you agree to use the service lawfully and responsibly.',
       'Generated content must comply with Georgian law.',
       'We reserve the right to terminate accounts that violate these terms.',
       'Contact: support@myavatar.ge',

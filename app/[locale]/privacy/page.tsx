@@ -22,7 +22,7 @@ const copy: Record<Lang, {
     back: '← მთავარზე დაბრუნება',
     controller: {
       title: '1. მონაცემთა გამკონტროლებელი',
-      body: 'MyAvatar.ge ოპერირდება საქართველოს ტერიტორიაზე და კონფიდენციალურობასთან დაკავშირებული ნებისმიერი საკითხისთვის შესაძლებელია დაგვიკავშირდეთ: support@myavatar.ge',
+      body: 'MyAvatar ოპერირდება საქართველოს ტერიტორიაზე და კონფიდენციალურობასთან დაკავშირებული ნებისმიერი საკითხისთვის შესაძლებელია დაგვიკავშირდეთ: support@myavatar.ge',
     },
     data: {
       title: '2. რა მონაცემებს ვაგროვებთ და რატომ',
@@ -93,7 +93,7 @@ const copy: Record<Lang, {
     back: '← Back home',
     controller: {
       title: '1. Data Controller',
-      body: 'MyAvatar.ge operates from Georgia. For any privacy-related question, contact: support@myavatar.ge',
+      body: 'MyAvatar operates from Georgia. For any privacy-related question, contact: support@myavatar.ge',
     },
     data: {
       title: '2. What We Collect, and Why',
@@ -164,7 +164,7 @@ const copy: Record<Lang, {
     back: '← Назад на главную',
     controller: {
       title: '1. Контролёр данных',
-      body: 'MyAvatar.ge работает с территории Грузии. По любым вопросам конфиденциальности: support@myavatar.ge',
+      body: 'MyAvatar работает с территории Грузии. По любым вопросам конфиденциальности: support@myavatar.ge',
     },
     data: {
       title: '2. Какие данные мы собираем и зачем',

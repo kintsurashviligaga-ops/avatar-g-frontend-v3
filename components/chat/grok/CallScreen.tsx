@@ -93,7 +93,7 @@ export function CallScreen({ open, onClose, onSendVoiceMessage: _onSendVoiceMess
         <div className="call-screen-info">
           <h3 className="text-[22px] font-bold text-white tracking-tight">Agent G</h3>
           <p className="text-[13px] mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            MyAvatar.ge AI Assistant
+            MyAvatar AI Assistant
           </p>
           <div className="call-screen-status">
             {callState === 'ringing' && (

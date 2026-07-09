@@ -190,7 +190,7 @@ function LibraryCard({
   const handleShare = useCallback(async () => {
     const nav = navigator as Navigator & { share?: (d: { title?: string; url?: string }) => Promise<void> };
     if (typeof nav.share === 'function') {
-      try { await nav.share({ title: 'MyAvatar.ge', url: item.url }); return; } catch { /* cancelled → fall through */ }
+      try { await nav.share({ title: 'MyAvatar', url: item.url }); return; } catch { /* cancelled → fall through */ }
     }
     try { await navigator.clipboard.writeText(item.url); flash('link'); } catch { /* clipboard unavailable */ }
   }, [item.url, flash]);

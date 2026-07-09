@@ -42,15 +42,15 @@ function ShareModal({ shareUrl, mediaUrl, mediaKind, mediaTitle, onClose }: Shar
   const nativeShare = async () => {
     if (mediaUrl) {
       const shareKind = mediaKind === 'avatar' ? 'video' : mediaKind === 'text' ? 'file' : mediaKind;
-      const r = await shareOrDownload({ url: mediaUrl, title: mediaTitle || 'MyAvatar.ge', text: 'შევქმენი MyAvatar.ge-ზე — გადახედე', kind: shareKind });
+      const r = await shareOrDownload({ url: mediaUrl, title: mediaTitle || 'MyAvatar', text: 'შევქმენი MyAvatar-ზე — გადახედე', kind: shareKind });
       if (r.ok && !r.cancelled) onClose();
       return;
     }
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share({
-          title: 'MyAvatar.ge',
-          text: 'შევქმენი MyAvatar.ge-ზე — გადახედე',
+          title: 'MyAvatar',
+          text: 'შევქმენი MyAvatar-ზე — გადახედე',
           url: shareUrl,
         });
         onClose();
@@ -62,10 +62,10 @@ function ShareModal({ shareUrl, mediaUrl, mediaKind, mediaTitle, onClose }: Shar
   // a new tab/app. The Instagram path falls back to Copy because IG has
   // no web compose URL — user pastes the link into their post manually.
   const SOCIAL_LINKS: Array<{ name: string; href: string | null; bg: string }> = [
-    { name: 'X', bg: '#000', href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('შევქმენი MyAvatar.ge-ზე')}` },
+    { name: 'X', bg: '#000', href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('შევქმენი MyAvatar-ზე')}` },
     { name: 'Facebook', bg: '#1877F2', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}` },
-    { name: 'WhatsApp', bg: '#25D366', href: `https://wa.me/?text=${encodeURIComponent('შევქმენი MyAvatar.ge-ზე: ' + shareUrl)}` },
-    { name: 'Telegram', bg: '#0088CC', href: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('შევქმენი MyAvatar.ge-ზე')}` },
+    { name: 'WhatsApp', bg: '#25D366', href: `https://wa.me/?text=${encodeURIComponent('შევქმენი MyAvatar-ზე: ' + shareUrl)}` },
+    { name: 'Telegram', bg: '#0088CC', href: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('შევქმენი MyAvatar-ზე')}` },
     { name: 'Instagram', bg: '#E1306C', href: null }, // Copy link — IG doesn't accept compose URL
   ];
 

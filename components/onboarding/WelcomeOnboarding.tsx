@@ -24,7 +24,7 @@ const COPY: Record<Lang, {
   s3Title: string; s3Sub: string; balance: string; createFirst: string; skip: string;
 }> = {
   ka: {
-    s1Title: 'MyAvatar.ge-ში კეთილი იყოს თქვენი მობრძანება! 👋',
+    s1Title: 'MyAvatar-ში კეთილი იყოს თქვენი მობრძანება! 👋',
     s1Sub: 'შექმენი AI ვიდეო, მუსიკა და სურათები — წამებში.',
     start: 'დაწყება',
     s2Title: 'რა გინდა შექმნა?',
@@ -35,7 +35,7 @@ const COPY: Record<Lang, {
     balance: 'ბალანსი', createFirst: 'პირველი ვიდეოს შექმნა', skip: 'გამოტოვება',
   },
   en: {
-    s1Title: 'Welcome to MyAvatar.ge! 👋',
+    s1Title: 'Welcome to MyAvatar! 👋',
     s1Sub: 'Create AI video, music and images — in seconds.',
     start: 'Get started',
     s2Title: 'What do you want to create?',
@@ -46,7 +46,7 @@ const COPY: Record<Lang, {
     balance: 'Balance', createFirst: 'Create my first video', skip: 'Skip',
   },
   ru: {
-    s1Title: 'Добро пожаловать на MyAvatar.ge! 👋',
+    s1Title: 'Добро пожаловать на MyAvatar! 👋',
     s1Sub: 'Создавайте AI видео, музыку и изображения — за секунды.',
     start: 'Начать',
     s2Title: 'Что вы хотите создать?',

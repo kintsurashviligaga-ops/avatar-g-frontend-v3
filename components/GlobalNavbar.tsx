@@ -71,7 +71,7 @@ export function GlobalNavbar() {
         border-b border-white/[0.06]
       ">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group" aria-label="MyAvatar.ge home">
+        <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group" aria-label="MyAvatar home">
           <div className="relative h-8 sm:h-10 w-8 sm:w-10 flex-shrink-0">
             <Image
               src="/logo.png"

@@ -382,13 +382,13 @@ export function ChatHistoryPanel({
             <div className="chat-history-logo">
               <Image
                 src="/brand/gemini-rocket-clean.png"
-                alt="MyAvatar.ge"
+                alt="MyAvatar"
                 width={28}
                 height={28}
                 className="object-contain"
               />
             </div>
-            <span className="text-[15px] font-semibold text-white">MyAvatar.ge</span>
+            <span className="text-[15px] font-semibold text-white">MyAvatar</span>
           </div>
           <button
             onClick={onClose}

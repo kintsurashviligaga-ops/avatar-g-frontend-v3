@@ -90,7 +90,7 @@ function ServiceDrawer({
                   style={{ background: 'linear-gradient(135deg,#0ea5e9,#06b6d4)' }}>
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>
-                <span className="font-semibold text-white text-sm tracking-wide">MyAvatar.ge</span>
+                <span className="font-semibold text-white text-sm tracking-wide">MyAvatar</span>
               </div>
               <button onClick={onClose}
                 className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/50 hover:text-white transition-all">
@@ -689,7 +689,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
         </div>
 
         <p className="text-center text-[10px] text-white/15 mt-2">
-          MyAvatar.ge · AI პასუხები შეიძლება შეცდომები შეიცავდეს
+          MyAvatar · AI პასუხები შეიძლება შეცდომები შეიცავდეს
         </p>
       </footer>
     </div>

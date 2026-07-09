@@ -451,7 +451,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
 
             {/* Official support node */}
             <div className="mt-4 pt-3 border-t border-app-border/10 text-center text-[11px] text-app-muted">
-              <a href={buildSupportMailto({ subject: 'MyAvatar.ge — help' })} className="hover:text-sky-500 dark:hover:text-sky-300 transition">
+              <a href={buildSupportMailto({ subject: 'MyAvatar — help' })} className="hover:text-sky-500 dark:hover:text-sky-300 transition">
                 {SUPPORT_EMAIL}
               </a>
             </div>

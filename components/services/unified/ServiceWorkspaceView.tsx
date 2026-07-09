@@ -1447,7 +1447,7 @@ export default function ServiceWorkspaceView({
         const payload = await postJson('/api/orbit/code-generation', {
           prompt,
           language: String(values.language || 'typescript'),
-          framework: 'MyAvatar.ge workspace',
+          framework: 'MyAvatar workspace',
         })
 
         publishResult(dashboardJobId, {

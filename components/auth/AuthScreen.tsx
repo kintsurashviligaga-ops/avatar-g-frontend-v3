@@ -250,7 +250,7 @@ function DemoScreen({ locale }: { locale: string }) {
     <div className="min-h-[100dvh] flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
       <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
         <div className="text-4xl">🚀</div>
-        <h2 className="text-2xl font-bold text-white">MyAvatar.ge</h2>
+        <h2 className="text-2xl font-bold text-white">MyAvatar</h2>
         <p className="text-slate-300">Running in demo mode — full auth requires Supabase configuration.</p>
         <a
           href={`/${locale}/dashboard`}
@@ -568,7 +568,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           <div className="w-12 h-12 mx-auto mb-4 relative">
             <Image
               src="/brand/gemini-rocket-clean.png"
-              alt="MyAvatar.ge"
+              alt="MyAvatar"
               fill
               sizes="48px"
               className="object-contain"
@@ -579,8 +579,8 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           </h1>
           <p className="text-sm mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
             {mode === 'signup'
-              ? 'Join MyAvatar.ge and start creating with AI'
-              : 'Sign in to MyAvatar.ge'}
+              ? 'Join MyAvatar and start creating with AI'
+              : 'Sign in to MyAvatar'}
           </p>
         </div>
 
@@ -796,7 +796,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           <p className="text-center text-sm mt-6" style={{ color: 'var(--color-text-tertiary)' }}>
             {mode === 'login' ? (
               <>
-                New to MyAvatar.ge?{' '}
+                New to MyAvatar?{' '}
                 <button
                   onClick={() => { setMode('signup'); setError(null); }}
                   className="font-medium transition-colors hover:underline"
@@ -822,7 +822,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
 
         {/* Footer */}
         <p className="text-center text-xs mt-6 leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>
-          By continuing, you agree to MyAvatar.ge&apos;s{' '}
+          By continuing, you agree to MyAvatar&apos;s{' '}
           <Link href={`/${locale}/terms`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
             Terms of Service
           </Link>{' '}

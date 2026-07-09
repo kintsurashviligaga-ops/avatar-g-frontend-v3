@@ -2497,7 +2497,7 @@ function FilmPreviewPlayer({
     const nav = typeof navigator !== 'undefined' ? navigator : undefined;
     try {
       if (nav?.share) {
-        await nav.share({ title: 'MyAvatar.ge — 30-second film', url });
+        await nav.share({ title: 'MyAvatar — 30-second film', url });
         return;
       }
     } catch {

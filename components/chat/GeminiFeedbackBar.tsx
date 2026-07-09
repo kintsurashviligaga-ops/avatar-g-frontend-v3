@@ -36,7 +36,7 @@ export function GeminiFeedbackBar({
 
   const handleShare = async () => {
     if (navigator.share) {
-      await navigator.share({ text: content, title: 'MyAvatar.ge AI Response' });
+      await navigator.share({ text: content, title: 'MyAvatar AI Response' });
     } else {
       await handleCopy();
     }
