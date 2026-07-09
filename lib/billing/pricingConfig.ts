@@ -2,6 +2,7 @@
 // ─── THE ONLY place that defines NEW pricing tiers, credits, limits. ────────
 // UI + API + workers ALL import from here. Never duplicate these values.
 // ADDITIVE — does NOT replace the existing lib/billing/plans.ts (PlanTier system).
+import { CREDIT_COSTS as MEDIA_CREDIT_COSTS } from '@/lib/credits/pricing'
 
 export type PlanId = 'trial' | 'pro' | 'business' | 'executive'
 export type Priority = 'standard' | 'priority' | 'executive'
@@ -129,3 +130,43 @@ export function isUnlimitedPlan(planId: PlanId): boolean {
 export function getSoftCap(planId: PlanId): number | null {
   return PLANS[planId].fairUseSoftCapCredits ?? null
 }
+
+// ─── PRICING TIERS (Day-1 Task 6) — single source of truth for the credit-pool subscription tiers ───────────
+// creditsIncluded is DERIVED from the media credit costs (Σ ceiling × cost) so a cost change flows through
+// automatically — no hardcoded totals to drift. Render the pricing UI FROM this constant.
+//
+// ⚠️ NOT YET WIRED TO LIVE CHECKOUT. app/api/billing/checkout charges via FIXED Stripe price IDs, so the amount
+// billed is the Stripe price object, NOT priceGel here. Flipping the displayed price without a matching Stripe
+// (or dynamic BOG) price object would charge the WRONG amount. Going live needs those price objects + wiring.
+
+export type PricingTierId = 'starter' | 'pro_creator' | 'studio_annual'
+
+export interface PricingTier {
+  id: PricingTierId
+  name: string
+  priceGel: number
+  billing: 'monthly' | 'annual'
+  /** Marketing ceilings the price is framed around. */
+  creditCeiling: { videos: number; music: number; images: number }
+  /** DERIVED credit-pool grant = Σ ceiling × media cost (single source; never hardcode). */
+  creditsIncluded: number
+}
+
+/** Σ (ceiling × per-asset media credit cost). The credit-pool equivalent of the per-asset ceilings. */
+export function tierCreditPool(ceiling: { videos: number; music: number; images: number }): number {
+  return (
+    ceiling.videos * MEDIA_CREDIT_COSTS.video_30s +
+    ceiling.music * MEDIA_CREDIT_COSTS.music_30s +
+    ceiling.images * MEDIA_CREDIT_COSTS.image_generate
+  )
+}
+
+function makeTier(id: PricingTierId, name: string, priceGel: number, billing: 'monthly' | 'annual', creditCeiling: PricingTier['creditCeiling']): PricingTier {
+  return { id, name, priceGel, billing, creditCeiling, creditsIncluded: tierCreditPool(creditCeiling) }
+}
+
+export const PRICING_TIERS: PricingTier[] = [
+  makeTier('starter', 'Starter', 38, 'monthly', { videos: 2, music: 10, images: 20 }),
+  makeTier('pro_creator', 'Pro Creator', 299, 'monthly', { videos: 10, music: 50, images: 100 }),
+  makeTier('studio_annual', 'Studio Annual', 899, 'annual', { videos: 40, music: 250, images: 500 }),
+]
