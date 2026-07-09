@@ -49,7 +49,7 @@ export function Sidebar() {
             <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 shadow-sm" style={{ borderColor: 'var(--color-bg)' }} />
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-accent)' }}>Avatar G</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-accent)' }}>MyAvatar</p>
             <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text)' }}>AI Workspace</p>
           </div>
         </div>

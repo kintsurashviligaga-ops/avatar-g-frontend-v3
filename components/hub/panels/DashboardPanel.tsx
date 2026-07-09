@@ -80,7 +80,7 @@ export function DashboardPanel({ locale }: { locale: string }) {
             <div>
               <p className="text-xs text-white/40">{greeting}</p>
               <h1 className="text-xl font-bold text-white">
-                Avatar G <span className="text-cyan-400">Workspace</span>
+                MyAvatar <span className="text-cyan-400">Workspace</span>
               </h1>
               <p className="text-xs text-white/35 mt-0.5">Your AI production studio is ready.</p>
             </div>

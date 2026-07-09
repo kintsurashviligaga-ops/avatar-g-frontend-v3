@@ -75,7 +75,7 @@ export function GlobalNavbar() {
           <div className="relative h-8 sm:h-10 w-8 sm:w-10 flex-shrink-0">
             <Image
               src="/logo.png"
-              alt="Avatar G logo"
+              alt="MyAvatar logo"
               fill
               priority
               className="object-contain"

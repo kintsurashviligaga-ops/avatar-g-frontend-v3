@@ -57,7 +57,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
         )}
         <Image
           src="/brand/gemini-rocket-clean.png"
-          alt="MyAvatar.ge"
+          alt="MyAvatar"
           fill
           sizes={`${s.img}px`}
           priority
@@ -71,9 +71,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
       {showText && (
         <div className={`flex flex-col leading-none transition-all duration-300 ${compact ? 'opacity-90' : 'opacity-100'}`}>
           <span className="font-extrabold tracking-[-0.02em] text-[1.05rem] md:text-[1.1rem] leading-none" style={{ color: 'var(--color-text)' }}>
-            MyAvatar<span
-              className="font-semibold bg-gradient-to-r from-cyan-300 via-cyan-400 to-blue-400 bg-clip-text text-transparent"
-            >.ge</span>
+            MyAvatar
           </span>
         </div>
       )}
@@ -82,7 +80,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
 
   if (href) {
     return (
-      <Link href={href} aria-label="MyAvatar.ge home" className="group flex-shrink-0 hover:opacity-90 transition-opacity duration-200">
+      <Link href={href} aria-label="MyAvatar home" className="group flex-shrink-0 hover:opacity-90 transition-opacity duration-200">
         {logo}
       </Link>
     )

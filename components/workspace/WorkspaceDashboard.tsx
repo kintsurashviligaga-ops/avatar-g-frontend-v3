@@ -173,7 +173,7 @@ export function WorkspaceDashboard({ locale }: { locale: string }) {
             <div>
               <p className="text-xs font-medium tracking-wide mb-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{t.greeting(hour)}</p>
               <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: 'var(--color-text)' }}>
-                Avatar G <span style={{ color: 'var(--color-accent)' }}>Workspace</span>
+                MyAvatar <span style={{ color: 'var(--color-accent)' }}>Workspace</span>
               </h1>
               <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{t.subtitle}</p>
             </div>

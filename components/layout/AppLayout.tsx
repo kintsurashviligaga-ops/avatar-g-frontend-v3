@@ -33,7 +33,7 @@ const footerContentMap: Record<SupportedLocale, FooterContent> = {
       { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
       { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
     ],
-    copyright: '2024 Avatar G. All rights reserved.',
+    copyright: '2024 MyAvatar. All rights reserved.',
     builtFor: 'Built for creators',
   },
   ka: {
@@ -43,7 +43,7 @@ const footerContentMap: Record<SupportedLocale, FooterContent> = {
       { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
       { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
     ],
-    copyright: '2024 Avatar G.',
+    copyright: '2024 MyAvatar.',
     builtFor: 'Built for creators',
   },
   ru: {
@@ -53,7 +53,7 @@ const footerContentMap: Record<SupportedLocale, FooterContent> = {
       { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
       { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
     ],
-    copyright: '2024 Avatar G.',
+    copyright: '2024 MyAvatar.',
     builtFor: 'Built for creators',
   },
 };
