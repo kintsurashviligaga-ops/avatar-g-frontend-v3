@@ -170,3 +170,25 @@ export const PRICING_TIERS: PricingTier[] = [
   makeTier('pro_creator', 'Pro Creator', 299, 'monthly', { videos: 10, music: 50, images: 100 }),
   makeTier('studio_annual', 'Studio Annual', 899, 'annual', { videos: 40, music: 250, images: 500 }),
 ]
+
+// ─── Live Stripe Price ID resolution (env placeholders — you insert the real IDs in Vercel) ─────────────────
+// The code NEVER hardcodes a price ID. Each tier's live Stripe Price ID lives in an env var; until it's set,
+// the tier is NOT purchasable — and that is the SAFETY property: no env → no charge → a wrong-amount charge is
+// impossible. When you add the IDs, checkout + the webhook credit-grant can be wired to these resolvers.
+export const TIER_STRIPE_PRICE_ENV: Record<PricingTierId, string> = {
+  starter: 'STRIPE_PRICE_STARTER',
+  pro_creator: 'STRIPE_PRICE_PRO_CREATOR',
+  studio_annual: 'STRIPE_PRICE_STUDIO_ANNUAL',
+}
+
+/** Resolve a tier's live Stripe Price ID from env; null when unset (tier not yet purchasable). */
+export function stripePriceIdForTier(id: PricingTierId): string | null {
+  const v = process.env[TIER_STRIPE_PRICE_ENV[id]]
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+/** Reverse lookup: which tier a completed Stripe Price ID belongs to (for the webhook credit grant). */
+export function tierByStripePriceId(priceId: string | null | undefined): PricingTier | null {
+  if (!priceId) return null
+  return PRICING_TIERS.find((t) => stripePriceIdForTier(t.id) === priceId) ?? null
+}
