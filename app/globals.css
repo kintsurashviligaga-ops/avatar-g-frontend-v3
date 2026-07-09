@@ -371,6 +371,17 @@ button,
     overscroll-behavior: none;
     touch-action: pan-y;
   }
+  /* CRITICAL: the shell's pan-y lock would otherwise FREEZE every intentional horizontal scroller
+     (carousels, tab strips, code blocks). Any element that actually scrolls sideways gets both-axis panning
+     back — a descendant's own touch-action governs gestures that start on it, overriding the ancestor lock.
+     Covers Tailwind's overflow-x-{auto,scroll} + the chat markdown code blocks. New scrollers are covered
+     automatically as long as they use the standard overflow-x utility (or add .ag-pan-x). */
+  .overflow-x-auto,
+  .overflow-x-scroll,
+  .ag-pan-x,
+  .chat-md pre {
+    touch-action: pan-x pan-y;
+  }
 }
 
 input:not([type='checkbox']):not([type='radio']):not([type='range']),

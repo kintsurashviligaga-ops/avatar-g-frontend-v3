@@ -71,21 +71,29 @@ export async function expandCinematicPrompt(raw: string, llm: LlmFn, opts: Cinem
   const base = (raw ?? '').trim();
   if (!base) return base;
   if (looksEnriched(base)) return base;
+  const timeoutMs = opts.timeoutMs ?? 12_000;
   let out: string | null = null;
+  // HARD wall-clock bound: race the LLM against a timeout that resolves to null. This is what actually keeps
+  // the (blocking, pre-submit) enrichment from ever stalling the render path — the underlying provider chain
+  // may not honor timeoutMs on every leg, so we never trust it alone. We also abort via a signal for any leg
+  // that DOES observe it. On timeout / error / abort we fall through to the deterministic string.
+  const controller = new AbortController();
+  const signal = opts.signal ?? controller.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    out = await llm({
-      system: CINEMATIC_SYSTEM,
-      user: base,
-      maxTokens: opts.maxTokens ?? 240,
-      temperature: 0.7,
-      timeoutMs: opts.timeoutMs ?? 12_000,
-      signal: opts.signal,
-    });
+    const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => { try { controller.abort(); } catch { /* noop */ } resolve(null); }, timeoutMs); });
+    out = await Promise.race([
+      llm({ system: CINEMATIC_SYSTEM, user: base, maxTokens: opts.maxTokens ?? 240, temperature: 0.7, timeoutMs, signal }).catch(() => null),
+      deadline,
+    ]);
   } catch {
     out = null;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   const cleaned = sanitizeCinematicOutput(out);
-  // Accept only a real enrichment (kept/added detail); anything shorter than the input is treated as a miss.
-  if (cleaned && cleaned.length >= base.length) return cleaned;
+  // Accept a real enrichment. Guard against the 900-char slice rejecting a good enrichment of a LONG raw
+  // prompt: require the enrichment to be at least as long as the input OR a substantial ~600+ chars.
+  if (cleaned && cleaned.length >= Math.min(base.length, 600)) return cleaned;
   return deterministicCinematicPrompt(base);
 }

@@ -63,6 +63,14 @@ describe('expandCinematicPrompt', () => {
     expect(await expandCinematicPrompt(RAW, llm)).toBe(deterministicCinematicPrompt(RAW));
   });
 
+  it('enforces a HARD wall-clock bound — a hanging LLM falls back to deterministic within the timeout', async () => {
+    const started = Date.now();
+    const llm: LlmFn = () => new Promise<string>(() => { /* never resolves */ });
+    const out = await expandCinematicPrompt(RAW, llm, { timeoutMs: 60 });
+    expect(out).toBe(deterministicCinematicPrompt(RAW));
+    expect(Date.now() - started).toBeLessThan(2000); // did not hang on the never-resolving LLM
+  });
+
   it('passes empty input through without calling the LLM', async () => {
     let called = false;
     const llm: LlmFn = async () => { called = true; return 'x'; };
