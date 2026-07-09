@@ -158,6 +158,8 @@ describe('masterDialogueTurns', () => {
     expect(turns[2]!.text).toMatch(/ღმერთო ჩემო/);
     // narrator gender steers the cast voice via the direction hint
     expect(turns[0]!.direction).toBe('male narrator');
+    // DAY-5 activation: each turn carries its timecode (startSec) so per-speaker stems can be time-placed.
+    expect(turns.map((t) => t.startSec)).toEqual([2.5, 8.5, 9, 13]);
   });
 
   it('honors female / unset narrator gender in the direction hint', () => {

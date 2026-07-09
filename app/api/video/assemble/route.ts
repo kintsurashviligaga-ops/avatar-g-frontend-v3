@@ -117,6 +117,10 @@ interface SegmentInput {
 interface AssembleBody {
   segments?: SegmentInput[];
   voiceoverUrl?: string | null;
+  /** DAY-4/5 multi-voice — per-speaker TIMECODED dialogue stems. When ≥2 distinct speakers are all timecoded,
+   *  the CPU assembler spatial-premixes them (each panned) + ducks music −12 dB under the dialogue; otherwise
+   *  it FAILS OPEN to voiceoverUrl. URLs are re-signed if internal. Additive — absent → the single-voice path. */
+  dialogueStems?: { url: string; speaker: string; startSec: number }[] | null;
   /** Product-Ad / commercial — a voiceover SCRIPT to speak (cloned KA voice) when no
    *  ready voiceoverUrl is supplied. TTS'd server-side via textToHostedSpeech; the
    *  master then ducks the music under it exactly like an uploaded voiceover. Fail-open. */
@@ -528,6 +532,19 @@ async function assembleImpl(req: NextRequest) {
         ? await textToHostedSpeech(sanitizeSpokenText(body.voiceoverScript).slice(0, 800)).catch(() => null)
         : null);
 
+  // DAY-4/5 multi-voice — validate + re-sign the per-speaker dialogue stems (bounded to 16). Only stems that
+  // are well-formed (url + speaker + finite startSec) AND re-sign survive; a partial set falls open to the
+  // single voiceoverUrl in the assembler's 1:1 guard.
+  const resolvedDialogueStems = Array.isArray(body.dialogueStems) && body.dialogueStems.length
+    ? (await Promise.all(
+        body.dialogueStems.slice(0, 16).map(async (s) => {
+          if (!s || typeof s.url !== 'string' || !s.url.trim() || typeof s.speaker !== 'string' || !s.speaker.trim() || typeof s.startSec !== 'number' || !Number.isFinite(s.startSec)) return null;
+          const url = await reSignIfInternal(s.url).catch(() => null);
+          return url ? { url, speaker: s.speaker, startSec: s.startSec } : null;
+        }),
+      )).filter((s): s is { url: string; speaker: string; startSec: number } => Boolean(s))
+    : [];
+
   const manifest: RunPodManifest = {
     segments: signedSegments,
     voiceoverUrl: resolvedVoiceoverUrl,
@@ -651,7 +668,7 @@ async function assembleImpl(req: NextRequest) {
           // GPU worker when configured; else stitch on this node with CPU FFmpeg.
           const work = cfg
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
-            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null, script: body.script ?? null }, ac.signal);
+            : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null, script: body.script ?? null, ...(resolvedDialogueStems.length ? { dialogueStems: resolvedDialogueStems } : {}) }, ac.signal);
           const res = await Promise.race([work, deadline]);
           ctx.bag.tempUrl = res.url;
           // Supervisor QA verdict (CPU path only; RunPod path returns no qa).

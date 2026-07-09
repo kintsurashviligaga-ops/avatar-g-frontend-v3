@@ -418,6 +418,59 @@ export async function generateDialogueVoiceover(opts: {
   }
 }
 
+/** DAY-4/5 multi-voice activation — a per-speaker dialogue STEM (a rendered line + who + when) that the
+ *  ffmpeg assembly spatial-premixes. */
+export interface DialogueStem { url: string; speaker: string; startSec: number }
+export interface DialogueStemsResult { stems: DialogueStem[]; mergedUrl: string | null }
+
+/** Pure precondition for the spatial multi-voice premix: ≥2 DISTINCT speakers AND every turn timecoded (the
+ *  assembly's resolveDialogueCastPlan.multiSpeaker gate). Bounded to a sane turn count for cost. */
+export function dialogueStemsViable(turns: readonly (CastTurn & { startSec?: number | null })[]): boolean {
+  const t = (turns ?? []).filter((x) => x && (x.speaker ?? '').trim());
+  if (t.length < 2 || t.length > 16) return false;
+  if (!t.every((x) => typeof x.startSec === 'number' && Number.isFinite(x.startSec))) return false;
+  return new Set(t.map((x) => (x.speaker ?? '').trim().toLowerCase())).size >= 2;
+}
+
+/**
+ * DAY-4/5 — render TIMECODED per-speaker dialogue STEMS for the multi-voice spatial premix. Each line is
+ * synthesised ONCE in its cast voice (castRoster) and uploaded as its own stem; the same buffers are also
+ * concatenated into a `mergedUrl` single-track fallback (so no line is rendered twice). Returns null when the
+ * turns aren't multi-voice-viable (→ caller uses generateDialogueVoiceover's single track) or any leg misses,
+ * so the film ALWAYS gets a voice track. Casting only picks voice IDs — stability 0.48 is untouched.
+ */
+export async function generateDialogueStems(opts: {
+  turns: (CastTurn & { startSec?: number | null })[];
+  compositeId: string;
+}): Promise<DialogueStemsResult | null> {
+  try {
+    const turns = (opts.turns ?? []).filter((t) => t && (t.speaker ?? '').trim());
+    if (!dialogueStemsViable(turns)) return null;
+    const roster = castRoster(turns);
+    const rendered = await Promise.all(turns.map(async (t, i) => {
+      const speaker = (t.speaker ?? '').trim().toLowerCase();
+      const cast = roster.get(speaker);
+      const text = sanitizeSpokenText(t.text).slice(0, 400);
+      if (!text) return null;
+      const audio = await synthesizeVoiceover(text, cast?.voiceId ?? pickNarratorVoiceId(cast?.gender ?? 'female'), (cast?.gender ?? 'female') === 'male' ? 'MALE' : 'FEMALE').catch(() => null);
+      if (!audio) return null;
+      const path = `${opts.compositeId}/dstem-${i}-${speaker.replace(/[^a-z0-9]+/gi, '').slice(0, 16) || 'x'}.mp3`;
+      const url = await uploadAndSign('renders', path, audio.base64, audio.contentType, 7200);
+      return url ? { url, speaker: t.speaker, startSec: t.startSec as number, buf: Buffer.from(audio.base64, 'base64') } : null;
+    }));
+    // Every turn must have produced a stem (the assembly's 1:1 stem↔entry guard) — else fall back to merged.
+    if (rendered.some((r) => !r)) return null;
+    const ok = rendered as { url: string; speaker: string; startSec: number; buf: Buffer }[];
+    const stems: DialogueStem[] = ok.map(({ url, speaker, startSec }) => ({ url, speaker, startSec }));
+    // Merged single-track fallback from the SAME buffers (no re-render).
+    const mergedPath = `${opts.compositeId}/dialogue.mp3`;
+    const mergedUrl = (await uploadAndSign('renders', mergedPath, Buffer.concat(ok.map((r) => r.buf)).toString('base64'), 'audio/mpeg', 7200)) ?? null;
+    return { stems, mergedUrl };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Synthesise a cinematic SOUND-DESIGN / ambience track via the ElevenLabs
  * sound-generation API (text → layered SFX, foley, atmosphere). The FFmpeg master

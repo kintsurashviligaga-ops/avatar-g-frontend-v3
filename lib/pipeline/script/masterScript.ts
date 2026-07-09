@@ -278,8 +278,10 @@ export function parseMasterScript(input: string | null | undefined): ParsedMaste
   }
 }
 
-/** A single voiced turn for the dialogue leg — speaker drives casting, direction refines the voice. */
-export interface MasterTurn { speaker: string; text: string; direction: string | null }
+/** A single voiced turn for the dialogue leg — speaker drives casting, direction refines the voice, startSec
+ *  is the timecode (null if untimed). startSec is additive: the casting path ignores it, but the DAY-4
+ *  multi-voice spatial premix needs it to place each line on the master timeline. */
+export interface MasterTurn { speaker: string; text: string; direction: string | null; startSec: number | null }
 
 /**
  * Build the ordered dialogue-leg turns for the audio pipeline. When the script has ON-CAMERA dialogue, the
@@ -300,5 +302,5 @@ export function masterDialogueTurns(
   ];
   return rows
     .sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity))
-    .map(({ speaker, text, direction }) => ({ speaker, text, direction }));
+    .map(({ speaker, text, direction, t }) => ({ speaker, text, direction, startSec: t }));
 }
