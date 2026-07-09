@@ -158,6 +158,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  // Ref (not state) so the async DB-read closure sees the CURRENT value: true while an upload is in flight,
+  // to stop an auth-transition read from clobbering the optimistic/just-uploaded photo. lastAvatarUserId
+  // de-dupes reads so we only refetch on a genuine account change, not on every token refresh / tab focus.
+  const avatarUploadingRef = useRef(false);
+  const lastAvatarUserIdRef = useRef<string | null>(null);
 
   // Theme (Dark / Light / System) for the Appearance section. ThemeContext is binary
   // (dark|light); "System" resolves the OS preference once via matchMedia.
@@ -188,15 +193,27 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       setUserName(user?.user_metadata?.name ?? null);
       if (!user) setBalanceGel(null);
     };
-    supabase.auth.getUser().then(({ data }) => {
-      apply(data.user);
-      // Pull the saved profile photo so the header avatar shows it (RLS: own profile).
-      if (data.user) {
-        supabase.from('profiles').select('avatar_url').eq('id', data.user.id).maybeSingle()
-          .then(({ data: p }) => { if (alive && p?.avatar_url) setAvatarUrl(p.avatar_url); });
-      }
-    }).catch(() => {});
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => apply(session?.user ?? null));
+    // Authoritative avatar read: always trust the DB row (never a stale client cache). Guards:
+    //  • skip when an upload is in flight — a late read must not clobber/blank the optimistic photo;
+    //  • only overwrite on a SUCCESSFUL read (a transient error leaves the current value untouched);
+    //  • a cleared DB value clears the header. The stored URL carries a ?v=<ts> cache-bust.
+    const loadAvatar = (userId: string) => {
+      supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle()
+        .then(({ data: p, error }) => {
+          if (alive && !error && !avatarUploadingRef.current) setAvatarUrl(p?.avatar_url ?? null);
+        });
+    };
+    // De-dupe: read the profile ONCE per distinct user. This forces a fresh DB read on mount and on any
+    // genuine account switch (re-auth), but skips redundant reads on every token refresh / tab focus that
+    // would otherwise re-issue the query for the same user (and widen the upload race window).
+    const syncUser = (user: { id?: string; email?: string | null; user_metadata?: { name?: string } | null } | null) => {
+      apply(user);
+      const uid = user?.id ?? null;
+      if (uid && uid !== lastAvatarUserIdRef.current) { lastAvatarUserIdRef.current = uid; loadAvatar(uid); }
+      else if (!uid) { lastAvatarUserIdRef.current = null; setAvatarUrl(null); }
+    };
+    supabase.auth.getUser().then(({ data }) => syncUser(data.user)).catch(() => {});
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => syncUser(session?.user ?? null));
     return () => { alive = false; sub?.subscription?.unsubscribe(); };
   }, []);
 
@@ -382,6 +399,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // in the header + profile modal. Optimistic preview; fail-soft.
   const uploadAvatar = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) return;
+    avatarUploadingRef.current = true; // block auth-transition reads from clobbering this upload
     setAvatarBusy(true);
     try {
       const dataUrl: string = await new Promise((resolve, reject) => {
@@ -398,7 +416,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       const j = (await res.json().catch(() => null)) as { url?: string } | null;
       if (res.ok && j?.url) setAvatarUrl(j.url);
     } catch { /* keep the optimistic preview */ }
-    finally { setAvatarBusy(false); }
+    finally { setAvatarBusy(false); avatarUploadingRef.current = false; }
   }, []);
 
   const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';

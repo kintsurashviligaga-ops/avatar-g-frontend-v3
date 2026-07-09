@@ -32,11 +32,15 @@ export async function POST(req: Request) {
     if (buf.byteLength > MAX_BYTES) return NextResponse.json({ error: 'too large (max 5MB)' }, { status: 413 });
 
     const svc = createServiceRoleClient();
-    const path = `${user.id}/avatar-${Date.now()}.${EXT[mime]}`;
+    const ts = Date.now();
+    const path = `${user.id}/avatar-${ts}.${EXT[mime]}`;
     const { error: upErr } = await svc.storage.from('avatars').upload(path, buf, { contentType: mime, upsert: true });
     if (upErr) return NextResponse.json({ error: 'upload failed' }, { status: 500 });
 
-    const url = svc.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+    // Cache-bust the stored URL with ?v=<ts>: the path is already unique per upload, but the version query
+    // forces any CDN/browser that keyed on the bare public URL to re-fetch — no stale avatar after a change.
+    const publicUrl = svc.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+    const url = `${publicUrl}?v=${ts}`;
     await svc.from('profiles').update({ avatar_url: url }).eq('id', user.id);
     return NextResponse.json({ url });
   } catch {
