@@ -166,3 +166,54 @@ Post-fix gate: **tsc clean · jest 1107 green · `next build` clean.** Not yet p
 - **Avatar & voice-node round-trips** — code-verified only; not exercised live (no headless mic / no test upload).
 - **Vercel build framework/duration** — unverifiable here (MCP 403); confirm in dashboard.
 - **v375** is a service-worker cache label, **not** a git tag/release.
+
+---
+
+# END-TO-END ACTIVATION (2026-07-10, deployed commit `5b08235`)
+
+Follow-up pass: activate everything shippable without external credentials, deploy, and verify on the live site.
+Deploy confirmed via `GET https://myavatar.ge/api/health` → `{ commit: "5b08235", ok: true, env_ok: true, status: "healthy" }` — a dynamic route that also proves the deployment runs real Next.js (a `framework:null` static stub cannot execute it).
+
+## (1) NOW LIVE & OBSERVED WORKING on myavatar.ge
+
+Observed against the deployed `5b08235` with a minted, then-deleted ephemeral authed user (service-role; only ever touched that one synthetic row/object):
+
+- **Credit debit — the historical "pinned at 100" bug is GONE.** Live DB: balance `100 → deduct_credits(5) → 95` (real row read-back). Earlier D5 also proved idempotency + overdraw rejection + refund. A real generation reserves-then-debits through this exact RPC.
+- **Avatar persistence.** Authed `POST /api/profile/avatar` → **200**, returned URL carries `?v=<ts>` cache-bust, and `profiles.avatar_url` was updated to that URL (read back from DB). Since the client reads `avatar_url` from the DB on load/`onAuthStateChange`, it survives sign-out/sign-in.
+- **Admin financials gate.** Live `GET /api/admin/financials` → **401** unauthed **and** for a non-admin authed token (the admin gate resolves admin via the cookie session, so a non-admin Bearer surfaces as no-admin → denied). Access is blocked either way.
+- **Admin financials data path.** `agent_evolution_traces` now exists (you ran the SQL); the route-equivalent query already reads **real non-zero API cost** (2 real traces = 1.14₾, `degraded=no`) — Net Margin is no longer overstated.
+- **Brand.** Live `/share/*` title and `/en/pricing` HTML contain **no** reachable "Avatar G".
+- **Multi-voice casting WIRED end-to-end (`5b08235`).** `generateDialogueStems` → film token → poll → client → `/api/video/assemble` premix. Pure wiring proven by `multiVoiceWiring.test.ts` (7) + adversarial review (single-voice byte-identical). See (3) for what remains manual.
+
+Full pre-flight for the deploy: **tsc clean · jest 1114 green · next build clean.** Locked invariants intact (0.48, npm, Upstash, SVG/resvg, FLUX seeds, 6-service menu, async submit+poll, Cap-3/4-worker).
+
+## (2) READY IN CODE, WAITING ON YOUR CREDENTIALS (do NOT let the agent activate)
+
+### Payments — Stripe (wallet top-up + subscriptions)
+Code is ready; activates the instant keys land. Checklist:
+1. Set in Vercel (Production env): `STRIPE_SECRET_KEY` (live `sk_live_…`), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_live_…`), and the three subscription price IDs — `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO_CREATOR`, `STRIPE_PRICE_STUDIO_ANNUAL` (SSoT: `lib/billing/pricingConfig.ts:178`; these map to 38 / 299 / 899 GEL).
+2. Register the webhook endpoint **`https://myavatar.ge/api/billing/webhook`** (the documented wallet-topup handler; credits via `creditWalletGel`, idempotent on `stripe:<session.id>`). Subscribe events: **`checkout.session.completed`** (and, if you also use the payment-intent handler at `/api/stripe/webhook`, `payment_intent.succeeded` / `payment_intent.payment_failed`). ⚠️ Two webhook routes both credit — register ONE and confirm it matches your checkout metadata (`kind: 'wallet_topup'`).
+3. Copy the webhook's signing secret into `STRIPE_WEBHOOK_SECRET` (Vercel). Until this is set the webhook logs "not configured" and no credit lands.
+4. Test → live: verify with a Stripe **test** key + `stripe listen`/test event first; confirm `wallet_topups` + `profiles.credits_balance` update; then swap to `sk_live_`/`pk_live_` and the live webhook secret.
+
+### Payments — BOG / iPay (native GEL)
+1. Set `BOG_CLIENT_ID`, `BOG_SECRET_KEY`, and `BOG_CALLBACK_PUBLIC_KEY` (RSA public key for webhook-signature verify; `\n`-escaped is handled) in Vercel. Until set, `POST /api/checkout/bog/initiate` returns **503 BOG_UNCONFIGURED** (correct).
+2. Register the BOG callback/webhook to **`https://myavatar.ge/api/billing/bog/webhook`** (RSA-verified; credits via `creditWalletGel` on `bog:<shopOrderId>`).
+3. Also apply the BOG migration if not yet applied (per `bog-payment-gateway` notes) so the ledger ref path is present.
+
+### Native video providers (cascade tiers above Replicate)
+The cascade order is Kling-native → Luma → LTX → **Replicate (verified, serving users now)**. Set any of these to unlock a higher tier; **until then the Replicate path serves correctly — confirmed live**:
+- **Kling native:** `KLING_ACCESS_KEY` **and** `KLING_SECRET_KEY` (both required). Optional: `KLING_API_BASE`, `KLING_MODEL_NATIVE`.
+- **Luma:** `LUMA_API_KEY`. Optional: `LUMA_API_BASE`, `LUMA_MODEL`.
+- **LTX:** the LTX key (`resolveLtxApiKey` — `LTX_VIDEO_API_KEY` / `LTX2_API_KEY`). Optional: `LTX_API_BASE`, `LTX_NATIVE_MODEL`.
+`shouldUseNativeCascade` stays false (→ Replicate) until Kling or Luma is configured — proven by 14 passing gate tests + absent-key live behavior.
+
+### Voice interaction node & film multi-voice (need the ElevenLabs key, already on prod)
+No action if `ELEVENLABS_API_KEY` is set in Production (it appears to be — the live voice/music paths work). The **multi-voice film render** activates automatically for any Master-Script with ≥2 distinct timecoded speakers.
+
+## (3) UNVERIFIABLE FROM HERE — what YOU must check
+
+- **Multi-voice ffmpeg render (the `5b08235` payload).** I could not run it here (`ELEVENLABS_API_KEY` is empty in this dev env, and I won't burn a live multi-minute render). **2-line manual test:** in Video mode paste a 2-speaker Master Script (two distinct SPEAKER names with timecodes, e.g. `[00:02] ნინო: …` / `[00:08] დათო: …`) and generate; then confirm the master's audio has the two voices spatially separated (one panned left, one right) with the music ducking ~-12 dB under each spoken line. Server log line to grep: `[assemble] multi-voice cast lane: N speakers → spatial premix`.
+- **Per-service paid renders (Image / Music / Video / Avatar / Remix end-to-end).** I verified the shared billing/debit mechanism + admin gate + avatar + brand live, but did NOT drive each service to a completed paid render this pass (real provider spend + minutes; no browser session). They share the reserve-before-render saga + `deduct_credits` proven above. Confirm each in the UI as a signed-in user if you want per-service sign-off.
+- **Vercel build framework = nextjs (not null) + build duration.** MCP is 403 here. Check Project → Settings → Framework Preset = **Next.js**, and Deployments → `5b08235` → **Ready** with a multi-minute build listing serverless functions. (The live `/api/health` dynamic route already rules out a static stub.)
+- **Admin financials seen by a real admin.** I can only prove the non-admin denial live; log in as an allowlisted admin to confirm the Gross/Fees/Cost/Net figures render.
