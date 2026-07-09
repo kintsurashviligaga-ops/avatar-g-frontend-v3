@@ -13,9 +13,23 @@
  */
 const SPOKEN_LABEL_RX = /^(?:frames?|duration|clips?|tc|shot|camera|subject|visual|overlay|grade|runtime|master\s*format|alt\s*format|genre(?:\/tone)?|tone|audio\s*spec|character\s*anchor|historical\s*anchor|score(?:\s*architecture)?|sfx|vfx|instrumentation|style|music|export|aspect(?:\s*honesty)?|speed\s*ramps?|final\s*frame|key\s*poetry|consistency\s*rules?|prompt|model|production\s*overview|scene\s*breakdown|voice\s*cast|dialogue\s*speakers?|title\s*card|engineering\s*notes|production\s*summary|color|lens|delivery|per-scene\s*trims)\b\s*[:：]/i;
 
+// DEFENSIVE BOUNDS — spoken narration is short (generateFilmVoiceover caps at 600 chars). These hard caps
+// guarantee bounded, non-hanging runtime on ANY adversarial input (a multi-MB blob, a million-newline string,
+// a giant code block) regardless of the per-line regex passes below.
+const MAX_INPUT_CHARS = 20_000;
+const MAX_LINES = 4_000;
+
 export function sanitizeSpokenText(input: string | null | undefined): string {
-  if (!input) return '';
-  const kept = input.split(/\r?\n/).filter((raw) => {
+  if (!input) return ''; // null / undefined / '' / any falsy → empty (preserves the original guard)
+  // Coerce defensively — a non-string that slips past the type at runtime (a number/object) must never throw
+  // on .split — then HARD-CAP the length so the downstream regex passes can never be driven to a hang.
+  let src = (typeof input === 'string' ? input : String(input)).slice(0, MAX_INPUT_CHARS);
+  if (!src) return '';
+  // Strip fenced code blocks (```…```) wholesale so an injected/pasted code block is never voiced. The lazy
+  // [\s\S]*? is linear on the already-capped input; runs before the line split so multi-line fences are removed.
+  src = src.replace(/```[\s\S]*?```/g, ' ');
+  const rawLines = src.split(/\r?\n/);
+  const kept = (rawLines.length > MAX_LINES ? rawLines.slice(0, MAX_LINES) : rawLines).filter((raw) => {
     // Strip a leading cue emoji so an emoji-prefixed label ("🔊 SFX:") is still recognised.
     const s = raw.replace(/^\s*(?:🎬|🎥|🎞️?|🔊|🎵)\s*/, '').trim();
     if (!s) return false;
