@@ -167,8 +167,8 @@ function handleDetectIntent(userInput: string, locale: string) {
     return NextResponse.json({
       detected: false,
       message: locale === 'ka'
-        ? 'მე ვარ Agent G — MyAvatar.ge-ის AI ორკესტრატორი. 14 სერვისიდან რომელი გჭირდება?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio** · **Tourism**'
-        : 'I am Agent G — AI orchestrator of MyAvatar.ge. Which of our 14 services do you need?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio** · **Tourism**',
+        ? 'მე ვარ Agent G — MyAvatar-ის AI ორკესტრატორი. 14 სერვისიდან რომელი გჭირდება?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio** · **Tourism**'
+        : 'I am Agent G — AI orchestrator of MyAvatar. Which of our 14 services do you need?\n\n**Avatar** · **Video** · **Image** · **Music Studio** · **Voice Clone** · **Game** · **Interior** · **Prompt** · **Terminal** · **Content Writer** · **Podcast** · **Character AI** · **Event Studio** · **Tourism**',
     });
   }
   const flow = getFlow(serviceId);

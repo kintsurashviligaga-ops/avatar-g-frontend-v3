@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'MyAvatar.ge',
+    title: 'MyAvatar',
   },
   formatDetection: {
     telephone: false,
@@ -30,19 +30,19 @@ export const metadata: Metadata = {
     apple: '/apple-touch-icon.png',
   },
   title: {
-    default: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათების გენერაცია",
+    default: "MyAvatar — AI ვიდეო, მუსიკა და სურათების გენერაცია",
     template: "%s · MyAvatar"
   },
   description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა — შექმენი ვიდეო, მუსიკა და სურათები ხელოვნური ინტელექტით, წამებში.",
   keywords: ["AI ვიდეო", "AI მუსიკა", "AI სურათი", "ხელოვნური ინტელექტი", "AI კონტენტი", "MyAvatar", "ვიდეოს გენერაცია"],
-  authors: [{ name: "MyAvatar.ge" }],
+  authors: [{ name: "MyAvatar" }],
   openGraph: {
     type: "website",
     locale: "ka_GE",
     alternateLocale: ["en_US", "ru_RU"],
     url: metadataBaseUrl,
-    siteName: "MyAvatar.ge",
-    title: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათების გენერაცია",
+    siteName: "MyAvatar",
+    title: "MyAvatar — AI ვიდეო, მუსიკა და სურათების გენერაცია",
     description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა.",
     images: [{
       // 1200×630 landscape card — `summary_large_image` and Facebook/LinkedIn
@@ -50,12 +50,12 @@ export const metadata: Metadata = {
       url: "/og-image.png",
       width: 1200,
       height: 630,
-      alt: "MyAvatar.ge — AI კონტენტის შემქმნელი პლატფორმა"
+      alt: "MyAvatar — AI კონტენტის შემქმნელი პლატფორმა"
     }]
   },
   twitter: {
     card: "summary_large_image",
-    title: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათები",
+    title: "MyAvatar — AI ვიდეო, მუსიკა და სურათები",
     description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა.",
     images: ["/og-image.png"]
   },

@@ -11,7 +11,7 @@ import type { MetadataRoute } from 'next';
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'MyAvatar.ge — AI Chat',
+    name: 'MyAvatar — AI Chat',
     short_name: 'MyAvatar',
     description: 'Georgian AI creative studio — chat, image, video, music, voice, avatar, interior, app builder in one window.',
     start_url: '/ka/dashboard',

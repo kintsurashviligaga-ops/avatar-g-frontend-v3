@@ -8,7 +8,7 @@ type Props = { params: Promise<{ locale: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
-  const title = locale === 'en' ? 'Library — MyAvatar.ge' : locale === 'ru' ? 'Библиотека — MyAvatar.ge' : 'ბიბლიოთეკა — MyAvatar.ge';
+  const title = locale === 'en' ? 'Library — MyAvatar' : locale === 'ru' ? 'Библиотека — MyAvatar' : 'ბიბლიოთეკა — MyAvatar';
   return { title };
 }
 

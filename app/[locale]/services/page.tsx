@@ -353,12 +353,12 @@ const PAGE_TEXT: Record<string, PageText> = {
     title: 'Your AI Factory',
     subtitle: '24 connected AI-powered modules working together in one ecosystem.',
     description:
-      'From avatar creation to content production, automation, software, commerce, and business execution — MyAvatar.ge connects every service into one intelligent workflow.',
+      'From avatar creation to content production, automation, software, commerce, and business execution — MyAvatar connects every service into one intelligent workflow.',
     workflowLabel: 'Create → Optimize → Automate → Sell → Scale',
     workflowSub:
       'From avatar and media generation to orchestration, business operations, and vertical expansion.',
     ctaEyebrow: 'START YOUR WORKFLOW',
-    ctaTitle: 'Build, automate, and scale with MyAvatar.ge',
+    ctaTitle: 'Build, automate, and scale with MyAvatar',
     ctaDescription:
       'Choose one service or combine multiple modules into a full AI-powered production pipeline.',
     exploreCta: 'Explore Services',
@@ -369,12 +369,12 @@ const PAGE_TEXT: Record<string, PageText> = {
     title: 'შენი AI ქარხანა',
     subtitle: '24 ურთიერთდაკავშირებული AI-ით მართული მოდული — ერთ ეკოსისტემაში.',
     description:
-      'ავატარის შექმნიდან კონტენტ-წარმოებამდე, ავტომატიზაცია, პროგრამული უზრუნველყოფა, კომერცია და ბიზნეს-ოპერაციები — MyAvatar.ge-ი ყველა სერვისს ერთ ინტელექტუალურ workflow-ში აერთიანებს.',
+      'ავატარის შექმნიდან კონტენტ-წარმოებამდე, ავტომატიზაცია, პროგრამული უზრუნველყოფა, კომერცია და ბიზნეს-ოპერაციები — MyAvatar-ი ყველა სერვისს ერთ ინტელექტუალურ workflow-ში აერთიანებს.',
     workflowLabel: 'შექმნა → ოპტიმიზაცია → ავტომატიზაცია → გაყიდვა → მასშტაბი',
     workflowSub:
       'ავატარისა და მედიის გენერაციიდან ორკესტრაციამდე, ბიზნეს-ოპერაციებამდე და ვერტიკალურ გაფართოებამდე.',
     ctaEyebrow: 'WORKFLOW-ის გაშვება',
-    ctaTitle: 'შექმენი, ავტომატიზაციე და გახარე MyAvatar.ge-ით',
+    ctaTitle: 'შექმენი, ავტომატიზაციე და გახარე MyAvatar-ით',
     ctaDescription:
       'აირჩიე ერთი სერვისი ან გააერთიანე მრავალი მოდული სრულ AI-ით მართულ პაიპლაინად.',
     exploreCta: 'სერვისების ნახვა',
@@ -385,12 +385,12 @@ const PAGE_TEXT: Record<string, PageText> = {
     title: 'Ваша AI Фабрика',
     subtitle: '24 взаимосвязанных AI-модулей, работающих вместе в единой экосистеме.',
     description:
-      'От создания аватаров до производства контента, автоматизации, разработки ПО, коммерции и бизнес-операций — MyAvatar.ge объединяет все сервисы в один интеллектуальный workflow.',
+      'От создания аватаров до производства контента, автоматизации, разработки ПО, коммерции и бизнес-операций — MyAvatar объединяет все сервисы в один интеллектуальный workflow.',
     workflowLabel: 'Создать → Оптимизировать → Автоматизировать → Продать → Масштабировать',
     workflowSub:
       'От генерации аватаров и медиа до оркестрации, бизнес-операций и вертикального расширения.',
     ctaEyebrow: 'ЗАПУСТИТЬ WORKFLOW',
-    ctaTitle: 'Создавайте, автоматизируйте и масштабируйте с MyAvatar.ge',
+    ctaTitle: 'Создавайте, автоматизируйте и масштабируйте с MyAvatar',
     ctaDescription:
       'Выберите один сервис или объедините несколько модулей в полноценный AI-пайплайн.',
     exploreCta: 'Все сервисы',
@@ -490,7 +490,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
             <Image
               src="/brand/gemini-rocket-clean.png"
-              alt="MyAvatar.ge"
+              alt="MyAvatar"
               fill
               sizes="104px"
               priority
@@ -608,7 +608,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             {/* Brand mark */}
             <div className='relative w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] mb-8'>
               <div className='absolute inset-[-20%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)', filter: 'blur(16px)' }} />
-              <Image src="/brand/gemini-rocket-clean.png" alt="MyAvatar.ge" fill sizes="96px" className='object-contain drop-shadow-[0_4px_24px_rgba(34,211,238,0.3)]' />
+              <Image src="/brand/gemini-rocket-clean.png" alt="MyAvatar" fill sizes="96px" className='object-contain drop-shadow-[0_4px_24px_rgba(34,211,238,0.3)]' />
             </div>
 
             {/* Eyebrow */}

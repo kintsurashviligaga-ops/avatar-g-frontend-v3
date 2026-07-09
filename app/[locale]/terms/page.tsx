@@ -15,11 +15,11 @@ const copy: Record<Lang, {
     sections: [
       {
         title: '1. ხელშეკრულების მონაწილეები',
-        body: 'წინამდებარე პირობები რეგულირებს თქვენი (შემდგომში — "მომხმარებელი") და MyAvatar.ge-ის (შემდგომში — "ჩვენ") ურთიერთობას. სერვისით სარგებლობით, თქვენ ეთანხმებით ამ პირობებს მთლიანად.',
+        body: 'წინამდებარე პირობები რეგულირებს თქვენი (შემდგომში — "მომხმარებელი") და MyAvatar-ის (შემდგომში — "ჩვენ") ურთიერთობას. სერვისით სარგებლობით, თქვენ ეთანხმებით ამ პირობებს მთლიანად.',
       },
       {
         title: '2. სერვისის აღწერა',
-        body: 'MyAvatar.ge არის AI-ით კონტენტის გენერაციის პლატფორმა, რომელიც აერთიანებს ჩატს, სურათის/ვიდეოს/მუსიკის/ხმის გენერაციას, ციფრულ ავატარს, ინტერიერის ვიზუალიზაციას და კოდის გენერაციას ერთ ფანჯარაში. ფუნქციონალი შესაძლოა შეიცვალოს დროთა განმავლობაში.',
+        body: 'MyAvatar არის AI-ით კონტენტის გენერაციის პლატფორმა, რომელიც აერთიანებს ჩატს, სურათის/ვიდეოს/მუსიკის/ხმის გენერაციას, ციფრულ ავატარს, ინტერიერის ვიზუალიზაციას და კოდის გენერაციას ერთ ფანჯარაში. ფუნქციონალი შესაძლოა შეიცვალოს დროთა განმავლობაში.',
       },
       {
         title: '3. ანგარიში',
@@ -62,11 +62,11 @@ const copy: Record<Lang, {
     sections: [
       {
         title: '1. Parties',
-        body: 'These terms govern the relationship between you (the "User") and MyAvatar.ge ("we", "us"). By using the service, you agree to these terms in full.',
+        body: 'These terms govern the relationship between you (the "User") and MyAvatar ("we", "us"). By using the service, you agree to these terms in full.',
       },
       {
         title: '2. Service Description',
-        body: 'MyAvatar.ge is an AI content creation platform combining chat, image/video/music/voice generation, digital avatars, interior visualization, and code generation in one window. Features may change over time.',
+        body: 'MyAvatar is an AI content creation platform combining chat, image/video/music/voice generation, digital avatars, interior visualization, and code generation in one window. Features may change over time.',
       },
       {
         title: '3. Account',
@@ -109,11 +109,11 @@ const copy: Record<Lang, {
     sections: [
       {
         title: '1. Стороны',
-        body: 'Настоящие условия регулируют отношения между вами ("Пользователь") и MyAvatar.ge ("мы"). Используя сервис, вы полностью соглашаетесь с этими условиями.',
+        body: 'Настоящие условия регулируют отношения между вами ("Пользователь") и MyAvatar ("мы"). Используя сервис, вы полностью соглашаетесь с этими условиями.',
       },
       {
         title: '2. Описание сервиса',
-        body: 'MyAvatar.ge — это AI-платформа, объединяющая чат, генерацию изображений/видео/музыки/голоса, цифровых аватаров, интерьеров и кода в одном окне. Функционал может изменяться со временем.',
+        body: 'MyAvatar — это AI-платформа, объединяющая чат, генерацию изображений/видео/музыки/голоса, цифровых аватаров, интерьеров и кода в одном окне. Функционал может изменяться со временем.',
       },
       {
         title: '3. Аккаунт',

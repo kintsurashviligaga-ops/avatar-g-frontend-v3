@@ -94,12 +94,12 @@ export const metadata: Metadata = {
 			url: "/og-image.png",
 			width: 1200,
 			height: 630,
-			alt: "MyAvatar.ge — Georgian AI Studio, one window"
+			alt: "MyAvatar — Georgian AI Studio, one window"
 		}]
 	},
 	twitter: {
 		card: "summary_large_image",
-		title: "MyAvatar.ge — AI Chat",
+		title: "MyAvatar — AI Chat",
 		description: "Georgian AI creative studio — chat, image, video, music, voice, avatar, interior, app builder in one window.",
 		images: ["/og-image.png"]
 	},
@@ -135,7 +135,7 @@ const structuredData = {
 			"@type": "Organization",
 			"@id": `${metadataBaseUrl}/#organization`,
 			name: "MyAvatar",
-			alternateName: "MyAvatar.ge",
+			alternateName: "MyAvatar",
 			url: metadataBaseUrl,
 			logo: {
 				"@type": "ImageObject",

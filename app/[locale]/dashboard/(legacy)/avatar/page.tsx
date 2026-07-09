@@ -265,7 +265,7 @@ function TalkingAvatarTab() {
             value={script}
             onChange={e => setScript(e.target.value)}
             maxLength={1500}
-            placeholder="Enter what your avatar should say... e.g. 'Hello, I'm your AI assistant from MyAvatar.ge — ready to help you today!'"
+            placeholder="Enter what your avatar should say... e.g. 'Hello, I'm your AI assistant from MyAvatar — ready to help you today!'"
             rows={5}
             className="w-full bg-transparent outline-none resize-none text-sm text-white placeholder-white/25 rounded-xl p-3 leading-relaxed"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)' }}
@@ -586,7 +586,7 @@ export default function AvatarStudioPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-white" style={{ fontFamily: 'var(--font-syne, system-ui)' }}>Avatar Studio</h1>
-          <p className="text-xs text-white/40">MyAvatar.ge — Premium AI Avatar Creation</p>
+          <p className="text-xs text-white/40">MyAvatar — Premium AI Avatar Creation</p>
         </div>
       </div>
 
