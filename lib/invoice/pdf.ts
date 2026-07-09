@@ -196,7 +196,7 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
             </svg>
           </div>
           <div>
-            <h1 style="font-size: 24px; margin: 0; font-weight: 700;">Avatar G</h1>
+            <h1 style="font-size: 24px; margin: 0; font-weight: 700;">MyAvatar</h1>
             <p style="margin: 0; font-size: 12px; color: #666;">AI კომერციის პლატფორმა</p>
           </div>
         </div>
@@ -268,7 +268,7 @@ export function generateInvoiceHtml(snapshot: InvoiceSnapshot): string {
     <!-- Footer -->
     <div class="footer">
       <p>ეს ინვოისი გენერირებულია ავტომატურად. ხელმოწერა არ არის საჭირო.</p>
-      <p>გენერაციის თარიღი: ${new Date().toLocaleDateString('ka-GE')} | Avatar G</p>
+      <p>გენერაციის თარიღი: ${new Date().toLocaleDateString('ka-GE')} | MyAvatar</p>
     </div>
   </div>
 </body>

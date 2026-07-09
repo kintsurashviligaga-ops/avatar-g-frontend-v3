@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
           issueDate: now,
           dueDate,
           currency,
-          sellerName: profile.legalName || 'Avatar G',
+          sellerName: profile.legalName || 'MyAvatar',
           sellerTaxId: profile.taxId || '',
           sellerAddress: profile.address || '',
           sellerEmail: profile.email || '',

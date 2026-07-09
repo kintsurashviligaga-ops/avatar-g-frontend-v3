@@ -43,23 +43,23 @@ async function getCreation(token: string): Promise<Creation | null> {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const c = await getCreation(params.token);
-  if (!c) return { title: 'Creation Not Found | Avatar G' };
+  if (!c) return { title: 'Creation Not Found | MyAvatar' };
 
-  const title = c.title ?? `AI ${c.kind} by Avatar G`;
+  const title = c.title ?? `AI ${c.kind} by MyAvatar`;
   const description = c.prompt
     ? c.prompt.slice(0, 155) + (c.prompt.length > 155 ? '…' : '')
-    : `A ${c.kind} created with Avatar G AI.`;
+    : `A ${c.kind} created with MyAvatar AI.`;
   const images = c.thumbnail_url
     ? [{ url: c.thumbnail_url, width: 1200, height: 630, alt: title }]
     : [];
 
   return {
-    title: `${title} | Avatar G`,
+    title: `${title} | MyAvatar`,
     description,
     openGraph: {
       title, description,
       url: `https://myavatar.ge/share/${c.share_token}`,
-      siteName: 'Avatar G',
+      siteName: 'MyAvatar',
       images, type: 'website',
     },
     twitter: {
