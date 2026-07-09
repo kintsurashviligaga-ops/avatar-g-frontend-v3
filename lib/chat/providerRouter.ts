@@ -617,6 +617,10 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
         voiceUrl: ref.voiceUrl ?? null,
         // PHASE 49 §7 — cinematic SFX / sound-design track; mixed under the score.
         sfxUrl: ref.sfxUrl ?? null,
+        // DAY-6 multi-voice — per-speaker dialogue stems (already resolved signed URLs in
+        // the token; no polling). The authed client forwards them to /api/video/assemble,
+        // which spatial-premixes ≥2 with the -12dB duck. Null → single-voice.
+        dialogueStems: ref.dialogueStems ?? null,
         readyToStitch,
         // PHASE 47 §1 — the unified status-tracker key for /api/video/status.
         statusTokenId,

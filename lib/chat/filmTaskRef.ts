@@ -61,6 +61,16 @@ export interface FilmTaskRef {
    * as `sfxUrl` and the FFmpeg master mixes it UNDER the score.
    */
   sfxUrl?: string | null;
+  /**
+   * DAY-6 multi-voice activation — resolved signed per-speaker dialogue STEMS
+   * (each: url + speaker + startSec), minted at dispatch by generateDialogueStems
+   * when the Master-Script dialogue is multi-voice-viable (≥2 distinct timecoded
+   * speakers). Optional + backward-compatible: older tokens without it, and any
+   * single-voice / narration film, decode fine and carry no stems (voiceUrl is the
+   * single track, exactly as before). The assembler spatial-premixes ≥2 stems with
+   * the -12dB sidechain duck; anything else falls back to voiceUrl. Bounded to 16.
+   */
+  dialogueStems?: { url: string; speaker: string; startSec: number }[] | null;
 }
 
 function b64urlEncode(s: string): string {

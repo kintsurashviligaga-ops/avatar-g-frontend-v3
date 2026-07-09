@@ -60,6 +60,9 @@ export interface FilmStudioMatrix {
   voiceUrl?: string | null;
   /** PHASE 49 §7 — cinematic SFX / sound-design track; handed to the assembler as `sfxUrl`. */
   sfxUrl?: string | null;
+  /** DAY-6 multi-voice — per-speaker dialogue stems; forwarded to the assembler as `dialogueStems`
+   *  (≥2 → spatial premix + -12dB duck). Absent/null → single-voice. */
+  dialogueStems?: { url: string; speaker: string; startSec: number }[] | null;
   readyToStitch?: boolean;
   statusTokenId?: string;
 }
@@ -502,6 +505,7 @@ async function assembleMaster(
   captionLang?: 'ka' | 'en' | 'ru',
   vocalGender?: 'male' | 'female' | 'duet',
   audioMix?: AudioMixOptions,
+  dialogueStems?: { url: string; speaker: string; startSec: number }[] | null,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -539,6 +543,9 @@ async function assembleMaster(
       // PHASE 48 §2 — the commentator/narration track; the FFmpeg master ducks
       // the score under it (voiceoverUrl → vocal_ducking_pct).
       ...(finalVoiceUrl ? { voiceoverUrl: finalVoiceUrl } : {}),
+      // DAY-6 multi-voice — ≥2 per-speaker dialogue stems → the assembler builds the
+      // spatialized multi-voice lane with the -12dB sidechain duck (route re-signs + caps at 16).
+      ...(dialogueStems && dialogueStems.length >= 2 ? { dialogueStems } : {}),
       // PHASE 49 §7 — cinematic SFX / sound-design, mixed under the score.
       ...(sfxUrl ? { sfxUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
@@ -828,6 +835,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     const voiceBed = matrix.voiceUrl ?? null;
     // PHASE 49 §7 — cinematic SFX / sound-design track, mixed under the score.
     const sfxBed = matrix.sfxUrl ?? null;
+    // DAY-6 multi-voice — per-speaker dialogue stems (≥2 → assembler spatial premix + -12dB duck).
+    const dialogueStemsBed = matrix.dialogueStems ?? null;
     // v330 — Music Video mode (explicit, or implied by an uploaded soundtrack) +
     // the caption language for the burned-in lower-third (the app locale).
     const musicVideoMode = Boolean(opts.musicVideoMode);
@@ -838,7 +847,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }

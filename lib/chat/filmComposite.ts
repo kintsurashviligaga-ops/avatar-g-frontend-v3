@@ -40,7 +40,7 @@ import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
-import { generateFilmVoiceover, generateDialogueVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
+import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import {
   planFilmScenes,
@@ -750,32 +750,51 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const v = voiceMeta?.dialogueScript;
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   })();
-  const [voiceUrl, sfxUrl] = await Promise.all([
-    (masterTurns || dialogueScript)
-      ? generateDialogueVoiceover(
-          // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
-          masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
-        ).catch((err) => {
+  const [voiceResult, sfxUrl] = await Promise.all([
+    // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
+    // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
+    // spatial-premixes them with the -12dB sidechain duck. On ANY miss (not viable, 1 speaker, a
+    // failed leg, or no ElevenLabs key) it returns null and we fall through to the EXACT single-track
+    // path below — so every single-voice / narration film is byte-identical to before. No double-render:
+    // generateDialogueStems returns null (never a partial upload) before we reach generateDialogueVoiceover.
+    (async (): Promise<{ voiceUrl: string | null; dialogueStems: DialogueStem[] | null }> => {
+      if (masterTurns && dialogueStemsViable(masterTurns)) {
+        const stemsRes = await generateDialogueStems({ turns: masterTurns, compositeId }).catch((err) => {
           // eslint-disable-next-line no-console
-          console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
+          console.warn('[film] dialogue stems leg failed:', err instanceof Error ? err.message : err);
           return null;
-        })
-      : (wantsCommentary(input.message) || customNarration)
-      ? generateFilmVoiceover({
-          brief: input.message,
-          totalSec: plan.shared.totalSec,
-          compositeId,
-          narrationScript: customNarration,
-          narratorGender,
-          voiceLanguage,
-          voicePersona,
-          voiceTone,
-        }).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
-          return null;
-        })
-      : Promise.resolve<string | null>(null),
+        });
+        if (stemsRes && stemsRes.stems.length >= 2) {
+          return { voiceUrl: stemsRes.mergedUrl, dialogueStems: stemsRes.stems };
+        }
+      }
+      const single = (masterTurns || dialogueScript)
+        ? await generateDialogueVoiceover(
+            // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
+            masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
+          ).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
+            return null;
+          })
+        : (wantsCommentary(input.message) || customNarration)
+        ? await generateFilmVoiceover({
+            brief: input.message,
+            totalSec: plan.shared.totalSec,
+            compositeId,
+            narrationScript: customNarration,
+            narratorGender,
+            voiceLanguage,
+            voicePersona,
+            voiceTone,
+          }).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[film] voiceover leg failed:', err instanceof Error ? err.message : err);
+            return null;
+          })
+        : null;
+      return { voiceUrl: single, dialogueStems: null };
+    })(),
     generateFilmSfx({
       // PHASE 2 L3 — when the Prompt Agent produced per-scene SFX cues, compose them
       // into a scene-aware ambience brief (no music/speech) instead of the generic
@@ -791,6 +810,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       return null;
     }),
   ]);
+  const voiceUrl = voiceResult.voiceUrl;
+  // DAY-6 — the per-speaker dialogue stems (null for single-voice / narration films).
+  const dialogueStems = voiceResult.dialogueStems;
 
   timer.mark('clips-dispatched+voice+sfx');
 
@@ -806,6 +828,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     musicWorkId,
     voiceUrl,
     sfxUrl,
+    // DAY-6 multi-voice — carried through the token so the poll surfaces them to the
+    // authed client, which forwards them to /api/video/assemble. Absent → single-voice.
+    ...(dialogueStems && dialogueStems.length ? { dialogueStems } : {}),
   });
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
