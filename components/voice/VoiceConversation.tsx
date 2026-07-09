@@ -124,6 +124,10 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       rec.start();
       setStatus('listening');
     } catch {
+      // getUserMedia OR the MediaRecorder constructor can throw AFTER the stream is live (e.g. iOS Safari
+      // rejects both mime types) — stop + null the stream so the mic can never stay hot on the error path.
+      streamRef.current?.getTracks().forEach((tr) => tr.stop());
+      streamRef.current = null;
       setStatus('error'); setError(t.micDenied);
     }
   }, [runTurn, t.micDenied]);

@@ -8,8 +8,9 @@
  * existing /api/elevenlabs/tts streaming route.
  */
 import 'server-only';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { llmText } from '@/lib/ai/llmText';
 import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, type VoiceTurn } from '@/lib/voice/voicePrompt';
 
@@ -17,8 +18,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // Throttle the paid llmText leg for parity with the sibling voice legs (/transcribe READ, /tts WRITE).
+    const limited = await checkRateLimit(req, RATE_LIMITS.WRITE);
+    if (limited) return limited;
+
     const { user } = await authedClientFromRequest(req);
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 

@@ -21,9 +21,16 @@ const MAX_LINES = 4_000;
 
 export function sanitizeSpokenText(input: string | null | undefined): string {
   if (!input) return ''; // null / undefined / '' / any falsy → empty (preserves the original guard)
-  // Coerce defensively — a non-string that slips past the type at runtime (a number/object) must never throw
-  // on .split — then HARD-CAP the length so the downstream regex passes can never be driven to a hang.
-  let src = (typeof input === 'string' ? input : String(input)).slice(0, MAX_INPUT_CHARS);
+  // Coerce defensively — a non-string that slips past the type at runtime (a number/object) must never throw:
+  // String() itself can throw on a hostile toString() or a null-prototype object, so guard it → '' on failure.
+  // Then HARD-CAP the length so the downstream regex passes can never be driven to a hang.
+  let coerced: string;
+  try {
+    coerced = typeof input === 'string' ? input : String(input);
+  } catch {
+    return '';
+  }
+  let src = coerced.slice(0, MAX_INPUT_CHARS);
   if (!src) return '';
   // Strip fenced code blocks (```…```) wholesale so an injected/pasted code block is never voiced. The lazy
   // [\s\S]*? is linear on the already-capped input; runs before the line split so multi-line fences are removed.
