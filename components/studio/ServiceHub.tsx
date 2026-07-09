@@ -117,12 +117,12 @@ const SHOWCASE: { key: string; ka: string; en: string; ru: string; gradient: str
 export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?: string; isAuthenticated?: boolean }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
-  // ONE WINDOW: the bare /dashboard lands DIRECTLY on the unified assistant
-  // chatbox (omni) — which now hosts every service (chat · image · music · video ·
-  // lip-sync) — so the chat IS the landing, no card-selection gate. The 3-card hub
-  // stays reachable via #hub (the chatbox's back control) for the richer dedicated
-  // Film studio. Every surface rides the URL hash so refresh / back / share behave.
-  const [service, setService] = useState<Service>('omni');
+  // ONE WINDOW: the bare /dashboard now lands on the CONVERSION HERO ('hub') — a single central
+  // "create your first film" CTA + showcase — the primary conversion surface. The assistant chatbox (omni)
+  // and every other studio ride an explicit URL hash (#omni · #film · #lipsync · #agent) so refresh / back /
+  // share behave. (The old ghost-page concern that removed omni's back control is resolved now that #hub is
+  // a real hero — omni gets a back-to-hero control below.)
+  const [service, setService] = useState<Service>('hub');
   // "New Chat" remounts the assistant by bumping this key — a clean reset of the
   // whole conversation (messages, attachment, mode) without page reload.
   const [chatResetKey, setChatResetKey] = useState(0);
@@ -130,7 +130,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   useEffect(() => {
     const read = () => {
       const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
-      setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' || h === 'agent' ? (h as Service) : 'omni');
+      setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' || h === 'agent' ? (h as Service) : 'hub');
     };
     read();
     window.addEventListener('hashchange', read);
@@ -138,9 +138,9 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   }, []);
 
   const go = useCallback((s: Service) => {
-    // The default chatbox lives on the bare URL (empty hash); everything else —
-    // including the card hub — rides an explicit hash so it's shareable.
-    if (typeof window !== 'undefined') window.location.hash = s === 'omni' ? '' : s;
+    // The conversion hero ('hub') is the bare-URL landing (empty hash); every other surface — the assistant,
+    // film, lipsync, agent — rides an explicit hash so it's shareable + back/refresh behave.
+    if (typeof window !== 'undefined') window.location.hash = s === 'hub' ? '' : s;
     setService(s);
   }, []);
 
@@ -157,12 +157,10 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     return (
       <ChatChrome
         locale={locale}
-        // The assistant chatbox IS the home — it has nothing to go "back" to, so it
-        // gets NO back control (the old one routed to the #hub card grid, which read
-        // as a "ghost page" landing on every press/refresh). Lipsync is a secondary
-        // surface reached only from the hub, so it keeps an explicit exit-to-hub. The
-        // agent (STEP 3) mounts IN-PLACE here too — its back returns to the assistant.
-        onBack={service === 'lipsync' ? () => go('hub') : service === 'agent' ? () => go('omni') : undefined}
+        // The hero ('hub') is now the landing, so the assistant + lipsync both get a back-to-hero control
+        // (the old "ghost page" concern is gone — #hub is a real hero). The agent (STEP 3) mounts IN-PLACE
+        // here too — its back returns to the assistant.
+        onBack={service === 'agent' ? () => go('omni') : () => go('hub')}
         title={service === 'lipsync' ? t.lipTitle : service === 'agent' ? 'Agent G' : undefined}
         onNewChat={service === 'omni' ? () => { try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ } setChatResetKey((k) => k + 1); } : undefined}
         scrollBody={service === 'lipsync' || service === 'agent'}
