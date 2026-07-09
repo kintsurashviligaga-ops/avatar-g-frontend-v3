@@ -26,6 +26,7 @@
  */
 
 import 'server-only';
+import { sanitizeSpokenText } from './spokenText';
 import { llmText } from '@/lib/ai/llmText';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
@@ -92,6 +93,10 @@ async function generateNarrationScript(brief: string, totalSec: number): Promise
   // Hard cap so a runaway response can never produce a minutes-long track.
   return cleaned.slice(0, 800);
 }
+
+// v363 — DEFENSIVE narration hygiene lives in the dependency-free ./spokenText module (pure + unit-tested);
+// re-exported so existing importers (the assembler) keep resolving it from here.
+export { sanitizeSpokenText };
 
 /**
  * Synthesise `text` to an MP3 with the SAME tuned voice the live TTS route uses
@@ -325,7 +330,10 @@ export async function generateFilmVoiceover(opts: {
   voiceTone?: VoiceTone | null;
 }): Promise<string | null> {
   try {
-    const custom = opts.narrationScript && opts.narrationScript.trim() ? opts.narrationScript.trim().slice(0, 600) : null;
+    // v363 — sanitize the verbatim narration so production annotations (TC/SFX/overlay/scene headers) are
+    // never spoken. If sanitizing empties it (the field held only a shot-list), fall back to the LLM writer.
+    const sanitized = sanitizeSpokenText(opts.narrationScript).slice(0, 600);
+    const custom = sanitized.length >= 3 ? sanitized : null;
     const script = custom ?? (await generateNarrationScript(opts.brief, opts.totalSec));
     if (!script) return null;
     // PHASE 2 L1 — the Character Voice selector wins when present (lang+persona);

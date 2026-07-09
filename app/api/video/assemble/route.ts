@@ -37,7 +37,7 @@ import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
-import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
+import { textToHostedSpeech, sanitizeSpokenText } from '@/lib/chat/filmVoiceover';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
 import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
@@ -448,7 +448,7 @@ async function assembleImpl(req: NextRequest) {
       const voUrl = body.voiceoverUrl
         ? await reSignIfInternal(body.voiceoverUrl)
         : (typeof body.voiceoverScript === 'string' && body.voiceoverScript.trim()
-            ? await textToHostedSpeech(body.voiceoverScript.trim().slice(0, 800)).catch(() => null)
+            ? await textToHostedSpeech(sanitizeSpokenText(body.voiceoverScript).slice(0, 800)).catch(() => null)
             : null);
       if (voUrl) {
         const dubbed = await muxAudioOntoVideo(master, voUrl, master === clipUrl ? 'replace' : 'mix', 12).catch(() => null);
@@ -525,7 +525,7 @@ async function assembleImpl(req: NextRequest) {
   const resolvedVoiceoverUrl = body.voiceoverUrl
     ? await reSignIfInternal(body.voiceoverUrl)
     : (typeof body.voiceoverScript === 'string' && body.voiceoverScript.trim()
-        ? await textToHostedSpeech(body.voiceoverScript.trim().slice(0, 800)).catch(() => null)
+        ? await textToHostedSpeech(sanitizeSpokenText(body.voiceoverScript).slice(0, 800)).catch(() => null)
         : null);
 
   const manifest: RunPodManifest = {
