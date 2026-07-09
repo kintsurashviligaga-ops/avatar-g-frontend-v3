@@ -14,12 +14,13 @@ import { extractPromptTraits, enrichVideoPrompt } from '@/lib/chat/promptTraits'
 import { extractAspectDirective } from '@/lib/chat/outputEnforcement';
 import { resolveLtxApiKey, hasLtxApiKey } from '@/lib/chat/ltxKey';
 import { selectVideoPrimaryProvider } from '@/lib/chat/videoProvider';
+import { submitVideoWithFallback, pollVideoProvider, shouldUseNativeCascade, type VideoGenInput, type Aspect } from '@/lib/video/videoProviderCascade';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 
-type AsyncProvider = 'replicate' | 'ltx' | 'heygen';
+type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade';
 type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
 
 const LTX_BASE_URL = 'https://api.ltx.video';
@@ -233,14 +234,14 @@ export class ServiceManager {
     if (!sessionId || decoded.sessionId !== sessionId) {
       return {
         success: false,
-        provider: decoded.provider,
+        provider: decoded.provider === 'video-cascade' ? 'replicate' : decoded.provider,
         operation: decoded.operation,
         responseType: decoded.responseType,
         message: 'Session mismatch. Refusing to mix output with a different session.',
         predictionId: taskRefOrPredictionId,
         predictionStatus: 'error',
         metadata: {
-          provider: decoded.provider,
+          provider: decoded.provider === 'video-cascade' ? 'replicate' : decoded.provider,
           operation: decoded.operation,
           sessionId: decoded.sessionId,
           taskRef: taskRefOrPredictionId,
@@ -252,6 +253,10 @@ export class ServiceManager {
 
     if (decoded.provider === 'replicate') {
       return this.pollReplicateTask(decoded, taskRefOrPredictionId);
+    }
+
+    if (decoded.provider === 'video-cascade') {
+      return this.pollVideoCascadeTask(decoded, taskRefOrPredictionId);
     }
 
     if (decoded.provider === 'heygen') {
@@ -363,14 +368,25 @@ export class ServiceManager {
    */
   private async tryI2vClip(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
     if (VIDEO_I2V_DISABLED) return null;
-    const token = process.env.REPLICATE_API_TOKEN;
-    if (!token) return null;
     const startImage = this.resolveClipImage(request);
     if (!startImage) return null; // i2v needs an anchor frame; without one, keep LTX
 
     const aspect = this.toI2vAspect(
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
     );
+
+    // DAY-3 — native multi-engine cascade (Kling-native → Luma → LTX → Replicate). Gated on a genuinely
+    // NEW provider key (Kling AK/SK or Luma) being provisioned: prod today has only Replicate + LTX, so this
+    // is skipped entirely and the VERIFIED path below runs byte-identical. When a native key IS present the
+    // cascade submits (fast) and returns a 'video-cascade' task-ref the poll dispatcher resolves per-provider.
+    if (shouldUseNativeCascade(process.env)) {
+      const cascade = await this.tryVideoCascade(request, startImage, aspect);
+      if (cascade) return cascade;
+      // every configured tier failed to accept → fall through to the legacy Replicate/LTX path below
+    }
+
+    const token = process.env.REPLICATE_API_TOKEN;
+    if (!token) return null;
     // PHASE 2 L5 — per-render i2v model: the Cinema panel's Kling/Hailuo toggle wins,
     // else the REPLICATE_VIDEO_MODEL env default. buildI2vInput already shapes the
     // input per model family (kling start_image / minimax first_frame_image).
@@ -454,6 +470,72 @@ export class ServiceManager {
       if (failover) return failover;
     }
     return null; // → caller's LTX fallback
+  }
+
+  /**
+   * DAY-3 native multi-engine cascade. Submits the i2v clip through the ordered provider array
+   * (Kling-native → Luma → LTX → Replicate) — a fast, non-blocking SUBMIT that falls through on any
+   * provider failure. Returns a 'video-cascade' task-ref (winning provider encoded) that pollVideoCascadeTask
+   * resolves, or null when every configured tier declined (→ the legacy Replicate/LTX path). NEVER throws.
+   */
+  private async tryVideoCascade(request: ServiceManagerRequest, startImage: string, aspect: string): Promise<ServiceManagerResponse | null> {
+    try {
+      const input: VideoGenInput = {
+        prompt: request.userPrompt,
+        imageUrl: startImage,
+        aspectRatio: (aspect as Aspect) || '9:16',
+        negativePrompt: 'blur, distortion, low quality, watermark, extra people, deformed face',
+      };
+      const { provider, taskId } = await submitVideoWithFallback(input);
+      const composite = `${provider}::${taskId}`;
+      const promptHash = this.hashPrompt(request.userPrompt);
+      const taskRef = this.encodeTaskRef({
+        provider: 'video-cascade', providerTaskId: composite, sessionId: request.sessionId,
+        serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
+        responseType: 'video', promptHash, createdAt: Date.now(),
+      });
+      // eslint-disable-next-line no-console
+      console.log(`[video-cascade] ${provider} accepted clip (${taskId})`);
+      return {
+        success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+        message: `${provider} accepted the request. Polling for completion.`,
+        predictionId: taskRef, predictionStatus: 'processing',
+        metadata: { provider: 'replicate' as const, videoProvider: provider, model: provider, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: composite, promptHash },
+      };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[video-cascade] all providers declined:', err instanceof Error ? err.message : err);
+      return null; // → legacy Replicate/LTX path
+    }
+  }
+
+  /** Resolve a 'video-cascade' task-ref by dispatching to the winning provider's poll (encoded as "name::id"). */
+  private async pollVideoCascadeTask(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
+    const sep = decoded.providerTaskId.indexOf('::');
+    const providerName = sep > 0 ? decoded.providerTaskId.slice(0, sep) : 'replicate-kling';
+    const taskId = sep > 0 ? decoded.providerTaskId.slice(sep + 2) : decoded.providerTaskId;
+    const r = await pollVideoProvider(providerName, taskId);
+    const baseMeta = {
+      provider: 'replicate' as const, videoProvider: providerName, operation: decoded.operation,
+      sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
+    };
+    if (r.status === 'succeeded' && r.url) {
+      return {
+        success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+        message: 'Generation completed successfully.', assetUrl: r.url, assetType: decoded.responseType,
+        predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
+      };
+    }
+    if (r.status === 'failed') {
+      return {
+        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+        message: r.error || 'Video generation failed.', predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
+      };
+    }
+    return {
+      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+      message: 'Rendering…', predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
+    };
   }
 
   /**
@@ -2180,7 +2262,7 @@ export class ServiceManager {
 
       if (
         parsed.v !== TASK_REF_VERSION
-        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen')
+        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade')
         || typeof parsed.providerTaskId !== 'string'
         || typeof parsed.sessionId !== 'string'
         || typeof parsed.serviceContext !== 'string'
