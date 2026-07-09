@@ -15,6 +15,8 @@ import { extractAspectDirective } from '@/lib/chat/outputEnforcement';
 import { resolveLtxApiKey, hasLtxApiKey } from '@/lib/chat/ltxKey';
 import { selectVideoPrimaryProvider } from '@/lib/chat/videoProvider';
 import { submitVideoWithFallback, pollVideoProvider, shouldUseNativeCascade, type VideoGenInput, type Aspect } from '@/lib/video/videoProviderCascade';
+import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
+import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
@@ -375,12 +377,18 @@ export class ServiceManager {
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
     );
 
+    // DAY-3 Task 2 — invisibly enrich the raw prompt with cinematic properties (shot type, camera motion,
+    // framing, lens, dramatic lighting, mood) before the engine sees it. Film scene prompts are already
+    // cinematically planned → looksEnriched() short-circuits the LLM for them; only a bare user clip triggers
+    // one bounded call, and the deterministic fallback guarantees an enriched string even if the LLM is down.
+    const enrichedPrompt = await expandCinematicPrompt(request.userPrompt, llmText, { timeoutMs: 9_000 });
+
     // DAY-3 — native multi-engine cascade (Kling-native → Luma → LTX → Replicate). Gated on a genuinely
     // NEW provider key (Kling AK/SK or Luma) being provisioned: prod today has only Replicate + LTX, so this
     // is skipped entirely and the VERIFIED path below runs byte-identical. When a native key IS present the
     // cascade submits (fast) and returns a 'video-cascade' task-ref the poll dispatcher resolves per-provider.
     if (shouldUseNativeCascade(process.env)) {
-      const cascade = await this.tryVideoCascade(request, startImage, aspect);
+      const cascade = await this.tryVideoCascade(request, startImage, aspect, enrichedPrompt);
       if (cascade) return cascade;
       // every configured tier failed to accept → fall through to the legacy Replicate/LTX path below
     }
@@ -401,7 +409,7 @@ export class ServiceManager {
     // immediate success), or null on ANY failure (create 4xx/5xx, timeout, no id, throw) so the
     // caller can fail over. NEVER throws — the never-throws contract lives here.
     const attempt = async (modelId: string): Promise<ServiceManagerResponse | null> => {
-      const input = this.buildI2vInput(modelId, request.userPrompt, aspect, startImage);
+      const input = this.buildI2vInput(modelId, enrichedPrompt, aspect, startImage);
       try {
         // One quick retry on a transient 5xx/network blip; each attempt gets a fresh timeout so a
         // real latency stall (TimeoutError) bails fast and hands off to the failover / LTX.
@@ -478,10 +486,10 @@ export class ServiceManager {
    * provider failure. Returns a 'video-cascade' task-ref (winning provider encoded) that pollVideoCascadeTask
    * resolves, or null when every configured tier declined (→ the legacy Replicate/LTX path). NEVER throws.
    */
-  private async tryVideoCascade(request: ServiceManagerRequest, startImage: string, aspect: string): Promise<ServiceManagerResponse | null> {
+  private async tryVideoCascade(request: ServiceManagerRequest, startImage: string, aspect: string, prompt: string): Promise<ServiceManagerResponse | null> {
     try {
       const input: VideoGenInput = {
-        prompt: request.userPrompt,
+        prompt: prompt || request.userPrompt,
         imageUrl: startImage,
         aspectRatio: (aspect as Aspect) || '9:16',
         negativePrompt: 'blur, distortion, low quality, watermark, extra people, deformed face',
