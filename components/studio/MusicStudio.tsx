@@ -23,7 +23,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Music2, Mic, Square, Upload, Play, Pause, Download,
-  Loader2, Sparkles, Trash2, AlertCircle, Wand2,
+  Loader2, Sparkles, Trash2, AlertCircle, Wand2, Film, Image as ImageIcon,
 } from 'lucide-react';
 import { CreditBadge } from '@/components/ui/CreditBadge';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
@@ -45,6 +45,8 @@ const STR = {
     micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', tooBig: 'ფაილი დიდია — ჩაწერე უფრო მოკლე (≤60წმ)',
     result: 'შენი ტრეკი', download: 'ჩამოტვირთვა', newTrack: 'ახალი ტრეკი',
     myVoiceOff: 'იმღერე ჩემი ნავარჯიში ხმით', myVoiceOn: 'ჩემი ნავარჯიში ხმით ✓',
+    makeVideo: 'გადააქციე ვიდეოდ — დაამატე ფოტო', addPhoto: 'ფოტოს ატვირთვა', changePhoto: 'ფოტოს შეცვლა',
+    createVideo: 'ვიდეოს შექმნა', creatingVideo: 'ვიდეო იქმნება…', videoFailed: 'ვიდეო ვერ შეიქმნა, სცადე თავიდან', downloadVideo: 'ვიდეოს ჩამოტვირთვა',
   },
   en: {
     back: 'Back', title: 'Music Studio', subtitle: 'Create music — even in your own voice',
@@ -60,6 +62,8 @@ const STR = {
     micDenied: 'Could not access the microphone', tooBig: 'File too large — record shorter (≤60s)',
     result: 'Your track', download: 'Download', newTrack: 'New track',
     myVoiceOff: 'Sing with my trained voice', myVoiceOn: 'My trained voice ✓',
+    makeVideo: 'Turn it into a video — add a photo', addPhoto: 'Upload a photo', changePhoto: 'Change photo',
+    createVideo: 'Create music video', creatingVideo: 'Rendering video…', videoFailed: 'Video failed — try again', downloadVideo: 'Download video',
   },
   ru: {
     back: 'Назад', title: 'Музыкальная студия', subtitle: 'Создавайте музыку — даже своим голосом',
@@ -75,6 +79,8 @@ const STR = {
     micDenied: 'Нет доступа к микрофону', tooBig: 'Файл слишком большой — запишите короче (≤60с)',
     result: 'Ваш трек', download: 'Скачать', newTrack: 'Новый трек',
     myVoiceOff: 'Спеть моим обученным голосом', myVoiceOn: 'Мой обученный голос ✓',
+    makeVideo: 'Сделайте видео — добавьте фото', addPhoto: 'Загрузить фото', changePhoto: 'Заменить фото',
+    createVideo: 'Создать видео', creatingVideo: 'Видео создаётся…', videoFailed: 'Не удалось создать видео', downloadVideo: 'Скачать видео',
   },
 } satisfies Record<Lang, Record<string, string>>;
 type MusicT = (typeof STR)['ka'];
@@ -212,6 +218,14 @@ export function MusicStudio() {
   const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
   const [useMyVoice, setUseMyVoice] = useState(false);
 
+  // DAY-4 — photo-to-music-video (isolated to this studio; pairs a still image with the generated track).
+  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoResult, setVideoResult] = useState<{ url: string; durationSec?: number | null } | null>(null);
+  const [videoError, setVideoError] = useState('');
+  const photoRef = useRef<HTMLInputElement | null>(null);
+
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -330,6 +344,34 @@ export function MusicStudio() {
     r.onerror = reject;
     r.readAsDataURL(blob);
   });
+
+  // DAY-4 photo-to-music-video — pick a still, then multiplex it with the generated track server-side.
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview); }, [photoPreview]);
+  const onPickPhoto = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!f.type.startsWith('image/') || f.size > 8 * 1024 * 1024) { setVideoError(t.videoFailed); return; }
+    setPhotoBlob(f);
+    setPhotoPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(f); });
+    setVideoError('');
+    setVideoResult(null);
+  }, [t.videoFailed]);
+  const makeVideo = useCallback(async () => {
+    if (!result?.url || !photoBlob || videoBusy) return;
+    setVideoBusy(true); setVideoError('');
+    try {
+      const imageDataUrl = await blobToDataUrl(photoBlob);
+      const res = await fetch('/api/music/video', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ imageDataUrl, audioUrl: result.url }),
+      });
+      const j = (await res.json().catch(() => null)) as { url?: string; durationSec?: number | null } | null;
+      if (res.ok && j?.url) setVideoResult({ url: j.url, durationSec: j.durationSec ?? null });
+      else setVideoError(t.videoFailed);
+    } catch { setVideoError(t.videoFailed); }
+    finally { setVideoBusy(false); }
+  }, [result, photoBlob, videoBusy, t.videoFailed]);
 
   const canGenerate = prompt.trim().length > 0 && !busy && !recording
     && !(isVoiceClone && recSec > 0 && recSec < MIN_REC_SEC);
@@ -561,7 +603,42 @@ export function MusicStudio() {
           {result && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
               <TrackPlayer url={result.url} coverUrl={result.coverUrl} t={t} />
-              <button type="button" onClick={() => setResult(null)} className="mx-auto block text-xs text-white/40 transition-colors hover:text-white/70">
+
+              {/* DAY-4 — Photo → Music Video (isolated to this studio). Pair a still with the track → MP4. */}
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+                <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-white/80">
+                  <Film size={15} className="text-app-accent" /> {t.makeVideo}
+                </div>
+                <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={onPickPhoto} className="hidden" />
+
+                {videoResult ? (
+                  <div className="space-y-2">
+                    <video src={videoResult.url} controls playsInline className="w-full rounded-xl bg-black" />
+                    <a href={videoResult.url} download="myavatar-music-video.mp4" target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-black transition hover:opacity-90">
+                      <Download size={15} /> {t.downloadVideo}
+                    </a>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <button type="button" onClick={() => photoRef.current?.click()} disabled={videoBusy}
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-semibold text-white/85 transition hover:bg-white/[0.08] disabled:opacity-50">
+                        {photoPreview
+                          ? <><img src={photoPreview} alt="" className="h-6 w-6 rounded object-cover" /> {t.changePhoto}</>
+                          : <><ImageIcon size={15} /> {t.addPhoto}</>}
+                      </button>
+                      <button type="button" onClick={makeVideo} disabled={!photoBlob || videoBusy}
+                        className="inline-flex items-center gap-2 rounded-lg bg-app-accent px-4 py-2 text-[12.5px] font-semibold text-black transition hover:opacity-90 disabled:opacity-40">
+                        {videoBusy ? <><Loader2 size={15} className="animate-spin" /> {t.creatingVideo}</> : <><Film size={15} /> {t.createVideo}</>}
+                      </button>
+                    </div>
+                    {videoError && <p className="flex items-center gap-1.5 text-[11.5px] text-rose-400"><AlertCircle size={13} /> {videoError}</p>}
+                  </div>
+                )}
+              </div>
+
+              <button type="button" onClick={() => { setResult(null); setVideoResult(null); setPhotoBlob(null); setPhotoPreview((p) => { if (p) URL.revokeObjectURL(p); return ''; }); }} className="mx-auto block text-xs text-white/40 transition-colors hover:text-white/70">
                 {t.newTrack}
               </button>
             </motion.div>

@@ -48,6 +48,9 @@ const nextConfig = {
     outputFileTracingIncludes: {
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
       '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**'],
+      // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
+      // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
+      '/api/music/video': ['./node_modules/ffmpeg-static/**'],
       // Music voice-clone transcodes the uploaded voice to mp3 (+ loops short clips)
       // via ffmpeg-static before MiniMax — its binary must ride along in this lambda too.
       '/api/ai/music': ['./node_modules/ffmpeg-static/**'],
