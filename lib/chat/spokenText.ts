@@ -53,6 +53,8 @@ export function sanitizeSpokenText(input: string | null | undefined): string {
   });
   return kept
     .map((ln) => ln
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // strip C0 control chars (NUL/BEL/ESC…) so they never reach TTS; keeps \t. Cannot touch Georgian (UTF-8 ≥ 0x80).
       .replace(/(?:🎬|🎥|🎞️?|🔊|🎵)/g, '') // stray emoji cues
       .replace(/\[[^\]]*\]/g, ' ') // bracketed notes / timecodes: [00:03] [whispering]
       .replace(/\([^)]*\)/g, ' ') // parenthetical directions / timecodes: (pause) (0:05)
