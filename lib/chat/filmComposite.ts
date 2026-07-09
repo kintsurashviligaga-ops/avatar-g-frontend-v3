@@ -41,6 +41,7 @@ import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, generateDialogueVoiceover, wantsCommentary, generateFilmSfx } from './filmVoiceover';
+import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import {
   planFilmScenes,
   buildFilmClipRequest,
@@ -707,14 +708,37 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // instead of back-to-back — the audio legs finish in max(voice, sfx) rather than
   // their sum. Voice-over only fires when the brief asks for a commentator/narrator
   // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
-  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown; voiceLanguage?: unknown; voicePersona?: unknown; voiceTone?: unknown } | undefined;
+  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown; masterScript?: unknown; voiceLanguage?: unknown; voicePersona?: unknown; voiceTone?: unknown } | undefined;
+  // FILM-COMPILER PHASE 1 (audio fidelity) — when the user pastes a full Master Production Script,
+  // parse it (pure/fail-open) into the STRUCTURED voice inputs the pipeline already consumes:
+  //   narration  → generateFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim)
+  //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
+  // Inert unless metadata.masterScript is a non-empty string; a parse that finds no sheets is ignored.
+  const parsedMaster = (() => {
+    const v = voiceMeta?.masterScript;
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const p = parseMasterScript(v);
+    return p.ok ? p : null;
+  })();
+  const masterNarration = parsedMaster && parsedMaster.narrationScript.trim() ? parsedMaster.narrationScript.trim() : null;
   const customNarration = (() => {
     const v = voiceMeta?.narrationScript;
-    return typeof v === 'string' && v.trim() ? v.trim() : null;
+    const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
+    // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
+    return explicit ?? masterNarration;
   })();
   // Explicit narrator gender (video panel 👩/👨) — overrides brief auto-detection.
   const narratorGender: 'male' | 'female' | null =
     voiceMeta?.narratorGender === 'male' || voiceMeta?.narratorGender === 'female' ? voiceMeta.narratorGender : null;
+  // Master-Script dialogue leg — the parsed on-camera dialogue with the VO NARRATOR spine folded in,
+  // timecode-ordered (review finding #2: don't drop narration when dialogue also exists). Empty → null,
+  // so narration-only scripts route through the single-voice narration leg below. Exact silence-gap
+  // placement at each timecode is the Phase-2 assemble refinement; here they play in script order.
+  const masterTurns = (() => {
+    if (!parsedMaster) return null;
+    const t = masterDialogueTurns(parsedMaster, narratorGender);
+    return t.length ? t : null;
+  })();
   // PHASE 2 L1 — Character Voice selector (language + persona + tone). Whitelisted to
   // the allowed unions; null when unset so the legacy gender/brief path is unchanged.
   const voiceLanguage = (voiceMeta?.voiceLanguage === 'ka' || voiceMeta?.voiceLanguage === 'en' || voiceMeta?.voiceLanguage === 'ru') ? voiceMeta.voiceLanguage : null;
@@ -727,8 +751,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   })();
   const [voiceUrl, sfxUrl] = await Promise.all([
-    dialogueScript
-      ? generateDialogueVoiceover({ script: dialogueScript, compositeId }).catch((err) => {
+    (masterTurns || dialogueScript)
+      ? generateDialogueVoiceover(
+          // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
+          masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },
+        ).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[film] dialogue voiceover leg failed:', err instanceof Error ? err.message : err);
           return null;

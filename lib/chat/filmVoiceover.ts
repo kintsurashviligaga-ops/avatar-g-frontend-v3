@@ -27,6 +27,7 @@
 
 import 'server-only';
 import { sanitizeSpokenText } from './spokenText';
+import { castRoster, collapseVoicedTurns, type CastTurn, type VoicedTurn } from './dialogueCasting';
 import { llmText } from '@/lib/ai/llmText';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
@@ -370,17 +371,39 @@ export async function generateFilmVoiceover(opts: {
  * film falls back to the music-only mix. Not separately billed.
  */
 export async function generateDialogueVoiceover(opts: {
-  script: string;
+  /** Legacy gender-tagged dialogue script (MALE:/FEMALE: lines). */
+  script?: string;
+  /** Phase 1 — structured per-SPEAKER turns (from parseMasterScript.dialogue) → N-character casting. Wins. */
+  turns?: CastTurn[];
   compositeId: string;
 }): Promise<string | null> {
   try {
-    const turns = parseDialogueScript(opts.script).slice(0, 12); // bound the track + cost
-    if (!turns.length) return null;
+    // Structured per-speaker turns → a stable cast voice per character; else the legacy gender-tagged script.
+    // Each voiced line keeps its persona GENDER for the TTS settings (stability 0.48 is untouched) — only the
+    // voice ID varies per character. The speaker key drives casting AND the same-speaker merge below.
+    let voiced: VoicedTurn[];
+    if (opts.turns && opts.turns.length) {
+      const roster = castRoster(opts.turns);
+      voiced = opts.turns.map((t) => {
+        const speaker = (t.speaker ?? '').trim().toLowerCase();
+        const cast = roster.get(speaker);
+        // Parity with the narration leg: scrub any production annotation from the (folded narrator + dialogue)
+        // turn text so nothing but the spoken words is voiced. Clean prose (incl. all Georgian) passes through.
+        return { speaker, text: sanitizeSpokenText(t.text), voiceId: cast?.voiceId ?? pickNarratorVoiceId(cast?.gender ?? 'female'), gender: cast?.gender ?? 'female' };
+      });
+    } else {
+      // Legacy gender-tagged path — byte-identical to before: speaker key = gender, no sanitize.
+      voiced = parseDialogueScript(opts.script ?? '').map((turn) => ({ speaker: turn.gender, text: turn.text, voiceId: pickNarratorVoiceId(turn.gender), gender: turn.gender }));
+    }
+    // Merge consecutive SAME-speaker lines into one breath, then bound to 12 turns while RESERVING the
+    // narrator VO spine from truncation (see collapseVoicedTurns).
+    voiced = collapseVoicedTurns(voiced, 12);
+    if (!voiced.length) return null;
     const segments = await Promise.all(
-      turns.map((turn) => {
-        const text = turn.text.slice(0, 400);
+      voiced.map((v) => {
+        const text = v.text.slice(0, 400);
         if (!text) return Promise.resolve<{ base64: string; contentType: string } | null>(null);
-        return synthesizeVoiceover(text, pickNarratorVoiceId(turn.gender), turn.gender === 'male' ? 'MALE' : 'FEMALE').catch(() => null);
+        return synthesizeVoiceover(text, v.voiceId, v.gender === 'male' ? 'MALE' : 'FEMALE').catch(() => null);
       }),
     );
     const buffers = segments

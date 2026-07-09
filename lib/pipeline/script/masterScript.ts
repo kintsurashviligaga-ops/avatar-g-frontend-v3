@@ -17,6 +17,7 @@
  * sub-parser is isolated + fail-open: a malformed section yields [] for that field, never a throw.
  */
 import { sanitizeSpokenText } from '@/lib/chat/spokenText';
+import { NARRATOR_SPEAKER } from '@/lib/chat/dialogueCasting';
 
 export interface TimeWindow { startSec: number; endSec: number }
 export interface MasterScene { ordinal: number; title: string | null; action: string; startSec: number | null; endSec: number | null }
@@ -275,4 +276,29 @@ export function parseMasterScript(input: string | null | undefined): ParsedMaste
   } catch {
     return empty;
   }
+}
+
+/** A single voiced turn for the dialogue leg — speaker drives casting, direction refines the voice. */
+export interface MasterTurn { speaker: string; text: string; direction: string | null }
+
+/**
+ * Build the ordered dialogue-leg turns for the audio pipeline. When the script has ON-CAMERA dialogue, the
+ * VO NARRATOR spine is FOLDED IN as narrator-voiced turns (so it is never dropped when dialogue also exists)
+ * and the whole set is ordered by timecode — untimed lines sort last, keeping insertion order (stable sort).
+ * Returns [] when there is no on-camera dialogue, so the caller routes narration through the single-voice
+ * narration leg instead. Pure + total.
+ */
+export function masterDialogueTurns(
+  parsed: ParsedMasterScript,
+  narratorGender: 'male' | 'female' | null,
+): MasterTurn[] {
+  if (!parsed?.ok || !parsed.dialogue?.length) return [];
+  const narratorDir = narratorGender === 'male' ? 'male narrator' : narratorGender === 'female' ? 'female narrator' : 'narrator';
+  const rows: { speaker: string; text: string; direction: string | null; t: number | null }[] = [
+    ...(parsed.narration ?? []).map((n) => ({ speaker: NARRATOR_SPEAKER, text: n.text, direction: narratorDir, t: n.startSec })),
+    ...(parsed.dialogue ?? []).map((d) => ({ speaker: d.speaker, text: d.text, direction: d.direction, t: d.startSec })),
+  ];
+  return rows
+    .sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity))
+    .map(({ speaker, text, direction }) => ({ speaker, text, direction }));
 }

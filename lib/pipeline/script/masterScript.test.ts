@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { parseMasterScript, parseTc, parseTcRange, sectionize } from './masterScript';
+import { parseMasterScript, masterDialogueTurns, parseTc, parseTcRange, sectionize } from './masterScript';
 
 // Real excerpt from the deepseek „ის დილა" Master Production Script (the format the user actually pastes).
 const SCRIPT = [
@@ -144,5 +144,44 @@ describe('parseMasterScript', () => {
   it('is total + fail-open on junk', () => {
     expect(parseMasterScript(null).ok).toBe(false);
     expect(parseMasterScript('just a plain sentence about a man').ok).toBe(false);
+  });
+});
+
+describe('masterDialogueTurns', () => {
+  const p = parseMasterScript(SCRIPT);
+
+  it('folds the VO narrator spine IN with dialogue, timecode-ordered', () => {
+    const turns = masterDialogueTurns(p, 'male');
+    // 2 VO lines (2.5, 8.5) + 2 dialogue (9, 13) → 4 turns, ordered by TC.
+    expect(turns.map((t) => t.speaker)).toEqual(['NARRATOR', 'NARRATOR', 'Woman', 'Grandmother']);
+    expect(turns[0]!.text).toMatch(/იყო ერთი დილა/);
+    expect(turns[2]!.text).toMatch(/ღმერთო ჩემო/);
+    // narrator gender steers the cast voice via the direction hint
+    expect(turns[0]!.direction).toBe('male narrator');
+  });
+
+  it('honors female / unset narrator gender in the direction hint', () => {
+    expect(masterDialogueTurns(p, 'female')[0]!.direction).toBe('female narrator');
+    expect(masterDialogueTurns(p, null)[0]!.direction).toBe('narrator');
+  });
+
+  it('returns [] when there is no on-camera dialogue (→ caller uses the narration leg)', () => {
+    const narrationOnly = parseMasterScript(
+      ['VOICE CAST & DIALOGUE SHEET', '====', 'NARRATOR (V.O.)', 'VO1 00:02–00:05 "მხოლოდ ხმა." "Only a voice."'].join('\n'),
+    );
+    expect(narrationOnly.narration.length).toBe(1);
+    expect(narrationOnly.dialogue.length).toBe(0);
+    expect(masterDialogueTurns(narrationOnly, 'male')).toEqual([]);
+  });
+
+  it('is fail-open on a not-ok parse', () => {
+    expect(masterDialogueTurns(parseMasterScript('nonsense'), null)).toEqual([]);
+  });
+
+  it('is total — never throws even on a malformed ParsedMasterScript (undefined arrays)', () => {
+    // Not constructible via the public API (arrays are non-optional), but hardened for defensiveness.
+    const malformed = { ok: true, dialogue: undefined, narration: undefined } as unknown as ReturnType<typeof parseMasterScript>;
+    expect(() => masterDialogueTurns(malformed, 'male')).not.toThrow();
+    expect(masterDialogueTurns(malformed, 'male')).toEqual([]);
   });
 });
