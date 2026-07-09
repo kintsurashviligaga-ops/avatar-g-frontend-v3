@@ -16,8 +16,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, Mic,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+// DAY-5 — the real-time voice node. Lazy-loaded so it (and its media plumbing) never enters the initial
+// chat bundle; opens as a full-screen overlay from a floating mic button. Additive: the text chat is untouched.
+const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversation'), { ssr: false });
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
@@ -163,6 +168,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // de-dupes reads so we only refetch on a genuine account change, not on every token refresh / tab focus.
   const avatarUploadingRef = useRef(false);
   const lastAvatarUserIdRef = useRef<string | null>(null);
+  // DAY-5 — real-time voice node overlay (opt-in from the floating mic button; text chat untouched).
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // Theme (Dark / Light / System) for the Appearance section. ThemeContext is binary
   // (dark|light); "System" resolves the OS preference once via matchMedia.
@@ -785,6 +792,20 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
         {sheet === 'library' ? <StudioLibraryGrid locale={lang} /> : null}
       </StudioSheet>
+
+      {/* DAY-5 — floating voice-chat launcher (authed only). Opens the real-time voice node overlay; the
+          text composer is completely untouched. Sits above the bottom nav via .floating-btn-bottom. */}
+      {authed && !voiceOpen && (
+        <button
+          type="button"
+          onClick={() => setVoiceOpen(true)}
+          aria-label={lang === 'en' ? 'Voice chat' : lang === 'ru' ? 'Голосовой чат' : 'ხმოვანი საუბარი'}
+          className="floating-btn-bottom ag-no-drag fixed right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-[0_8px_30px_-6px_rgba(0,210,255,0.6)] transition hover:scale-105 active:scale-100"
+        >
+          <Mic size={20} />
+        </button>
+      )}
+      {voiceOpen && <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />}
     </div>
   );
 }
