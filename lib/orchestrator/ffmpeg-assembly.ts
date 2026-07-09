@@ -25,6 +25,7 @@ import { uploadBufferAndSign } from './storage-adapter';
 import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pipeline/audio/audioMix';
+import { resolveDialogueCastPlan, buildDialoguePremixFilter, DIALOGUE_DUCK_DB } from './dialogueCastPlan';
 import { parseScript, scriptMixWindows } from '@/lib/pipeline/script/scriptSchema';
 import { getFeatureFlag } from '@/lib/server/feature-flags';
 import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
@@ -86,6 +87,13 @@ export interface FfmpegManifest {
    *  hardcoded window. Validated fail-open via parseScript: a malformed payload is ignored, so the
    *  master is byte-identical to the no-script path. */
   script?: unknown;
+  /** DAY-4 multi-voice casting — per-SPEAKER, TIMECODED dialogue stems (each a rendered line in its cast
+   *  ElevenLabs voice, from generateDialogueVoiceover's casting path). When ≥2 DISTINCT speakers are all
+   *  timecoded, the assembler premixes them into ONE spatialized dialogue lane (each speaker panned to a
+   *  stereo position) that replaces the single voice lane; music/sfx then duck −12 dB under it via the
+   *  existing voice-keyed sidechain. Anything else (absent, one speaker, an untimed/dropped turn) → the
+   *  single-voice `voiceoverUrl` path runs UNCHANGED (fail-open fallback). */
+  dialogueStems?: { url: string; speaker: string; startSec?: number | null }[];
 }
 
 /** True when the CPU assembler can run (binary bundled). */
@@ -224,6 +232,42 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       // eslint-disable-next-line no-console
       console.log(`[assemble] FILM_AUDIO_MIX_ENABLED duck=${effectiveDuckDb}dB script=${parsed?.ok ? 'ok' : m.script != null ? 'invalid' : 'none'} muteWindows=${scriptMuteWindows.length}`);
     }
+
+    // ── DAY-4 MULTI-VOICE CHARACTER CASTING ──────────────────────────────────────────────────────────
+    // When the manifest carries per-SPEAKER, TIMECODED dialogue stems for ≥2 DISTINCT speakers, premix them
+    // into ONE spatialized stereo dialogue lane — each character cast (castRoster) to its own voice seed AND
+    // panned to its own stereo position — and use THAT as the voice lane. The existing voice-keyed sidechain
+    // then ducks music/sfx by exactly −12 dB under active dialogue. Casting only chooses voice IDs + stereo
+    // pans; it NEVER touches TTS settings, so the narrator stability stays locked at 0.48 (lib/audio/tts-model).
+    // ADDITIVE + FAIL-OPEN: no stems / one speaker / any untimed-or-dropped turn / a premix error → voicePath
+    // stays the single downloaded `voice` (the proven single-voice assembly), byte-identical to before.
+    let voicePath = voice;
+    if (Array.isArray(m.dialogueStems) && m.dialogueStems.length >= 2) {
+      try {
+        const stems = m.dialogueStems.filter((s) => s && typeof s.url === 'string' && s.url.trim());
+        const plan = resolveDialogueCastPlan(stems.map((s) => ({ speaker: s.speaker, startSec: s.startSec ?? null })));
+        // 1:1 stem↔entry guard: every stem must be a valid, timecoded turn (no drops) so filter input [i:a]
+        // lines up with plan.entries[i]. Any mismatch falls back to the single-voice path.
+        if (plan.multiSpeaker && plan.entries.length === stems.length) {
+          const stemPaths = await Promise.all(stems.map((s, i) => download(s.url, join(dir, `dstem${i}.m4a`), signal)));
+          const premixOut = join(dir, 'dialogue_cast.m4a');
+          await exec(
+            bin,
+            ['-y', ...stemPaths.flatMap((p) => ['-i', p]), '-filter_complex', buildDialoguePremixFilter(plan), '-map', '[dialogue]', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', premixOut],
+            { maxBuffer: 1 << 26, timeout: 120_000, ...(signal ? { signal } : {}) },
+          );
+          voicePath = premixOut;
+          effectiveDuckDb = typeof effectiveDuckDb === 'number' ? effectiveDuckDb : DIALOGUE_DUCK_DB;
+          // eslint-disable-next-line no-console
+          console.log(`[assemble] multi-voice cast lane: ${plan.distinctSpeakers} speakers → spatial premix, music ducks ${effectiveDuckDb}dB under dialogue`);
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[assemble] multi-voice premix failed → single-voice fallback:', e instanceof Error ? e.message : e);
+        voicePath = voice;
+      }
+    }
+
     // Derive the per-clip length from the segment durations so the master timeline
     // is correct for ANY cadence — a 6-scene · 5s film, a 5-shot · 6s video, etc.
     // (Average + round; all clips in a composition share one length.) Falls back to
@@ -330,7 +374,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
-      hasVoice: Boolean(voice),
+      hasVoice: Boolean(voicePath),
       hasMusic: Boolean(music),
       hasSfx: Boolean(sfx),
       fps,
@@ -356,7 +400,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const out = join(dir, 'master.mp4');
     const args: string[] = ['-y'];
     for (const p of inputs) args.push('-i', p);
-    for (const a of [voice, music, sfx]) if (a) args.push('-i', a);
+    for (const a of [voicePath, music, sfx]) if (a) args.push('-i', a);
     // Brand lower-third PNG is the LAST input → its index matches `ai` in the
     // filtergraph (after every video + audio input).
     if (brandPngPath) args.push('-i', brandPngPath);
@@ -445,12 +489,12 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // NOTE: the productive placement is per-clip pre-assembly (clips have URLs + known dialogue timing);
     // here it runs over the master + voice lane and fail-opens to the raw master — the stage/interface is
     // exercised and logged. Only a confident sync that yields a NEW local file replaces the master.
-    if (LIPSYNC_ON && voice) {
+    if (LIPSYNC_ON && voicePath) {
       try {
         const provider: LipsyncProvider = process.env.FILM_LIPSYNC_PROVIDER === 'replicate' && process.env.REPLICATE_API_TOKEN
           ? replicateLipsyncProvider({ token: process.env.REPLICATE_API_TOKEN })
           : passthroughLipsyncProvider;
-        const ls = await lipsyncNode({ clipUrl: out, audioUrl: voice }, { provider });
+        const ls = await lipsyncNode({ clipUrl: out, audioUrl: voicePath }, { provider });
         // eslint-disable-next-line no-console
         console.log(`[assemble] lipsync provider=${ls.provider} fallback=${ls.usedFallback} conf=${ls.confidence}`);
         if (!ls.usedFallback && ls.url && ls.url !== out) {
