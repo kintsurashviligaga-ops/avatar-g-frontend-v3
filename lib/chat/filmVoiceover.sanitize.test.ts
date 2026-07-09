@@ -40,4 +40,25 @@ describe('sanitizeSpokenText (v363 — production annotations must never be spok
     expect(sanitizeSpokenText(null)).toBe('');
     expect(sanitizeSpokenText('')).toBe('');
   });
+
+  // Day-1 Task 1: inline stage directions / timecodes / labels / sluglines / markdown.
+  it('strips inline stage directions, timecodes, labels and markdown', () => {
+    expect(sanitizeSpokenText('The wind rose (pause) and the city [00:03] fell silent')).toBe('The wind rose and the city fell silent');
+    expect(sanitizeSpokenText('[whispering] come back *sighs* please')).toBe('come back please');
+    expect(sanitizeSpokenText('NARRATOR: There was a morning')).toBe('There was a morning');
+    expect(sanitizeSpokenText('at 00:03 the radio spoke')).toBe('at the radio spoke');
+    expect(sanitizeSpokenText('the sky (0:05) was calm')).toBe('the sky was calm');
+    expect(sanitizeSpokenText('INT./EXT. STREET - DAY\nA man walks alone')).toBe('A man walks alone');
+    expect(sanitizeSpokenText('**bold** and _italic_ words')).toBe('bold and italic words');
+  });
+
+  // CRITICAL Task 1 invariant: Georgian text, diacritics and natural punctuation are preserved EXACTLY.
+  it('preserves Georgian prose + punctuation byte-for-byte', () => {
+    const ka = 'იყო ერთი დილა… რომელიც მთელმა ქვეყანამ ერთად ამოისუნთქა. უკანასკნელად.';
+    expect(sanitizeSpokenText(ka)).toBe(ka);
+    const kaQuotes = 'მან თქვა: „დაბრუნდი, გთხოვ." — და ხმა ჩაწყდა.';
+    expect(sanitizeSpokenText(kaQuotes)).toBe(kaQuotes);
+    const commas = 'ცა იყო წყნარი, მზე იყო თბილი, მაგრამ ერთმა ხმამ ყველაფერი შეცვალა.';
+    expect(sanitizeSpokenText(commas)).toBe(commas);
+  });
 });
