@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   },
   title: {
     default: "MyAvatar.ge — AI ვიდეო, მუსიკა და სურათების გენერაცია",
-    template: "%s · MyAvatar.ge"
+    template: "%s · MyAvatar"
   },
   description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა — შექმენი ვიდეო, მუსიკა და სურათები ხელოვნური ინტელექტით, წამებში.",
   keywords: ["AI ვიდეო", "AI მუსიკა", "AI სურათი", "ხელოვნური ინტელექტი", "AI კონტენტი", "MyAvatar", "ვიდეოს გენერაცია"],
@@ -101,7 +101,7 @@ export default async function LocaleLayout({
     return (
       <div className="font-sans min-h-screen flex flex-col items-center justify-center bg-transparent text-white px-6 ag-noise ag-silver-neon-overlay">
         <div className="ag-surface-hero rounded-3xl px-8 py-10 text-center max-w-xl border border-white/15">
-          <h1 className="text-2xl font-bold mb-2">Avatar G</h1>
+          <h1 className="text-2xl font-bold mb-2">MyAvatar</h1>
           <p className="text-white/70">Sorry, the site is temporarily unavailable in this language.</p>
         </div>
       </div>

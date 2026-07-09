@@ -81,10 +81,10 @@ export const metadata: Metadata = {
 	// `[locale]` layout, which owns the "%s - Avatar G" template for its child
 	// routes. A template HERE would also wrap the locale layout's own default,
 	// producing the doubled "<brand> - AI მედია პლატფორმა - Avatar G" seen live.
-	title: "Avatar G - AI მედია პლატფორმა",
+	title: "MyAvatar - AI მედია პლატფორმა",
 	description: "შექმენი ავატარები, ვიდეო, სურათები და მუსიკა AI-ით",
 	keywords: ["AI", "ავატარი", "ვიდეო გენერაცია", "სურათის გენერაცია", "მუსიკის გენერაცია"],
-	authors: [{ name: "Avatar G Team" }],
+	authors: [{ name: "MyAvatar Team" }],
 	openGraph: {
 		type: "website",
 		locale: "ka_GE",
