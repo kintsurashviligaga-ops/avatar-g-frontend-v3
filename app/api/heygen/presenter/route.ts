@@ -4,7 +4,7 @@ import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 /**
@@ -65,6 +65,15 @@ export async function POST(req: NextRequest) {
   if (rl) return rl;
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured' }, { status: 503 });
+
+  // PRE-RENDER balance gate — block a paid presenter render (TTS + HeyGen) for a user who can't
+  // afford it. The charge lands on the GET poll-success; authed only; fail-open.
+  try {
+    const { user: gateUser } = await authedClientFromRequest(req);
+    if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('avatar')))) {
+      return NextResponse.json({ success: false, error: 'insufficient_credits', code: 'insufficient_credits', topUpNeeded: true }, { status: 402 });
+    }
+  } catch { /* fail-open */ }
 
   const body = (await req.json().catch(() => ({}))) as { text?: string; audioUrl?: string; faceUrl?: string; orientation?: 'landscape' | 'vertical' | 'square'; gender?: 'female' | 'male' };
 

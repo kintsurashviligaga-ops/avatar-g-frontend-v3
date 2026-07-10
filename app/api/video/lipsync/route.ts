@@ -22,7 +22,7 @@ import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 // Same bucket uploadBigFile() / the /api/upload/sign route write user files into.
@@ -110,6 +110,16 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
+
+  // PRE-RENDER balance gate — don't start a paid avatar render (TTS + provider) for a user who
+  // can't afford it. The charge lands on the GET poll-success; without this a 0-balance user could
+  // start unlimited free avatar jobs. Authed only; fail-open (deduct on poll stays the backstop).
+  try {
+    const { user: gateUser } = await authedClientFromRequest(req);
+    if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('avatar')))) {
+      return NextResponse.json({ jobId: null, error: 'insufficient_credits', code: 'insufficient_credits', topUpNeeded: true }, { status: 402 });
+    }
+  } catch { /* fail-open */ }
 
   let body: { videoUrl?: unknown; audioUrl?: unknown; characterRef?: unknown; sceneIndex?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown };
   try {
