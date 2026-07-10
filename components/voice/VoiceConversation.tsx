@@ -58,7 +58,11 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       setStatus('thinking'); setError('');
       // 1) STT
       const fd = new FormData();
-      fd.append('audio', audio, 'speech.webm');
+      // Label the upload with the extension that MATCHES the recorded container. iOS Safari
+      // records audio/mp4, NOT webm — a wrong extension makes Whisper reject the audio (the real
+      // cause of "the mic does nothing" on mobile). Mirrors the composer path's extFor mapping.
+      const ext = /mp4/i.test(audio.type) ? 'mp4' : /aac/i.test(audio.type) ? 'm4a' : /mpeg|mp3/i.test(audio.type) ? 'mp3' : /wav/i.test(audio.type) ? 'wav' : 'webm';
+      fd.append('audio', audio, `speech.${ext}`);
       fd.append('language', lang === 'en' ? 'en-US' : lang === 'ru' ? 'ru-RU' : 'ka-GE');
       const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include' });
       const sj = (await sr.json().catch(() => null)) as { text?: string } | null;
