@@ -28,6 +28,8 @@ import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifac
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { billableCreditCost } from './chatBilling';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
@@ -1218,6 +1220,22 @@ async function handleDeterministicIntent(
     locale: input.locale,
     confidence: detected.confidence,
   });
+
+  // DAY-6 — charge AFTER a successful, TERMINAL (synchronous) generation, via the balance-of-record
+  // deduct_credits RPC. Charging post-success (not reserve-before) is deliberately safe: it can NEVER bill a
+  // thrown error (control never reaches here), a `success:false` failure, or an async `processing` render that
+  // might still fail downstream — async avatar/video resolve on the POLL path (which has no refund), so they are
+  // NOT billed here (avatar/video credit accounting is deferred to their own pipeline). This covers the primary
+  // leak: standalone SYNC image/photo generations. Authed only (anon/preview free); idempotent per-call ref;
+  // fail-open + best-effort (a ledger hiccup never breaks the already-delivered asset); deduct_credits rejects
+  // overdraw so the balance can never go negative.
+  const billCost = billableCreditCost(detected.intent);
+  const uid = input.userId;
+  const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
+  if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
+    await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
+      .catch(() => { /* best-effort — the asset is already delivered */ });
+  }
 
   const mapped = toChatResponse(response, detected.intent);
   mapped.metadata.iteration = iterative.iteration;
