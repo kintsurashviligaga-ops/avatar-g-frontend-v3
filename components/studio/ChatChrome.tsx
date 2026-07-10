@@ -238,6 +238,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
   useEffect(() => { void refreshBalance(); }, [refreshBalance]);
 
+  // V4 — re-read the balance the moment a generation deducts credits (OmniStudio dispatches
+  // `myavatar:credits-updated` after every spend). Without this the ₾ pill stayed frozen after
+  // generating, which read as "credits never get deducted".
+  useEffect(() => {
+    const onSpend = () => { void refreshBalance(); };
+    window.addEventListener('myavatar:credits-updated', onSpend);
+    return () => window.removeEventListener('myavatar:credits-updated', onSpend);
+  }, [refreshBalance]);
+
   // Stripe Checkout returns to /dashboard?topup=success. The crediting webhook is
   // async, so poll the balance a few times to catch the credit landing, then strip
   // the query param so a refresh doesn't re-trigger. Fail-soft on every step.

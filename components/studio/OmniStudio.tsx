@@ -1285,6 +1285,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     else if (kind === 'image') track('image_generated', { count: opts?.count ?? 1 });
     else if (kind === 'video' || kind === 'avatar') track('video_generated', { duration: opts?.seconds ?? null, credits });
     setCreditToast({ credits, balanceGel: null });
+    // V4 — a spend just landed server-side; tell the app shell to re-read the header ₾ pill
+    // so the balance visibly drops (the shell only refreshed on mount/auth/modal-close before,
+    // which is why generations looked like they never deducted).
+    try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
     // PHASE 3 Task 3 — file a "your <kind> is ready" notification (fail-open if the
     // notifications table isn't migrated). avatar/remix read as video to the user.
     const notifType: 'video' | 'music' | 'image' = kind === 'music' ? 'music' : kind === 'image' ? 'image' : 'video';
