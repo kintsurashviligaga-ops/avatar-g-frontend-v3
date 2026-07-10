@@ -2570,7 +2570,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal: ac.signal,
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMode !== 'musicvideo' && videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {

@@ -58,9 +58,12 @@ const PROVIDER_CREATE_TIMEOUT_MS = 25_000;
 // character drift, the gap vs the legacy LTX clips). Tried FIRST whenever a
 // Replicate token + a start image both exist; on ANY miss the dispatch falls
 // straight through to the proven LTX path, so this can never break a render.
-// Override the model with REPLICATE_VIDEO_MODEL (e.g. bytedance/seedance-1-lite,
-// kwaivgi/kling-v2.1, wavespeedai/wan-2.1-i2v-720p); kill with VIDEO_I2V_DISABLED=1.
-const VIDEO_I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
+// DAY-6 — default upgraded to Kling v2.1 (verified live on Replicate: 4.1M runs; input schema = start_image +
+// prompt + duration + negative_prompt, no aspect_ratio, which buildI2vInput's v2.1 branch already matches).
+// Override with REPLICATE_VIDEO_MODEL (e.g. kwaivgi/kling-v1.6-standard for the cheaper tier, bytedance/
+// seedance-1-lite); kill with VIDEO_I2V_DISABLED=1. The provider cascade (Luma/LTX/Replicate) remains the
+// safety net — a v2.1 miss still falls through, so this can never leave a render with no engine.
+const VIDEO_I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim();
 const VIDEO_I2V_DISABLED = process.env.VIDEO_I2V_DISABLED === '1';
 const VIDEO_I2V_NEGATIVE =
   'blurry, distorted face, different person, deformed, low quality, cartoon, illustration, morphing, flickering, extra limbs, watermark, text overlay, bad anatomy, deformed hands, glitch, artifact, overexposed, underexposed, inconsistent clothing';

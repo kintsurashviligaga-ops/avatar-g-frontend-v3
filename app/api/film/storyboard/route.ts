@@ -18,6 +18,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
+import { parseMasterScript } from '@/lib/pipeline/script/masterScript';
 import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
@@ -207,6 +208,9 @@ export async function POST(req: NextRequest) {
     /** Character-anchor: generate ONE protagonist portrait from the brief → returned
      *  as `anchorUrl` so the client can lock every scene frame to the same person. */
     characterAnchor?: boolean;
+    /** DAY-6 — a full TIMECODED Master Production Script. When supplied, its parsed SCENE sheets DRIVE the
+     *  storyboard plan (each scene's action becomes that scene's prompt) instead of the single-line brief. */
+    masterScript?: string;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -234,7 +238,17 @@ export async function POST(req: NextRequest) {
   const selfie = hostedRefs.find((r) => /^https?:\/\//i.test(r)) ?? null;
 
   const musicVideo = body.musicVideoMode === true;
-  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec, musicVideo });
+  // DAY-6 — a pasted TIMECODED Master Production Script DRIVES the storyboard: its parsed SCENE sheets become
+  // the per-scene prompts (so the frames + clips follow the screenplay, not the one-line brief). Additive +
+  // fail-open: a non-string / unparseable / <2-scene script leaves the brief-driven plan untouched.
+  const masterSceneScripts = (() => {
+    if (typeof body.masterScript !== 'string' || !body.masterScript.trim()) return null;
+    const pm = parseMasterScript(body.masterScript);
+    if (!pm.ok) return null;
+    const scenes = pm.scenes.map((s) => s.action.trim()).filter(Boolean).map((a) => a.slice(0, 2000)).slice(0, sceneCount);
+    return scenes.length >= 2 ? scenes : null;
+  })();
+  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec, musicVideo, ...(masterSceneScripts ? { sceneScripts: masterSceneScripts } : {}) });
   const aspect = orientation === 'vertical' ? '9:16' : '16:9';
   const sessionId = `storyboard_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
