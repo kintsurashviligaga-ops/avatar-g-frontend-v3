@@ -2917,14 +2917,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           signal,
           body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           updateBubble(bubbleId, { text: '', imageUrl: j.url, regen: spec });
           notifyCredit('image');
           return j.url;
         }
-        updateBubble(bubbleId, { text: `⚠️ ${j.error || t.imageFailed}` });
+        // Show the raw server error ONLY for the insufficient-credits case (a bilingual top-up
+        // prompt); for provider errors (English "…timed out") show the localized generic instead.
+        updateBubble(bubbleId, { text: `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.imageFailed}` });
         throw new Error(j.error || 'image failed');
       },
     });
@@ -2970,7 +2972,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               signal,
               body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
             });
-            const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+            const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
             onProgress({ pct: 100 });
             if (j.success && j.url) {
               updateTile(tileIdx, { status: 'done', url: j.url, jobId });
@@ -3031,14 +3033,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: m.prompt, genre: m.genre, instrumental: m.instrumental, ...(!m.instrumental && m.lyrics ? { lyrics: m.lyrics } : {}) } });
           notifyCredit('music', { seconds: m.duration === 0 ? 90 : m.duration });
           return j.url;
         }
-        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.error || t.musicFailed}` });
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.musicFailed}` });
         throw new Error(j.error || 'music failed');
       },
     });
@@ -4275,7 +4277,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages((prev) => [...prev, { role: 'assistant', text: t.upscaling }]);
     try {
       const r = await fetch('/api/ai/upscale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageUrl: url, scale: 2 }), credentials: 'include' });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string };
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];

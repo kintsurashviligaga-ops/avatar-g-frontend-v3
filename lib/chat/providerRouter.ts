@@ -28,8 +28,8 @@ import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifac
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
-import { deductCredits } from '@/lib/orchestrator/ledger';
-import { billableCreditCost } from './chatBilling';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { billableCreditCost, insufficientCreditsResponse } from './chatBilling';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
@@ -1209,6 +1209,15 @@ async function handleDeterministicIntent(
     selectedOptions: input.selectedOptions,
     imageUrl: input.imageUrl,
   });
+
+  // PRE-RENDER balance gate (secondary /chat orchestrator surface). The direct product routes
+  // already gate; this path only charged POST-success (swallowing overdraw) so a 0-balance user got
+  // a free paid generation. Block it up front. Authed only; fail-open on read miss (post-charge stays
+  // the backstop). Wires the previously-dead insufficientCreditsResponse.
+  const gateCost = billableCreditCost(detected.intent);
+  if (input.userId && input.userId !== 'anonymous' && gateCost > 0 && !(await hasSufficientBalance(input.userId, gateCost))) {
+    return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
+  }
 
   const response = await serviceManager.execute({
     sessionId: input.sessionId,

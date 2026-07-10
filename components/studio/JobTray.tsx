@@ -40,10 +40,12 @@ function tr(locale: Lang) {
     cancel: 'Cancel',
     clear: 'Clear finished',
     waiting: 'Waiting for a free slot…',
+    counts: (a: number, q: number) => `${a} active${q ? ` · ${q} queued` : ''}`,
   };
   if (locale === 'ru') {
     return {
       ...en,
+      counts: (a: number, q: number) => `${a} активно${q ? ` · ${q} в очереди` : ''}`,
       title: 'Рендеры',
       queuePos: (n: number) => `В очереди: #${n}`,
       rendering: 'Рендеринг',
@@ -67,6 +69,7 @@ function tr(locale: Lang) {
       cancel: 'გაუქმება',
       clear: 'გასუფთავება',
       waiting: 'ცდის თავისუფალ სლოტს…',
+      counts: (a: number, q: number) => `${a} აქტიური${q ? ` · ${q} რიგში` : ''}`,
     };
   }
   return en;
@@ -155,7 +158,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
         <p className="text-[12px] font-bold text-app-text">
           {t.title}
           <span className="ml-1.5 font-medium text-app-muted tabular-nums">
-            {activeCount + queuedCount > 0 ? `${activeCount} active${queuedCount ? ` · ${queuedCount} queued` : ''}` : ''}
+            {activeCount + queuedCount > 0 ? t.counts(activeCount, queuedCount) : ''}
           </span>
         </p>
         {anyFinished && (
