@@ -146,7 +146,10 @@ html[data-theme='light'] {
 /* Premium spacing scale */
 :root {
   --app-screen-height: 100vh;
-  --app-screen-width: 100vw;
+  /* 100% (not 100vw): 100vw includes the vertical scrollbar gutter on some mobile
+     webviews → 1–2px horizontal drift on anything sized by this var. AppShell still
+     sets an exact px value at runtime for the marketing shell. */
+  --app-screen-width: 100%;
   --section-py: clamp(3rem, 6vw, 5rem);
   --section-px: clamp(1rem, 4vw, 2.5rem);
   --container-max: 72rem;

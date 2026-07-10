@@ -162,6 +162,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Profile photo (FIX 2): current URL + in-flight upload state + the hidden file input.
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  // Transient, self-contained toast for avatar-upload feedback (ChatChrome has no toast system).
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   // Ref (not state) so the async DB-read closure sees the CURRENT value: true while an upload is in flight,
   // to stop an auth-transition read from clobbering the optimistic/just-uploaded photo. lastAvatarUserId
@@ -405,9 +407,20 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // (service-role upload to the public `avatars` bucket + profiles.avatar_url) → reflect it
   // in the header + profile modal. Optimistic preview; fail-soft.
   const uploadAvatar = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) return;
+    const failMsg = locale === 'en' ? 'Photo upload failed. Please try again.'
+      : locale === 'ru' ? 'Не удалось загрузить фото. Попробуйте снова.'
+      : 'ფოტო ვერ აიტვირთა. სცადეთ თავიდან.';
+    // Reject unsupported/oversized files with a visible reason instead of silently doing nothing.
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      setAvatarError(locale === 'en' ? 'Use an image under 5MB.'
+        : locale === 'ru' ? 'Изображение до 5 МБ.'
+        : 'გამოიყენე სურათი 5MB-მდე.');
+      return;
+    }
     avatarUploadingRef.current = true; // block auth-transition reads from clobbering this upload
     setAvatarBusy(true);
+    setAvatarError(null);
+    let previous: string | null = null;
     try {
       const dataUrl: string = await new Promise((resolve, reject) => {
         const r = new FileReader();
@@ -415,16 +428,27 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         r.onerror = reject;
         r.readAsDataURL(file);
       });
-      setAvatarUrl(dataUrl); // optimistic
+      setAvatarUrl((prev) => { previous = prev; return dataUrl; }); // optimistic + capture the prior value
       const res = await fetch('/api/profile/avatar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ dataUrl }),
       });
       const j = (await res.json().catch(() => null)) as { url?: string } | null;
       if (res.ok && j?.url) setAvatarUrl(j.url);
-    } catch { /* keep the optimistic preview */ }
+      else { setAvatarUrl(previous); setAvatarError(failMsg); } // revert — never leave a false "success" preview
+    } catch {
+      setAvatarUrl(previous); // network/read miss → revert to the prior avatar, not the unsaved preview
+      setAvatarError(failMsg);
+    }
     finally { setAvatarBusy(false); avatarUploadingRef.current = false; }
-  }, []);
+  }, [locale]);
+
+  // Auto-dismiss the avatar toast so it never lingers.
+  useEffect(() => {
+    if (!avatarError) return;
+    const id = setTimeout(() => setAvatarError(null), 3500);
+    return () => clearTimeout(id);
+  }, [avatarError]);
 
   const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
@@ -481,7 +505,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const closeLabel = lang === 'en' ? 'Close' : lang === 'ru' ? 'Закрыть' : 'დახურვა';
 
   return (
-    <div className="fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
+    <div className="ag-fixed-shell fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
       {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
       {genBusy && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[999]" aria-hidden style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
@@ -604,7 +628,16 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 <Menu className="h-[18px] w-[18px]" />
               </button>
               <span className={`truncate text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
-                {title ?? <>My<span className="text-app-accent">Avatar</span></>}
+                {title ?? (
+                  <span className="inline-flex items-center gap-1.5">
+                    {/* Brand Rocket lockup — official mark next to the MyAvatar wordmark. Decorative
+                        (the wordmark IS the accessible name); scoped to the wordmark branch so a page
+                        title still truncates normally. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/rocket.svg" alt="" aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
+                    <span>My<span className="text-app-accent">Avatar</span></span>
+                  </span>
+                )}
               </span>
               {title && <span className="hidden truncate text-[16px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
             </div>
@@ -627,7 +660,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                    <img src={avatarUrl} alt="" onError={() => setAvatarUrl(null)} className="h-full w-full object-cover" />
                   ) : (userName?.[0] || userEmail?.[0] || 'U')}
                 </button>
               ) : (
@@ -806,6 +839,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </button>
       )}
       {voiceOpen && <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />}
+
+      {/* Avatar-upload feedback toast — transient, self-contained (no global toast system here). */}
+      {avatarError && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[1000] flex justify-center px-4" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
+          <div role="status" className="pointer-events-auto flex items-center gap-2 rounded-full border border-rose-400/30 bg-app-surface/95 px-4 py-2 text-[12.5px] font-medium text-rose-300 shadow-lg backdrop-blur">
+            {avatarError}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
