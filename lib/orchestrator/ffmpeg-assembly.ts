@@ -371,6 +371,15 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // explicit Music Video Mode flag threaded through globalRender (the voice-overlap fix).
     const musicVideo = g.musicVideo === true || String(g.musicVideo) === 'true';
 
+    // V8-F4 — UNCONDITIONAL −12 dB ducking: whenever a voice/dialogue lane exists, pin the
+    // music/SFX duck DEPTH to DEFAULT_DUCK_DB, independent of FILM_AUDIO_MIX_ENABLED and of the
+    // client's duckPct. The voice-keyed sidechain already fires; this guarantees the −12 dB
+    // contract deterministically. Respects an explicit client duck_db and the multi-voice path
+    // (both set effectiveDuckDb first). No voice lane → left undefined (nothing to duck under).
+    if (voicePath && typeof effectiveDuckDb !== 'number') {
+      effectiveDuckDb = DEFAULT_DUCK_DB;
+    }
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
