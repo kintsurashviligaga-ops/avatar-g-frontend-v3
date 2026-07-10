@@ -15,6 +15,8 @@ import { runWithLatencyFailover, type ProviderAttempt } from '@/lib/providers/la
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { randomUUID } from 'node:crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 /**
  * Assistant music generation.
@@ -346,6 +348,14 @@ export async function POST(req: NextRequest) {
     // identity when testing without sign-in (so anonymous generations still show up).
     try {
       const { user } = await authedClientFromRequest(req);
+      if (user?.id) {
+        // BILLING FIX — this DIRECT route bypassed providerRouter's post-success charge, so chat
+        // music mode generated for FREE (same leak class as the image route). Charge the
+        // balance-of-record via the idempotent deduct_credits RPC, cost by duration. Idempotent per
+        // tray jobId; rejects overdraw; best-effort AFTER success so a ledger hiccup never fails the track.
+        await deductCredits(user.id, creditCostFor('music', { seconds: durationSec }), `music:${clientJobId || hostedUrl}:${user.id}`)
+          .catch(() => { /* best-effort — the asset is already delivered */ });
+      }
       // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
       // row (one row, no duplicate); direct/other callers still get a fresh UUID.
       await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'music', url: hostedUrl, prompt: capped });
