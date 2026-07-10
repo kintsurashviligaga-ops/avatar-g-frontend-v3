@@ -3,25 +3,40 @@
 import { motion } from 'framer-motion'
 import { Check, Sparkles, Crown, Zap, Building } from 'lucide-react'
 import Link from 'next/link'
-import { PRICING_PLANS } from '@/lib/pricing/canonicalPricing'
+import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 
-const PLAN_ACCENTS = [
-  { gradient: 'from-gray-400 to-slate-500', glow: 'rgba(148,163,184,0.15)', icon: Zap },
-  { gradient: 'from-cyan-400 to-blue-500', glow: 'rgba(6,182,212,0.25)', icon: Sparkles },
-  { gradient: 'from-cyan-400 to-blue-500', glow: 'rgba(34,211,238,0.25)', icon: Crown },
-  { gradient: 'from-amber-400 to-orange-500', glow: 'rgba(245,158,11,0.25)', icon: Building },
-]
+type Accent = { gradient: string; glow: string; icon: typeof Zap }
 
-const PRICING_LABELS = {
-  en: { badge: 'Pricing', month: '/mo', focus: 'Choose the plan that fits your workflow and scale.', popular: 'Most Popular' },
-  ka: { badge: 'ფასები', month: '/თვე', focus: 'აირჩიე გეგმა, რომელიც შენს workflow-ს შეესაბამება.', popular: 'ყველაზე პოპულარული' },
-  ru: { badge: 'Тарифы', month: '/мес', focus: 'Выберите план, который подходит вашему workflow и масштабу.', popular: 'Самый популярный' },
-} as const
+// DAY-6 pricing reconciliation — the visible page now renders the SINGLE SOURCE OF TRUTH tiers
+// (lib/billing/pricingConfig.ts: Starter 38 / Pro Creator 299 / Studio Annual 899 GEL) instead of the
+// legacy canonicalPricing $9/$29/$89 plans. Features are DERIVED from each tier's creditCeiling so the
+// display can never drift from the grant. NOTE: checkout still charges via Stripe Price IDs (STRIPE_PRICE_*);
+// until those are set these tiers are display-only (the CTA routes to signup, not a charge).
+const TIER_ACCENTS: Record<PricingTierId, Accent> = {
+  starter: { gradient: 'from-gray-400 to-slate-500', glow: 'rgba(148,163,184,0.15)', icon: Zap },
+  pro_creator: { gradient: 'from-cyan-400 to-blue-500', glow: 'rgba(34,211,238,0.25)', icon: Crown },
+  studio_annual: { gradient: 'from-amber-400 to-orange-500', glow: 'rgba(245,158,11,0.25)', icon: Building },
+}
+
+type Lang = 'en' | 'ka' | 'ru'
+
+const LABELS: Record<Lang, {
+  badge: string; month: string; year: string; popular: string; focus: string; cta: string;
+  videos: string; music: string; images: string; credits: string;
+}> = {
+  en: { badge: 'Pricing', month: '/mo', year: '/yr', popular: 'Most Popular', focus: 'Choose the plan that fits your workflow and scale.', cta: 'Get started',
+        videos: 'Videos', music: 'Music tracks', images: 'Storyboard images', credits: 'credits included' },
+  ka: { badge: 'ფასები', month: '/თვე', year: '/წელ', popular: 'ყველაზე პოპულარული', focus: 'აირჩიე გეგმა, რომელიც შენს workflow-ს შეესაბამება.', cta: 'დაწყება',
+        videos: 'ვიდეო', music: 'მუსიკის ტრეკი', images: 'სთორიბორდ სურათი', credits: 'კრედიტი შედის' },
+  ru: { badge: 'Тарифы', month: '/мес', year: '/год', popular: 'Самый популярный', focus: 'Выберите план под ваш workflow и масштаб.', cta: 'Начать',
+        videos: 'видео', music: 'музыкальных трека', images: 'storyboard-изображений', credits: 'кредитов включено' },
+}
 
 export function PricingSection() {
-  const { t, language: locale } = useLanguage()
-  const labels = PRICING_LABELS[locale as keyof typeof PRICING_LABELS] || PRICING_LABELS.ka
+  const { t, language } = useLanguage()
+  const locale = (language === 'en' || language === 'ru' ? language : 'ka') as Lang
+  const labels = LABELS[locale]
 
   return (
     <section id="pricing" className="relative py-28 px-4 sm:px-6 overflow-hidden" style={{ borderTop: '1px solid var(--color-border)' }}>
@@ -30,7 +45,7 @@ export function PricingSection() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-gradient-to-b from-cyan-500/[0.03] to-transparent rounded-full blur-[120px]" />
       </div>
 
-      <div className="relative mx-auto max-w-6xl">
+      <div className="relative mx-auto max-w-5xl">
         <motion.div
           className="text-center mb-20"
           initial={{ opacity: 0, y: 30 }}
@@ -48,25 +63,27 @@ export function PricingSection() {
               {t('pricing.titleAccent')}
             </span>
           </h2>
-          <p className="max-w-xl mx-auto text-base md:text-lg leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-            {t('pricing.subtitle')}
-          </p>
           <p className="mt-5 text-cyan-100/85 text-sm md:text-base font-medium">
             {labels.focus}
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {PRICING_PLANS.map((plan, index) => {
-            const accentRaw = PLAN_ACCENTS[index] ?? PLAN_ACCENTS[0]
-            if (!accentRaw) return null
-            const accent = accentRaw
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {PRICING_TIERS.map((tier, index) => {
+            const accent: Accent = TIER_ACCENTS[tier.id]
             const AccentIcon = accent.icon
-            const isPopular = !!plan.popular || /pro/i.test(plan.name)
+            const isPopular = tier.id === 'pro_creator'
+            const period = tier.billing === 'annual' ? labels.year : labels.month
+            const features = [
+              `${tier.creditCeiling.videos} ${labels.videos}`,
+              `${tier.creditCeiling.music} ${labels.music}`,
+              `${tier.creditCeiling.images} ${labels.images}`,
+              `${tier.creditsIncluded.toLocaleString()} ${labels.credits}`,
+            ]
 
             return (
               <motion.div
-                key={plan.name}
+                key={tier.id}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -78,21 +95,14 @@ export function PricingSection() {
                   className={`absolute -inset-[1px] rounded-2xl transition-opacity duration-500 ${
                     isPopular ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                   }`}
-                  style={{
-                    background: `linear-gradient(135deg, ${accent.glow}, transparent 60%, ${accent.glow})`,
-                  }}
+                  style={{ background: `linear-gradient(135deg, ${accent.glow}, transparent 60%, ${accent.glow})` }}
                 />
 
                 <div
                   className={`relative flex flex-col h-full rounded-2xl border p-7 backdrop-blur-xl transition-all duration-500 ${
-                    isPopular
-                      ? 'border-cyan-400/35 shadow-[0_0_60px_rgba(6,182,212,0.16)]'
-                      : 'hover:border-opacity-20'
+                    isPopular ? 'border-cyan-400/35 shadow-[0_0_60px_rgba(6,182,212,0.16)]' : 'hover:border-opacity-20'
                   }`}
-                  style={{
-                    backgroundColor: 'var(--card-bg)',
-                    border: isPopular ? undefined : '1px solid var(--color-border)',
-                  }}
+                  style={{ backgroundColor: 'var(--card-bg)', border: isPopular ? undefined : '1px solid var(--color-border)' }}
                 >
                   {isPopular && (
                     <motion.div
@@ -108,20 +118,19 @@ export function PricingSection() {
                     <AccentIcon className="w-5 h-5 text-white" />
                   </div>
 
-                  <h3 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>{plan.name}</h3>
-                  <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>{plan.description}</p>
+                  <h3 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>{tier.name}</h3>
 
                   <div className="flex items-baseline gap-1.5 mt-5 mb-6">
                     <span className={`text-4xl font-extrabold bg-gradient-to-br ${accent.gradient} bg-clip-text text-transparent`}>
-                      ${plan.price}
+                      {tier.priceGel}₾
                     </span>
-                    <span className="text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{labels.month}</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{period}</span>
                   </div>
 
                   <div className="h-px mb-6" style={{ background: 'linear-gradient(to right, transparent, var(--color-border), transparent)' }} />
 
                   <ul className="space-y-3 mb-8 flex-1">
-                    {plan.features.map((f) => (
+                    {features.map((f) => (
                       <li key={f} className="flex items-start gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                         <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-gradient-to-br ${accent.gradient} flex items-center justify-center`}>
                           <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
@@ -132,13 +141,9 @@ export function PricingSection() {
                   </ul>
 
                   <Link
-                    href={
-                      plan.price === 0
-                        ? `/${locale}/signup`
-                        : `/${locale}/signup?plan=${plan.name.toLowerCase()}`
-                    }
+                    href={`/${locale}/signup?plan=${tier.id}`}
                     // Apple IAP compliance: paid-plan CTA hidden inside the iOS shell.
-                    {...(plan.price === 0 ? {} : { 'data-iap-external': true })}
+                    data-iap-external
                     className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all duration-300 ${
                       isPopular
                         ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:brightness-110'
@@ -150,7 +155,7 @@ export function PricingSection() {
                       color: 'var(--color-text-secondary)',
                     }}
                   >
-                    {plan.cta}
+                    {labels.cta}
                   </Link>
                 </div>
               </motion.div>
