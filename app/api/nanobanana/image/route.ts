@@ -11,7 +11,7 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
@@ -72,6 +72,16 @@ export async function POST(req: NextRequest) {
   if (!apiKey) {
     return NextResponse.json({ success: false, error: 'NANOBANANA_API_KEY not configured' }, { status: 500 });
   }
+
+  // PRE-RENDER balance gate — never burn a paid provider call for a user who can't afford it.
+  // Without this a 0-balance user generates UNLIMITED free images (post-success deduct rejects the
+  // overdraw and the caller swallows it). Authed only (anon/preview stays free-to-try); fail-open.
+  try {
+    const { user: gateUser } = await authedClientFromRequest(req);
+    if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('image')))) {
+      return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
+    }
+  } catch { /* fail-open — the post-success deduct remains the backstop */ }
 
   try {
     const body = await req.json() as {

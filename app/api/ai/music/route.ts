@@ -15,7 +15,7 @@ import { runWithLatencyFailover, type ProviderAttempt } from '@/lib/providers/la
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { randomUUID } from 'node:crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 /**
@@ -208,6 +208,15 @@ export async function POST(req: NextRequest) {
     // any positive value clamps to the 15–90s window.
     if (typeof body.durationSec === 'number') durationSec = body.durationSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(body.durationSec)));
     if (typeof body.tempo === 'string') tempo = body.tempo.trim().toLowerCase();
+
+    // PRE-RENDER balance gate — block a paid MusicGen/EL call for a user who can't afford it
+    // (else a 0-balance user generates unlimited free tracks). Authed only; fail-open.
+    try {
+      const { user: gateUser } = await authedClientFromRequest(req);
+      if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('music', { seconds: durationSec })))) {
+        return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
+      }
+    } catch { /* fail-open — the post-success deduct remains the backstop */ }
     // Custom lyrics (vocal tracks) — Udio sings these verbatim; empty → auto lyrics.
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
     // Cover: an uploaded reference track (data: URL) → Udio reimagines it in the

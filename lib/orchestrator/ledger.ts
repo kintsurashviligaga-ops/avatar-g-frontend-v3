@@ -72,6 +72,30 @@ export async function deductCredits(userId: string, amount: number, ref: string)
 }
 
 /**
+ * Best-effort PRE-render balance check. Returns false ONLY when we can positively
+ * confirm the user's balance is below `cost`. Fail-OPEN (returns true) on any read
+ * miss / absent client so a transient DB blip never blocks a paying user — the
+ * post-success deduct_credits (which rejects overdraw) stays the real backstop.
+ *
+ * Without this gate a 0-balance user could generate UNLIMITED free assets: every
+ * generation delivers the asset, then deduct_credits rejects the overdraw and the
+ * caller's `.catch` swallows it. The gate stops the paid provider call up front.
+ */
+export async function hasSufficientBalance(userId: string, cost: number): Promise<boolean> {
+  if (!(cost > 0)) return true;
+  const sb = client();
+  if (!sb) return true;
+  try {
+    const { data, error } = await sb.from('profiles').select('credits_balance').eq('id', userId).maybeSingle();
+    if (error) return true; // read failed → fail-open (deduct is the backstop)
+    const bal = (data as { credits_balance?: number } | null)?.credits_balance;
+    return typeof bal === 'number' ? bal >= cost : true;
+  } catch {
+    return true; // fail-open
+  }
+}
+
+/**
  * Refund `amount` credits (Saga rollback) via the `refund_credits` RPC.
  * Best-effort and never throws — a failed refund is reported, not raised,
  * so the rollback chain always completes.
