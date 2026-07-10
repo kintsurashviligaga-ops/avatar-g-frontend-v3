@@ -1623,6 +1623,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // (ქალი:/კაცი:/Woman:/Man:) and each line is voiced in its gendered voice + mixed.
   const [videoMultiChar, setVideoMultiChar] = useState(false);
   const [videoDialogue, setVideoDialogue] = useState('');
+  // DAY-6 — an optional full TIMECODED Master Production Script (SCENE/VOICE/DIALOGUE sheets). When filled it
+  // drives the structured storyboard + multi-voice casting (parseMasterScript) instead of the single-prompt path.
+  const [videoMasterScript, setVideoMasterScript] = useState('');
   // P1 — Music Video: after the master assembles, sync the singer's mouth to the
   // Georgian vocal. Uses Replicate sync/lipsync-2 (video-input, official model) via
   // /api/video/lipsync kind:'film'. ENGINE VERIFIED end-to-end on Replicate today
@@ -2021,6 +2024,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         videoModel,
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
         ...(!isMusicVideo && videoMultiChar && videoDialogue.trim() ? { dialogueScript: videoDialogue.trim() } : {}),
+        // DAY-6 — a pasted timecoded Master Production Script → structured storyboard scenes + multi-voice
+        // spatial casting (≥2 timecoded speakers → per-voice stems + -12dB duck). Documentary mode only.
+        ...(!isMusicVideo && videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}),
         // Music can only be turned OFF in documentary mode; a music video always has its song.
         ...(!isMusicVideo && !videoMusic ? { noMusic: true } : {}),
         // PHASE 2 L2/L6 — documentary 3-track master + smart ducking. The assembler only
@@ -5235,6 +5241,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
                     </>
                   )}
+                </div>
+                {/* DAY-6 — optional MASTER PRODUCTION SCRIPT. A separate, additive surface: paste a full
+                    timecoded script (SCENE / VOICE / DIALOGUE sheets). When filled, it routes through
+                    parseMasterScript → structured storyboard scenes + per-speaker multi-voice casting
+                    (≥2 timecoded speakers → spatial premix + -12dB duck), instead of the single-prompt path. */}
+                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎬 {locale === 'en' ? 'Master script (advanced)' : locale === 'ru' ? 'Мастер-сценарий (доп.)' : 'მასტერ-სცენარი (დამატებითი)'}</span>
+                  <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
+                  <textarea value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
+                    placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Nino: Are you ready?\n[00:04] Dato: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] ნინო: მზად ხარ?\n[00:04] დათო: თითქმის.'}
+                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
                 </div>
               </>
             ) : (

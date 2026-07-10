@@ -89,6 +89,10 @@ const orchestrateSchema = z.object({
   // Multi-character dialogue script (video panel) → split per speaker (ქალი:/კაცი:/
   // Woman:/Man:), each line voiced in its gendered voice and mixed into one track.
   dialogueScript: z.string().max(4000).optional(),
+  // DAY-6 — a full TIMECODED Master Production Script (SCENE / VOICE / DIALOGUE sheets). When present it
+  // drives BOTH the structured storyboard scenes (parseMasterScript.scenes) AND the multi-voice dialogue
+  // casting (≥2 timecoded speakers → spatial premix + -12dB duck). Bounded so the parser stays linear.
+  masterScript: z.string().max(20000).optional(),
   // v330 — a user-uploaded soundtrack URL. When present the film's audio leg SKIPS
   // ambient music generation (Udio) entirely and the upload becomes the master bed.
   soundtrackUrl: z.string().min(1).max(2048).optional(),
@@ -221,7 +225,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -240,6 +244,8 @@ export async function POST(req: NextRequest) {
             // PHASE 2 L5 — per-render i2v model (Kling/Hailuo) → ServiceManager.
             ...(data.videoModel ? { videoModel: data.videoModel } : {}),
             ...(data.dialogueScript ? { dialogueScript: data.dialogueScript } : {}),
+            // DAY-6 — the timecoded Master Production Script → structured storyboard scenes + multi-voice casting.
+            ...(data.masterScript ? { masterScript: data.masterScript } : {}),
             // v330 — Music Video signals: a soundtrack skips ambient gen; the flag forces a sung song.
             ...(data.soundtrackUrl ? { soundtrackUrl: data.soundtrackUrl } : {}),
             ...(data.musicVideoMode ? { musicVideoMode: true } : {}),

@@ -433,6 +433,19 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   let sceneScripts = Array.isArray(input.metadata?.sceneScripts)
     ? (input.metadata.sceneScripts as unknown[]).map((s) => (typeof s === 'string' ? s : '')).filter(Boolean)
     : undefined;
+  // DAY-6 — a pasted TIMECODED Master Production Script drives the STORYBOARD: its parsed SCENE sheets
+  // (action lines, in order) become the per-scene prompts, so the film follows the script VISUALLY — not just
+  // its audio (the narration + multi-voice dialogue legs already read metadata.masterScript below). Additive +
+  // fail-open: only when the UI supplied no explicit sceneScripts AND the script parses to ≥2 scenes.
+  if ((!sceneScripts || sceneScripts.length === 0) && typeof input.metadata?.masterScript === 'string' && input.metadata.masterScript.trim()) {
+    const pm = parseMasterScript(input.metadata.masterScript);
+    const fromMaster = pm.ok ? pm.scenes.map((s) => s.action.trim()).filter(Boolean).map((a) => a.slice(0, 2000)) : [];
+    if (fromMaster.length >= 2) {
+      sceneScripts = fromMaster.slice(0, 12); // bound to the pipeline's max segment count
+      // eslint-disable-next-line no-console
+      console.log(`[filmComposite] master-script storyboard: ${sceneScripts.length} scenes from parseMasterScript`);
+    }
+  }
   // FIX A — Prompt-Agent character LOCK. The storyboard step (which runs the Prompt
   // Agent) threads the locked appearance fragment here so every clip prompt asserts the
   // SAME protagonist. If it's absent (a direct render that skipped the storyboard), run

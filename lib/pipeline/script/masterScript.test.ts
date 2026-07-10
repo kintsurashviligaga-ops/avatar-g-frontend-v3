@@ -187,3 +187,20 @@ describe('masterDialogueTurns', () => {
     expect(masterDialogueTurns(malformed, 'male')).toEqual([]);
   });
 });
+
+describe('DAY-6 master-script UI activation — the data path filmComposite now feeds from metadata.masterScript', () => {
+  const p = parseMasterScript(SCRIPT);
+  it('parsed SCENE sheets become the storyboard prompts (≥2 non-empty action lines → sceneScripts)', () => {
+    // Mirrors the filmComposite derivation: pm.scenes.map(s => s.action).filter(Boolean).slice(0,12)
+    const sceneScripts = p.scenes.map((s) => s.action.trim()).filter(Boolean).slice(0, 12);
+    expect(sceneScripts.length).toBeGreaterThanOrEqual(2);
+    expect(sceneScripts.every((a) => a.length > 0)).toBe(true);
+  });
+  it('the dialogue sheet yields ≥2 DISTINCT timecoded speakers → multi-voice spatial premix is viable', () => {
+    const turns = masterDialogueTurns(p, null);
+    const timed = turns.filter((t) => typeof t.startSec === 'number' && Number.isFinite(t.startSec));
+    const speakers = new Set(timed.map((t) => t.speaker.trim().toLowerCase()));
+    expect(timed.length).toBeGreaterThanOrEqual(2);   // enough turns to premix
+    expect(speakers.size).toBeGreaterThanOrEqual(2);   // ≥2 voices → the -12dB-ducked cast lane
+  });
+});
