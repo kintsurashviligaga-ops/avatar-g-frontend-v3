@@ -1,3 +1,5 @@
+import { IMAGE_PRIMARY_MODEL_KEY } from '@/lib/video/modelLock';
+
 export type ServiceType = 'avatar' | 'image' | 'photo' | 'video' | 'music' | 'visual-ai';
 export type QualityTier = 'standard' | 'high' | 'ultra';
 
@@ -105,7 +107,8 @@ const SERVICE_ROUTES: Record<ServiceType, RouteConfig> = {
     // 'fast' stays the deliberate cheap/quick escape (schnell); premium/ultra already pro.
     // ⚠️ COST: flux-1.1-pro ≈ $0.04/img vs schnell ≈ $0.003 — credit pricing (lib/credits/pricing)
     // must be reconciled by the founder before this is load-bearing on margin.
-    defaultModel: 'flux-pro',
+    // Wired to the SSoT constant so the V8 image lock is enforced here, not just documented.
+    defaultModel: IMAGE_PRIMARY_MODEL_KEY,
     variants: {
       fast:      'flux',
       general:   'flux-pro',

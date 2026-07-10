@@ -29,5 +29,10 @@ export const VIDEO_LAST_RESORT_MODEL = 'kwaivgi/kling-v1.6-standard';
  */
 export const VIDEO_PRIMARY = (process.env.REPLICATE_VIDEO_MODEL || VIDEO_PRIMARY_MODEL).trim();
 
-/** Image PRIMARY: FLUX 1.1 Pro — the `flux-pro` key in lib/replicate/models.ts. */
+/**
+ * Image primary for the REPLICATE path: FLUX 1.1 Pro (the `flux-pro` key in lib/replicate/models.ts,
+ * where this is wired in as `image.defaultModel`). NOTE this is the Replicate default/fallback engine
+ * only — the live chat/omni image surface deliberately defaults to NanoBanana (a cost/quality choice
+ * in ServiceManager.resolveImageProvider), with Replicate/FLUX as the error fallback.
+ */
 export const IMAGE_PRIMARY_MODEL_KEY = 'flux-pro';
