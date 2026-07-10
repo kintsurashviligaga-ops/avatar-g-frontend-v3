@@ -101,10 +101,14 @@ const SERVICE_ROUTES: Record<ServiceType, RouteConfig> = {
     outputType: 'image',
   },
   image: {
-    defaultModel: 'flux',
+    // V8-F2 — FLUX 1.1 Pro hard-locked as the PRIMARY production path (was flux-schnell).
+    // 'fast' stays the deliberate cheap/quick escape (schnell); premium/ultra already pro.
+    // ⚠️ COST: flux-1.1-pro ≈ $0.04/img vs schnell ≈ $0.003 — credit pricing (lib/credits/pricing)
+    // must be reconciled by the founder before this is load-bearing on margin.
+    defaultModel: 'flux-pro',
     variants: {
       fast:      'flux',
-      general:   'flux',
+      general:   'flux-pro',
       premium:   'flux-pro',
       ultra:     'flux-pro',
       realistic: 'realistic-vision',

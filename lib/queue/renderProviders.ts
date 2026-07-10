@@ -12,6 +12,7 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ProviderResolution, RenderJobKind } from './asyncRenderQueue';
+import { VIDEO_PRIMARY_MODEL } from '@/lib/video/modelLock';
 
 export interface SubmitResult {
   ok: boolean;
@@ -102,7 +103,7 @@ export function realProviders(env: NodeJS.ProcessEnv = process.env): Partial<Rec
   const token = env.REPLICATE_API_TOKEN;
   if (!token) return {};
   const musicModel = env.REPLICATE_MUSIC_MODEL || 'meta/musicgen';
-  const videoModel = env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard';
+  const videoModel = env.REPLICATE_VIDEO_MODEL || VIDEO_PRIMARY_MODEL; // hard-locked Kling v2.1 default
   const ttsModel = env.REPLICATE_TTS_MODEL || 'jaaari/kokoro-82m';
   return {
     music: replicateAdapter({ kind: 'music', model: musicModel, token, buildInput: (p) => ({ prompt: String(p.prompt ?? ''), duration: Number(p.durationSec ?? 30) }) }),

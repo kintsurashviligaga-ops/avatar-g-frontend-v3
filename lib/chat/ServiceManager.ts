@@ -7,6 +7,7 @@ import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanoba
 import { generateGrokImage, hasXaiApiKey } from '@/lib/ai/xaiImage';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { resolveModel } from '@/lib/replicate/models';
+import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { buildModelInput, validateInput } from '@/lib/replicate/schemas';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import type { IntentCategory } from '@/lib/chat/intentDetector';
@@ -63,7 +64,7 @@ const PROVIDER_CREATE_TIMEOUT_MS = 25_000;
 // Override with REPLICATE_VIDEO_MODEL (e.g. kwaivgi/kling-v1.6-standard for the cheaper tier, bytedance/
 // seedance-1-lite); kill with VIDEO_I2V_DISABLED=1. The provider cascade (Luma/LTX/Replicate) remains the
 // safety net — a v2.1 miss still falls through, so this can never leave a render with no engine.
-const VIDEO_I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim();
+const VIDEO_I2V_MODEL = VIDEO_PRIMARY; // hard-locked Kling v2.1 default (env-overridable) — see lib/video/modelLock
 const VIDEO_I2V_DISABLED = process.env.VIDEO_I2V_DISABLED === '1';
 const VIDEO_I2V_NEGATIVE =
   'blurry, distorted face, different person, deformed, low quality, cartoon, illustration, morphing, flickering, extra limbs, watermark, text overlay, bad anatomy, deformed hands, glitch, artifact, overexposed, underexposed, inconsistent clothing';
@@ -401,7 +402,7 @@ export class ServiceManager {
     // PHASE 2 L5 — per-render i2v model: the Cinema panel's Kling/Hailuo toggle wins,
     // else the REPLICATE_VIDEO_MODEL env default. buildI2vInput already shapes the
     // input per model family (kling start_image / minimax first_frame_image).
-    const KLING_I2V = 'kwaivgi/kling-v1.6-standard';
+    const KLING_I2V = VIDEO_PRIMARY; // hard-locked to Kling v2.1 (was v1.6-standard) — see lib/video/modelLock
     const model =
       request.videoModel === 'hailuo' ? 'minimax/hailuo-02'
       : request.videoModel === 'kling' ? KLING_I2V

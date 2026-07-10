@@ -13,6 +13,7 @@
  */
 import 'server-only';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
+import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -456,7 +457,7 @@ export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: st
   }
 }
 
-const I2V_MODEL = (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
+const I2V_MODEL = VIDEO_PRIMARY; // hard-locked Kling v2.1 default (env-overridable) — see lib/video/modelLock
 const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed';
 
 /**

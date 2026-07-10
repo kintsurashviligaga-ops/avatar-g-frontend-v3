@@ -20,6 +20,7 @@
  */
 import 'server-only';
 import ffmpegStatic from 'ffmpeg-static';
+import { VIDEO_PRIMARY_MODEL } from '@/lib/video/modelLock';
 
 export type ServiceTier = 'high' | 'medium' | 'low' | 'unavailable';
 
@@ -67,16 +68,18 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       icon: dot(hasReplicate, hasReplicate ? (usesPro ? 'high' : 'medium') : 'unavailable'),
     });
 
-    // 2 · VIDEO CLIPS — Kling i2v (standard default, pro via REPLICATE_VIDEO_MODEL)
-    const videoModel = (env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v1.6-standard').trim();
-    const klingPro = /pro/i.test(videoModel);
+    // 2 · VIDEO CLIPS — Kling i2v (v2.1 default; override via REPLICATE_VIDEO_MODEL)
+    const videoModel = (env.REPLICATE_VIDEO_MODEL || VIDEO_PRIMARY_MODEL).trim();
+    const klingV21 = /v2\.1/i.test(videoModel);
+    const klingHigh = klingV21 || /pro|master/i.test(videoModel);
+    const videoProvider = klingV21 ? 'Kling v2.1' : /pro/i.test(videoModel) ? 'Kling v1.6 Pro' : 'Kling v1.6 Standard';
     services.push({
       service: 'ვიდეო (Clips)',
-      provider: klingPro ? 'Kling v1.6 Pro' : 'Kling v1.6 Standard',
+      provider: videoProvider,
       available: hasReplicate,
-      tier: hasReplicate ? (klingPro ? 'high' : 'medium') : 'unavailable',
+      tier: hasReplicate ? (klingHigh ? 'high' : 'medium') : 'unavailable',
       note: !hasReplicate ? 'REPLICATE_API_TOKEN missing' : `${videoModel} via Replicate (i2v)`,
-      icon: dot(hasReplicate, hasReplicate ? (klingPro ? 'high' : 'medium') : 'unavailable'),
+      icon: dot(hasReplicate, hasReplicate ? (klingHigh ? 'high' : 'medium') : 'unavailable'),
     });
 
     // 3 · LIP-SYNC — sync/lipsync-2 (Sync Labs via Replicate, audio-driven) + HeyGen avatar path
