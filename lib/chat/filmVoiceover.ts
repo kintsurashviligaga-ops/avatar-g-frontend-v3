@@ -29,7 +29,7 @@ import 'server-only';
 import { sanitizeSpokenText } from './spokenText';
 import { castRoster, collapseVoicedTurns, type CastTurn, type VoicedTurn } from './dialogueCasting';
 import { llmText } from '@/lib/ai/llmText';
-import { selectTtsModel, voiceSettingsForModel, isGeorgianText } from '@/lib/audio/tts-model';
+import { selectTtsModel, voiceSettingsForModel, isGeorgianText, type ElevenLabsModelId } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -241,7 +241,14 @@ async function synthesizeVoiceover(
         ? process.env.ELEVENLABS_GEORGIAN_VOICE_ID
         : undefined) ?? process.env.ELEVENLABS_VOICE_ID);
     if (voiceId) {
-      const modelId = selectTtsModel(text);
+      const primaryModel = selectTtsModel(text);
+      // eleven_v3 is the ONLY EL model with native `ka`, but it is alpha / limited-access — if the
+      // account can't use it the request 4xxs and Georgian voiceover fails entirely (avatar + video
+      // dub break). Fall back to eleven_multilingual_v2 (phonetic ka — imperfect but audible) so a
+      // voice always comes out. Non-Georgian keeps its single turbo model.
+      const modelChain: ElevenLabsModelId[] = primaryModel === 'eleven_v3'
+        ? ['eleven_v3', 'eleven_multilingual_v2']
+        : [primaryModel];
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 30_000);
       try {
@@ -249,24 +256,27 @@ async function synthesizeVoiceover(
         // TTS call can't collide with a concurrent Music call (the song build fires
         // both) and trip the account's 2-concurrent 429.
         const out = await withElevenLabsSlot(async () => {
-          const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-            method: 'POST',
-            headers: {
-              'xi-api-key': apiKey,
-              'Content-Type': 'application/json',
-              Accept: 'audio/mpeg',
-            },
-            body: JSON.stringify({
-              text,
-              model_id: modelId,
-              voice_settings: { ...voiceSettingsForModel(modelId), ...(extraVoiceSettings ?? {}) },
-            }),
-            signal: ac.signal,
-          });
-          if (res.ok) {
-            const buf = Buffer.from(await res.arrayBuffer());
-            // Guard against an empty / error-page body masquerading as audio.
-            if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' as const };
+          for (const m of modelChain) {
+            const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+              method: 'POST',
+              headers: {
+                'xi-api-key': apiKey,
+                'Content-Type': 'application/json',
+                Accept: 'audio/mpeg',
+              },
+              body: JSON.stringify({
+                text,
+                model_id: m,
+                voice_settings: { ...voiceSettingsForModel(m), ...(extraVoiceSettings ?? {}) },
+              }),
+              signal: ac.signal,
+            });
+            if (res.ok) {
+              const buf = Buffer.from(await res.arrayBuffer());
+              // Guard against an empty / error-page body masquerading as audio.
+              if (buf.byteLength >= 1024) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' as const };
+            }
+            // else: try the next model in the chain (e.g. eleven_v3 not enabled on this account)
           }
           return null;
         });
