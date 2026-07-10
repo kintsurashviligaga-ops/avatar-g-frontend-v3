@@ -14,7 +14,8 @@ import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { runWithLatencyFailover, type ProviderAttempt } from '@/lib/providers/latencyFailover';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { randomUUID } from 'node:crypto';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { applyApiGuards } from '@/lib/api/guard';
 import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
@@ -179,8 +180,11 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
 }
 
 export async function POST(req: NextRequest) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
-  if (rl) return rl;
+  // applyApiGuards = EXPENSIVE rate-limit + per-user daily AI budget cap (the sibling image route
+  // enforces the same). Music is the priciest provider (Udio/EL/MusicGen, ~4min renders), so it must
+  // not be exempt from the daily cap.
+  const gate = await applyApiGuards(req, { limit: RATE_LIMITS.EXPENSIVE, label: 'ai.music' });
+  if (gate.response) return gate.response;
 
   let prompt = '';
   let style = 'cinematic';
@@ -213,7 +217,10 @@ export async function POST(req: NextRequest) {
     // (else a 0-balance user generates unlimited free tracks). Authed only; fail-open.
     try {
       const { user: gateUser } = await authedClientFromRequest(req);
-      if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('music', { seconds: durationSec })))) {
+      // Billed seconds: full-song (durationSec 0) charges as 90s; a COVER always renders ~30s so it
+      // charges 30 regardless of the picked length. Keeps the gate consistent with the deduct + UI.
+      const gateBillSeconds = (typeof body.audioReference === 'string' && body.audioReference.trim()) ? 30 : (durationSec === 0 ? 90 : durationSec);
+      if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('music', { seconds: gateBillSeconds })))) {
         return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
       }
     } catch { /* fail-open — the post-success deduct remains the backstop */ }
@@ -235,6 +242,10 @@ export async function POST(req: NextRequest) {
   } catch {
     /* malformed body → guard below */
   }
+
+  // Canonical billed seconds (full-song 0→90; cover always renders ~30s→30) — the post-success
+  // deduct uses this so the charge matches the pre-render gate AND the client toast.
+  const billSeconds = audioReference ? 30 : (durationSec === 0 ? 90 : durationSec);
 
   if (!prompt) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
@@ -362,7 +373,7 @@ export async function POST(req: NextRequest) {
         // music mode generated for FREE (same leak class as the image route). Charge the
         // balance-of-record via the idempotent deduct_credits RPC, cost by duration. Idempotent per
         // tray jobId; rejects overdraw; best-effort AFTER success so a ledger hiccup never fails the track.
-        await deductCredits(user.id, creditCostFor('music', { seconds: durationSec }), `music:${clientJobId || hostedUrl}:${user.id}`)
+        await deductCredits(user.id, creditCostFor('music', { seconds: billSeconds }), `music:${clientJobId || hostedUrl}:${user.id}`)
           .catch(() => { /* best-effort — the asset is already delivered */ });
       }
       // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
