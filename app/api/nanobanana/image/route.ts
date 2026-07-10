@@ -11,6 +11,8 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -222,11 +224,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Image host failed' }, { status: 502 });
     }
 
-    // Best-effort: file the image into the signed-in user's Library so it appears
-    // in the media grid immediately. Anonymous callers simply aren't filed; a
-    // Library-write failure never blocks returning the image.
+    // Charge + file the asset for the signed-in user (one auth fetch for both).
     try {
       const { user } = await authedClientFromRequest(req);
+      if (user?.id) {
+        // BILLING FIX — this DIRECT route bypassed providerRouter's post-success charge, so chat
+        // image mode generated for FREE (a real credit leak: balance never dropped). Charge the
+        // balance-of-record (profiles.credits_balance) via the same idempotent deduct_credits RPC and
+        // cost the chat-orchestrator path uses. Idempotent per tray job (retries dedupe); deduct_credits
+        // rejects overdraw; best-effort AFTER success so a ledger hiccup never fails the delivered asset.
+        await deductCredits(user.id, creditCostFor('image'), `image:nanobanana:${clientJobId || hostedUrl}:${user.id}`)
+          .catch(() => { /* best-effort — the asset is already delivered */ });
+      }
       // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
       // row (one row, not a duplicate); direct/other callers still get a fresh UUID.
       await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'image', url: hostedUrl, prompt });
