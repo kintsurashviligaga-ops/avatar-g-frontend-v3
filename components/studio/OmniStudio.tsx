@@ -2424,7 +2424,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // jobId → the remix route's PER-TRANSACTION idempotency ref (remix:productad:<jobId>).
           // All clips of one ad share it; only the primary clip is charged, so a retry of that clip
           // dedupes while a NEW ad (new jobId) charges correctly — fixing the once-per-user under-charge.
-          body: JSON.stringify({ op: 'productad', imageUrl, preset, aspect, noMusic, jobId, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
+          body: JSON.stringify({ op: 'productad', imageUrl, preset, aspect, noMusic, jobId, productDurationSec: duration, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
         const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
         const out = r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
@@ -2455,6 +2455,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             scorePrompt,
             ...(marketing ? { marketing } : {}),
             ...(voiceoverScript.trim() ? { voiceoverScript: voiceoverScript.trim() } : {}),
+            // The product-ad was ALREADY charged (full price) at the remix step under this jobId;
+            // this billing token tells assemble to skip its own charge (no double-bill).
+            ...(jobId ? { billingToken: jobId } : {}),
             globalRender: { transition: 'dissolve' },
           }),
         });

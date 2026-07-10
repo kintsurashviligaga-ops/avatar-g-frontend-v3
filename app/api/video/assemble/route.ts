@@ -141,6 +141,12 @@ interface AssembleBody {
    *  finished master is stamped onto the storage-backed record so any client /
    *  reload can recover it via GET /api/video/status/[tokenId]. */
   filmTokenId?: string | null;
+  /** PRODUCT-AD single-charge: the client jobId that /api/video/remix already
+   *  billed (at the full video tier) for a Product-Ad. When it carries a recorded
+   *  master, THIS assemble waives its charge — the overlay/voiceover pass is part of
+   *  the one ad price, not a second charge. Unlike filmTokenId it triggers NO
+   *  film-specific side-effects (no assembling/failed status writes, no 'cut' transition). */
+  billingToken?: string | null;
   /** PHASE 55 §2 — the film brief, used to compose a cohesive fallback score
    *  on Replicate MusicGen when the upstream Udio track is missing. */
   scorePrompt?: string | null;
@@ -246,12 +252,18 @@ async function assembleImpl(req: NextRequest) {
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
   const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
-  // SECURE double-charge guard (rank 3): a filmTokenId that ALREADY carries a masterUrl means the
-  // FIRST assemble of this film already rendered + billed. The lip-sync / composite re-stitch fires
-  // a SECOND assemble for the SAME film — it must NOT charge again (or burn a second free-film slot).
-  // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). A server-issued
-  // token + server-tracked master means a client cannot forge this to render for free.
-  const filmAlreadyBilled = filmTokenId ? !!(await getFilmStatus(filmTokenId))?.masterUrl : false;
+  // PRODUCT-AD single-charge token (rank 2): the client jobId that /api/video/remix already billed
+  // (full video tier) for a Product-Ad. Separate from filmTokenId so it drives the billing SKIP
+  // below WITHOUT any film-specific side-effects (no recordFilmAssembling / recordFilmFailed / 'cut').
+  const billingToken = typeof body.billingToken === 'string' && body.billingToken.trim() ? body.billingToken.trim() : null;
+  // SECURE double-charge guard (ranks 2 + 3): a token that ALREADY carries a masterUrl means the
+  // work was already rendered + billed upstream (a film's FIRST assemble, or a Product-Ad's remix
+  // clip). The lip-sync / composite re-stitch (film) or the overlay/voiceover pass (ad) fires a
+  // SECOND assemble for the SAME job — it must NOT charge again (or burn a second free-film slot).
+  // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Server-issued
+  // tokens + a server-tracked master mean a client cannot forge this to render for free.
+  const billedTokenForCheck = filmTokenId ?? billingToken;
+  const filmAlreadyBilled = billedTokenForCheck ? !!(await getFilmStatus(billedTokenForCheck))?.masterUrl : false;
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Resolve the output orientation from the explicit key OR the aspect/format

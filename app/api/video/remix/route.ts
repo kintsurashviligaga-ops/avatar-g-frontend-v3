@@ -33,7 +33,8 @@ import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { CREDIT_COSTS } from '@/lib/credits/pricing';
+import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
+import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -162,11 +163,22 @@ export async function POST(req: NextRequest) {
   // correctly charges. Fall back to a fresh uuid when no jobId is supplied (still fixes the
   // under-charge; that path just isn't retry-idempotent, which is safe — none of these auto-retry).
   const txnRef = `remix:${op}:${jobId ?? crypto.randomUUID()}`;
+  // ── PRODUCT-AD SINGLE-CHARGE ─────────────────────────────────────────────────
+  // A product ad is billed ONCE, here on its primary clip, at the FULL video tier
+  // (25 cr ≤30s / 45 cr 60s) — the same price the client's toast shows — NOT the
+  // remix_video rate. The downstream /api/video/assemble (overlay + voiceover pass)
+  // then WAIVES its own charge via a billingToken, so an ad costs one video credit,
+  // not remix + assemble. Every other remix op keeps the flat remix_video price.
+  const productAdPrimary = op === 'productad' && !productAdSecondaryClip;
+  const productAdDurationSec = Math.max(1, Math.floor(Number(body.productDurationSec)) || 30);
+  const chargeAmount = productAdPrimary
+    ? creditCostFor('video', { seconds: productAdDurationSec })
+    : CREDIT_COSTS.remix_video;
   // Did we actually take an up-front credit off the wallet? (Only then must a downstream miss
   // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
   if (CREDIT_CHARGED_OPS.has(op) && !productAdSecondaryClip && remixUid && !(await isAdminUser(remixUid))) {
-    const debit = await deductCredits(remixUid, CREDIT_COSTS.remix_video, txnRef);
+    const debit = await deductCredits(remixUid, chargeAmount, txnRef);
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
       const message = debit.reason === 'insufficient'
         ? 'Not enough credits for this edit. Top up to continue.'
@@ -188,10 +200,10 @@ export async function POST(req: NextRequest) {
     if (!charged || refunded || !remixUid) return;
     refunded = true;
     try {
-      const r = await refundCredits(remixUid, CREDIT_COSTS.remix_video, `${txnRef}:refund:${why}`);
+      const r = await refundCredits(remixUid, chargeAmount, `${txnRef}:refund:${why}`);
       if (!r.ok) {
         // eslint-disable-next-line no-console
-        console.error(`[video/remix] REFUND FAILED op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why} reason=${r.reason} — ${CREDIT_COSTS.remix_video} credit(s) may be STRANDED, manual reconcile needed`);
+        console.error(`[video/remix] REFUND FAILED op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why} reason=${r.reason} — ${chargeAmount} credit(s) may be STRANDED, manual reconcile needed`);
       }
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -264,6 +276,13 @@ export async function POST(req: NextRequest) {
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
       const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
       if (!url) return failRefund('Product ad generation failed.', 'render-null');
+      // The ad is now paid for (primary clip, full video tier above). Stamp the client jobId
+      // as an already-billed token so the downstream /api/video/assemble (which the client calls
+      // with `billingToken: jobId`) waives ITS charge — one video credit per ad, not remix+assemble.
+      // Fail-open: a record miss only means assemble bills normally (never a wrongful double-skip).
+      if (productAdPrimary && charged && jobId) {
+        try { await recordFilmMaster(jobId, url); } catch { /* fail-open: assemble bills normally */ }
+      }
       // FIX 3 — SINGLE-clip ads (sceneIdx < 0) come back silent; lay a preset score
       // under them so the 6s ad isn't mute. Multi-clip (sceneIdx >= 0) skips this — the
       // assemble pipeline scores the stitched master, so per-clip music would clash.
