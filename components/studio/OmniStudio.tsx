@@ -677,7 +677,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors active:scale-95 ${active ? 'bg-app-accent/15 text-app-accent' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors active:scale-95 ${active ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
       style={{ minHeight: 36 }}
     >
       {children}
@@ -3223,7 +3223,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last && last.role === 'assistant' && !last.text) next[next.length - 1] = { ...last, text: '⚠️' };
+        if (last && last.role === 'assistant' && !last.text) next[next.length - 1] = { ...last, text: locale === 'en' ? '⚠️ Something went wrong. Please try again.' : locale === 'ru' ? '⚠️ Что-то пошло не так. Попробуйте снова.' : '⚠️ პასუხის მიღება ვერ მოხერხდა. სცადე თავიდან.' };
         return next;
       });
     } finally {
@@ -4383,10 +4383,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     {m.batch.tiles.map((tile, k) => (
                       <div key={k} className="relative overflow-hidden rounded-xl bg-app-elevated/40 ring-1 ring-app-border/10" style={{ aspectRatio: m.batch!.spec.aspect.replace(':', '/') }}>
                         {tile.status === 'done' && tile.url ? (
-                          <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
-                          </button>
+                          <>
+                            <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
+                            </button>
+                            {/* Cross-service bridge — each variation can be sent to the Video studio too. */}
+                            <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'} title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
+                              onClick={(e) => { e.stopPropagation(); sendImageToVideo(tile.url!); }}
+                              className="absolute right-1.5 top-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-app-bg/70 text-[13px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation">🎬</button>
+                          </>
                         ) : tile.status === 'failed' ? (
                           <div className="flex h-full w-full items-center justify-center text-app-danger/70"><X size={18} /></div>
                         ) : (
@@ -4830,7 +4836,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </button>
               <button type="button" onClick={() => setLipTab('motion')}
                 className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'motion' ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                🎭 Motion
+                🎭 {locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}
               </button>
             </div>
             {lipTab === 'motion' ? (
@@ -5274,7 +5280,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     {([
                       ['female', '👩‍🎤', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
-                      ['male', '👨‍🎤', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'მამრობითი'],
+                      ['male', '👨‍🎤', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
                       ['duet', '👫', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
                     ] as const).map(([id, emoji, label]) => {
                       const on = videoVocalGender === id;
@@ -5407,7 +5413,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <div className="grid grid-cols-3 gap-1.5">
                     {([['9:16', 'h-4 w-2.5'], ['1:1', 'h-3.5 w-3.5'], ['16:9', 'h-3 w-5']] as const).map(([id, box]) => (
                       <button key={id} type="button" onClick={() => setProductAspect(id)}
-                        className={`flex flex-col items-center gap-1 rounded-xl border py-2 text-center transition ${productAspect === id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
+                        className={`flex flex-col items-center gap-1 rounded-xl border py-2 text-center transition ${productAspect === id ? 'border-app-accent/60 bg-app-accent/12 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
                         <span className="flex h-6 items-center justify-center"><span className={`rounded-sm border border-current ${box}`} /></span>
                         <span className="text-[11px] font-medium">{id}</span>
                       </button>

@@ -23,9 +23,9 @@ const LABELS: Record<Lang, {
 }> = {
   en: { badge: 'Pricing', month: '/mo', year: '/yr', popular: 'Most Popular', focus: 'Choose the plan that fits your workflow and scale.', cta: 'Get started',
         videos: 'Videos', music: 'Music tracks', images: 'Storyboard images', credits: 'credits included' },
-  ka: { badge: 'ფასები', month: '/თვე', year: '/წელ', popular: 'ყველაზე პოპულარული', focus: 'აირჩიე გეგმა, რომელიც შენს workflow-ს შეესაბამება.', cta: 'დაწყება',
+  ka: { badge: 'ფასები', month: '/თვე', year: '/წელ', popular: 'ყველაზე პოპულარული', focus: 'აირჩიე გეგმა, რომელიც შენს სამუშაო პროცესს შეესაბამება.', cta: 'დაწყება',
         videos: 'ვიდეო', music: 'მუსიკის ტრეკი', images: 'სთორიბორდ სურათი', credits: 'კრედიტი შედის' },
-  ru: { badge: 'Тарифы', month: '/мес', year: '/год', popular: 'Самый популярный', focus: 'Выберите план под ваш workflow и масштаб.', cta: 'Начать',
+  ru: { badge: 'Тарифы', month: '/мес', year: '/год', popular: 'Самый популярный', focus: 'Выберите план под ваш рабочий процесс и масштаб.', cta: 'Начать',
         videos: 'видео', music: 'музыкальных трека', images: 'storyboard-изображений', credits: 'кредитов включено' },
 }
 

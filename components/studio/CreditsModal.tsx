@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Loader2, LogIn, CreditCard, Check } from 'lucide-react';
+import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle } from 'lucide-react';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 import { track } from '@/lib/analytics/track';
 
@@ -235,7 +235,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         {/* Self-contained toast (no ToastProvider in this tree) */}
         {toast && (
           <div className="mx-5 mb-5 flex items-center gap-2 rounded-xl bg-app-elevated px-3.5 py-2.5 text-[12.5px] font-medium text-app-text ring-1 ring-app-border/15">
-            <Check size={14} className="shrink-0 text-app-accent" /> {toast}
+            <AlertCircle size={14} className="shrink-0 text-rose-400" /> {toast}
           </div>
         )}
       </div>
