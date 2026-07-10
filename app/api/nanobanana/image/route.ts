@@ -11,7 +11,7 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
-import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
@@ -73,15 +73,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'NANOBANANA_API_KEY not configured' }, { status: 500 });
   }
 
-  // PRE-RENDER balance gate — never burn a paid provider call for a user who can't afford it.
-  // Without this a 0-balance user generates UNLIMITED free images (post-success deduct rejects the
-  // overdraw and the caller swallows it). Authed only (anon/preview stays free-to-try); fail-open.
-  try {
-    const { user: gateUser } = await authedClientFromRequest(req);
-    if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('image')))) {
-      return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
-    }
-  } catch { /* fail-open — the post-success deduct remains the backstop */ }
+  // ── PRE-RENDER RESERVE STATE (TOCTOU fix) ────────────────────────────────────
+  // The credit is now DEBITED before the provider call (inside the try, once the tray jobId
+  // is known) and REFUNDED on any downstream miss. Declared out here so the outer catch can
+  // refund a mid-render throw. This REPLACES the old hasSufficientBalance READ-gate, which let
+  // N concurrent tiles of one ×4 batch pass a stale balance and each render for free — the
+  // post-success deduct then rejected the overdraw only AFTER 4 paid provider calls had fired.
+  let reservedUid: string | null = null;
+  let reserveRef = '';
+  let reserved = false;
+  const refundReserve = async (): Promise<void> => {
+    if (!reserved || !reservedUid) return;
+    reserved = false; // idempotent: refund at most once
+    await refundCredits(reservedUid, creditCostFor('image'), `${reserveRef}:refund`).catch(() => {});
+  };
 
   try {
     const body = await req.json() as {
@@ -107,6 +112,25 @@ export async function POST(req: NextRequest) {
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
     }
+
+    // RESERVE the credit up front (state declared above). The atomic deduct serialises a
+    // concurrent ×4 batch: only tiles the wallet can actually fund proceed; the rest 402 WITHOUT
+    // a paid render (fixes the free-image TOCTOU leak). Per-tile idempotency ref — a retry of the
+    // SAME tile dedupes, a new tile charges. Authed only (anon/preview stays free-to-try). 402 ONLY
+    // on a true insufficient balance; a ledger 'error'/'skipped' fails OPEN (proceed unbilled) to
+    // preserve this route's try-to-generate behaviour, exactly as the old read-gate did.
+    try {
+      const { user: rUser } = await authedClientFromRequest(req);
+      if (rUser?.id) {
+        reservedUid = rUser.id;
+        reserveRef = `image:nanobanana:${clientJobId || randomUUID()}:${rUser.id}`;
+        const debit = await deductCredits(rUser.id, creditCostFor('image'), reserveRef);
+        if (!debit.ok && debit.reason === 'insufficient') {
+          return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
+        }
+        reserved = debit.ok;
+      }
+    } catch { /* fail-open — a ledger hiccup never blocks a paid render */ }
 
     const quality     = body.quality ?? 'high';
     const endpoint    = (body.endpoint ?? QUALITY_ENDPOINT[quality] ?? 'v2-2k') as NanoBananaEndpoint;
@@ -185,6 +209,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!providerUrl && !backupB64) {
+      await refundReserve(); // paid for nothing → give the reserved credit back
       return NextResponse.json({
         success: false,
         error:   providerText ?? 'Image provider returned no image URL',
@@ -231,23 +256,16 @@ export async function POST(req: NextRequest) {
 
     // A backup-b64 upload miss can leave no usable URL → treat as a provider miss (502).
     if (!hostedUrl) {
+      await refundReserve(); // no deliverable asset → give the reserved credit back
       return NextResponse.json({ success: false, error: 'Image host failed' }, { status: 502 });
     }
 
-    // Charge + file the asset for the signed-in user (one auth fetch for both).
+    // File the finished asset. The credit was already RESERVED up front (see the reserve above),
+    // so there is NO charge here — only the durable completion row. Reuse the composer's tray jobId
+    // so this UPSERTS the client's placeholder (one row, not a duplicate); other callers get a fresh
+    // UUID. Fail-open: a record miss never fails the already-delivered asset.
     try {
       const { user } = await authedClientFromRequest(req);
-      if (user?.id) {
-        // BILLING FIX — this DIRECT route bypassed providerRouter's post-success charge, so chat
-        // image mode generated for FREE (a real credit leak: balance never dropped). Charge the
-        // balance-of-record (profiles.credits_balance) via the same idempotent deduct_credits RPC and
-        // cost the chat-orchestrator path uses. Idempotent per tray job (retries dedupe); deduct_credits
-        // rejects overdraw; best-effort AFTER success so a ledger hiccup never fails the delivered asset.
-        await deductCredits(user.id, creditCostFor('image'), `image:nanobanana:${clientJobId || hostedUrl}:${user.id}`)
-          .catch(() => { /* best-effort — the asset is already delivered */ });
-      }
-      // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
-      // row (one row, not a duplicate); direct/other callers still get a fresh UUID.
       await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'image', url: hostedUrl, prompt });
     } catch {
       /* fail-open */
@@ -261,6 +279,7 @@ export async function POST(req: NextRequest) {
       credits,
     });
   } catch (err) {
+    await refundReserve(); // mid-render throw → give the reserved credit back
     const message = err instanceof Error ? err.message : 'Image generation failed';
     console.error('[nanobanana/image]', message);
     return NextResponse.json({ success: false, error: message }, { status: 502 });
