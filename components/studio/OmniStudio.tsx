@@ -4517,6 +4517,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
               {(() => {
                 const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
+                // Director's Console for QUEUED cinema renders: the Cap-3 queue path never sets the
+                // global `busy` flag (so `pending` is false and the console was hidden). Key off the
+                // bubble's OWN genKind/videoProgress/filmRoster instead — per-message + queue-safe, so
+                // it shows from the moment the film bubble is pushed and survives parallel jobs (not
+                // just the last message). Excludes done (videoUrl) and failed (⚠️) bubbles.
+                const isInflightVideo = m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.batch && !m.text?.startsWith('⚠️') && (typeof m.videoProgress === 'number' || !!m.filmRoster || i === messages.length - 1);
                 // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
                 // staged-timer console. Checked first so it wins in chat mode too.
                 if (pending && m.remixOpKind) {
@@ -4524,7 +4530,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 }
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
-                if (pending && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0)) {
+                // isInflightVideo also opens the second (mode/storyboard) gate so a queued film
+                // bubble in chat mode without a storyboard still shows the console.
+                if ((pending || isInflightVideo) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo)) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                   const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
