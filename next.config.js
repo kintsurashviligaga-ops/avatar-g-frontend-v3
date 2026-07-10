@@ -16,6 +16,25 @@ const isDev = process.env.NODE_ENV === 'development';
 // previews blocked from playback — is now locked down against re-introduction.
 const { CSP_DIRECTIVES } = require('./lib/security/csp');
 
+// ─── Service-worker cache-buster (Vercel build only) ─────────────────────────
+// Vercel runs `next build` DIRECTLY (not our npm `vercel-build`), so THIS is where the SW cache name is made
+// build-derived: stamp the deploy's commit SHA into public/sw.js's CACHE_NAME. next build loads this config
+// BEFORE copying public/, so the served sw.js carries the SHA → its `activate` handler deletes every non-matching
+// cache → returning visitors can never get a stale shell after a deploy (kills the recurring "still shows old").
+// Gated on process.env.VERCEL so local dev/build never mutate the committed sw.js. Fail-soft: never breaks build.
+if (process.env.VERCEL) {
+  try {
+    const fs = require('fs');
+    const swPath = 'public/sw.js';
+    if (fs.existsSync(swPath)) {
+      const sha = (process.env.VERCEL_GIT_COMMIT_SHA || '').trim().slice(0, 7) || `v${buildVersion}`;
+      const src = fs.readFileSync(swPath, 'utf8');
+      const out = src.replace(/const CACHE_NAME = '[^']*';/, `const CACHE_NAME = 'avatar-g-shell-${sha}';`);
+      if (out !== src) { fs.writeFileSync(swPath, out); console.log(`[stamp-sw] CACHE_NAME -> avatar-g-shell-${sha}`); }
+    }
+  } catch (e) { console.warn('[stamp-sw] non-fatal:', e && e.message ? e.message : e); }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
