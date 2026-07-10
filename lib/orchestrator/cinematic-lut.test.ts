@@ -1,4 +1,4 @@
-import { buildCubeFile, pickLutLook, LUT_FILENAME } from './cinematic-lut';
+import { buildCubeFile, pickLutLook, LUT_FILENAME, gradePixel } from './cinematic-lut';
 
 describe('cinematic-lut', () => {
   test('buildCubeFile emits a valid 17³ .cube with header + exact row count', () => {
@@ -41,6 +41,17 @@ describe('cinematic-lut', () => {
     expect(pickLutLook('a documentary about coffee')).toBe('cinematic');
     expect(pickLutLook('')).toBe('cinematic');
     expect(pickLutLook(null)).toBe('cinematic');
+  });
+
+  test('cinematic default keeps a SUBTLE (non-yellow) highlight warmth [V8-F3]', () => {
+    // A highlight grey must not read as yellow: the warm push (mapped R − B) is gentle,
+    // a regression guard against the old +0.05/-0.04 tint (~0.078 spread → yellow cast).
+    const [hr, , hb] = gradePixel('cinematic', 0.8, 0.8, 0.8);
+    expect(hr - hb).toBeLessThan(0.05);
+    expect(hr - hb).toBeGreaterThanOrEqual(0); // still teal-orange (warm highlights), just gentle
+    // Mid grey stays neutral in red — no overall cast.
+    const [mr] = gradePixel('cinematic', 0.5, 0.5, 0.5);
+    expect(Math.abs(mr - 0.5)).toBeLessThan(0.03);
   });
 
   test('LUT filenames are stable, descriptive .cube names (for proof/logs)', () => {

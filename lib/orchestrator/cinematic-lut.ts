@@ -28,15 +28,18 @@ const smooth = (x: number) => x * x * (3 - 2 * x);
 type LookFn = (r: number, g: number, b: number) => [number, number, number];
 
 const LOOKS: Record<LutLook, LookFn> = {
-  // Subtle Hollywood teal-orange: cool the shadows, warm the highlights, gentle
-  // contrast. Safe default for any film.
+  // Subtle Hollywood teal-orange: cool the shadows, GENTLY warm the highlights, mild
+  // contrast. Safe default for any film. V8-F3 — the highlight warm push was halved
+  // (+0.05→+0.02 R, −0.04→−0.02 B, +0.015→+0.008 G) because the old amounts cast a
+  // visible YELLOW tint on ordinary footage; the teal shadows (the intended half of
+  // teal-orange) are kept.
   cinematic: (r, g, b) => {
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     const hi = smooth(luma);
     const sh = 1 - hi;
-    const nr = r + 0.05 * hi - 0.02 * sh;
-    const ng = g + 0.015 * hi - 0.005 * sh;
-    const nb = b - 0.04 * hi + 0.06 * sh;
+    const nr = r + 0.02 * hi - 0.02 * sh;
+    const ng = g + 0.008 * hi - 0.005 * sh;
+    const nb = b - 0.02 * hi + 0.06 * sh;
     // mild S-curve contrast around 0.5
     const contrast = (v: number) => clamp01(0.5 + (v - 0.5) * 1.08);
     return [contrast(nr), contrast(ng), contrast(nb)];
@@ -84,6 +87,14 @@ export function pickLutLook(brief: string | null | undefined): LutLook {
     || /ოქროსფერ|მზის ჩასვლ|თბილ/.test(brief ?? '');
   if (warm) return 'warm_golden';
   return 'cinematic';
+}
+
+/**
+ * Grade a single 0..1 RGB pixel through a look. Exported for tint regression tests
+ * (the LOOKS table itself stays private).
+ */
+export function gradePixel(look: LutLook, r: number, g: number, b: number): [number, number, number] {
+  return (LOOKS[look] ?? LOOKS.cinematic)(r, g, b);
 }
 
 /**
