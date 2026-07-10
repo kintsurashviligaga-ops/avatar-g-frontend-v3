@@ -1843,9 +1843,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (transitCharacterUrl) {
       setMode('video');
       setOptionsOpen(true);
-      setVideoCharacterRefs([transitCharacterUrl]); // image → locked character identity (primary)
+      setVideoCharacterRefs([transitCharacterUrl]); // the bridged image → the film's first frame
+      // "Send image to video" means ANIMATE THIS IMAGE. Default to a single 6s clip anchored on it
+      // (sceneFrameCount derives to 1) instead of a 30s multi-scene film that reinvents the visuals —
+      // that mismatch is why a bridged image "generated something completely different". User can bump
+      // the duration to 30/60s for a full film.
+      setVideoDuration(6);
       clearCharacter();
-      setShareToast(locale === 'en' ? '🎬 Character sent to the Video studio' : locale === 'ru' ? '🎬 Персонаж перенесён в видео-студию' : '🎬 პერსონაჟი ვიდეო სტუდიაში გადმოტანილია!');
+      setShareToast(locale === 'en' ? '🎬 Image sent to Video — press send to animate it' : locale === 'ru' ? '🎬 Изображение в Видео — нажмите «Отправить», чтобы оживить' : '🎬 სურათი ვიდეოშია — დააჭირე გაგზავნას რომ გააცოცხლო');
       setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), 2600);
       // Briefly highlight the character slot so the user sees where it landed.
       setTimeout(() => {
@@ -3521,6 +3526,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               if (pj.done) { if (pj.url) url = pj.url; else failReason = pj.error || t.lipsyncFailed; break; }
             }
           }
+          // HeyGen unavailable / unpaid package → fall back to Replicate SadTalker: the default
+          // presenter face speaks the SAME cloned-voice audio. Keeps the presenter working without HeyGen.
+          if (!url && syn.success && syn.audioUrl) {
+            try {
+              const fbRes = await fetch('/api/video/lipsync', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
+                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation }),
+              });
+              const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null };
+              if (fb.jobId) {
+                failReason = null;
+                for (let i = 0; i < 90 && !url; i++) {
+                  if (!mine()) return;
+                  await new Promise((r) => setTimeout(r, 6000));
+                  const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(fb.jobId)}`, { credentials: 'include', signal: ac.signal });
+                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+                  if (pj.done) { if (pj.url) url = pj.url; break; }
+                }
+              }
+            } catch { /* keep the HeyGen failure below */ }
+          }
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
@@ -4749,7 +4775,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* Mobile: collapsible sheet (max-h-58dvh when open). Desktop (lg+): cap the inline
             options panel at 58dvh + its own scroll so the chat/results stay visible above it
             instead of the fully-expanded panel dominating the column. */}
-        <div className={`${optionsOpen ? 'max-h-[58dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}>
+        <div className={`${optionsOpen ? 'max-h-[72dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}>
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
             affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
             collapses it. Lives at the top of the scroll area so it's always reachable. */}
