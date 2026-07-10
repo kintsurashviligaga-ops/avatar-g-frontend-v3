@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, type GradeStyle } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, fitAspect, type GradeStyle } from '@/lib/video/remixOps';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
       // with `billingToken: jobId`) waives ITS charge — one video credit per ad, not remix+assemble.
       // Fail-open: a record miss only means assemble bills normally (never a wrongful double-skip).
       if (productAdPrimary && charged && jobId) {
-        try { await recordFilmMaster(jobId, url); } catch { /* fail-open: assemble bills normally */ }
+        try { await recordFilmMaster(jobId, url, null, remixUid); } catch { /* fail-open: assemble bills normally */ }
       }
       // FIX 3 — SINGLE-clip ads (sceneIdx < 0) come back silent; lay a preset score
       // under them so the 6s ad isn't mute. Multi-clip (sceneIdx >= 0) skips this — the
@@ -413,7 +413,14 @@ export async function POST(req: NextRequest) {
         // user ALWAYS gets a moving, restyled clip. The swap photo (if any) rides along as
         // the kling identity reference.
         const url = (await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined)) || (await kenBurnsClip(startImage, 5, aspect));
-        return url ? ok(url, { still: styled?.url ?? null }) : failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
+        if (!url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
+        // Kling v2.1 (the locked default) infers the output ratio from the START IMAGE and IGNORES
+        // aspect_ratio (remixOps only sets it for v1.6). So a requested aspect that differs from the
+        // source frame is silently dropped — worst on the raw-frame fallback (NanoBanana miss →
+        // startImage = the source-aspect frame). Post-fit to the requested aspect, mirroring the
+        // Motion Control path. Fail-open: keep the raw clip if the fit itself misses.
+        const fitted = await fitAspect(url, aspect).catch(() => null);
+        return ok(fitted || url, { still: styled?.url ?? null });
       }
 
       default:

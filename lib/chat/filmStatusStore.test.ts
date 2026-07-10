@@ -21,6 +21,7 @@ import {
   recordFilmAssembling,
   recordFilmMaster,
   recordFilmFailed,
+  consumeFilmBilling,
   filmStatusPersistenceEnabled,
   type FilmStatusRecord,
 } from './filmStatusStore';
@@ -113,8 +114,23 @@ describe('mergeMaster — stamp a finished master', () => {
   test('synthesizes a minimal assembled record when none exists', () => {
     const rec = mergeMaster(null, 't9', 'https://cdn/m.mp4', null, 5);
     expect(rec).toEqual<FilmStatusRecord>({
-      tokenId: 't9', phase: 'assembled', clips: [], audioReady: false, masterUrl: 'https://cdn/m.mp4', qa: null, updatedAt: 5, error: null,
+      tokenId: 't9', phase: 'assembled', clips: [], audioReady: false, masterUrl: 'https://cdn/m.mp4', qa: null, payerUid: null, billingConsumed: false, updatedAt: 5, error: null,
     });
+  });
+
+  test('stamps the payer uid and leaves the billing waiver unspent', () => {
+    const rec = mergeMaster(null, 't9', 'https://cdn/m.mp4', null, 5, 'user-abc');
+    expect(rec.payerUid).toBe('user-abc');
+    expect(rec.billingConsumed).toBe(false);
+  });
+
+  test('a re-stamp preserves the original payer + a spent waiver (null uid does not erase them)', () => {
+    const prev: FilmStatusRecord = {
+      tokenId: 't9', phase: 'assembled', clips: [], audioReady: false, masterUrl: 'https://cdn/a.mp4', payerUid: 'user-abc', billingConsumed: true, updatedAt: 1, error: null,
+    };
+    const rec = mergeMaster(prev, 't9', 'https://cdn/b.mp4', null, 9, null);
+    expect(rec.payerUid).toBe('user-abc'); // not clobbered to null
+    expect(rec.billingConsumed).toBe(true); // spent stays spent
   });
 
   test('preserves prior clips while promoting to assembled', () => {
@@ -163,6 +179,26 @@ describe('store helpers — fail-open in the default no-Redis state', () => {
     const rec = await getFilmStatus('mem-3');
     expect(rec?.phase).toBe('assembled');
     expect(rec?.masterUrl).toBe('https://cdn/final.mp4');
+  });
+
+  test('recordFilmMaster binds the payer uid; consumeFilmBilling spends the one-shot waiver', async () => {
+    // A paid product ad stamps its token with the payer uid, waiver unspent.
+    await recordFilmMaster('mem-bill', 'https://cdn/ad.mp4', null, 'payer-1');
+    let rec = await getFilmStatus('mem-bill');
+    expect(rec?.payerUid).toBe('payer-1');
+    expect(rec?.billingConsumed).not.toBe(true); // still spendable → assemble may waive ONCE
+
+    // The ad's own assemble spends it.
+    await consumeFilmBilling('mem-bill');
+    rec = await getFilmStatus('mem-bill');
+    expect(rec?.billingConsumed).toBe(true); // spent → any replay now bills normally
+    expect(rec?.masterUrl).toBe('https://cdn/ad.mp4'); // master intact for status recovery
+    expect(rec?.payerUid).toBe('payer-1');
+
+    // Idempotent: a second consume is a no-op and never throws.
+    await expect(consumeFilmBilling('mem-bill')).resolves.toBeUndefined();
+    // Unknown token: fail-open no-op.
+    await expect(consumeFilmBilling('nope')).resolves.toBeUndefined();
   });
 
   test('recordFilmFailed records the reason without clobbering an assembled master', async () => {

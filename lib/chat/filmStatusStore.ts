@@ -67,6 +67,14 @@ export interface FilmStatusRecord {
   masterUrl: string | null;
   /** Supervisor QA verdict on the assembled master, once graded; else null. */
   qa?: FilmQaSummary | null;
+  /** SECURITY (billing-skip owner-binding): the uid that actually PAID for this master.
+   *  A downstream /assemble waives its charge only when the caller's uid === payerUid, so a
+   *  client cannot replay another job's (or another user's) token to render for free. */
+  payerUid?: string | null;
+  /** SECURITY (single-use billing skip): true once this token's ONE assemble-waiver has been
+   *  spent. A paid token maps 1:1 to one downstream assemble (the ad's overlay pass, or a film's
+   *  lip-sync re-stitch); after that the waiver is consumed and further assembles bill normally. */
+  billingConsumed?: boolean;
   updatedAt: number;
   error?: string | null;
 }
@@ -136,11 +144,13 @@ export function buildFilmSnapshot(input: FilmSnapshotInput): FilmStatusRecord {
  * minimal one), promoting the phase to 'assembled'. Used by the assemble route
  * so a completed stitch is recoverable by any client.
  */
-export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null, now = Date.now()): FilmStatusRecord {
+export function mergeMaster(prev: FilmStatusRecord | null, tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null, now = Date.now(), payerUid: string | null = null): FilmStatusRecord {
   if (!prev) {
-    return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, qa, updatedAt: now, error: null };
+    return { tokenId, phase: 'assembled', clips: [], audioReady: false, masterUrl, qa, payerUid, billingConsumed: false, updatedAt: now, error: null };
   }
-  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, updatedAt: now, error: null };
+  // Preserve the ORIGINAL payer + consumed flag on a re-stamp: a null uid at a later stamp (e.g. a
+  // server-side re-stitch) must NOT erase who paid, and a spent waiver must stay spent.
+  return { ...prev, phase: 'assembled', masterUrl, qa: qa ?? prev.qa ?? null, payerUid: payerUid ?? prev.payerUid ?? null, billingConsumed: prev.billingConsumed === true, updatedAt: now, error: null };
 }
 
 // ─── Backing store (Redis REST, fail-open, in-process fallback) ──────────────
@@ -213,10 +223,19 @@ export async function recordFilmAssembling(tokenId: string): Promise<void> {
   await putFilmStatus(next);
 }
 
-/** Stamp the finished hosted master onto the record. Fails open. */
-export async function recordFilmMaster(tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null): Promise<void> {
+/** Stamp the finished hosted master onto the record. Fails open. `payerUid` binds the master to
+ *  the paying user so a downstream /assemble billing-skip can verify ownership (see consumeFilmBilling). */
+export async function recordFilmMaster(tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null, payerUid: string | null = null): Promise<void> {
   const prev = await getFilmStatus(tokenId);
-  await putFilmStatus(mergeMaster(prev, tokenId, masterUrl, qa));
+  await putFilmStatus(mergeMaster(prev, tokenId, masterUrl, qa, undefined, payerUid));
+}
+
+/** Spend a token's ONE assemble-waiver (single-use billing skip). Idempotent; fails open. After
+ *  this, getFilmStatus(...).billingConsumed === true, so the token can no longer waive a charge. */
+export async function consumeFilmBilling(tokenId: string): Promise<void> {
+  const prev = await getFilmStatus(tokenId);
+  if (!prev || prev.billingConsumed === true) return;
+  await putFilmStatus({ ...prev, billingConsumed: true, updatedAt: Date.now() });
 }
 
 /** Mark the film failed with a short reason. Fails open. */

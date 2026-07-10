@@ -33,7 +33,7 @@ import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-cap
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, consumeFilmBilling } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
@@ -260,10 +260,22 @@ async function assembleImpl(req: NextRequest) {
   // work was already rendered + billed upstream (a film's FIRST assemble, or a Product-Ad's remix
   // clip). The lip-sync / composite re-stitch (film) or the overlay/voiceover pass (ad) fires a
   // SECOND assemble for the SAME job — it must NOT charge again (or burn a second free-film slot).
-  // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Server-issued
-  // tokens + a server-tracked master mean a client cannot forge this to render for free.
+  //
+  // The skip token is CLIENT-CONTROLLED (jobId / filmTokenId), so a bare masterUrl check is
+  // forgeable: a user who pays for ONE ad could replay that token as billingToken to waive every
+  // later assemble for the store TTL. Two guards close that: (1) OWNER-BIND — honor the skip only
+  // when the master was paid for by THIS uid (payerUid === uid); (2) SINGLE-USE — consume the
+  // token the first time its waiver is honored (a paid token maps 1:1 to one downstream assemble).
+  // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Fail-open on the
+  // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
   const billedTokenForCheck = filmTokenId ?? billingToken;
-  const filmAlreadyBilled = billedTokenForCheck ? !!(await getFilmStatus(billedTokenForCheck))?.masterUrl : false;
+  let filmAlreadyBilled = false;
+  if (billedTokenForCheck && uid) {
+    const prior = await getFilmStatus(billedTokenForCheck);
+    filmAlreadyBilled = !!prior?.masterUrl && prior.payerUid === uid && prior.billingConsumed !== true;
+    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it.
+    if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
+  }
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Resolve the output orientation from the explicit key OR the aspect/format
@@ -499,7 +511,7 @@ async function assembleImpl(req: NextRequest) {
       if (scLock) await commitTokenLock(scLock).catch(() => {});
       // eslint-disable-next-line no-console
       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl, billed: !scSkipBilling && !scFreeFilm }));
-      if (filmTokenId) await recordFilmMaster(filmTokenId, master, null).catch(() => {});
+      if (filmTokenId) await recordFilmMaster(filmTokenId, master, null, uid).catch(() => {});
       return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm, single: true });
     } catch (err) {
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
@@ -783,7 +795,7 @@ async function assembleImpl(req: NextRequest) {
   // The Supervisor QA verdict rides along so the recovered film carries its grade.
   const qa = (bag.qa as QaReport | null | undefined) ?? null;
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
-  if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary);
+  if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary, uid);
 
   // Phase 7B — checkpoint the surviving clip URLs (keyed by the film token) so a later
   // re-render / re-assemble of the same film can reuse them instead of re-paying. Fail-

@@ -1027,6 +1027,15 @@ async function handleMusicIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
+  // PRE-RENDER balance gate — music_generation dispatches BEFORE the deterministic-intent gate
+  // (music isn't in DETERMINISTIC_INTENTS), so without this a 0-balance user gets a free paid track
+  // on /chat. Gate here at the TOP so it covers BOTH the Udio submit below AND the replicate
+  // delegation. Authed only; fail-open on a read miss. Mirrors handleDeterministicIntent's gate.
+  const gateCost = billableCreditCost(detected.intent);
+  if (input.userId && input.userId !== 'anonymous' && gateCost > 0 && !(await hasSufficientBalance(input.userId, gateCost))) {
+    return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
+  }
+
   const iterative = buildIterativePrompt({
     sessionId: input.sessionId,
     serviceContext: input.serviceContext || 'music',
