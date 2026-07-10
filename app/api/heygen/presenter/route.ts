@@ -3,6 +3,9 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 /**
  * /api/heygen/presenter — "Presenter mode"
@@ -140,7 +143,17 @@ export async function GET(req: NextRequest) {
     const status = sj.data?.status;
     if (status === 'completed' && sj.data?.video_url) {
       // Re-host so the player URL survives past HeyGen's ~1h expiry.
-      return NextResponse.json({ done: true, url: await rehostPresenterVideo(sj.data.video_url) });
+      const hosted = await rehostPresenterVideo(sj.data.video_url);
+      // BILLING FIX — presenter mode produced a talking video for FREE (same avatar leak class).
+      // Charge once on completion, idempotent per videoId; authed only; best-effort.
+      try {
+        const { user } = await authedClientFromRequest(req);
+        if (user?.id) {
+          await deductCredits(user.id, creditCostFor('avatar'), `avatar:presenter:${id}:${user.id}`)
+            .catch(() => { /* best-effort — the asset is already delivered */ });
+        }
+      } catch { /* fail-open */ }
+      return NextResponse.json({ done: true, url: hosted });
     }
     if (status === 'failed') {
       // Guard against a missing/non-string error — JSON.stringify(undefined) is `undefined`

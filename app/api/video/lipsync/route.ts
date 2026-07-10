@@ -22,6 +22,8 @@ import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 // Same bucket uploadBigFile() / the /api/upload/sign route write user files into.
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
@@ -85,6 +87,16 @@ export async function GET(req: NextRequest) {
     } catch {
       /* fail-open — keep the provider URL */
     }
+    // BILLING FIX — avatar/lip-sync billing was DEFERRED to "its own pipeline" and never wired, so
+    // avatar generation was FREE. Charge once on poll-SUCCESS, idempotent per jobId (repeated polls
+    // reuse the same ref → deduct_credits dedupes → one charge). Authed only; best-effort.
+    try {
+      const { user } = await authedClientFromRequest(req);
+      if (user?.id) {
+        await deductCredits(user.id, creditCostFor('avatar'), `avatar:lipsync:${id}:${user.id}`)
+          .catch(() => { /* best-effort — the asset is already delivered */ });
+      }
+    } catch { /* fail-open */ }
     return NextResponse.json({ done: true, url: hosted });
   }
   if (status === 'failed' || status === 'canceled') return NextResponse.json({ done: true, url: null, error });
