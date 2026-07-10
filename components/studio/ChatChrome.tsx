@@ -669,7 +669,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="" onError={() => setAvatarUrl(null)} className="h-full w-full object-cover" />
+                    <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
                   ) : (userName?.[0] || userEmail?.[0] || 'U')}
                 </button>
               ) : (
@@ -803,7 +803,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 className="group relative h-20 w-20 overflow-hidden rounded-full bg-app-accent/15 ring-2 ring-app-border/15 transition hover:ring-app-accent/40">
                 {avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center text-[26px] font-bold uppercase text-app-accent">{userName?.[0] || userEmail?.[0] || 'U'}</span>
                 )}
