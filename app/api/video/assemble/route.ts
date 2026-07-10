@@ -33,7 +33,7 @@ import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-cap
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
@@ -246,6 +246,12 @@ async function assembleImpl(req: NextRequest) {
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
   const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
+  // SECURE double-charge guard (rank 3): a filmTokenId that ALREADY carries a masterUrl means the
+  // FIRST assemble of this film already rendered + billed. The lip-sync / composite re-stitch fires
+  // a SECOND assemble for the SAME film — it must NOT charge again (or burn a second free-film slot).
+  // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). A server-issued
+  // token + server-tracked master means a client cannot forge this to render for free.
+  const filmAlreadyBilled = filmTokenId ? !!(await getFilmStatus(filmTokenId))?.masterUrl : false;
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Resolve the output orientation from the explicit key OR the aspect/format
@@ -410,7 +416,7 @@ async function assembleImpl(req: NextRequest) {
     // debit (a free-render bypass). Anonymous trials + founder/admin skip billing (same rule as
     // the multi-clip saga's reserve-credits step). Reserve up front → commit on success → roll
     // back on failure, so a failed render never strands the user's credits / free slot.
-    const scSkipBilling = uid === null ? true : await isAdminUser(uid);
+    const scSkipBilling = uid === null ? true : (filmAlreadyBilled || await isAdminUser(uid));
     let scFreeFilm = false;
     let scDebited = false;
     let scLock: TokenLock | null = null;
@@ -588,7 +594,7 @@ async function assembleImpl(req: NextRequest) {
   // Founder/admin renders run on the platform's own provider budget, so the
   // personal credit charge is skipped (their wallet may legitimately be 0 while
   // the platform LTX balance funds the real render). Billed exactly like anon.
-  const skipBilling = uid === null ? true : await isAdminUser(uid);
+  const skipBilling = uid === null ? true : (filmAlreadyBilled || await isAdminUser(uid));
 
   const steps: SagaStep[] = [
     {

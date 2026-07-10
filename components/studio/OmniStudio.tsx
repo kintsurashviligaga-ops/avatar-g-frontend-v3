@@ -424,6 +424,7 @@ async function compositeMusicVideo(
   transition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
   signal: AbortSignal,
   mine: () => boolean,
+  filmTokenId: string | null,
 ): Promise<string | null> {
   try {
     const ltxByOrd = new Map<number, string>();
@@ -459,6 +460,8 @@ async function compositeMusicVideo(
         segments: segs,
         musicUrl,
         musicVideoMode: true,
+        // Re-stitch of an already-billed film → same token so assemble skips the second charge.
+        ...(filmTokenId ? { filmTokenId } : {}),
         ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
         ...(transition ? { globalRender: { transition } } : {}),
       }),
@@ -525,6 +528,7 @@ async function compositeDocumentary(
   transition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
   signal: AbortSignal,
   mine: () => boolean,
+  filmTokenId: string | null,
 ): Promise<string | null> {
   try {
     // 1+2+3. ElevenLabs TTS of the dialogue + lip-sync the CLEAN portrait to it (talking-photo).
@@ -557,6 +561,8 @@ async function compositeDocumentary(
       body: JSON.stringify({
         segments: segs,
         musicUrl: talkingHead,
+        // Re-stitch of an already-billed film → same token so assemble skips the second charge.
+        ...(filmTokenId ? { filmTokenId } : {}),
         ...(orientation === 'vertical' ? { orientation: 'vertical' } : {}),
         ...(transition ? { globalRender: { transition } } : {}),
       }),
@@ -2170,7 +2176,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const perf = face ? await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine) : null;
           const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
           const composited = (perfOk && perf && res.matrix && mine())
-            ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine)
+            ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine, res.filmTokenId ?? null)
             : null;
           if (composited) { graphicsInput = composited; setResultVideo(composited); }
           patchLipsyncCard(composited ? 'completed' : 'skipped');
@@ -2193,6 +2199,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 videoTransition,
                 signal,
                 mine,
+                res.filmTokenId ?? null,
               )
             : null;
           if (composited) { graphicsInput = composited; setResultVideo(composited); }

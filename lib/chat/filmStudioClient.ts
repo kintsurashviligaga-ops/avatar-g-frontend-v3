@@ -110,6 +110,9 @@ export interface FilmStudioResult {
   /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
    *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
   musicUrl?: string | null;
+  /** The film's status token — passed to a lip-sync/composite RE-STITCH assemble so the
+   *  second stitch is recognised as the same (already-billed) film and never double-charges. */
+  filmTokenId?: string | null;
   error?: string;
 }
 
@@ -880,7 +883,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // voice-over is mixed under the score) but the master is not lip-synced here; the
     // standalone Lip-sync mode covers true talking-character output for shorter clips.
     emit('assembled', matrix, master);
-    return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl, previewUrl: firstPreviewUrl(matrix), matrix };
+    return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl, previewUrl: firstPreviewUrl(matrix), matrix, filmTokenId: matrix.statusTokenId ?? null };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { ok: false, phase: 'idle', masterUrl: null, previewUrl: null, matrix: null, error: 'Canceled.' };
