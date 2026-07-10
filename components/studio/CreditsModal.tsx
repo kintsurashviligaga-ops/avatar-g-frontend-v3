@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Loader2, LogIn, CreditCard, Check } from 'lucide-react';
-import { CREDIT_PACKAGES, CREDIT_COSTS, creditsToGel } from '@/lib/credits/pricing';
+import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -34,9 +34,10 @@ interface CreditsModalProps {
   onSignIn: () => void;
 }
 
-const PACKAGES = CREDIT_PACKAGES;
-// Per-action credit costs used to render the "what can you do" guide.
-const COST = CREDIT_COSTS;
+// DAY-6 — the credits modal now renders the SINGLE SOURCE OF TRUTH tiers (PRICING_TIERS: Starter 38/140 ·
+// Pro Creator 299/700 · Studio Annual 899/3250) — the SAME data the /pricing page shows — instead of the legacy
+// 9/29/89 top-up packs. The per-item "tetri" cost guide is removed (see TODO(GG) below).
+const PACKAGES = PRICING_TIERS;
 
 const COPY: Record<Lang, {
   title: string; balance: string; freeVideos: string; pay: string; cardHint: string;
@@ -119,16 +120,18 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
   // the canonical one-time top-up route, then redirects to the returned Checkout URL.
   // On success the user lands back on /dashboard?topup=success and the chip refreshes.
   // Fail-open: 401 → sign-in, anything else → a self-contained error toast.
-  const startCheckout = useCallback(async (pkg: { id: string; gel: number }) => {
+  const startCheckout = useCallback(async (pkg: { id: string; priceGel: number }) => {
     if (busyId) return;
     setBusyId(pkg.id);
-    track('payment_initiated', { package: pkg.id, amount: pkg.gel }); // PHASE 4 Task 1
+    track('payment_initiated', { package: pkg.id, amount: pkg.priceGel }); // PHASE 4 Task 1
     try {
+      // Payment mechanism UNCHANGED — the existing wallet-topup route + Stripe are untouched; only the tier's
+      // GEL amount (from the SSoT) flows through. Credit-delivery reconciliation for subscription tiers = TODO(GG).
       const res = await fetch('/api/billing/wallet-topup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ amountGel: pkg.gel }),
+        body: JSON.stringify({ amountGel: pkg.priceGel }),
       });
       if (res.status === 401) { setBusyId(null); onClose(); onSignIn(); return; }
       const j = (await res.json().catch(() => null)) as { url?: string } | null;
@@ -202,39 +205,30 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             {/* Top-up packages — stack to one readable column at 375px (cards were ~95px /
                 pay buttons ~26px in a 3-col grid), expand to 3 across on sm+ (>=640px). */}
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {PACKAGES.map((p) => (
+              {PACKAGES.map((p) => {
+                const highlight = p.id === 'pro_creator';
+                return (
                 <div key={p.id}
-                  className={`relative flex flex-col items-center gap-1 rounded-2xl border p-3 text-center ${p.highlight ? 'border-app-accent/60 bg-app-accent/10 ring-1 ring-app-accent/30' : 'border-app-border/15 bg-app-bg/40'}`}>
-                  {p.highlight && (
+                  className={`relative flex flex-col items-center gap-1 rounded-2xl border p-3 text-center ${highlight ? 'border-app-accent/60 bg-app-accent/10 ring-1 ring-app-accent/30' : 'border-app-border/15 bg-app-bg/40'}`}>
+                  {highlight && (
                     <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-app-accent px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-app-bg">★</span>
                   )}
-                  <span className="text-[12px] font-semibold text-app-text">{t[p.id]}</span>
-                  <span className="text-[19px] font-bold leading-none tabular-nums text-app-text">{p.gel} ₾</span>
-                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-app-accent">{p.credits} {t.credits}</span>
-                  <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.video_30s)} {t.videos}</span>
-                  <span className="text-[9.5px] leading-tight text-app-muted">≈ {Math.floor(p.credits / COST.image_generate)} {t.images}</span>
+                  <span className="text-[12px] font-semibold text-app-text">{p.name}</span>
+                  <span className="text-[19px] font-bold leading-none tabular-nums text-app-text">{p.priceGel} ₾</span>
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-app-accent">{p.creditsIncluded} {t.credits}</span>
+                  <span className="text-[9px] leading-tight text-app-muted">{p.billing === 'annual' ? (lang === 'en' ? '/ year' : lang === 'ru' ? '/ год' : '/ წელ') : (lang === 'en' ? '/ month' : lang === 'ru' ? '/ мес' : '/ თვე')}</span>
                   <button type="button" onClick={() => startCheckout(p)} disabled={busyId !== null}
-                    className={`mt-1 inline-flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 sm:min-h-0 sm:px-2 sm:py-1.5 ${p.highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
+                    className={`mt-1 inline-flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 sm:min-h-0 sm:px-2 sm:py-1.5 ${highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
                     {busyId === p.id ? <><Loader2 size={12} className="animate-spin" /> {t.redirecting}</> : t.pay}
                   </button>
                   <span className="text-[9px] leading-tight text-app-muted">{t.cardHint}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* What can you do with credits? */}
-            <div className="mt-4 rounded-2xl border border-app-border/15 bg-app-bg/40 px-4 py-3">
-              <p className="text-[12.5px] font-semibold text-app-text">{t.guideTitle}</p>
-              <p className="mt-0.5 text-[11px] text-app-muted">{t.perCredit}</p>
-              <ul className="mt-2 space-y-1 text-[12px] text-app-text">
-                {([[t.gImage, COST.image_generate], [t.gMusic, COST.music_30s], [t.gVideo, COST.video_30s], [t.gAvatar, COST.avatar_30s]] as const).map(([label, credits]) => (
-                  <li key={label} className="flex items-center justify-between gap-3">
-                    <span>{label}</span>
-                    <span className="tabular-nums text-app-muted">{credits} {t.credits} <span className="text-app-muted/70">({creditsToGel(credits).toFixed(2)} ₾)</span></span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {/* TODO(GG): the per-item "tetri" cost guide (სურათი/მუსიკა/ვიდეო/ავატარი credit costs) was removed
+                on request. If a value guide is reinstated, it must derive from the SSoT — never hardcode tetri. */}
           </div>
         )}
 

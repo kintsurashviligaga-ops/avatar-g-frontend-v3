@@ -517,7 +517,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
-          <span className="truncate text-[16px] font-semibold tracking-tight text-app-text">My <span className="text-app-accent">Avatar</span></span>
+          <span className="truncate text-[16px] font-semibold tracking-tight text-app-text">My<span className="text-app-accent">Avatar</span></span>
           <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden"><X className="h-[18px] w-[18px]" /></button>
         </div>
 
@@ -604,7 +604,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 <Menu className="h-[18px] w-[18px]" />
               </button>
               <span className={`truncate text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
-                {title ?? <>My <span className="text-app-accent">Avatar</span></>}
+                {title ?? <>My<span className="text-app-accent">Avatar</span></>}
               </span>
               {title && <span className="hidden truncate text-[16px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
             </div>
