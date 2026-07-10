@@ -21,13 +21,14 @@ const { CSP_DIRECTIVES } = require('./lib/security/csp');
 // build-derived: stamp the deploy's commit SHA into public/sw.js's CACHE_NAME. next build loads this config
 // BEFORE copying public/, so the served sw.js carries the SHA → its `activate` handler deletes every non-matching
 // cache → returning visitors can never get a stale shell after a deploy (kills the recurring "still shows old").
-// Gated on process.env.VERCEL so local dev/build never mutate the committed sw.js. Fail-soft: never breaks build.
-if (process.env.VERCEL) {
+// Gated on VERCEL_GIT_COMMIT_SHA (present ONLY on a real Vercel git deploy) so local dev/build never mutate the
+// committed sw.js — no timestamp fallback, no local pollution. Fail-soft: never breaks the build.
+if (process.env.VERCEL_GIT_COMMIT_SHA) {
   try {
     const fs = require('fs');
     const swPath = 'public/sw.js';
     if (fs.existsSync(swPath)) {
-      const sha = (process.env.VERCEL_GIT_COMMIT_SHA || '').trim().slice(0, 7) || `v${buildVersion}`;
+      const sha = process.env.VERCEL_GIT_COMMIT_SHA.trim().slice(0, 7);
       const src = fs.readFileSync(swPath, 'utf8');
       const out = src.replace(/const CACHE_NAME = '[^']*';/, `const CACHE_NAME = 'avatar-g-shell-${sha}';`);
       if (out !== src) { fs.writeFileSync(swPath, out); console.log(`[stamp-sw] CACHE_NAME -> avatar-g-shell-${sha}`); }
