@@ -150,21 +150,20 @@ function forecastFilm(sceneCount: number): ForecastResult {
 async function readWalletBalanceGel(userId: string): Promise<number | null> {
   try {
     const supabase = createServiceRoleClient();
+    // BALANCE OF RECORD = profiles.credits_balance — what Stripe/BOG top-ups credit
+    // (creditWalletGel → credit_wallet_gel RPC) AND what /api/credits/balance shows AND
+    // what the per-leg deduct_credits charges. The legacy `credits.balance_gel` was
+    // backfilled ONCE and never resynced, so a funded user with no `credits` row read 0
+    // here → film wrongly blocked despite funds (the "balance exists but won't generate"
+    // bug). Read the real wallet. Per-leg debit + atomic rollback stay the true spend guard.
     const { data, error } = await supabase
-      .from('credits')
-      .select('balance_gel, balance')
-      .eq('user_id', userId)
+      .from('profiles')
+      .select('credits_balance')
+      .eq('id', userId)
       .maybeSingle();
     if (error) return null; // unknown → fail open
-    if (!data) return 0; // confirmed: no credits row == zero balance
-    // The film GEL wallet (`balance_gel`) and the displayed balance (`balance` —
-    // what /api/credits/balance shows in the header AND what the assemble's
-    // deduct_credits charges) are TWO columns that can diverge. A user with funds
-    // in `balance` but a 0 `balance_gel` was wrongly told "insufficient" while the
-    // header showed money (the "balance exists but won't generate" bug). Respect
-    // the GREATER of the two in this pre-flight; the real per-leg debit + atomic
-    // rollback remain the true spend guard, so being lenient here cannot overspend.
-    const num = Math.max(Number(data.balance_gel ?? 0), Number(data.balance ?? 0));
+    if (!data) return 0; // no profile row == zero balance
+    const num = Number(data.credits_balance ?? 0);
     return Number.isFinite(num) ? num : null;
   } catch {
     return null;
@@ -257,6 +256,8 @@ async function renderClip(
   forecastClipRetail: number,
   /** Pre-generated NanoBanana identity frame for THIS scene (null = none). */
   sceneFrame: string | null,
+  /** True for a FREE film (promo) or founder/admin render → clip legs must NOT charge. */
+  waiveClipBilling: boolean,
 ): Promise<FilmClipResult> {
   // Gate on the SAME predicate as the pipeline pre-flight (hasVideoProvider =
   // LTX OR Replicate). The runtime now renders via Replicate as a primary when no
@@ -272,7 +273,9 @@ async function renderClip(
   // positive retail price. Track it locally so the orchestrator can refund this
   // exact leg if the whole film collapses.
   const realUser = Boolean(input.userId && input.userId !== 'anonymous');
-  const billable = realUser && forecastClipRetail > 0;
+  // A FREE film (promo slot) or founder/admin render must NOT charge per clip — the pre-flight
+  // waives them, but the per-leg debit was still firing (promo not actually free; founder drained).
+  const billable = realUser && forecastClipRetail > 0 && !waiveClipBilling;
   let debited = false;
 
   // PHASE 4A — preview-tier model gate: the premium i2v upgrade (Kling/Hailuo) is only
@@ -535,6 +538,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const compositeId = `film:${input.sessionId}:${Date.now()}`;
 
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
+  // Hoisted to function scope so the per-clip billing step below can waive charges for a
+  // FREE (promo) or founder/admin film (they bypass the pre-flight gate but were still charged).
+  let clipBillingWaived = false;
   if (input.userId && input.userId !== 'anonymous') {
     // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
     // gate entirely — otherwise a 0.00 ₾ wallet would block the very first free
@@ -548,6 +554,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // wallet gate (their personal wallet may legitimately be 0 while the platform
     // LTX balance funds the real render). Checked only when no free film applies.
     const founderBypass = hasFreeFilm ? false : await isAdminUser(input.userId);
+    clipBillingWaived = hasFreeFilm || founderBypass;
     const balance = (hasFreeFilm || founderBypass) ? null : await readWalletBalanceGel(input.userId);
     if (!hasFreeFilm && !founderBypass && filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
       return {
@@ -672,6 +679,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         clipForecast.wholesaleGel,
         clipForecast.retailGel,
         sceneFrames[i] ?? null,
+        clipBillingWaived, // a free/founder film charges no clip legs
       ),
     );
   } catch (err) {

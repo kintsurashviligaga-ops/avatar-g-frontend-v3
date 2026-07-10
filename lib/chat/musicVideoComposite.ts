@@ -105,16 +105,19 @@ function forecastComposite(): ForecastResult {
 async function readWalletBalanceGel(userId: string): Promise<number | null> {
   try {
     const supabase = createServiceRoleClient();
+    // BALANCE OF RECORD = profiles.credits_balance (what top-ups credit + the header shows +
+    // the per-leg deduct charges). The legacy credits.balance_gel was backfilled once and never
+    // resynced → a funded user with no `credits` row read 0 and got blocked. Read the real wallet.
     const { data, error } = await supabase
-      .from('credits')
-      .select('balance_gel, balance')
-      .eq('user_id', userId)
+      .from('profiles')
+      .select('credits_balance')
+      .eq('id', userId)
       .maybeSingle();
     // null = UNKNOWN (DB error → gate fails open); 0 = confirmed no-row balance,
     // so the gate blocks an unpayable render instead of stranding the user.
     if (error) return null;
     if (!data) return 0;
-    const num = Number(data.balance_gel ?? data.balance ?? 0);
+    const num = Number(data.credits_balance ?? 0);
     return Number.isFinite(num) ? num : null;
   } catch {
     return null;
