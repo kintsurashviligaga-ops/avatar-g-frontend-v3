@@ -385,7 +385,7 @@ function LibraryCard({
   );
 }
 
-export default function StudioLibraryGrid({ locale = 'ka' }: { locale?: Lang }) {
+export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?: Lang; onClose?: () => void }) {
   const t = COPY[locale] ?? COPY.ka;
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -549,6 +549,12 @@ export default function StudioLibraryGrid({ locale = 'ka' }: { locale?: Lang }) 
             <p className="text-base font-semibold text-neutral-300">{t.empty}</p>
             <p className="mt-1 text-sm text-neutral-500">{t.emptyHint}</p>
           </div>
+          {onClose && (
+            <button type="button" onClick={onClose}
+              className="mt-1 inline-flex h-10 items-center gap-2 rounded-full bg-app-accent px-5 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]">
+              {t.goStudio}
+            </button>
+          )}
         </div>
       )}
     </section>

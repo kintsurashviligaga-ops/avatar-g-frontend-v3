@@ -832,7 +832,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       )}
       {/* Library-only sheet now — Privacy/Terms moved to the instant LegalModal above. */}
       <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
-        {sheet === 'library' ? <StudioLibraryGrid locale={lang} /> : null}
+        {sheet === 'library' ? <StudioLibraryGrid locale={lang} onClose={() => setSheet(null)} /> : null}
       </StudioSheet>
 
       {/* DAY-5 — floating voice-chat launcher (authed only). Opens the real-time voice node overlay; the
