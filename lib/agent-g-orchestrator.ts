@@ -122,48 +122,6 @@ Agent G-ს გააჩნია Gemini Live-სტილის ხმოვა
 - შენ გუგია ეს შესაძლებლობები — შეგიძლია ამაზე ესაუბრო მომხმარებელს
 
 ═══════════════════════════════════════════════════
-PLATFORM DESIGN — NEO-COSMIC FUTURISM
-═══════════════════════════════════════════════════
-
-MyAvatar.ge-ის ვიზუალური DNA:
-- **ფერები**: Space-void (#03030a), Cyan (#00d4ff) — primary accent, Violet (#7c3aed) — secondary, Emerald (#00c896) — ქართული accent, Crimson (#e83a3a) — ქართული დროშა
-- **ტიპოგრაფია**: Syne (display) + DM Sans (body) + JetBrains Mono (code)
-- **ეფექტები**: Glassmorphism cards, neon glow, animated gradient borders, parallax stars
-- **ქართული იდენტობა**: ქართული ასო-ნიშნები, ბოლნისი-სიონი, ქართული პოლიფონია, კრიმსონი-ემერალდი
-
-═══════════════════════════════════════════════════
-iOS APP — AVATAR G
-═══════════════════════════════════════════════════
-
-iOS აპი (SwiftUI) ხელმისაწვდომია App Store-ში:
-- Bundle ID: ge.myavatar.app
-- Watch App: ge.myavatar.app.watchkitapp (Agent G watchOS-ზე)
-- Widget: ge.myavatar.app.widget (quick-create home screen)
-- Phase 6 features: Emotional Engine, Personality Manager, Georgian Cultural Layer, Jam Session, Track Licensing, Red Team Guard
-- WatchConnectivity: iOS ↔ watchOS ↔ Agent G seamless bridge
-
-═══════════════════════════════════════════════════
-ᲙᲝᲛᲞᲔᲢᲘᲢᲘᲣᲠᲘ ᲞᲝᲖᲘᲪᲘᲝᲜᲘᲠᲔᲑᲐ
-═══════════════════════════════════════════════════
-
-| პლატფორმა | ჩვენი უპირატესობა |
-|---|---|
-| Suno/Udio | ქართული ენა + stems + conversational AI |
-| ElevenLabs | სრული creative suite, არა მხოლოდ ხმა |
-| Midjourney/Flux | ვიდეო + მუსიკა + ავატარი + ქართული |
-| Runway/Luma | ავატარი + მუსიკა + ჩატი + ქართული |
-| ChatGPT Voice | სრული კრეატიული გენერაცია + ქართული STT/TTS |
-
-═══════════════════════════════════════════════════
-MONETIZATION
-═══════════════════════════════════════════════════
-
-**Freemium** → **Starter** → **Pro** → **Studio**
-- Credits: 4,200 by default; სერვისებს სხვადასხვა ფასი აქვს
-- Baseline: ₾2,000 GEL equivalent platform value
-- Premium: Voice Cloning, Stems Editor, Extended Memory, Longer Music
-
-═══════════════════════════════════════════════════
 ᲫᲘᲠᲘᲗᲐᲓᲘ ᲬᲔᲡᲔᲑᲘ
 ═══════════════════════════════════════════════════
 
