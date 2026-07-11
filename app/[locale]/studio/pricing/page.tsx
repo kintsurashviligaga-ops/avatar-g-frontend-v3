@@ -210,40 +210,21 @@ function PlanCard({
       transition={{ duration: 0.45, delay: index * 0.1 }}
       className="relative group"
     >
-      {/* Popular glow ring */}
-      {plan.popular && (
-        <div
-          className="absolute -inset-[1px] rounded-2xl opacity-60"
-          style={{
-            background: `linear-gradient(135deg, rgba(34,211,238,0.4), rgba(59,130,246,0.4))`,
-            filter: 'blur(1px)',
-          }}
-        />
-      )}
-
+      {/* Apple/Stripe matte: no neon glow ring — a razor-thin neutral border does the work. */}
       <div
         className={cn(
-          'relative flex flex-col rounded-2xl border backdrop-blur-xl overflow-hidden transition-all duration-300',
-          'bg-[linear-gradient(155deg,rgba(12,22,46,0.92),rgba(7,14,32,0.85))]',
+          'relative flex flex-col rounded-2xl border overflow-hidden bg-neutral-950 transition-colors duration-300',
           plan.popular
-            ? 'border-cyan-400/25 shadow-[0_0_40px_rgba(34,211,238,0.12),0_16px_48px_rgba(0,0,0,0.50)]'
-            : 'border-white/[0.10] shadow-[0_8px_32px_rgba(0,0,0,0.40)] hover:border-white/[0.18]'
+            ? 'border-neutral-700 shadow-[0_16px_48px_rgba(0,0,0,0.55)]'
+            : 'border-neutral-800 shadow-[0_8px_32px_rgba(0,0,0,0.40)] hover:border-neutral-700'
         )}
-        style={plan.popular ? { boxShadow: `0 0 60px ${plan.glowColor}` } : {}}
       >
-        {/* Top accent */}
-        <div className={`h-px w-full bg-gradient-to-r ${plan.gradient} opacity-60`} />
 
         <div className="flex flex-col flex-1 p-7 space-y-6">
           {/* Header */}
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <div
-                className={cn(
-                  'flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-white',
-                  plan.gradient
-                )}
-              >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-white">
                 {plan.icon}
               </div>
               {plan.badge && (
@@ -251,8 +232,8 @@ function PlanCard({
                   className={cn(
                     'rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.07em]',
                     plan.popular
-                      ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
-                      : 'border-violet-400/30 bg-violet-400/10 text-violet-200'
+                      ? 'border-neutral-700 bg-neutral-800 text-neutral-300'
+                      : 'border-neutral-800 bg-neutral-900 text-neutral-400'
                   )}
                 >
                   {plan.badge}
@@ -306,8 +287,8 @@ function PlanCard({
             className={cn(
               'inline-flex w-full items-center justify-center rounded-xl text-base font-semibold tracking-[0.01em] transition-all duration-300 h-11 px-6 gap-2',
               plan.popular
-                ? 'bg-gradient-to-r from-cyan-400 via-blue-500 to-sky-500 text-white shadow-[0_0_20px_rgba(34,211,238,0.25)] hover:brightness-110 active:scale-[0.985]'
-                : 'border border-white/[0.18] bg-transparent text-white/75 hover:bg-white/[0.06] hover:border-white/[0.30] hover:text-white active:scale-[0.985]'
+                ? 'bg-cyan-500 text-white hover:bg-cyan-400 active:scale-[0.985]'
+                : 'border border-neutral-700 bg-transparent text-white/75 hover:border-neutral-600 hover:bg-white/[0.04] hover:text-white active:scale-[0.985]'
             )}
           >
             {plan.cta}

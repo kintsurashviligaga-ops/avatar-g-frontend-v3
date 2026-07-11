@@ -4796,10 +4796,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        {/* Mobile: collapsible sheet (max-h-58dvh when open). Desktop (lg+): cap the inline
-            options panel at 58dvh + its own scroll so the chat/results stay visible above it
-            instead of the fully-expanded panel dominating the column. */}
-        <div className={`${optionsOpen ? 'max-h-[72dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}>
+        {/* Mobile: collapsible sheet capped at 52dvh with its OWN internal scroll — so however tall
+            the params get (file-upload zones, script slots) the panel can never grow the column past
+            the viewport and shove the composer dock off-screen behind the mobile nav bar. The dock
+            stays locked at the bottom. Desktop (lg+): 58dvh + own scroll. */}
+        <div className={`${optionsOpen ? 'max-h-[52dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}>
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
             affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
             collapses it. Lives at the top of the scroll area so it's always reachable. */}
@@ -6172,12 +6173,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
           />
 
-          {/* Controls row — attach · mode selector · (spacer) · mic/stop/send. */}
-          {/* Mobile: flex-wrap so the trailing action buttons (incl. Send) drop to a second line
-              instead of being pushed off-screen — 7 shrink-0 controls + the mode chip can't fit a
-              375px row (esp. in the longer ka/ru labels). sm+: the desktop split (spacer pushes the
-              actions right, no wrap). */}
-          <div className="mt-1 flex flex-wrap items-center gap-1 sm:flex-nowrap">
+          {/* Controls row — a single clean line on every viewport: [+][📷] locked FAR-LEFT, a
+              flex-1 spacer, then the mode chip + mic + live-voice + send clustered FAR-RIGHT. To fit
+              375px without wrapping, mobile trims width (the mode chip is icon-only + the desktop-only
+              Wand is hidden) — see below. NO wrap, so Send never drops to a broken second row. */}
+          <div className="mt-1 flex items-center gap-1">
             {/* [+] add / attach */}
             <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
@@ -6193,10 +6193,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <Camera size={19} />
             </button>
 
-            {/* Spacer — pushes the mode selector + mic/send to the RIGHT on desktop. Hidden on
-                mobile: with no spacer the controls left-pack and wrap cleanly (a flex-1 spacer would
-                eat line 1 and force EVERYTHING after it onto line 2). */}
-            <div className="hidden sm:block sm:flex-1" />
+            {/* Spacer — pushes the mode selector + mic/live/send to the FAR-RIGHT on EVERY viewport
+                so [+]/📷 stay far-left (the asymmetric split the design calls for). */}
+            <div className="flex-1" />
 
             {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
             <div className="relative shrink-0">
@@ -6208,7 +6207,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 className="flex h-9 items-center gap-1 rounded-full bg-app-surface/60 px-2.5 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
               >
                 <ActiveModeIcon size={15} />
-                <span>{t[activeModeKey]}</span>
+                {/* Icon-only on mobile (the label would blow the single-row budget); label returns at sm+. */}
+                <span className="hidden sm:inline">{t[activeModeKey]}</span>
                 <ChevronDown size={13} className={`transition-transform ${modeMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {modeMenuOpen && (
@@ -6268,8 +6268,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 {input.trim() && (
+                  // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
+                  // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40">
+                    className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40 sm:flex">
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}

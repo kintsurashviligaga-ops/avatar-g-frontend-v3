@@ -162,13 +162,13 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         aria-modal="true"
         aria-label={t.title}
         onClick={(e) => e.stopPropagation()}
-        className="relative z-[111] max-h-[90dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-3xl border border-app-border/15 bg-app-surface shadow-[0_30px_90px_-20px_rgba(56,189,248,0.35)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:rounded-3xl"
+        className="relative z-[111] max-h-[90dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-3xl border border-app-border/15 bg-app-surface shadow-[0_24px_80px_-24px_rgba(0,0,0,0.6)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:rounded-3xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600">
-              <CreditCard size={15} className="text-white" />
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-app-accent/15">
+              <CreditCard size={15} className="text-app-accent" />
             </span>
             <h2 className="text-[17px] font-bold tracking-tight text-app-text">{t.title}</h2>
           </div>
@@ -209,7 +209,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                 const highlight = p.id === 'pro_creator';
                 return (
                 <div key={p.id}
-                  className={`relative flex flex-col items-center gap-1 rounded-2xl border p-3 text-center ${highlight ? 'border-app-accent/60 bg-app-accent/10 ring-1 ring-app-accent/30' : 'border-app-border/15 bg-app-bg/40'}`}>
+                  className={`relative flex flex-col items-center gap-1 rounded-2xl border p-3 text-center ${highlight ? 'border-app-border/25 bg-app-elevated' : 'border-app-border/15 bg-app-bg/40'}`}>
                   {highlight && (
                     <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-app-accent px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-app-bg">★</span>
                   )}
