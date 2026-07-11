@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
+import { Send, Mic, Waves, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
@@ -25,7 +25,6 @@ const RemixStudioConsole = dynamic(() => import('./RemixStudioConsole'), { ssr: 
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
-import GenerationHistory from './GenerationHistory';
 import { MotionControlPanel } from './MotionControlPanel';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
@@ -688,6 +687,30 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     >
       {children}
     </button>
+  );
+}
+
+// Collapsible options group — declutters the composer's option panel by folding an advanced /
+// optional control cluster behind one labeled header. Mirrors the in-file imgNegative disclosure
+// (same card chrome + ChevronDown rotate). `badge` surfaces the current selection while collapsed
+// so nothing is hidden from the user's awareness. Manages its own open state (module-level
+// component → no hooks-in-loop concern). Presentation only — the wrapped Chips/setters are untouched.
+function Section({ title, badge, defaultOpen = false, children }: { title: React.ReactNode; badge?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 text-[12.5px] font-semibold text-app-text">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0">{title}</span>
+          {badge != null && badge !== false && (
+            <span className="truncate rounded-full bg-app-accent/12 px-1.5 py-0.5 text-[10px] font-medium text-app-accent">{badge}</span>
+          )}
+        </span>
+        <ChevronDown size={15} className={`shrink-0 text-app-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="mt-3">{children}</div>}
+    </div>
   );
 }
 
@@ -5223,9 +5246,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>👫 {locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
                     </div>
                   )}
-                  {/* PHASE 2 L1 — Character Voice: language + persona + tone → VOICE_MAP */}
+                  {/* PHASE 2 L1 — Character Voice DETAILS: language + persona + tone → VOICE_MAP.
+                      Folded into an accordion (13 chips) with a live emoji summary so the default
+                      view stays calm; the primary female/male/both choice above stays visible. */}
                   {videoNarration && !videoMyVoiceNarration && (
-                    <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
+                    <Section
+                      title={`🎙 ${locale === 'en' ? 'Voice details' : locale === 'ru' ? 'Детали голоса' : 'ხმის დეტალები'}`}
+                      badge={`${voiceLanguage === 'ka' ? '🇬🇪' : voiceLanguage === 'en' ? '🇬🇧' : '🇷🇺'} ${voicePersona === 'male' ? '👨' : voicePersona === 'female' ? '👩' : voicePersona === 'child' ? '👶' : '👴'} ${voiceTone === 'epic' ? '🎭' : voiceTone === 'emotional' ? '💫' : '⚡'}`}
+                    >
+                    <div className="flex flex-col gap-1.5">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Language:' : locale === 'ru' ? 'Язык:' : 'ენა:'}</span>
                         <Chip active={voiceLanguage === 'ka'} onClick={() => setVoiceLanguage('ka')}>🇬🇪 KA</Chip>
@@ -5246,6 +5275,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <Chip active={voiceTone === 'energetic'} onClick={() => setVoiceTone('energetic')}>⚡ {locale === 'en' ? 'Energetic' : locale === 'ru' ? 'Энерг.' : 'ენერგიული'}</Chip>
                       </div>
                     </div>
+                    </Section>
                   )}
                   {/* PHASE 2 L6 — Smart ducking: music auto-ducks under the narration.
                       Only shown with music on; depth −6…−18 dB (default −12). */}
@@ -5357,48 +5387,62 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </>
             )}
 
-            {/* 5 · Effect & transition */}
+            {/* 5 · Effect — the primary creative control, kept fully visible. */}
             <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Effect & transition' : locale === 'ru' ? 'Эффект и переход' : 'ეფექტი და გადასვლა'}</span>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
               <div className="flex flex-wrap gap-1.5">
                 {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
               </div>
-              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
-                <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
-                <Chip active={videoTransition === 'dissolve'} onClick={() => setVideoTransition('dissolve')}>◈ {locale === 'en' ? 'Dissolve' : locale === 'ru' ? 'Растворение' : 'დაშლა'}</Chip>
-                <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
-                <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
-              </div>
             </div>
 
-            {/* PHASE 2 L5 — video engine: Kling vs Hailuo (per-render i2v model) */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⚙️ {locale === 'en' ? 'Video engine' : locale === 'ru' ? 'Видео-движок' : 'ვიდეო ძრავა'}</span>
-              <div className="flex flex-wrap gap-1.5">
-                <Chip active={videoModel === 'kling'} onClick={() => setVideoModel('kling')}>🎬 Kling</Chip>
-                <Chip active={videoModel === 'hailuo'} onClick={() => setVideoModel('hailuo')}>🌊 Hailuo</Chip>
+            {/* Advanced — transition + engine folded together (both are set-and-forget defaults);
+                the collapsed badge surfaces the current transition glyph + engine so nothing hides. */}
+            <Section
+              title={`⚙️ ${locale === 'en' ? 'Advanced' : locale === 'ru' ? 'Дополнительно' : 'დამატებითი'}`}
+              badge={`${videoTransition === 'crossfade' ? '⤫' : videoTransition === 'cut' ? '▮' : videoTransition === 'dissolve' ? '◈' : videoTransition === 'zoom' ? '⊕' : '▷'} · ${videoModel === 'kling' ? 'Kling' : 'Hailuo'}`}
+            >
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Transition:' : locale === 'ru' ? 'Переход:' : 'გადასვლა:'}</span>
+                  <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
+                  <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
+                  <Chip active={videoTransition === 'dissolve'} onClick={() => setVideoTransition('dissolve')}>◈ {locale === 'en' ? 'Dissolve' : locale === 'ru' ? 'Растворение' : 'დაშლა'}</Chip>
+                  <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
+                  <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Engine:' : locale === 'ru' ? 'Движок:' : 'ძრავა:'}</span>
+                  <Chip active={videoModel === 'kling'} onClick={() => setVideoModel('kling')}>🎬 Kling</Chip>
+                  <Chip active={videoModel === 'hailuo'} onClick={() => setVideoModel('hailuo')}>🌊 Hailuo</Chip>
+                </div>
               </div>
-            </div>
+            </Section>
 
-            {/* PHASE 2 L1 — Camera controls: move + motion intensity → clip prompt tokens */}
-            <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎥 {locale === 'en' ? 'Camera' : locale === 'ru' ? 'Камера' : 'კამერა'}</span>
-              <div className="flex flex-wrap gap-1.5">
-                <Chip active={videoCameraMove === 'auto'} onClick={() => setVideoCameraMove('auto')}>{locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'}</Chip>
-                <Chip active={videoCameraMove === 'pan_left'} onClick={() => setVideoCameraMove('pan_left')}>← {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
-                <Chip active={videoCameraMove === 'pan_right'} onClick={() => setVideoCameraMove('pan_right')}>→ {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
-                <Chip active={videoCameraMove === 'zoom_in'} onClick={() => setVideoCameraMove('zoom_in')}>＋ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
-                <Chip active={videoCameraMove === 'zoom_out'} onClick={() => setVideoCameraMove('zoom_out')}>－ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
-                <Chip active={videoCameraMove === 'tilt_up'} onClick={() => setVideoCameraMove('tilt_up')}>↑ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
-                <Chip active={videoCameraMove === 'tilt_down'} onClick={() => setVideoCameraMove('tilt_down')}>↓ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
+            {/* PHASE 2 L1 — Camera controls folded (advanced; 'Auto' + intensity 5 are the sensible
+                defaults). Badge appears only when the user has moved off the defaults. */}
+            <Section
+              title={`🎥 ${locale === 'en' ? 'Camera' : locale === 'ru' ? 'Камера' : 'კამერა'}`}
+              badge={(videoCameraMove !== 'auto' || videoMotionIntensity !== 5)
+                ? `${videoCameraMove === 'pan_left' ? '←' : videoCameraMove === 'pan_right' ? '→' : videoCameraMove === 'zoom_in' ? '＋' : videoCameraMove === 'zoom_out' ? '－' : videoCameraMove === 'tilt_up' ? '↑' : videoCameraMove === 'tilt_down' ? '↓' : ''} ${videoMotionIntensity}/10`.trim()
+                : false}
+            >
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  <Chip active={videoCameraMove === 'auto'} onClick={() => setVideoCameraMove('auto')}>{locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'}</Chip>
+                  <Chip active={videoCameraMove === 'pan_left'} onClick={() => setVideoCameraMove('pan_left')}>← {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
+                  <Chip active={videoCameraMove === 'pan_right'} onClick={() => setVideoCameraMove('pan_right')}>→ {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
+                  <Chip active={videoCameraMove === 'zoom_in'} onClick={() => setVideoCameraMove('zoom_in')}>＋ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
+                  <Chip active={videoCameraMove === 'zoom_out'} onClick={() => setVideoCameraMove('zoom_out')}>－ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
+                  <Chip active={videoCameraMove === 'tilt_up'} onClick={() => setVideoCameraMove('tilt_up')}>↑ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
+                  <Chip active={videoCameraMove === 'tilt_down'} onClick={() => setVideoCameraMove('tilt_down')}>↓ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
+                </div>
+                <label className="flex items-center gap-2 pt-0.5">
+                  <span className="whitespace-nowrap text-[11px] text-app-muted">{locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}</span>
+                  <input type="range" min={1} max={10} step={1} value={videoMotionIntensity} onChange={(e) => setVideoMotionIntensity(Number(e.target.value))} className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="motion intensity" />
+                  <span className="w-9 text-right text-[10.5px] tabular-nums text-app-text">{videoMotionIntensity}/10</span>
+                </label>
               </div>
-              <label className="flex items-center gap-2 pt-0.5">
-                <span className="whitespace-nowrap text-[11px] text-app-muted">{locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}</span>
-                <input type="range" min={1} max={10} step={1} value={videoMotionIntensity} onChange={(e) => setVideoMotionIntensity(Number(e.target.value))} className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="motion intensity" />
-                <span className="w-9 text-right text-[10.5px] tabular-nums text-app-text">{videoMotionIntensity}/10</span>
-              </label>
-            </div>
+            </Section>
             </>)}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
@@ -5472,10 +5516,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     All optional: leave blank for a clean cinematic clip; fill any field
                     and the ad gets a price chip, a CTA pill, a brand lower-third and a
                     short spoken voiceover (cloned KA voice), applied by /api/video/assemble. */}
-                <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-bg/30 p-2.5">
-                  <span className="block text-[11px] font-semibold text-app-text">
-                    🏷️ {locale === 'en' ? 'Brand & voiceover (optional)' : locale === 'ru' ? 'Бренд и озвучка (опц.)' : 'ბრენდი და გახმოვანება (არასავალდ.)'}
-                  </span>
+                <Section
+                  title={`🏷️ ${locale === 'en' ? 'Brand & voiceover' : locale === 'ru' ? 'Бренд и озвучка' : 'ბრენდი და გახმოვანება'}`}
+                  badge={(productBrand.trim() || productHook.trim() || productPrice.trim() || productCtaCustom.trim())
+                    ? '✓'
+                    : (locale === 'en' ? 'optional' : locale === 'ru' ? 'опц.' : 'არჩ.')}
+                >
+                  <div className="space-y-2">
                   <input type="text" value={productBrand} onChange={(e) => setProductBrand(e.target.value)} maxLength={40}
                     placeholder={locale === 'en' ? 'Brand name' : locale === 'ru' ? 'Название бренда' : 'ბრენდის სახელი'}
                     className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[13px] text-app-text outline-none focus:border-app-accent/60" />
@@ -5510,7 +5557,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <span style={{ position: 'absolute', top: 3, left: productVoiceover ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
                     </span>
                   </button>
-                </div>
+                  </div>
+                </Section>
                 {/* PHASE 4 — duration: 6s single clip · 30/60s multi-clip stitch */}
                 <div>
                   <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
@@ -6144,10 +6192,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <Camera size={19} />
             </button>
 
-            {/* Phase 7C — recent generations (📜): opens a compact dropdown of the user's
-                last 5 items from /api/studio/library. Fail-open + self-contained. */}
-            <GenerationHistory locale={locale} />
-
             {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+]/📷 stay on
                 the left and the mode dropdown sits between the text and the mic. */}
             <div className="flex-1" />
@@ -6203,10 +6247,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ) : (
               <>
                 {/* Mic stays available even with text in the box — tap again to keep
-                    dictating / continue where you left off. */}
+                    dictating / continue where you left off. (Dictation → fills the text box.) */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
                   <Mic size={19} />
+                </button>
+                {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
+                    dictation mic. Launches the real-time VoiceConversation overlay (owned by the parent
+                    ChatChrome) via the window CustomEvent bridge. The fluid cloud-like accent aura +
+                    crisp AudioLines waveform signal it as the premium real-time voice call-to-action. */}
+                <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
+                  aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
+                  title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
+                  className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-accent/10 active:scale-95">
+                  {/* Fluid cloud-like live-voice aura — a soft, slowly-pulsing accent halo. */}
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-[7px] rounded-full bg-app-accent/25 blur-md animate-pulse" />
+                  <Waves size={19} className="relative" />
                 </button>
                 {input.trim() && (
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}

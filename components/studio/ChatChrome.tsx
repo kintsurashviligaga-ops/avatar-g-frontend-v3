@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, Mic,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -246,6 +246,18 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     window.addEventListener('myavatar:credits-updated', onSpend);
     return () => window.removeEventListener('myavatar:credits-updated', onSpend);
   }, [refreshBalance]);
+
+  // DAY-5 voice bridge — the composer's Gemini-style live-voice chip (OmniStudio) can't reach
+  // setVoiceOpen across the component boundary, so it dispatches `myavatar:voice-open`. Authed →
+  // open the real-time overlay; guest → open the sign-in modal (voice is an authed feature).
+  useEffect(() => {
+    const openVoice = () => {
+      if (authed) setVoiceOpen(true);
+      else { setAuthMode('login'); setAuthOpen(true); }
+    };
+    window.addEventListener('myavatar:voice-open', openVoice);
+    return () => window.removeEventListener('myavatar:voice-open', openVoice);
+  }, [authed]);
 
   // Stripe Checkout returns to /dashboard?topup=success. The crediting webhook is
   // async, so poll the balance a few times to catch the credit landing, then strip
@@ -639,11 +651,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <span className={`truncate text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
                 {title ?? (
                   <span className="inline-flex items-center gap-1.5">
-                    {/* Brand Rocket lockup — official mark next to the MyAvatar wordmark. Decorative
-                        (the wordmark IS the accessible name); scoped to the wordmark branch so a page
-                        title still truncates normally. */}
+                    {/* Brand Rocket lockup — the OFFICIAL premium mark (same asset the Admin Panel's
+                        BrandLogo renders: /brand/gemini-rocket-clean.png), for a unified corporate
+                        identity. Decorative (the wordmark IS the accessible name); scoped to the
+                        wordmark branch so a page title still truncates normally. object-contain +
+                        the admin's subtle cyan drop-shadow keep it crisp + premium at 18px. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/rocket.svg" alt="" aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
+                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]" />
                     <span>My<span className="text-app-accent">Avatar</span></span>
                   </span>
                 )}
@@ -835,18 +849,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         {sheet === 'library' ? <StudioLibraryGrid locale={lang} onClose={() => setSheet(null)} /> : null}
       </StudioSheet>
 
-      {/* DAY-5 — floating voice-chat launcher (authed only). Opens the real-time voice node overlay; the
-          text composer is completely untouched. Sits above the bottom nav via .floating-btn-bottom. */}
-      {authed && !voiceOpen && (
-        <button
-          type="button"
-          onClick={() => setVoiceOpen(true)}
-          aria-label={lang === 'en' ? 'Voice chat' : lang === 'ru' ? 'Голосовой чат' : 'ხმოვანი საუბარი'}
-          className="floating-btn-bottom ag-no-drag fixed right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-[0_8px_30px_-6px_rgba(0,210,255,0.6)] transition hover:scale-105 active:scale-100"
-        >
-          <Mic size={20} />
-        </button>
-      )}
+      {/* DAY-5 real-time voice overlay. The launcher moved INTO the composer (OmniStudio's
+          Gemini-style live-voice chip, right of the dictation mic), which dispatches
+          'myavatar:voice-open' — handled by the effect above (authed → open; guest → sign-in).
+          This de-clutters the workspace (no redundant floating FAB) while keeping one clear CTA. */}
       {voiceOpen && <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />}
 
       {/* Avatar-upload feedback toast — transient, self-contained (no global toast system here). */}
