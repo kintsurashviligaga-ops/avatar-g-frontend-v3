@@ -35,6 +35,7 @@ import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
+import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useJobQueue } from '@/store/useJobQueue';
 import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
@@ -1256,6 +1257,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Mobile: the service-option panels collapse behind a toggle so they never cover the
   // chat (the cards are tall). Default collapsed on mobile; on desktop (sm:) always open.
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
+  // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
+  // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
+  const { keyboardOffset } = useKeyboardResilience();
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
   // FIX 5 — URLs the user has explicitly filed into the Library (drives the ✓ saved state).
@@ -2979,7 +2984,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal,
-              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
             });
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
             onProgress({ pct: 100 });
@@ -4185,9 +4190,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const r = await fetch(url);
       if (!r.ok) throw new Error('fetch failed');
       const blob = await r.blob();
+      // Name the file with the SINGLE extension that matches the blob's ACTUAL mime. The old code
+      // hardcoded ".png"; when the provider returns a JPEG, iOS Safari appends the real extension
+      // and you get "myavatar-image.png.jpeg". Strip any provided extension, then append the right
+      // one so the OS reads it natively as one saveable image.
+      const mime = (blob.type || '').toLowerCase();
+      const extFromMime = /jpe?g/.test(mime) ? 'jpg' : /png/.test(mime) ? 'png' : /webp/.test(mime) ? 'webp'
+        : /gif/.test(mime) ? 'gif' : /mp4/.test(mime) ? 'mp4' : /webm/.test(mime) ? 'webm'
+          : /mpeg|mp3/.test(mime) ? 'mp3' : /wav/.test(mime) ? 'wav' : /m4a|aac/.test(mime) ? 'm4a' : '';
+      const cleanUrl = (url.split(/[?#]/)[0] ?? url);
+      const extFromUrl = (/\.([a-z0-9]{2,4})$/i.exec(cleanUrl)?.[1] ?? '').toLowerCase();
+      const ext = extFromMime || extFromUrl || 'jpg';
+      const base = filename.replace(/\.[a-z0-9]{2,4}$/i, '') || 'myavatar';
       const obj = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = obj; a.download = filename;
+      a.href = obj; a.download = `${base}.${ext}`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(obj), 5000);
     } catch {
@@ -4800,7 +4817,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             the params get (file-upload zones, script slots) the panel can never grow the column past
             the viewport and shove the composer dock off-screen behind the mobile nav bar. The dock
             stays locked at the bottom. Desktop (lg+): 58dvh + own scroll. */}
-        <div className={`${optionsOpen ? 'max-h-[52dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}>
+        <div
+          className={`${optionsOpen ? 'max-h-[52dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
+          // VECTOR 3 — keyboard open: cap to what's left below it (header+composer buffer ≈ 220px) so
+          // the panel scrolls internally and the composer dock never gets pushed under the keyboard.
+          style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}
+        >
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
             affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
             collapses it. Lives at the top of the scroll area so it's always reachable. */}

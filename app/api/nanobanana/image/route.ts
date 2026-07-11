@@ -114,6 +114,11 @@ export async function POST(req: NextRequest) {
        *  UPSERTED under this id (converging with the client's placeholder row) so an image
        *  produces exactly ONE generation_jobs row, not a client + server duplicate. */
       jobId?: string;
+      /** BATCH tile index (0..N-1). A ×2/×4 batch sends N tiles with an IDENTICAL prompt/params
+       *  payload but distinct tiles — without this the payload-hash mutex treats tiles 2..N as
+       *  duplicate double-clicks and 409s them. Folding the index into the key makes each tile of
+       *  a batch its own claim, while a genuine double-click (same index) still dedupes. */
+      batchTile?: number;
     };
     const clientJobId = typeof body.jobId === 'string' ? body.jobId.slice(0, 120) : '';
 
@@ -135,7 +140,7 @@ export async function POST(req: NextRequest) {
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: body.style ?? '', ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '' })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: body.style ?? '', ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });

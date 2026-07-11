@@ -64,8 +64,17 @@ describe('buildConsistencySeed — deterministic & stable', () => {
 });
 
 describe('buildCharacterAnchor', () => {
-  it('locks to the user avatar when provided', () => {
-    expect(buildCharacterAnchor('any', { avatarReference: 'avatar://123' })).toMatch(/custom avatar/i);
+  it('anchors to the reference image when one is provided', () => {
+    expect(buildCharacterAnchor('any', { avatarReference: 'avatar://123' })).toMatch(/reference image/i);
+  });
+  it('a source image OUTWEIGHS a text-extracted character lock (image-to-video identity)', () => {
+    // The bug: a generic brief over a bridged photo invented an arbitrary person. The image must win.
+    const anchor = buildCharacterAnchor('a 30s blues clip', { avatarReference: 'img://woman', characterLock: 'a 50-year-old Georgian man' });
+    expect(anchor).toMatch(/EXACT person shown in the reference image/i);
+    expect(anchor).toMatch(/never replace them with a different person/i);
+  });
+  it('uses the text lock when there is NO image', () => {
+    expect(buildCharacterAnchor('any', { characterLock: 'a young woman with red hair' })).toMatch(/young woman with red hair/i);
   });
   it('locks the primary character otherwise', () => {
     expect(buildCharacterAnchor('any')).toMatch(/same primary character/i);
@@ -103,7 +112,7 @@ describe('planFilmScenes — continuity-locked production plan', () => {
   it('threads the user avatar reference through shared params + anchor', () => {
     const plan = planFilmScenes('my avatar dances in cyberpunk Tokyo', { avatarReference: 'avatar://me' });
     expect(plan.shared.avatarReference).toBe('avatar://me');
-    expect(plan.scenes[0]!.prompt).toMatch(/custom avatar/i);
+    expect(plan.scenes[0]!.prompt).toMatch(/reference image/i);
   });
 
   it('applies a style override consistently', () => {

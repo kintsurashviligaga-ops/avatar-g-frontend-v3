@@ -84,15 +84,19 @@ export function buildConsistencySeed(prompt: string): number {
  * first shot's protagonist as the canonical one to reproduce.
  */
 export function buildCharacterAnchor(prompt: string, opts: FilmPlanOptions = {}): string {
-  // Prompt-Agent character LOCK wins: a detailed, extracted appearance (age,
-  // ethnicity, hair, eyes, wardrobe) repeated VERBATIM in every shot is the
-  // strongest text-side anti-drift lever — far stronger than the generic clause
-  // below, which left the diffusion model free to re-invent the person each scene.
   const lock = typeof opts.characterLock === 'string' ? opts.characterLock.trim() : '';
-  if (lock) return `${lock} — the EXACT same person, identical face, hair and wardrobe in every shot`;
+  // A source/reference IMAGE is the GROUND TRUTH for identity (image-to-video) and MUST win over
+  // any text-extracted character. A generic brief ("30s blues clip") bridged over a photo of a
+  // singing woman was letting the text-side lock invent an arbitrary "50-year-old man" and destroy
+  // the identity. When an image is present, anchor to the image; a text lock only ADDS secondary
+  // detail — it never replaces the person shown.
   if (opts.avatarReference) {
-    return "the user's custom avatar — identical face, hair and wardrobe in every shot";
+    const base = 'the EXACT person shown in the reference image — identical face, age, ethnicity, hair, build and wardrobe in every shot; never replace them with a different person';
+    return lock ? `${base} (also: ${lock})` : base;
   }
+  // No image: the Prompt-Agent's detailed extracted appearance (age, ethnicity, hair, eyes,
+  // wardrobe) repeated VERBATIM is the strongest text-side anti-drift lever.
+  if (lock) return `${lock} — the EXACT same person, identical face, hair and wardrobe in every shot`;
   return 'the same primary character — identical face, wardrobe, palette and styling in every shot';
 }
 
