@@ -13,6 +13,7 @@ import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idem
 import { generateGrokImage } from '@/lib/ai/xaiImage';
 import { generateFluxProImage } from '@/lib/ai/fluxImage';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
@@ -83,10 +84,19 @@ export async function POST(req: NextRequest) {
   let reservedUid: string | null = null;
   let reserveRef = '';
   let reserved = false;
+  // IN-FLIGHT MUTEX (V1) — a short-TTL Redis lock keyed on the request SIGNATURE (user + exact
+  // provider inputs) that instantly blocks a double-click / retry-storm from spawning a SECOND paid
+  // provider render. The billing ref dedupes the CHARGE, but NOT the render — this closes that. Held
+  // for the TTL on success (an identical re-submit is blocked briefly); RELEASED on any failure so a
+  // genuine retry isn't locked out. Fail-open (the helper no-ops without Redis).
+  let idemOwner = '';
+  let idemKey = '';
   const refundReserve = async (): Promise<void> => {
-    if (!reserved || !reservedUid) return;
-    reserved = false; // idempotent: refund at most once
-    await refundCredits(reservedUid, creditCostFor('image'), `${reserveRef}:refund`).catch(() => {});
+    if (reserved && reservedUid) {
+      reserved = false; // idempotent: refund at most once
+      await refundCredits(reservedUid, creditCostFor('image'), `${reserveRef}:refund`).catch(() => {});
+    }
+    if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
   };
 
   try {
@@ -122,11 +132,20 @@ export async function POST(req: NextRequest) {
     // preserve this route's try-to-generate behaviour, exactly as the old read-gate did.
     try {
       const { user: rUser } = await authedClientFromRequest(req);
+      // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
+      // A concurrent identical request loses the race → 409 without a paid render or a charge.
+      idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: body.style ?? '', ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '' })}`;
+      if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
+        idemKey = ''; // not ours to release — the winning request holds it
+        return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
+      }
       if (rUser?.id) {
         reservedUid = rUser.id;
         reserveRef = `image:nanobanana:${clientJobId || randomUUID()}:${rUser.id}`;
         const debit = await deductCredits(rUser.id, creditCostFor('image'), reserveRef);
         if (!debit.ok && debit.reason === 'insufficient') {
+          await refundReserve(); // releases the mutex (nothing reserved yet) so a top-up retry works
           return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
         }
         reserved = debit.ok;

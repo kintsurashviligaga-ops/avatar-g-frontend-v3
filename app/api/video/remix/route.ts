@@ -33,6 +33,7 @@ import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 
@@ -163,6 +164,34 @@ export async function POST(req: NextRequest) {
   // correctly charges. Fall back to a fresh uuid when no jobId is supplied (still fixes the
   // under-charge; that path just isn't retry-idempotent, which is safe — none of these auto-retry).
   const txnRef = `remix:${op}:${jobId ?? crypto.randomUUID()}`;
+  // ── IN-FLIGHT MUTEX (V1) ─────────────────────────────────────────────────────
+  // A short-TTL Redis lock keyed on the FULL request signature instantly blocks a double-click from
+  // spawning a SECOND paid roop/Kling render. Claimed ONLY for PAID ops — the free local-ffmpeg ops
+  // (trim/captions/color_grade/speed/stabilize) spawn no paid provider call, so they need no guard
+  // (and skipping them avoids a failed free-op holding the lock, since they return via fail() not
+  // refundCharge). The sig carries EVERY intent-bearing param (op, source media, sceneIndex, aspect,
+  // text, characterRef, preset) so two DIFFERENT edits of the same op+clip don't false-collide (409);
+  // sceneIndex keeps a multi-clip ad's per-clip calls distinct. Held for the TTL on success; RELEASED
+  // in refundCharge (render failures) + inline on the 402. Fail-open without Redis (claim returns true).
+  const idemOwner = remixUid ?? `anon:${jobId ?? 'session'}`;
+  let idemKey = '';
+  const releaseIdem = async (): Promise<void> => { if (idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); } };
+  if (CREDIT_CHARGED_OPS.has(op)) {
+    idemKey = `remix:${op}:${await hashPayload({
+      u: idemOwner, op,
+      v: (typeof body.videoUrl === 'string' ? body.videoUrl.slice(0, 256) : null) ?? (typeof body.imageUrl === 'string' ? body.imageUrl.slice(0, 256) : null),
+      a: typeof body.audioUrl === 'string' ? body.audioUrl.slice(0, 256) : null,
+      sc: body.sceneIndex ?? null,
+      asp: body.aspect ?? null,
+      t: typeof body.text === 'string' ? body.text.slice(0, 256) : null,
+      cr: typeof body.characterRef === 'string' ? body.characterRef.slice(0, 256) : null,
+      pr: typeof body.preset === 'string' ? body.preset : null,
+    })}`;
+    if (!(await claimIdempotencyKey(idemOwner, idemKey, 180))) {
+      idemKey = ''; // the winning request holds it
+      return NextResponse.json({ url: null, error: 'duplicate_request' }, { status: 409 });
+    }
+  }
   // ── PRODUCT-AD SINGLE-CHARGE ─────────────────────────────────────────────────
   // A product ad is billed ONCE, here on its primary clip, at the FULL video tier
   // (25 cr ≤30s / 45 cr 60s) — the same price the client's toast shows — NOT the
@@ -180,6 +209,7 @@ export async function POST(req: NextRequest) {
   if (CREDIT_CHARGED_OPS.has(op) && !productAdSecondaryClip && remixUid && !(await isAdminUser(remixUid))) {
     const debit = await deductCredits(remixUid, chargeAmount, txnRef);
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
+      await releaseIdem(); // free the mutex so a top-up / ledger retry isn't locked out
       const message = debit.reason === 'insufficient'
         ? 'Not enough credits for this edit. Top up to continue.'
         : 'Credit ledger unavailable — please retry.';
@@ -197,6 +227,7 @@ export async function POST(req: NextRequest) {
   // a stranded charge from the logs. Fail-open: a refund miss never changes the response.
   let refunded = false;
   const refundCharge = async (why: string): Promise<void> => {
+    await releaseIdem(); // always free the in-flight mutex on a failure path
     if (!charged || refunded || !remixUid) return;
     refunded = true;
     try {
@@ -307,7 +338,7 @@ export async function POST(req: NextRequest) {
   }
 
   const videoUrl = await resolveMedia(body.videoUrl);
-  if (!videoUrl) return fail('A video is required.');
+  if (!videoUrl) return failRefund('A video is required.', 'no-video'); // refund the up-front charge + free the mutex
 
   const aspect: Aspect = body.aspect === '16:9' || body.aspect === '1:1' ? body.aspect : '9:16';
   const gender: Gender = body.gender === 'male' ? 'male' : 'female';

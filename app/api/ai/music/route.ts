@@ -16,7 +16,8 @@ import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idem
 import { randomUUID } from 'node:crypto';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { applyApiGuards } from '@/lib/api/guard';
-import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 /**
@@ -212,18 +213,8 @@ export async function POST(req: NextRequest) {
     // any positive value clamps to the 15–90s window.
     if (typeof body.durationSec === 'number') durationSec = body.durationSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(body.durationSec)));
     if (typeof body.tempo === 'string') tempo = body.tempo.trim().toLowerCase();
-
-    // PRE-RENDER balance gate — block a paid MusicGen/EL call for a user who can't afford it
-    // (else a 0-balance user generates unlimited free tracks). Authed only; fail-open.
-    try {
-      const { user: gateUser } = await authedClientFromRequest(req);
-      // Billed seconds: full-song (durationSec 0) charges as 90s; a COVER always renders ~30s so it
-      // charges 30 regardless of the picked length. Keeps the gate consistent with the deduct + UI.
-      const gateBillSeconds = (typeof body.audioReference === 'string' && body.audioReference.trim()) ? 30 : (durationSec === 0 ? 90 : durationSec);
-      if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('music', { seconds: gateBillSeconds })))) {
-        return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
-      }
-    } catch { /* fail-open — the post-success deduct remains the backstop */ }
+    // NOTE: billing moved to a RESERVE-BEFORE-RENDER saga below (the old fail-open READ gate here let
+    // N concurrent tracks pass a stale balance and render free — the same TOCTOU the image route fixed).
     // Custom lyrics (vocal tracks) — Udio sings these verbatim; empty → auto lyrics.
     if (typeof body.lyrics === 'string' && body.lyrics.trim()) lyrics = body.lyrics.trim().slice(0, 2000);
     // Cover: an uploaded reference track (data: URL) → Udio reimagines it in the
@@ -271,6 +262,43 @@ export async function POST(req: NextRequest) {
           : 'male and female duet, two voices'
       : '';
 
+  // ── RESERVE-BEFORE-RENDER + IN-FLIGHT MUTEX (V1 + V4) ────────────────────────
+  // Replaces the old fail-open READ gate. (1) A short-TTL Redis mutex keyed on the request
+  // SIGNATURE instantly blocks a double-click from spawning a SECOND paid Udio/EL render. (2) The
+  // credit is DEBITED atomically UP FRONT (per-transaction ref) so concurrent tracks can't all pass
+  // a stale balance and render free; refunded on any downstream miss. Both fail-open without Redis.
+  let reservedUid: string | null = null;
+  let reserveRef = '';
+  let reserved = false;
+  let idemOwner = '';
+  let idemKey = '';
+  const refundReserve = async (): Promise<void> => {
+    if (reserved && reservedUid) {
+      reserved = false; // idempotent
+      await refundCredits(reservedUid, creditCostFor('music', { seconds: billSeconds }), `${reserveRef}:refund`).catch(() => {});
+    }
+    if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
+  };
+  try {
+    const { user: rUser } = await authedClientFromRequest(req);
+    idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
+    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0 })}`;
+    if (!(await claimIdempotencyKey(idemOwner, idemKey, 90))) {
+      idemKey = ''; // the winning request holds it
+      return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This track is already being generated.' }, { status: 409 });
+    }
+    if (rUser?.id) {
+      reservedUid = rUser.id;
+      reserveRef = `music:${clientJobId || randomUUID()}:${rUser.id}`;
+      const debit = await deductCredits(rUser.id, creditCostFor('music', { seconds: billSeconds }), reserveRef);
+      if (!debit.ok && debit.reason === 'insufficient') {
+        await refundReserve(); // releases the mutex (nothing reserved) so a top-up retry works
+        return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
+      }
+      reserved = debit.ok;
+    }
+  } catch { /* fail-open — a ledger/Redis blip never blocks a paid render */ }
+
   try {
     // Suno-style cover art — generated in PARALLEL with the track (it's the faster of
     // the two, so it adds no latency) and themed to the song's brief + genre.
@@ -307,6 +335,7 @@ export async function POST(req: NextRequest) {
           ? voiceReference
           : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceReference, 3600);
       if (!voiceUrl) {
+        await refundReserve();
         return NextResponse.json({ success: false, error: 'Could not process the voice file.' }, { status: 502 });
       }
       // Normalize the clip to MP3 first — the browser records webm/mp4 and users upload
@@ -330,6 +359,7 @@ export async function POST(req: NextRequest) {
           ? audioReference
           : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', audioReference, 3600);
       if (!melodyUrl) {
+        await refundReserve();
         return NextResponse.json({ success: false, error: 'Could not process the reference audio.' }, { status: 502 });
       }
       const styledPrompt = style ? `${capped}, ${style} style` : capped;
@@ -366,18 +396,11 @@ export async function POST(req: NextRequest) {
 
     // File the track into the Library — under the signed-in user, or the shared demo
     // identity when testing without sign-in (so anonymous generations still show up).
+    // File the track into the Library. The credit was already RESERVED up front (see the reserve
+    // above), so there is NO charge here — only the durable completion row. Reuse the composer's tray
+    // jobId so this UPSERTS the client's placeholder (one row, no duplicate); other callers get a UUID.
     try {
       const { user } = await authedClientFromRequest(req);
-      if (user?.id) {
-        // BILLING FIX — this DIRECT route bypassed providerRouter's post-success charge, so chat
-        // music mode generated for FREE (same leak class as the image route). Charge the
-        // balance-of-record via the idempotent deduct_credits RPC, cost by duration. Idempotent per
-        // tray jobId; rejects overdraw; best-effort AFTER success so a ledger hiccup never fails the track.
-        await deductCredits(user.id, creditCostFor('music', { seconds: billSeconds }), `music:${clientJobId || hostedUrl}:${user.id}`)
-          .catch(() => { /* best-effort — the asset is already delivered */ });
-      }
-      // Reuse the composer's tray jobId so this completion UPSERTS the client's placeholder
-      // row (one row, no duplicate); direct/other callers still get a fresh UUID.
       await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'music', url: hostedUrl, prompt: capped });
     } catch {
       /* fail-open */
@@ -387,6 +410,7 @@ export async function POST(req: NextRequest) {
     const coverUrl = await coverArtPromise;
     return NextResponse.json({ success: true, url: hostedUrl, engine, ...(coverUrl ? { coverUrl } : {}) });
   } catch (err) {
+    await refundReserve(); // mid-render throw → give the reserved credit back + release the mutex
     const message = err instanceof Error ? err.message : 'Music generation failed';
     // eslint-disable-next-line no-console
     console.error('[ai/music]', message);
