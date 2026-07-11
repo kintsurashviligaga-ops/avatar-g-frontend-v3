@@ -26,7 +26,7 @@
  *    works. Tapping the orb while listening always force-ends the turn (manual endpoint).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Mic, Loader2, Volume2, AlertCircle, RotateCcw } from 'lucide-react';
+import { X, Mic, AlertCircle, RotateCcw } from 'lucide-react';
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import {
   DEFAULT_VAD_CONFIG,
@@ -53,9 +53,16 @@ const COPY: Record<Lang, {
 
 const VAD_INTERVAL_MS = 50;
 const BARGE_GRACE_MS = 300;
+const VIZ_BARS = 44; // radial equalizer bar count
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
 };
+
+/** Parse an "R G B" CSS-var triple into numeric channels (fallback to the brand cyan). */
+function rgbTriple(raw: string, fallback: [number, number, number]): [number, number, number] {
+  const p = raw.trim().split(/\s+/).map(Number);
+  return p.length === 3 && p.every((n) => Number.isFinite(n)) ? [p[0]!, p[1]!, p[2]!] : fallback;
+}
 
 function pickMime(): string {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -103,8 +110,15 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
 
   // ── Playback (through the AudioContext) ──
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const playbackAnalyserRef = useRef<AnalyserNode | null>(null); // taps the TTS output for the orb viz
   const ttsAbortRef = useRef<AbortController | null>(null);
   const turnAbortRef = useRef<AbortController | null>(null);
+
+  // ── Real-time orb equalizer (canvas driven by whichever analyser is live) ──
+  const vizCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const vizRafRef = useRef<number>(0);
+  const vizBarsRef = useRef<Float32Array>(new Float32Array(VIZ_BARS));
+  const vizFreqRef = useRef<Uint8Array | null>(null);
 
   // ── Session bookkeeping ──
   const statusRef = useRef<Status>('connecting');
@@ -139,10 +153,96 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     stopGraph();
     const ctx = audioCtxRef.current;
     audioCtxRef.current = null;
+    playbackAnalyserRef.current = null; // bound to the ctx we're closing; a fresh session recreates it
     if (ctx && ctx.state !== 'closed') { void ctx.close().catch(() => undefined); }
   }, [stopGraph]);
 
   useEffect(() => () => { mountedRef.current = false; teardown(); }, [teardown]);
+
+  // ── The living orb — a radial Web-Audio equalizer. One rAF loop drives a canvas from whichever
+  //    AnalyserNode is live: the MIC while listening, the TTS output while speaking, and a gentle
+  //    "breathing" idle while thinking/connecting. Replaces the old static spinner + speaker glyph. ──
+  useEffect(() => {
+    let accent: [number, number, number] = [0, 210, 255];
+    const rose: [number, number, number] = [244, 63, 94];
+    try {
+      accent = rgbTriple(getComputedStyle(document.documentElement).getPropertyValue('--app-accent'), accent);
+    } catch { /* keep fallback */ }
+
+    const draw = () => {
+      vizRafRef.current = requestAnimationFrame(draw);
+      const canvas = vizCanvasRef.current;
+      if (!canvas) return;
+      const c = canvas.getContext('2d');
+      if (!c) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const size = 96;
+      if (canvas.width !== size * dpr) { canvas.width = size * dpr; canvas.height = size * dpr; }
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const cx = size / 2, cy = size / 2;
+
+      const st = statusRef.current;
+      const listening = st === 'listening';
+      const speaking = st === 'speaking';
+      const analyser = listening ? analyserRef.current : speaking ? playbackAnalyserRef.current : null;
+      const bars = vizBarsRef.current;
+      const N = bars.length;
+      let overall = 0;
+
+      if (analyser) {
+        const bins = analyser.frequencyBinCount;
+        let buf = vizFreqRef.current;
+        if (!buf || buf.length !== bins) { buf = new Uint8Array(bins); vizFreqRef.current = buf; }
+        analyser.getByteFrequencyData(buf as Uint8Array<ArrayBuffer>);
+        const usable = Math.max(1, Math.floor(bins * 0.66)); // voice energy lives in the lower-mid bins
+        for (let i = 0; i < N; i++) {
+          const target = (buf[Math.floor((i / N) * usable)] ?? 0) / 255;
+          const next = (bars[i] ?? 0) + (target - (bars[i] ?? 0)) * 0.4; // ease for fluidity (mic analyser is unsmoothed)
+          bars[i] = next;
+          overall += next;
+        }
+        overall /= N;
+      } else {
+        const now = performance.now();
+        for (let i = 0; i < N; i++) {
+          const target = 0.09 + 0.075 * (0.5 + 0.5 * Math.sin(now / 520 + i * 0.5));
+          const next = (bars[i] ?? 0) + (target - (bars[i] ?? 0)) * 0.14;
+          bars[i] = next;
+          overall += next;
+        }
+        overall /= N;
+      }
+
+      const [r, g, b] = listening ? rose : accent;
+      c.clearRect(0, 0, size, size);
+      // ambient glow that swells with loudness
+      const glow = c.createRadialGradient(cx, cy, 5, cx, cy, 47);
+      glow.addColorStop(0, `rgba(${r},${g},${b},${0.20 + overall * 0.5})`);
+      glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      c.fillStyle = glow;
+      c.beginPath(); c.arc(cx, cy, 47, 0, Math.PI * 2); c.fill();
+      // radial equalizer bars
+      const baseR = 15;
+      c.lineWidth = 2.4; c.lineCap = 'round';
+      for (let i = 0; i < N; i++) {
+        const bv = bars[i] ?? 0;
+        const ang = (i / N) * Math.PI * 2 - Math.PI / 2;
+        const len = 3 + bv * 22;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        c.strokeStyle = `rgba(${r},${g},${b},${0.32 + bv * 0.6})`;
+        c.beginPath();
+        c.moveTo(cx + ca * baseR, cy + sa * baseR);
+        c.lineTo(cx + ca * (baseR + len), cy + sa * (baseR + len));
+        c.stroke();
+      }
+      // pulsing core
+      c.fillStyle = `rgba(${r},${g},${b},0.9)`;
+      c.beginPath(); c.arc(cx, cy, 6.5 + overall * 6, 0, Math.PI * 2); c.fill();
+    };
+
+    vizRafRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(vizRafRef.current);
+  }, []);
 
   // ── One VAD sample: read RMS → advance the reducer → act on the event ──
   const vadTick = useCallback(() => {
@@ -199,7 +299,17 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const guard = setTimeout(finish, 45_000);
       const src = ctx.createBufferSource();
       src.buffer = audio;
-      src.connect(ctx.destination);
+      // Route src → AnalyserNode → destination so the orb equalizer can pulse to the assistant's
+      // OWN voice in real time. Created once, reused across chunks/turns (tied to the ctx lifecycle).
+      let pa = playbackAnalyserRef.current;
+      if (!pa) {
+        pa = ctx.createAnalyser();
+        pa.fftSize = 256;
+        pa.smoothingTimeConstant = 0.75;
+        pa.connect(ctx.destination);
+        playbackAnalyserRef.current = pa;
+      }
+      src.connect(pa);
       src.onended = finish;
       currentSourceRef.current = src;
       graceUntilRef.current = performance.now() + BARGE_GRACE_MS;
@@ -459,6 +569,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
             : status === 'error' ? (error || t.retry)
               : t.tapToStart;
   const busy = status === 'thinking' || status === 'connecting';
+  // The reactive equalizer owns every "live audio" state; static glyphs remain only for tap actions.
+  const showViz = status === 'connecting' || status === 'listening' || status === 'thinking' || status === 'speaking';
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
@@ -475,23 +587,23 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         {error && <p className="mt-2 flex items-center justify-center gap-1.5 text-[12.5px] text-rose-400"><AlertCircle size={14} /> {error}</p>}
       </div>
 
-      {/* Mic orb */}
+      {/* Living orb — a real-time Web-Audio equalizer for every active-audio state; a tap glyph otherwise. */}
       <button
         type="button"
         onClick={onMicTap}
         disabled={busy}
         aria-label={label}
-        className={`relative flex h-24 w-24 items-center justify-center rounded-full transition-all disabled:cursor-default ${
-          status === 'listening' ? 'bg-rose-500 text-white shadow-[0_0_50px_-6px_rgba(244,63,94,0.7)]'
-            : status === 'speaking' || status === 'thinking' || status === 'connecting' ? 'bg-app-accent/20 text-app-accent'
+        className={`relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full transition-all disabled:cursor-default ${
+          showViz
+            ? (status === 'listening' ? 'bg-rose-500/[0.08] ring-1 ring-rose-500/25' : 'bg-app-accent/[0.08] ring-1 ring-app-accent/25')
+            : status === 'resume' ? 'bg-app-elevated text-app-accent ring-1 ring-app-border/15 hover:scale-105'
               : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-105'
         }`}
       >
-        {status === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/40" />}
-        {status === 'thinking' || status === 'connecting' ? <Loader2 size={30} className="animate-spin" />
-          : status === 'speaking' ? <Volume2 size={30} className="animate-pulse" />
-            : status === 'resume' ? <RotateCcw size={28} />
-              : <Mic size={30} />}
+        {showViz ? (
+          <canvas ref={vizCanvasRef} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />
+        ) : status === 'resume' ? <RotateCcw size={28} />
+          : <Mic size={30} />}
       </button>
       <span className="mt-5 text-[13.5px] font-medium text-app-muted">{label}</span>
       {status === 'listening' && vadModeRef.current && <span className="mt-2 max-w-xs px-6 text-center text-[11.5px] text-app-muted/70">{t.hint}</span>}
