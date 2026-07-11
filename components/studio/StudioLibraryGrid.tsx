@@ -20,7 +20,7 @@
  * a friendly empty state, never an error wall.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
@@ -133,7 +133,10 @@ function filterMatches(kind: string, f: FilterKey): boolean {
   return true;
 }
 
-function LibraryCard({
+// memo — each infinite-scroll page appends 24 items to `items`; without this every already-painted
+// card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
+// useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
+const LibraryCard = memo(function LibraryCard({
   item, t, onDeleted,
 }: {
   item: LibraryItem;
@@ -383,7 +386,7 @@ function LibraryCard({
       </AnimatePresence>
     </motion.div>
   );
-}
+});
 
 export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?: Lang; onClose?: () => void }) {
   const t = COPY[locale] ?? COPY.ka;
