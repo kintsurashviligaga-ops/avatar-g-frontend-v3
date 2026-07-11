@@ -3465,7 +3465,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }
     }
     const videoHasImages = mode === 'video' && (videoCharacterRefs.length > 0 || attachments.some((a) => isImage(a.mimeType)));
-    if (mode === 'video' && (text || videoScript || videoHasImages)) {
+    // VECTOR 1 — a quick chat command ("გააკეთე") must NOT drop the manual panel fields. Pull the
+    // typed Master Script + Character Dialogue from live state and fold them into the brief as
+    // AUTHORITATIVE context, so the storyboard / character extractor respects them instead of
+    // inventing a fallback character. (The Generate button already did this; chat-send did not.)
+    const videoMaster = mode === 'video' ? videoMasterScript.trim() : '';
+    const videoDlg = mode === 'video' ? videoDialogue.trim() : '';
+    if (mode === 'video' && (text || videoScript || videoMaster || videoDlg || videoHasImages)) {
       // v330 — the dedicated Character Reference slot leads the identity-lock refs,
       // followed by any generic image attachments (back-compat).
       const refs = [
@@ -3474,14 +3480,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ];
       // A music video has no spoken narrator → never append the narration cue in that mode.
       const wantNarration = videoMode === 'documentary' && (videoNarration || (videoMyVoiceNarration && hasTrainedVoice));
+      // A file script wins; else the typed Master Script field IS the authoritative script.
+      const scriptBlock = videoScript || videoMaster;
       // The typed prompt (or a sensible default when only a script/images were given).
-      const baseText = text || (videoScript
+      const baseText = text || (scriptBlock
         ? (locale === 'en' ? 'Make a cinematic film that follows the attached script.' : locale === 'ru' ? 'Сними фильм строго по приложенному сценарию.' : 'შექმენი კინო ზუსტად ატაჩ სკრიპტის მიხედვით.')
         : (locale === 'en' ? 'A cinematic film' : locale === 'ru' ? 'Кинематографичный фильм' : 'კინემატოგრაფიული ფილმი'));
       const styledText = videoStyle ? `${baseText}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : baseText;
-      // The attached script is made AUTHORITATIVE in the brief → the Director (runPromptAgent)
-      // follows it instead of inventing a different story/characters/setting.
-      const filmPrompt = `${styledText}${videoScript ? `\n\nSCRIPT (follow this EXACTLY — do not invent different characters, era, or setting):\n${videoScript.slice(0, 6000)}` : ''}${wantNarration ? t.narrationCue : ''}`;
+      // The manual fields are AUTHORITATIVE in the brief → the Director (runPromptAgent) follows them
+      // instead of inventing a different story / character / setting.
+      const filmPrompt = `${styledText}`
+        + (scriptBlock ? `\n\nSCRIPT (follow this EXACTLY — do not invent different characters, era, or setting):\n${scriptBlock.slice(0, 6000)}` : '')
+        + (videoDlg ? `\n\nCHARACTER DIALOGUE (spoken verbatim by the SAME character — never replace the speaker):\n${videoDlg.slice(0, 2000)}` : '')
+        + (wantNarration ? t.narrationCue : '');
       const bubbleText = text || (videoScript ? '📄 ' + (locale === 'en' ? 'Film from attached script' : locale === 'ru' ? 'Фильм по сценарию' : 'ფილმი ატაჩ სკრიპტით') : baseText);
       setMessages((prev) => [...prev, { role: 'user', text: bubbleText, ...(attachments.length ? { medias: attachments } : {}) }]);
       setInput(''); setAttachments([]);
@@ -3689,7 +3700,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setInput(''); setAttachments([]);
     persistChatTurn('user', text); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {

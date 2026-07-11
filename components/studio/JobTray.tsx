@@ -12,6 +12,7 @@
  * Purely presentational over `useJobQueue` — no fetch, no business logic here.
  */
 
+import { useEffect, useRef, useState } from 'react';
 import { useJobQueue } from '@/store/useJobQueue';
 import type { Job, JobKind, JobStatus } from '@/lib/jobs/jobQueue';
 import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
@@ -146,11 +147,32 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   // Merge locally-run jobs with server-OBSERVED (reload-hydrated) ones — dedup by id so a
   // job never renders twice. Observed rows sync to the DB pct/current_stage.
   const jobs = mergeTrayJobs(localJobs, durableJobs);
-  if (!jobs.length) return null;
 
-  const anyFinished = jobs.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
-  const activeCount = jobs.filter((j) => j.status === 'rendering').length;
-  const queuedCount = jobs.filter((j) => j.status === 'queued').length;
+  // VECTOR 2 — auto-dismiss a SUCCESSFUL render 4s after it lands, so the green "მზადაა" row never
+  // lingers forever. Only HIDES it from the tray (the durable data log is untouched); failed /
+  // canceled rows stay visible so the user can see + retry them.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const doneKey = jobs.filter((j) => j.status === 'done').map((j) => j.id).sort().join(',');
+  useEffect(() => {
+    for (const id of (doneKey ? doneKey.split(',') : [])) {
+      if (timersRef.current.has(id)) continue;
+      const tmr = setTimeout(() => {
+        timersRef.current.delete(id);
+        setDismissed((prev) => { if (prev.has(id)) return prev; const n = new Set(prev); n.add(id); return n; });
+      }, 4000);
+      timersRef.current.set(id, tmr);
+    }
+  }, [doneKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount-only teardown of pending timers
+  useEffect(() => () => { for (const tmr of timersRef.current.values()) clearTimeout(tmr); timersRef.current.clear(); }, []);
+
+  const visible = jobs.filter((j) => !dismissed.has(j.id));
+  if (!visible.length) return null;
+
+  const anyFinished = visible.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
+  const activeCount = visible.filter((j) => j.status === 'rendering').length;
+  const queuedCount = visible.filter((j) => j.status === 'queued').length;
 
   return (
     <div className="pointer-events-auto fixed bottom-3 right-3 z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
@@ -168,7 +190,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
         )}
       </div>
       <div className="flex max-h-[46vh] flex-col gap-1.5 overflow-y-auto overscroll-contain">
-        {jobs.map((job) => (
+        {visible.map((job) => (
           <JobRow key={job.id} job={job} locale={locale} onCancel={cancel} />
         ))}
       </div>
