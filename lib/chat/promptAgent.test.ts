@@ -50,3 +50,24 @@ describe('SYSTEM_PROMPT — no invented placeholder characters (VECTOR 1)', () =
     expect(SYSTEM_PROMPT).toMatch(/NEVER dictates or invents the character's identity/i);
   });
 });
+
+describe('SYSTEM_PROMPT — cinematic continuity (VECTOR 1)', () => {
+  it('enforces a linear continuity vector that keeps the protagonist in frame', () => {
+    expect(SYSTEM_PROMPT).toMatch(/CINEMATIC CONTINUITY VECTOR/);
+    expect(SYSTEM_PROMPT).toMatch(/LINEAR VISUAL PERSISTENCE/);
+    expect(SYSTEM_PROMPT).toMatch(/appears in EVERY shot/);
+  });
+  it('forbids the empty-stage / character-drop jump', () => {
+    expect(SYSTEM_PROMPT).toMatch(/FORBIDDEN JUMPS/);
+    expect(SYSTEM_PROMPT).toMatch(/empty stage/i);
+  });
+});
+
+describe('SYSTEM_PROMPT — color science (VECTOR 3)', () => {
+  it('hardcodes neutral color-science tokens and forbids yellow/sepia tint', () => {
+    expect(SYSTEM_PROMPT).toMatch(/ARRI Alexa color science/);
+    expect(SYSTEM_PROMPT).toMatch(/neutral white balance/i);
+    expect(SYSTEM_PROMPT).toMatch(/yellow tint/i);
+    expect(SYSTEM_PROMPT).toMatch(/sepia/i);
+  });
+});

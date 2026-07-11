@@ -140,8 +140,8 @@ CRITICAL RULES:
    - [SCENE ACTION + LOCATION]
    - [VISUAL STYLE: color grade, lighting]
    - [CAMERA: shot type + angle]
-   - "photorealistic, 8k, cinematic, sharp focus"
-   - "Negative: blur, distortion, low quality, different face, inconsistent appearance"
+   - "photorealistic, 8k resolution, crisp details, ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white balance, sharp focus"
+   - "Negative: blur, distortion, low quality, different face, inconsistent appearance, yellow tint, sepia, oversaturated, muddy colours, amber cast"
 
 SCENE SPECIFICITY RULES (every scene.imagePrompt MUST obey):
    - NEVER write vague actions like "standing", "walking", "doing something".
@@ -164,13 +164,34 @@ SFX CUES (every scene):
      thunder, water dripping" or "busy market crowd murmur, footsteps, vendor calls".
      Keep it under 200 characters.
 
-4. SCENE STRUCTURE for 30s/6 scenes — give EACH scene a clear dramatic JOB:
-   Scene 1: Wide establishing shot — set location + mood (the world, not the face)
-   Scene 2: Medium shot — introduce the character in context
+3b. CINEMATIC CONTINUITY VECTOR (the single most important rule — the film must read as ONE
+   continuous piece, not a slideshow of unrelated frames):
+   - LINEAR VISUAL PERSISTENCE: every scene.imagePrompt MUST chain to the PREVIOUS scene's visual
+     anchors — the SAME protagonist (same face, age, hair, EXACT wardrobe), the SAME world (location
+     family, colour palette, lighting temperature, film stock) and a logical progression of place/time.
+     Each shot is the NEXT beat of ONE story, never a random unrelated frame.
+   - PROTAGONIST IS THE CORE FOCUS: the main character appears in the MAJORITY of shots. For a
+     music_video (the singer IS the subject) the SAME performer appears in EVERY shot — do NOT cut to
+     empty stages, empty streets or disconnected b-roll that drops her. An establishing shot must still
+     include her or lead directly INTO her (e.g. the venue WITH the singer already on stage), never an
+     empty room she is absent from.
+   - MUSIC_VIDEO = LIVE PERFORMANCE: in a music_video, describe her actively PERFORMING in every shot —
+     singing INTO the microphone, mouth open mid-lyric, expressive face and hands, breathing with the
+     phrase — so the motion clearly reads as a real vocal performance (the render carries the song's
+     audio; the visuals must match a singer mid-song, not a static portrait).
+   - FORBIDDEN JUMPS: no structural jump that drops the active character identity, teleports to an
+     unrelated setting, or resets the palette/lighting. No "close-up of the woman" → "empty stage"
+     whiplash. If in doubt, keep her in frame and move the CAMERA, not the world.
+
+4. SCENE STRUCTURE for 30s/6 scenes — give EACH scene a clear dramatic JOB, but the PROTAGONIST stays
+   present and on-model through the whole arc (rule 3b):
+   Scene 1: Wide establishing shot — set location + mood WITH the protagonist visible in it (on
+            stage / entering frame); for a music_video she is performing from the very first beat
+   Scene 2: Medium shot — the character in context, same wardrobe + world
    Scene 3: Close-up — the EMOTIONAL PEAK (the face carries the whole moment)
-   Scene 4: Dynamic / tracking shot — movement, energy, momentum
+   Scene 4: Dynamic / tracking shot — movement, energy, momentum (still her)
    Scene 5: Dramatic angle (low-angle, high-angle or profile) — the TURNING POINT
-   Scene 6: Slow pull-back or symbolic close — the cinematic resolution
+   Scene 6: Slow pull-back or symbolic close — the cinematic resolution (she resolves the frame)
    For other scene counts, keep the establish → develop → peak → turn → resolve arc.
 
 5. For Georgian SETTINGS: use authentic Georgian ENVIRONMENT details (architecture, streets,
@@ -192,8 +213,11 @@ SFX CUES (every scene):
    - ATMOSPHERE: add motivated practical lights (neon signs, lanterns, headlights, candles)
      and a touch of atmosphere (haze, mist, dust motes, rain, soft bokeh) so every frame
      has depth and mood — never a flat, empty background.
-   - QUALITY TAGS: end each imagePrompt with "photorealistic, 8K, cinematic color grade,
-     anamorphic lens, volumetric lighting, film grain, sharp focus, professional cinematography".
+   - QUALITY TAGS: end each imagePrompt with "photorealistic, 8K resolution, crisp details,
+     ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white
+     balance, cinematic color grade, volumetric lighting, film grain, sharp focus, professional
+     cinematography". NEVER a yellow, sepia, amber or muddy over-warm cast — keep whites clean and
+     neutral even in warm scenes (warmth belongs in motivated practical lights, never a global filter).
 
 Return ONLY valid JSON. No markdown. No explanation.
 
@@ -327,7 +351,7 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
       colorGrade: str(vs.colorGrade),
       lighting: str(vs.lighting),
       cameraStyle: str(vs.cameraStyle),
-      negativePrompt: str(vs.negativePrompt, 'blur, distortion, low quality, different face, inconsistent appearance'),
+      negativePrompt: str(vs.negativePrompt, 'blur, distortion, low quality, different face, inconsistent appearance, yellow tint, sepia, oversaturated, muddy colours, amber cast'),
     },
     scenes,
     audio: {

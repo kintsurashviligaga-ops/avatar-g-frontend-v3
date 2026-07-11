@@ -121,7 +121,9 @@ export function buildStyleGuide(shared: FilmShared): string {
     `Rigid visual style guide — identical in every shot: ${aesthetic}; one consistent color palette; `
     + `consistent key and rim lighting; the same lens, depth of field and film grain; unchanged props and set dressing; `
     + `${identity}. The SAME single protagonist appears in every shot — never swap the person, face, age or wardrobe between shots. `
-    + `Use only lighting and elements that belong to the world of the brief: NO neon, glowing light-streaks, lens flares, HUD overlays or sci-fi effects unless the brief explicitly asks for them.`
+    + `Use only lighting and elements that belong to the world of the brief: NO neon, glowing light-streaks, lens flares, HUD overlays or sci-fi effects unless the brief explicitly asks for them. `
+    // VECTOR 3 — immutable color science on every clip so the model stops emitting a muddy yellow/sepia cast.
+    + `COLOR SCIENCE: professional grade, ARRI Alexa color science, neutral white balance, crisp 8K, sharp focus — NO yellow, sepia, amber or muddy over-warm tint.`
   );
 }
 
@@ -611,7 +613,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     const enriched = mvIntro
       ? enrichVideoPrompt(
           `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. NO people, NO performer, NO singer anywhere in frame — a pure establishing location shot only. No on-screen text, titles, captions, subtitles, watermarks or logos. ${styleGuide} (consistency seed ${seed}).`,
-          traits, 1500,
+          traits, 1700,
         )
       : scriptDriven
         // Trailer/film scene: play the scene the SCRIPT describes. No "subject performs
@@ -619,11 +621,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
         // the scene text itself; only the camera + clean-frame + world-continuity ride along.
         ? enrichVideoPrompt(
             `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene, never a static frozen frame. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
-            traits, 1500,
+            traits, 1700,
           )
         : enrichVideoPrompt(
             `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
-            traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
+            traits, 1700, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
           );
     return {
       index: seg.index,
