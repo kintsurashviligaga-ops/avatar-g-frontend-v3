@@ -30,7 +30,7 @@ export interface FlagDef {
  */
 export const FLAG_DEFS: FlagDef[] = [
   { name: 'FILM_AUDIO_MIX_ENABLED', label: 'Audio-mix pipeline', description: 'Script-driven ducking + silence-beat mute windows in the film assembler (default off).', default: false },
-  { name: 'FILM_LIPSYNC_ENABLED', label: 'Lip-sync pipeline', description: 'Post-render lip-sync stage over the master (passthrough until a provider is wired; default off).', default: false },
+  { name: 'FILM_LIPSYNC_ENABLED', label: 'Lip-sync pipeline', description: 'Post-render lip-sync over the master via the HeyGen→Replicate(sync/lipsync-2) cascade — FULLY WIRED (host→cascade→validated write-back), fail-open. OPT-IN (default off): on-by-default fires a paid ~180s Replicate call on EVERY narrated render and can trip the render saga. Enable per-op with FILM_LIPSYNC_ENABLED=1.', default: false },
   { name: 'LIPSYNC_HEYGEN', label: 'HeyGen avatar lip-sync', description: 'Use HeyGen for avatar lip-sync; off forces the SadTalker fallback. Needs HEYGEN_API_KEY.', default: true },
 ];
 const FLAG_NAMES = new Set(FLAG_DEFS.map((f) => f.name));

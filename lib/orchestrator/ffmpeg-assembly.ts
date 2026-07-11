@@ -13,7 +13,7 @@ import 'server-only';
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, stat, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
@@ -21,14 +21,14 @@ import { buildFilterComplex, sceneAwareTransitions } from './ffmpeg-filtergraph'
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
-import { uploadBufferAndSign } from './storage-adapter';
+import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
 import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pipeline/audio/audioMix';
 import { resolveDialogueCastPlan, buildDialoguePremixFilter, DIALOGUE_DUCK_DB } from './dialogueCastPlan';
 import { parseScript, scriptMixWindows } from '@/lib/pipeline/script/scriptSchema';
 import { getFeatureFlag } from '@/lib/server/feature-flags';
-import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
+import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, heygenLipsyncProvider, cascadeLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
 
 const exec = promisify(execFile);
 
@@ -213,7 +213,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // else the default (false). Timeout-bounded + fail-open to the env/default on any DB issue, so this
     // matches the prior process.env reads for the canonical '1'/unset values and never hangs the render.
     const AUDIO_MIX_ON = await getFeatureFlag('FILM_AUDIO_MIX_ENABLED', false);
-    const LIPSYNC_ON = await getFeatureFlag('FILM_LIPSYNC_ENABLED', false);
+    const LIPSYNC_ON = await getFeatureFlag('FILM_LIPSYNC_ENABLED', false); // Phase 18: cascade WIRED, but OPT-IN (see the flag note)
     // FILM_AUDIO_MIX_ENABLED — the 4-field mixer compiler resolves the ducking depth (−12 dB by default)
     // and the hard-mute window: the depth is threaded through the PROVEN filtergraph below, and the
     // hard-mute is applied as a small fail-open post-pass (never a rewrite of the master graph).
@@ -492,22 +492,54 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       } catch (e) { console.warn('[assemble] hard-mute post-pass skipped:', e instanceof Error ? e.message : e); }
     }
 
-    // FILM_LIPSYNC_ENABLED — post-render lip-sync stage (swappable provider; sub-floor confidence → raw
-    // clip). Default provider is a safe passthrough (no external call), so enabling the gate never alters
-    // the master until a real provider is wired (FILM_LIPSYNC_PROVIDER=replicate + REPLICATE_API_TOKEN).
-    // NOTE: the productive placement is per-clip pre-assembly (clips have URLs + known dialogue timing);
-    // here it runs over the master + voice lane and fail-opens to the raw master — the stage/interface is
-    // exercised and logged. Only a confident sync that yields a NEW local file replaces the master.
+    // FILM_LIPSYNC_ENABLED — post-render lip-sync over the master. PRIORITY CASCADE: HeyGen PRIMARY →
+    // Replicate FALLBACK (per Phase 18). Every leg is fail-open: HeyGen declines a VIDEO master (its
+    // talking_photo engine is image-only) and falls through to the video-native Replicate sync/lipsync-2;
+    // any error / sub-floor confidence keeps the raw master. Providers FETCH the media remotely, so the
+    // local master + voice are HOSTED first (a /tmp path is invisible to them). With no keys the cascade
+    // is empty → passthrough → byte-identical to lip-sync off.
     if (LIPSYNC_ON && voicePath) {
       try {
-        const provider: LipsyncProvider = process.env.FILM_LIPSYNC_PROVIDER === 'replicate' && process.env.REPLICATE_API_TOKEN
-          ? replicateLipsyncProvider({ token: process.env.REPLICATE_API_TOKEN })
+        const heygenKey = process.env.HEYGEN_API_KEY?.trim();
+        const replicateToken = process.env.REPLICATE_API_TOKEN?.trim();
+        const provider: LipsyncProvider = (heygenKey || replicateToken)
+          ? cascadeLipsyncProvider([
+              heygenKey ? heygenLipsyncProvider({ apiKey: heygenKey }) : null,
+              replicateToken ? replicateLipsyncProvider({ token: replicateToken, model: process.env.FILM_LIPSYNC_REPLICATE_MODEL }) : null,
+            ])
           : passthroughLipsyncProvider;
-        const ls = await lipsyncNode({ clipUrl: out, audioUrl: voicePath }, { provider });
-        // eslint-disable-next-line no-console
-        console.log(`[assemble] lipsync provider=${ls.provider} fallback=${ls.usedFallback} conf=${ls.confidence}`);
-        if (!ls.usedFallback && ls.url && ls.url !== out) {
-          try { await writeFile(out, await readFile(ls.url)); } catch { /* remote/unreadable → keep raw master */ }
+        if (provider !== passthroughLipsyncProvider) {
+          const ts = Date.now();
+          const srcObj = `lipsync/${ts}-src.mp4`;
+          const voiceObj = `lipsync/${ts}-voice.m4a`;
+          const hostedClip = await uploadBufferAndSign(RENDER_BUCKET, srcObj, await readFile(out), 'video/mp4', 3600).catch(() => null);
+          const hostedAudio = await uploadBufferAndSign(RENDER_BUCKET, voiceObj, await readFile(voicePath), 'audio/mp4', 3600).catch(() => null);
+          if (hostedClip && hostedAudio) {
+            const ls = await lipsyncNode({ clipUrl: hostedClip, audioUrl: hostedAudio }, { provider });
+            // eslint-disable-next-line no-console
+            console.log(`[assemble] lipsync provider=${ls.provider} fallback=${ls.usedFallback} conf=${ls.confidence}${ls.reason ? ` reason=${ls.reason}` : ''}`);
+            // Confident sync → DOWNLOAD the remote result (readFile can't read an https URL). SAFETY: never
+            // replace a good master with a corrupt/truncated output — a real sync preserves the frame set, so
+            // reject anything empty (<50KB) or suspiciously small (<50% of the raw master). Write ATOMICALLY
+            // (temp + rename) so `out` is never left half-written on a mid-write failure.
+            if (!ls.usedFallback && ls.url) {
+              const synced = await download(ls.url, join(dir, 'lipsynced.mp4'), signal).catch(() => null);
+              if (synced) {
+                try {
+                  const [rawStat, syncStat] = await Promise.all([stat(out), stat(synced)]);
+                  if (syncStat.size >= 50_000 && syncStat.size >= rawStat.size * 0.5) {
+                    const tmp = join(dir, 'master.lipsynced.tmp.mp4');
+                    await writeFile(tmp, await readFile(synced));
+                    await rename(tmp, out); // atomic on the same fs
+                  } else {
+                    console.warn(`[assemble] lipsync result rejected (size ${syncStat.size} vs raw ${rawStat.size}) — keeping raw master`);
+                  }
+                } catch { /* keep raw master */ }
+              }
+            }
+          }
+          // Scratch inputs are single-use → best-effort delete so lip-sync never bloats storage.
+          void removeStorageObjects(RENDER_BUCKET, [srcObj, voiceObj]).catch(() => {});
         }
       } catch (e) { console.warn('[assemble] lipsync stage skipped:', e instanceof Error ? e.message : e); }
     }

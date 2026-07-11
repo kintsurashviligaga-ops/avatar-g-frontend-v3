@@ -21,6 +21,15 @@ function client(): ReturnType<typeof createServiceRoleClient> | null {
   }
 }
 
+/** Best-effort delete of scratch objects (e.g. single-use lip-sync inputs) so they never bloat the
+ *  bucket. Fail-open no-op when storage is unconfigured; a miss is harmless (objects expire on TTL). */
+export async function removeStorageObjects(bucket: string, paths: string[]): Promise<void> {
+  if (!paths.length) return;
+  const sb = client();
+  if (!sb) return;
+  try { await sb.storage.from(bucket).remove(paths); } catch { /* ignore */ }
+}
+
 /** Mint a 15-minute signed URL for a stored object. Null when unavailable. */
 export async function createSignedAssetUrl(
   bucket: string,
