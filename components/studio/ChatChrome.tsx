@@ -32,6 +32,7 @@ import NotificationBell from '@/components/notifications/NotificationBell';
 import { track } from '@/lib/analytics/track';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
+import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
@@ -226,14 +227,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return () => { alive = false; sub?.subscription?.unsubscribe(); };
   }, []);
 
-  const refreshBalance = useCallback(async () => {
+  // Routed through the TTL-cached, request-deduped balance store (V3) so a route transition
+  // reuses the cached ₾ value instead of re-hitting /api/credits/balance on every mount. force=true
+  // bypasses the TTL — used on the two value-changing events (a spend + the Stripe top-up poll).
+  const refreshBalance = useCallback(async (force = false) => {
     if (!authed) return;
-    try {
-      const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
-      if (!res.ok) return;
-      const j = (await res.json()) as { balance?: number | null };
-      if (typeof j?.balance === 'number') setBalanceGel(j.balance);
-    } catch { /* fail-safe — chip shows 0.00 */ }
+    const b = await useCreditsBalance.getState().get(force);
+    if (typeof b === 'number') setBalanceGel(b);
   }, [authed]);
 
   useEffect(() => { void refreshBalance(); }, [refreshBalance]);
@@ -242,10 +242,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // `myavatar:credits-updated` after every spend). Without this the ₾ pill stayed frozen after
   // generating, which read as "credits never get deducted".
   useEffect(() => {
-    const onSpend = () => { void refreshBalance(); };
+    const onSpend = () => { void refreshBalance(true); }; // force — bypass the TTL after a spend
     window.addEventListener('myavatar:credits-updated', onSpend);
     return () => window.removeEventListener('myavatar:credits-updated', onSpend);
   }, [refreshBalance]);
+
+  // Auth change → drop the cached balance so a re-login never shows the prior user's ₾ value.
+  useEffect(() => { useCreditsBalance.getState().invalidate(); }, [authed]);
 
   // DAY-5 voice bridge — the composer's Gemini-style live-voice chip (OmniStudio) can't reach
   // setVoiceOpen across the component boundary, so it dispatches `myavatar:voice-open`. Authed →
@@ -268,8 +271,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     if (params.get('topup') !== 'success') return;
     track('payment_completed', {}); // PHASE 4 Task 1 — landed back from Stripe Checkout
     let n = 0;
-    const id = window.setInterval(() => { n += 1; void refreshBalance(); if (n >= 5) window.clearInterval(id); }, 1500);
-    void refreshBalance();
+    const id = window.setInterval(() => { n += 1; void refreshBalance(true); if (n >= 5) window.clearInterval(id); }, 1500);
+    void refreshBalance(true);
     params.delete('topup');
     const qs = params.toString();
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
