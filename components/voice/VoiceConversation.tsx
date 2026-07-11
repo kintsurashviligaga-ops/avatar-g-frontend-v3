@@ -39,16 +39,16 @@ import {
 } from '@/lib/voice/vad';
 
 type Lang = 'ka' | 'en' | 'ru';
-type Status = 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
+type Status = 'connecting' | 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
 interface Turn { role: 'user' | 'assistant'; content: string }
 
 const COPY: Record<Lang, {
-  title: string; tapToStart: string; listening: string; thinking: string; speaking: string;
+  title: string; connecting: string; tapToStart: string; listening: string; thinking: string; speaking: string;
   micDenied: string; retry: string; rateLimited: string; tapResume: string; you: string; assistant: string; hint: string;
 }> = {
-  ka: { title: 'ხმოვანი საუბარი', tapToStart: 'დააჭირე დასაწყებად', listening: 'გისმენ…', thinking: 'ვფიქრობ…', speaking: 'ვპასუხობ…', micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', retry: 'სცადე თავიდან', rateLimited: 'ცოტა ხანს დაისვენე და სცადე თავიდან', tapResume: 'დააჭირე გასაგრძელებლად', you: 'შენ', assistant: 'MyAvatar', hint: 'ილაპარაკე თავისუფლად — მე თვითონ მივხვდები როდის დაასრულებ' },
-  en: { title: 'Voice chat', tapToStart: 'Tap to start', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', micDenied: "Couldn't access the microphone", retry: 'Try again', rateLimited: 'Slow down a moment — tap to retry', tapResume: 'Tap to resume', you: 'You', assistant: 'MyAvatar', hint: 'Just talk — I detect when you finish' },
-  ru: { title: 'Голосовой чат', tapToStart: 'Нажмите, чтобы начать', listening: 'Слушаю…', thinking: 'Думаю…', speaking: 'Отвечаю…', micDenied: 'Нет доступа к микрофону', retry: 'Ещё раз', rateLimited: 'Слишком часто — нажмите, чтобы повторить', tapResume: 'Нажмите, чтобы продолжить', you: 'Вы', assistant: 'MyAvatar', hint: 'Просто говорите — я пойму, когда вы закончите' },
+  ka: { title: 'ხმოვანი საუბარი', connecting: 'ვუკავშირდები…', tapToStart: 'დააჭირე დასაწყებად', listening: 'გისმენ…', thinking: 'ვფიქრობ…', speaking: 'ვპასუხობ…', micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', retry: 'სცადე თავიდან', rateLimited: 'ცოტა ხანს დაისვენე და სცადე თავიდან', tapResume: 'დააჭირე გასაგრძელებლად', you: 'შენ', assistant: 'MyAvatar', hint: 'ილაპარაკე თავისუფლად — მე თვითონ მივხვდები როდის დაასრულებ' },
+  en: { title: 'Voice chat', connecting: 'Connecting…', tapToStart: 'Tap to start', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', micDenied: "Couldn't access the microphone", retry: 'Try again', rateLimited: 'Slow down a moment — tap to retry', tapResume: 'Tap to resume', you: 'You', assistant: 'MyAvatar', hint: 'Just talk — I detect when you finish' },
+  ru: { title: 'Голосовой чат', connecting: 'Подключаюсь…', tapToStart: 'Нажмите, чтобы начать', listening: 'Слушаю…', thinking: 'Думаю…', speaking: 'Отвечаю…', micDenied: 'Нет доступа к микрофону', retry: 'Ещё раз', rateLimited: 'Слишком часто — нажмите, чтобы повторить', tapResume: 'Нажмите, чтобы продолжить', you: 'Вы', assistant: 'MyAvatar', hint: 'Просто говорите — я пойму, когда вы закончите' },
 };
 
 const VAD_INTERVAL_MS = 50;
@@ -80,7 +80,7 @@ function turnSignal(ms: number, extra: AbortSignal): AbortSignal {
 export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string; onClose: () => void }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
-  const [status, setStatus] = useState<Status>('off');
+  const [status, setStatus] = useState<Status>('connecting');
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [error, setError] = useState('');
@@ -107,7 +107,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   const turnAbortRef = useRef<AbortController | null>(null);
 
   // ── Session bookkeeping ──
-  const statusRef = useRef<Status>('off');
+  const statusRef = useRef<Status>('connecting');
   const historyRef = useRef<Turn[]>([]);
   const turnGenRef = useRef(0);
   const runningRef = useRef(false);
@@ -332,11 +332,36 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   }, []);
   bargeInRef.current = bargeIn;
 
-  // ── Boot the session INSIDE the tap gesture (iOS-critical) ──
-  const bootSession = useCallback(async () => {
+  // ── Boot the session. `fromGesture` = the call originated from a real tap (onMicTap/resume) vs.
+  //    the auto-start-on-mount attempt. AudioContext.resume() + getUserMedia are gesture-gated on
+  //    iOS; the overlay is dynamically imported so the opening tap doesn't carry to the mount
+  //    effect. So auto-start proceeds ONLY when the context actually reaches 'running' (desktop /
+  //    Android → zero-touch); if it stays 'suspended' (iOS), we fall back to a single "tap to start"
+  //    (that tap IS a gesture → resumes cleanly). Never a dead, silently-suspended listening orb. ──
+  const bootSession = useCallback(async (fromGesture: boolean) => {
     setError('');
     stopGraph(); // idempotent: a re-boot from a mid-session error must not leak the old mic/graph
     turnGenRef.current += 1; // orphan any in-flight turn from the previous session
+
+    // 1) Ensure a RUNNING AudioContext first (the gesture-gated step). One context, reused all session.
+    let ctx: AudioContext | null = audioCtxRef.current;
+    try {
+      const Ctor = getAudioContextCtor();
+      if (Ctor) {
+        ctx = ctx ?? new Ctor();
+        audioCtxRef.current = ctx;
+        if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* noop */ } }
+      } else {
+        ctx = null;
+      }
+    } catch { ctx = null; }
+    if (!mountedRef.current) return;
+
+    // 2) Auto-start only commits when the context is actually running (VAD will work hands-free).
+    //    Otherwise show a one-tap affordance rather than grabbing the mic into a dead loop.
+    if (!fromGesture && (!ctx || ctx.state !== 'running')) { go('off'); return; }
+
+    // 3) Acquire the mic + build the graph + arm.
     try {
       const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       // The overlay can close (teardown) while the permission prompt is up; if the grant lands after
@@ -348,11 +373,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
 
       // Web-Audio graph for VAD. If it can't be built we still run — as plain tap-to-talk.
       try {
-        const Ctor = getAudioContextCtor();
-        if (Ctor) {
-          const ctx = audioCtxRef.current ?? new Ctor();
-          audioCtxRef.current = ctx;
-          if (ctx.state === 'suspended') await ctx.resume();
+        if (ctx) {
           const source = ctx.createMediaStreamSource(stream);
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 1024;
@@ -379,6 +400,13 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       go('error'); setError(t.micDenied);
     }
   }, [armListen, go, stopGraph, t.micDenied, vadTick]);
+  const bootSessionRef = useRef<(fromGesture: boolean) => Promise<void>>();
+  bootSessionRef.current = bootSession;
+
+  // ── VECTOR 2 — auto-start on mount (zero-touch). Best-effort: commits only if the AudioContext
+  //    reaches 'running' (desktop/Android); on iOS the mount effect isn't a gesture so it falls
+  //    back to a single "tap to start". Runs once. ──
+  useEffect(() => { void bootSessionRef.current?.(false); }, []);
 
   // ── Pause VAD + release the mic when the tab is hidden; require a tap to resume ──
   useEffect(() => {
@@ -404,7 +432,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     try { if (ctx && ctx.state === 'suspended') await ctx.resume(); } catch { /* noop */ }
     // Re-grant the mic if the track was released; otherwise re-arm on the live stream.
     if (!streamRef.current || streamRef.current.getTracks().every((tr) => tr.readyState === 'ended')) {
-      void bootSession();
+      void bootSession(true); // resume tap IS a gesture
       return;
     }
     if (vadModeRef.current && !vadIntervalRef.current) vadIntervalRef.current = setInterval(vadTick, VAD_INTERVAL_MS);
@@ -414,7 +442,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   // ── Orb tap: start / retry / resume / manual endpoint ──
   const onMicTap = useCallback(() => {
     const st = statusRef.current;
-    if (st === 'off' || st === 'error') { void bootSession(); return; }
+    if (st === 'off' || st === 'error') { void bootSession(true); return; } // real tap → gesture
     if (st === 'resume') { void resumeSession(); return; }
     if (st === 'listening') {
       // manual endpoint (works with or without VAD) — stop the recorder → commit/discard
@@ -423,13 +451,14 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     // thinking / speaking → ignore (barge-in is handled by the VAD, not a tap)
   }, [bootSession, resumeSession]);
 
-  const label = status === 'listening' ? t.listening
-    : status === 'thinking' ? t.thinking
-      : status === 'speaking' ? t.speaking
-        : status === 'resume' ? t.tapResume
-          : status === 'error' ? (error || t.retry)
-            : t.tapToStart;
-  const busy = status === 'thinking';
+  const label = status === 'connecting' ? t.connecting
+    : status === 'listening' ? t.listening
+      : status === 'thinking' ? t.thinking
+        : status === 'speaking' ? t.speaking
+          : status === 'resume' ? t.tapResume
+            : status === 'error' ? (error || t.retry)
+              : t.tapToStart;
+  const busy = status === 'thinking' || status === 'connecting';
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
@@ -454,12 +483,12 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         aria-label={label}
         className={`relative flex h-24 w-24 items-center justify-center rounded-full transition-all disabled:cursor-default ${
           status === 'listening' ? 'bg-rose-500 text-white shadow-[0_0_50px_-6px_rgba(244,63,94,0.7)]'
-            : status === 'speaking' || status === 'thinking' ? 'bg-app-accent/20 text-app-accent'
+            : status === 'speaking' || status === 'thinking' || status === 'connecting' ? 'bg-app-accent/20 text-app-accent'
               : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-105'
         }`}
       >
         {status === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/40" />}
-        {status === 'thinking' ? <Loader2 size={30} className="animate-spin" />
+        {status === 'thinking' || status === 'connecting' ? <Loader2 size={30} className="animate-spin" />
           : status === 'speaking' ? <Volume2 size={30} className="animate-pulse" />
             : status === 'resume' ? <RotateCcw size={28} />
               : <Mic size={30} />}

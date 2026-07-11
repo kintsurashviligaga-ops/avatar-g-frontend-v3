@@ -5703,7 +5703,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
               <div>
                 <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
                 </div>
               </div>
@@ -6173,7 +6173,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           />
 
           {/* Controls row — attach · mode selector · (spacer) · mic/stop/send. */}
-          <div className="mt-1 flex items-center gap-1">
+          {/* Mobile: flex-wrap so the trailing action buttons (incl. Send) drop to a second line
+              instead of being pushed off-screen — 7 shrink-0 controls + the mode chip can't fit a
+              375px row (esp. in the longer ka/ru labels). sm+: the desktop split (spacer pushes the
+              actions right, no wrap). */}
+          <div className="mt-1 flex flex-wrap items-center gap-1 sm:flex-nowrap">
             {/* [+] add / attach */}
             <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
@@ -6189,9 +6193,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <Camera size={19} />
             </button>
 
-            {/* Spacer — pushes the mode selector + mic/send to the RIGHT, so [+]/📷 stay on
-                the left and the mode dropdown sits between the text and the mic. */}
-            <div className="flex-1" />
+            {/* Spacer — pushes the mode selector + mic/send to the RIGHT on desktop. Hidden on
+                mobile: with no spacer the controls left-pack and wrap cleanly (a flex-1 spacer would
+                eat line 1 and force EVERYTHING after it onto line 2). */}
+            <div className="hidden sm:block sm:flex-1" />
 
             {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
             <div className="relative shrink-0">

@@ -123,7 +123,11 @@ export default function NotificationBell({ locale }: { locale: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-[80] mt-2 w-[290px] max-w-[88vw] overflow-hidden rounded-2xl border border-app-border/15 bg-app-surface shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]">
+        // Mobile: pin to the VIEWPORT (fixed inset-x-3, below the safe-area + h-14 header) so the
+        // bell's off-centre position can't push the panel off the left edge (which clipped
+        // "შეტყობინებები" → "ტყობინებები"). sm+: bell-anchored dropdown (absolute right-0). The fixed
+        // node is still a DOM descendant of `ref`, so the outside-click-to-close check still holds.
+        <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top,0px)_+_60px)] z-[80] w-auto overflow-hidden rounded-2xl border border-app-border/15 bg-app-surface shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] sm:absolute sm:inset-x-auto sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[290px] sm:max-w-[88vw]">
           <div className="border-b border-app-border/10 px-4 py-2.5 text-[12.5px] font-semibold text-app-text">{title}</div>
           {items.length === 0 ? (
             <div className="px-4 py-8 text-center text-[12.5px] text-app-muted">{empty}</div>
