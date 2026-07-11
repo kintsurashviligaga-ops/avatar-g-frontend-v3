@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Check, Sparkles } from 'lucide-react'
+import { Check } from 'lucide-react'
 import Link from 'next/link'
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -35,26 +35,21 @@ export function PricingSection() {
   const labels = LABELS[locale]
 
   return (
-    <section id="pricing" className="relative py-16 px-4 sm:px-6" style={{ borderTop: '1px solid var(--color-border)' }}>
+    <section id="pricing" className="relative py-20 px-4 sm:px-6" style={{ borderTop: '1px solid var(--color-border)' }}>
       <div className="relative mx-auto max-w-4xl">
-        {/* Heading — quiet, no motion decoration */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border mb-5" style={{ borderColor: 'var(--color-border)' }}>
-            <Sparkles className="w-3 h-3 text-cyan-300" />
-            <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: 'var(--color-text-secondary)' }}>{labels.badge}</span>
-          </div>
-          <h2 className="text-3xl md:text-4xl font-black tracking-[-0.02em]" style={{ color: 'var(--color-text)' }}>
+        {/* Heading — one restrained accent word, no eyebrow chip / gradient / motion decoration. */}
+        <div className="text-center mb-14">
+          <h2 className="text-3xl md:text-[40px] font-black leading-[1.05] tracking-[-0.03em]" style={{ color: 'var(--color-text)' }}>
             {t('pricing.title')}{' '}
-            <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
-              {t('pricing.titleAccent')}
-            </span>
+            <span className="text-cyan-300">{t('pricing.titleAccent')}</span>
           </h2>
-          <p className="mt-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="mt-4 text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
             {labels.focus}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Dark-canvas buffers between cards so each reads as an isolated premium object. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
           {PRICING_TIERS.map((tier, index) => {
             const isPopular = tier.id === 'pro_creator'
             const period = tier.billing === 'annual' ? labels.year : labels.month
@@ -72,30 +67,38 @@ export function PricingSection() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: index * 0.06 }}
-                className="relative flex flex-col rounded-2xl p-5"
+                className="relative flex flex-col rounded-[20px] p-6"
                 style={{
                   backgroundColor: 'var(--card-bg)',
-                  border: isPopular ? '1px solid rgba(34,211,238,0.45)' : '1px solid var(--color-border)',
+                  // Single hairline contour — the popular tier gets one restrained cyan hairline,
+                  // no ring / glow / nested borders.
+                  border: isPopular ? '1px solid rgba(34,211,238,0.32)' : '1px solid var(--color-border)',
                 }}
               >
                 {isPopular && (
-                  <span className="absolute -top-2.5 left-5 inline-flex items-center gap-1 rounded-full bg-cyan-500 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    <Sparkles className="w-2.5 h-2.5" /> {labels.popular}
+                  // Ghost hairline badge (was a loud solid-fill pill) — pure text, no icon.
+                  <span
+                    className="absolute -top-2.5 left-6 rounded-full px-2.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-cyan-300"
+                    style={{ backgroundColor: 'var(--card-bg)', border: '1px solid rgba(34,211,238,0.32)' }}
+                  >
+                    {labels.popular}
                   </span>
                 )}
 
-                <h3 className="text-base font-bold" style={{ color: 'var(--color-text)' }}>{tier.name}</h3>
+                {/* Tier name as a quiet label; the price is the single dominant element. */}
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-tertiary)' }}>{tier.name}</h3>
 
-                <div className="flex items-baseline gap-1 mt-3 mb-5">
-                  <span className="text-3xl font-extrabold" style={{ color: 'var(--color-text)' }}>{tier.priceGel}₾</span>
+                <div className="flex items-baseline gap-1.5 mt-4 mb-7">
+                  <span className="text-[40px] font-black leading-none tracking-[-0.03em]" style={{ color: 'var(--color-text)' }}>{tier.priceGel}₾</span>
                   <span className="text-xs font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{period}</span>
                 </div>
 
-                <ul className="space-y-2.5 mb-6 flex-1">
+                <ul className="space-y-3 mb-8 flex-1">
                   {features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
-                      <Check className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-cyan-400" strokeWidth={3} />
-                      {f}
+                    <li key={f} className="flex items-start gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                      {/* Desaturated tick — cyan is reserved for the popular tier's price/CTA. */}
+                      <Check className="mt-[3px] h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.5} style={{ color: 'var(--color-text-tertiary)' }} />
+                      <span>{f}</span>
                     </li>
                   ))}
                 </ul>
@@ -104,10 +107,10 @@ export function PricingSection() {
                   href={`/${locale}/signup?plan=${tier.id}`}
                   // Apple IAP compliance: paid-plan CTA hidden inside the iOS shell.
                   data-iap-external
-                  className="block text-center min-h-[48px] leading-[48px] rounded-xl font-bold text-sm transition-transform duration-150 active:scale-[0.98]"
+                  className="block text-center min-h-[48px] leading-[48px] rounded-xl font-semibold text-sm transition-all duration-150 active:scale-[0.98]"
                   style={isPopular
-                    ? { backgroundColor: 'rgb(6,182,212)', color: '#fff' }
-                    : { backgroundColor: 'var(--card-hover)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+                    ? { backgroundColor: 'rgb(6,182,212)', color: '#04121a' }
+                    : { backgroundColor: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
                 >
                   {labels.cta}
                 </Link>
