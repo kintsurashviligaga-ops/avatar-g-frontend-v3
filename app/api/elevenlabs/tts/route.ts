@@ -8,6 +8,7 @@ import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
 import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
+import { numbersToGeorgianWords } from '@/lib/chat/georgianNumbers';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -159,7 +160,7 @@ export async function POST(req: NextRequest) {
   if (rateLimitError) return rateLimitError;
 
   const body = (await req.json()) as TtsRequest;
-  const text = body.text?.trim();
+  let text = body.text?.trim();
   if (!text) {
     return NextResponse.json({ error: 'text is required' }, { status: 400 });
   }
@@ -169,6 +170,12 @@ export async function POST(req: NextRequest) {
   // ElevenLabs) when configured; otherwise the default voice. An explicit
   // body.voiceId always wins.
   const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
+
+  // NUMERIC NORMALIZATION (V2) — spell Arabic digits as Georgian cardinal words BEFORE synthesis so
+  // the engine reads "190" as "ას ოთხმოცდაათი", never digit-by-digit ("ერთი ცხრა ნული"). Georgian
+  // text ONLY — en/ru keep the provider's own normalization. Covers EVERY Georgian TTS caller
+  // (real-time voice, read-aloud, film voice-over) since they all POST through this route.
+  if (isGeorgian) text = numbersToGeorgianWords(text);
 
   // v329 — Georgian → the CLONED native voices (shared resolver), gender-matched,
   // read on eleven_v3. Picked BEFORE the English ELEVENLABS_VOICE_ID so Georgian
