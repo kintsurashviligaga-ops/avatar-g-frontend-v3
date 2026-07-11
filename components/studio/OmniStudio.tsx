@@ -4250,17 +4250,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // result card). Shows a ✓ saved state once filed.
   const saveLibButton = useCallback((url: string, kind: 'film' | 'image' | 'music', prompt?: string) => {
     const saved = savedUrls.has(url);
+    // Icon-only (Phase 8): the label is the hover tooltip + accessible name, not visible chrome.
+    const label = saved
+      ? (locale === 'en' ? 'Saved to library' : locale === 'ru' ? 'Сохранено' : 'შენახულია ბიბლიოთეკაში')
+      : (locale === 'en' ? 'Save to library' : locale === 'ru' ? 'В библиотеку' : 'ბიბლიოთეკაში შენახვა');
     return (
       <button
         type="button"
         onClick={() => void saveToLibrary(url, kind, prompt)}
         disabled={saved}
-        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+        title={label}
+        aria-label={label}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent hover:opacity-90 active:scale-90 disabled:opacity-60 sm:h-9 sm:w-9"
       >
-        {saved ? <Check size={13} className="text-app-accent" /> : <BookmarkPlus size={13} />}
-        {saved
-          ? (locale === 'en' ? 'Saved' : locale === 'ru' ? 'Сохранено' : 'შენახულია')
-          : (locale === 'en' ? 'Save' : locale === 'ru' ? 'В библиотеку' : 'ბიბლიოთეკაში')}
+        {saved ? <Check size={16} className="text-app-accent" /> : <BookmarkPlus size={16} />}
       </button>
     );
   }, [savedUrls, saveToLibrary, locale]);
@@ -4388,32 +4391,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       </button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  {/* Icon-only result toolbar (Phase 8): labels live in title/aria; 44px touch hit-box (h-11) → 36px on desktop. */}
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => void dl(m.imageUrl!, 'myavatar-image.png')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      title={t.imgDownload} aria-label={t.imgDownload}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
                     >
-                      <Download size={13} /> {t.imgDownload}
+                      <Download size={16} />
                     </button>
-                    <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
-                      <Share2 size={13} /> {t.share}
+                    <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')} title={t.share} aria-label={t.share}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                      <Share2 size={16} />
                     </button>
-                    <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                      <Sparkles size={13} /> {t.upscaleBtn}
+                    <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling} title={t.upscaleBtn.replace(/^[⬆🔍]\s*/, '')} aria-label={t.upscaleBtn.replace(/^[⬆🔍]\s*/, '')}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                      <Sparkles size={16} />
                     </button>
                     {m.regen && (
-                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                        <RotateCcw size={13} /> {t.regenerate}
+                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                        <RotateCcw size={16} />
                       </button>
                     )}
                     {/* Edit → load this image as the img2img source. */}
-                    <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                      <Pencil size={13} /> {t.editImage}
+                    <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy} title={t.editImage} aria-label={t.editImage}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                      <Pencil size={16} />
                     </button>
                     {saveLibButton(m.imageUrl, 'image', m.regen?.kind === 'image' ? m.regen.prompt : undefined)}
                   </div>
@@ -4444,9 +4449,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     ))}
                   </div>
                   {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
-                    <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                      <RotateCcw size={13} /> {t.regenerate}
+                    <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                      <RotateCcw size={16} />
                     </button>
                   )}
                 </div>
@@ -4455,29 +4460,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                   {/* Polished Suno-style player (album art + play/scrub/time). */}
                   <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} />
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => void dl(m.audioUrl!, 'myavatar-track.mp3')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      title={t.imgDownload} aria-label={t.imgDownload}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
                     >
-                      <Download size={13} /> {t.imgDownload}
+                      <Download size={16} />
                     </button>
-                    <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
-                      <Share2 size={13} /> {t.share}
+                    <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                      <Share2 size={16} />
                     </button>
                     {m.regen && (
-                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40">
-                        <RotateCcw size={13} /> {t.regenerate}
+                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                        <RotateCcw size={16} />
                       </button>
                     )}
                     {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
-                    {/* Cross-service bridge — turn this track into a music video (Video studio). */}
+                    {/* Cross-service bridge — turn this track into a music video (Video studio). The 🎤 IS the icon. */}
                     <button type="button" onClick={() => sendMusicToMusicVideo(m.audioUrl!, 0, m.regen?.kind === 'music' ? (m.regen.prompt || 'Generated Track') : 'Generated Track')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
-                      🎤 <span>{locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკ. კლიპი'}</span>
+                      title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-[16px] leading-none ring-1 ring-app-border/15 transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                      🎤
                     </button>
                   </div>
                 </div>
@@ -4494,17 +4501,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
                     <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'} · {(m.orientation ?? videoOrientation) === 'vertical' ? '9:16' : (m.orientation ?? videoOrientation) === 'square' ? '1:1' : (m.orientation ?? videoOrientation) === 'portrait' ? '4:5' : '16:9'}</div>
                   )}
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                      title={t.imgDownload} aria-label={t.imgDownload}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
                     >
-                      <Download size={13} /> {t.imgDownload}
+                      <Download size={16} />
                     </button>
-                    <button type="button" onClick={() => void share(m.videoUrl!, 'myavatar-video.mp4')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]">
-                      <Share2 size={13} /> {t.share}
+                    <button type="button" onClick={() => void share(m.videoUrl!, 'myavatar-video.mp4')} title={t.share} aria-label={t.share}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                      <Share2 size={16} />
                     </button>
                     {saveLibButton(m.videoUrl, 'film', m.filmPrompt)}
                   </div>
@@ -4647,7 +4655,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Markdown>{m.text}</Markdown>
                     </>
                   )
-                  : <span className="whitespace-pre-wrap">{m.text}</span>;
+                  : <span className="whitespace-pre-wrap break-words">{m.text}</span>;
               })()}
               {/* FIX 4 — one-click retry on a failed video render (reuses the stored
                   prompt + refs + orientation; no re-typing / re-uploading). */}
@@ -5843,17 +5851,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <span className="block text-[12.5px] font-semibold text-app-text">🎧 {locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
                 {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
                 <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} />
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                    <Download size={13} /> {locale === 'en' ? 'Download' : locale === 'ru' ? 'Скачать' : 'ჩამოტვირთვა'}
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.imgDownload} aria-label={t.imgDownload}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                    <Download size={16} />
                   </button>
-                  <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                    <Share2 size={13} /> {locale === 'en' ? 'Share' : locale === 'ru' ? 'Поделиться' : 'გაზიარება'}
+                  <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                    <Share2 size={16} />
                   </button>
                   {saveLibButton(lastMusic.audioUrl, 'music')}
-                  {/* Cross-service bridge — turn this track into a music video. */}
-                  <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, 'Generated Track')} className="inline-flex items-center gap-1.5 rounded-full border border-app-border/20 px-3 py-1.5 text-[11.5px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                    🎤 {locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკ. კლიპი'}
+                  {/* Cross-service bridge — turn this track into a music video. The 🎤 IS the icon. */}
+                  <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, 'Generated Track')}
+                    title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-[16px] leading-none transition hover:bg-app-elevated active:scale-90 sm:h-9 sm:w-9">
+                    🎤
                   </button>
                 </div>
               </div>
@@ -6334,23 +6346,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <button
               type="button"
               onClick={() => void dl(lightbox, 'myavatar-image.png')}
-              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg backdrop-blur"
+              title={t.imgDownload} aria-label={t.imgDownload}
+              className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-app-accent text-app-bg backdrop-blur transition active:scale-90"
             >
-              <Download size={14} /> {t.imgDownload}
+              <Download size={18} />
             </button>
             <button
               type="button"
               onClick={() => void share(lightbox, 'myavatar-image.png')}
-              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
+              title={t.share} aria-label={t.share}
+              className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/25 active:scale-90"
             >
-              <Share2 size={14} /> {t.share}
+              <Share2 size={18} />
             </button>
             <button
               type="button"
               onClick={() => startImageEdit(lightbox)}
-              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-4 py-2 text-[13px] font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
+              title={t.editImage} aria-label={t.editImage}
+              className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/25 active:scale-90"
             >
-              <Pencil size={14} /> {t.editImage}
+              <Pencil size={18} />
             </button>
           </div>
         </div>

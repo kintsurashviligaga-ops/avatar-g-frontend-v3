@@ -1712,7 +1712,7 @@ export function ConversationalFilmStudio({
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={[
-                  'max-w-[85%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed',
+                  'max-w-[85%] break-words rounded-2xl px-4 py-3 text-[15px] leading-relaxed',
                   msg.role === 'user'
                     ? 'bg-white text-black font-medium rounded-tr-sm shadow-[0_0_20px_rgba(255,255,255,0.06)]'
                     : 'bg-black text-neutral-300 border border-white/10 rounded-tl-sm',
