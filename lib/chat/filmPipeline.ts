@@ -377,10 +377,32 @@ export interface FilmPlanOptions {
    * while the seed + style guide + character anchor still lock continuity.
    */
   sceneScripts?: string[];
+  /**
+   * V1 SHARED CONTEXT — the Screenwriter agent's per-scene metadata, index-aligned with
+   * sceneScripts. Previously the rich MasterFilmScene (cameraShot/mood/location/timecode) was
+   * FLATTENED to the imagePrompt string and the Camera stage RE-DERIVED its move from the
+   * deterministic beat ladder — so the visual camera ignored the script's shot direction. Threading
+   * this lets the Camera stage HONOR the screenwriter's exact cameraShot, and carries each scene's
+   * timecode window so downstream (lip-sync/duck) can join a visual scene to its dialogue span.
+   * Fully optional → undefined keeps the prior beat-ladder behaviour byte-identical.
+   */
+  sceneMeta?: SceneScreenwriterMeta[];
   /** Music-Video mode → open with a cinematic INTRO: scene 1 is an aerial/drone
    *  establishing shot over the city and scene 2 moves into the venue, before the
    *  performance begins. Gives the 30s/60s music video a real "drone → singer" edit. */
   musicVideo?: boolean;
+}
+
+/** Screenwriter provenance for ONE scene (index-aligned with FilmPlanOptions.sceneScripts). */
+export interface SceneScreenwriterMeta {
+  /** The screenwriter's exact shot direction (e.g. "slow dolly push-in on the protagonist's face"),
+   *  injected VERBATIM as the camera line so the visual matches the script's intent. */
+  cameraShot?: string;
+  mood?: string;
+  location?: string;
+  /** Timecode window on the master timeline — lets a visual scene join its dialogue span. */
+  startSec?: number;
+  endSec?: number;
 }
 
 /** Parameters shared identically across every clip — the continuity contract. */
@@ -535,6 +557,15 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // FOR THE PROMPT ONLY (the stored scene.cameraMotion is unchanged for downstream use).
   const promptMoveFor = (beatMotion: string): string =>
     (opts.cameraMove && opts.cameraMove !== 'auto' ? opts.cameraMove : beatMotion);
+  // V1 SHARED CONTEXT — the camera line prefers, in order: (1) the user's explicit global
+  // cameraMove override, (2) the SCREENWRITER's exact per-scene cameraShot (script intent,
+  // injected verbatim), (3) the deterministic beat ladder. So the visual camera now HONORS the
+  // script's shot direction instead of re-deriving it. sceneCam absent → identical to before.
+  const cameraLineFor = (beatMotion: string, sceneCam?: string): string => {
+    if (opts.cameraMove && opts.cameraMove !== 'auto') return cameraDirectiveFor(opts.cameraMove);
+    if (sceneCam && sceneCam.trim()) return `Camera: ${sceneCam.trim()}`;
+    return cameraDirectiveFor(beatMotion);
+  };
   const scenes: FilmScene[] = segments.map((seg) => {
     // §2 — vary the COMPOSITION per scene (real storyboard arc)…
     const beat = sceneBeat(seg.index, segments.length);
@@ -543,6 +574,8 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // its own camera + shot-size direction). Fall back to the deterministic
     // camera-beat framing when no script was supplied.
     const llmScene = opts.sceneScripts?.[seg.index]?.trim();
+    // V1 — the screenwriter's exact shot direction for THIS scene (if the brief carried one).
+    const sceneCam = opts.sceneMeta?.[seg.index]?.cameraShot;
     // Music-Video INTRO: force the first one/two scenes to a cinematic drone/venue
     // establishing sequence (NO protagonist) so the clip opens with a real aerial
     // intro, then cuts to the singer — overrides any per-scene LLM script for these.
@@ -581,11 +614,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
         // with energy" (that forced a singer into every frame) — the action comes from
         // the scene text itself; only the camera + clean-frame + world-continuity ride along.
         ? enrichVideoPrompt(
-            `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, continuous cinematic camera movement true to the scene, never a static frozen frame. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene, never a static frozen frame. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
             traits, 1500,
           )
         : enrichVideoPrompt(
-            `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
             traits, 1500, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
           );
     return {

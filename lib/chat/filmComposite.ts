@@ -51,6 +51,7 @@ import {
   FILM_CLIP_SEC,
   type FilmScene,
   type FilmShared,
+  type SceneScreenwriterMeta,
 } from './filmPipeline';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
@@ -436,6 +437,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   let sceneScripts = Array.isArray(input.metadata?.sceneScripts)
     ? (input.metadata.sceneScripts as unknown[]).map((s) => (typeof s === 'string' ? s : '')).filter(Boolean)
     : undefined;
+  // V1 — the screenwriter's per-scene metadata (cameraShot/mood/location), populated ONLY from the
+  // Prompt-Agent brief path below (plain string sceneScripts from other sources carry no shot data).
+  let sceneMeta: SceneScreenwriterMeta[] | undefined;
   // DAY-6 — a pasted TIMECODED Master Production Script drives the STORYBOARD: its parsed SCENE sheets
   // (action lines, in order) become the per-scene prompts, so the film follows the script VISUALLY — not just
   // its audio (the narration + multi-voice dialogue legs already read metadata.masterScript below). Additive +
@@ -482,6 +486,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       if (brief) {
         characterLock = brief.character.imagePromptFragment;
         sceneScripts = brief.scenes.map((s) => s.imagePrompt);
+        // V1 — stop FLATTENING the brief away: carry the screenwriter's per-scene shot direction
+        // (cameraShot/mood/location) index-aligned with sceneScripts so the Camera stage honors the
+        // script's intent instead of re-deriving from the deterministic beat ladder.
+        sceneMeta = brief.scenes.map((s) => ({ cameraShot: s.cameraShot, mood: s.mood, location: s.location }));
         sfxCues = brief.sfxCues;
         // eslint-disable-next-line no-console
         console.log('[filmComposite] Prompt Agent fallback produced a locked character + scene prompts');
@@ -529,7 +537,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}) });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}) });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

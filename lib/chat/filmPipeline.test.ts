@@ -142,6 +142,30 @@ describe('planFilmScenes — continuity-locked production plan', () => {
   });
 });
 
+describe('planFilmScenes — V1 screenwriter cameraShot threading', () => {
+  it('honors the screenwriter per-scene cameraShot verbatim over the beat ladder', () => {
+    const plan = planFilmScenes('a hero in a storm', {
+      sceneMeta: [{ cameraShot: 'ZZ-unique extreme dutch whip-pan' }],
+    });
+    expect(plan.scenes[0]!.prompt).toContain('Camera: ZZ-unique extreme dutch whip-pan');
+  });
+
+  it('is byte-identical to no-sceneMeta when a scene carries no cameraShot (backward compat)', () => {
+    const withMeta = planFilmScenes('a hero in a storm', { sceneMeta: [{ mood: 'tense' }] });
+    const without = planFilmScenes('a hero in a storm');
+    expect(withMeta.scenes[0]!.prompt).toBe(without.scenes[0]!.prompt);
+  });
+
+  it('the explicit user cameraMove still overrides the screenwriter cameraShot', () => {
+    const plan = planFilmScenes('a hero in a storm', {
+      cameraMove: 'zoom_in',
+      sceneMeta: [{ cameraShot: 'should-be-ignored static tripod lockoff' }],
+    });
+    expect(plan.scenes[0]!.prompt).not.toContain('should-be-ignored');
+    expect(plan.scenes[0]!.prompt).toMatch(/dolly push-in/i); // the zoom_in directive wins
+  });
+});
+
 describe('sceneBeat — deterministic cinematic arc selection', () => {
   it('always opens establishing and closes resolving for a 5-beat film', () => {
     expect(sceneBeat(0, 5).framing).toMatch(/establishing/i);
