@@ -2593,7 +2593,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal: ac.signal,
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMode !== 'musicvideo' && videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
+        // PHASE 19 — the pasted multi-scene Master Script drives the STORYBOARD VISUALS in BOTH modes
+        // (documentary AND music video): parseMasterScript is fail-open (a non-timecoded / <2-scene paste
+        // returns null → brief-driven plan untouched), so a music video with a written treatment gets its
+        // scenes honoured while a freeform brief is unaffected. (Spoken multi-voice casting stays doc-only
+        // at the RENDER path above — a music video's audio is the song, not TTS dialogue.)
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
@@ -3471,7 +3476,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // inventing a fallback character. (The Generate button already did this; chat-send did not.)
     const videoMaster = mode === 'video' ? videoMasterScript.trim() : '';
     const videoDlg = mode === 'video' ? videoDialogue.trim() : '';
-    if (mode === 'video' && (text || videoScript || videoMaster || videoDlg || videoHasImages)) {
+    // PHASE 19 — music-video LYRICS (videoSpeech in that mode): fold the user's exact words into the
+    // brief so the AI singer performs THEM (EL Music sings literal ka lyrics) instead of auto-writing.
+    const videoLyrics = mode === 'video' && videoMode === 'musicvideo' ? videoSpeech.trim() : '';
+    if (mode === 'video' && (text || videoScript || videoMaster || videoDlg || videoLyrics || videoHasImages)) {
       // v330 — the dedicated Character Reference slot leads the identity-lock refs,
       // followed by any generic image attachments (back-compat).
       const refs = [
@@ -3492,6 +3500,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const filmPrompt = `${styledText}`
         + (scriptBlock ? `\n\nSCRIPT (follow this EXACTLY — do not invent different characters, era, or setting):\n${scriptBlock.slice(0, 6000)}` : '')
         + (videoDlg ? `\n\nCHARACTER DIALOGUE (spoken verbatim by the SAME character — never replace the speaker):\n${videoDlg.slice(0, 2000)}` : '')
+        + (videoLyrics ? `\n\nLYRICS (the song's EXACT words — the singer performs THESE verbatim, do not rewrite them):\n${videoLyrics.slice(0, 2000)}` : '')
         + (wantNarration ? t.narrationCue : '');
       const bubbleText = text || (videoScript ? '📄 ' + (locale === 'en' ? 'Film from attached script' : locale === 'ru' ? 'Фильм по сценарию' : 'ფილმი ატაჩ სკრიპტით') : baseText);
       setMessages((prev) => [...prev, { role: 'user', text: bubbleText, ...(attachments.length ? { medias: attachments } : {}) }]);
@@ -3700,7 +3709,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setInput(''); setAttachments([]);
     persistChatTurn('user', text); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -5353,17 +5362,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     </>
                   )}
                 </div>
-                {/* DAY-6 — optional MASTER PRODUCTION SCRIPT. A separate, additive surface: paste a full
-                    timecoded script (SCENE / VOICE / DIALOGUE sheets). When filled, it routes through
-                    parseMasterScript → structured storyboard scenes + per-speaker multi-voice casting
-                    (≥2 timecoded speakers → spatial premix + -12dB duck), instead of the single-prompt path. */}
-                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎬 {locale === 'en' ? 'Master script (advanced)' : locale === 'ru' ? 'Мастер-сценарий (доп.)' : 'მასტერ-სცენარი (დამატებითი)'}</span>
-                  <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
-                  <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
-                    placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
-                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-                </div>
               </>
             ) : (
               <>
@@ -5409,8 +5407,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <span style={{ position: 'absolute', top: 3, left: videoLipsync ? 23 : 3, width: 18, height: 18, borderRadius: 9999, backgroundColor: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', transition: 'left 200ms ease', display: 'block' }} />
                   </span>
                 </button>
+                {/* PHASE 19 — LYRICS. Music-video mode had no way to supply the song's words; the singer
+                    sang auto-written lyrics. Bound to videoSpeech (folded into the brief in send()), so the
+                    AI performs THESE Georgian lyrics. Empty = auto-written. */}
+                <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст песни' : 'ლირიკა'}</span>
+                  <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'What the singer sings (Georgian works). Empty = auto-written.' : locale === 'ru' ? 'Что поёт исполнитель (можно на грузинском). Пусто = авто.' : 'რას მღერის შემსრულებელი (ქართული მუშაობს). ცარიელი = ავტომატური.'}</span>
+                  <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={3}
+                    placeholder={locale === 'en' ? 'Paste the song lyrics…' : locale === 'ru' ? 'Вставьте текст песни…' : 'ჩასვი სიმღერის ტექსტი…'}
+                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+                </div>
               </>
             )}
+
+            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
+                It was documentary-only, so a music video had no way to supply a timecoded scene script —
+                the storyboard then invented its own. When filled it drives the scenes + per-speaker
+                casting; empty = auto. Folded into the brief in send() for every video mode. */}
+            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎬 {locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
+              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
+              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
+                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
+                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            </div>
 
             {/* 5 · Effect — the primary creative control, kept fully visible. */}
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
