@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Waves, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus } from 'lucide-react';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
@@ -4863,7 +4863,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             </div>
             <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎨 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
-              <div className="flex flex-wrap gap-1.5">
+              {/* Horizontal-scroll strip (13 styles) — one calm row instead of a 4-5 row wrap wall.
+                  Chips are shrink-0 so they scroll; matches the music Style + aspect strips. */}
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
               </div>
             </div>
@@ -5390,7 +5392,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* 5 · Effect — the primary creative control, kept fully visible. */}
             <div className="space-y-2 rounded-xl border border-app-border/12 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
-              <div className="flex flex-wrap gap-1.5">
+              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
+                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
               </div>
             </div>
@@ -6254,15 +6258,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </button>
                 {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
                     dictation mic. Launches the real-time VoiceConversation overlay (owned by the parent
-                    ChatChrome) via the window CustomEvent bridge. The fluid cloud-like accent aura +
-                    crisp AudioLines waveform signal it as the premium real-time voice call-to-action. */}
+                    ChatChrome) via the window CustomEvent bridge. The animated equalizer (a living
+                    waveform, staggered scale-Y bars) over a soft accent aura is the premium real-time
+                    voice call-to-action. Reduced-motion falls the bars back to static (see .voice-eq). */}
                 <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-accent/10 active:scale-95">
-                  {/* Fluid cloud-like live-voice aura — a soft, slowly-pulsing accent halo. */}
-                  <span aria-hidden="true" className="pointer-events-none absolute inset-[7px] rounded-full bg-app-accent/25 blur-md animate-pulse" />
-                  <Waves size={19} className="relative" />
+                  className="group relative ml-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-accent/10 active:scale-95">
+                  {/* Soft, steady accent aura (the motion comes from the equalizer, not a strobing halo). */}
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-[7px] rounded-full bg-app-accent/20 blur-md" />
+                  <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 {input.trim() && (
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}

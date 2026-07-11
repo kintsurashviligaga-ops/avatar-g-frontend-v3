@@ -37,19 +37,19 @@ export function PricingSection() {
   return (
     <section id="pricing" className="relative py-20 px-4 sm:px-6" style={{ borderTop: '1px solid var(--color-border)' }}>
       <div className="relative mx-auto max-w-4xl">
-        {/* Heading — one restrained accent word, no eyebrow chip / gradient / motion decoration. */}
-        <div className="text-center mb-14">
+        {/* Heading — MONOCHROME (cyan is reserved for the single popular CTA), no eyebrow / gradient. */}
+        <div className="text-center mb-16">
           <h2 className="text-3xl md:text-[40px] font-black leading-[1.05] tracking-[-0.03em]" style={{ color: 'var(--color-text)' }}>
             {t('pricing.title')}{' '}
-            <span className="text-cyan-300">{t('pricing.titleAccent')}</span>
+            <span style={{ color: 'var(--color-text)' }}>{t('pricing.titleAccent')}</span>
           </h2>
           <p className="mt-4 text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
             {labels.focus}
           </p>
         </div>
 
-        {/* Dark-canvas buffers between cards so each reads as an isolated premium object. */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+        {/* Deep-matte cards on generous dark-canvas buffers — each reads as an isolated premium object. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
           {PRICING_TIERS.map((tier, index) => {
             const isPopular = tier.id === 'pro_creator'
             const period = tier.billing === 'annual' ? labels.year : labels.month
@@ -63,23 +63,25 @@ export function PricingSection() {
             return (
               <motion.div
                 key={tier.id}
-                initial={{ opacity: 0, y: 16 }}
+                initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: index * 0.06 }}
-                className="relative flex flex-col rounded-[20px] p-6"
+                transition={{ duration: 0.5, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                className="relative flex flex-col rounded-[20px] p-7 md:p-8"
                 style={{
-                  backgroundColor: 'var(--card-bg)',
-                  // Single hairline contour — the popular tier gets one restrained cyan hairline,
-                  // no ring / glow / nested borders.
-                  border: isPopular ? '1px solid rgba(34,211,238,0.32)' : '1px solid var(--color-border)',
+                  // Deep-matte SOLID charcoal (theme-aware): the popular tier is a hair lifted
+                  // (elevated) over the deepest surface. No translucent white veil.
+                  backgroundColor: isPopular ? 'var(--color-elevated)' : 'var(--color-surface)',
+                  // Razor-thin near-neutral contour (Apple/Stripe). NO cyan — the accent is
+                  // reserved to the single popular CTA. Popular gets a hair-stronger neutral edge.
+                  border: `1px solid ${isPopular ? 'var(--pricing-contour-pop)' : 'var(--pricing-contour)'}`,
                 }}
               >
                 {isPopular && (
-                  // Ghost hairline badge (was a loud solid-fill pill) — pure text, no icon.
+                  // Neutral ghost hairline badge — whispers, doesn't glow (no cyan).
                   <span
-                    className="absolute -top-2.5 left-6 rounded-full px-2.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-cyan-300"
-                    style={{ backgroundColor: 'var(--card-bg)', border: '1px solid rgba(34,211,238,0.32)' }}
+                    className="absolute -top-2.5 left-7 rounded-full px-2.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.16em]"
+                    style={{ backgroundColor: 'var(--color-elevated)', border: '1px solid var(--pricing-contour-pop)', color: 'var(--color-text-secondary)' }}
                   >
                     {labels.popular}
                   </span>
@@ -88,12 +90,12 @@ export function PricingSection() {
                 {/* Tier name as a quiet label; the price is the single dominant element. */}
                 <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-tertiary)' }}>{tier.name}</h3>
 
-                <div className="flex items-baseline gap-1.5 mt-4 mb-7">
+                <div className="flex items-baseline gap-1.5 mt-5 mb-8">
                   <span className="text-[40px] font-black leading-none tracking-[-0.03em]" style={{ color: 'var(--color-text)' }}>{tier.priceGel}₾</span>
                   <span className="text-xs font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{period}</span>
                 </div>
 
-                <ul className="space-y-3 mb-8 flex-1">
+                <ul className="space-y-3.5 mb-9 flex-1">
                   {features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                       {/* Desaturated tick — cyan is reserved for the popular tier's price/CTA. */}
@@ -109,8 +111,8 @@ export function PricingSection() {
                   data-iap-external
                   className="block text-center min-h-[48px] leading-[48px] rounded-xl font-semibold text-sm transition-all duration-150 active:scale-[0.98]"
                   style={isPopular
-                    ? { backgroundColor: 'rgb(6,182,212)', color: '#04121a' }
-                    : { backgroundColor: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+                    ? { backgroundColor: 'rgb(6,182,212)', color: '#04121a' } // the ONE cyan accent on the whole panel
+                    : { backgroundColor: 'transparent', color: 'var(--color-text)', border: '1px solid var(--pricing-contour)' }}
                 >
                   {labels.cta}
                 </Link>
