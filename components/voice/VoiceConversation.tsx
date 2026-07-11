@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Mic, Loader2, Volume2, AlertCircle } from 'lucide-react';
+import { chunkForTts } from '@/lib/audio/ttsChunks';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
@@ -64,7 +65,9 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const ext = /mp4/i.test(audio.type) ? 'mp4' : /aac/i.test(audio.type) ? 'm4a' : /mpeg|mp3/i.test(audio.type) ? 'mp3' : /wav/i.test(audio.type) ? 'wav' : 'webm';
       fd.append('audio', audio, `speech.${ext}`);
       fd.append('language', lang === 'en' ? 'en-US' : lang === 'ru' ? 'ru-RU' : 'ka-GE');
-      const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include' });
+      // V4 — every leg carries a client timeout so a HALF-OPEN network drop can't hang the orb
+      // in 'thinking'/'speaking' forever. Generous windows (transcribe chains Whisper polling).
+      const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include', signal: AbortSignal.timeout(30_000) });
       const sj = (await sr.json().catch(() => null)) as { text?: string } | null;
       const said = (sj?.text || '').trim();
       if (!aliveRef.current) return;
@@ -76,6 +79,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const cr = await fetch('/api/voice/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ text: said, locale: lang, history: historyRef.current }),
+        signal: AbortSignal.timeout(25_000),
       });
       const cj = (await cr.json().catch(() => null)) as { reply?: string } | null;
       const answer = (cj?.reply || '').trim();
@@ -84,22 +88,48 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       setReply(answer);
       historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: answer }].slice(-12);
 
-      // 3) TTS → play (the route streams internally; we play the delivered audio)
+      // 3) TTS → CHUNKED sequential playback. Sending the WHOLE reply as ONE TTS request could get
+      //    truncated by the provider ("audio stops after a word or two"); splitting into sentences
+      //    and synthesising + playing them back-to-back (pre-fetching the next while the current
+      //    plays) means a truncated/failed chunk is SKIPPED, not fatal. Numeric normalization to
+      //    Georgian words happens server-side in the TTS route. Per-chunk timeout keeps a stall bounded.
       setStatus('speaking');
-      const tr = await fetch('/api/elevenlabs/tts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ text: answer, locale: lang }),
-      });
-      if (!tr.ok) throw new Error('tts failed');
-      const blob = await tr.blob();
-      if (!aliveRef.current) return;
-      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = URL.createObjectURL(blob);
+      const chunks = chunkForTts(answer);
+      if (!chunks.length) { if (aliveRef.current) setStatus('idle'); return; }
+      const synthChunk = async (chunk: string): Promise<string | null> => {
+        try {
+          const res = await fetch('/api/elevenlabs/tts', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify({ text: chunk, locale: lang }), signal: AbortSignal.timeout(20_000),
+          });
+          if (!res.ok) return null;
+          return URL.createObjectURL(await res.blob());
+        } catch { return null; }
+      };
       const el = audioRef.current ?? new Audio();
       audioRef.current = el;
-      el.src = audioUrlRef.current;
-      el.onended = () => { if (aliveRef.current) setStatus('idle'); };
-      await el.play().catch(() => { if (aliveRef.current) setStatus('idle'); });
+      let played = false;
+      let nextUrl: Promise<string | null> = synthChunk(chunks[0]!);
+      for (let idx = 0; idx < chunks.length; idx++) {
+        const url = await nextUrl;
+        if (!aliveRef.current) { if (url) URL.revokeObjectURL(url); return; }
+        nextUrl = idx + 1 < chunks.length ? synthChunk(chunks[idx + 1]!) : Promise.resolve(null);
+        if (!url) continue; // a chunk truncated/failed → skip it, keep reading the rest
+        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = url;
+        el.src = url;
+        const blocked = await new Promise<boolean>((resolve) => {
+          el.onended = () => resolve(false);
+          el.onerror = () => resolve(false);
+          el.play().then(() => { played = true; }).catch(() => resolve(true)); // autoplay blocked
+        });
+        if (blocked || !aliveRef.current) break; // block/close → stop; the reply text stays on screen
+      }
+      // Never synthesised a single chunk at all → treat as a TTS miss (retry state); otherwise the
+      // reply was voiced (or is on-screen after an autoplay block) → clean idle.
+      if (!aliveRef.current) return;
+      if (!played && chunks.length) { setStatus('error'); setError(t.retry); }
+      else setStatus('idle');
     } catch {
       if (aliveRef.current) { setStatus('error'); setError(t.retry); }
     }

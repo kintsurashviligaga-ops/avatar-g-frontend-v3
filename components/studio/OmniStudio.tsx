@@ -26,6 +26,7 @@ import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, ty
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 import { MotionControlPanel } from './MotionControlPanel';
+import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
@@ -649,31 +650,6 @@ const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru
   ['k-pop', { ka: 'K-Pop', en: 'K-Pop', ru: 'K-Pop' }],
 ];
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
-
-// Split text into TTS-sized chunks so a LONG read-aloud is never truncated by a
-// single TTS request. Breaks on sentence terminators (Latin · Georgian · CJK) and
-// newlines, merges fragments up to ~600 chars, and hard-splits any runaway sentence.
-function chunkForTts(text: string): string[] {
-  const clean = (text || '').replace(/\s+/g, ' ').trim();
-  if (!clean) return [];
-  const sentences = clean.match(/[^.!?。！？\n]+[.!?。！？]+|\S[^.!?。！？\n]*$/g) || [clean];
-  const MAX = 600;
-  const chunks: string[] = [];
-  let buf = '';
-  for (const raw of sentences) {
-    const s = raw.trim();
-    if (!s) continue;
-    if (`${buf} ${s}`.trim().length > MAX) {
-      if (buf) { chunks.push(buf.trim()); buf = ''; }
-      if (s.length > MAX) { for (let k = 0; k < s.length; k += MAX) chunks.push(s.slice(k, k + MAX)); }
-      else buf = s;
-    } else {
-      buf = buf ? `${buf} ${s}` : s;
-    }
-  }
-  if (buf.trim()) chunks.push(buf.trim());
-  return chunks;
-}
 
 // A small, theme-tokenised option chip used by the per-service options bar.
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -3901,13 +3877,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Thumbs feedback (#9): record the rating locally + fire-and-forget to the
   // server. Never throws — feedback must never disrupt the chat.
   const rateMsg = useCallback((i: number, rating: 'up' | 'down', text: string) => {
+    // Toggle: tapping the already-selected thumb clears it (no re-POST); otherwise set + log it.
+    if (ratedIdx[i] === rating) {
+      setRatedIdx((r) => { const next = { ...r }; delete next[i]; return next; });
+      return;
+    }
     setRatedIdx((r) => ({ ...r, [i]: rating }));
     void fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rating, preview: (text || '').slice(0, 280) }),
     }).catch(() => {});
-  }, []);
+  }, [ratedIdx]);
 
   // Edit & resend a user turn: replace it with the edited text and re-run the chat
   // from that point (everything after it is dropped) — the standard "edit message".
@@ -4716,7 +4697,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void speakMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
                     title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${speakingIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${speakingIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {speakingIdx === i
                       ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
@@ -4727,7 +4708,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void copyMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
                     title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${copiedIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -4736,7 +4717,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'up', m.text)}
                     aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
                     title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsUp size={13} />
                   </button>
@@ -4745,7 +4726,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'down', m.text)}
                     aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
                     title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsDown size={13} />
                   </button>
@@ -4755,7 +4736,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       onClick={() => regenerateChat()}
                       aria-label={t.regenerate}
                       title={t.regenerate}
-                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-elevated hover:text-app-accent"
+                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90"
                     >
                       <RotateCcw size={13} />
                     </button>

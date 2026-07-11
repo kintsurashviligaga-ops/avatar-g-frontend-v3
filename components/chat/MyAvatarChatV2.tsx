@@ -40,6 +40,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import { chunkForTts } from '@/lib/audio/ttsChunks';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
@@ -3241,32 +3242,7 @@ function speechLang(lang: 'en' | 'ka' | 'ru'): string {
   return lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
 }
 
-// ISSUE 2 — split a reply into TTS-sized chunks so a LONG read-aloud is never truncated
-// (the prior code sent ONE request / one utterance, which both ElevenLabs and the Chrome
-// SpeechSynthesis engine cut short — the "2-3 words then stops" bug). Breaks on sentence
-// terminators (Latin · Georgian · CJK) + newlines, merges up to ~600 chars, hard-splits a
-// runaway sentence. Mirrors OmniStudio's proven chunker.
-function chunkForTts(text: string): string[] {
-  const clean = (text || '').replace(/\s+/g, ' ').trim();
-  if (!clean) return [];
-  const sentences = clean.match(/[^.!?。！？\n]+[.!?。！？]+|\S[^.!?。！？\n]*$/g) || [clean];
-  const MAX = 600;
-  const chunks: string[] = [];
-  let buf = '';
-  for (const raw of sentences) {
-    const s = raw.trim();
-    if (!s) continue;
-    if (`${buf} ${s}`.trim().length > MAX) {
-      if (buf) { chunks.push(buf.trim()); buf = ''; }
-      if (s.length > MAX) { for (let k = 0; k < s.length; k += MAX) chunks.push(s.slice(k, k + MAX)); }
-      else buf = s;
-    } else {
-      buf = buf ? `${buf} ${s}` : s;
-    }
-  }
-  if (buf.trim()) chunks.push(buf.trim());
-  return chunks;
-}
+// TTS chunking (the "2-3 words then stops" fix) now lives in the shared lib/audio/ttsChunks.
 
 /** True when a URL resolves to a directly-renderable raster image. */
 function isDirectImage(url: string): boolean {
