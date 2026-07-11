@@ -162,6 +162,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [savingProfile, setSavingProfile] = useState(false);
   // Profile photo (FIX 2): current URL + in-flight upload state + the hidden file input.
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // A non-null avatarUrl can still fail to LOAD (restricted-public bucket → 403, stale/deleted
+  // object, network miss). Without an onError path the <img> would sit as a broken (alt="") EMPTY
+  // circle. Track a load-failure flag → fall back to the initials. Reset whenever the URL changes
+  // (covers every setAvatarUrl path: load, optimistic upload, revert) so a fresh good photo re-renders.
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  useEffect(() => { setAvatarBroken(false); }, [avatarUrl]);
   const [avatarBusy, setAvatarBusy] = useState(false);
   // Transient, self-contained toast for avatar-upload feedback (ChatChrome has no toast system).
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -660,7 +666,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                         wordmark branch so a page title still truncates normally. object-contain +
                         the admin's subtle cyan drop-shadow keep it crisp + premium at 18px. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]" />
+                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]" />
                     <span>My<span className="text-app-accent">Avatar</span></span>
                   </span>
                 )}
@@ -684,9 +690,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {authed ? (
                 <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.account} title={userEmail ?? t.account}
                   className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
-                  {avatarUrl ? (
+                  {avatarUrl && !avatarBroken ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                    <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
                   ) : (userName?.[0] || userEmail?.[0] || 'U')}
                 </button>
               ) : (
@@ -818,9 +824,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <div className="mb-4 flex flex-col items-center gap-2">
               <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarBusy} aria-label="Change photo"
                 className="group relative h-20 w-20 overflow-hidden rounded-full bg-app-accent/15 ring-2 ring-app-border/15 transition hover:ring-app-accent/40">
-                {avatarUrl ? (
+                {avatarUrl && !avatarBroken ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                  <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center text-[26px] font-bold uppercase text-app-accent">{userName?.[0] || userEmail?.[0] || 'U'}</span>
                 )}
