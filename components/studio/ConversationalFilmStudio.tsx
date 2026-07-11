@@ -1380,7 +1380,7 @@ export function ConversationalFilmStudio({
                 'shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] transition-colors touch-manipulation',
                 active
                   ? 'border-[#00D2FF]/50 bg-[#00D2FF]/10 text-[#00D2FF]'
-                  : 'border-white/12 text-white/55 hover:border-white/30 hover:text-white/80',
+                  : 'border-white/15 text-white/55 hover:border-white/30 hover:text-white/80',
               ].join(' ')}
             >
               {mvItemLabel(it)}

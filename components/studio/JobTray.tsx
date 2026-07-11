@@ -97,7 +97,7 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
     : t.canceled;
 
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-app-border/12 bg-app-bg/40 px-2.5 py-2">
+    <div className="flex items-center gap-2.5 rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2">
       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-app-elevated ${STATUS_TONE[job.status]}`}>
         {active ? <Loader2 size={14} className="animate-spin" />
           : queued ? <Clock size={14} />

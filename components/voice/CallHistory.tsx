@@ -54,7 +54,7 @@ export function CallHistory({ calls }: CallHistoryProps) {
   const rows = useMemo(() => calls.slice(0, 10), [calls]);
 
   return (
-    <section className="rounded-xl border border-white/12 bg-black/25 p-3">
+    <section className="rounded-xl border border-white/15 bg-black/25 p-3">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/55">{t('historyTitle')}</p>
 
       {rows.length === 0 ? (

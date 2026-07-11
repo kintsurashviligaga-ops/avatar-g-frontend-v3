@@ -111,7 +111,7 @@ export function ConfirmationCard({
 
       {/* Answers summary */}
       {answerEntries.length > 0 && (
-        <div className="mb-4 rounded-xl border border-white/8 bg-white/[0.02] p-3">
+        <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
               {t('selectedOptions', locale)}
@@ -164,7 +164,7 @@ export function ConfirmationCard({
             className="w-full rounded-xl border border-cyan-400/30 bg-white/[0.04] p-3 text-xs text-white/80 outline-none focus:border-cyan-400/60 resize-none"
           />
         ) : (
-          <p className="rounded-xl border border-white/8 bg-white/[0.02] p-3 text-xs leading-relaxed text-white/70 line-clamp-4">
+          <p className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-xs leading-relaxed text-white/70 line-clamp-4">
             {localPrompt}
           </p>
         )}
@@ -191,7 +191,7 @@ export function ConfirmationCard({
         ].map(({ label, value, color }) => (
           <div
             key={label}
-            className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2 text-center"
+            className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-center"
           >
             <p className="mb-0.5 text-[9px] text-white/40">{label}</p>
             <p className={cn('text-xs font-bold', color)}>{value}</p>
@@ -200,7 +200,7 @@ export function ConfirmationCard({
       </div>
 
       {/* Time estimate */}
-      <div className="mb-5 flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2">
+      <div className="mb-5 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
         <span className="text-sm">⏱</span>
         <p className="text-xs text-white/50">{t('estimatedTime', locale)}</p>
         <p className="ml-auto text-xs font-semibold text-cyan-300">

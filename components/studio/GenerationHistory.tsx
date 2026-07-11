@@ -90,7 +90,7 @@ export default function GenerationHistory({ locale }: { locale: string }) {
               {items.map((it) => (
                 <li key={it.id}>
                   <a href={it.url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-start gap-2.5 border-b border-app-border/8 px-4 py-2.5 last:border-0 transition-colors hover:bg-app-elevated/60">
+                    className="flex items-start gap-2.5 border-b border-app-border/10 px-4 py-2.5 last:border-0 transition-colors hover:bg-app-elevated/60">
                     <span className="mt-0.5 text-[15px]">{ICON[it.kind] ?? '✨'}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12.5px] leading-snug text-app-text">{it.prompt || it.kind}</span>

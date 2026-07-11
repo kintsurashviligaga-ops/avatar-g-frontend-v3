@@ -577,7 +577,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
         {/* New chat */}
         <div className="px-2">
-          <button type="button" onClick={handleNewChat} className="flex w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/12 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
+          <button type="button" onClick={handleNewChat} className="flex w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/15 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
             <MessageSquarePlus className="h-[17px] w-[17px] text-app-accent" /> {t.newChat}
           </button>
         </div>
@@ -760,7 +760,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   const on = theme === id;
                   return (
                     <button key={id} type="button" onClick={() => setTheme(id)}
-                      className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[12px] font-medium transition-colors ${on ? 'border-app-accent/50 bg-app-accent/12 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>
+                      className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[12px] font-medium transition-colors ${on ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/15 bg-app-elevated text-app-text hover:bg-app-border/10'}`}>
                       <Icon size={16} /> {label}
                     </button>
                   );

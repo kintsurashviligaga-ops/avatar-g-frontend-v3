@@ -130,7 +130,7 @@ export default function NotificationBell({ locale }: { locale: string }) {
           ) : (
             <ul className="max-h-[60vh] overflow-y-auto">
               {items.map((it) => (
-                <li key={it.id} className="border-b border-app-border/8 last:border-0">
+                <li key={it.id} className="border-b border-app-border/10 last:border-0">
                   <button type="button"
                     onClick={() => { setOpen(false); router.push(it.link || notifHref(it.type, locale)); }}
                     className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-app-elevated active:scale-[0.99]">

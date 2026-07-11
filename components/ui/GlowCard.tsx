@@ -14,9 +14,9 @@ interface GlowCardProps {
 }
 
 const variantBase: Record<CardVariant, string> = {
-  default: 'bg-[rgba(255,255,255,0.03)] border border-white/8',
+  default: 'bg-[rgba(255,255,255,0.03)] border border-white/10',
   elevated: 'bg-[rgba(255,255,255,0.05)] border border-white/10 shadow-lg shadow-black/40',
-  bordered: 'bg-transparent border border-white/12',
+  bordered: 'bg-transparent border border-white/15',
   glass: 'bg-[rgba(255,255,255,0.04)] backdrop-blur-xl border border-white/10',
   featured: 'bg-[rgba(0,212,255,0.04)] border border-transparent',
 }

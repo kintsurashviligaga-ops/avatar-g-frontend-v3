@@ -119,9 +119,17 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         audioUrlRef.current = url;
         el.src = url;
         const blocked = await new Promise<boolean>((resolve) => {
-          el.onended = () => resolve(false);
-          el.onerror = () => resolve(false);
-          el.play().then(() => { played = true; }).catch(() => resolve(true)); // autoplay blocked
+          // A mid-play STALL (buffer underrun / wedged decoder on a flaky mobile network AFTER
+          // playback started) fires neither onended nor onerror, and play() already resolved — so
+          // without a guard this await would PARK FOREVER and pin the orb in 'speaking'. This is the
+          // one leg the 3 fetches' AbortSignal.timeout didn't cover. 45s > any real ~600-char chunk
+          // (<30s of speech), so it only trips on a genuine wedge, then advances to the next chunk.
+          let done = false;
+          const finish = (b: boolean) => { if (done) return; done = true; clearTimeout(guard); resolve(b); };
+          const guard = setTimeout(() => finish(false), 45_000);
+          el.onended = () => finish(false);
+          el.onerror = () => finish(false);
+          el.play().then(() => { played = true; }).catch(() => finish(true)); // autoplay blocked
         });
         if (blocked || !aliveRef.current) break; // block/close → stop; the reply text stays on screen
       }

@@ -54,7 +54,7 @@ export function CommandBar({ onServiceSelect }: CommandBarProps) {
       {/* ── Trigger button ─────────────────────────────────────────── */}
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm transition-all hover:bg-white/8"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm transition-all hover:bg-white/10"
         style={{
           background: 'rgba(255,255,255,0.05)',
           border: '1px solid rgba(255,255,255,0.08)',

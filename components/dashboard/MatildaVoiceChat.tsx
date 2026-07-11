@@ -239,7 +239,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
                 type="button"
                 onClick={handleReset}
                 data-testid="matilda-reset"
-                className="inline-flex items-center gap-1 rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/[0.08]"
+                className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/[0.08]"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 {labels.reset}

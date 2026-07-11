@@ -125,7 +125,7 @@ const SCENES: Record<Loc, string> = { en: 'scenes', ru: 'сцен', ka: 'სც�
 // Per-status accent classes (kept inside the app-token palette so theming holds).
 const STATUS_STYLE: Record<FilmAgentStatus, { card: string; pill: string; bar: string }> = {
   idle: {
-    card: 'border-app-border/12 bg-app-elevated/30 opacity-55',
+    card: 'border-app-border/15 bg-app-elevated/30 opacity-55',
     pill: 'bg-app-border/15 text-app-muted/70',
     bar: 'bg-app-muted/30',
   },
@@ -150,7 +150,7 @@ const STATUS_STYLE: Record<FilmAgentStatus, { card: string; pill: string; bar: s
     bar: 'bg-red-500/70',
   },
   skipped: {
-    card: 'border-app-border/12 bg-app-elevated/30 opacity-55',
+    card: 'border-app-border/15 bg-app-elevated/30 opacity-55',
     pill: 'bg-app-border/15 text-app-muted/70',
     bar: 'bg-app-muted/30',
   },
@@ -191,7 +191,7 @@ function AgentCard({ agent, loc, musicVideo = false }: { agent: FilmAgentVM; loc
           <StatusIcon status={agent.status} />
         </span>
       </div>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-app-border/12">
+      <div className="h-1 w-full overflow-hidden rounded-full bg-app-border/15">
         <div
           className={`h-full rounded-full transition-[width] duration-700 ease-out ${s.bar}`}
           style={{ width: `${barWidth}%` }}
@@ -233,7 +233,7 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
   return (
     <div className="relative">
       {/* terminal chrome — traffic lights + label + live line count */}
-      <div className="flex items-center gap-1.5 rounded-t-lg border border-b-0 border-app-border/12 bg-black/35 px-2.5 py-1">
+      <div className="flex items-center gap-1.5 rounded-t-lg border border-b-0 border-app-border/15 bg-black/35 px-2.5 py-1">
         <span className="h-2 w-2 rounded-full bg-red-500/70" />
         <span className="h-2 w-2 rounded-full bg-amber-400/70" />
         <span className="h-2 w-2 rounded-full bg-emerald-500/70" />
@@ -246,7 +246,7 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="max-h-[124px] overflow-y-auto overscroll-contain rounded-b-lg border border-app-border/12 bg-black/25 p-2"
+        className="max-h-[124px] overflow-y-auto overscroll-contain rounded-b-lg border border-app-border/15 bg-black/25 p-2"
       >
         <div className="space-y-0.5 font-mono">
           {log.map((l) => (
@@ -358,7 +358,7 @@ export default function FilmDirectorConsole({
 
       {/* Overall progress bar + Cancel (abort the running render) */}
       <div className="flex items-center gap-2">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/12">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/15">
           <div
             className="h-full rounded-full bg-gradient-to-r from-app-accent/70 to-app-accent transition-[width] duration-700 ease-out"
             style={{ width: `${Math.max(4, pct)}%` }}

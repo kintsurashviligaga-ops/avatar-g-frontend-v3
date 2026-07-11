@@ -713,7 +713,7 @@ export function PrimaryAgentChat() {
   }, []);
 
   return (
-    <section className="omni-card omni-chat-pane relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/12 bg-black/20">
+    <section className="omni-card omni-chat-pane relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/15 bg-black/20">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/40">{copy.primaryConsole}</p>
@@ -798,7 +798,7 @@ export function PrimaryAgentChat() {
                 key={command.label}
                 type="button"
                 onClick={() => applyQuickCommand(command.prompt)}
-                className="rounded-full border border-white/12 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/80 hover:bg-white/[0.1]"
+                className="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/80 hover:bg-white/[0.1]"
               >
                 {command.label}
               </button>
@@ -862,7 +862,7 @@ export function PrimaryAgentChat() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{copy.attachedContext}</p>
               <button
                 type="button"
-                className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-1 text-[11px] text-white/70 hover:bg-white/[0.08]"
+                className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] text-white/70 hover:bg-white/[0.08]"
                 onClick={clearPendingInputs}
               >
                 {copy.clearAll}
@@ -872,7 +872,7 @@ export function PrimaryAgentChat() {
               {pendingInputs.map((input) => (
                 <span
                   key={input.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[11px] text-white/80"
+                  className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.06] px-2 py-1 text-[11px] text-white/80"
                 >
                   {input.kind}
                   <span className="max-w-[160px] truncate">{input.title}</span>
@@ -889,7 +889,7 @@ export function PrimaryAgentChat() {
           </div>
         )}
 
-        <div className="rounded-xl border border-white/12 bg-black/45 p-3">
+        <div className="rounded-xl border border-white/15 bg-black/45 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{copy.promptComposer}</p>
             <p className="text-[11px] text-white/45">{prompt.length} {copy.chars}</p>

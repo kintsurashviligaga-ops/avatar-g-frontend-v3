@@ -84,7 +84,7 @@ function ServiceDrawer({
             }}
           >
             {/* Drawer header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
               <div className="flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center"
                   style={{ background: 'linear-gradient(135deg,#0ea5e9,#06b6d4)' }}>
@@ -150,7 +150,7 @@ function ServiceDrawer({
             </div>
 
             {/* Drawer footer */}
-            <div className="px-4 py-3 border-t border-white/8">
+            <div className="px-4 py-3 border-t border-white/10">
               <div className="flex items-center gap-2 text-white/30 text-xs">
                 <Zap className="w-3.5 h-3.5" />
                 <span>Powered by Claude AI</span>
@@ -554,7 +554,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
             <button
               onClick={handleNewChat}
               title="New chat"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/8 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/10 transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">New</span>
@@ -627,7 +627,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
         >
           {/* Attach */}
           <button
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white/35 hover:text-white/70 hover:bg-white/8 transition-all flex-shrink-0 mb-0.5"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white/35 hover:text-white/70 hover:bg-white/10 transition-all flex-shrink-0 mb-0.5"
             title="Attach file"
           >
             <Paperclip className="w-4 h-4" />
@@ -653,7 +653,7 @@ export default function FullChatWorkspace({ locale = 'ka' }: Props) {
               'w-8 h-8 rounded-xl flex items-center justify-center transition-all flex-shrink-0 mb-0.5',
               isRecording
                 ? 'text-red-400 bg-red-500/15'
-                : 'text-white/35 hover:text-white/70 hover:bg-white/8',
+                : 'text-white/35 hover:text-white/70 hover:bg-white/10',
             )}
           >
             {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}

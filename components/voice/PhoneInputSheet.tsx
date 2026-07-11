@@ -49,7 +49,7 @@ export function PhoneInputSheet({ open, pending, errorCode, onClose, onSubmit }:
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
-            className="fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-lg rounded-t-2xl border border-white/12 bg-[#090b14]/95 p-4 shadow-[0_0_40px_rgba(0,0,0,0.45)]"
+            className="fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-lg rounded-t-2xl border border-white/15 bg-[#090b14]/95 p-4 shadow-[0_0_40px_rgba(0,0,0,0.45)]"
           >
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">{t('enterPhone')}</p>
             <p className="mt-1 text-sm text-white/65">{t('phoneHint')}</p>

@@ -213,7 +213,7 @@ export function GenerationProgress({
       </div>
 
       {/* Credit badge */}
-      <div className="mb-4 flex items-center justify-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.02] py-2">
+      <div className="mb-4 flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.02] py-2">
         <span className="text-[10px] text-white/30">
           {locale === 'ka' ? 'ჩამოაკლდება' : locale === 'ru' ? 'Будет списано' : 'Will deduct'}
         </span>

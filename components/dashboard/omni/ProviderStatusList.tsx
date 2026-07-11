@@ -152,7 +152,7 @@ export function ProviderStatusList({ locale = 'en' }: Props) {
         {data?.audit.providers.map((p) => (
           <div
             key={p.provider}
-            className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
+            className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
           >
             <div className="flex items-center gap-2 min-w-0">
               <span

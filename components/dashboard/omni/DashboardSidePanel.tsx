@@ -199,12 +199,12 @@ export function DashboardSidePanel({ isOpen, onClose, locale, isAuthenticated, u
             }}
           >
             {/* Panel header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div className="flex items-center gap-2">
                 {section !== 'menu' && (
                   <button
                     onClick={() => setSection('menu')}
-                    className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/8 transition"
+                    className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -215,7 +215,7 @@ export function DashboardSidePanel({ isOpen, onClose, locale, isAuthenticated, u
               </div>
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/8 transition"
+                className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -354,7 +354,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, on
         ) : (
           <div className="flex gap-2">
             <Link href={`/${loc}/login`} onClick={onClose}
-              className="flex-1 text-center py-2 rounded-xl text-sm font-semibold text-white/80 border border-white/12 hover:border-white/25 hover:bg-white/6 transition">
+              className="flex-1 text-center py-2 rounded-xl text-sm font-semibold text-white/80 border border-white/15 hover:border-white/25 hover:bg-white/6 transition">
               {c.login}
             </Link>
             <Link href={`/${loc}/signup`} onClick={onClose}
@@ -521,7 +521,7 @@ function renderPackages({ c, billing, setBilling }: {
       {/* Credit packs */}
       <p className="text-[11px] font-bold tracking-wider uppercase text-white/40 pt-2">{c.buyCredits}</p>
       {CREDIT_PACKS.map((pack, i) => (
-        <button key={i} className="w-full flex items-center justify-between p-3 rounded-xl border border-white/8 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition">
+        <button key={i} className="w-full flex items-center justify-between p-3 rounded-xl border border-white/10 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition">
           <div className="flex items-center gap-3">
             <span className="text-lg">⚡</span>
             <div className="text-left">
@@ -561,7 +561,7 @@ function renderAccount({ c, isAuthenticated, userName, locale }: {
           {c.login}
         </Link>
         <Link href={`/${locale}/signup`}
-          className="w-full py-3 rounded-xl text-sm font-semibold text-white/70 border border-white/12 text-center hover:border-white/25 transition">
+          className="w-full py-3 rounded-xl text-sm font-semibold text-white/70 border border-white/15 text-center hover:border-white/25 transition">
           {c.signup}
         </Link>
       </div>
@@ -602,7 +602,7 @@ function renderAccount({ c, isAuthenticated, userName, locale }: {
       ].map((item) => (
         <button key={item.label}
           className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-sm border transition ${
-            item.danger ? 'border-red-500/15 text-red-400 hover:bg-red-500/8' : 'border-white/8 text-white/70 hover:bg-white/5 hover:text-white'
+            item.danger ? 'border-red-500/15 text-red-400 hover:bg-red-500/8' : 'border-white/10 text-white/70 hover:bg-white/5 hover:text-white'
           }`}>
           <span>{item.icon}</span>
           <span className="font-medium">{item.label}</span>
@@ -657,7 +657,7 @@ function renderSettings({ c, loc, settingsHaptics, setSettingsHaptics, settingsA
       <div className="flex gap-2">
         {languages.map(lang => (
           <Link key={lang.code} href={`/${lang.code}/dashboard`}
-            className={`flex-1 flex flex-col items-center py-2 rounded-xl border text-[11px] transition ${loc === lang.code ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-white/8 text-white/50 hover:text-white/80'}`}>
+            className={`flex-1 flex flex-col items-center py-2 rounded-xl border text-[11px] transition ${loc === lang.code ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-white/10 text-white/50 hover:text-white/80'}`}>
             <span className="text-base">{lang.flag}</span>
             <span className="font-medium mt-0.5">{lang.name}</span>
           </Link>
@@ -757,7 +757,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
         const revealed = revealedKeys.has(def.id);
 
         return (
-          <div key={def.id} className="rounded-2xl border border-white/8 overflow-hidden">
+          <div key={def.id} className="rounded-2xl border border-white/10 overflow-hidden">
             <div className="flex items-center gap-3 p-3">
               <span className="text-lg w-7 text-center">{def.icon}</span>
               <div className="flex-1 min-w-0">
@@ -772,10 +772,10 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
               <div className="flex items-center gap-1.5">
                 {value && (
                   <>
-                    <button onClick={() => toggleReveal(def.id)} className="p-1.5 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/8 transition">
+                    <button onClick={() => toggleReveal(def.id)} className="p-1.5 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/10 transition">
                       {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
-                    <button onClick={() => copyKey(def.id, value)} className="p-1.5 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/8 transition">
+                    <button onClick={() => copyKey(def.id, value)} className="p-1.5 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/10 transition">
                       {copiedKey === def.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </>
@@ -812,7 +812,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
                     </button>
                   )}
                   <button onClick={() => { setEditingKey(null); setKeyDraft(''); }}
-                    className="px-3 py-1.5 rounded-xl text-[12px] text-white/40 border border-white/8 hover:bg-white/5 transition">
+                    className="px-3 py-1.5 rounded-xl text-[12px] text-white/40 border border-white/10 hover:bg-white/5 transition">
                     {c.cancel}
                   </button>
                 </div>
@@ -850,7 +850,7 @@ function renderProjects({ c, projectFilter, setProjectFilter }: {
         {PROJ_FILTERS.map(f => (
           <button key={f} onClick={() => setProjectFilter(f)}
             className={`flex-shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full transition ${
-              projectFilter === f ? 'bg-cyan-500/18 text-cyan-300 border border-cyan-500/35' : 'text-white/45 border border-white/8 hover:text-white/70'
+              projectFilter === f ? 'bg-cyan-500/18 text-cyan-300 border border-cyan-500/35' : 'text-white/45 border border-white/10 hover:text-white/70'
             }`}>
             {f === 'all' ? c.all : f === 'image' ? c.images : f === 'video' ? c.videos : f === 'music' ? c.music2 : 'Text'}
           </button>
@@ -919,7 +919,7 @@ function renderLibrary({ c, libraryTab, setLibraryTab }: {
         {LIBRARY_TABS.map(tab => (
           <button key={tab} onClick={() => setLibraryTab(tab)}
             className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg transition ${
-              libraryTab === tab ? 'bg-white/12 text-white' : 'text-white/40 hover:text-white/60'
+              libraryTab === tab ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'
             }`}>
             {c[tab as keyof typeof c] ?? tab}
           </button>

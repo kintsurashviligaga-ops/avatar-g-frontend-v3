@@ -92,7 +92,7 @@ export function VoicePanel({ compact }: VoicePanelProps) {
         </div>
 
         {!compact && latestCall && (
-          <div className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs text-white/75">
+          <div className="rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-xs text-white/75">
             <p className="font-semibold text-white/85">{t('lastCall')}</p>
             <p>{formatCallMeta(locale, latestCall.created_at, latestCall.duration_seconds)}</p>
           </div>

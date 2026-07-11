@@ -119,7 +119,7 @@ export default function RemixStudioConsole({
 
       {/* Overall progress bar + Cancel */}
       <div className="flex items-center gap-2">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/12">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/15">
           <div
             className="h-full rounded-full bg-gradient-to-r from-app-accent/70 to-app-accent transition-[width] duration-700 ease-out"
             style={{ width: `${Math.max(4, pct)}%` }}
@@ -147,7 +147,7 @@ export default function RemixStudioConsole({
             ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
             : active
               ? 'border-app-accent/40 bg-app-accent/[0.06] shadow-[0_0_0_1px_rgba(99,102,241,0.10)]'
-              : 'border-app-border/12 bg-app-elevated/30 opacity-55';
+              : 'border-app-border/15 bg-app-elevated/30 opacity-55';
           return (
             <div key={i} className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-colors duration-500 ${card}`}>
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-app-border/15">

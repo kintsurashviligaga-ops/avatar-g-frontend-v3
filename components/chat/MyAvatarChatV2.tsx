@@ -2009,7 +2009,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               {/* Agent presence — which sub-agent is handling this request. */}
               <div className="flex items-center gap-2 text-[12px]">
                 <span
-                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-app-border/12 text-[11px] font-bold leading-none"
+                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-app-border/15 text-[11px] font-bold leading-none"
                   style={{ backgroundColor: `${AGENTS[mode].color}1f`, color: AGENTS[mode].color }}
                 >
                   {AGENTS[mode].codename}
@@ -2773,7 +2773,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                           <button
                             key={lc}
                             onClick={() => changeLanguage(lc)}
-                            className={`h-8 w-9 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-app-border/30 bg-app-elevated text-app-text' : 'border-app-border/12 bg-app-surface text-app-muted hover:text-app-text'}`}
+                            className={`h-8 w-9 rounded-lg text-[12px] font-semibold uppercase transition active:scale-95 border ${lang === lc ? 'border-app-border/30 bg-app-elevated text-app-text' : 'border-app-border/15 bg-app-surface text-app-muted hover:text-app-text'}`}
                           >
                             {lc}
                           </button>
