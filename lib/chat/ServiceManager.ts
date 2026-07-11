@@ -938,7 +938,10 @@ export class ServiceManager {
     const validation = validateInput({
       service: 'image',
       prompt: request.userPrompt,
-      variant: 'fast',
+      // FLUX 1.1 Pro is the Replicate image quality (owner decision 2026-07-11): this path is BOTH
+      // the explicit-replicate branch and the NanoBanana error-fallback, so 'general' → flux-pro
+      // (models.ts image.variants) upgrades the fallback off the cheap flux-schnell 'fast' tier.
+      variant: 'general',
       quality,
       aspectRatio,
       style,
@@ -951,7 +954,7 @@ export class ServiceManager {
 
     validation.sanitized.prompt = request.userPrompt;
 
-    const model = resolveModel('image', validation.sanitized.variant || 'fast');
+    const model = resolveModel('image', validation.sanitized.variant || 'general');
     const modelInput = buildModelInput(validation.sanitized);
     const prediction = await createPrediction(model.id, modelInput);
 

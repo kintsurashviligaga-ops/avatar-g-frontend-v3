@@ -11,6 +11,7 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
+import { generateFluxProImage } from '@/lib/ai/fluxImage';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
@@ -204,6 +205,20 @@ export async function POST(req: NextRequest) {
         else if (grok) { await recordProviderResult('grok', false).catch(() => {}); }
       } catch (e) {
         await recordProviderResult('grok', false).catch(() => {});
+        if (!providerText) providerText = e instanceof Error ? e.message : undefined;
+      }
+    }
+
+    // FINAL LEG — FLUX 1.1 Pro (owner-chosen image fallback quality, 2026-07-11). Only fires when
+    // BOTH NanoBanana AND Grok missed, so it rarely runs (minimal added cost) but keeps a high-quality
+    // image coming through instead of a 502. Fail-open: null → the 502 below fires as before.
+    if (!providerUrl && !backupB64) {
+      try {
+        const flux = await generateFluxProImage(finalPrompt, body.aspectRatio ?? '1:1');
+        if (flux) { providerUrl = flux; model = 'FLUX 1.1 Pro'; await recordProviderResult('flux-pro', true).catch(() => {}); }
+        else { await recordProviderResult('flux-pro', false).catch(() => {}); }
+      } catch (e) {
+        await recordProviderResult('flux-pro', false).catch(() => {});
         if (!providerText) providerText = e instanceof Error ? e.message : undefined;
       }
     }
