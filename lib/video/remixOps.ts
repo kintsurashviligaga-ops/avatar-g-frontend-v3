@@ -200,10 +200,15 @@ export async function kenBurnsClip(image: string, durationSec = 5, aspect: '9:16
 
 export type GradeStyle = 'vintage' | 'cinematic' | 'neon' | 'noir' | 'dramatic';
 /** Per-style color-grade ffmpeg filter chains. `cinematic` is a proper Hollywood teal &
- *  orange (cool shadows + warm highlights), plus noir (high-contrast B&W) and dramatic. */
+ *  orange (cool shadows + GENTLY-warm highlights), plus noir (high-contrast B&W) and dramatic.
+ *  V8-F3 PARITY: the highlight warm push is neutralized to match the master cinematic LUT
+ *  (lib/orchestrator/cinematic-lut.ts). The old rh=+0.08/bh=-0.08 here was ~4x the LUT amount and
+ *  RE-INTRODUCED the exact warm-highlight YELLOW tint the LUT fix removed — a defect on the remix
+ *  "cinematic" path only. Kept the teal shadows (the intended half of teal-orange). Do NOT raise
+ *  rh back up without also revisiting the LUT — the two must agree so the tint can't creep back. */
 const GRADE_VF: Record<GradeStyle, string> = {
   vintage: 'curves=vintage',
-  cinematic: 'colorbalance=rs=-0.08:bs=0.08:rh=0.08:bh=-0.08,eq=contrast=1.08:saturation=1.06,vignette=PI/5',
+  cinematic: 'colorbalance=rs=-0.08:bs=0.08:rh=0.02:bh=-0.02,eq=contrast=1.08:saturation=1.06,vignette=PI/5',
   neon: 'hue=s=2,eq=contrast=1.2:brightness=0.1',
   noir: 'hue=s=0,eq=contrast=1.25:brightness=-0.02,vignette=PI/4',
   dramatic: 'eq=contrast=1.2:saturation=0.96,vignette=PI/4',

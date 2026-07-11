@@ -296,7 +296,11 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     const ratio = duckRatio(opts.duckDb, duck);
     parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
     parts.push(`[vraw]volume=1.0[vmix]`);
-    parts.push(`[${sfxIdx}:a]volume=${sfxV}[sfxv]`);
+    // AMBIENT FILL — the ElevenLabs sound-generation bed caps at ~22s, so on a 30/60s master the
+    // sfx/atmosphere lane would go SILENT after 22s (apad tops it with silence). Loop it so the
+    // low-freq ambient bed sustains for the FULL timeline; the downstream atrim cuts it to targetDur.
+    // size bounds the loop buffer (~2M samples ≈ 40s @48k) — plenty for the ≤22s bed, bounded memory.
+    parts.push(`[${sfxIdx}:a]aloop=loop=-1:size=2000000,volume=${sfxV}[sfxv]`);
     if (smart) {
       parts.push(`[${musicIdx}:a]volume=${musV}[musv]`);
       parts.push(`[musv][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[musduck]`);

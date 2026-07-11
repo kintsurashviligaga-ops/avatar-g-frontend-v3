@@ -29,6 +29,15 @@ export const VIDEO_LAST_RESORT_MODEL = 'kwaivgi/kling-v1.6-standard';
  */
 export const VIDEO_PRIMARY = (process.env.REPLICATE_VIDEO_MODEL || VIDEO_PRIMARY_MODEL).trim();
 
+/** True when the resolved primary is actually a v1.6 model — i.e. REPLICATE_VIDEO_MODEL is pinned to
+ *  the cheaper LAST-RESORT tier, so every render silently runs the fallback quality instead of the
+ *  Kling v2.1 lock. Exposed for ops/health checks; the render paths still function (fail-open). */
+export const videoPrimaryIsLastResort = /v1\.6|v1-6|kling-v1/i.test(VIDEO_PRIMARY);
+if (videoPrimaryIsLastResort) {
+  // eslint-disable-next-line no-console
+  console.warn(`[modelLock] ⚠ REPLICATE_VIDEO_MODEL resolves the video PRIMARY to a v1.6 model (${VIDEO_PRIMARY}) — the cheaper LAST-RESORT tier is running as primary, not the Kling v2.1 lock. Unset REPLICATE_VIDEO_MODEL (or set a v2.1 value) to restore v2.1 quality.`);
+}
+
 /**
  * Image primary for the REPLICATE path: FLUX 1.1 Pro (the `flux-pro` key in lib/replicate/models.ts,
  * where this is wired in as `image.defaultModel`). NOTE this is the Replicate default/fallback engine
