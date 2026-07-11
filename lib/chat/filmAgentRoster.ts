@@ -36,6 +36,9 @@ export interface FilmAgentVM {
   /** Video agent only — scenes landed / total. */
   ready?: number;
   total?: number;
+  /** Optional human-readable status detail (e.g. WHY the lip-sync stage skipped) — shown
+   *  on the card in place of the generic status label so a skip is never silent. */
+  note?: string;
 }
 
 /** Console layout order: the active production chain first, dormant specialists last. */

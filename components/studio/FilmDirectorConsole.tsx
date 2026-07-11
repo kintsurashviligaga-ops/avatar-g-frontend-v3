@@ -169,13 +169,17 @@ function AgentCard({ agent, loc, musicVideo = false }: { agent: FilmAgentVM; loc
   const s = STATUS_STYLE[agent.status];
   const micro = MICRO[agent.id];
   const detail =
-    agent.id === 'video' && (agent.status === 'processing' || agent.status === 'completed') && agent.total
-      ? `${agent.ready ?? 0}/${agent.total} ${SCENES[loc]}`
-      : micro && agent.status === 'processing'
-        ? micro.processing[loc]
-        : micro && agent.status === 'completed'
-          ? micro.completed[loc]
-          : STATUS_LABEL[agent.status][loc];
+    // A skip/complete REASON (e.g. why lip-sync was skipped) always wins so the card is never
+    // a silent "skipped" — the caller sets agent.note with a localized, human-readable reason.
+    agent.note
+      ? agent.note
+      : agent.id === 'video' && (agent.status === 'processing' || agent.status === 'completed') && agent.total
+        ? `${agent.ready ?? 0}/${agent.total} ${SCENES[loc]}`
+        : micro && agent.status === 'processing'
+          ? micro.processing[loc]
+          : micro && agent.status === 'completed'
+            ? micro.completed[loc]
+            : STATUS_LABEL[agent.status][loc];
   const barWidth = agent.status === 'idle' ? 0 : Math.max(agent.status === 'queued' ? 0 : 8, agent.pct);
   return (
     <div className={`flex flex-col gap-1.5 rounded-xl border p-2.5 transition-colors duration-500 ${s.card}`}>

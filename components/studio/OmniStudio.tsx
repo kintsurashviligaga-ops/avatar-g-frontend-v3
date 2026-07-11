@@ -33,6 +33,7 @@ import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
+import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
@@ -382,6 +383,27 @@ const MODES = [
 // with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
 // keying the singer's mouth to the master's embedded Georgian vocal. Returns the synced
 // URL or null (caller keeps the un-synced master — fail-open).
+// PHASE 20 — LIP-SYNC OBSERVABILITY. The music-video singer-performance sync is the CORRECT
+// approach (per-shot HeyGen close-ups composited into the montage — NOT whole-master
+// sync/lipsync-2, which warps wide shots and was reverted twice: 8d72d47 reverts 64a9c93 +
+// 5624771). But when it silently bailed (no clean face / HeyGen down / short result), the
+// master shipped with un-synced lips and the card just said "skipped" with no reason — that
+// was the real "lips don't track the vocal" symptom. These short localized lines surface WHY
+// on the Director's Console Lip-Sync card so a skip is never mysterious.
+type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'short_result' | 'no_clips' | 'composite_failed';
+function lipsyncSkipReason(reason: LipSkipReason, locale: string): string {
+  const M: Record<LipSkipReason, { en: string; ru: string; ka: string }> = {
+    no_song: { en: 'Skipped — no song track to sync to', ru: 'Пропущено — нет песни для синхронизации', ka: 'გამოტოვდა — სასინქრონო სიმღერა არ არის' },
+    no_face: { en: 'Skipped — no clear face (add a photo for lip-sync)', ru: 'Пропущено — нет чёткого лица (добавьте фото)', ka: 'გამოტოვდა — მკაფიო სახე არ არის (დაამატე ფოტო)' },
+    heygen_unavailable: { en: 'Skipped — lip-sync engine unavailable', ru: 'Пропущено — движок липсинка недоступен', ka: 'გამოტოვდა — ლიპსინკის ძრავა მიუწვდომელია' },
+    short_result: { en: 'Skipped — sync clip too short', ru: 'Пропущено — клип слишком короткий', ka: 'გამოტოვდა — სასინქრონო კლიპი ძალიან მოკლეა' },
+    no_clips: { en: 'Skipped — no rendered clips to composite', ru: 'Пропущено — нет клипов для монтажа', ka: 'გამოტოვდა — მონტაჟისთვის კლიპები არ არის' },
+    composite_failed: { en: 'Skipped — composite failed', ru: 'Пропущено — сбой монтажа', ka: 'გამოტოვდა — მონტაჟი ვერ შესრულდა' },
+  };
+  const m = M[reason];
+  return locale === 'ru' ? m.ru : locale === 'ka' ? m.ka : m.en;
+}
+
 // MUSIC-VIDEO lip-sync — generate a clean HeyGen SINGER PERFORMANCE: a close-up storyboard
 // face lip-synced to the song's vocal (the talking-photo path, which tries HeyGen first).
 // This replaces the old whole-master relip (sync/lipsync-2 warped the montage's wide/aerial
@@ -1314,6 +1336,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }).then(() => { try { window.dispatchEvent(new Event('myavatar:notifications-refresh')); } catch { /* ignore */ } }).catch(() => {});
     };
     fileNotif(notifType, readyMsg);
+    // PHASE 20 — also fire a NATIVE OS-level notification (like ChatGPT/Gemini) so a user who
+    // tabbed away gets alerted the moment the asset lands. Reuses the already-localized readyMsg
+    // and fires for every kind (this is the single completion choke point). Best-effort + no-op
+    // unless the user granted permission (requested on the Generate gesture); the in-app bell
+    // above stays as the universal fallback. See lib/notify/browserNotify for the honest limits
+    // (backgrounded tab: yes · fully-closed tab / iOS Safari tab: needs a PWA + Web Push).
+    void fireCompletionNotification({ title: 'MyAvatar', body: readyMsg, tag: notifType });
     // Pull the live balance for the toast's "balance" line + a low-credit warning.
     void (async () => {
       try {
@@ -2154,11 +2183,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           ?? sceneFrames?.[3] ?? sceneFrames?.[1] ?? sceneFrames?.[0] ?? null;
       };
       // Patch the Lip-Sync card on whichever bubble carries the Director's Console roster.
-      const patchLipsyncCard = (st: FilmAgentStatus) => {
+      // PHASE 20 — accepts an optional `note` (a localized reason) so a skip is never silent:
+      // the reason lands on the card AND a console breadcrumb, turning the old mysterious
+      // "lips don't track the vocal" into a visible, actionable cause.
+      const patchLipsyncCard = (st: FilmAgentStatus, note?: string) => {
         lipStage.current = st;
+        if (note) { try { console.info('[lipsync]', st, '—', note); } catch { /* ignore */ } }
         patchFilmBubbleBy(
           (m) => !!m && m.role === 'assistant' && !!m.filmRoster,
-          (m) => ({ ...m, filmRoster: (m.filmRoster ?? []).map((a) => (a.id === 'lipsync' ? { ...a, status: st, pct: st === 'completed' || st === 'skipped' ? 100 : st === 'processing' ? 50 : 0 } : a)) }),
+          (m) => ({ ...m, filmRoster: (m.filmRoster ?? []).map((a) => (a.id === 'lipsync' ? { ...a, status: st, pct: st === 'completed' || st === 'skipped' ? 100 : st === 'processing' ? 50 : 0, ...(note ? { note } : { note: undefined }) } : a)) }),
         );
       };
       // GRAPHICS INPUT — defaults to the base master so the Graphics agent ALWAYS runs, even
@@ -2167,7 +2200,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       let graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
       if (res.ok && res.masterUrl && mine()) {
         if (isMusicVideo && wantsLipsync && res.musicUrl) {
-          // Music video WITH dialogue → the singer-performance sync (close-ups to the vocal).
+          // MUSIC VIDEO → the singer-performance sync (close-up HeyGen head composited into the
+          // montage). PHASE 20: staged so every bail surfaces WHICH step failed (the render was
+          // shipping un-synced lips with a bare "skipped"). Still fail-open → base master + graphics.
           patchLipsyncCard('processing');
           const songUrl: string = res.musicUrl;
           let vocalForSync: string = songUrl;
@@ -2175,15 +2210,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             const iso = await fetch('/api/audio/isolate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ audioUrl: res.musicUrl }) });
             const ij = (await iso.json().catch(() => ({}))) as { vocalUrl?: string | null };
             if (ij.vocalUrl) vocalForSync = ij.vocalUrl;
-          } catch { /* full mix */ }
+            else { try { console.info('[lipsync] isolate: no vocalUrl → syncing to the full mix'); } catch { /* ignore */ } }
+          } catch { try { console.info('[lipsync] isolate failed → syncing to the full mix'); } catch { /* ignore */ } }
+          // #1 root cause of un-synced lips: no clean face → HeyGen never runs. Surface it (and
+          // hint the fix: attach a reference photo) instead of a silent skip over the wide montage.
           const face = await resolveCleanFace();
-          const perf = face ? await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine) : null;
-          const perfOk = perf ? await videoDurationAtLeast(perf, 8) : false;
-          const composited = (perfOk && perf && res.matrix && mine())
-            ? await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine, res.filmTokenId ?? null)
-            : null;
-          if (composited) { graphicsInput = composited; setResultVideo(composited); }
-          patchLipsyncCard(composited ? 'completed' : 'skipped');
+          if (!face) {
+            patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
+          } else {
+            const perf = await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine);
+            if (!perf) {
+              // HeyGen returned nothing (no provider key / credit block / timeout / down).
+              patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
+            } else if (!(await videoDurationAtLeast(perf, 8))) {
+              patchLipsyncCard('skipped', lipsyncSkipReason('short_result', locale));
+            } else if (!res.matrix || !mine()) {
+              patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale));
+            } else {
+              const composited = await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine, res.filmTokenId ?? null);
+              if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
+              else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale)); }
+            }
+          }
+        } else if (isMusicVideo && wantsLipsync && !res.musicUrl) {
+          // Music video wanted lip-sync but no song track landed → nothing to sync the mouth to.
+          patchLipsyncCard('skipped', lipsyncSkipReason('no_song', locale));
         } else if (!isMusicVideo && wantsLipsync) {
           // DOCUMENTARY with dialogue → compositeDocumentary: ElevenLabs TTS of the dialogue
           // drives a talking-photo lip-sync of the CLEAN portrait, composited into the montage
@@ -2361,6 +2412,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
   const generateProductAd = useCallback(() => {
     if (!productImage) return;
+    void ensureNotificationPermission(); // PHASE 20 — permission on the generate gesture
     // The product ad renders PER-JOB in its OWN chat bubble (by id) through the Cap-3 queue —
     // NO productBusy gate, so N product ads run CONCURRENTLY, each fully self-contained (its inputs
     // are SNAPSHOTTED at click), so results never clobber a single panel slot. A per-clip 45s
@@ -3277,6 +3329,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
+    // PHASE 20 — request native-notification permission on the GENERATE gesture (this click),
+    // for generative modes only. Must ride a user gesture (Chrome/Firefox block mount-time
+    // prompts); once granted/denied it never re-prompts. Fire-and-forget — never blocks the send.
+    if (mode !== 'chat') void ensureNotificationPermission();
     // IMAGE (single OR ×2/×4 batch) → the capped-parallel JOB QUEUE. This bypasses the
     // single-slot busy gate below, so a user can fire several images (they render 3-at-a-
     // time with live positions in the tray) AND start an image while a heavy video/avatar
@@ -3723,6 +3779,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   };
   const runRemix = useCallback(async () => {
     if (!remixVideo || remixBusy || busy) return;
+    void ensureNotificationPermission(); // PHASE 20 — permission on the generate gesture
     const label = REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en;
     const myGen = ++genIdRef.current;
     const ac = new AbortController();

@@ -146,3 +146,23 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// PHASE 20 — native completion notifications. When the user taps the "your asset is ready"
+// notification (fired via registration.showNotification from lib/notify/browserNotify), focus an
+// already-open app window if there is one, else open a fresh one. Purely additive: it does NOT
+// touch CACHE_NAME (stamped from the commit SHA by next.config.js) or any caching/fetch logic.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) return client.focus();
+        }
+        if (self.clients.openWindow) return self.clients.openWindow('/');
+        return undefined;
+      })
+      .catch(() => undefined),
+  );
+});
