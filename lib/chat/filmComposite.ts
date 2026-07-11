@@ -475,6 +475,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // eslint-disable-next-line no-console
       console.log(`[filmComposite] used ${fromScript.length} scenes from the attached structured script (no LLM)`);
     } else {
+      // A reference image (bridged photo / uploaded selfie) present → the agent must NOT invent a persona.
+      const refImgs = input.metadata?.referenceImages as unknown;
+      const hasRefImg = !!input.metadata?.avatarUrl || (Array.isArray(refImgs) && refImgs.length > 0);
       const brief = await runPromptAgent({
         brief: input.message,
         mode: input.metadata?.musicVideoMode ? 'music_video' : 'documentary',
@@ -482,6 +485,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         length: FILM_SCENE_COUNT * FILM_CLIP_SEC,
         effect: style ?? 'Cinematic',
         language: input.locale,
+        hasReferenceImage: hasRefImg,
       }).catch(() => null);
       if (brief) {
         characterLock = brief.character.imagePromptFragment;

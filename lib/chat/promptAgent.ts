@@ -97,13 +97,23 @@ export interface PromptAgentInput {
   /** Optional primary-model override. The storyboard PREVIEW passes haiku (fast); the
    *  actual film render (filmComposite) omits it → keeps the sonnet default for quality. */
   model?: string;
+  /** True when the session has an ACTIVE reference/source image driving the character (a bridged
+   *  photo or an uploaded selfie). When set, the agent is FORBIDDEN from inventing a persona — the
+   *  photo is the identity ground truth, so it must not guess a character from the (text-only) brief. */
+  hasReferenceImage?: boolean;
 }
 
-const SYSTEM_PROMPT = `You are a Master Film Director.
+export const SYSTEM_PROMPT = `You are a Master Film Director.
 
 Your job: analyze the brief and create a complete MasterFilmBrief JSON.
 
 CRITICAL RULES:
+0. NO INVENTED PLACEHOLDER CHARACTERS: NEVER fabricate a stock or stereotypical character (a
+   generic "older man", a "50-year-old man", a "weathered face", a national-costume figure, a
+   chokha / traditional dress, or any template persona) to fill a thin or minimal brief. If the
+   brief does not describe a specific person, derive the cast from the THEME/song (rule 1b) — never
+   from a cultural cliché, a placeholder example, or a default stereotype.
+
 1. CHARACTER LOCK: Detect EVERY recurring person in the brief and create ONE detailed,
    locked description for EACH (age, ethnicity, hair color+length+style, eye color,
    EXACT clothing with colours + accessories, expression). Give each a stable id
@@ -163,8 +173,9 @@ SFX CUES (every scene):
    Scene 6: Slow pull-back or symbolic close — the cinematic resolution
    For other scene counts, keep the establish → develop → peak → turn → resolve arc.
 
-5. For Georgian content: include authentic Georgian visual elements
-   (architecture, lighting, culture).
+5. For Georgian SETTINGS: use authentic Georgian ENVIRONMENT details (architecture, streets,
+   lighting, culture of the PLACE) — but this NEVER dictates or invents the character's identity,
+   age, gender, ethnicity or dress. The setting is the world; it is not the person.
 
 6. CINEMATOGRAPHY (add to EVERY scene.imagePrompt, and VARY it per scene so the film
    has motion and rhythm — do not repeat the same camera on every scene):
@@ -334,6 +345,30 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
 }
 
 /**
+ * Build the Director's user turn. Exported + pure so the reference-image identity lock (VECTOR 2)
+ * and the "produce EXACTLY N scenes" contract are unit-testable without a live LLM call.
+ */
+export function buildDirectorUserContent(input: PromptAgentInput, sceneCount: number): string {
+  return (
+    // 4000 (was 1800) so an attached SCRIPT baked into the brief reaches the Director intact —
+    // a short prompt is unaffected; only script-driven films use the headroom.
+    `Brief: ${input.brief.trim().slice(0, 4000)}\n` +
+    `Mode: ${input.mode}\n` +
+    `Scenes: ${sceneCount}\n` +
+    `Length: ${input.length}s\n` +
+    `Effect: ${input.effect}\n` +
+    `Language: ${input.language}` +
+    (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
+    // VECTOR 2 — the agent is TEXT-ONLY (it cannot see the photo), so when a reference image is
+    // active it must be told, in the strongest terms, to NOT invent a person from the brief text.
+    (input.hasReferenceImage
+      ? `\n\nCRITICAL — REFERENCE IMAGE ACTIVE: The main character is VISUALLY LOCKED to a reference photo of a REAL person the user already chose. You are STRICTLY FORBIDDEN from inventing, substituting or describing any ALTERNATIVE persona — do NOT invent an older man, a weathered face, a chokha, or any stock "Georgian" character, and do NOT infer age / gender / ethnicity / wardrobe from the brief text. In EVERY character description and EVERY scene.imagePrompt, assert the SAME single identity: "the exact same person shown in the reference image — identical face, age, hair, build and wardrobe". Every scene breakdown must maintain that one identity from the photo.`
+      : '') +
+    `\n\nProduce EXACTLY ${sceneCount} scenes.`
+  );
+}
+
+/**
  * Run the Master Prompt Agent. Returns a coherent `MasterFilmBrief` or `null`
  * (fail-open). Capped at PROMPT_AGENT_TIMEOUT_MS (default 45s) — a full MasterFilmBrief
  * (locked character + style + N scene prompts ≈ 1.5k tokens) takes Sonnet ~20-30s, so
@@ -349,17 +384,7 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
   // 90s default (was 45s): DeepSeek-V3 leads this chain for character-lock quality and needs
   // ~75s for a 10-scene ensemble brief; this is a background/render call (maxDuration 300).
   const timeoutMs = Number(process.env.PROMPT_AGENT_TIMEOUT_MS) || 90_000;
-  const userContent =
-    // 4000 (was 1800) so an attached SCRIPT baked into the brief reaches the Director
-    // intact — a short prompt is unaffected; only script-driven films use the headroom.
-    `Brief: ${input.brief.trim().slice(0, 4000)}\n` +
-    `Mode: ${input.mode}\n` +
-    `Scenes: ${sceneCount}\n` +
-    `Length: ${input.length}s\n` +
-    `Effect: ${input.effect}\n` +
-    `Language: ${input.language}` +
-    (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
-    `\n\nProduce EXACTLY ${sceneCount} scenes.`;
+  const userContent = buildDirectorUserContent(input, sceneCount);
   // Output budget scales with scene count (a 12-scene ensemble repeats each person's full
   // wardrobe in every scene.imagePrompt → a flat cap truncates the JSON).
   const maxTokens = Math.min(8000, 1500 + sceneCount * 400);

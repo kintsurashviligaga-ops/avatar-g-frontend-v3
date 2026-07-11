@@ -351,7 +351,7 @@ export async function POST(req: NextRequest) {
     const brief = await runPromptAgent({
       brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
       length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
-      model: STORYBOARD_PROMPT_MODEL,
+      model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
     });
     const promptAgentMs = Date.now() - tPA;
     // eslint-disable-next-line no-console
