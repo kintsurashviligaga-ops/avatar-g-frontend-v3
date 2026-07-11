@@ -1,27 +1,60 @@
 'use client';
 
 /**
- * VoiceConversation — the real-time voice-interaction node (DAY-5 Task 1).
+ * VoiceConversation — continuous, hands-free, full-duplex-style voice node (Phase 10).
  *
- * A SELF-CONTAINED, ADDITIVE overlay: tap-to-talk captures Georgian speech (MediaRecorder / Web Audio),
- * transcribes it (/api/voice/transcribe), gets a short conversational reply (/api/voice/chat → live llmText),
- * and voices it via the existing ElevenLabs streaming TTS route (/api/elevenlabs/tts) — stability stays locked
- * at 0.48 (this component never sends voice settings; the TTS route owns them). Mounted as an opt-in mode from
- * the chat composer so the text chat is completely undisturbed. Fail-open at every leg (a miss → a friendly
- * retry state, never a hang).
+ * Tap ONCE to start a live session; after that it listens continuously, auto-detects when you
+ * stop speaking (VAD), replies out loud, and immediately listens again — hands-free multi-turn
+ * like Gemini Live / GPT-4o Voice. Talk OVER the reply to interrupt it (barge-in). Georgian,
+ * English and Russian all work (the routes own the language; VAD is language-agnostic).
+ *
+ * Pipeline (unchanged REST contract — every leg fail-open + timeout-guarded):
+ *   mic → VAD endpoint → /api/voice/transcribe → /api/voice/chat → /api/elevenlabs/tts (chunked).
+ *
+ * The hard-won robustness (why the old shell felt "dead"):
+ *  - ONE AudioContext is created AND resumed INSIDE the first tap gesture and reused for the whole
+ *    session. A suspended context (no gesture) makes the analyser read zeros forever — the classic
+ *    dead shell — and iOS caps contexts + gesture-couples resume, so per-turn contexts can't resume.
+ *  - TTS plays THROUGH that running context (decodeAudioData → BufferSource), so playback is never
+ *    blocked by the HTMLAudioElement autoplay policy on turns 2..N (no fresh gesture there).
+ *  - The assistant's own voice can't self-trigger the mic: a hard STATE GATE runs normal endpoint
+ *    VAD only while listening; during playback only a stricter barge detector runs (+ a per-chunk
+ *    grace window). echoCancellation is a secondary defence.
+ *  - VAD is clocked by a 50ms setInterval + performance.now() deltas (rAF throttles to 0 in a
+ *    background tab); a monotonic turn-generation counter orphans stale async on barge/close.
+ *  - If the Web-Audio machinery can't be set up, it FALLS BACK to plain tap-to-talk so voice still
+ *    works. Tapping the orb while listening always force-ends the turn (manual endpoint).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Mic, Loader2, Volume2, AlertCircle } from 'lucide-react';
+import { X, Mic, Loader2, Volume2, AlertCircle, RotateCcw } from 'lucide-react';
 import { chunkForTts } from '@/lib/audio/ttsChunks';
+import {
+  DEFAULT_VAD_CONFIG,
+  bargeConfig,
+  createVadState,
+  stepVad,
+  shouldCommit,
+  extForMime,
+  type VadState,
+} from '@/lib/voice/vad';
 
 type Lang = 'ka' | 'en' | 'ru';
-type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
+type Status = 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
 interface Turn { role: 'user' | 'assistant'; content: string }
 
-const COPY: Record<Lang, { title: string; tapToTalk: string; listening: string; thinking: string; speaking: string; micDenied: string; retry: string; you: string; assistant: string }> = {
-  ka: { title: 'ხმოვანი საუბარი', tapToTalk: 'დააჭირე სალაპარაკოდ', listening: 'გისმენ…', thinking: 'ვფიქრობ…', speaking: 'ვპასუხობ…', micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', retry: 'სცადე თავიდან', you: 'შენ', assistant: 'MyAvatar' },
-  en: { title: 'Voice chat', tapToTalk: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', micDenied: "Couldn't access the microphone", retry: 'Try again', you: 'You', assistant: 'MyAvatar' },
-  ru: { title: 'Голосовой чат', tapToTalk: 'Нажмите, чтобы говорить', listening: 'Слушаю…', thinking: 'Думаю…', speaking: 'Отвечаю…', micDenied: 'Нет доступа к микрофону', retry: 'Ещё раз', you: 'Вы', assistant: 'MyAvatar' },
+const COPY: Record<Lang, {
+  title: string; tapToStart: string; listening: string; thinking: string; speaking: string;
+  micDenied: string; retry: string; rateLimited: string; tapResume: string; you: string; assistant: string; hint: string;
+}> = {
+  ka: { title: 'ხმოვანი საუბარი', tapToStart: 'დააჭირე დასაწყებად', listening: 'გისმენ…', thinking: 'ვფიქრობ…', speaking: 'ვპასუხობ…', micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', retry: 'სცადე თავიდან', rateLimited: 'ცოტა ხანს დაისვენე და სცადე თავიდან', tapResume: 'დააჭირე გასაგრძელებლად', you: 'შენ', assistant: 'MyAvatar', hint: 'ილაპარაკე თავისუფლად — მე თვითონ მივხვდები როდის დაასრულებ' },
+  en: { title: 'Voice chat', tapToStart: 'Tap to start', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', micDenied: "Couldn't access the microphone", retry: 'Try again', rateLimited: 'Slow down a moment — tap to retry', tapResume: 'Tap to resume', you: 'You', assistant: 'MyAvatar', hint: 'Just talk — I detect when you finish' },
+  ru: { title: 'Голосовой чат', tapToStart: 'Нажмите, чтобы начать', listening: 'Слушаю…', thinking: 'Думаю…', speaking: 'Отвечаю…', micDenied: 'Нет доступа к микрофону', retry: 'Ещё раз', rateLimited: 'Слишком часто — нажмите, чтобы повторить', tapResume: 'Нажмите, чтобы продолжить', you: 'Вы', assistant: 'MyAvatar', hint: 'Просто говорите — я пойму, когда вы закончите' },
+};
+
+const VAD_INTERVAL_MS = 50;
+const BARGE_GRACE_MS = 300;
+const MIC_CONSTRAINTS: MediaStreamConstraints = {
+  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
 };
 
 function pickMime(): string {
@@ -30,158 +63,373 @@ function pickMime(): string {
     : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
 }
 
+function getAudioContextCtor(): typeof AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  return window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext || null;
+}
+
+// Timeout signal that ALSO aborts when the given controller aborts (barge/close), when the
+// runtime supports AbortSignal.any; otherwise just the timeout (the turn-generation guard still
+// discards stale results). Keeps in-flight fetches cancellable without leaking.
+function turnSignal(ms: number, extra: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  const anyFn = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+  return typeof anyFn === 'function' ? anyFn([timeout, extra]) : timeout;
+}
+
 export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string; onClose: () => void }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
-  const [status, setStatus] = useState<Status>('idle');
+  const [status, setStatus] = useState<Status>('off');
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [error, setError] = useState('');
-  const recorderRef = useRef<MediaRecorder | null>(null);
+
+  // ── Mic + Web-Audio graph (persistent across turns) ──
   const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const vadBufRef = useRef<Uint8Array | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string>('');
+  const mimeRef = useRef<string>('');
+
+  // ── VAD loop ──
+  const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const vadStateRef = useRef<VadState>(createVadState());
+  const vadModeRef = useRef(false); // true once the analyser is live; false → manual tap-to-talk
+  const graceUntilRef = useRef(0);
+
+  // ── Playback (through the AudioContext) ──
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const turnAbortRef = useRef<AbortController | null>(null);
+
+  // ── Session bookkeeping ──
+  const statusRef = useRef<Status>('off');
   const historyRef = useRef<Turn[]>([]);
-  const aliveRef = useRef(true);
+  const turnGenRef = useRef(0);
+  const runningRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    aliveRef.current = false;
-    try { recorderRef.current?.stop(); } catch { /* noop */ }
-    streamRef.current?.getTracks().forEach((tr) => tr.stop());
-    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-    audioRef.current?.pause();
-  }, []);
+  const go = useCallback((s: Status) => { statusRef.current = s; setStatus(s); }, []);
 
-  // ── The loop: transcribe → chat → speak ────────────────────────────────────────────────────────────
-  const runTurn = useCallback(async (audio: Blob) => {
-    try {
-      setStatus('thinking'); setError('');
-      // 1) STT
-      const fd = new FormData();
-      // Label the upload with the extension that MATCHES the recorded container. iOS Safari
-      // records audio/mp4, NOT webm — a wrong extension makes Whisper reject the audio (the real
-      // cause of "the mic does nothing" on mobile). Mirrors the composer path's extFor mapping.
-      const ext = /mp4/i.test(audio.type) ? 'mp4' : /aac/i.test(audio.type) ? 'm4a' : /mpeg|mp3/i.test(audio.type) ? 'mp3' : /wav/i.test(audio.type) ? 'wav' : 'webm';
-      fd.append('audio', audio, `speech.${ext}`);
-      fd.append('language', lang === 'en' ? 'en-US' : lang === 'ru' ? 'ru-RU' : 'ka-GE');
-      // V4 — every leg carries a client timeout so a HALF-OPEN network drop can't hang the orb
-      // in 'thinking'/'speaking' forever. Generous windows (transcribe chains Whisper polling).
-      const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include', signal: AbortSignal.timeout(30_000) });
-      const sj = (await sr.json().catch(() => null)) as { text?: string } | null;
-      const said = (sj?.text || '').trim();
-      if (!aliveRef.current) return;
-      if (!said) { setStatus('idle'); return; }
-      setTranscript(said);
-      historyRef.current = [...historyRef.current, { role: 'user' as const, content: said }].slice(-12);
-
-      // 2) LLM reply
-      const cr = await fetch('/api/voice/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ text: said, locale: lang, history: historyRef.current }),
-        signal: AbortSignal.timeout(25_000),
-      });
-      const cj = (await cr.json().catch(() => null)) as { reply?: string } | null;
-      const answer = (cj?.reply || '').trim();
-      if (!aliveRef.current) return;
-      if (!answer) throw new Error('no reply');
-      setReply(answer);
-      historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: answer }].slice(-12);
-
-      // 3) TTS → CHUNKED sequential playback. Sending the WHOLE reply as ONE TTS request could get
-      //    truncated by the provider ("audio stops after a word or two"); splitting into sentences
-      //    and synthesising + playing them back-to-back (pre-fetching the next while the current
-      //    plays) means a truncated/failed chunk is SKIPPED, not fatal. Numeric normalization to
-      //    Georgian words happens server-side in the TTS route. Per-chunk timeout keeps a stall bounded.
-      setStatus('speaking');
-      const chunks = chunkForTts(answer);
-      if (!chunks.length) { if (aliveRef.current) setStatus('idle'); return; }
-      const synthChunk = async (chunk: string): Promise<string | null> => {
-        try {
-          const res = await fetch('/api/elevenlabs/tts', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-            body: JSON.stringify({ text: chunk, locale: lang }), signal: AbortSignal.timeout(20_000),
-          });
-          if (!res.ok) return null;
-          return URL.createObjectURL(await res.blob());
-        } catch { return null; }
-      };
-      const el = audioRef.current ?? new Audio();
-      audioRef.current = el;
-      let played = false;
-      let nextUrl: Promise<string | null> = synthChunk(chunks[0]!);
-      for (let idx = 0; idx < chunks.length; idx++) {
-        const url = await nextUrl;
-        if (!aliveRef.current) { if (url) URL.revokeObjectURL(url); return; }
-        nextUrl = idx + 1 < chunks.length ? synthChunk(chunks[idx + 1]!) : Promise.resolve(null);
-        if (!url) continue; // a chunk truncated/failed → skip it, keep reading the rest
-        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = url;
-        el.src = url;
-        const blocked = await new Promise<boolean>((resolve) => {
-          // A mid-play STALL (buffer underrun / wedged decoder on a flaky mobile network AFTER
-          // playback started) fires neither onended nor onerror, and play() already resolved — so
-          // without a guard this await would PARK FOREVER and pin the orb in 'speaking'. This is the
-          // one leg the 3 fetches' AbortSignal.timeout didn't cover. 45s > any real ~600-char chunk
-          // (<30s of speech), so it only trips on a genuine wedge, then advances to the next chunk.
-          let done = false;
-          const finish = (b: boolean) => { if (done) return; done = true; clearTimeout(guard); resolve(b); };
-          const guard = setTimeout(() => finish(false), 45_000);
-          el.onended = () => finish(false);
-          el.onerror = () => finish(false);
-          el.play().then(() => { played = true; }).catch(() => finish(true)); // autoplay blocked
-        });
-        if (blocked || !aliveRef.current) break; // block/close → stop; the reply text stays on screen
-      }
-      // Never synthesised a single chunk at all → treat as a TTS miss (retry state); otherwise the
-      // reply was voiced (or is on-screen after an autoplay block) → clean idle.
-      if (!aliveRef.current) return;
-      if (!played && chunks.length) { setStatus('error'); setError(t.retry); }
-      else setStatus('idle');
-    } catch {
-      if (aliveRef.current) { setStatus('error'); setError(t.retry); }
-    }
-  }, [lang, t.retry]);
-
-  const stopRecording = useCallback(() => {
-    try { recorderRef.current?.stop(); } catch { /* noop */ }
-    streamRef.current?.getTracks().forEach((tr) => tr.stop());
+  // ── Stop the capture/analysis/playback graph but KEEP the AudioContext (reused across turns
+  //    and re-boots — iOS caps contexts + gesture-couples resume). Idempotent. ──
+  const stopGraph = useCallback(() => {
+    if (vadIntervalRef.current) { clearInterval(vadIntervalRef.current); vadIntervalRef.current = null; }
+    try { if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop(); } catch { /* noop */ }
+    recorderRef.current = null;
+    try { currentSourceRef.current?.stop(); } catch { /* noop */ }
+    currentSourceRef.current = null;
+    try { sourceRef.current?.disconnect(); } catch { /* noop */ }
+    sourceRef.current = null;
+    analyserRef.current = null;
+    streamRef.current?.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } });
     streamRef.current = null;
   }, []);
 
-  const startRecording = useCallback(async () => {
-    setError('');
+  // ── Full teardown — idempotent; reachable from unmount AND onClose ──
+  const teardown = useCallback(() => {
+    runningRef.current = false;
+    turnGenRef.current += 1;
+    try { turnAbortRef.current?.abort(); } catch { /* noop */ }
+    try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
+    stopGraph();
+    const ctx = audioCtxRef.current;
+    audioCtxRef.current = null;
+    if (ctx && ctx.state !== 'closed') { void ctx.close().catch(() => undefined); }
+  }, [stopGraph]);
+
+  useEffect(() => () => { mountedRef.current = false; teardown(); }, [teardown]);
+
+  // ── One VAD sample: read RMS → advance the reducer → act on the event ──
+  const vadTick = useCallback(() => {
+    if (!runningRef.current) return;
+    const analyser = analyserRef.current;
+    const buf = vadBufRef.current;
+    if (!analyser || !buf) return;
+    analyser.getByteTimeDomainData(buf as Uint8Array<ArrayBuffer>);
+    let sum = 0;
+    for (const b of buf) { const v = (b - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / buf.length);
+
+    const st = statusRef.current;
+    const speaking = st === 'speaking';
+    // Only run VAD while listening (endpoint) or speaking (barge). Other states ignore it.
+    if (st !== 'listening' && !speaking) return;
+
+    const cfg = speaking ? bargeConfig(DEFAULT_VAD_CONFIG) : DEFAULT_VAD_CONFIG;
+    const { state, event } = stepVad(vadStateRef.current, rms, performance.now(), {
+      assistantSpeaking: speaking,
+      graceUntilMs: graceUntilRef.current,
+      cfg,
+    });
+    vadStateRef.current = state;
+
+    if (speaking) {
+      if (event === 'barge-onset') bargeInRef.current?.();
+      return;
+    }
+    if (event === 'endpoint' || event === 'max-utterance') {
+      // stop the recorder → onstop commits (or discards) the utterance
+      try { if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop(); } catch { /* noop */ }
+    }
+  }, []);
+
+  // ── Play one decoded chunk through the context; resolves when it ends / stalls ──
+  const playBuffer = useCallback((audio: AudioBuffer, myGen: number): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      const ctx = audioCtxRef.current;
+      if (!ctx || !runningRef.current || myGen !== turnGenRef.current) { resolve(); return; }
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true; clearTimeout(guard);
+        // Silence + release the node before advancing — a stall-guard-resolved source must not keep
+        // a wedged node wired to ctx.destination (leak) or overlap the next chunk / listening window.
+        try { src.onended = null; } catch { /* noop */ }
+        try { src.stop(); } catch { /* noop */ }
+        try { src.disconnect(); } catch { /* noop */ }
+        if (currentSourceRef.current === src) currentSourceRef.current = null;
+        resolve();
+      };
+      // A wedged decoder / suspended context can fire neither onended nor error; 45s > any real
+      // ~600-char chunk, so this only trips on a genuine stall, then advances.
+      const guard = setTimeout(finish, 45_000);
+      const src = ctx.createBufferSource();
+      src.buffer = audio;
+      src.connect(ctx.destination);
+      src.onended = finish;
+      currentSourceRef.current = src;
+      graceUntilRef.current = performance.now() + BARGE_GRACE_MS;
+      try { src.start(0); } catch { finish(); }
+    });
+  }, []);
+
+  // ── The turn: transcribe → chat → speak (chunked) → auto re-arm ──
+  const runTurnRef = useRef<(blob: Blob) => Promise<void>>();
+  const armListenRef = useRef<() => void>();
+  const bargeInRef = useRef<() => void>();
+
+  const runTurn = useCallback(async (audio: Blob) => {
+    const myGen = turnGenRef.current;
+    const stale = () => !runningRef.current || myGen !== turnGenRef.current;
+    turnAbortRef.current = new AbortController();
+    ttsAbortRef.current = new AbortController();
+    const turnSig = turnAbortRef.current.signal;
+    const ttsSig = ttsAbortRef.current.signal;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const mime = pickMime();
+      go('thinking'); setError('');
+
+      // 1) STT — label the upload with the container's real extension (iOS records mp4, not webm).
+      const fd = new FormData();
+      fd.append('audio', audio, `speech.${extForMime(audio.type)}`);
+      fd.append('language', lang === 'en' ? 'en-US' : lang === 'ru' ? 'ru-RU' : 'ka-GE');
+      const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include', signal: turnSignal(30_000, turnSig) }).catch(() => null);
+      if (stale()) return;
+      if (sr && sr.status === 429) { go('error'); setError(t.rateLimited); return; } // back off, don't hammer the throttled route
+      const sj = sr ? ((await sr.json().catch(() => null)) as { text?: string } | null) : null;
+      const said = (sj?.text || '').trim();
+      if (stale()) return;
+      if (!said) { armListenRef.current?.(); return; } // heard nothing → listen again (no chat/tts spend)
+      setTranscript(said); setReply('');
+      historyRef.current = [...historyRef.current, { role: 'user' as const, content: said }].slice(-12);
+
+      // 2) LLM reply (route guarantees a non-empty, spoken-friendly reply)
+      const cr = await fetch('/api/voice/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ text: said, locale: lang, history: historyRef.current }),
+        signal: turnSignal(25_000, turnSig),
+      }).catch(() => null);
+      if (stale()) return;
+      if (cr && cr.status === 401) { go('error'); setError(t.retry); return; } // signed out → stop, don't loop
+      if (cr && cr.status === 429) { go('error'); setError(t.rateLimited); return; } // rate-limited → stop, don't re-pay STT in a loop
+      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string } | null) : null;
+      const answer = (cj?.reply || '').trim();
+      if (stale()) return;
+      if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
+      setReply(answer);
+      historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: answer }].slice(-12);
+
+      // 3) TTS → decode + play chunks back-to-back (prefetch the next while the current plays).
+      go('speaking');
+      vadStateRef.current = createVadState(vadStateRef.current.floor); // fresh state for barge detection
+      const chunks = chunkForTts(answer);
+      if (!chunks.length) { armListenRef.current?.(); return; }
+      const synth = async (chunk: string): Promise<AudioBuffer | null> => {
+        try {
+          const res = await fetch('/api/elevenlabs/tts', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify({ text: chunk, locale: lang }), signal: turnSignal(20_000, ttsSig),
+          });
+          if (!res.ok) return null;
+          const bytes = await res.arrayBuffer();
+          const ctx = audioCtxRef.current;
+          if (!ctx || bytes.byteLength < 256) return null;
+          return await ctx.decodeAudioData(bytes.slice(0)).catch(() => null);
+        } catch { return null; }
+      };
+      let played = false;
+      let next: Promise<AudioBuffer | null> = synth(chunks[0]!);
+      for (let i = 0; i < chunks.length; i++) {
+        const buf = await next;
+        if (stale()) return;
+        next = i + 1 < chunks.length ? synth(chunks[i + 1]!) : Promise.resolve(null);
+        if (!buf) continue; // a chunk failed → skip it, keep reading the rest
+        played = true;
+        await playBuffer(buf, myGen);
+        if (stale()) return; // barge/close bumped the generation → stop cleanly
+      }
+      if (stale()) return;
+      if (!played) { go('error'); setError(t.retry); return; } // every chunk failed → a real TTS miss
+      armListenRef.current?.(); // hands-free: listen for the next turn
+    } catch {
+      if (!stale()) armListenRef.current?.(); // never strand the loop on an unexpected throw
+    }
+  }, [go, lang, playBuffer, t.rateLimited, t.retry]);
+  runTurnRef.current = runTurn;
+
+  // ── Arm a fresh listening turn: new recorder on the persistent stream + reset the VAD ──
+  const armListen = useCallback(() => {
+    if (!runningRef.current) return;
+    const stream = streamRef.current;
+    if (!stream) return;
+    vadStateRef.current = createVadState(vadStateRef.current.floor);
+    chunksRef.current = [];
+    try {
+      const mime = mimeRef.current;
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      chunksRef.current = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
       rec.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mime || 'audio/webm' });
-        if (blob.size > 512) void runTurn(blob); else setStatus('idle');
+        if (!runningRef.current) return;
+        const blob = new Blob(chunksRef.current, { type: mimeRef.current || 'audio/webm' });
+        // VAD mode gates on real voiced time (drops coughs/clicks, protects the paid legs); the
+        // tap-to-talk fallback has no voiced measurement, so it gates on blob size only.
+        const commit = vadModeRef.current
+          ? shouldCommit(vadStateRef.current.voicedMs, blob.size, DEFAULT_VAD_CONFIG)
+          : blob.size > 512;
+        if (!commit) { armListenRef.current?.(); return; }
+        void runTurnRef.current?.(blob);
       };
       recorderRef.current = rec;
-      rec.start();
-      setStatus('listening');
+      rec.start(250); // 250ms timeslice = preroll so the first phoneme is never clipped
+      go('listening');
     } catch {
-      // getUserMedia OR the MediaRecorder constructor can throw AFTER the stream is live (e.g. iOS Safari
-      // rejects both mime types) — stop + null the stream so the mic can never stay hot on the error path.
-      streamRef.current?.getTracks().forEach((tr) => tr.stop());
-      streamRef.current = null;
-      setStatus('error'); setError(t.micDenied);
+      go('error'); setError(t.micDenied);
     }
-  }, [runTurn, t.micDenied]);
+  }, [go, t.micDenied]);
+  armListenRef.current = armListen;
 
+  // ── Barge-in: the user talked over the reply → abort playback + capture the new utterance ──
+  const bargeIn = useCallback(() => {
+    if (statusRef.current !== 'speaking') return;
+    turnGenRef.current += 1; // orphan the in-flight TTS loop
+    try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
+    try { currentSourceRef.current?.stop(); } catch { /* noop */ }
+    currentSourceRef.current = null;
+    armListenRef.current?.();
+  }, []);
+  bargeInRef.current = bargeIn;
+
+  // ── Boot the session INSIDE the tap gesture (iOS-critical) ──
+  const bootSession = useCallback(async () => {
+    setError('');
+    stopGraph(); // idempotent: a re-boot from a mid-session error must not leak the old mic/graph
+    turnGenRef.current += 1; // orphan any in-flight turn from the previous session
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
+      // The overlay can close (teardown) while the permission prompt is up; if the grant lands after
+      // unmount, drop the stream instead of leaving a hot mic + graph behind.
+      if (!mountedRef.current) { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } }); return; }
+      streamRef.current = stream;
+      mimeRef.current = pickMime();
+      runningRef.current = true;
+
+      // Web-Audio graph for VAD. If it can't be built we still run — as plain tap-to-talk.
+      try {
+        const Ctor = getAudioContextCtor();
+        if (Ctor) {
+          const ctx = audioCtxRef.current ?? new Ctor();
+          audioCtxRef.current = ctx;
+          if (ctx.state === 'suspended') await ctx.resume();
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 1024;
+          analyser.smoothingTimeConstant = 0;
+          source.connect(analyser); // NOT connected to destination → no feedback howl
+          sourceRef.current = source;
+          analyserRef.current = analyser;
+          vadBufRef.current = new Uint8Array(analyser.fftSize);
+          vadModeRef.current = true;
+          if (vadIntervalRef.current) clearInterval(vadIntervalRef.current);
+          vadIntervalRef.current = setInterval(vadTick, VAD_INTERVAL_MS);
+        } else {
+          vadModeRef.current = false;
+        }
+      } catch {
+        vadModeRef.current = false; // degrade to tap-to-talk
+      }
+
+      armListen();
+    } catch {
+      streamRef.current?.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } });
+      streamRef.current = null;
+      runningRef.current = false;
+      go('error'); setError(t.micDenied);
+    }
+  }, [armListen, go, stopGraph, t.micDenied, vadTick]);
+
+  // ── Pause VAD + release the mic when the tab is hidden; require a tap to resume ──
+  useEffect(() => {
+    const onHidden = () => {
+      if (typeof document === 'undefined' || !document.hidden || !runningRef.current) return;
+      turnGenRef.current += 1;
+      try { turnAbortRef.current?.abort(); } catch { /* noop */ } // cancel in-flight transcribe/chat
+      try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
+      // Full graph stop INCLUDING the mic tracks — never leave the mic hot in the background.
+      // Nulling streamRef makes resumeSession re-boot (re-grant) a fresh live stream under a gesture.
+      stopGraph();
+      runningRef.current = false;
+      go('resume');
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    return () => document.removeEventListener('visibilitychange', onHidden);
+  }, [go, stopGraph]);
+
+  const resumeSession = useCallback(async () => {
+    setError('');
+    runningRef.current = true;
+    const ctx = audioCtxRef.current;
+    try { if (ctx && ctx.state === 'suspended') await ctx.resume(); } catch { /* noop */ }
+    // Re-grant the mic if the track was released; otherwise re-arm on the live stream.
+    if (!streamRef.current || streamRef.current.getTracks().every((tr) => tr.readyState === 'ended')) {
+      void bootSession();
+      return;
+    }
+    if (vadModeRef.current && !vadIntervalRef.current) vadIntervalRef.current = setInterval(vadTick, VAD_INTERVAL_MS);
+    armListen();
+  }, [armListen, bootSession, vadTick]);
+
+  // ── Orb tap: start / retry / resume / manual endpoint ──
   const onMicTap = useCallback(() => {
-    if (status === 'listening') stopRecording();
-    else if (status === 'idle' || status === 'error') void startRecording();
-    // 'thinking'/'speaking' → ignore taps until the turn completes
-  }, [status, startRecording, stopRecording]);
+    const st = statusRef.current;
+    if (st === 'off' || st === 'error') { void bootSession(); return; }
+    if (st === 'resume') { void resumeSession(); return; }
+    if (st === 'listening') {
+      // manual endpoint (works with or without VAD) — stop the recorder → commit/discard
+      try { if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop(); } catch { /* noop */ }
+    }
+    // thinking / speaking → ignore (barge-in is handled by the VAD, not a tap)
+  }, [bootSession, resumeSession]);
 
-  const label = status === 'listening' ? t.listening : status === 'thinking' ? t.thinking : status === 'speaking' ? t.speaking : t.tapToTalk;
-  const busy = status === 'thinking' || status === 'speaking';
+  const label = status === 'listening' ? t.listening
+    : status === 'thinking' ? t.thinking
+      : status === 'speaking' ? t.speaking
+        : status === 'resume' ? t.tapResume
+          : status === 'error' ? (error || t.retry)
+            : t.tapToStart;
+  const busy = status === 'thinking';
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
@@ -206,16 +454,18 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         aria-label={label}
         className={`relative flex h-24 w-24 items-center justify-center rounded-full transition-all disabled:cursor-default ${
           status === 'listening' ? 'bg-rose-500 text-white shadow-[0_0_50px_-6px_rgba(244,63,94,0.7)]'
-            : busy ? 'bg-app-accent/20 text-app-accent'
+            : status === 'speaking' || status === 'thinking' ? 'bg-app-accent/20 text-app-accent'
               : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-105'
         }`}
       >
         {status === 'listening' && <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/40" />}
         {status === 'thinking' ? <Loader2 size={30} className="animate-spin" />
           : status === 'speaking' ? <Volume2 size={30} className="animate-pulse" />
-            : <Mic size={30} />}
+            : status === 'resume' ? <RotateCcw size={28} />
+              : <Mic size={30} />}
       </button>
       <span className="mt-5 text-[13.5px] font-medium text-app-muted">{label}</span>
+      {status === 'listening' && vadModeRef.current && <span className="mt-2 max-w-xs px-6 text-center text-[11.5px] text-app-muted/70">{t.hint}</span>}
     </div>
   );
 }
