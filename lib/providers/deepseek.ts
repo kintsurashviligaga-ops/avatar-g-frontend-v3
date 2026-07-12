@@ -130,32 +130,38 @@ export class DeepSeekProvider implements ITextGenerationProvider {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      // BUFFER across network reads. An SSE `data: {...}` frame is frequently split across two chunks;
+      // decoding each `value` standalone and splitting on '\n' silently DROPS the partial line — which
+      // dropped tokens/words from the streamed reply. Accumulate and only process COMPLETE lines, keeping
+      // the trailing partial for the next read (streaming decode handles multi-byte chars at boundaries).
+      let buffer = '';
+      const emit = function* (line: string): Generator<string> {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) return;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') return;
+        try {
+          const content = (JSON.parse(data) as { choices?: { delta?: { content?: string } }[] }).choices?.[0]?.delta?.content;
+          if (content) yield content;
+        } catch {
+          // Skip invalid JSON
+        }
+      };
 
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(line => line.trim() !== '');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) {
-                  yield content;
-                }
-              } catch {
-                // Skip invalid JSON
-              }
-            }
+          buffer += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl);
+            buffer = buffer.slice(nl + 1);
+            yield* emit(line);
           }
         }
+        // Flush any trailing complete frame left without a newline terminator.
+        if (buffer.trim()) yield* emit(buffer);
       } finally {
         reader.releaseLock();
       }

@@ -74,7 +74,7 @@ describe('durableJobs — hydrate the tray from generation_jobs', () => {
       row({ id: 'c', status: 'pending', created_at: '2026-07-04T00:00:01.000Z' }),
       row({ id: 'd', status: 'failed', created_at: '2026-07-04T00:00:00.000Z' }), // dropped
     ];
-    const active = mapActiveDbJobs(rows);
+    const active = mapActiveDbJobs(rows, 'ka', Date.parse('2026-07-04T00:05:00.000Z')); // fresh vs fixtures
     expect(active.map((j) => j.id)).toEqual(['c', 'a']); // c older than a, terminals filtered
     expect(active.every((j) => j.status === 'rendering' && j.observed)).toBe(true);
   });
@@ -101,11 +101,28 @@ describe('durableJobs — hydrate the tray from generation_jobs', () => {
       row({ id: 'r0', status: 'processing', created_at: '2026-07-04T00:00:01.000Z' }),
       row({ id: 'gone', status: 'completed' }), // dropped
     ];
-    const active = mapActiveDbJobs(rows);
+    const active = mapActiveDbJobs(rows, 'ka', Date.parse('2026-07-04T00:05:00.000Z')); // fresh vs fixtures
     expect(active.map((j) => j.id)).toEqual(['r0', 'r1', 'q1', 'q2']); // rendering oldest-first, then queue #1,#2
     expect(active.map((j) => j.status)).toEqual(['rendering', 'rendering', 'queued', 'queued']);
     expect(active[2]!.position).toBe(1);
     expect(active[3]!.position).toBe(2);
+  });
+
+  it('drops a STALE phantom: an active row older than STALE_ACTIVE_MS never spins forever', () => {
+    const rows = [
+      row({ id: 'live', status: 'processing', created_at: '2026-07-04T00:00:00.000Z', updated_at: '2026-07-04T00:04:00.000Z' }),
+      row({ id: 'phantom', status: 'processing', created_at: '2026-07-04T00:00:00.000Z', updated_at: '2026-07-04T00:00:00.000Z' }),
+    ];
+    // "now" = 40 min after the fixtures → the phantom (last touched at 00:00) is >30min stale; the live
+    // one (touched at 00:04) is 36 min old → also stale. Use a now that separates them: 20 min after live.
+    const now = Date.parse('2026-07-04T00:24:00.000Z'); // live is 20min old (kept), phantom is 24min... both < 30
+    expect(mapActiveDbJobs(rows, 'ka', now).map((j) => j.id)).toEqual(['live', 'phantom']);
+    // push now far past the window: BOTH are now stale phantoms → tray clears (no perpetual spinner)
+    const later = Date.parse('2026-07-04T01:00:00.000Z'); // 56–60 min old
+    expect(mapActiveDbJobs(rows, 'ka', later)).toEqual([]);
+    // a row with NO parseable timestamp is kept (never punish missing metadata)
+    const noTs = [row({ id: 'notime', status: 'processing', created_at: '', updated_at: '' })];
+    expect(mapActiveDbJobs(noTs, 'ka', later).map((j) => j.id)).toEqual(['notime']);
   });
 
   it('mergeTrayJobs dedups by id (local wins) and lists observed jobs first', () => {

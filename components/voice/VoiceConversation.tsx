@@ -54,7 +54,7 @@ const COPY: Record<Lang, {
 
 const VAD_INTERVAL_MS = 50;
 const BARGE_GRACE_MS = 300;
-const VIZ_BARS = 44; // radial equalizer bar count
+const VIZ_BARS = 48; // linear spectrum equalizer bar count
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
 };
@@ -158,6 +158,12 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   //    AnalyserNode is live: the MIC while listening, the TTS output while speaking, and a gentle
   //    "breathing" idle while thinking/connecting. Replaces the old static spinner + speaker glyph. ──
   useEffect(() => {
+    // Rounded bar (falls back to a sharp rect where CanvasRenderingContext2D.roundRect is unavailable).
+    const drawBar = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+      const rr = (c as unknown as { roundRect?: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect;
+      if (typeof rr === 'function') { c.beginPath(); rr.call(c, x, y, w, h, Math.min(w / 2, 2.5)); c.fill(); }
+      else c.fillRect(x, y, w, h);
+    };
     const draw = () => {
       vizRafRef.current = requestAnimationFrame(draw);
       const canvas = vizCanvasRef.current;
@@ -165,20 +171,19 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const c = canvas.getContext('2d');
       if (!c) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const size = 96;
-      if (canvas.width !== size * dpr) { canvas.width = size * dpr; canvas.height = size * dpr; }
+      const cw = Math.max(1, Math.round(canvas.clientWidth || 240));
+      const ch = Math.max(1, Math.round(canvas.clientHeight || 80));
+      if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) { canvas.width = cw * dpr; canvas.height = ch * dpr; }
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const cx = size / 2, cy = size / 2;
 
       const st = statusRef.current;
       const listening = st === 'listening';
       const speaking = st === 'speaking';
-      // Map the conversation status → the visual state that colours the orb.
+      // Map the conversation status → the visual state that colours the equalizer.
       const orbState: OrbState = listening ? 'listening' : speaking ? 'speaking' : st === 'error' ? 'error' : st === 'off' ? 'idle' : 'processing';
       const analyser = listening ? analyserRef.current : speaking ? playbackAnalyserRef.current : null;
       const bars = vizBarsRef.current;
       const N = bars.length;
-      let overall = 0;
 
       if (analyser) {
         const bins = analyser.frequencyBinCount;
@@ -188,50 +193,37 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         const usable = Math.max(1, Math.floor(bins * 0.66)); // voice energy lives in the lower-mid bins
         for (let i = 0; i < N; i++) {
           const target = (buf[Math.floor((i / N) * usable)] ?? 0) / 255;
-          // fast attack, slow decay → bars pop on sound and settle smoothly (kills the raw-FFT flicker)
-          const next = smoothBar(bars[i] ?? 0, target, 0.5, 0.14);
-          bars[i] = next;
-          overall += next;
+          // fast attack, slow decay → bars pop on sound and settle smoothly (no raw-FFT flicker / clipping)
+          bars[i] = smoothBar(bars[i] ?? 0, target, 0.5, 0.14);
         }
-        overall /= N;
       } else {
         const now = performance.now();
         for (let i = 0; i < N; i++) {
-          const target = 0.09 + 0.075 * (0.5 + 0.5 * Math.sin(now / 620 + i * 0.5)); // gentle idle breathing
-          const next = smoothBar(bars[i] ?? 0, target, 0.14, 0.14);
-          bars[i] = next;
-          overall += next;
+          const target = 0.05 + 0.06 * (0.5 + 0.5 * Math.sin(now / 600 + i * 0.34)); // a gentle wave travelling across the spectrum while idle
+          bars[i] = smoothBar(bars[i] ?? 0, target, 0.14, 0.14);
         }
-        overall /= N;
       }
 
-      // The rich purple→blue→pink gradient FLOWS around the ring over time for a living, premium feel.
+      // Real-time LINEAR spectrum equalizer: vertical frequency bars mirrored around the centre line, each
+      // drawing its own colour from a flowing purple→blue→pink neon gradient that shifts across the strip.
       const shift = (performance.now() / 5200) % 1;
-      c.clearRect(0, 0, size, size);
-      // ambient glow that swells with loudness, tinted by the flowing palette
-      const glowColor = orbBarColor(0.2, shift, overall, orbState);
-      const glow = c.createRadialGradient(cx, cy, 5, cx, cy, 47);
-      glow.addColorStop(0, rgba(glowColor, 0.20 + overall * 0.5));
-      glow.addColorStop(1, rgba(glowColor, 0));
-      c.fillStyle = glow;
-      c.beginPath(); c.arc(cx, cy, 47, 0, Math.PI * 2); c.fill();
-      // radial equalizer bars — each bar draws its own colour from the flowing multi-colour gradient
-      const baseR = 15;
-      c.lineWidth = 2.4; c.lineCap = 'round';
+      c.clearRect(0, 0, cw, ch);
+      const midY = ch / 2;
+      const gap = 2;
+      const barW = Math.max(1.5, (cw - gap * (N - 1)) / N);
+      const maxH = ch * 0.92;
       for (let i = 0; i < N; i++) {
         const bv = bars[i] ?? 0;
-        const ang = (i / N) * Math.PI * 2 - Math.PI / 2;
-        const len = 3 + bv * 22;
-        const ca = Math.cos(ang), sa = Math.sin(ang);
-        c.strokeStyle = rgba(orbBarColor(i / N, shift, bv, orbState), 0.34 + bv * 0.58);
-        c.beginPath();
-        c.moveTo(cx + ca * baseR, cy + sa * baseR);
-        c.lineTo(cx + ca * (baseR + len), cy + sa * (baseR + len));
-        c.stroke();
+        const h = Math.max(2, bv * maxH);
+        const x = i * (barW + gap);
+        const col = orbBarColor(i / N, shift, bv, orbState);
+        // soft neon glow that swells with the bar's amplitude
+        c.shadowColor = rgba(col, 0.5);
+        c.shadowBlur = 5 + bv * 10;
+        c.fillStyle = rgba(col, 0.5 + bv * 0.45);
+        drawBar(c, x, midY - h / 2, barW, h);
       }
-      // pulsing core
-      c.fillStyle = rgba(orbBarColor(0.5, shift, overall, orbState), 0.92);
-      c.beginPath(); c.arc(cx, cy, 6.5 + overall * 6, 0, Math.PI * 2); c.fill();
+      c.shadowBlur = 0;
     };
 
     vizRafRef.current = requestAnimationFrame(draw);
@@ -616,23 +608,24 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         {error && <p className="mt-2 flex items-center justify-center gap-1.5 text-[12.5px] text-rose-400"><AlertCircle size={14} /> {error}</p>}
       </div>
 
-      {/* Living orb — a real-time Web-Audio equalizer for every active-audio state; a tap glyph otherwise. */}
+      {/* Real-time linear spectrum equalizer for every active-audio state; a tap glyph otherwise. Tapping
+          the panel starts / ends the turn (the whole strip is the mic control). */}
       <button
         type="button"
         onClick={onMicTap}
         disabled={busy}
         aria-label={label}
-        className={`relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full transition-all disabled:cursor-default ${
+        className={`relative flex h-20 w-72 max-w-[78vw] items-center justify-center overflow-hidden rounded-[24px] transition-all disabled:cursor-default ${
           showViz
-            ? (status === 'listening' ? 'bg-rose-500/[0.08] ring-1 ring-rose-500/25' : 'bg-app-accent/[0.08] ring-1 ring-app-accent/25')
-            : status === 'resume' ? 'bg-app-elevated text-app-accent ring-1 ring-app-border/15 hover:scale-105'
-              : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-105'
+            ? (status === 'listening' ? 'bg-rose-500/[0.06] ring-1 ring-rose-500/20' : 'bg-app-accent/[0.06] ring-1 ring-app-accent/20')
+            : status === 'resume' ? 'bg-app-elevated text-app-accent ring-1 ring-app-border/15 hover:scale-[1.03]'
+              : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-[1.03]'
         }`}
       >
         {showViz ? (
           <canvas ref={vizCanvasRef} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />
-        ) : status === 'resume' ? <RotateCcw size={28} />
-          : <Mic size={30} />}
+        ) : status === 'resume' ? <RotateCcw size={26} />
+          : <Mic size={28} />}
       </button>
       <span className="mt-5 text-[13.5px] font-medium text-app-muted">{label}</span>
       {status === 'listening' && vadModeRef.current && <span className="mt-2 max-w-xs px-6 text-center text-[11.5px] text-app-muted/70">{t.hint}</span>}

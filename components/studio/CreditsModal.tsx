@@ -44,7 +44,7 @@ const COPY: Record<Lang, {
   comingSoon: string; payError: string; redirecting: string; signInNeeded: string; signIn: string; credits: string; close: string;
   starter: string; pro: string; max: string;
   videos: string; images: string;
-  guideTitle: string; perCredit: string;
+  guideTitle: string; perCredit: string; viewAllPlans: string;
   gImage: string; gMusic: string; gVideo: string; gAvatar: string;
 }> = {
   ka: {
@@ -54,7 +54,7 @@ const COPY: Record<Lang, {
     signInNeeded: 'შესვლა საჭიროა', signIn: 'შესვლა', credits: 'კრედიტი', close: 'დახურვა',
     starter: '📦 სტარტერი', pro: '💎 პრო', max: '🚀 მაქსი',
     videos: 'ვიდეო', images: 'სურათი',
-    guideTitle: 'რას შეძლებ კრედიტებით?', perCredit: '1 კრედიტი = 0.10 ₾',
+    guideTitle: 'რას შეძლებ კრედიტებით?', perCredit: '1 კრედიტი = 0.10 ₾', viewAllPlans: 'ყველა გეგმის ნახვა →',
     gImage: '🖼 სურათი', gMusic: '🎵 მუსიკა 30წმ', gVideo: '🎬 ვიდეო 30წმ', gAvatar: '🎭 ავატარი',
   },
   en: {
@@ -64,7 +64,7 @@ const COPY: Record<Lang, {
     signInNeeded: 'Please sign in first', signIn: 'Sign In', credits: 'credits', close: 'Close',
     starter: '📦 Starter', pro: '💎 Pro', max: '🚀 Max',
     videos: 'videos', images: 'images',
-    guideTitle: 'What can you do with credits?', perCredit: '1 credit = 0.10 ₾',
+    guideTitle: 'What can you do with credits?', perCredit: '1 credit = 0.10 ₾', viewAllPlans: 'View all plans →',
     gImage: '🖼 Image', gMusic: '🎵 Music 30s', gVideo: '🎬 Video 30s', gAvatar: '🎭 Avatar',
   },
   ru: {
@@ -74,7 +74,7 @@ const COPY: Record<Lang, {
     signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кред.', close: 'Закрыть',
     starter: '📦 Стартер', pro: '💎 Про', max: '🚀 Макс',
     videos: 'видео', images: 'фото',
-    guideTitle: 'Что можно сделать за кредиты?', perCredit: '1 кредит = 0.10 ₾',
+    guideTitle: 'Что можно сделать за кредиты?', perCredit: '1 кредит = 0.10 ₾', viewAllPlans: 'Все тарифы →',
     gImage: '🖼 Фото', gMusic: '🎵 Музыка 30с', gVideo: '🎬 Видео 30с', gAvatar: '🎭 Аватар',
   },
 };
@@ -226,6 +226,15 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                 );
               })}
             </div>
+
+            {/* Surface the full high-fidelity plans page (PricingSection at /[locale]/pricing) from inside
+                the product — the modal shows the same PRICING_TIERS, this links to the detailed comparison. */}
+            <a
+              href={`/${lang}/pricing`}
+              className="mt-4 block text-center text-[12.5px] font-medium text-app-accent transition-opacity hover:opacity-80"
+            >
+              {t.viewAllPlans}
+            </a>
 
             {/* TODO(GG): the per-item "tetri" cost guide (სურათი/მუსიკა/ვიდეო/ავატარი credit costs) was removed
                 on request. If a value guide is reinstated, it must derive from the SSoT — never hardcode tetri. */}

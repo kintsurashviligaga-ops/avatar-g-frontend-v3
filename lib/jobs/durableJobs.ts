@@ -110,14 +110,34 @@ export function mapDbJobToTrayJob(row: GenerationJobRow, locale: Lang = 'ka'): J
 }
 
 /**
- * Map the server's active rows to observed tray jobs, keeping ONLY still-running ones
- * (pending|processing) — a completed/failed render drops out on the next poll rather than
- * lingering. Restores the QUEUE LAYOUT across a reload: rendering jobs first (oldest-first),
- * then the waiting jobs ordered by their persisted queue position.
+ * A `generation_jobs` row still marked pending|processing but older than this is a PHANTOM — an
+ * orphaned render (the server died / the lambda timed out without ever writing failed|completed). The
+ * longest real job (a 60s film + its ~10min assemble, plus queue wait) finishes well under this, so any
+ * "active" row this old is dead. Dropping it stops the JobTray from showing a perpetual spinner on reload
+ * (the reported "infinite loading spinner / phantom execution cache"). Overridable for tests.
  */
-export function mapActiveDbJobs(rows: readonly GenerationJobRow[], locale: Lang = 'ka'): Job[] {
+export const STALE_ACTIVE_MS = 30 * 60 * 1000; // 30 minutes
+
+/** Freshest timestamp on the row (updated_at reflects progress; created_at is the fallback). 0 = unknown. */
+function rowFreshnessMs(row: GenerationJobRow): number {
+  const updated = Date.parse(row.updated_at) || 0;
+  const created = Date.parse(row.created_at) || 0;
+  return Math.max(updated, created);
+}
+
+/**
+ * Map the server's active rows to observed tray jobs, keeping ONLY still-running ones
+ * (pending|processing) that are NOT stale phantoms. A completed/failed render drops out on the next
+ * poll; an orphaned row older than STALE_ACTIVE_MS is dropped too (so a dead job never spins forever).
+ * Restores the QUEUE LAYOUT across a reload: rendering jobs first (oldest-first), then the waiting jobs
+ * ordered by their persisted queue position. `nowMs` is injected so the age gate stays unit-testable.
+ */
+export function mapActiveDbJobs(rows: readonly GenerationJobRow[], locale: Lang = 'ka', nowMs: number = Date.now()): Job[] {
   const jobs = rows
     .filter((r) => r.status === 'pending' || r.status === 'processing')
+    // Drop orphaned phantoms: an active row whose freshest timestamp is older than the max render window.
+    // A row with NO parseable timestamp (freshness 0) is kept — never punish missing metadata.
+    .filter((r) => { const f = rowFreshnessMs(r); return f === 0 || nowMs - f < STALE_ACTIVE_MS; })
     .map((r) => mapDbJobToTrayJob(r, locale));
   const rendering = jobs.filter((j) => j.status === 'rendering').sort((a, b) => a.createdAt - b.createdAt);
   const queued = jobs.filter((j) => j.status === 'queued').sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.createdAt - b.createdAt);
