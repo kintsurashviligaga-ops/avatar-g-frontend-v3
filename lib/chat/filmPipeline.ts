@@ -397,6 +397,11 @@ export interface FilmPlanOptions {
    *  establishing shot over the city and scene 2 moves into the venue, before the
    *  performance begins. Gives the 30s/60s music video a real "drone → singer" edit. */
   musicVideo?: boolean;
+  /** PHASE 22 (VECTOR 1) — the Master Prompt Agent's scene-tailored "what to avoid" string
+   *  (MasterFilmVisualStyle.negativePrompt). Previously computed then DROPPED; now threaded so it
+   *  reaches the provider's native negative field (Kling) — where negatives are weighted far more
+   *  than in-prompt "no x" — to suppress sepia/yellow tints, muddy gradients and deformations. */
+  negativePrompt?: string | null;
 }
 
 /** Screenwriter provenance for ONE scene (index-aligned with FilmPlanOptions.sceneScripts). */
@@ -423,7 +428,19 @@ export interface FilmShared {
   totalSec: number;
   /** Frame orientation, identical across all clips so the cut never changes shape. */
   orientation: 'landscape' | 'vertical';
+  /** PHASE 22 (VECTOR 1) — the provider negative prompt, identical across every clip. Always a
+   *  strong drift-suppression baseline, merged with the Director's scene-tailored negative when
+   *  one was supplied. buildFilmClipRequest maps it onto selectedOptions.negativePrompt. */
+  negativePrompt: string;
 }
+
+/** PHASE 22 (VECTOR 1) — always-on drift/artifact suppression, merged ahead of the Director's
+ *  scene-specific negative. Directly targets the documented failures: yellow/sepia LUT tint,
+ *  muddy gradients, warped faces/hands, and cartoon/illustration drift on a photoreal brief. */
+export const FILM_DRIFT_NEGATIVE =
+  'yellow tint, sepia, oversaturated, muddy colours, amber cast, colour banding, deformed face, ' +
+  'distorted face, extra fingers, extra limbs, mutated hands, disfigured, cartoon, anime, illustration, ' +
+  '3d render, low quality, blurry, watermark, text, subtitles';
 
 /**
  * PHASE 47 §3 — Nano Banano's visual contingency plan for a single scene.
@@ -523,6 +540,12 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   const subject = String(prompt || '').trim().replace(/\s*—\s*shot\s+\d+\s+of\s+\d+\s*$/i, '')
     || 'cinematic establishing shot';
 
+  // PHASE 22 (VECTOR 1) — merge the always-on drift baseline with the Director's scene-tailored
+  // negative (deduped-ish by simple concat; the provider tolerates overlap). Cap so a runaway brief
+  // negative can't blow the provider's field bound.
+  const briefNegative = typeof opts.negativePrompt === 'string' ? opts.negativePrompt.trim() : '';
+  const negativePrompt = (briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE).slice(0, 600);
+
   const shared: FilmShared = {
     seed,
     characterAnchor,
@@ -532,6 +555,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     sceneCount: segments.length,
     totalSec,
     orientation: opts.orientation === 'vertical' ? 'vertical' : 'landscape',
+    negativePrompt,
   };
 
   const styleGuide = buildStyleGuide(shared);
@@ -678,6 +702,10 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
   if (primaryRef) selectedOptions.characterReference = primaryRef;
   if (refs.length > 0) selectedOptions.characterReferences = JSON.stringify(refs);
   if (shared.style) selectedOptions.style = shared.style;
+  // PHASE 22 (VECTOR 1) — carry the provider negative so ServiceManager maps it onto the Kling
+  // native negative_prompt (and LTX's in-prompt drift clause). This is the wire that stops the
+  // Director's negative from being silently dropped before the render.
+  if (shared.negativePrompt) selectedOptions.negativePrompt = shared.negativePrompt;
   // PHASE 47 §3 — carry Nano Banano's on-model fallback plan in the asset payload
   // metadata so the Director/Editor can swap in a continuity-matched variant if
   // this leg drops, without re-rolling a fresh (off-model) character.

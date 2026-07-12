@@ -53,6 +53,53 @@ export function hasLipsyncProvider(): boolean {
   return heygenKey().length > 0 || token().length > 0;
 }
 
+export type HeygenHealth = { ok: boolean; reason: 'ready' | 'no_key' | 'unauthorized' | 'credit_block' | 'probe_error' };
+let heygenHealthCache: { at: number; val: HeygenHealth } | null = null;
+const HEYGEN_HEALTH_TTL_MS = 10 * 60_000; // a READY verdict is trusted for 10 min → at most one probe per window
+// A NOT-READY verdict (expired key / credit-block / throttle) is re-checked within 60s so a credit
+// top-up or key rotation RE-ENABLES lip-sync almost immediately instead of staying dark for 10 min —
+// the fail-safe direction (we never keep a good render blocked longer than one short window).
+const HEYGEN_HEALTH_FAIL_TTL_MS = 60_000;
+
+/**
+ * PHASE 22 — LIGHTWEIGHT HeyGen readiness probe (NOT heygenSelfTest, which does a full PAID render).
+ * The 8-minute "silent freeze" happens when HeyGen ACCEPTS a create but the render then stalls/fails
+ * because the key is expired or the account is credit-blocked/throttled — the client polls 80×6s
+ * before giving up. This does a cheap authed GET so the caller can skip that doomed poll and surface a
+ * reason IMMEDIATELY. Module-cached (10-min TTL) so it costs at most one probe per window.
+ *
+ * FAIL-OPEN by design: it returns not-ready ONLY on a DEFINITIVE auth/credit signal (401 → bad/expired
+ * key; 402/403/429 → credit-block/throttle). ANY other outcome — 200, an unexpected 404 (endpoint shape
+ * differs on this account), a network error or timeout — returns ready, so a flaky probe can NEVER
+ * falsely block a good render. A 401 is returned by EVERY HeyGen endpoint for a bad key, so bad-key
+ * detection is robust even if the exact quota path differs.
+ */
+export async function heygenHealthCheck(): Promise<HeygenHealth> {
+  const key = heygenKey();
+  if (!key) return { ok: false, reason: 'no_key' };
+  const now = Date.now();
+  if (heygenHealthCache) {
+    const ttl = heygenHealthCache.val.ok ? HEYGEN_HEALTH_TTL_MS : HEYGEN_HEALTH_FAIL_TTL_MS;
+    if (now - heygenHealthCache.at < ttl) return heygenHealthCache.val;
+  }
+  let val: HeygenHealth;
+  try {
+    const r = await fetch('https://api.heygen.com/v2/user/remaining_quota', {
+      method: 'GET',
+      headers: { 'X-Api-Key': key },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6_000),
+    });
+    if (r.status === 401) val = { ok: false, reason: 'unauthorized' };
+    else if (r.status === 402 || r.status === 403 || r.status === 429) val = { ok: false, reason: 'credit_block' };
+    else val = { ok: true, reason: 'ready' }; // 200 / unexpected non-auth status → fail-open (never block)
+  } catch {
+    val = { ok: true, reason: 'probe_error' }; // network/timeout → fail-open
+  }
+  heygenHealthCache = { at: now, val };
+  return val;
+}
+
 /**
  * Names-only readiness snapshot for the lipsync wiring — never returns the token
  * value, only whether it is present + which model the toggle will hit. Surfaced

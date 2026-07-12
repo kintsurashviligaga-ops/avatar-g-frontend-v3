@@ -464,6 +464,13 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // PHASE 2 L3 — per-scene SFX cues from the Prompt Agent (when it runs here as the
   // fallback). Used below to make the SFX bed scene-aware instead of one generic bed.
   let sfxCues: MasterFilmSfxCue[] | undefined;
+  // PHASE 22 (VECTOR 1) — the Director's "what to avoid" negative. Prefer one threaded via metadata
+  // (storyboard-first path), else capture it from the Prompt-Agent brief below. planFilmScenes merges
+  // it with the always-on FILM_DRIFT_NEGATIVE baseline, so EVERY clip suppresses tint/deform natively.
+  let filmNegative: string | null =
+    typeof input.metadata?.negativePrompt === 'string' && input.metadata.negativePrompt.trim()
+      ? input.metadata.negativePrompt.trim()
+      : null;
   if (!characterLock && (!sceneScripts || sceneScripts.length === 0)) {
     // FIRST honour the user's OWN scenes: if the brief embeds an explicit
     // multi-scene script (an attached screenplay/shot-list), split it deterministically
@@ -495,6 +502,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         // script's intent instead of re-deriving from the deterministic beat ladder.
         sceneMeta = brief.scenes.map((s) => ({ cameraShot: s.cameraShot, mood: s.mood, location: s.location }));
         sfxCues = brief.sfxCues;
+        // VECTOR 1 — capture the Director's scene-tailored negative so it reaches the provider.
+        if (!filmNegative && brief.visualStyle?.negativePrompt?.trim()) filmNegative = brief.visualStyle.negativePrompt.trim();
         // eslint-disable-next-line no-console
         console.log('[filmComposite] Prompt Agent fallback produced a locked character + scene prompts');
       }
@@ -541,7 +550,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}) });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegative ? { negativePrompt: filmNegative } : {}) });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

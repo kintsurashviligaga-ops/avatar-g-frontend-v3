@@ -117,12 +117,17 @@ export function validateMaster(f: MasterFacts): QaReport {
     });
   }
 
-  // 5 — 1080p delivery target. (Probe-gated: skipped when dimensions are unknown.)
-  if (f.width !== null && f.height !== null && (f.width < 1920 || f.height < 1080)) {
+  // 5 — 1080p delivery target, ORIENTATION-AGNOSTIC. The target is a 1080-line master in EITHER
+  // orientation: 1920×1080 landscape AND 1080×1920 vertical are both on-target. The old check
+  // (width<1920 || height<1080) flagged every correct 1080×1920 vertical (width 1080 < 1920) as
+  // sub-1080p — a false alarm on every music-video/reel master. Gate on the SHORT side instead:
+  // a genuine sub-HD master (e.g. 1280×720) has a short side < 1080; a 1080×1920 vertical does not.
+  // (Probe-gated: skipped when dimensions are unknown.)
+  if (f.width !== null && f.height !== null && Math.min(f.width, f.height) < 1080) {
     issues.push({
       code: 'sub_1080p',
       severity: 'warn',
-      detail: `master is ${f.width}×${f.height}, below the 1920×1080 delivery target`,
+      detail: `master is ${f.width}×${f.height}, short side below the 1080-line delivery target`,
     });
   }
 

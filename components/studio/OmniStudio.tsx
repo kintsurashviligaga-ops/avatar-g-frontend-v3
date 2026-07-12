@@ -390,15 +390,16 @@ const MODES = [
 // master shipped with un-synced lips and the card just said "skipped" with no reason — that
 // was the real "lips don't track the vocal" symptom. These short localized lines surface WHY
 // on the Director's Console Lip-Sync card so a skip is never mysterious.
-type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'short_result' | 'no_clips' | 'composite_failed';
+type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'short_result' | 'no_clips' | 'composite_failed' | 'not_requested';
 function lipsyncSkipReason(reason: LipSkipReason, locale: string): string {
   const M: Record<LipSkipReason, { en: string; ru: string; ka: string }> = {
-    no_song: { en: 'Skipped — no song track to sync to', ru: 'Пропущено — нет песни для синхронизации', ka: 'გამოტოვდა — სასინქრონო სიმღერა არ არის' },
-    no_face: { en: 'Skipped — no clear face (add a photo for lip-sync)', ru: 'Пропущено — нет чёткого лица (добавьте фото)', ka: 'გამოტოვდა — მკაფიო სახე არ არის (დაამატე ფოტო)' },
-    heygen_unavailable: { en: 'Skipped — lip-sync engine unavailable', ru: 'Пропущено — движок липсинка недоступен', ka: 'გამოტოვდა — ლიპსინკის ძრავა მიუწვდომელია' },
+    no_song: { en: 'Skipped — no song track to sync to', ru: 'Пропущено — нет песни для синхронизации', ka: 'გამოტოვდა — სასინქრონო აუდიო ფაილი მიუწვდომელია' },
+    no_face: { en: 'Skipped — no clear face in frame (add a photo for lip-sync)', ru: 'Пропущено — в кадре нет чёткого лица (добавьте фото)', ka: 'გამოტოვდა — სუფთა სახე კადრში ვერ მოიძებნა (დაამატე ფოტო)' },
+    heygen_unavailable: { en: 'Skipped — lip-sync engine unavailable (key/credit)', ru: 'Пропущено — движок липсинка недоступен (ключ/кредит)', ka: 'გამოტოვდა — ლიპსინკის ძრავა მიუწვდომელია (გასაღები/კრედიტი)' },
     short_result: { en: 'Skipped — sync clip too short', ru: 'Пропущено — клип слишком короткий', ka: 'გამოტოვდა — სასინქრონო კლიპი ძალიან მოკლეა' },
     no_clips: { en: 'Skipped — no rendered clips to composite', ru: 'Пропущено — нет клипов для монтажа', ka: 'გამოტოვდა — მონტაჟისთვის კლიპები არ არის' },
     composite_failed: { en: 'Skipped — composite failed', ru: 'Пропущено — сбой монтажа', ka: 'გამოტოვდა — მონტაჟი ვერ შესრულდა' },
+    not_requested: { en: 'Not requested for this render', ru: 'Не запрошен для этого рендера', ka: 'ამ რენდერისთვის არ იყო მოთხოვნილი' },
   };
   const m = M[reason];
   return locale === 'ru' ? m.ru : locale === 'ka' ? m.ka : m.en;
@@ -2199,7 +2200,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // below upgrades it to the lip-synced video.
       let graphicsInput: string | null = res.ok && res.masterUrl ? res.masterUrl : null;
       if (res.ok && res.masterUrl && mine()) {
-        if (isMusicVideo && wantsLipsync && res.musicUrl) {
+        // PHASE 22 (VECTOR 3) — PRE-FLIGHT HeyGen HEALTH GATE. Both lip-sync legs below drive HeyGen
+        // (talking_photo). If the key is expired/credit-blocked/throttled, HeyGen accepts the create
+        // then stalls, and the client polls ~8 min before giving up — a silent freeze. A cached,
+        // fail-open readiness probe lets us skip that doomed poll and surface a reason in ~ms instead.
+        // Only a DEFINITIVE {ok:false} blocks (see heygenHealthCheck); any flaky/uncertain result lets
+        // the render proceed exactly as before.
+        let heygenReady = true;
+        if (wantsLipsync) {
+          try {
+            const hr = await fetch('/api/video/lipsync?health=heygen', { credentials: 'include', signal });
+            const hj = (await hr.json().catch(() => ({}))) as { ok?: boolean };
+            heygenReady = hj?.ok !== false;
+          } catch { /* fail-open — a failed health check never blocks a render */ }
+        }
+        if (wantsLipsync && !heygenReady) {
+          patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
+        } else if (isMusicVideo && wantsLipsync && res.musicUrl) {
           // MUSIC VIDEO → the singer-performance sync (close-up HeyGen head composited into the
           // montage). PHASE 20: staged so every bail surfaces WHICH step failed (the render was
           // shipping un-synced lips with a bare "skipped"). Still fail-open → base master + graphics.
@@ -2241,26 +2258,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // at the close-up beat (or scene 3), narrated in the synced voice. Replaces the old
           // video-input sync/lipsync-2 pass (which warped the multi-shot master, returning null
           // on a montage with no consistent on-screen head). Fail-open → base master + graphics.
+          // PHASE 22 (VECTOR 2) — staged like the music-video branch so a documentary skip is NEVER
+          // a bare "skipped": surface no_face (resolveCleanFace null) / no_clips / composite_failed.
           patchLipsyncCard('processing');
           const face = await resolveCleanFace();
-          const composited = (face && res.matrix && mine())
-            ? await compositeDocumentary(
-                face,
-                res.matrix,
-                storyboardScenes,
-                videoSpeech.trim(),
-                videoVocalGender === 'male' ? 'male' : 'female',
-                orientation === 'vertical' ? 'vertical' : 'landscape',
-                videoTransition,
-                signal,
-                mine,
-                res.filmTokenId ?? null,
-              )
-            : null;
-          if (composited) { graphicsInput = composited; setResultVideo(composited); }
-          patchLipsyncCard(composited ? 'completed' : 'skipped');
+          if (!face) {
+            patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
+          } else if (!res.matrix || !mine()) {
+            patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale));
+          } else {
+            const composited = await compositeDocumentary(
+              face,
+              res.matrix,
+              storyboardScenes,
+              videoSpeech.trim(),
+              videoVocalGender === 'male' ? 'male' : 'female',
+              orientation === 'vertical' ? 'vertical' : 'landscape',
+              videoTransition,
+              signal,
+              mine,
+              res.filmTokenId ?? null,
+            );
+            if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
+            else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale)); }
+          }
         } else {
-          patchLipsyncCard('skipped');
+          // PHASE 22 (VECTOR 2) — the not-wanted fallthrough (lip-sync toggle off, or documentary with
+          // no dialogue): say so explicitly instead of a bare, ambiguous "skipped".
+          patchLipsyncCard('skipped', lipsyncSkipReason('not_requested', locale));
         }
       }
 

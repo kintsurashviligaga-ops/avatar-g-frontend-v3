@@ -340,12 +340,20 @@ export class ServiceManager {
    * only ever send keys that model's schema accepts (an unknown key → 422). `aspect`
    * is already clamped (toI2vAspect) to 16:9 / 9:16 / 1:1.
    */
-  private buildI2vInput(model: string, prompt: string, aspect: string, startImage: string): Record<string, unknown> {
+  private buildI2vInput(model: string, prompt: string, aspect: string, startImage: string, negative?: string): Record<string, unknown> {
     const fullPrompt = `${prompt}, photorealistic, cinematic, natural lighting, sharp focus, 4k`;
+    // PHASE 22 (VECTOR 1) — the Director's scene-tailored negative (from the film pipeline's
+    // selectedOptions.negativePrompt) is MERGED ahead of the fixed baseline and passed to the model's
+    // NATIVE negative_prompt field — where it's weighted far more heavily than any in-prompt "no x".
+    // This is the wire that was missing: previously every Kling clip got only VIDEO_I2V_NEGATIVE and
+    // the per-scene negative (tint/deform suppression) was dropped. Capped so it can't blow the field.
+    const neg = negative && negative.trim()
+      ? `${VIDEO_I2V_NEGATIVE}, ${negative.trim()}`.slice(0, 600)
+      : VIDEO_I2V_NEGATIVE;
     const m = model.toLowerCase();
     if (/kling/.test(m)) {
       // kling-v2.1 has no aspect_ratio (it's inferred from start_image); v1.6 does.
-      const base: Record<string, unknown> = { start_image: startImage, prompt: fullPrompt, negative_prompt: VIDEO_I2V_NEGATIVE, duration: 5 };
+      const base: Record<string, unknown> = { start_image: startImage, prompt: fullPrompt, negative_prompt: neg, duration: 5 };
       if (/v1\.6|v1-6|kling-v1/.test(m)) { base.aspect_ratio = aspect; base.cfg_scale = 0.5; }
       return base;
     }
@@ -353,7 +361,7 @@ export class ServiceManager {
       return { image: startImage, prompt: fullPrompt, aspect_ratio: aspect, duration: 5, resolution: '1080p', fps: 24 };
     }
     if (/wan-?2|wan2|wan-video/.test(m)) {
-      return { image: startImage, prompt: fullPrompt, negative_prompt: VIDEO_I2V_NEGATIVE, aspect_ratio: aspect };
+      return { image: startImage, prompt: fullPrompt, negative_prompt: neg, aspect_ratio: aspect };
     }
     if (/minimax|hailuo|video-01/.test(m)) {
       return { first_frame_image: startImage, prompt: fullPrompt, prompt_optimizer: true };
@@ -380,6 +388,9 @@ export class ServiceManager {
     const aspect = this.toI2vAspect(
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
     );
+    // PHASE 22 (VECTOR 1) — the Director's scene negative threaded by the film pipeline. Passed to
+    // buildI2vInput so Kling's NATIVE negative_prompt suppresses the flagged artifacts (sepia/deform).
+    const negativePromptOpt = this.getOption(request.selectedOptions || {}, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
 
     // DAY-3 Task 2 — invisibly enrich the raw prompt with cinematic properties (shot type, camera motion,
     // framing, lens, dramatic lighting, mood) before the engine sees it. Film scene prompts are already
@@ -413,7 +424,7 @@ export class ServiceManager {
     // immediate success), or null on ANY failure (create 4xx/5xx, timeout, no id, throw) so the
     // caller can fail over. NEVER throws — the never-throws contract lives here.
     const attempt = async (modelId: string): Promise<ServiceManagerResponse | null> => {
-      const input = this.buildI2vInput(modelId, enrichedPrompt, aspect, startImage);
+      const input = this.buildI2vInput(modelId, enrichedPrompt, aspect, startImage, negativePromptOpt);
       try {
         // One quick retry on a transient 5xx/network blip; each attempt gets a fresh timeout so a
         // real latency stall (TimeoutError) bails fast and hands off to the failover / LTX.
@@ -1321,8 +1332,18 @@ export class ServiceManager {
       ? (promptAspect === '9:16' || promptAspect === '4:5' || promptAspect === '3:4' ? '9:16' : '16:9')
       : selectedAspect;
     const requestedModel = this.getOption(options, ['model', 'videoModel']) === 'ltx-2-3-pro' ? 'ltx-2-3-pro' : 'ltx-2-3-fast';
+    // PHASE 22 (VECTOR 1) — LTX-2 has NO native negative_prompt field (ltxRequestSchema omits it), so
+    // the only safe lever is an IN-PROMPT drift clause — the same idiom the film prompts already use
+    // ("No on-screen text, titles..."). Applied ONLY when the film pipeline threaded a negative (i.e.
+    // selectedOptions.negativePrompt is set), so standalone video generation stays byte-identical.
+    // Clamped so the appended clause keeps the total within the schema's 1500-char bound.
+    const LTX_DRIFT_CLAUSE = ' Natural true-to-life colour, neutral white balance. No yellow or sepia tint, no facial distortion, no deformed hands, no cartoon or illustration look.';
+    const hasFilmNegative = !!this.getOption(options, ['negativePrompt', 'negative_prompt', 'negative']);
+    const ltxPrompt = hasFilmNegative
+      ? (anchoredPrompt.slice(0, 1500 - LTX_DRIFT_CLAUSE.length) + LTX_DRIFT_CLAUSE)
+      : anchoredPrompt;
     const parsed = ltxRequestSchema.parse({
-      prompt: anchoredPrompt,
+      prompt: ltxPrompt,
       model: requestedModel,
       resolution: this.mapLtxResolution(this.getOption(options, ['resolution', 'size']), aspectRatio, requestedModel),
       duration: this.toNumber(this.getOption(options, ['duration', 'durationSec', 'seconds']), 6),

@@ -69,6 +69,11 @@ describe('validateMaster', () => {
     expect(qa.issues.map((i) => i.code)).toContain('sub_1080p');
   });
 
+  test('a 1080×1920 VERTICAL master is on-target, NOT flagged sub-1080p (Phase 22 false-alarm fix)', () => {
+    const qa = validateMaster({ ...HEALTHY, width: 1080, height: 1920 });
+    expect(qa.issues.map((i) => i.code)).not.toContain('sub_1080p');
+  });
+
   test('probe unavailable (nulls) → grades on size alone, no false positives', () => {
     const qa = validateMaster({
       ...HEALTHY,

@@ -15,7 +15,7 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { lipsyncCreate, filmLipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest } from '@/lib/ai/lipsync';
+import { lipsyncCreate, filmLipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest, heygenHealthCheck } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
@@ -64,6 +64,13 @@ export async function GET(req: NextRequest) {
     const audioUrl = await textToHostedSpeech('Hello, this is an Avatar voice test. One, two, three.');
     if (!audioUrl) return NextResponse.json({ error: 'tts-failed' }, { status: 502 });
     return NextResponse.json(await heygenSelfTest(faceUrl, audioUrl));
+  }
+  // PHASE 22 — lightning-fast HeyGen readiness gate. The client calls this BEFORE the ~8-minute
+  // singer-performance poll so a dead/expired/throttled key is caught in ~ms (cached 10-min) and the
+  // lip-sync stage skips with a surfaced reason instead of trapping the user behind a doomed render.
+  // Cheap + cached + fail-open (see heygenHealthCheck) — no paid render, unlike ?selftest.
+  if (req.nextUrl.searchParams.get('health') === 'heygen') {
+    return NextResponse.json(await heygenHealthCheck());
   }
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json(lipsyncStatus());

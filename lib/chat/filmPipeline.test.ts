@@ -11,6 +11,7 @@ import {
   FILM_TOTAL_SEC,
   FILM_SCENE_COUNT,
   FILM_MAX_REFERENCE_IMAGES,
+  FILM_DRIFT_NEGATIVE,
   type FilmShared,
 } from './filmPipeline';
 
@@ -151,6 +152,29 @@ describe('planFilmScenes — continuity-locked production plan', () => {
   });
 });
 
+describe('planFilmScenes — Phase 22 VECTOR 1: provider negative threading', () => {
+  it('always stamps the drift-suppression baseline on shared + every clip request', () => {
+    const plan = planFilmScenes('a hero walks through a neon market');
+    expect(plan.shared.negativePrompt).toContain('sepia');
+    expect(plan.shared.negativePrompt).toContain('deformed face');
+    // The wire that was missing: buildFilmClipRequest maps it onto selectedOptions.negativePrompt.
+    const req = buildFilmClipRequest(plan.scenes[0]!, plan.shared);
+    expect(req.selectedOptions.negativePrompt).toBe(plan.shared.negativePrompt);
+    expect(req.selectedOptions.negativePrompt).toContain(FILM_DRIFT_NEGATIVE.slice(0, 20));
+  });
+
+  it("MERGES the Director's scene-tailored negative ahead of the baseline (both survive)", () => {
+    const plan = planFilmScenes('a hero in a storm', { negativePrompt: 'ZZ-unique amber cast, flat lighting' });
+    expect(plan.shared.negativePrompt).toContain('sepia'); // baseline kept
+    expect(plan.shared.negativePrompt).toContain('ZZ-unique amber cast'); // brief negative threaded
+  });
+
+  it('caps a runaway brief negative so it can never blow the provider field bound', () => {
+    const plan = planFilmScenes('a hero in a storm', { negativePrompt: 'x'.repeat(5000) });
+    expect(plan.shared.negativePrompt.length).toBeLessThanOrEqual(600);
+  });
+});
+
 describe('planFilmScenes — V1 screenwriter cameraShot threading', () => {
   it('honors the screenwriter per-scene cameraShot verbatim over the beat ladder', () => {
     const plan = planFilmScenes('a hero in a storm', {
@@ -195,7 +219,7 @@ describe('sceneBeat — deterministic cinematic arc selection', () => {
 
 describe('buildStyleGuide — the rigid continuity contract', () => {
   const base: FilmShared = {
-    seed: 1, characterAnchor: 'x', avatarReference: null, referenceImages: [], style: null, sceneCount: 5, totalSec: 30,
+    seed: 1, characterAnchor: 'x', avatarReference: null, referenceImages: [], style: null, sceneCount: 5, totalSec: 30, orientation: 'landscape', negativePrompt: '',
   };
   it('locks palette, lighting, lens and character design', () => {
     const g = buildStyleGuide(base);
