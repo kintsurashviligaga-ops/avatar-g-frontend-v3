@@ -1505,6 +1505,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [imgBoardScript, setImgBoardScript] = useState('');
   const [imgBoardDuration, setImgBoardDuration] = useState<30 | 60>(30);
   const [imgBoardBusy, setImgBoardBusy] = useState(false);
+  // PHASE 36 — the compiled scene tiles (script + the RENDERED identity-locked frame), shown IN the Image
+  // Studio for review BEFORE export. `imgBoardScenes` populated ⇒ frames were generated; export bridges them.
+  const [imgBoardScenes, setImgBoardScenes] = useState<StoryboardMatrixCell[]>([]);
+  const [imgBoardCharacter, setImgBoardCharacter] = useState<string | undefined>(undefined);
   // Default to VOCALS now that the redesigned Music panel has no instrumental/vocal
   // toggle (a vocal R&B/pop track is the common case; the model writes lyrics from the
   // prompt). Describe "instrumental …" in the prompt for an instrumental bed.
@@ -1957,7 +1961,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setVideoDuration(sb.duration === 60 ? 60 : sb.duration === 6 ? 6 : 30);
       setVideoOrientation(sb.orientation);
       if (sb.musicVideoMode) setVideoMode('musicvideo');
-      if (sb.characterRefs.length) setVideoCharacterRefs(sb.characterRefs);
+      // PHASE 36 — the "Scene frames" lanes ARE videoCharacterRefs. Fill them with the FULL positional
+      // sceneFrames array (every scene anchored to its rendered thumbnail) so "Scene frames 0/6" becomes
+      // "6/6" natively; fall back to the single identity ref only when the storyboard carried no frames.
+      if (sb.sceneFrames && sb.sceneFrames.length) setVideoCharacterRefs(sb.sceneFrames);
+      else if (sb.characterRefs.length) setVideoCharacterRefs(sb.characterRefs);
       if (sb.scenePrompts.length) setScenePrompts(sb.scenePrompts);
       if (sb.masterScript.trim()) setVideoMasterScript(sb.masterScript);
       clearStoryboard();
@@ -3141,39 +3149,74 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // via the EXISTING storyboard route (scriptsOnly — deterministic split, else the Prompt Agent; no new
   // backend), then hand the whole grid to the Video Studio through the bridge store, which pre-populates
   // every scene lane. Fail-open: a decomposition miss still bridges the raw script as a single-scene brief.
-  const runImageStoryboard = useCallback(async () => {
+  // PHASE 36 — STEP 1: "Generate Storyboard Frames". Splits the script into N identity-anchored scenes and
+  // RENDERS a real frame for each (identity-locked to one character portrait), streaming each thumbnail into
+  // the Image Studio so the user can verify the visuals BEFORE transferring. Does NOT navigate. Fail-open:
+  // any per-scene miss (retried once) leaves that tile empty; the rest still render.
+  const generateImageStoryboard = useCallback(async () => {
     const script = imgBoardScript.trim();
     if (imgBoardBusy || !script) return;
     const sceneCount = imgBoardDuration === 60 ? 12 : 6;
     const orientation: 'landscape' | 'vertical' = imgAspect === '9:16' ? 'vertical' : 'landscape';
+    const base = { orientation, style: imgStyle, locale, sceneCount };
+    const post = (body: Record<string, unknown>) => fetch('/api/film/storyboard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ ...base, prompt: script, ...body }),
+    }).then((r) => r.json().catch(() => ({}))).catch(() => ({}));
+
     setImgBoardBusy(true);
+    setImgBoardScenes([]);
+    setImgBoardCharacter(undefined);
     try {
-      let cells: StoryboardMatrixCell[] = [];
+      // 1) Script Agent → per-scene prompts + the locked character fragment.
+      let scripts: string[] = [];
       let character: string | undefined;
-      try {
-        const r = await fetch('/api/film/storyboard', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ prompt: script, orientation, style: imgStyle, locale, sceneCount, scriptsOnly: true, masterScript: script }),
-        });
-        const j = (await r.json().catch(() => ({}))) as { sceneScripts?: string[]; character?: string };
-        if (Array.isArray(j.sceneScripts) && j.sceneScripts.length) {
-          cells = j.sceneScripts.map((s, i) => ({ ordinal: i + 1, frameUrl: null, prompt: s, script: s }));
-          if (typeof j.character === 'string' && j.character.trim()) character = j.character.trim();
+      const sj = (await post({ scriptsOnly: true, masterScript: script })) as { sceneScripts?: string[]; character?: string };
+      if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) {
+        scripts = sj.sceneScripts.slice(0, sceneCount).map((s) => (s || '').trim()).filter(Boolean);
+        if (typeof sj.character === 'string' && sj.character.trim()) character = sj.character.trim();
+      }
+      if (!scripts.length) scripts = Array.from({ length: sceneCount }, () => script); // fallback: brief per scene
+      setImgBoardCharacter(character);
+      // Seed the tiles (frames pending) so the scene list appears at once.
+      setImgBoardScenes(scripts.map((s, i) => ({ ordinal: i + 1, frameUrl: null, prompt: s, script: s })));
+
+      // 2) One character-anchor portrait → locks every scene frame to the SAME person (fail-open).
+      const aj = (await post({ characterAnchor: true })) as { anchorUrl?: string };
+      const anchorUrl = typeof aj.anchorUrl === 'string' && /^https?:\/\//.test(aj.anchorUrl) ? aj.anchorUrl : null;
+
+      // 3) Render each scene's frame (identity-locked), capped concurrency, one retry, streaming into its tile.
+      const renderScene = async (i: number) => {
+        const reqBody = { sceneOrdinal: i + 1, scenePrompt: scripts[i] ?? script, ...(anchorUrl ? { referenceImages: [anchorUrl] } : {}) };
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const fj = (await post(reqBody)) as { frameUrl?: string };
+          const url = typeof fj.frameUrl === 'string' && /^https?:\/\//.test(fj.frameUrl) ? fj.frameUrl : null;
+          if (url) { setImgBoardScenes((prev) => prev.map((c) => (c.ordinal === i + 1 ? { ...c, frameUrl: url } : c))); return; }
         }
-      } catch { /* fall through to the raw-script bridge */ }
-      if (!cells.length) cells = [{ ordinal: 1, frameUrl: null, prompt: script, script }];
-      const payload = serializeStoryboardMatrix({
-        theme: script.slice(0, 400),
-        cells,
-        orientation,
-        duration: imgBoardDuration,
-        ...(character ? { character } : {}),
-      });
-      setTransitStoryboard(payload); // the bridge effect switches to Video mode + pre-populates every lane
+      };
+      let idx = 0;
+      await Promise.all(Array.from({ length: Math.min(3, scripts.length) }, async () => {
+        while (idx < scripts.length) { const i = idx++; await renderScene(i); }
+      }));
     } finally {
       setImgBoardBusy(false); // structurally guaranteed — the busy state can never get stuck
     }
-  }, [imgBoardScript, imgBoardBusy, imgBoardDuration, imgAspect, imgStyle, locale, setTransitStoryboard]);
+  }, [imgBoardScript, imgBoardBusy, imgBoardDuration, imgAspect, imgStyle, locale]);
+
+  // PHASE 36 — STEP 2: "Export Storyboard to Video Studio". Packs the rendered frame URLs + the per-scene
+  // scripts and bridges them into the Video Studio's Scene-frame + Master-Script lanes (no manual download).
+  const exportImageStoryboardToVideo = useCallback(() => {
+    if (!imgBoardScenes.length) return;
+    const orientation: 'landscape' | 'vertical' = imgAspect === '9:16' ? 'vertical' : 'landscape';
+    const payload = serializeStoryboardMatrix({
+      theme: imgBoardScript.trim().slice(0, 400) || 'storyboard',
+      cells: imgBoardScenes,
+      orientation,
+      duration: imgBoardDuration,
+      ...(imgBoardCharacter ? { character: imgBoardCharacter } : {}),
+    });
+    setTransitStoryboard(payload); // the bridge effect switches to Video mode + pre-populates every scene lane
+  }, [imgBoardScenes, imgBoardScript, imgAspect, imgBoardDuration, imgBoardCharacter, setTransitStoryboard]);
 
   /**
    * MUSIC generation → a capped-parallel queue JOB (own signal + jobId + durable row), so a
@@ -5119,12 +5162,38 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       );
                     })}
                   </div>
-                  <button type="button" onClick={() => void runImageStoryboard()} disabled={imgBoardBusy || !imgBoardScript.trim()}
+                  {/* STEP 1 — render the identity-locked scene frames right here (no navigation yet). */}
+                  <button type="button" onClick={() => void generateImageStoryboard()} disabled={imgBoardBusy || !imgBoardScript.trim()}
                     className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] ${imgBoardBusy || !imgBoardScript.trim() ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
                     {imgBoardBusy
-                      ? (locale === 'en' ? 'Compiling scenes…' : locale === 'ru' ? 'Собираю сцены…' : 'ვაწყობ სცენებს…')
-                      : `🎬 ${locale === 'en' ? 'Compile → send to Video Studio' : locale === 'ru' ? 'Собрать → в видео-студию' : 'აწყობა → ვიდეო სტუდიაში'}`}
+                      ? `${locale === 'en' ? 'Rendering scenes' : locale === 'ru' ? 'Рендер сцен' : 'სცენების რენდერი'} ${imgBoardScenes.filter((c) => c.frameUrl).length}/${imgBoardScenes.length || (imgBoardDuration === 60 ? 12 : 6)}…`
+                      : imgBoardScenes.length
+                        ? `🔄 ${locale === 'en' ? 'Re-generate frames' : locale === 'ru' ? 'Пересоздать кадры' : 'კადრების ხელახლა გენერაცია'}`
+                        : `🎬 ${locale === 'en' ? 'Generate storyboard frames' : locale === 'ru' ? 'Создать кадры раскадровки' : 'კადრების გენერაცია'}`}
                   </button>
+
+                  {/* STEP 2 — the rendered thumbnails + a single "Export to Video Studio" button (packs the
+                      frame URLs + scripts into the Video Studio's Scene-frame + Master-Script lanes). */}
+                  {imgBoardScenes.length > 0 && (() => {
+                    const done = imgBoardScenes.filter((c) => c.frameUrl).length;
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {imgBoardScenes.map((c) => (
+                            <div key={c.ordinal} className={`relative overflow-hidden rounded-lg bg-app-bg/40 ring-1 ring-app-border/15 ${imgAspect === '9:16' ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                              <StoryboardFrame url={c.frameUrl ?? null} label={`Scene ${c.ordinal}`} onZoom={(u) => setLightbox(u)} />
+                              <span className="absolute left-1 top-1 rounded bg-black/55 px-1 text-[9px] font-semibold text-white">{c.ordinal}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button" onClick={exportImageStoryboardToVideo} disabled={imgBoardBusy || done === 0}
+                          className={`flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] ${imgBoardBusy || done === 0 ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
+                          🎥 {locale === 'en' ? 'Export storyboard to Video Studio' : locale === 'ru' ? 'Экспорт в видео-студию' : 'ექსპორტი ვიდეო სტუდიაში'}
+                          {done < imgBoardScenes.length && <span className="text-[10px] font-normal opacity-80">({done}/{imgBoardScenes.length})</span>}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
