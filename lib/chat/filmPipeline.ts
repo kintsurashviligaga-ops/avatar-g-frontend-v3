@@ -647,8 +647,14 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
             `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene, never a static frozen frame. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
             traits, 1700,
           )
+        // PHASE 28 (VECTOR 1) — HARD IDENTITY CLAUSE. On the character-brief (non-script) path the
+        // protagonist appears in EVERY shot, so an EXPLICIT same-person assertion (identical face,
+        // skin tone, gender, hair, build and wardrobe) rides alongside the continuity anchor — directly
+        // forbidding the shot-to-shot drift the client reported (an Asian/white-sweater lead morphing
+        // into an African-American/blue-dress one between scenes). The full appearance anchor stays in
+        // the continuity clause (well within the 1700-char clamp on this path, so it is never truncated).
         : enrichVideoPrompt(
-            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy, and is the SAME person in every scene — identical face, skin tone, gender, hair, build and wardrobe, never a different-looking person. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
             traits, 1700, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
           );
     return {

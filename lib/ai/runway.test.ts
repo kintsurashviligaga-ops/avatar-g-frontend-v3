@@ -104,6 +104,18 @@ describe('runway adapter — createRunwayI2V (fail-open create)', () => {
     expect(r).toBeNull();
   });
 
+  test('PHASE 28: on a 403 it logs the EXACT error body + classifies AUTH/SCOPE (token-scope diagnosis)', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const body = 'You do not have permission to use gen3a_turbo';
+    const res = { ok: false, status: 403, text: async () => body, json: async () => ({}) } as unknown as Response;
+    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: (async () => res) as unknown as typeof fetch });
+    expect(r).toBeNull();
+    const logged = warn.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(logged).toMatch(/AUTH\/SCOPE/);
+    expect(logged).toMatch(/http_403/);
+    expect(logged).toContain(body); // the exact Runway error body is surfaced, not just the status
+  });
+
   test('NEVER throws when fetch rejects — returns null', async () => {
     const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: (async () => { throw new Error('network down'); }) as unknown as typeof fetch });
     expect(r).toBeNull();

@@ -165,12 +165,21 @@ export async function createRunwayI2V(args: RunwayCreateArgs): Promise<{ id: str
       signal: AbortSignal.timeout(RUNWAY_CREATE_TIMEOUT_MS),
     });
     if (!res.ok) {
+      // PHASE 28 — log the EXACT Runway error BODY (not just the status) + a classification so a silent
+      // fall-through to Replicate is diagnosable: 401/403 = bad key or token SCOPE mismatch, 402 =
+      // quota/billing, 429 = rate limit. This is the line that surfaces "API token scope mapping" issues.
+      const errBody = await res.text().catch(() => '');
+      const kind = res.status === 401 || res.status === 403 ? 'AUTH/SCOPE' : res.status === 402 ? 'QUOTA/BILLING' : res.status === 429 ? 'RATE-LIMIT' : 'ERROR';
       // eslint-disable-next-line no-console
-      console.warn(`[runway] create failed http_${res.status} → falling back to Replicate`);
+      console.warn(`[runway] create ${kind} http_${res.status} (model=${runwayModel()}) → falling back to Replicate. body: ${errBody.slice(0, 400)}`);
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as { id?: unknown };
-    return typeof j.id === 'string' && j.id ? { id: j.id } : null;
+    if (typeof j.id === 'string' && j.id) return { id: j.id };
+    // 2xx but no task id — surface it too rather than a bare null (a contract drift on this account).
+    // eslint-disable-next-line no-console
+    console.warn(`[runway] create returned http_${res.status} with no task id → falling back to Replicate`);
+    return null;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[runway] create threw → falling back to Replicate:', e instanceof Error ? e.message : e);

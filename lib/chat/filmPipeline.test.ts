@@ -135,6 +135,14 @@ describe('planFilmScenes — continuity-locked production plan', () => {
     expect(plan.scenes.some((s) => /close-up/i.test(s.prompt))).toBe(true);
   });
 
+  it('asserts the SAME person (no gender/ethnicity/wardrobe drift) in every non-script scene (Phase 28)', () => {
+    const plan = planFilmScenes('a detective investigates a case at night');
+    for (const scene of plan.scenes) {
+      expect(scene.prompt).toMatch(/SAME person/);
+      expect(scene.prompt).toMatch(/identical face, skin tone, gender, hair, build and wardrobe/);
+    }
+  });
+
   it('stamps the rigid visual style guide on EVERY scene (locked world)', () => {
     const plan = planFilmScenes('a knight crosses a frozen lake', { style: 'epic' });
     for (const scene of plan.scenes) {
