@@ -115,6 +115,9 @@ export class DeepSeekProvider implements ITextGenerationProvider {
           temperature: input.temperature ?? 0.7,
           stream: true,
         }),
+        // Abort cancels the socket even while parked waiting for the first/next token — the caller's
+        // stall deadline relies on this to avoid holding a dead connection.
+        signal: input.signal,
       });
 
       if (!response.ok) {

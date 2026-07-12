@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Mic, AlertCircle, RotateCcw } from 'lucide-react';
 import { chunkForTts } from '@/lib/audio/ttsChunks';
+import { smoothBar, orbBarColor, rgba, type OrbState } from '@/lib/voice/orbViz';
 import {
   DEFAULT_VAD_CONFIG,
   bargeConfig,
@@ -57,12 +58,6 @@ const VIZ_BARS = 44; // radial equalizer bar count
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
 };
-
-/** Parse an "R G B" CSS-var triple into numeric channels (fallback to the brand cyan). */
-function rgbTriple(raw: string, fallback: [number, number, number]): [number, number, number] {
-  const p = raw.trim().split(/\s+/).map(Number);
-  return p.length === 3 && p.every((n) => Number.isFinite(n)) ? [p[0]!, p[1]!, p[2]!] : fallback;
-}
 
 function pickMime(): string {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -163,12 +158,6 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   //    AnalyserNode is live: the MIC while listening, the TTS output while speaking, and a gentle
   //    "breathing" idle while thinking/connecting. Replaces the old static spinner + speaker glyph. ──
   useEffect(() => {
-    let accent: [number, number, number] = [0, 210, 255];
-    const rose: [number, number, number] = [244, 63, 94];
-    try {
-      accent = rgbTriple(getComputedStyle(document.documentElement).getPropertyValue('--app-accent'), accent);
-    } catch { /* keep fallback */ }
-
     const draw = () => {
       vizRafRef.current = requestAnimationFrame(draw);
       const canvas = vizCanvasRef.current;
@@ -184,6 +173,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const st = statusRef.current;
       const listening = st === 'listening';
       const speaking = st === 'speaking';
+      // Map the conversation status → the visual state that colours the orb.
+      const orbState: OrbState = listening ? 'listening' : speaking ? 'speaking' : st === 'error' ? 'error' : st === 'off' ? 'idle' : 'processing';
       const analyser = listening ? analyserRef.current : speaking ? playbackAnalyserRef.current : null;
       const bars = vizBarsRef.current;
       const N = bars.length;
@@ -197,7 +188,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         const usable = Math.max(1, Math.floor(bins * 0.66)); // voice energy lives in the lower-mid bins
         for (let i = 0; i < N; i++) {
           const target = (buf[Math.floor((i / N) * usable)] ?? 0) / 255;
-          const next = (bars[i] ?? 0) + (target - (bars[i] ?? 0)) * 0.4; // ease for fluidity (mic analyser is unsmoothed)
+          // fast attack, slow decay → bars pop on sound and settle smoothly (kills the raw-FFT flicker)
+          const next = smoothBar(bars[i] ?? 0, target, 0.5, 0.14);
           bars[i] = next;
           overall += next;
         }
@@ -205,23 +197,25 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       } else {
         const now = performance.now();
         for (let i = 0; i < N; i++) {
-          const target = 0.09 + 0.075 * (0.5 + 0.5 * Math.sin(now / 520 + i * 0.5));
-          const next = (bars[i] ?? 0) + (target - (bars[i] ?? 0)) * 0.14;
+          const target = 0.09 + 0.075 * (0.5 + 0.5 * Math.sin(now / 620 + i * 0.5)); // gentle idle breathing
+          const next = smoothBar(bars[i] ?? 0, target, 0.14, 0.14);
           bars[i] = next;
           overall += next;
         }
         overall /= N;
       }
 
-      const [r, g, b] = listening ? rose : accent;
+      // The rich purple→blue→pink gradient FLOWS around the ring over time for a living, premium feel.
+      const shift = (performance.now() / 5200) % 1;
       c.clearRect(0, 0, size, size);
-      // ambient glow that swells with loudness
+      // ambient glow that swells with loudness, tinted by the flowing palette
+      const glowColor = orbBarColor(0.2, shift, overall, orbState);
       const glow = c.createRadialGradient(cx, cy, 5, cx, cy, 47);
-      glow.addColorStop(0, `rgba(${r},${g},${b},${0.20 + overall * 0.5})`);
-      glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      glow.addColorStop(0, rgba(glowColor, 0.20 + overall * 0.5));
+      glow.addColorStop(1, rgba(glowColor, 0));
       c.fillStyle = glow;
       c.beginPath(); c.arc(cx, cy, 47, 0, Math.PI * 2); c.fill();
-      // radial equalizer bars
+      // radial equalizer bars — each bar draws its own colour from the flowing multi-colour gradient
       const baseR = 15;
       c.lineWidth = 2.4; c.lineCap = 'round';
       for (let i = 0; i < N; i++) {
@@ -229,14 +223,14 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         const ang = (i / N) * Math.PI * 2 - Math.PI / 2;
         const len = 3 + bv * 22;
         const ca = Math.cos(ang), sa = Math.sin(ang);
-        c.strokeStyle = `rgba(${r},${g},${b},${0.32 + bv * 0.6})`;
+        c.strokeStyle = rgba(orbBarColor(i / N, shift, bv, orbState), 0.34 + bv * 0.58);
         c.beginPath();
         c.moveTo(cx + ca * baseR, cy + sa * baseR);
         c.lineTo(cx + ca * (baseR + len), cy + sa * (baseR + len));
         c.stroke();
       }
       // pulsing core
-      c.fillStyle = `rgba(${r},${g},${b},0.9)`;
+      c.fillStyle = rgba(orbBarColor(0.5, shift, overall, orbState), 0.92);
       c.beginPath(); c.arc(cx, cy, 6.5 + overall * 6, 0, Math.PI * 2); c.fill();
     };
 
@@ -346,7 +340,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       setTranscript(said); setReply('');
       historyRef.current = [...historyRef.current, { role: 'user' as const, content: said }].slice(-12);
 
-      // 2) LLM reply (route guarantees a non-empty, spoken-friendly reply)
+      // 2) LLM reply — STREAMED as newline-delimited JSON sentences (PHASE 33): we speak each sentence the
+      //    instant it lands instead of waiting for the whole reply, so the first audio starts far sooner.
       const cr = await fetch('/api/voice/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ text: said, locale: lang, history: historyRef.current }),
@@ -355,18 +350,42 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       if (stale()) return;
       if (cr && cr.status === 401) { go('error'); setError(t.retry); return; } // signed out → stop, don't loop
       if (cr && cr.status === 429) { go('error'); setError(t.rateLimited); return; } // rate-limited → stop, don't re-pay STT in a loop
-      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string } | null) : null;
-      const answer = (cj?.reply || '').trim();
-      if (stale()) return;
-      if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
-      setReply(answer);
-      historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: answer }].slice(-12);
+      if (!cr || !cr.ok || !cr.body) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
 
-      // 3) TTS → decode + play chunks back-to-back (prefetch the next while the current plays).
+      // Drain the NDJSON stream into a queue of TTS-ready chunks, refilled as sentences arrive.
+      const reader = cr.body.getReader();
+      const dec = new TextDecoder();
+      let sbuf = '';
+      const pending: string[] = [];
+      let full = '';
+      let streamEnded = false;
+      const pumpLines = () => {
+        let nl: number;
+        while ((nl = sbuf.indexOf('\n')) >= 0) {
+          const raw = sbuf.slice(0, nl).trim(); sbuf = sbuf.slice(nl + 1);
+          if (!raw) continue;
+          try {
+            const s = ((JSON.parse(raw) as { s?: string })?.s || '').trim();
+            if (s) { full = full ? `${full} ${s}` : s; for (const ch of chunkForTts(s)) pending.push(ch); }
+          } catch { /* skip a malformed line */ }
+        }
+        if (full) setReply(full); // progressive transcript as the reply streams in
+      };
+      // Pull the next TTS chunk; reads more of the stream when the local queue is empty. null = reply done.
+      const nextChunk = async (): Promise<string | null> => {
+        while (pending.length === 0 && !streamEnded) {
+          const { done, value } = await reader.read();
+          if (done) { streamEnded = true; if (sbuf.trim()) { sbuf += '\n'; pumpLines(); } break; }
+          sbuf += dec.decode(value, { stream: true });
+          pumpLines();
+        }
+        return pending.shift() ?? null;
+      };
+      const cancelStream = () => { try { void reader.cancel(); } catch { /* noop */ } };
+
+      // 3) TTS → speak each streamed chunk, prefetching the next synth while the current plays.
       go('speaking');
       vadStateRef.current = createVadState(vadStateRef.current.floor); // fresh state for barge detection
-      const chunks = chunkForTts(answer);
-      if (!chunks.length) { armListenRef.current?.(); return; }
       const synth = async (chunk: string): Promise<AudioBuffer | null> => {
         try {
           const res = await fetch('/api/elevenlabs/tts', {
@@ -381,17 +400,23 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         } catch { return null; }
       };
       let played = false;
-      let next: Promise<AudioBuffer | null> = synth(chunks[0]!);
-      for (let i = 0; i < chunks.length; i++) {
-        const buf = await next;
-        if (stale()) return;
-        next = i + 1 < chunks.length ? synth(chunks[i + 1]!) : Promise.resolve(null);
+      let cur = await nextChunk();
+      if (stale()) { cancelStream(); return; }
+      let synthP: Promise<AudioBuffer | null> = cur != null ? synth(cur) : Promise.resolve(null);
+      while (cur != null) {
+        const buf = await synthP;
+        if (stale()) { cancelStream(); return; }
+        cur = await nextChunk(); // the server has usually already streamed the next sentence by now
+        if (stale()) { cancelStream(); return; }
+        synthP = cur != null ? synth(cur) : Promise.resolve(null);
         if (!buf) continue; // a chunk failed → skip it, keep reading the rest
         played = true;
         await playBuffer(buf, myGen);
-        if (stale()) return; // barge/close bumped the generation → stop cleanly
+        if (stale()) { cancelStream(); return; } // barge/close bumped the generation → stop cleanly
       }
       if (stale()) return;
+      if (full) historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: full }].slice(-12);
+      if (!full) { armListenRef.current?.(); return; } // empty reply → fail-open, listen again
       if (!played) { go('error'); setError(t.retry); return; } // every chunk failed → a real TTS miss
       armListenRef.current?.(); // hands-free: listen for the next turn
     } catch {
@@ -436,6 +461,10 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     if (statusRef.current !== 'speaking') return;
     turnGenRef.current += 1; // orphan the in-flight TTS loop
     try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
+    // Also abort the chat fetch — otherwise, if the orphaned loop is parked in reader.read() during a slow
+    // inter-token gap, the stale NDJSON stream stays open until the server closes; aborting rejects the read
+    // at once so the reader is torn down immediately (mirrors the visibilitychange teardown).
+    try { turnAbortRef.current?.abort(); } catch { /* noop */ }
     try { currentSourceRef.current?.stop(); } catch { /* noop */ }
     currentSourceRef.current = null;
     armListenRef.current?.();

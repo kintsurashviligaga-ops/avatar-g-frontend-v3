@@ -12,6 +12,8 @@ export interface TextGenerationInput {
   temperature?: number;
   model?: string;
   stream?: boolean;
+  /** Optional abort signal — lets a caller bound/cancel a streaming generation (e.g. a stall deadline). */
+  signal?: AbortSignal;
 }
 
 export interface TextGenerationResult {

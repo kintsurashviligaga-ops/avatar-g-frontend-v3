@@ -694,10 +694,10 @@ type MusicPreset = {
 };
 const MUSIC_PRESETS: ReadonlyArray<MusicPreset> = [
   { id: 'hollywood-cinematic', emoji: '🎬', label: { ka: 'ჰოლივუდური კინო', en: 'Hollywood Cinematic', ru: 'Голливудское кино' }, genre: 'classical', tempo: 'slow', duration: 90, instrumental: true, voiceType: 'female' },
-  { id: 'midnight-rnb', emoji: '🌃', label: { ka: 'შუაღამის R&B', en: 'Midnight R&B', ru: 'Полуночный R&B' }, genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'male' },
-  { id: 'georgian-folk', emoji: '🪕', label: { ka: 'ქართული ფოლკი', en: 'Georgian Folk', ru: 'Грузинский фолк' }, genre: 'folk', tempo: 'medium', duration: 60, instrumental: false, voiceType: 'duet' },
-  { id: 'pop-hit', emoji: '🎤', label: { ka: 'პოპ ჰიტი', en: 'Pop Hit', ru: 'Поп-хит' }, genre: 'pop', tempo: 'fast', duration: 30, instrumental: false, voiceType: 'female' },
+  { id: 'rnb-hiphop-core', emoji: '🎤', label: { ka: 'R&B / ჰიპ-ჰოპი', en: 'R&B / Hip-Hop Core', ru: 'R&B / Хип-хоп' }, genre: 'hip-hop', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'male' },
   { id: 'documentary-ambient', emoji: '🌫️', label: { ka: 'დოკუმენტური ემბიენტი', en: 'Documentary Ambient', ru: 'Документальный эмбиент' }, genre: 'ambient', tempo: 'slow', duration: 0, instrumental: true, voiceType: 'female' },
+  { id: 'retro-jazz-lounge', emoji: '🎷', label: { ka: 'რეტრო ჯაზ-ლაუნჯი', en: 'Retro Jazz Lounge', ru: 'Ретро джаз-лаунж' }, genre: 'jazz', tempo: 'slow', duration: 60, instrumental: false, voiceType: 'female' },
+  { id: 'electronic-cyber', emoji: '🕹️', label: { ka: 'ელექტრონული კიბერ', en: 'Electronic Cyber', ru: 'Электронный кибер' }, genre: 'electronic', tempo: 'fast', duration: 60, instrumental: true, voiceType: 'female' },
 ];
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
 
