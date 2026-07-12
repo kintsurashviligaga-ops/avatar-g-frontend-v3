@@ -35,6 +35,7 @@ import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
 import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
 import { useStudioBridge } from '@/store/useStudioBridge';
+import { serializeStoryboardMatrix, type StoryboardMatrixCell } from '@/lib/pipeline/storyboardBridge';
 import { useServiceBridge } from '@/hooks/useServiceBridge';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useJobQueue } from '@/store/useJobQueue';
@@ -1473,6 +1474,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
   const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
+  // PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script + pick a duration; the storyboard route
+  // decomposes it into N identity-anchored scenes, then "Export to Video Studio" bridges the whole grid.
+  const [imgBoardOpen, setImgBoardOpen] = useState(false);
+  const [imgBoardScript, setImgBoardScript] = useState('');
+  const [imgBoardDuration, setImgBoardDuration] = useState<30 | 60>(30);
+  const [imgBoardBusy, setImgBoardBusy] = useState(false);
   // Default to VOCALS now that the redesigned Music panel has no instrumental/vocal
   // toggle (a vocal R&B/pop track is the common case; the model writes lyrics from the
   // prompt). Describe "instrumental …" in the prompt for an instrumental bed.
@@ -1861,7 +1868,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // right Video slot, switch to video mode, flash a welcome toast, then clear the store.
   // Strictly additive — no-op unless a bridge button fired.
   const { sendImageToVideo, sendMusicToMusicVideo } = useServiceBridge();
-  const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, clearCharacter, clearAudio } = useStudioBridge();
+  const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, transitStoryboard, setTransitStoryboard, clearCharacter, clearAudio, clearStoryboard } = useStudioBridge();
   // Capped-parallel render queue (Phase 1: the fast IMAGE flow runs 3-at-a-time through
   // it while the tray shows live progress + queue positions).
   const submitJob = useJobQueue((s) => s.submit);
@@ -1913,8 +1920,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setShareToast(locale === 'en' ? '🎵 Track sent to the Video studio' : locale === 'ru' ? '🎵 Трек перенесён в видео-студию' : '🎵 სიმღერა ვიდეო სტუდიაში გადმოტანილია!');
       setTimeout(() => setShareToast((s) => (/🎵/.test(s ?? '') ? null : s)), 2600);
     }
+    // PHASE 29 (VECTOR 2) — a full authored storyboard exported from the Image Studio pre-populates
+    // EVERY scene lane: the per-scene frame anchors (videoCharacterRefs), the per-scene shot prompts,
+    // the numbered-scene master script, plus duration/orientation/mode. The user then presses Generate
+    // and the EXISTING createStoryboard/render path runs unchanged. Additive: nothing else reads it.
+    if (transitStoryboard) {
+      const sb = transitStoryboard;
+      setMode('video');
+      setOptionsOpen(true);
+      // Duration FIRST so the videoCharacterRefs/scenePrompts clamp effect settles to the right count.
+      setVideoDuration(sb.duration === 60 ? 60 : sb.duration === 6 ? 6 : 30);
+      setVideoOrientation(sb.orientation);
+      if (sb.musicVideoMode) setVideoMode('musicvideo');
+      if (sb.characterRefs.length) setVideoCharacterRefs(sb.characterRefs);
+      if (sb.scenePrompts.length) setScenePrompts(sb.scenePrompts);
+      if (sb.masterScript.trim()) setVideoMasterScript(sb.masterScript);
+      clearStoryboard();
+      setShareToast(locale === 'en' ? '🎬 Storyboard sent to Video — review & generate' : locale === 'ru' ? '🎬 Раскадровка в Видео — проверьте и создайте' : '🎬 სცენარი ვიდეოშია — გადახედე და შექმენი');
+      setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), 2800);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transitCharacterUrl, transitAudioUrl]);
+  }, [transitCharacterUrl, transitAudioUrl, transitStoryboard]);
 
   // Track the composer's live height so the scroll-to-bottom FAB always floats just
   // above it (a fixed 104px offset overlapped a multi-line / attachments / open-options composer).
@@ -3085,6 +3111,44 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       });
     }
   }, [submitJob, trackJobSettle, notifyCredit]);
+
+  // PHASE 29 (VECTOR 1) — Script-to-Storyboard: decompose a pasted script into N identity-anchored scenes
+  // via the EXISTING storyboard route (scriptsOnly — deterministic split, else the Prompt Agent; no new
+  // backend), then hand the whole grid to the Video Studio through the bridge store, which pre-populates
+  // every scene lane. Fail-open: a decomposition miss still bridges the raw script as a single-scene brief.
+  const runImageStoryboard = useCallback(async () => {
+    const script = imgBoardScript.trim();
+    if (imgBoardBusy || !script) return;
+    const sceneCount = imgBoardDuration === 60 ? 12 : 6;
+    const orientation: 'landscape' | 'vertical' = imgAspect === '9:16' ? 'vertical' : 'landscape';
+    setImgBoardBusy(true);
+    try {
+      let cells: StoryboardMatrixCell[] = [];
+      let character: string | undefined;
+      try {
+        const r = await fetch('/api/film/storyboard', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ prompt: script, orientation, style: imgStyle, locale, sceneCount, scriptsOnly: true, masterScript: script }),
+        });
+        const j = (await r.json().catch(() => ({}))) as { sceneScripts?: string[]; character?: string };
+        if (Array.isArray(j.sceneScripts) && j.sceneScripts.length) {
+          cells = j.sceneScripts.map((s, i) => ({ ordinal: i + 1, frameUrl: null, prompt: s, script: s }));
+          if (typeof j.character === 'string' && j.character.trim()) character = j.character.trim();
+        }
+      } catch { /* fall through to the raw-script bridge */ }
+      if (!cells.length) cells = [{ ordinal: 1, frameUrl: null, prompt: script, script }];
+      const payload = serializeStoryboardMatrix({
+        theme: script.slice(0, 400),
+        cells,
+        orientation,
+        duration: imgBoardDuration,
+        ...(character ? { character } : {}),
+      });
+      setTransitStoryboard(payload); // the bridge effect switches to Video mode + pre-populates every lane
+    } finally {
+      setImgBoardBusy(false); // structurally guaranteed — the busy state can never get stuck
+    }
+  }, [imgBoardScript, imgBoardBusy, imgBoardDuration, imgAspect, imgStyle, locale, setTransitStoryboard]);
 
   /**
    * MUSIC generation → a capped-parallel queue JOB (own signal + jobId + durable row), so a
@@ -4998,6 +5062,45 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   rows={2}
                   className="mt-2 w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none placeholder:text-app-muted/60 focus:border-app-accent/50"
                 />
+              )}
+            </div>
+            {/* PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script → N identity-anchored scenes → Video */}
+            <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <button type="button" onClick={() => setImgBoardOpen((v) => !v)} aria-expanded={imgBoardOpen}
+                className="flex w-full items-center justify-between text-[12.5px] font-semibold text-app-text">
+                <span className="inline-flex items-center gap-1.5">🎬 {locale === 'en' ? 'Script → Storyboard' : locale === 'ru' ? 'Сценарий → Раскадровка' : 'სცენარი → სცენარიუმი'}{imgBoardScript.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
+                <ChevronDown size={15} className={`transition-transform ${imgBoardOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {imgBoardOpen && (
+                <div className="mt-2 space-y-2.5">
+                  <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a script — it splits into identity-locked scenes, then exports to the Video Studio.' : locale === 'ru' ? 'Вставьте сценарий — он разобьётся на сцены с единым персонажем и уйдёт в видео-студию.' : 'ჩასვი სცენარი — დაიყოფა ერთიანი პერსონაჟის სცენებად და გადავა ვიდეო სტუდიაში.'}</span>
+                  <textarea
+                    value={imgBoardScript}
+                    onChange={(e) => setImgBoardScript(e.target.value)}
+                    placeholder={locale === 'en' ? 'SCENE 1: a detective walks a rainy street at dawn…\nSCENE 2: he enters a dim office…' : locale === 'ru' ? 'СЦЕНА 1: детектив идёт по улице под дождём…' : 'სცენა 1: დეტექტივი მიდის წვიმიან ქუჩაზე…'}
+                    rows={4}
+                    className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[12.5px] leading-relaxed text-app-text outline-none placeholder:text-app-muted/50 focus:border-app-accent/50"
+                  />
+                  {/* Duration → scene count (30s = 6 scenes · 60s = 12 scenes) */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {([[30, '6'], [60, '12']] as const).map(([sec, scenes]) => {
+                      const on = imgBoardDuration === sec;
+                      return (
+                        <button key={sec} type="button" onClick={() => setImgBoardDuration(sec)}
+                          className={`flex min-h-[46px] flex-col items-center justify-center rounded-xl border px-3 py-2 text-[12.5px] font-semibold transition active:scale-[0.98] ${on ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-text hover:bg-app-bg/60'}`}>
+                          <span>{sec}{locale === 'en' ? 's film' : locale === 'ru' ? 'с' : 'წმ'}</span>
+                          <span className="text-[10px] font-normal text-app-muted">{scenes} {locale === 'en' ? 'scenes' : locale === 'ru' ? 'сцен' : 'სცენა'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button type="button" onClick={() => void runImageStoryboard()} disabled={imgBoardBusy || !imgBoardScript.trim()}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] ${imgBoardBusy || !imgBoardScript.trim() ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
+                    {imgBoardBusy
+                      ? (locale === 'en' ? 'Compiling scenes…' : locale === 'ru' ? 'Собираю сцены…' : 'ვაწყობ სცენებს…')
+                      : `🎬 ${locale === 'en' ? 'Compile → send to Video Studio' : locale === 'ru' ? 'Собрать → в видео-студию' : 'აწყობა → ვიდეო სტუდიაში'}`}
+                  </button>
+                </div>
               )}
             </div>
           </div>

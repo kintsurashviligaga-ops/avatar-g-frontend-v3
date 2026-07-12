@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import { useStudioBridge } from '@/store/useStudioBridge';
+import { serializeStoryboardMatrix, type StoryboardMatrix } from '@/lib/pipeline/storyboardBridge';
 
 /**
  * Cross-service navigation: hand a generated result to the Video studio.
@@ -38,5 +39,16 @@ export function useServiceBridge() {
     router.push(`/${locale}/dashboard?service=video&mode=musicvideo&from=music`);
   };
 
-  return { sendImageToVideo, sendMusicToMusicVideo };
+  /**
+   * PHASE 29 (VECTOR 2) — hand a full authored storyboard (script → N scenes, optionally framed) from
+   * the Image Studio into the Video Studio: serialize it to the scene-slot payload, drop it in the
+   * bridge, and route to the video studio, which pre-populates every scene lane on the next render.
+   */
+  const sendStoryboardToVideo = (matrix: StoryboardMatrix) => {
+    if (!matrix?.cells?.length) return;
+    bridge.setTransitStoryboard(serializeStoryboardMatrix(matrix));
+    router.push(`/${locale}/dashboard?service=video&from=storyboard`);
+  };
+
+  return { sendImageToVideo, sendMusicToMusicVideo, sendStoryboardToVideo };
 }

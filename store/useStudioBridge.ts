@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { VideoScenePayload } from '@/lib/pipeline/storyboardBridge';
 
 /**
  * Cross-service Studio Bridge — carries a result from one service (image / music) into
@@ -19,20 +20,28 @@ interface StudioBridgeStore {
   transitCharacterUrl: string | null;
   transitAudioUrl: string | null;
   transitAudioMeta: AudioBridgeMeta | null;
+  /** PHASE 29 (VECTOR 2) — a full authored storyboard (script → N scenes) handed from the Image Studio
+   *  to the Video Studio. OmniStudio reads it once, pre-populates every scene lane, then clears it. */
+  transitStoryboard: VideoScenePayload | null;
 
   setTransitCharacter: (url: string) => void;
   setTransitAudio: (url: string, meta: AudioBridgeMeta) => void;
+  setTransitStoryboard: (payload: VideoScenePayload) => void;
   clearCharacter: () => void;
   clearAudio: () => void;
+  clearStoryboard: () => void;
 }
 
 export const useStudioBridge = create<StudioBridgeStore>((set) => ({
   transitCharacterUrl: null,
   transitAudioUrl: null,
   transitAudioMeta: null,
+  transitStoryboard: null,
 
   setTransitCharacter: (url) => set({ transitCharacterUrl: url }),
   setTransitAudio: (url, meta) => set({ transitAudioUrl: url, transitAudioMeta: meta }),
+  setTransitStoryboard: (payload) => set({ transitStoryboard: payload }),
   clearCharacter: () => set({ transitCharacterUrl: null }),
   clearAudio: () => set({ transitAudioUrl: null, transitAudioMeta: null }),
+  clearStoryboard: () => set({ transitStoryboard: null }),
 }));
