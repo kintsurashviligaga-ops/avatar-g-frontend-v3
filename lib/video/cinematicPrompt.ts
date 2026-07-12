@@ -21,9 +21,10 @@ export const CINEMATIC_SYSTEM =
   'vivid single-paragraph video prompt (max ~80 words). Enrich it with concrete cinematic properties: shot ' +
   'type (wide / medium / close-up), camera motion (dolly, crane, handheld, static, push-in), framing and ' +
   'composition, lens character (anamorphic, 35mm, shallow depth of field), dramatic motivated lighting ' +
-  '(golden hour, chiaroscuro, rim light), and mood. Preserve the user\'s subject and intent EXACTLY — never ' +
-  'introduce new characters or change what is happening. Output ONLY the enriched prompt: no preamble, no ' +
-  'quotes, no markdown, no explanation.';
+  '(golden hour, chiaroscuro, rim light), and mood. When a person is present, also direct their emotional ' +
+  'performance — natural, believable facial expression, gaze and body language true to the moment. Preserve ' +
+  "the user's subject and intent EXACTLY — never introduce new characters or change what is happening. Output " +
+  'ONLY the enriched prompt: no preamble, no quotes, no markdown, no explanation.';
 
 /** A curated, deterministic cinematic enrichment — the guaranteed fallback when no LLM is reachable. */
 export function deterministicCinematicPrompt(raw: string): string {
@@ -32,7 +33,8 @@ export function deterministicCinematicPrompt(raw: string): string {
   if (looksEnriched(base)) return base; // already cinematic — do not double-dress
   const suffix =
     'cinematic wide-to-medium shot, slow dolly push-in, anamorphic lens with shallow depth of field, ' +
-    'dramatic motivated lighting, rich filmic color grade, volumetric atmosphere, evocative mood';
+    'dramatic motivated lighting, rich filmic color grade, volumetric atmosphere, evocative mood, ' +
+    'natural believable performance with lifelike expression and body language';
   const sep = /[.,;]\s*$/.test(base) ? ' ' : ', ';
   return `${base}${sep}${suffix}`.slice(0, 900);
 }

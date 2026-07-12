@@ -654,7 +654,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
         // into an African-American/blue-dress one between scenes). The full appearance anchor stays in
         // the continuity clause (well within the 1700-char clamp on this path, so it is never truncated).
         : enrichVideoPrompt(
-            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with energy, and is the SAME person in every scene — identical face, skin tone, gender, hair, build and wardrobe, never a different-looking person. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with genuine, believable emotion, expressive but natural acting, lifelike facial expression, gaze and body language true to the moment, and is the SAME person in every scene — identical face, skin tone, gender, hair, build and wardrobe, never a different-looking person. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
             traits, 1700, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
           );
     return {
