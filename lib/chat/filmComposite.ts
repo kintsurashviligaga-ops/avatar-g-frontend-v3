@@ -42,6 +42,8 @@ import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
+import { enrichSfxBrief } from './sfxTriggers';
+import { evaluateFilmQa } from '@/lib/ai/qaDirectorAgent';
 import {
   planFilmScenes,
   buildFilmClipRequest,
@@ -110,6 +112,9 @@ interface FilmPlanSummary {
   voiceUrl: string | null;
   /** PHASE 49 §7 — cinematic SFX / sound-design track (resolved at dispatch). */
   sfxUrl: string | null;
+  /** PHASE 25 (VECTOR 2) — the QA Director Agent's pre-assembly verdict (grade + graded flags).
+   *  Telemetry only; the render is never blocked (fail-open). */
+  qa?: { grade: string; pass: boolean; issues: { code: string; severity: string; detail: string; autoFixed?: boolean }[] } | null;
 }
 
 /** Narrow a dispatch-time LegStatus to the token's clip status union. */
@@ -798,6 +803,33 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const v = voiceMeta?.dialogueScript;
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   })();
+  // PHASE 25 (VECTOR 2) — QA DIRECTOR AGENT pre-assembly gate. Pure, deterministic, fail-open. It
+  // grades the collective PLANNING output (character lock, scene count, empty/monotone scenes,
+  // orientation) and applies the ONE provably-safe single-pass correction — filling any missing
+  // per-scene SFX cue — which then feeds the SFX brief below. Everything else is a graded FLAG
+  // (logged + returned in metadata.film.qa), NOT an unbounded LLM re-generation loop (see the module
+  // header for why that would spiral cost/latency). Async per-clip render outcomes are out of scope
+  // here — they resolve at poll time and are covered by the Phase-23 retry/down-shift + salvage gate.
+  let qaVerdict: { grade: string; pass: boolean; issues: { code: string; severity: string; detail: string; autoFixed?: boolean }[] } | null = null;
+  try {
+    const qa = evaluateFilmQa({
+      characterLock,
+      characterAnchor: plan.shared.characterAnchor,
+      scenePrompts: plan.scenes.map((s) => s.prompt),
+      sfxCues: sfxCues?.map((c) => ({ sceneNumber: c.sceneNumber, sfxPrompt: c.sfxPrompt })),
+      orientation: plan.shared.orientation,
+      sceneCount,
+    });
+    qaVerdict = { grade: qa.grade, pass: qa.pass, issues: qa.issues };
+    // Bounded auto-fix: adopt the QA-completed per-scene SFX cues (gaps filled) for the SFX brief below.
+    sfxCues = qa.correctedSfxCues.map((c) => ({ sceneNumber: c.sceneNumber, sfxPrompt: c.sfxPrompt, duration: FILM_CLIP_SEC }));
+    // eslint-disable-next-line no-console
+    console.info(`[film][qa] grade=${qa.grade} pass=${qa.pass} issues=${qa.issues.map((i) => i.code).join(',') || 'none'}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[film][qa] gate errored (fail-open, skipping):', err instanceof Error ? err.message : err);
+  }
+
   const [voiceResult, sfxUrl] = await Promise.all([
     // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
     // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
@@ -847,9 +879,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // PHASE 2 L3 — when the Prompt Agent produced per-scene SFX cues, compose them
       // into a scene-aware ambience brief (no music/speech) instead of the generic
       // film brief. Strictly additive: without cues this is exactly input.message.
-      brief: (sfxCues?.length
+      // PHASE 25 (VECTOR 1) — enrichSfxBrief prepends precise, curated cues for high-impact
+      // triggers (stadium/goal/gunshot/storm/birds…). Pure + no-op when nothing matches; this
+      // fixes the Prompt-Agent-bypassed path where the brief was the raw user message.
+      brief: enrichSfxBrief((sfxCues?.length
         ? sfxCues.map((c) => c.sfxPrompt).filter(Boolean).join('. ').slice(0, 280)
-        : '') || input.message,
+        : '') || input.message),
       totalSec: plan.shared.totalSec,
       compositeId,
     }).catch((err) => {
@@ -897,6 +932,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     musicWorkId,
     voiceUrl,
     sfxUrl,
+    qa: qaVerdict,
   };
 
   const renderedCount = clips.filter((c) => c.status === 'queued').length;

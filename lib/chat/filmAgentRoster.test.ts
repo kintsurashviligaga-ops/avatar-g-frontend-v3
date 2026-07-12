@@ -1,4 +1,4 @@
-import { deriveFilmRoster, deriveFilmLog, overallFilmPct, FILM_AGENT_ORDER, type FilmAgentId, type FilmAgentStatus } from './filmAgentRoster';
+import { deriveFilmRoster, deriveFilmLog, overallFilmPct, videoProviderBadge, FILM_AGENT_ORDER, type FilmAgentId, type FilmAgentStatus } from './filmAgentRoster';
 import type { FilmStudioProgress, FilmLegClientStatus } from './filmStudioClient';
 
 const clip = (status: FilmLegClientStatus, ordinal: number) => ({ ordinal, status });
@@ -153,5 +153,34 @@ describe('deriveFilmLog', () => {
     const ka = deriveFilmLog(progress({ phase: 'dispatching', matrix: { storyboard: 'pending' } }), 'ka');
     expect(en[0]!.text).not.toBe(ka[0]!.text);
     expect(en[0]!.key).toBe(ka[0]!.key);
+  });
+});
+
+describe('videoProviderBadge — Phase 25 V3 provider telemetry', () => {
+  it('maps engine ids to human Console badges', () => {
+    expect(videoProviderBadge([{ videoProvider: 'runway' }])).toBe('Runway Gen-3/4');
+    expect(videoProviderBadge([{ videoProvider: 'replicate' }])).toBe('Replicate');
+    expect(videoProviderBadge([{ videoProvider: 'replicate-kling' }])).toBe('Replicate'); // Replicate-hosted stays Replicate
+    expect(videoProviderBadge([{ videoProvider: 'kling-native' }])).toBe('Kling'); // native tier is distinct
+    expect(videoProviderBadge([{ videoProvider: 'ltx' }])).toBe('LTX-2');
+    expect(videoProviderBadge([{ videoProvider: 'luma' }])).toBe('Luma');
+    expect(videoProviderBadge([{ videoProvider: 'minimax/hailuo-02' }])).toBe('Hailuo');
+  });
+
+  it('returns undefined when no clip carries a provider (pre-Runway films → no badge)', () => {
+    expect(videoProviderBadge([{}, { videoProvider: undefined }])).toBeUndefined();
+    expect(videoProviderBadge([])).toBeUndefined();
+    expect(videoProviderBadge(undefined)).toBeUndefined();
+  });
+
+  it('unknown engine → shows the raw id rather than hiding it', () => {
+    expect(videoProviderBadge([{ videoProvider: 'mystery-engine' }])).toBe('mystery-engine');
+  });
+
+  it("threads the active engine onto the video agent's note in deriveFilmRoster", () => {
+    const r = deriveFilmRoster(progress({
+      matrix: { clips: [{ ordinal: 1, status: 'succeeded', videoProvider: 'runway' }] as unknown as [] },
+    }));
+    expect(r.find((a) => a.id === 'video')?.note).toBe('Runway Gen-3/4');
   });
 });

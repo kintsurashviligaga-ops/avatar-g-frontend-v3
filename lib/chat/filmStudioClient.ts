@@ -45,6 +45,9 @@ export interface FilmClipState {
   status: FilmLegClientStatus;
   url?: string | null;
   attempts?: number;
+  /** PHASE 25 (VECTOR 3) — the render engine that produced this clip ('runway' | 'replicate' |
+   *  'kling' | 'ltx' | …). Drives the Director's Console provider badge so a fallback is visible. */
+  videoProvider?: string;
 }
 
 /** Mirrors the server `metadata.film` matrix (providerRouter) the client reads. */

@@ -169,12 +169,15 @@ function AgentCard({ agent, loc, musicVideo = false }: { agent: FilmAgentVM; loc
   const s = STATUS_STYLE[agent.status];
   const micro = MICRO[agent.id];
   const detail =
-    // A skip/complete REASON (e.g. why lip-sync was skipped) always wins so the card is never
-    // a silent "skipped" — the caller sets agent.note with a localized, human-readable reason.
-    agent.note
-      ? agent.note
-      : agent.id === 'video' && (agent.status === 'processing' || agent.status === 'completed') && agent.total
-        ? `${agent.ready ?? 0}/${agent.total} ${SCENES[loc]}`
+    // PHASE 25 (VECTOR 3) — the VIDEO card keeps its scene-count progress AND appends the active
+    // render-engine badge (agent.note carries "Runway Gen-3/4" / "Replicate" / …), so a fallback is
+    // visible without hiding "3/6 scenes". Checked BEFORE the generic note branch below.
+    agent.id === 'video' && (agent.status === 'processing' || agent.status === 'completed') && agent.total
+      ? `${agent.ready ?? 0}/${agent.total} ${SCENES[loc]}${agent.note ? ` · ${agent.note}` : ''}`
+      // A skip/complete REASON (e.g. why lip-sync was skipped) always wins so the card is never
+      // a silent "skipped" — the caller sets agent.note with a localized, human-readable reason.
+      : agent.note
+        ? agent.note
         : micro && agent.status === 'processing'
           ? micro.processing[loc]
           : micro && agent.status === 'completed'

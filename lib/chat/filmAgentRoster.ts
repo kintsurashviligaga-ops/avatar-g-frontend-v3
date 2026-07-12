@@ -58,6 +58,24 @@ export const FILM_AGENT_ORDER: FilmAgentId[] = [
 const PCT: Record<FilmAgentStatus, number> = { idle: 0, queued: 0, processing: 50, completed: 100, error: 100, skipped: 100 };
 
 /**
+ * PHASE 25 (VECTOR 3) — map the raw render-engine id (metadata.videoProvider threaded onto each clip)
+ * to a human Console badge. Returns the FIRST engine seen across the clips (they render on one primary
+ * tier per film), or undefined when no clip carries a provider (pre-Runway films → no badge). Pure.
+ */
+export function videoProviderBadge(clips: ReadonlyArray<{ videoProvider?: string }> | undefined): string | undefined {
+  const raw = (clips ?? []).map((c) => c.videoProvider).find((v): v is string => typeof v === 'string' && v.length > 0);
+  if (!raw) return undefined;
+  const v = raw.toLowerCase();
+  if (v === 'runway') return 'Runway Gen-3/4';
+  if (v.startsWith('replicate')) return 'Replicate'; // Replicate-hosted (incl. replicate-kling v2.1)
+  if (v.includes('kling')) return 'Kling'; // the NATIVE-Kling cascade tier (distinct from Replicate-hosted)
+  if (v === 'ltx') return 'LTX-2';
+  if (v === 'luma') return 'Luma';
+  if (v.includes('hailuo')) return 'Hailuo';
+  return raw; // unknown engine → show the raw id rather than hide it
+}
+
+/**
  * Fold a live `FilmStudioProgress` snapshot into the 9-agent roster. Accepts
  * `null`/`undefined` (before the first progress tick) and returns a sensible
  * "just dispatched" roster so the console renders immediately on click.
@@ -121,10 +139,15 @@ export function deriveFilmRoster(
       : rendered
         ? 'completed'
         : 'queued';
+  // PHASE 25 (VECTOR 3) — surface the ACTIVE render engine on the video card so a Runway→Replicate
+  // fallback is visible in the Console (AgentCard renders agent.note). Reads the videoProvider that
+  // pollFilmClip now threads onto each clip; null/absent → no badge (unchanged pre-Runway behaviour).
+  const providerBadge = videoProviderBadge(clips);
   const video = a('video', videoStatus, {
     ready,
     total,
     pct: videoStatus === 'completed' ? 100 : total ? Math.round((Math.min(ready, total) / total) * 100) : 0,
+    ...(providerBadge ? { note: providerBadge } : {}),
   });
 
   // voice + sfx ride the single `audio` leg (narration / sound-design tracks).

@@ -609,6 +609,8 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
           // Diagnostics (harmless extra fields; the client reads status/url only).
           ...(c.providerStatus ? { providerStatus: c.providerStatus } : {}),
           ...(c.note ? { note: c.note } : {}),
+          // PHASE 25 (VECTOR 3) — the render engine, consumed by the Director's Console badge.
+          ...(c.videoProvider ? { videoProvider: c.videoProvider } : {}),
         })),
         stitch: filmStitchToClientStatus(stitchStatus, anyClipPending),
         audio: filmLegToClientStatus(audioStatus),
@@ -643,6 +645,10 @@ interface FilmClipPollState {
    *  response (no server-log access needed to see why a clip sits pending). */
   providerStatus?: string;
   note?: string;
+  /** PHASE 25 (VECTOR 3) — the render engine that produced this clip (metadata.videoProvider:
+   *  'runway' | 'replicate'/'kling' | 'ltx' | …). Threaded to the Director's Console provider badge
+   *  so a Runway→Replicate fallback is visible in the UI, not just in the raw response. */
+  videoProvider?: string;
 }
 
 /** Poll one clip leg; null taskRef short-circuits to its dispatch-time verdict. */
@@ -656,13 +662,15 @@ async function pollFilmClip(clip: FilmTaskRef['clips'][number], sessionId?: stri
     const sm = await serviceManager.poll(clip.taskRef, sessionId);
     const providerStatus = sm.predictionStatus;
     const note = (sm.message || '').slice(0, 140) || undefined;
+    // PHASE 25 (VECTOR 3) — surface the active render engine (metadata is Record<string,unknown>).
+    const videoProvider = typeof sm.metadata?.videoProvider === 'string' ? sm.metadata.videoProvider : undefined;
     if (sm.predictionStatus === 'succeeded') {
-      return { ordinal: clip.ordinal, status: 'succeeded', url: sm.assetUrl ?? null, attempts: clip.attempts, providerStatus };
+      return { ordinal: clip.ordinal, status: 'succeeded', url: sm.assetUrl ?? null, attempts: clip.attempts, providerStatus, videoProvider };
     }
     if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'error' || sm.predictionStatus === 'canceled') {
-      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note };
+      return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
     }
-    return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts, providerStatus, note };
+    return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
   } catch (err) {
     return {
       ordinal: clip.ordinal,
