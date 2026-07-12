@@ -7,7 +7,7 @@
  * single-hue gradient — raw FFT jitter read as flicker, and the palette was one colour. This module owns
  * the two things that make the new orb feel fluid and premium: an ASYMMETRIC attack/decay envelope per
  * bar (fast rise, slow fall → bars pop on sound and settle smoothly, never flicker or clip) and a rich
- * MULTI-COLOUR gradient (deep purple → electric blue → neon pink) that flows around the ring over time.
+ * MULTI-COLOUR gradient (bright cyan → sky blue → white, sharp crimson accent) that flows over time.
  *
  * Kept free of the DOM/canvas so the envelope + colour maths are testable without a browser.
  */
@@ -38,18 +38,18 @@ export function lerpRgb(a: RGB, b: RGB, t: number): RGB {
   ];
 }
 
-// The signature palette — deep purple, electric blue, neon pink. Ordered so a sweep across them reads as
-// a continuous cool→warm arc.
+// The signature palette (Phase 35, LOCKED): bright cyan → sky blue → clean white, with a sharp crimson
+// accent. Cyan/white dominate the strip; crimson punctuates. Ordered so a sweep reads as a smooth arc.
 export const ORB_PALETTE: readonly RGB[] = [
-  [124, 58, 237], // deep purple  #7c3aed
-  [37, 99, 235], //  electric blue #2563eb
-  [34, 211, 238], // cyan glow     #22d3ee
-  [236, 72, 153], // neon pink     #ec4899
+  [0, 209, 255], //  bright cyan    #00D1FF
+  [56, 189, 248], // sky blue       #38BDF8
+  [255, 255, 255], // clean white   #FFFFFF
+  [255, 0, 60], //   crimson accent #FF003C
 ] as const;
 
 /**
  * Sample the multi-colour palette at ring position `p` (0..1), rotated by `shift` (0..1) so the gradient
- * FLOWS around the orb over time. Wraps seamlessly (the pink end blends back into the purple start). Pure.
+ * FLOWS across the strip over time. Wraps seamlessly (the crimson end blends back into the cyan start). Pure.
  */
 export function orbColorAt(p: number, shift = 0, palette: readonly RGB[] = ORB_PALETTE): RGB {
   const n = palette.length;
@@ -65,14 +65,14 @@ export function orbColorAt(p: number, shift = 0, palette: readonly RGB[] = ORB_P
 
 /**
  * A per-state tint bias applied over the flowing palette: listening leans cool/bright, speaking leans
- * warm/pink, idle/processing sit neutral. Returns a mix weight (0 = full palette colour, 1 = full accent).
+ * white, error crimson, idle/processing sit cyan. Returns a mix weight (0 = full palette colour, 1 = full accent).
  */
 export function stateAccent(state: OrbState): { accent: RGB; mix: number } {
   switch (state) {
-    case 'listening': return { accent: [34, 211, 238], mix: 0.35 }; // cyan — you're being heard
-    case 'speaking': return { accent: [236, 72, 153], mix: 0.3 }; //  pink — the assistant talks
-    case 'error': return { accent: [244, 63, 94], mix: 0.7 }; //     rose — something failed
-    default: return { accent: [124, 58, 237], mix: 0.12 }; //        purple wash while idle/thinking
+    case 'listening': return { accent: [0, 209, 255], mix: 0.35 }; //  bright cyan — you're being heard
+    case 'speaking': return { accent: [255, 255, 255], mix: 0.24 }; // clean white — the assistant speaks
+    case 'error': return { accent: [255, 0, 60], mix: 0.7 }; //        crimson — something failed
+    default: return { accent: [0, 209, 255], mix: 0.12 }; //           cyan wash while idle/thinking
   }
 }
 

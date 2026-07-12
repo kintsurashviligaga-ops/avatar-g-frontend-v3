@@ -51,9 +51,10 @@ describe('orbColorAt — flowing multi-colour ring', () => {
 });
 
 describe('stateAccent + orbBarColor', () => {
-  test('each state has a distinct accent + mix weight', () => {
-    expect(stateAccent('listening').accent).toEqual([34, 211, 238]);
-    expect(stateAccent('speaking').accent).toEqual([236, 72, 153]);
+  test('each state has a distinct accent + mix weight (Phase 35 cyan/white/crimson palette)', () => {
+    expect(stateAccent('listening').accent).toEqual([0, 209, 255]); // bright cyan #00D1FF
+    expect(stateAccent('speaking').accent).toEqual([255, 255, 255]); // clean white
+    expect(stateAccent('error').accent).toEqual([255, 0, 60]); // crimson #FF003C
     expect(stateAccent('error').mix).toBeGreaterThan(stateAccent('idle').mix);
   });
   test('louder bars brighten toward white', () => {

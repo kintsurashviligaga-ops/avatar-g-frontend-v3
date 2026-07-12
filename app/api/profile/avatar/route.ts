@@ -41,7 +41,13 @@ export async function POST(req: Request) {
     // forces any CDN/browser that keyed on the bare public URL to re-fetch — no stale avatar after a change.
     const publicUrl = svc.storage.from('avatars').getPublicUrl(path).data.publicUrl;
     const url = `${publicUrl}?v=${ts}`;
-    await svc.from('profiles').update({ avatar_url: url }).eq('id', user.id);
+    // UPSERT, not update: the per-user profiles row is created by a signup trigger, but that trigger does
+    // not fire for every account (pre-trigger users, alt signup paths). A plain .update() then matches ZERO
+    // rows and SILENTLY no-ops → the photo shows optimistically but is never persisted → wiped on reload.
+    // Upsert on the id PK guarantees the row exists and avatar_url is written; and we now surface a DB-write
+    // failure instead of returning a false success (the client reverts the optimistic photo on a non-2xx).
+    const { error: dbErr } = await svc.from('profiles').upsert({ id: user.id, avatar_url: url }, { onConflict: 'id' });
+    if (dbErr) return NextResponse.json({ error: 'save failed' }, { status: 500 });
     return NextResponse.json({ url });
   } catch {
     return NextResponse.json({ error: 'failed' }, { status: 500 });

@@ -27,7 +27,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Mic, AlertCircle, RotateCcw } from 'lucide-react';
-import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { smoothBar, orbBarColor, rgba, type OrbState } from '@/lib/voice/orbViz';
 import {
   DEFAULT_VAD_CONFIG,
@@ -205,7 +204,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       }
 
       // Real-time LINEAR spectrum equalizer: vertical frequency bars mirrored around the centre line, each
-      // drawing its own colour from a flowing purple→blue→pink neon gradient that shifts across the strip.
+      // drawing its own colour from a flowing cyan→sky→white neon gradient (crimson accent) across the strip.
       const shift = (performance.now() / 5200) % 1;
       c.clearRect(0, 0, cw, ch);
       const midY = ch / 2;
@@ -332,8 +331,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       setTranscript(said); setReply('');
       historyRef.current = [...historyRef.current, { role: 'user' as const, content: said }].slice(-12);
 
-      // 2) LLM reply — STREAMED as newline-delimited JSON sentences (PHASE 33): we speak each sentence the
-      //    instant it lands instead of waiting for the whole reply, so the first audio starts far sooner.
+      // 2) LLM reply — a bulletproof SYNCHRONOUS full response (PHASE 35: the Phase-33 sentence-streaming
+      //    layer was rolled back). Await the WHOLE reply, then speak it as one unbroken TTS buffer.
       const cr = await fetch('/api/voice/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ text: said, locale: lang, history: historyRef.current }),
@@ -342,74 +341,36 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       if (stale()) return;
       if (cr && cr.status === 401) { go('error'); setError(t.retry); return; } // signed out → stop, don't loop
       if (cr && cr.status === 429) { go('error'); setError(t.rateLimited); return; } // rate-limited → stop, don't re-pay STT in a loop
-      if (!cr || !cr.ok || !cr.body) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
+      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string } | null) : null;
+      const answer = (cj?.reply || '').trim();
+      if (stale()) return;
+      if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
+      setReply(answer);
 
-      // Drain the NDJSON stream into a queue of TTS-ready chunks, refilled as sentences arrive.
-      const reader = cr.body.getReader();
-      const dec = new TextDecoder();
-      let sbuf = '';
-      const pending: string[] = [];
-      let full = '';
-      let streamEnded = false;
-      const pumpLines = () => {
-        let nl: number;
-        while ((nl = sbuf.indexOf('\n')) >= 0) {
-          const raw = sbuf.slice(0, nl).trim(); sbuf = sbuf.slice(nl + 1);
-          if (!raw) continue;
-          try {
-            const s = ((JSON.parse(raw) as { s?: string })?.s || '').trim();
-            if (s) { full = full ? `${full} ${s}` : s; for (const ch of chunkForTts(s)) pending.push(ch); }
-          } catch { /* skip a malformed line */ }
-        }
-        if (full) setReply(full); // progressive transcript as the reply streams in
-      };
-      // Pull the next TTS chunk; reads more of the stream when the local queue is empty. null = reply done.
-      const nextChunk = async (): Promise<string | null> => {
-        while (pending.length === 0 && !streamEnded) {
-          const { done, value } = await reader.read();
-          if (done) { streamEnded = true; if (sbuf.trim()) { sbuf += '\n'; pumpLines(); } break; }
-          sbuf += dec.decode(value, { stream: true });
-          pumpLines();
-        }
-        return pending.shift() ?? null;
-      };
-      const cancelStream = () => { try { void reader.cancel(); } catch { /* noop */ } };
-
-      // 3) TTS → speak each streamed chunk, prefetching the next synth while the current plays.
+      // 3) TTS — feed the WHOLE reply to ElevenLabs in ONE call and play a single unbroken buffer. No
+      //    sentence/chunk slicing → no cut words, no dropped tails. Voice replies are short (trimForSpeech
+      //    caps at 700 chars), well within ElevenLabs' single-request limit.
       go('speaking');
       vadStateRef.current = createVadState(vadStateRef.current.floor); // fresh state for barge detection
-      const synth = async (chunk: string): Promise<AudioBuffer | null> => {
-        try {
-          const res = await fetch('/api/elevenlabs/tts', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-            body: JSON.stringify({ text: chunk, locale: lang }), signal: turnSignal(20_000, ttsSig),
-          });
-          if (!res.ok) return null;
+      let buf: AudioBuffer | null = null;
+      try {
+        const res = await fetch('/api/elevenlabs/tts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ text: answer, locale: lang }), signal: turnSignal(30_000, ttsSig),
+        });
+        if (res.ok) {
           const bytes = await res.arrayBuffer();
           const ctx = audioCtxRef.current;
-          if (!ctx || bytes.byteLength < 256) return null;
-          return await ctx.decodeAudioData(bytes.slice(0)).catch(() => null);
-        } catch { return null; }
-      };
-      let played = false;
-      let cur = await nextChunk();
-      if (stale()) { cancelStream(); return; }
-      let synthP: Promise<AudioBuffer | null> = cur != null ? synth(cur) : Promise.resolve(null);
-      while (cur != null) {
-        const buf = await synthP;
-        if (stale()) { cancelStream(); return; }
-        cur = await nextChunk(); // the server has usually already streamed the next sentence by now
-        if (stale()) { cancelStream(); return; }
-        synthP = cur != null ? synth(cur) : Promise.resolve(null);
-        if (!buf) continue; // a chunk failed → skip it, keep reading the rest
-        played = true;
-        await playBuffer(buf, myGen);
-        if (stale()) { cancelStream(); return; } // barge/close bumped the generation → stop cleanly
-      }
+          if (ctx && bytes.byteLength >= 256) buf = await ctx.decodeAudioData(bytes.slice(0)).catch(() => null);
+        }
+      } catch { buf = null; }
       if (stale()) return;
-      if (full) historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: full }].slice(-12);
-      if (!full) { armListenRef.current?.(); return; } // empty reply → fail-open, listen again
-      if (!played) { go('error'); setError(t.retry); return; } // every chunk failed → a real TTS miss
+      if (!buf) { go('error'); setError(t.retry); return; } // TTS miss → surface, don't loop silently
+      await playBuffer(buf, myGen);
+      if (stale()) return; // barge/close bumped the generation → stop cleanly
+      // Record the reply in history ONLY after the user actually heard it — a barged/failed turn must not
+      // leave an unspoken message that the next LLM turn would reference ("as I said…").
+      historyRef.current = [...historyRef.current, { role: 'assistant' as const, content: answer }].slice(-12);
       armListenRef.current?.(); // hands-free: listen for the next turn
     } catch {
       if (!stale()) armListenRef.current?.(); // never strand the loop on an unexpected throw
@@ -453,9 +414,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     if (statusRef.current !== 'speaking') return;
     turnGenRef.current += 1; // orphan the in-flight TTS loop
     try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
-    // Also abort the chat fetch — otherwise, if the orphaned loop is parked in reader.read() during a slow
-    // inter-token gap, the stale NDJSON stream stays open until the server closes; aborting rejects the read
-    // at once so the reader is torn down immediately (mirrors the visibilitychange teardown).
+    // Also abort the transcribe/chat fetch, so a barge that lands while a turn is still fetching its reply
+    // tears the request down at once (mirrors the visibilitychange teardown) rather than letting it complete.
     try { turnAbortRef.current?.abort(); } catch { /* noop */ }
     try { currentSourceRef.current?.stop(); } catch { /* noop */ }
     currentSourceRef.current = null;
