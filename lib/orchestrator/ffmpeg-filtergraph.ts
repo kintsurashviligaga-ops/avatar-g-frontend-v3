@@ -109,9 +109,15 @@ export function sceneAwareTransitions(nClips: number): string[] {
  * Canonical ducking depth → `sidechaincompress` ratio, SHARED by the 2-track (voice + bed) and
  * 3-track (dialogue + music + sfx) mix paths so identical user input yields identical ducking.
  * Anchored on the proven narration-forward 2-track map: the default −12 dB → ratio 12, scaling
- * linearly with depth off the duckPct baseline (8 + duck·12), clamped 8..30. No dB supplied →
- * the pure duckPct-derived ratio (depth 1). Previously the 3-track path used a DIVERGENT
- * |duckDb|·(20/12) map (−12 → 20) for the same input — that asymmetry is removed; both resolve here.
+ * linearly with depth off the duckPct baseline (8 + duck·12). No dB supplied → the pure
+ * duckPct-derived ratio (depth 1). Previously the 3-track path used a DIVERGENT |duckDb|·(20/12)
+ * map (−12 → 20) for the same input — that asymmetry is removed; both resolve here.
+ *
+ * PHASE 27 — the upper clamp is 20, NOT 30: ffmpeg's `sidechaincompress` `ratio` has a HARD valid
+ * range of [1,20]; a value >20 aborts the whole filter graph ("Value X for parameter ratio out of
+ * range [1 - 20]"). An extreme client duck_db (beyond ~−18) with an elevated duckPct could reach 21–30
+ * and crash the render on ALL three sidechain lanes. Clamping to 20 keeps the default −12 dB → 12
+ * byte-identical while making the deepest duck the strongest ratio ffmpeg actually accepts.
  *
  * @param duckDb ducking depth in dB (negative, e.g. −12); undefined → duckPct-only.
  * @param duck   duckPct normalised to 0..1 (i.e. duckPct/100).
@@ -119,7 +125,7 @@ export function sceneAwareTransitions(nClips: number): string[] {
 export function duckRatio(duckDb: number | undefined, duck: number): number {
   const base = 8 + duck * 12;                                            // duckPct baseline
   const depth = typeof duckDb === 'number' ? Math.abs(duckDb) / 12 : 1;  // −12 dB ⇒ 1.0
-  return Math.max(8, Math.min(30, Math.round(base * depth)));
+  return Math.max(8, Math.min(20, Math.round(base * depth)));           // ffmpeg sidechaincompress max = 20
 }
 
 export function buildFilterComplex(opts: FilterGraphOpts): {
@@ -294,19 +300,27 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     // dB→ratio via the SHARED duckRatio() map (unified with the 2-track path below) so the
     // duck-dB slider produces identical ducking regardless of how many lanes are present.
     const ratio = duckRatio(opts.duckDb, duck);
-    parts.push(`[${voiceIdx}:a]asplit=2[vkey][vraw]`);
-    parts.push(`[vraw]volume=1.0[vmix]`);
     // AMBIENT FILL — the ElevenLabs sound-generation bed caps at ~22s, so on a 30/60s master the
     // sfx/atmosphere lane would go SILENT after 22s (apad tops it with silence). Loop it so the
     // low-freq ambient bed sustains for the FULL timeline; the downstream atrim cuts it to targetDur.
     // size bounds the loop buffer (~2M samples ≈ 40s @48k) — plenty for the ≤22s bed, bounded memory.
     parts.push(`[${sfxIdx}:a]aloop=loop=-1:size=2000000,volume=${sfxV}[sfxv]`);
+    parts.push(`[${musicIdx}:a]volume=${musV}[musv]`);
     if (smart) {
-      parts.push(`[${musicIdx}:a]volume=${musV}[musv]`);
-      parts.push(`[musv][vkey]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[musduck]`);
-      parts.push(`[musduck][sfxv][vmix]amix=inputs=3:normalize=0[apre]`);
+      // PHASE 27 (VECTOR 1) — the VOICE now keys TWO sidechain ducks (music AND sfx), so it is split
+      // 3 ways: two keys + the audible copy. (Was asplit=2 with SFX riding a static gain, which risked
+      // a loud soundscape — crowd roar / wind — drowning the ElevenLabs narration.)
+      parts.push(`[${voiceIdx}:a]asplit=3[vkeym][vkeys][vraw]`);
+      parts.push(`[vraw]volume=1.0[vmix]`);
+      parts.push(`[musv][vkeym]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=250[musduck]`);
+      // SFX ducked under the vocal: same threshold/ratio as music, a slightly slower 300ms release so the
+      // ambient soundscape swells back smoothly between vocal phrases instead of pumping abruptly.
+      parts.push(`[sfxv][vkeys]sidechaincompress=threshold=0.03:ratio=${ratio}:attack=5:release=300[sfxduck]`);
+      parts.push(`[musduck][sfxduck][vmix]amix=inputs=3:normalize=0[apre]`);
     } else {
-      parts.push(`[${musicIdx}:a]volume=${musV}[musv]`);
+      // No smart-duck: voice goes straight to the mix (no unused sidechain key — the old code split a
+      // [vkey] here that was never consumed, an invalid dangling pad on the smartDuck:false path).
+      parts.push(`[${voiceIdx}:a]volume=1.0[vmix]`);
       parts.push(`[musv][sfxv][vmix]amix=inputs=3:normalize=0[apre]`);
     }
     apre = '[apre]';

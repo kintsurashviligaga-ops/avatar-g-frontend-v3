@@ -33,6 +33,7 @@ import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-cap
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
+import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, consumeFilmBilling } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
@@ -797,6 +798,28 @@ async function assembleImpl(req: NextRequest) {
   const qaSummary = qa ? { pass: qa.pass, score: qa.score, grade: qa.grade, issues: qa.issues.map((i) => i.code) } : null;
   if (filmTokenId && resultUrl) await recordFilmMaster(filmTokenId, resultUrl, qaSummary, uid);
 
+  // PHASE 27 (VECTOR 2) — POST-RENDER VISION QUALITY GATE. Env-gated (FILM_VISION_QA=1, default OFF →
+  // INERT + zero-cost in prod) and fully FAIL-OPEN: it samples keyframes from the finished master and
+  // grades them with Gemini Vision. It NEVER blocks delivery — a critical warp surfaces as an
+  // action:'rerender' SIGNAL (an actual poll-time scene re-render needs the film-token param overhaul
+  // flagged in Phase 23/26). Wrapped so it can never throw into the assemble saga.
+  let visionQa: Awaited<ReturnType<typeof evaluateRenderQuality>> | null = null;
+  if (visionQaEnabled() && resultUrl) {
+    try {
+      // Bound the WHOLE gate (frame extraction + the bare-fetch Gemini call) so a stalled provider or
+      // ffmpeg can never PIN this route until maxDuration — a hang is not an error. On the race timeout
+      // we simply skip QA (null). The deliverable master is already stamped (recordFilmMaster above).
+      visionQa = await Promise.race([
+        evaluateRenderQuality({ videoUrl: resultUrl }),
+        new Promise<null>((r) => setTimeout(() => r(null), 45_000)),
+      ]);
+      if (visionQa?.ran) {
+        // eslint-disable-next-line no-console
+        console.info(`[assemble][vision-qa] grade=${visionQa.grade} score=${visionQa.score} action=${visionQa.action} issues=${visionQa.issues.map((i) => i.code).join(',') || 'none'}`);
+      }
+    } catch { /* fail-open — the vision gate can never break assembly */ }
+  }
+
   // Phase 7B — checkpoint the surviving clip URLs (keyed by the film token) so a later
   // re-render / re-assemble of the same film can reuse them instead of re-paying. Fail-
   // open: a missing generation_checkpoints table (un-migrated) is a silent no-op.
@@ -834,5 +857,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm) });
 }

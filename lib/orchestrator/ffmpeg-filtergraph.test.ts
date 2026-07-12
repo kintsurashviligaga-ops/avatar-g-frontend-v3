@@ -99,6 +99,26 @@ describe('buildFilterComplex', () => {
     expect(g.amap).toBe('[aout]');
   });
 
+  test('3-track master (Phase 27): SFX is sidechain-ducked under the vocal, not a static gain', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: true, threeTrackMix: true, fps: 24, duckPct: 30 });
+    // Voice keys BOTH the music AND the sfx ducks → split 3 ways.
+    expect(g.filter).toContain('asplit=3[vkeym][vkeys][vraw]');
+    expect(g.filter).toContain('[musv][vkeym]sidechaincompress'); // music ducked under voice
+    expect(g.filter).toContain('[sfxv][vkeys]sidechaincompress'); // SFX now ALSO ducked under voice
+    expect(g.filter).toContain('release=300'); // SFX gets the slower release for a smooth swell
+    expect((g.filter.match(/sidechaincompress/g) || []).length).toBe(2); // both lanes duck
+    expect(g.filter).toContain('amix=inputs=3');
+    expect(g.amap).toBe('[aout]');
+  });
+
+  test('3-track non-smart (smartDuck:false): no duck, and NO dangling voice sidechain key', () => {
+    const g = buildFilterComplex({ nClips: 3, hasVoice: true, hasMusic: true, hasSfx: true, threeTrackMix: true, smartDuck: false, fps: 24, duckPct: 30 });
+    expect(g.filter).not.toContain('sidechaincompress'); // no ducking when smart-duck is off
+    expect(g.filter).not.toContain('vkey');              // no unused/dangling sidechain key
+    expect(g.filter).toContain('amix=inputs=3');
+    expect(g.amap).toBe('[aout]');
+  });
+
   test('music only (no voice) → background feeds the timeline-scaled audio map', () => {
     const g = buildFilterComplex({ nClips: 2, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30 });
     // 2 video inputs (0,1), voice absent → music at index 2 feeds the pad+trim stage.
@@ -246,11 +266,12 @@ describe('buildFilterComplex', () => {
     }
   });
 
-  test('duckRatio() maths: anchor −12→12, scales with depth, clamps 8..30', () => {
-    expect(duckRatio(-12, 0.3)).toBe(12);       // anchor (round 11.6)
+  test('duckRatio() maths: anchor −12→12, scales with depth, clamps 8..20 (ffmpeg sidechaincompress max)', () => {
+    expect(duckRatio(-12, 0.3)).toBe(12);       // anchor (round 11.6) — unchanged
     expect(duckRatio(-18, 0.3)).toBe(17);       // deeper (round 17.4)
     expect(duckRatio(-6, 0.3)).toBe(8);         // floor clamp (5.8 → 6 → 8)
-    expect(duckRatio(-60, 0.3)).toBe(30);       // ceiling clamp
+    expect(duckRatio(-60, 0.3)).toBe(20);       // ceiling clamp — ffmpeg ratio max is 20, not 30
+    expect(duckRatio(-24, 1)).toBe(20);         // extreme duck_db + full duckPct still ≤ 20 (no crash)
     expect(duckRatio(undefined, 0.3)).toBe(12); // no dB → pure duckPct baseline
   });
 });
