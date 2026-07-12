@@ -59,6 +59,7 @@ import {
   clipDispatchConcurrency,
   clipDispatchJitterMs,
   clipRetryBackoffMs,
+  shouldDownshiftToLtx,
   mapWithConcurrency,
 } from './filmClipRetry';
 import { filmBalanceDecision } from './filmBalanceGate';
@@ -321,6 +322,11 @@ async function renderClip(
     if (backoff > 0) {
       await new Promise((resolve) => setTimeout(resolve, backoff));
     }
+    // PHASE 23 — once Kling has had its attempts, FORCE the LTX-2 down-shift on the remaining
+    // retries so a saturated / timing-out Kling cluster can't starve this scene: skipI2v makes
+    // execute() skip the premium create and land straight on LTX (which keeps the identity anchor
+    // + drift clause). Sticky by design — once we down-shift a scene, later retries stay on LTX.
+    if (shouldDownshiftToLtx(attempt)) clipReq.selectedOptions.skipI2v = '1';
     try {
       const taskRef = await withTrace(
         {

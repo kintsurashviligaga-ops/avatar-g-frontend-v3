@@ -35,6 +35,34 @@
 export const MAX_CLIP_DISPATCH_ATTEMPTS = 4;
 
 /**
+ * PHASE 23 — ENGINE DOWN-SHIFT threshold. Attempt 1..N try the premium i2v engine (Kling v2.1)
+ * FIRST; execute() already falls over to LTX-2 WITHIN an attempt if Kling's CREATE fails. But when
+ * the Kling cluster is timing out / 429-saturated, retrying Kling-first on EVERY attempt burns the
+ * dispatch-time budget on wasted create-timeouts (the observed "cluster saturation during dispatch"
+ * failure). So once the attempt index EXCEEDS this threshold — i.e. Kling has already had its shots
+ * and a full attempt still failed — the retry FORCES the proven secondary LTX-2 engine, skipping the
+ * premium create entirely. With the default MAX_CLIP_DISPATCH_ATTEMPTS=4 this makes attempts 1-2
+ * Kling-first and attempts 3-4 clean LTX-only: a guaranteed, fast last-resort landing on the engine
+ * that isn't saturated. ENV-TUNABLE; clamped ≥1 so the premium engine is never skipped on attempt 1.
+ */
+export const LTX_DOWNSHIFT_AFTER_ATTEMPT = Math.max(
+  1,
+  Math.round(Number(process.env.LTX_DOWNSHIFT_AFTER_ATTEMPT) || 2),
+);
+
+/**
+ * Should this dispatch attempt SKIP the premium i2v engine (Kling) and go straight to LTX-2?
+ * True once the 1-based attempt index is PAST LTX_DOWNSHIFT_AFTER_ATTEMPT — Kling has already tried
+ * and a full attempt failed — so a scene stuck behind a saturated Kling cluster deterministically
+ * down-shifts to the secondary engine instead of burning every remaining retry re-hitting the same
+ * premium cluster. LTX still honours the character/image anchor + the in-prompt drift clause, so
+ * identity continuity holds across the down-shift. Pure → unit-testable off-network.
+ */
+export function shouldDownshiftToLtx(attempt: number, after: number = LTX_DOWNSHIFT_AFTER_ATTEMPT): boolean {
+  return Number.isFinite(attempt) && attempt > after;
+}
+
+/**
  * Max number of clip dispatches in flight at once. PHASE 60 — the live provider
  * (Replicate, < $5 credit) throttles createPrediction to "6/min, BURST OF 1":
  * two simultaneous calls → one 201, one 429. So we SERIALIZE dispatch (default

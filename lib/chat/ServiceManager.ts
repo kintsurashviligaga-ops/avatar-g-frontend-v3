@@ -382,6 +382,12 @@ export class ServiceManager {
    */
   private async tryI2vClip(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
     if (VIDEO_I2V_DISABLED) return null;
+    // PHASE 23 — explicit engine DOWN-SHIFT. When the film retry loop has already spent Kling's
+    // attempts (a prior full Kling+LTX attempt failed), it sets skipI2v so THIS retry skips the
+    // premium i2v create entirely and lands straight on the proven LTX-2 engine — no wasted Kling
+    // create-timeout under cluster saturation. Returning null routes execute() to LTX, which still
+    // honours the character/image anchor + the in-prompt drift clause, so identity continuity holds.
+    if (this.getOption(request.selectedOptions || {}, ['skipI2v', 'forceLtx', 'skip_i2v'])) return null;
     const startImage = this.resolveClipImage(request);
     if (!startImage) return null; // i2v needs an anchor frame; without one, keep LTX
 
