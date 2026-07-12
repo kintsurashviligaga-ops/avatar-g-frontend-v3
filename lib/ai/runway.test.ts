@@ -121,6 +121,28 @@ describe('runway adapter — createRunwayI2V (fail-open create)', () => {
     expect(r).toBeNull();
   });
 
+  test('PHASE 30: retries Runway on a transient 5xx, then succeeds (no premature Kling surrender)', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    let calls = 0;
+    const fetchImpl = jest.fn(async () => {
+      calls += 1;
+      return calls === 1
+        ? ({ ok: false, status: 503, text: async () => 'upstream hiccup', json: async () => ({}) } as unknown as Response)
+        : OK({ id: 'task_retry_ok' });
+    });
+    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(r).toEqual({ id: 'task_retry_ok' }); // the 503 blip did NOT cost the clip — Runway stayed primary
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  test('PHASE 30: a definitive 402 does NOT retry — one call, immediate Replicate fallback', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = jest.fn(async () => ({ ok: false, status: 402, text: async () => 'quota', json: async () => ({}) } as unknown as Response));
+    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(r).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // 402 = quota/billing → retrying Runway is pointless
+  });
+
   test('rejects a non-http/non-data promptImage without a network call', async () => {
     const fetchImpl = jest.fn();
     const r = await createRunwayI2V({ promptImage: 'runway-internal-path', fetchImpl: fetchImpl as unknown as typeof fetch });

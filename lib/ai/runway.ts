@@ -91,6 +91,13 @@ const RUNWAY_BASE = 'https://api.dev.runwayml.com/v1';
 const RUNWAY_VERSION = '2024-11-06'; // load-bearing: this version requires resolution-string ratios
 const RUNWAY_CREATE_TIMEOUT_MS = 25_000;
 const RUNWAY_POLL_TIMEOUT_MS = 20_000;
+// PHASE 30 (VECTOR 1) — Runway is the MANDATED primary path. Retry the create on a FAST transient blip
+// (5xx server error, returned in <1s) so a single hiccup no longer prematurely surrenders the clip to
+// Replicate-Kling. Timeouts/network throws are NOT retried (they already burned the full create window —
+// waiting again would blow the render budget; Kling failover is faster).
+const RUNWAY_CREATE_ATTEMPTS = 2;
+const RUNWAY_RETRY_BACKOFF_MS = 600;
+const runwaySleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function runwayKey(): string {
   return String(process.env.RUNWAY_API_KEY || process.env.RUNWAYML_API_SECRET || '').trim();
@@ -144,47 +151,65 @@ export async function createRunwayI2V(args: RunwayCreateArgs): Promise<{ id: str
   const key = runwayKey();
   if (!key || !args.promptImage || !/^https?:\/\/|^data:image\//i.test(args.promptImage)) return null;
   const doFetch = args.fetchImpl ?? fetch;
-  try {
-    const body: Record<string, unknown> = {
-      model: runwayModel(),
-      promptImage: args.promptImage,
-      ratio: mapRunwayRatio(args.aspect),
-      duration: mapRunwayDuration(args.durationSec),
-    };
-    if (args.promptText && args.promptText.trim()) body.promptText = args.promptText.trim().slice(0, 512);
-    if (Number.isFinite(args.seed) && (args.seed as number) >= 0) body.seed = Math.floor(args.seed as number);
-    const res = await doFetch(`${RUNWAY_BASE}/image_to_video`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        'X-Runway-Version': RUNWAY_VERSION,
-      },
-      cache: 'no-store',
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(RUNWAY_CREATE_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      // PHASE 28 — log the EXACT Runway error BODY (not just the status) + a classification so a silent
-      // fall-through to Replicate is diagnosable: 401/403 = bad key or token SCOPE mismatch, 402 =
-      // quota/billing, 429 = rate limit. This is the line that surfaces "API token scope mapping" issues.
-      const errBody = await res.text().catch(() => '');
-      const kind = res.status === 401 || res.status === 403 ? 'AUTH/SCOPE' : res.status === 402 ? 'QUOTA/BILLING' : res.status === 429 ? 'RATE-LIMIT' : 'ERROR';
+  const body: Record<string, unknown> = {
+    model: runwayModel(),
+    promptImage: args.promptImage,
+    ratio: mapRunwayRatio(args.aspect),
+    duration: mapRunwayDuration(args.durationSec),
+  };
+  if (args.promptText && args.promptText.trim()) body.promptText = args.promptText.trim().slice(0, 512);
+  if (Number.isFinite(args.seed) && (args.seed as number) >= 0) body.seed = Math.floor(args.seed as number);
+
+  // PHASE 30 (VECTOR 1) — Runway is MANDATED primary: only surrender to Replicate-Kling on a DEFINITIVE
+  // failure (401/403 bad key or scope, 402 quota/billing, 429 rate-limit) or after every attempt is spent.
+  // A fast transient 5xx retries the create (Runway's own blip), so one hiccup no longer costs the clip.
+  for (let attempt = 1; attempt <= RUNWAY_CREATE_ATTEMPTS; attempt++) {
+    let res: Response;
+    try {
+      res = await doFetch(`${RUNWAY_BASE}/image_to_video`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          'X-Runway-Version': RUNWAY_VERSION,
+        },
+        cache: 'no-store',
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(RUNWAY_CREATE_TIMEOUT_MS),
+      });
+    } catch (e) {
+      // Timeout / network throw — the full create window was already spent; a second 25s wait would blow
+      // the render budget, so fail over to Replicate now rather than retry Runway.
       // eslint-disable-next-line no-console
-      console.warn(`[runway] create ${kind} http_${res.status} (model=${runwayModel()}) → falling back to Replicate. body: ${errBody.slice(0, 400)}`);
+      console.warn('[runway] create threw → falling back to Replicate:', e instanceof Error ? e.message : e);
       return null;
     }
-    const j = (await res.json().catch(() => ({}))) as { id?: unknown };
-    if (typeof j.id === 'string' && j.id) return { id: j.id };
-    // 2xx but no task id — surface it too rather than a bare null (a contract drift on this account).
+    if (res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { id?: unknown };
+      if (typeof j.id === 'string' && j.id) return { id: j.id };
+      // 2xx but no task id — surface it too rather than a bare null (a contract drift on this account).
+      // eslint-disable-next-line no-console
+      console.warn(`[runway] create returned http_${res.status} with no task id → falling back to Replicate`);
+      return null;
+    }
+    // PHASE 28 — log the EXACT Runway error BODY (not just the status) + a classification so a silent
+    // fall-through to Replicate is diagnosable: 401/403 = bad key or token SCOPE mismatch, 402 =
+    // quota/billing, 429 = rate limit. This is the line that surfaces "API token scope mapping" issues.
+    const errBody = typeof res.text === 'function' ? await res.text().catch(() => '') : '';
+    const kind = res.status === 401 || res.status === 403 ? 'AUTH/SCOPE' : res.status === 402 ? 'QUOTA/BILLING' : res.status === 429 ? 'RATE-LIMIT' : `HTTP_${res.status}`;
+    const definitive = res.status === 401 || res.status === 403 || res.status === 402 || res.status === 429;
+    if (definitive) {
+      // eslint-disable-next-line no-console
+      console.warn(`[runway] create ${kind} http_${res.status} (model=${runwayModel()}) → definitive, falling back to Replicate. body: ${errBody.slice(0, 400)}`);
+      return null;
+    }
+    // Transient server error (5xx / other) — retry Runway before surrendering.
+    const willRetry = attempt < RUNWAY_CREATE_ATTEMPTS;
     // eslint-disable-next-line no-console
-    console.warn(`[runway] create returned http_${res.status} with no task id → falling back to Replicate`);
-    return null;
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[runway] create threw → falling back to Replicate:', e instanceof Error ? e.message : e);
-    return null;
+    console.warn(`[runway] create ${kind} http_${res.status} (attempt ${attempt}/${RUNWAY_CREATE_ATTEMPTS}, model=${runwayModel()})${willRetry ? ' → retrying Runway' : ' → falling back to Replicate'}. body: ${errBody.slice(0, 400)}`);
+    if (willRetry) await runwaySleep(RUNWAY_RETRY_BACKOFF_MS * attempt);
   }
+  return null;
 }
 
 export type RunwayPollResult = { status: 'succeeded' | 'failed' | 'processing'; url: string | null };

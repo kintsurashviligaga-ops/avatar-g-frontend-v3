@@ -37,9 +37,13 @@ const LOOKS: Record<LutLook, LookFn> = {
     const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     const hi = smooth(luma);
     const sh = 1 - hi;
-    const nr = r + 0.02 * hi - 0.02 * sh;
-    const ng = g + 0.008 * hi - 0.005 * sh;
-    const nb = b - 0.02 * hi + 0.06 * sh;
+    // PHASE 30 — the yellow-tint sweep. The highlight warm push is halved AGAIN (R +0.02→+0.01,
+    // B −0.02→−0.008): the mapped R−B highlight delta drops ~0.04→~0.018, staying just barely on the
+    // warm side of neutral (the "teal-orange still reads" floor the test guards) while shedding the last
+    // of the amber cast. The teal shadow lift (−R/+B on shadows) is untouched — that's the cinematic half.
+    const nr = r + 0.01 * hi - 0.02 * sh;
+    const ng = g + 0.006 * hi - 0.005 * sh;
+    const nb = b - 0.008 * hi + 0.06 * sh;
     // mild S-curve contrast around 0.5
     const contrast = (v: number) => clamp01(0.5 + (v - 0.5) * 1.08);
     return [contrast(nr), contrast(ng), contrast(nb)];

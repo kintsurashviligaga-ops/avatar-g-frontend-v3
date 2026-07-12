@@ -17,7 +17,9 @@
  * the documented failures: yellow/sepia LUT tint, muddy gradients, flat contrast.
  */
 export const COLOR_SCIENCE_POSITIVE =
-  'professional colour grading, ARRI Alexa color science, neutral white balance, natural true-to-life colour, crisp 8K, sharp focus';
+  'photorealistic cinematic 8K, professional colour grading, ARRI Alexa color science, neutral white balance, ' +
+  'strictly neutral colour balance, photorealistic skin texture, natural soft overcast lighting, high-end commercial grade, ' +
+  'true-to-life colour, crisp sharp focus, zero sepia or yellow tint';
 
 /**
  * Append the shared colour-science tokens to a provider prompt, de-duped (never doubles the clause

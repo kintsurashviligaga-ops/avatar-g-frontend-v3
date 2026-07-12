@@ -236,8 +236,14 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     ? `lut3d=file='${opts.lut3dPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'")}',`
     : '';
   parts.push(
-    `${vmap}colorbalance=rs=-0.02:bs=0.05:rm=0.03:bm=-0.02:rh=0.05:bh=-0.05,` +
-      `eq=contrast=1.04:saturation=1.06:gamma=0.98,` +
+    // PHASE 30 (VECTOR 1) — DESTROY THE YELLOW TINT. The old grade PUSHED the midtones+highlights warm
+    // (rm=+0.03/rh=+0.05 red up, bm/bh blue down) → a visible sepia/amber cast baked onto EVERY master,
+    // amplified by saturation=1.06. Neutralised: midtones dead-neutral (rm=bm=0), highlights nudged very
+    // slightly COOL (rh=-0.01, bh=+0.03) to actively cancel any residual warmth from the source clip, and
+    // saturation dialled back 1.06→1.03. Only the SUBTLE cool-shadow teal is kept (bs=+0.04) — the one half
+    // of "teal-orange" that reads as cinematic depth, never as tint.
+    `${vmap}colorbalance=rs=-0.015:bs=0.04:rm=0:bm=0:rh=-0.01:bh=0.03,` +
+      `eq=contrast=1.05:saturation=1.03:gamma=0.98,` +
       lutPass +
       `vignette=angle=PI/4.2,` +
       (padSec > 0 ? `tpad=stop_mode=clone:stop_duration=${padSec.toFixed(2)},` : '') +
