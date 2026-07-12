@@ -19,11 +19,16 @@ import { submitVideoWithFallback, pollVideoProvider, shouldUseNativeCascade, typ
 import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
+import { withColorScience } from '@/lib/video/colorScience';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 
-type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade';
+// PHASE 24 — 'runway' is an async provider tier (Runway Gen-3 Alpha primary i2v). It surfaces on the
+// wire as provider:'replicate' (DeterministicProvider has no 'runway'); the real engine lives in
+// metadata.videoProvider — same pattern as 'video-cascade'.
+type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade' | 'runway';
 type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
 
 const LTX_BASE_URL = 'https://api.ltx.video';
@@ -238,16 +243,19 @@ export class ServiceManager {
     }
 
     if (!sessionId || decoded.sessionId !== sessionId) {
+      // 'video-cascade' and 'runway' are async tiers with no DeterministicProvider surface → 'replicate'.
+      const surfaceProvider: DeterministicProvider =
+        decoded.provider === 'video-cascade' || decoded.provider === 'runway' ? 'replicate' : decoded.provider;
       return {
         success: false,
-        provider: decoded.provider === 'video-cascade' ? 'replicate' : decoded.provider,
+        provider: surfaceProvider,
         operation: decoded.operation,
         responseType: decoded.responseType,
         message: 'Session mismatch. Refusing to mix output with a different session.',
         predictionId: taskRefOrPredictionId,
         predictionStatus: 'error',
         metadata: {
-          provider: decoded.provider === 'video-cascade' ? 'replicate' : decoded.provider,
+          provider: surfaceProvider,
           operation: decoded.operation,
           sessionId: decoded.sessionId,
           taskRef: taskRefOrPredictionId,
@@ -267,6 +275,10 @@ export class ServiceManager {
 
     if (decoded.provider === 'heygen') {
       return this.pollHeygenTask(decoded, taskRefOrPredictionId);
+    }
+
+    if (decoded.provider === 'runway') {
+      return this.pollRunwayTaskRef(decoded, taskRefOrPredictionId);
     }
 
     return this.pollLtxTask(decoded, taskRefOrPredictionId);
@@ -341,7 +353,9 @@ export class ServiceManager {
    * is already clamped (toI2vAspect) to 16:9 / 9:16 / 1:1.
    */
   private buildI2vInput(model: string, prompt: string, aspect: string, startImage: string, negative?: string): Record<string, unknown> {
-    const fullPrompt = `${prompt}, photorealistic, cinematic, natural lighting, sharp focus, 4k`;
+    // PHASE 24 (VECTOR 2) — the SAME shared colour-science grade Runway's promptText gets, so a
+    // mid-storyboard Runway→Kling fallback keeps identical tone/contrast (no seam across providers).
+    const fullPrompt = withColorScience(`${prompt}, photorealistic, cinematic`, 900);
     // PHASE 22 (VECTOR 1) — the Director's scene-tailored negative (from the film pipeline's
     // selectedOptions.negativePrompt) is MERGED ahead of the fixed baseline and passed to the model's
     // NATIVE negative_prompt field — where it's weighted far more heavily than any in-prompt "no x".
@@ -403,6 +417,13 @@ export class ServiceManager {
     // cinematically planned → looksEnriched() short-circuits the LLM for them; only a bare user clip triggers
     // one bounded call, and the deterministic fallback guarantees an enriched string even if the LLM is down.
     const enrichedPrompt = await expandCinematicPrompt(request.userPrompt, llmText, { timeoutMs: 9_000 });
+
+    // PHASE 24 — RUNWAY Gen-3 Alpha is the PRIMARY premium i2v engine. Try it FIRST; on no key / no
+    // image / any create failure (401/429/quota/timeout) it returns null and we fall straight through
+    // to the existing Replicate Kling→LTX cascade below — same scene params, seamless colour-science.
+    // Inert + byte-identical in prod until RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is set + verified.
+    const runway = await this.tryRunwayClip(request, startImage, aspect, enrichedPrompt);
+    if (runway) return runway;
 
     // DAY-3 — native multi-engine cascade (Kling-native → Luma → LTX → Replicate). Gated on a genuinely
     // NEW provider key (Kling AK/SK or Luma) being provisioned: prod today has only Replicate + LTX, so this
@@ -564,6 +585,71 @@ export class ServiceManager {
     return {
       success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
       message: 'Rendering…', predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
+    };
+  }
+
+  /**
+   * PHASE 24 — RUNWAY Gen-3 Alpha PRIMARY i2v. A fast, non-blocking CREATE that returns a 'runway'
+   * task-ref the async film poll resolves via pollRunwayTaskRef. Gated on a Runway key + a start frame
+   * (Gen-3's API is image-to-video). Returns null on no key / no image / ANY create failure so the
+   * caller falls through to the Replicate Kling→LTX cascade. NEVER throws. Inert until a key is set.
+   */
+  private async tryRunwayClip(request: ServiceManagerRequest, startImage: string, aspect: string, prompt: string): Promise<ServiceManagerResponse | null> {
+    if (!hasRunwayProvider()) return null;
+    const seedRaw = this.getOption(request.selectedOptions || {}, ['seed', 'consistencySeed']);
+    const seedParsed = seedRaw != null ? Number.parseInt(seedRaw, 10) : NaN;
+    // Runway promptText is capped at 512 chars — withColorScience clamps + appends the shared grade.
+    const created = await createRunwayI2V({
+      promptImage: startImage,
+      promptText: withColorScience(prompt || request.userPrompt, 512),
+      aspect,
+      durationSec: 5,
+      ...(Number.isFinite(seedParsed) && seedParsed >= 0 ? { seed: seedParsed } : {}),
+    });
+    if (!created?.id) return null; // → Replicate/LTX cascade
+    const promptHash = this.hashPrompt(request.userPrompt);
+    const model = runwayModel();
+    const taskRef = this.encodeTaskRef({
+      provider: 'runway', providerTaskId: created.id, sessionId: request.sessionId,
+      serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
+      responseType: 'video', promptHash, createdAt: Date.now(),
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[runway] ${model} accepted clip (${created.id})`);
+    return {
+      success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+      message: `Runway (${model}) accepted the request. Polling for completion.`,
+      predictionId: taskRef, predictionStatus: 'processing',
+      metadata: { provider: 'replicate' as const, videoProvider: 'runway', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId: created.id, promptHash },
+    };
+  }
+
+  /** Resolve a 'runway' task-ref via Runway's GET /v1/tasks/{id}. Fail-open: unknown status → keep polling.
+   *  The `message` names the engine on every branch so the active provider node is identifiable in the
+   *  response (it rides into metadata.film.clips[].note) even where the Console UI still shows only status. */
+  private async pollRunwayTaskRef(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
+    const r = await pollRunwayTask(decoded.providerTaskId);
+    const engine = `Runway (${runwayModel()})`;
+    const baseMeta = {
+      provider: 'replicate' as const, videoProvider: 'runway', operation: decoded.operation,
+      sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
+    };
+    if (r.status === 'succeeded' && r.url) {
+      return {
+        success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+        message: `${engine} rendered the scene.`, assetUrl: r.url, assetType: decoded.responseType,
+        predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
+      };
+    }
+    if (r.status === 'failed') {
+      return {
+        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+        message: `${engine} generation failed.`, predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
+      };
+    }
+    return {
+      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+      message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
     };
   }
 
@@ -2304,7 +2390,7 @@ export class ServiceManager {
 
       if (
         parsed.v !== TASK_REF_VERSION
-        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade')
+        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway')
         || typeof parsed.providerTaskId !== 'string'
         || typeof parsed.sessionId !== 'string'
         || typeof parsed.serviceContext !== 'string'
