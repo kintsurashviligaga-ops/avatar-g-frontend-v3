@@ -674,6 +674,31 @@ const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru
   ['latin', { ka: 'ლათინური', en: 'Latin', ru: 'Латина' }],
   ['k-pop', { ka: 'K-Pop', en: 'K-Pop', ru: 'K-Pop' }],
 ];
+
+// PHASE 31 — reasoning-backed one-tap Music presets. Each preset writes the FULL parameter set the
+// panel + send() already consume (genre · tempo · duration · track-type · vocal), so a single tap
+// gives a production-ready starting point without touching the Fine-tune dials. Weights are musically
+// tuned: a cinematic score is instrumental + slow + long; an R&B core is a sung male mid-tempo hook;
+// an ambient underscore is instrumental + slow + full-length. Purely additive — a preset is just state.
+// The spread is deliberate: 2 instrumental + 3 sung, tempos spanning slow/medium/fast, 5 distinct
+// genres, and the vocal surface exercised (male · duet · female). Genre values are exact MUSIC_STYLES ids.
+type MusicPreset = {
+  id: string;
+  emoji: string;
+  label: { ka: string; en: string; ru: string };
+  genre: string;
+  tempo: 'slow' | 'medium' | 'fast';
+  duration: 0 | 15 | 30 | 60 | 90;
+  instrumental: boolean;
+  voiceType: 'female' | 'male' | 'duet';
+};
+const MUSIC_PRESETS: ReadonlyArray<MusicPreset> = [
+  { id: 'hollywood-cinematic', emoji: '🎬', label: { ka: 'ჰოლივუდური კინო', en: 'Hollywood Cinematic', ru: 'Голливудское кино' }, genre: 'classical', tempo: 'slow', duration: 90, instrumental: true, voiceType: 'female' },
+  { id: 'midnight-rnb', emoji: '🌃', label: { ka: 'შუაღამის R&B', en: 'Midnight R&B', ru: 'Полуночный R&B' }, genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'male' },
+  { id: 'georgian-folk', emoji: '🪕', label: { ka: 'ქართული ფოლკი', en: 'Georgian Folk', ru: 'Грузинский фолк' }, genre: 'folk', tempo: 'medium', duration: 60, instrumental: false, voiceType: 'duet' },
+  { id: 'pop-hit', emoji: '🎤', label: { ka: 'პოპ ჰიტი', en: 'Pop Hit', ru: 'Поп-хит' }, genre: 'pop', tempo: 'fast', duration: 30, instrumental: false, voiceType: 'female' },
+  { id: 'documentary-ambient', emoji: '🌫️', label: { ka: 'დოკუმენტური ემბიენტი', en: 'Documentary Ambient', ru: 'Документальный эмбиент' }, genre: 'ambient', tempo: 'slow', duration: 0, instrumental: true, voiceType: 'female' },
+];
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
 
 // A small, theme-tokenised option chip used by the per-service options bar.
@@ -5918,8 +5943,45 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'],
             ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი'],
           ] as const;
+          // PHASE 31 — apply a preset in one tap: write the full parameter set. The active pill is
+          // DERIVED from live state (below), so there is no "clear on manual edit" bookkeeping —
+          // editing any dial simply stops matching.
+          const applyMusicPreset = (p: (typeof MUSIC_PRESETS)[number]) => {
+            setMusicGenre(p.genre);
+            setMusicTempo(p.tempo);
+            setMusicDuration(p.duration);
+            setMusicInstrumental(p.instrumental);
+            setMusicVoiceType(p.voiceType);
+          };
+          // A chip is active when every core dial matches; instrumental presets exclude vocal from
+          // the match (gender is hidden/moot for a bed), so their highlight stays stable.
+          const activePresetId = MUSIC_PRESETS.find((p) =>
+            p.genre === musicGenre && p.tempo === musicTempo && p.duration === musicDuration
+            && p.instrumental === musicInstrumental && (p.instrumental || p.voiceType === musicVoiceType),
+          )?.id ?? null;
+          // Fine-tune accordion badge — a glanceable 3-part summary of the collapsed dials, e.g.
+          // "30s · Medium · ♀" (song) or "Full · Slow · 🎹" (instrumental; gender is moot so the
+          // vocal glyph becomes 🎹, keeping a stable shape). Locale-aware.
+          const durBadge = musicDuration === 0
+            ? (locale === 'en' ? 'Full' : locale === 'ru' ? 'Полная' : 'სრული')
+            : `${musicDuration}${locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}`;
+          const tempoBadge = tempos.find(([v]) => v === musicTempo)?.[1] ?? musicTempo;
+          const vocalBadge = musicInstrumental ? '🎹' : musicVoiceType === 'male' ? '♂' : musicVoiceType === 'duet' ? '👫' : '♀';
+          const fineTuneBadge = `${durBadge} · ${tempoBadge} · ${vocalBadge}`;
           return (
           <div className="mb-2 space-y-4">
+            {/* ✨ Presets — one-tap vibe row (horizontal scroll). Sets every dial at once; the active
+                pill is derived from the live parameter state. Above Style so most users tap a vibe
+                and never need to open Fine-tune. */}
+            <div>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Presets' : locale === 'ru' ? 'Пресеты' : 'პრესეტები'}</span>
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {MUSIC_PRESETS.map((p) => (
+                  <Chip key={p.id} active={activePresetId === p.id} onClick={() => applyMusicPreset(p)}>{p.emoji} {p.label[locale] ?? p.label.en}</Chip>
+                ))}
+              </div>
+            </div>
+
             {/* A — Style (single select, horizontal scroll) */}
             <div>
               <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
@@ -5930,34 +5992,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* B — Duration + Tempo, side by side */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
-                  {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
-                  <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>🎵 {locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
-                </div>
-              </div>
-              <div>
-                <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
-                </div>
+            {/* Track type (instrumental vs song) — kept PRIMARY: it gates whether the Lyrics /
+                Your-voice / Vocal subtrees render below, so hiding it would hide the cause of those
+                sections appearing and disappearing. */}
+            <div>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Track type' : locale === 'ru' ? 'Тип трека' : 'ტიპი'}</span>
+              <div className="flex gap-1.5">
+                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>🎵 {locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრუმენტული'}</Chip>
+                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>🎤 {locale === 'en' ? 'Song' : locale === 'ru' ? 'Песня' : 'სიმღერა'}</Chip>
               </div>
             </div>
 
-            {/* B2 — Track type (instrumental vs song) + vocal gender (song only) */}
-            <div className="space-y-3">
-              <div>
-                <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Track type' : locale === 'ru' ? 'Тип трека' : 'ტიპი'}</span>
-                <div className="flex gap-1.5">
-                  <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>🎵 {locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრუმენტული'}</Chip>
-                  <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>🎤 {locale === 'en' ? 'Song' : locale === 'ru' ? 'Песня' : 'სიმღერა'}</Chip>
+            {/* ⚙️ Fine-tune — the set-once dials (Duration · Tempo · Vocal) folded behind one collapsed
+                Section so the default panel stays calm. Every preset already writes these, so most users
+                never open it; the badge surfaces the live values. The Vocal sub-row renders only for a
+                sung track (the same !instrumental gate as before). */}
+            <Section title={<>⚙️ {locale === 'en' ? 'Fine-tune' : locale === 'ru' ? 'Настройка' : 'დახვეწა'}</>} badge={fineTuneBadge}>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
+                      {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
+                      <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>🎵 {locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              {/* Vocal gender — only meaningful for a sung track */}
+                {/* Vocal gender — only meaningful for a sung track */}
               {!musicInstrumental && (
                 <div>
                   <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
@@ -5973,6 +6041,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               )}
             </div>
+            </Section>
 
             {/* B3 — Lyrics (song only): type your own words OR one-tap ✨ AI writer.
                 Empty = the model auto-writes lyrics from the prompt. Threaded to /api/ai/music
