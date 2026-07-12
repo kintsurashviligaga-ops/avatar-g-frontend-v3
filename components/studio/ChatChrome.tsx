@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -299,6 +299,16 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
   const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop/iPad (>=md) COLLAPSE. On mobile the drawer is toggled by `sidebarOpen`; at >=md the sidebar was
+  // permanently pinned with no way to hide it. This lets desktop/iPad users collapse it (persisted) — when
+  // collapsed the aside is md:hidden and the top bar shows a re-open control + the brand so nothing is lost.
+  const SIDEBAR_COLLAPSED_KEY = 'myavatar.sidebar.collapsed';
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => { try { setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'); } catch { /* noop */ } }, []);
+  const setSidebarCollapsedPersist = useCallback((v: boolean) => {
+    setSidebarCollapsed(v);
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, v ? '1' : '0'); } catch { /* noop */ }
+  }, []);
   // Escape-to-close + focus trap/restore + dialog semantics for every overlay.
   // (sidebarOpen can only ever be true on mobile — the hamburger is md:hidden —
   // so the drawer keeps its persistent-desktop role and only becomes a modal here.)
@@ -567,12 +577,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         role={sidebarOpen ? 'dialog' : undefined}
         aria-modal={sidebarOpen ? true : undefined}
         aria-label={t.menu}
-        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[260px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[260px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
           <span className="truncate text-[16px] font-semibold tracking-tight text-app-text">My<span className="text-app-accent">Avatar</span></span>
-          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden"><X className="h-[18px] w-[18px]" /></button>
+          {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. Visible on every breakpoint now. */}
+          <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
+            aria-label={locale === 'en' ? 'Collapse sidebar' : locale === 'ru' ? 'Свернуть панель' : 'გვერდითი პანელის დაკეცვა'}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeftClose className="h-[18px] w-[18px]" /></button>
         </div>
 
         {/* New chat */}
@@ -653,10 +666,24 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   </button>
                 )
               )}
-              {/* Mobile: open the sidebar drawer. Desktop: sidebar is persistent. */}
+              {/* Mobile: open the sidebar drawer. */}
               <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
+              {/* Desktop/iPad: re-open the collapsed sidebar + keep the brand visible while it is hidden. */}
+              {sidebarCollapsed && (
+                <div className="hidden items-center gap-1.5 md:flex">
+                  <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={t.menu}
+                    className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeft className="h-[18px] w-[18px]" /></button>
+                  {!showBack && !title && (
+                    <span className="inline-flex items-center gap-1.5 text-[16px] font-semibold tracking-tight text-app-text">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]" />
+                      <span>My<span className="text-app-accent">Avatar</span></span>
+                    </span>
+                  )}
+                </div>
+              )}
               <span className={`truncate text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
                 {title ?? (
                   <span className="inline-flex items-center gap-1.5">
