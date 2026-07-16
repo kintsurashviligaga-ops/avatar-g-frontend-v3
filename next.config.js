@@ -68,6 +68,9 @@ const nextConfig = {
     outputFileTracingIncludes: {
       '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
       '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**'],
+      // Surgical Editor: every deterministic op (split/crop/detach/color/fade) shells out to ffmpeg-static
+      // (lib/video/{trimClip,surgicalOps}) — the binary must ride along in this lambda or the op ENOENTs.
+      '/api/ai/edit': ['./node_modules/ffmpeg-static/**'],
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],

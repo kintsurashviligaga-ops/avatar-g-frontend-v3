@@ -1,0 +1,161 @@
+/**
+ * lib/video/surgicalOps.ts — DETERMINISTIC (non-generative) editing ops for the Surgical Editor.
+ * =============================================================================================
+ * Every op runs the bundled `ffmpeg-static` binary on a media URL and hosts the result — the exact
+ * proven plumbing of lib/video/trimClip.ts (temp dir → execFile ffmpeg → uploadAndSign → cleanup).
+ * These transforms NEVER fabricate frames: they crop, re-grade, fade, or split existing pixels only.
+ *
+ * Fail-open by construction: any miss (no ffmpeg binary in the lambda, fetch/exec error, empty output)
+ * returns null and the caller reports a clean error — nothing throws.
+ *
+ * NOTE (Vercel): the route that imports these MUST be listed in next.config.js outputFileTracingIncludes
+ * with './node_modules/ffmpeg-static/**' or the binary is absent in the lambda and every op ENOENTs.
+ */
+import 'server-only';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import ffmpegStatic from 'ffmpeg-static';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+
+const exec = promisify(execFile);
+const WEEK_SEC = 604_800;
+
+function bin(): string | null {
+  return (ffmpegStatic as unknown as string | null) ?? null;
+}
+
+async function host(buf: Buffer, tag: string, ext: 'mp4' | 'm4a', contentType: string): Promise<string | null> {
+  if (buf.byteLength < 512) return null;
+  const path = `edits/${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  return (await uploadAndSign('uploads', path, buf.toString('base64'), contentType, WEEK_SEC)) ?? null;
+}
+
+/** Common libx264 encode tail — uniform, faststart, frame-precise (re-encode, not stream-copy). */
+const VIDEO_TAIL = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
+
+/**
+ * CROP to an exact pixel rectangle. Coordinates are clamped to even integers (yuv420p needs even
+ * dimensions). Only the selected pixels survive — zero generative fill.
+ */
+export async function cropClip(videoUrl: string, x: number, y: number, w: number, h: number): Promise<string | null> {
+  const b = bin();
+  if (!b || !videoUrl) return null;
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  const cw = even(w), ch = even(h), cx = Math.max(0, Math.round(x)), cy = Math.max(0, Math.round(y));
+  if (!(cw > 0 && ch > 0)) return null;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'crop-'));
+    const out = join(dir, 'crop.mp4');
+    await exec(b, ['-y', '-i', videoUrl, '-vf', `crop=${cw}:${ch}:${cx}:${cy}`, ...VIDEO_TAIL, out], { maxBuffer: 1 << 26, timeout: 120_000 });
+    return await host(await readFile(out), 'crop', 'mp4', 'video/mp4');
+  } catch (err) {
+    console.warn('[surgical/crop] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+export interface GradeParams {
+  /** 0–200 (%), 100 = neutral */ saturation?: number;
+  /** 0–200 (%), 100 = neutral */ contrast?: number;
+  /** 0–200 (%), 100 = neutral */ brightness?: number;
+  /** -100..100, 0 = neutral (positive = warmer) */ temperature?: number;
+}
+
+/**
+ * COLOR GRADE via the `eq` filter (saturation/contrast/brightness) plus `colortemperature` for warmth.
+ * Slider units (0–200%, temp -100..100) map onto ffmpeg's native ranges. Deterministic per-pixel math —
+ * no new content is invented, so the graded frame is the SAME frame with a colour transform applied.
+ */
+export async function gradeClip(videoUrl: string, p: GradeParams): Promise<string | null> {
+  const b = bin();
+  if (!b || !videoUrl) return null;
+  const sat = Math.max(0, (p.saturation ?? 100) / 100);            // eq saturation: 1 = neutral
+  const con = Math.max(0, (p.contrast ?? 100) / 100);              // eq contrast:   1 = neutral
+  const bri = Math.max(-1, Math.min(1, ((p.brightness ?? 100) - 100) / 100)); // eq brightness: 0 neutral, [-1,1]
+  const t = Math.max(-100, Math.min(100, p.temperature ?? 0));
+  const kelvin = Math.round(6500 - t * 25); // +100 → 4000K (warm), -100 → 9000K (cool)
+  const filters = [`eq=saturation=${sat.toFixed(3)}:contrast=${con.toFixed(3)}:brightness=${bri.toFixed(3)}`];
+  if (t !== 0) filters.push(`colortemperature=temperature=${kelvin}`);
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'grade-'));
+    const out = join(dir, 'grade.mp4');
+    await exec(b, ['-y', '-i', videoUrl, '-vf', filters.join(','), ...VIDEO_TAIL, out], { maxBuffer: 1 << 26, timeout: 120_000 });
+    return await host(await readFile(out), 'grade', 'mp4', 'video/mp4');
+  } catch (err) {
+    console.warn('[surgical/grade] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * DETACH audio: split the visual layer from the audio layer. Returns the muted video (`-an`, stream-copied
+ * so the picture is byte-for-byte untouched) and the extracted audio track (m4a). Either may be null (e.g.
+ * a silent source yields no audio track).
+ */
+export async function detachAudio(videoUrl: string): Promise<{ video: string | null; audio: string | null }> {
+  const b = bin();
+  if (!b || !videoUrl) return { video: null, audio: null };
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'detach-'));
+    const vOut = join(dir, 'muted.mp4');
+    const aOut = join(dir, 'audio.m4a');
+    // Muted video: copy the video stream verbatim (lossless), drop audio.
+    await exec(b, ['-y', '-i', videoUrl, '-an', '-c:v', 'copy', '-movflags', '+faststart', vOut], { maxBuffer: 1 << 26, timeout: 120_000 });
+    // Extracted audio (best-effort — a silent source will error, which we swallow to null).
+    const audio = await exec(b, ['-y', '-i', videoUrl, '-vn', '-c:a', 'aac', '-b:a', '192k', aOut], { maxBuffer: 1 << 26, timeout: 120_000 })
+      .then(async () => host(await readFile(aOut), 'audio', 'm4a', 'audio/mp4'))
+      .catch(() => null);
+    const video = await host(await readFile(vOut), 'muted', 'mp4', 'video/mp4');
+    return { video, audio };
+  } catch (err) {
+    console.warn('[surgical/detach] failed:', err instanceof Error ? err.message : err);
+    return { video: null, audio: null };
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+export interface FadeParams {
+  /** fade-in duration (s) from the start */ fadeInSec?: number;
+  /** fade-out duration (s) at the end */ fadeOutSec?: number;
+  /** total clip duration (s) — needed to place the out-fade */ durationSec: number;
+}
+
+/**
+ * FADE in/out on the picture (`fade`) and the audio (`afade`). Boundary effect only — the interior frames
+ * are untouched. `durationSec` positions the out-fade (client passes the known clip length).
+ */
+export async function fadeClip(videoUrl: string, p: FadeParams): Promise<string | null> {
+  const b = bin();
+  if (!b || !videoUrl) return null;
+  const fi = Math.max(0, p.fadeInSec ?? 0);
+  const fo = Math.max(0, p.fadeOutSec ?? 0);
+  const total = Math.max(0.1, p.durationSec);
+  if (fi <= 0 && fo <= 0) return null;
+  const vf: string[] = [];
+  const af: string[] = [];
+  if (fi > 0) { vf.push(`fade=t=in:st=0:d=${fi}`); af.push(`afade=t=in:st=0:d=${fi}`); }
+  if (fo > 0) { const st = Math.max(0, total - fo); vf.push(`fade=t=out:st=${st}:d=${fo}`); af.push(`afade=t=out:st=${st}:d=${fo}`); }
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'fade-'));
+    const out = join(dir, 'fade.mp4');
+    await exec(b, ['-y', '-i', videoUrl, '-vf', vf.join(','), '-af', af.join(','), ...VIDEO_TAIL, out], { maxBuffer: 1 << 26, timeout: 120_000 });
+    return await host(await readFile(out), 'fade', 'mp4', 'video/mp4');
+  } catch (err) {
+    console.warn('[surgical/fade] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
