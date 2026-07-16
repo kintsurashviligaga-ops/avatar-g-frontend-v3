@@ -439,6 +439,14 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
 
   useEffect(() => { void load(); }, [load]);
 
+  // Remix persistence last-mile — refetch the moment a new asset is auto-saved (OmniStudio dispatches
+  // 'myavatar:library-updated' after every autoSaveToLibrary), so a fresh remix/render appears instantly.
+  useEffect(() => {
+    const onUpdated = () => { void load(); };
+    window.addEventListener('myavatar:library-updated', onUpdated);
+    return () => window.removeEventListener('myavatar:library-updated', onUpdated);
+  }, [load]);
+
   // IntersectionObserver — page in when the sentinel hits the viewport.
   useEffect(() => {
     if (!sentinelRef.current || exhausted) return;

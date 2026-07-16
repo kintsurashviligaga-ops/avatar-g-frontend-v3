@@ -9,6 +9,12 @@ import {
   getConversation,
   groupConversationsByTime,
   loadConversations,
+  loadActiveConversations,
+  loadTrashedConversations,
+  softDeleteConversation,
+  restoreConversation,
+  purgeConversation,
+  purgeExpiredTrash,
   renameConversation,
   sanitizeMessageForStore,
   sanitizeMessagesForStore,
@@ -197,6 +203,49 @@ describe('CRUD round-trip (localStorage)', () => {
   test('malformed JSON in storage degrades to empty', () => {
     window.localStorage.setItem('myavatar.conversations.v1', '{not json');
     expect(loadConversations()).toEqual([]);
+  });
+});
+
+describe('Trash Bin (soft delete / restore / purge) — VECTOR 8', () => {
+  test('soft delete hides from active, shows in trash, but survives raw storage', () => {
+    upsertConversation(makeConvo('t', 1000));
+    upsertConversation(makeConvo('keep', 2000));
+    const active = softDeleteConversation('t');
+    expect(active.map((c) => c.id)).toEqual(['keep']);           // sidebar hides it
+    expect(loadActiveConversations().map((c) => c.id)).toEqual(['keep']);
+    expect(loadTrashedConversations().map((c) => c.id)).toEqual(['t']);
+    expect(loadConversations().map((c) => c.id).sort()).toEqual(['keep', 't']); // raw keeps both (persistence-safe)
+  });
+
+  test('restore returns a chat to the active list', () => {
+    upsertConversation(makeConvo('r', 1000));
+    softDeleteConversation('r');
+    expect(loadActiveConversations()).toHaveLength(0);
+    const trash = restoreConversation('r');
+    expect(trash).toHaveLength(0);                                // trash now empty
+    expect(loadActiveConversations().map((c) => c.id)).toEqual(['r']);
+  });
+
+  test('purge permanently removes a trashed chat', () => {
+    upsertConversation(makeConvo('p', 1000));
+    softDeleteConversation('p');
+    purgeConversation('p');
+    expect(loadTrashedConversations()).toHaveLength(0);
+    expect(loadConversations()).toHaveLength(0);                 // gone from raw storage too
+  });
+
+  test('purgeExpiredTrash drops chats trashed >30 days ago, keeps recent ones', () => {
+    upsertConversation(makeConvo('old', 1000));
+    upsertConversation(makeConvo('fresh', 2000));
+    softDeleteConversation('old');
+    softDeleteConversation('fresh');
+    // Backdate 'old' beyond the 30-day retention.
+    const raw = loadConversations().map((c) => (c.id === 'old' ? { ...c, deletedAt: 1_000 } : c));
+    window.localStorage.setItem('myavatar.conversations.v1', JSON.stringify(raw));
+    const now = 1_000 + 31 * DAY;
+    purgeExpiredTrash(now);
+    expect(loadTrashedConversations().map((c) => c.id)).toEqual(['fresh']); // recent survives
+    expect(loadConversations().map((c) => c.id).sort()).toEqual(['fresh']);
   });
 });
 

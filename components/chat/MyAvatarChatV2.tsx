@@ -103,16 +103,21 @@ import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { Skeleton } from '@/components/ui/Skeleton';
 import {
   deriveTitle,
-  deleteConversation,
   getConversation,
   groupConversationsByTime,
-  loadConversations,
+  loadActiveConversations,
+  loadTrashedConversations,
+  softDeleteConversation,
+  restoreConversation,
+  purgeConversation,
+  purgeExpiredTrash,
   renameConversation,
   upsertConversation,
   type StoredConversation,
   type StoredMessage,
   type TimeBucket,
 } from '@/lib/chat/conversationStore';
+import { detectSendToEmailCommand } from '@/lib/chat/mailCommand';
 import {
   DEFAULT_PREFERENCES,
   MAX_CUSTOM_INSTRUCTIONS,
@@ -999,6 +1004,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // VECTOR 8 — Trash Bin overlay + its (lazily loaded) trashed-chat list.
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashedConvos, setTrashedConvos] = useState<StoredConversation[]>([]);
+  const openTrash = useCallback(() => { setTrashedConvos(loadTrashedConversations()); setTrashOpen(true); }, []);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   // Artifacts/Canvas split-pane: the message whose asset is mounted in the
   // right-hand Preview Workspace (null = single-column chat). Kept mounted while
@@ -1156,7 +1165,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
 
   // ── Hydrate persisted conversations + preferences (client only) ─────
   useEffect(() => {
-    const loaded = loadConversations();
+    const loaded = loadActiveConversations();
+    purgeExpiredTrash(); // best-effort: drop chats trashed >30 days ago on load
     setConversations(loaded);
     setPrefs(loadPreferences());
     // Mark every restored conversation as already-titled so opening an old
@@ -1182,7 +1192,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       updatedAt: last.timestamp,
       messages: messages.map(toStored),
     };
-    setConversations(upsertConversation(convo));
+    setConversations(upsertConversation(convo).filter((c) => !c.deleted));
   }, [messages, conversationId]);
 
   // ── Incremental auto-title (Tier-1 LLM) ────────────────────────────
@@ -1204,7 +1214,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       // Only adopt the generated title if it would replace the auto-derived
       // placeholder — never clobber a manual rename.
       if (!existing || existing.title !== deriveTitle(prompt)) return;
-      setConversations(renameConversation(id, title));
+      setConversations(renameConversation(id, title).filter((c) => !c.deleted));
     });
     return () => ctrl.abort();
   }, [messages, conversationId, lang]);
@@ -1318,6 +1328,38 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     // Voice (ხმა) is pure TTS, so it always needs text to read aloud.
     if (!rawText && !hasAttachment) return;
     if (mode === 'voice' && !rawText) return;
+
+    // VECTOR 7 — "გააგზავნე ეს მეილზე": intercept a send-to-email command BEFORE routing to the LLM. Email
+    // the last Agent G reply (table/document) to the account address and confirm with an optimistic toast.
+    if (rawText && detectSendToEmailCommand(rawText)) {
+      const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && !!m.text && !!m.text.trim());
+      dispatch({ type: 'SET_INPUT', text: '' });
+      if (!lastAssistant) {
+        showNotice(lang === 'ka' ? 'ჯერ არაფერია გასაგზავნი — ჯერ დააგენერირე პასუხი' : lang === 'ru' ? 'Пока нечего отправлять — сначала сгенерируйте ответ' : 'Nothing to send yet — generate a reply first');
+        return;
+      }
+      showNotice(lang === 'ka' ? '📤 იგზავნება თქვენს ელ-ფოსტაზე…' : lang === 'ru' ? '📤 Отправляю на вашу почту…' : '📤 Sending to your email…');
+      void (async () => {
+        try {
+          const res = await fetch('/api/mail/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subject: 'MyAvatar — Agent G', text: lastAssistant.text }),
+          });
+          const j = (await res.json().catch(() => null)) as { ok?: boolean; configured?: boolean } | null;
+          if (j?.ok) {
+            showNotice(lang === 'ka' ? '✓ დოკუმენტი წარმატებით გაიგზავნა თქვენს ელ-ფოსტაზე!' : lang === 'ru' ? '✓ Документ успешно отправлен на вашу почту!' : '✓ Sent to your email!');
+          } else if (j && j.configured === false) {
+            showNotice(lang === 'ka' ? 'ელ-ფოსტა ჯერ არ არის კონფიგურირებული' : lang === 'ru' ? 'Email ещё не настроен' : 'Email is not configured yet');
+          } else {
+            showNotice(lang === 'ka' ? 'გაგზავნა ვერ მოხერხდა — სცადე თავიდან' : lang === 'ru' ? 'Не удалось отправить — попробуйте снова' : 'Could not send — try again');
+          }
+        } catch {
+          showNotice(lang === 'ka' ? 'გაგზავნა ვერ მოხერხდა' : lang === 'ru' ? 'Не удалось отправить' : 'Could not send');
+        }
+      })();
+      return;
+    }
 
     // PHASE 53 §5 — "blind sensing": the user bubble shows whatever they actually
     // typed (`displayText`, may be empty for an image-only send), but the
@@ -1683,12 +1725,12 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   }, []);
 
   const renameConvo = useCallback((id: string, title: string) => {
-    setConversations(renameConversation(id, title));
+    setConversations(renameConversation(id, title).filter((c) => !c.deleted));
     setRenamingId(null);
   }, []);
 
   const removeConvo = useCallback((id: string) => {
-    setConversations(deleteConversation(id));
+    setConversations(softDeleteConversation(id)); // VECTOR 8 — soft delete → Trash Bin (restorable)
     setDeleteTarget(null);
     if (id === conversationId) startNewChat();
   }, [conversationId, startNewChat]);
@@ -2669,6 +2711,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                   balance + top-up) and Settings. Each closes the drawer first so
                   the target surface opens cleanly with no overlapping layers. */}
               <div className="mt-auto border-t border-app-border/15 px-3 pt-3 space-y-1">
+                {/* VECTOR 8 — Trash Bin (recently-deleted chats, restorable for 30 days). */}
+                <button
+                  onClick={openTrash}
+                  className="w-full inline-flex items-center gap-2.5 h-10 px-3 rounded-xl text-[13px] font-medium text-app-text hover:bg-app-elevated/60 transition active:scale-[0.99]"
+                >
+                  <Trash2 size={16} className="text-app-muted" />
+                  <span className="flex-1 text-left">{lang === 'ka' ? 'წაშლილი ჩატები' : lang === 'ru' ? 'Удалённые чаты' : 'Trash Bin'}</span>
+                </button>
                 <button
                   data-iap-external
                   onClick={() => { setHistoryOpen(false); setWalletOpen(true); }}
@@ -2945,6 +2995,49 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       </AnimatePresence>
 
       {/* ── Modals ─────────────────────────────────────────────── */}
+      {/* VECTOR 8 — Trash Bin: restore or permanently delete recently-deleted chats. */}
+      {trashOpen ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => setTrashOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-app-border/15 bg-app-surface shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)] sm:rounded-3xl"
+          >
+            <div className="flex items-center justify-between px-5 pb-3 pt-5">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/10 text-rose-500"><Trash2 size={17} /></span>
+                <h3 className="text-[15px] font-semibold text-app-text">{lang === 'ka' ? 'წაშლილი ჩატები' : lang === 'ru' ? 'Удалённые чаты' : 'Trash Bin'}</h3>
+              </div>
+              <button onClick={() => setTrashOpen(false)} aria-label={xc.close} className="flex h-9 w-9 items-center justify-center rounded-full text-app-muted transition hover:bg-app-elevated hover:text-app-text"><X size={17} /></button>
+            </div>
+            <p className="px-5 pb-2 text-[11.5px] text-app-muted">{lang === 'ka' ? 'წაშლილი ჩატები 30 დღეში სამუდამოდ იშლება.' : lang === 'ru' ? 'Удалённые чаты навсегда удаляются через 30 дней.' : 'Trashed chats are permanently removed after 30 days.'}</p>
+            <div className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:thin]">
+              {trashedConvos.length === 0 ? (
+                <p className="px-2 py-8 text-center text-[13px] text-app-muted">{lang === 'ka' ? 'ცარიელია' : lang === 'ru' ? 'Пусто' : 'Empty'}</p>
+              ) : (
+                trashedConvos.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-xl px-3 py-2.5 transition hover:bg-app-elevated/50">
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-app-text">{c.title || (lang === 'ka' ? 'ჩატი' : 'Chat')}</span>
+                    <button
+                      onClick={() => { setTrashedConvos(restoreConversation(c.id)); setConversations(loadActiveConversations()); }}
+                      className="h-8 rounded-full px-3 text-[12px] font-medium text-app-accent transition hover:bg-app-elevated active:scale-95"
+                    >{lang === 'ka' ? 'აღდგენა' : lang === 'ru' ? 'Восстановить' : 'Restore'}</button>
+                    <button
+                      onClick={() => setTrashedConvos(purgeConversation(c.id))}
+                      aria-label={lang === 'ka' ? 'სამუდამოდ წაშლა' : lang === 'ru' ? 'Удалить навсегда' : 'Delete permanently'}
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition hover:bg-rose-500/10 hover:text-rose-500 active:scale-90"
+                    ><Trash2 size={15} /></button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <WalletRefillModal open={walletOpen} locale={lang} onClose={() => setWalletOpen(false)} />
       <AuthModal open={authOpen} locale={lang} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); window.location.reload(); }} />
       <CameraModal

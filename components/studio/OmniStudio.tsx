@@ -1399,6 +1399,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     void fetch('/api/studio/library', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ url, kind, ...(prompt ? { prompt } : {}) }),
+    }).then(() => {
+      // Remix persistence last-mile — tell an OPEN Library panel to refetch so a just-generated
+      // remix/render appears instantly instead of only on the next reopen.
+      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     }).catch(() => {});
   }, []);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);

@@ -45,6 +45,10 @@ export interface StoredConversation {
   createdAt: number;
   updatedAt: number;
   messages: StoredMessage[];
+  /** VECTOR 8 — soft delete. When true the chat is in the Trash Bin (hidden from the active sidebar,
+   *  restorable, auto-purged after 30 days). `deletedAt` is the trash timestamp. */
+  deleted?: boolean;
+  deletedAt?: number;
 }
 
 export type TimeBucket = 'today' | 'previous7' | 'previous30' | 'older';
@@ -149,6 +153,61 @@ export function deleteConversation(id: string): StoredConversation[] {
   const list = loadConversations().filter((c) => c.id !== id);
   persist(list);
   return list;
+}
+
+// ─── VECTOR 8 — Trash Bin (soft delete + restore + 30-day purge) ─────────────────────────────────────────
+// NOTE: `loadConversations()` intentionally stays RAW (returns deleted rows too) so the persistence path
+// (upsertConversation) never drops a trashed chat on the next write. The SIDEBAR reads loadActiveConversations().
+const TRASH_RETENTION_MS = 30 * DAY_MS;
+
+/** Active (non-trashed) chats — what the sidebar renders. */
+export function loadActiveConversations(): StoredConversation[] {
+  return loadConversations().filter((c) => !c.deleted);
+}
+
+/** Trashed chats, newest-trashed first — what the Trash Bin renders. */
+export function loadTrashedConversations(): StoredConversation[] {
+  return loadConversations()
+    .filter((c) => !!c.deleted)
+    .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
+}
+
+/** Soft-delete a chat (moves it to the Trash Bin). Returns the ACTIVE list for the sidebar. */
+export function softDeleteConversation(id: string): StoredConversation[] {
+  const list = loadConversations();
+  const idx = list.findIndex((c) => c.id === id);
+  const current = idx >= 0 ? list[idx] : undefined;
+  if (current) {
+    list[idx] = { ...current, deleted: true, deletedAt: Date.now() };
+    persist(list);
+  }
+  return loadActiveConversations();
+}
+
+/** Restore a chat out of the Trash Bin. Returns the remaining TRASH list. */
+export function restoreConversation(id: string): StoredConversation[] {
+  const list = loadConversations();
+  const idx = list.findIndex((c) => c.id === id);
+  const current = idx >= 0 ? list[idx] : undefined;
+  if (current) {
+    list[idx] = { ...current, deleted: false, deletedAt: undefined };
+    persist(list);
+  }
+  return loadTrashedConversations();
+}
+
+/** Permanently remove a single chat. Returns the remaining TRASH list. */
+export function purgeConversation(id: string): StoredConversation[] {
+  deleteConversation(id);
+  return loadTrashedConversations();
+}
+
+/** Auto-purge chats trashed more than 30 days ago. Best-effort; returns the remaining TRASH list. */
+export function purgeExpiredTrash(now: number = Date.now()): StoredConversation[] {
+  const list = loadConversations();
+  const kept = list.filter((c) => !(c.deleted && typeof c.deletedAt === 'number' && now - c.deletedAt > TRASH_RETENTION_MS));
+  if (kept.length !== list.length) persist(kept);
+  return loadTrashedConversations();
 }
 
 export function renameConversation(id: string, title: string): StoredConversation[] {
