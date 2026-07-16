@@ -21,6 +21,7 @@ import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { sanitizePrompt } from '@/lib/security/apiGuard';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { retrieveContext } from '@/lib/rag/retrieve';
 // The film pipeline renders up to MAX_SEGMENTS scenes (60s = 12 × 5s). Cap the
@@ -208,6 +209,24 @@ export async function POST(req: NextRequest) {
         effectiveInstructions = [ragContext, data.customInstructions]
           .filter(Boolean)
           .join('\n\n');
+      }
+    }
+
+    // ── VECTOR 3: cross-chat PERSISTENT memory (the /chat surface + every text-chat mode go through here,
+    //    not just /api/chat/gemini). Read the signed-in user's stored facts → prepend a preamble to the
+    //    instructions (which withCustomInstructions folds into the system prompt), and fire-and-forget extract
+    //    any explicit new fact from this turn. Fully fail-open: anonymous / absent table / any error → no-op,
+    //    so the chat is byte-identical when there's nothing to inject. See lib/chat/userMemory.
+    if (detectedIntent.intent === 'text_chat' && userId !== 'anonymous') {
+      try {
+        const { supabase: memClient } = await authedClientFromRequest(req);
+        const facts = await getUserProfileFacts(memClient, userId);
+        const preamble = buildProfilePreamble(facts);
+        if (preamble) effectiveInstructions = [preamble, effectiveInstructions].filter(Boolean).join('\n\n');
+        const fresh = extractProfileFacts(rawMessage);
+        if (fresh.length) void saveUserProfileFacts(memClient, userId, fresh);
+      } catch {
+        // memory is best-effort — never block the chat
       }
     }
 

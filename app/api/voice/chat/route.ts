@@ -17,6 +17,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { llmText } from '@/lib/ai/llmText';
 import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, type VoiceTurn } from '@/lib/voice/voicePrompt';
+import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     const limited = await checkRateLimit(req, RATE_LIMITS.WRITE);
     if (limited) return limited;
 
-    const { user } = await authedClientFromRequest(req);
+    const { supabase, user } = await authedClientFromRequest(req);
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const body = (await req.json().catch(() => null)) as { text?: string; locale?: string; history?: VoiceTurn[] } | null;
@@ -39,12 +40,26 @@ export async function POST(req: NextRequest) {
     const history = Array.isArray(body?.history) ? body.history.slice(-12) : undefined;
     const { system, user: prompt } = buildVoiceReplyPrompt(text, locale, history);
 
+    // VECTOR 3 — inject the user's cross-chat memory into the VOICE persona (+ extract facts), so Agent G is
+    // ONE companion: the name/bio the user set in text chat carries into the voice call. Fail-open. Kept short
+    // so it doesn't bloat the low-latency voice payload.
+    let effectiveSystem = system;
+    try {
+      const facts = await getUserProfileFacts(supabase, user.id);
+      const preamble = buildProfilePreamble(facts);
+      if (preamble) effectiveSystem = `${preamble}\n\n${system}`;
+      const fresh = extractProfileFacts(text);
+      if (fresh.length) void saveUserProfileFacts(supabase, user.id, fresh);
+    } catch {
+      // memory is best-effort — never block the voice turn
+    }
+
     // VECTOR 2 — Georgian rides the slow eleven_v3 TTS (synthesis time scales with CHARACTER count), so keep
     // the payload SMALL: a tight token cap on generation + a tight spoken-char cap on the result directly cut
     // synthesis latency. en/ru (fast turbo) get a little more room. The persona already enforces 1-2 sentences.
     const maxTokens = locale === 'ka' ? 120 : 160;
     const speechCap = locale === 'ka' ? 320 : 520;
-    const raw = await llmText({ system, user: prompt, maxTokens, temperature: 0.6, timeoutMs: 12_000 }).catch(() => null);
+    const raw = await llmText({ system: effectiveSystem, user: prompt, maxTokens, temperature: 0.6, timeoutMs: 12_000 }).catch(() => null);
     const reply = trimForSpeech(raw, speechCap) || voiceFallbackReply(locale);
     return NextResponse.json({ reply, locale });
   } catch (e) {
