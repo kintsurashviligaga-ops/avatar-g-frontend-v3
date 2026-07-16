@@ -47,7 +47,7 @@ const COPY: Record<Lang, {
   signedOut: string; retry: string; noPrompt: string;
   deleteAsset: string; deleteConfirmTitle: string; deleteConfirmBody: string;
   cancel: string; confirm: string; deleting: string; deleteFailed: string;
-  loadingMore: string;
+  loadingMore: string; newBadge: string;
   tabs: Record<FilterKey, string>;
 }> = {
   ka: {
@@ -65,7 +65,7 @@ const COPY: Record<Lang, {
     deleteConfirmBody: 'ეს ფაილი სამუდამოდ წაიშლება შენი ბიბლიოთეკიდან. ეს მოქმედება ვერ დაბრუნდება.',
     cancel: 'გაუქმება', confirm: 'წავშალო',
     deleting: 'იშლება…', deleteFailed: 'წაშლა ვერ შესრულდა.',
-    loadingMore: 'მეტი იტვირთება…',
+    loadingMore: 'მეტი იტვირთება…', newBadge: 'ახალი',
     tabs: { all: 'ყველაფერი', videos: 'ვიდეო', soundtracks: 'საუნდტრეკი', 'avatars-images': 'ავატარი · სურათი' },
   },
   en: {
@@ -83,7 +83,7 @@ const COPY: Record<Lang, {
     deleteConfirmBody: 'This asset will be permanently removed from your Library. This cannot be undone.',
     cancel: 'Cancel', confirm: 'Delete',
     deleting: 'Deleting…', deleteFailed: 'Could not delete.',
-    loadingMore: 'Loading more…',
+    loadingMore: 'Loading more…', newBadge: 'New',
     tabs: { all: 'All Assets', videos: 'Videos', soundtracks: 'Soundtracks', 'avatars-images': 'Avatars / Images' },
   },
   ru: {
@@ -101,7 +101,7 @@ const COPY: Record<Lang, {
     deleteConfirmBody: 'Этот ассет будет навсегда удалён из вашей библиотеки. Действие необратимо.',
     cancel: 'Отмена', confirm: 'Удалить',
     deleting: 'Удаление…', deleteFailed: 'Не удалось удалить.',
-    loadingMore: 'Загружаем ещё…',
+    loadingMore: 'Загружаем ещё…', newBadge: 'Новое',
     tabs: { all: 'Все', videos: 'Видео', soundtracks: 'Саундтреки', 'avatars-images': 'Аватары · Картинки' },
   },
 };
@@ -137,11 +137,13 @@ function filterMatches(kind: string, f: FilterKey): boolean {
 // card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
 // useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
 const LibraryCard = memo(function LibraryCard({
-  item, t, onDeleted,
+  item, t, onDeleted, isNew = false,
 }: {
   item: LibraryItem;
   t: (typeof COPY)['ka'];
   onDeleted: (id: string) => void;
+  /** VECTOR 6 — a subtle badge when this asset was just added via a live library refresh. */
+  isNew?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [duration, setDuration] = useState<number>(0);
@@ -228,6 +230,12 @@ const LibraryCard = memo(function LibraryCard({
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black ring-1 ring-white/[0.04] transition-colors hover:border-[#00D2FF]/40"
     >
+      {/* VECTOR 6 — freshly-added asset badge (from a live remix/render refresh). */}
+      {isNew ? (
+        <span className="absolute left-2 top-2 z-10 rounded-full bg-[#00D2FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black shadow-[0_2px_12px_-2px_rgba(0,210,255,0.75)]">
+          {t.newBadge}
+        </span>
+      ) : null}
       {/* Media thumbnail */}
       <div className={`relative ${aspect} w-full overflow-hidden bg-neutral-950`}>
         {isVideo(item.kind) ? (
@@ -396,6 +404,9 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
   const [exhausted, setExhausted] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // VECTOR 6 — ids we've already shown (never "new") + the currently-badged fresh arrivals.
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   /** Fresh load — replaces everything; resets pagination cursor. */
   const load = useCallback(async () => {
@@ -404,6 +415,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
       const res = await fetch(`/api/studio/library?limit=${PAGE_SIZE}&offset=0`, { cache: 'no-store', credentials: 'include' });
       const json = (await res.json()) as { items?: LibraryItem[] };
       const list = Array.isArray(json.items) ? json.items : [];
+      list.forEach((it) => seenIdsRef.current.add(it.id)); // initial/reset load → these are NOT "new"
       setItems(list);
       if (list.length < PAGE_SIZE) setExhausted(true);
     } catch {
@@ -421,6 +433,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
       const res = await fetch(`/api/studio/library?limit=${PAGE_SIZE}&offset=${items.length}`, { cache: 'no-store', credentials: 'include' });
       const json = (await res.json()) as { items?: LibraryItem[] };
       const more = Array.isArray(json.items) ? json.items : [];
+      more.forEach((it) => seenIdsRef.current.add(it.id)); // paged-in → seen, never "new"
       if (more.length === 0) { setExhausted(true); return; }
       // Defensive: drop any duplicates if pages overlap on a fresh write.
       setItems((prev) => {
@@ -439,10 +452,30 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
 
   useEffect(() => { void load(); }, [load]);
 
-  // Remix persistence last-mile — refetch the moment a new asset is auto-saved (OmniStudio dispatches
-  // 'myavatar:library-updated' after every autoSaveToLibrary), so a fresh remix/render appears instantly.
+  // Remix persistence last-mile (VECTOR 6) — refetch the moment a new asset is auto-saved (OmniStudio
+  // dispatches 'myavatar:library-updated' after every autoSaveToLibrary), so a fresh remix/render appears
+  // instantly — and flag the just-added ids with a "New" badge that auto-clears after a few seconds.
   useEffect(() => {
-    const onUpdated = () => { void load(); };
+    const onUpdated = async () => {
+      try {
+        const res = await fetch(`/api/studio/library?limit=${PAGE_SIZE}&offset=0`, { cache: 'no-store', credentials: 'include' });
+        const json = (await res.json()) as { items?: LibraryItem[] };
+        const list = Array.isArray(json.items) ? json.items : [];
+        const fresh = list.filter((it) => !seenIdsRef.current.has(it.id)).map((it) => it.id);
+        list.forEach((it) => seenIdsRef.current.add(it.id));
+        setItems(list);
+        setExhausted(list.length < PAGE_SIZE);
+        if (fresh.length) {
+          setNewIds((prev) => { const n = new Set(prev); fresh.forEach((id) => n.add(id)); return n; });
+          window.setTimeout(() => {
+            setNewIds((prev) => { const n = new Set(prev); fresh.forEach((id) => n.delete(id)); return n; });
+          }, 6000);
+        }
+      } catch {
+        // fall back to a plain refresh if the badge-diff fetch fails
+        void load();
+      }
+    };
     window.addEventListener('myavatar:library-updated', onUpdated);
     return () => window.removeEventListener('myavatar:library-updated', onUpdated);
   }, [load]);
@@ -532,7 +565,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
           <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence mode="popLayout">
               {visible.map((item) => (
-                <LibraryCard key={item.id} item={item} t={t} onDeleted={handleDeleted} />
+                <LibraryCard key={item.id} item={item} t={t} onDeleted={handleDeleted} isNew={newIds.has(item.id)} />
               ))}
             </AnimatePresence>
           </div>

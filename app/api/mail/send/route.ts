@@ -2,6 +2,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { escapeHtml, markdownToEmailHtml } from '@/lib/chat/emailHtml';
 
 /**
  * POST /api/mail/send — VECTOR 5/7. Emails the requested chat content (a table / document / message) to the
@@ -18,10 +19,6 @@ export const dynamic = 'force-dynamic';
 
 const MAIL_FROM = process.env.MAIL_FROM || 'MyAvatar <info@myavatar.ge>';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
-}
 
 /** Wrap the message content in a branded, email-client-safe HTML shell. */
 function brandedEmail(subject: string, contentHtml: string): string {
@@ -57,7 +54,7 @@ export async function POST(req: NextRequest) {
     const contentHtml = typeof body?.html === 'string' && body.html.trim()
       ? body.html
       : typeof body?.text === 'string' && body.text.trim()
-        ? `<pre style="white-space:pre-wrap;font-family:inherit;margin:0">${escapeHtml(body.text)}</pre>`
+        ? markdownToEmailHtml(body.text)
         : '';
     if (!contentHtml) {
       return NextResponse.json({ ok: false, error: 'no_content' }, { status: 400 });

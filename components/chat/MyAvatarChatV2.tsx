@@ -94,7 +94,7 @@ import {
 import Image from 'next/image';
 import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { formatGEL } from '@/lib/billing/gel';
+import { usdFromGel } from '@/lib/billing/gel';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import AuthModal from '@/components/chat/AuthModal';
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
@@ -1007,7 +1007,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   // VECTOR 8 — Trash Bin overlay + its (lazily loaded) trashed-chat list.
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashedConvos, setTrashedConvos] = useState<StoredConversation[]>([]);
+  // VECTOR 2 — "Send to Email" in-flight loader (compile + deliver).
+  const [emailBusy, setEmailBusy] = useState(false);
   const openTrash = useCallback(() => { setTrashedConvos(loadTrashedConversations()); setTrashOpen(true); }, []);
+  // VECTOR 3 — Escape closes the Trash Bin (it already has click-outside; no body scroll-lock is applied,
+  // so there's no lock to leak). Bound only while open.
+  useEffect(() => {
+    if (!trashOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setTrashOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [trashOpen]);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   // Artifacts/Canvas split-pane: the message whose asset is mounted in the
   // right-hand Preview Workspace (null = single-column chat). Kept mounted while
@@ -1338,7 +1348,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         showNotice(lang === 'ka' ? 'ჯერ არაფერია გასაგზავნი — ჯერ დააგენერირე პასუხი' : lang === 'ru' ? 'Пока нечего отправлять — сначала сгенерируйте ответ' : 'Nothing to send yet — generate a reply first');
         return;
       }
-      showNotice(lang === 'ka' ? '📤 იგზავნება თქვენს ელ-ფოსტაზე…' : lang === 'ru' ? '📤 Отправляю на вашу почту…' : '📤 Sending to your email…');
+      setEmailBusy(true);
       void (async () => {
         try {
           const res = await fetch('/api/mail/send', {
@@ -1347,6 +1357,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
             body: JSON.stringify({ subject: 'MyAvatar — Agent G', text: lastAssistant.text }),
           });
           const j = (await res.json().catch(() => null)) as { ok?: boolean; configured?: boolean } | null;
+          // VECTOR 2 — only surface the final toast AFTER the promise resolves cleanly.
           if (j?.ok) {
             showNotice(lang === 'ka' ? '✓ დოკუმენტი წარმატებით გაიგზავნა თქვენს ელ-ფოსტაზე!' : lang === 'ru' ? '✓ Документ успешно отправлен на вашу почту!' : '✓ Sent to your email!');
           } else if (j && j.configured === false) {
@@ -1356,6 +1367,8 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           }
         } catch {
           showNotice(lang === 'ka' ? 'გაგზავნა ვერ მოხერხდა' : lang === 'ru' ? 'Не удалось отправить' : 'Could not send');
+        } finally {
+          setEmailBusy(false);
         }
       })();
       return;
@@ -2726,7 +2739,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 >
                   <Wallet size={16} className="text-app-muted" />
                   <span className="flex-1 text-left">{xc.balanceLabel}</span>
-                  <span className="text-[12px] font-semibold text-app-muted">{balanceGel === null ? '—' : formatGEL(balanceGel)}</span>
+                  <span className="text-[12px] font-semibold text-app-muted">{balanceGel === null ? '—' : `$${usdFromGel(balanceGel)}`}</span>
                 </button>
                 <button
                   onClick={() => { setHistoryOpen(false); setSettingsOpen(true); }}
@@ -2807,7 +2820,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                         </span>
                         <div className="flex items-center gap-2.5">
                           <span className="text-[14px] font-semibold tabular-nums text-app-text">
-                            {balanceGel === null ? '—' : formatGEL(balanceGel)}
+                            {balanceGel === null ? '—' : `$${usdFromGel(balanceGel)}`}
                           </span>
                           <button
                             data-iap-external
@@ -2993,6 +3006,14 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      {/* VECTOR 2 — "Send to Email" in-flight loader: shown while the document is compiled + delivered. */}
+      {emailBusy ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[95] mx-auto flex w-fit items-center gap-2 rounded-full bg-app-elevated px-4 py-2 text-[12.5px] font-medium text-app-text shadow-lg ring-1 ring-app-accent/30">
+          <Loader2 size={14} className="animate-spin text-app-accent" />
+          {lang === 'ka' ? 'დოკუმენტი იგზავნება…' : lang === 'ru' ? 'Отправка документа…' : 'Sending document…'}
+        </div>
+      ) : null}
 
       {/* ── Modals ─────────────────────────────────────────────── */}
       {/* VECTOR 8 — Trash Bin: restore or permanently delete recently-deleted chats. */}

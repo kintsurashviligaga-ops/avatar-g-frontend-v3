@@ -156,6 +156,18 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
 
   useEffect(() => () => { mountedRef.current = false; teardown(); }, [teardown]);
 
+  // VECTOR 1 — pre-warm the AudioContext on mount (this component only mounts when the voice overlay opens,
+  // so it's a safe head-start): the context is CREATED suspended here — no user gesture needed to create,
+  // only to resume, which the first tap already does — so the first turn's playback/analysis doesn't pay the
+  // context-creation cost. The lazy turn path reuses this instance (it checks audioCtxRef first); teardown
+  // still closes it. Deliberately NOT pre-calling getUserMedia (that would fire a surprise permission prompt).
+  useEffect(() => {
+    if (audioCtxRef.current) return;
+    const Ctor = getAudioContextCtor();
+    if (!Ctor) return;
+    try { audioCtxRef.current = new Ctor(); } catch { /* falls back to lazy creation on the first turn */ }
+  }, []);
+
   // ── The LIQUID ORB (Master Contract V16) — a morphing, glowing 3D-like blob (Siri/Gemini-class) that
   //    replaces the flat linear equalizer. One rAF loop drives a canvas from whichever AnalyserNode is live:
   //    the MIC while listening, the TTS output while speaking, a breathing idle while thinking. The boundary

@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { creditsToGel } from '@/lib/credits/pricing';
+import { usdFromGel } from '@/lib/billing/gel';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
 
@@ -530,7 +531,7 @@ function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
                   <span>{meta.emoji} {meta[loc]}</span>
                 </span>
                 <span className={`tabular-nums font-semibold ${positive ? 'text-emerald-400' : 'text-app-muted'}`}>
-                  {positive ? '+' : '−'}{Math.abs(it.creditsDelta)} {t.credits} <span className="text-app-muted/70">({creditsToGel(Math.abs(it.creditsDelta)).toFixed(2)} ₾)</span>
+                  {positive ? '+' : '−'}{Math.abs(it.creditsDelta)} {t.credits} <span className="text-app-muted/70">(${usdFromGel(creditsToGel(Math.abs(it.creditsDelta)))})</span>
                 </span>
               </li>
             );
