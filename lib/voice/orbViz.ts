@@ -91,3 +91,35 @@ export function rgba(c: RGB, alpha: number): string {
   const a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
   return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 }
+
+// ── PHASE 39 (Master Contract V16) — LIQUID 3D VOICE ORB ──────────────────────────────────────────────
+// The flat linear equalizer is replaced by a morphing liquid orb (Siri/Gemini-class). Each conversation
+// state locks a two-stop gradient (inner core → outer rim); transitions between states are eased frame-to-
+// frame in the draw loop so colour never snaps. These are the mandated brand-locked state colours.
+
+/** Per-state liquid-orb gradient: `inner` = luminous core, `outer` = rim/halo. Master Contract V16 palette. */
+export const ORB_STATE_GRADIENT: Record<OrbState, { inner: RGB; outer: RGB }> = {
+  listening:  { inner: [0, 209, 255], outer: [0, 102, 255] },    // cyan #00D1FF → blue #0066FF — being heard
+  processing: { inner: [255, 255, 255], outer: [176, 188, 214] }, // white → silver — thinking/orbit swirl
+  speaking:   { inner: [255, 0, 60], outer: [209, 0, 209] },      // crimson #FF003C → violet #D100D1 — speaking
+  error:      { inner: [255, 0, 60], outer: [92, 0, 24] },        // dim steady crimson — a failure
+  idle:       { inner: [0, 209, 255], outer: [0, 82, 176] },      // cyan wash — dormant
+} as const;
+
+/**
+ * Liquid-orb boundary radius MULTIPLIER at one point on the ring. Sums a few harmonic lobes (a metaball-ish
+ * morph) plus the live audio amplitude, so the blob breathes softly at rest and swells/ripples with sound.
+ * Pure + deterministic (given angle/time/amp/seed) → unit-testable without a canvas. Wraps seamlessly:
+ * `angleFrac` 0 and 1 map to the same boundary point. `amp` 0..1 loudness; `lobeSeed` de-phases each layer.
+ */
+export function orbBlobRadius(angleFrac: number, t: number, amp: number, lobeSeed = 0): number {
+  const a = ((angleFrac % 1) + 1) % 1;
+  const theta = a * Math.PI * 2;
+  const level = amp < 0 ? 0 : amp > 1 ? 1 : amp;
+  const wobble =
+    0.060 * Math.sin(theta * 3 + t * 1.1 + lobeSeed) +
+    0.040 * Math.sin(theta * 5 - t * 0.7 + lobeSeed * 1.7) +
+    0.028 * Math.sin(theta * 2 + t * 1.9 + lobeSeed * 0.5);
+  const breathe = 0.04 * Math.sin(t * 1.3 + lobeSeed);
+  return 1 + wobble * (0.5 + level) + breathe + level * 0.34;
+}

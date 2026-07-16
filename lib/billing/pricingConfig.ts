@@ -144,15 +144,24 @@ export type PricingTierId = 'starter' | 'pro_creator' | 'studio_annual'
 export interface PricingTier {
   id: PricingTierId
   name: string
+  /** PHASE 39 (Master Contract V1/V2) — the tier is now priced in USD ($). This is the DISPLAYED price. */
+  priceUsd: number
+  /** GEL equivalent (priceUsd × GEL_PER_USD) — the amount the GEL wallet/gateway charges, kept in lockstep
+   *  with the USD display so a top-up never bills a number the user didn't see. */
   priceGel: number
   billing: 'monthly' | 'annual'
   /** Marketing ceilings the price is framed around. */
   creditCeiling: { videos: number; music: number; images: number }
-  /** DERIVED credit-pool grant = Σ ceiling × media cost (single source; never hardcode). */
+  /** Credit-pool grant on the tier (Master Contract V1/V2 fixed the marketing totals: 150 / 1200 / 4500). */
   creditsIncluded: number
 }
 
-/** Σ (ceiling × per-asset media credit cost). The credit-pool equivalent of the per-asset ceilings. */
+// PHASE 39 — the product is priced in USD; the wallet/gateway settles in GEL. ONE documented FX constant keeps
+// the charged GEL coherent with the displayed USD. ⚠️ Confirm the rate (and ideally provision native USD Stripe
+// price objects) before public launch — see the Stripe-ID note below; today no env → not purchasable → no charge.
+export const GEL_PER_USD = 2.7 as const
+
+/** Σ (ceiling × per-asset media credit cost). Retained: the credit-pool equivalent of the per-asset ceilings. */
 export function tierCreditPool(ceiling: { videos: number; music: number; images: number }): number {
   return (
     ceiling.videos * MEDIA_CREDIT_COSTS.video_30s +
@@ -161,14 +170,15 @@ export function tierCreditPool(ceiling: { videos: number; music: number; images:
   )
 }
 
-function makeTier(id: PricingTierId, name: string, priceGel: number, billing: 'monthly' | 'annual', creditCeiling: PricingTier['creditCeiling']): PricingTier {
-  return { id, name, priceGel, billing, creditCeiling, creditsIncluded: tierCreditPool(creditCeiling) }
+function makeTier(id: PricingTierId, name: string, priceUsd: number, billing: 'monthly' | 'annual', creditCeiling: PricingTier['creditCeiling'], creditsIncluded: number): PricingTier {
+  return { id, name, priceUsd, priceGel: Math.round(priceUsd * GEL_PER_USD), billing, creditCeiling, creditsIncluded }
 }
 
+// Master Contract V1/V2 — the launch USD tier list + marketing ceilings + fixed credit grants.
 export const PRICING_TIERS: PricingTier[] = [
-  makeTier('starter', 'Starter', 38, 'monthly', { videos: 2, music: 10, images: 20 }),
-  makeTier('pro_creator', 'Pro Creator', 299, 'monthly', { videos: 10, music: 50, images: 100 }),
-  makeTier('studio_annual', 'Studio Annual', 899, 'annual', { videos: 40, music: 250, images: 500 }),
+  makeTier('starter', 'Starter', 15, 'monthly', { videos: 4, music: 10, images: 30 }, 150),
+  makeTier('pro_creator', 'Pro Creator', 99, 'monthly', { videos: 35, music: 80, images: 200 }, 1200),
+  makeTier('studio_annual', 'Studio Annual', 299, 'annual', { videos: 120, music: 300, images: 800 }, 4500),
 ]
 
 // ─── Live Stripe Price ID resolution (env placeholders — you insert the real IDs in Vercel) ─────────────────

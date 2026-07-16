@@ -1,9 +1,9 @@
 /**
  * PricingSection — SSoT pin (Stage-2 V3-F2).
  *
- * Locks the live pricing page to the single source of truth (PRICING_TIERS:
- * Starter 38 / Pro Creator 299 / Studio Annual 899 GEL) with the exact marketing
- * quotas, and proves NO per-item "tetri" cost labels leak back into the DOM.
+ * Locks the live pricing page to the single source of truth (PRICING_TIERS, Master
+ * Contract V1/V2 USD launch pricing: Starter $15 / Pro Creator $99 / Studio Annual $299)
+ * with the exact marketing quotas, and proves NO per-item "tetri" cost labels leak into the DOM.
  * If anyone edits the tiers or reintroduces a per-item cost grid, this goes red.
  *
  * Deliberately setup-free: uses only core Jest matchers (no @testing-library/jest-dom
@@ -38,14 +38,14 @@ import { PricingSection } from './PricingSection';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 
 describe('PricingSection — SSoT pin', () => {
-  it('renders the 38/299/899 tiers with their exact marketing quotas', () => {
+  it('renders the $15/$99/$299 USD tiers with their exact marketing quotas', () => {
     const { container } = render(<PricingSection />);
     const text = container.textContent || '';
     for (const expected of [
-      '38₾', '299₾', '899₾',
-      '2 ვიდეო', '10 მუსიკის ტრეკი', '20 სთორიბორდ სურათი',
-      '10 ვიდეო', '50 მუსიკის ტრეკი', '100 სთორიბორდ სურათი',
-      '40 ვიდეო', '250 მუსიკის ტრეკი', '500 სთორიბორდ სურათი',
+      '$15', '$99', '$299',
+      '4 ვიდეო', '10 მუსიკის ტრეკი', '30 სთორიბორდ სურათი',
+      '35 ვიდეო', '80 მუსიკის ტრეკი', '200 სთორიბორდ სურათი',
+      '120 ვიდეო', '300 მუსიკის ტრეკი', '800 სთორიბორდ სურათი',
     ]) {
       expect(text).toContain(expected);
     }
@@ -57,11 +57,11 @@ describe('PricingSection — SSoT pin', () => {
   });
 
   it('is bound to the PRICING_TIERS source of truth', () => {
-    expect(PRICING_TIERS.map((t) => t.priceGel)).toEqual([38, 299, 899]);
+    expect(PRICING_TIERS.map((t) => t.priceUsd)).toEqual([15, 99, 299]);
     expect(PRICING_TIERS.map((t) => t.creditCeiling)).toEqual([
-      { videos: 2, music: 10, images: 20 },
-      { videos: 10, music: 50, images: 100 },
-      { videos: 40, music: 250, images: 500 },
+      { videos: 4, music: 10, images: 30 },
+      { videos: 35, music: 80, images: 200 },
+      { videos: 120, music: 300, images: 800 },
     ]);
   });
 });

@@ -27,7 +27,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Mic, AlertCircle, RotateCcw } from 'lucide-react';
-import { smoothBar, orbBarColor, rgba, type OrbState } from '@/lib/voice/orbViz';
+import { smoothBar, rgba, ORB_STATE_GRADIENT, orbBlobRadius, type OrbState, type RGB } from '@/lib/voice/orbViz';
 import {
   DEFAULT_VAD_CONFIG,
   bargeConfig,
@@ -56,7 +56,6 @@ const VAD_INTERVAL_MS = 50;
 // so the assistant's own audio-onset transient can't self-interrupt. Widened 300→400ms alongside the
 // higher barge amplitude bar for a calmer, less trigger-happy hands-free loop.
 const BARGE_GRACE_MS = 400;
-const VIZ_BARS = 48; // linear spectrum equalizer bar count
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
 };
@@ -111,11 +110,12 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   const ttsAbortRef = useRef<AbortController | null>(null);
   const turnAbortRef = useRef<AbortController | null>(null);
 
-  // ── Real-time orb equalizer (canvas driven by whichever analyser is live) ──
+  // ── Real-time LIQUID ORB (canvas driven by whichever analyser is live) ──
   const vizCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const vizRafRef = useRef<number>(0);
-  const vizBarsRef = useRef<Float32Array>(new Float32Array(VIZ_BARS));
   const vizFreqRef = useRef<Uint8Array | null>(null);
+  const orbLevelRef = useRef(0); // smoothed single amplitude scalar (0..1)
+  const orbColorRef = useRef<[number, number, number]>([0, 209, 255]); // eased core colour → flawless state transitions
 
   // ── Session bookkeeping ──
   const statusRef = useRef<Status>('connecting');
@@ -156,16 +156,13 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
 
   useEffect(() => () => { mountedRef.current = false; teardown(); }, [teardown]);
 
-  // ── The living orb — a radial Web-Audio equalizer. One rAF loop drives a canvas from whichever
-  //    AnalyserNode is live: the MIC while listening, the TTS output while speaking, and a gentle
-  //    "breathing" idle while thinking/connecting. Replaces the old static spinner + speaker glyph. ──
+  // ── The LIQUID ORB (Master Contract V16) — a morphing, glowing 3D-like blob (Siri/Gemini-class) that
+  //    replaces the flat linear equalizer. One rAF loop drives a canvas from whichever AnalyserNode is live:
+  //    the MIC while listening, the TTS output while speaking, a breathing idle while thinking. The boundary
+  //    is a metaball-style sine morph (lib/voice/orbBlobRadius) reacting to a single smoothed amplitude; the
+  //    core colour EASES toward the per-state gradient each frame so transitions never snap. Thinking adds a
+  //    clockwise silver orbit trail; speaking pulses crimson→violet; error is a dim steady crimson aura. ──
   useEffect(() => {
-    // Rounded bar (falls back to a sharp rect where CanvasRenderingContext2D.roundRect is unavailable).
-    const drawBar = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
-      const rr = (c as unknown as { roundRect?: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect;
-      if (typeof rr === 'function') { c.beginPath(); rr.call(c, x, y, w, h, Math.min(w / 2, 2.5)); c.fill(); }
-      else c.fillRect(x, y, w, h);
-    };
     const draw = () => {
       vizRafRef.current = requestAnimationFrame(draw);
       const canvas = vizCanvasRef.current;
@@ -173,59 +170,102 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const c = canvas.getContext('2d');
       if (!c) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const cw = Math.max(1, Math.round(canvas.clientWidth || 240));
-      const ch = Math.max(1, Math.round(canvas.clientHeight || 80));
+      const cw = Math.max(1, Math.round(canvas.clientWidth || 180));
+      const ch = Math.max(1, Math.round(canvas.clientHeight || 180));
       if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) { canvas.width = cw * dpr; canvas.height = ch * dpr; }
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.clearRect(0, 0, cw, ch);
 
       const st = statusRef.current;
       const listening = st === 'listening';
       const speaking = st === 'speaking';
-      // Map the conversation status → the visual state that colours the equalizer.
       const orbState: OrbState = listening ? 'listening' : speaking ? 'speaking' : st === 'error' ? 'error' : st === 'off' ? 'idle' : 'processing';
       const analyser = listening ? analyserRef.current : speaking ? playbackAnalyserRef.current : null;
-      const bars = vizBarsRef.current;
-      const N = bars.length;
 
+      // ── single live amplitude scalar (fast attack / slow decay so the orb pops then settles) ──
+      let target: number;
       if (analyser) {
         const bins = analyser.frequencyBinCount;
         let buf = vizFreqRef.current;
         if (!buf || buf.length !== bins) { buf = new Uint8Array(bins); vizFreqRef.current = buf; }
         analyser.getByteFrequencyData(buf as Uint8Array<ArrayBuffer>);
         const usable = Math.max(1, Math.floor(bins * 0.66)); // voice energy lives in the lower-mid bins
-        for (let i = 0; i < N; i++) {
-          const target = (buf[Math.floor((i / N) * usable)] ?? 0) / 255;
-          // fast attack, slow decay → bars pop on sound and settle smoothly (no raw-FFT flicker / clipping)
-          bars[i] = smoothBar(bars[i] ?? 0, target, 0.5, 0.14);
-        }
+        let sum = 0; for (let i = 0; i < usable; i++) sum += buf[i] ?? 0;
+        target = Math.min(1, (sum / usable / 255) * 1.9); // normalise + gain
       } else {
-        const now = performance.now();
-        for (let i = 0; i < N; i++) {
-          const target = 0.05 + 0.06 * (0.5 + 0.5 * Math.sin(now / 600 + i * 0.34)); // a gentle wave travelling across the spectrum while idle
-          bars[i] = smoothBar(bars[i] ?? 0, target, 0.14, 0.14);
-        }
+        target = 0.12 + 0.05 * (0.5 + 0.5 * Math.sin(performance.now() / 720)); // gentle idle/thinking breathing
       }
+      const level = smoothBar(orbLevelRef.current, target, 0.45, 0.12);
+      orbLevelRef.current = level;
 
-      // Real-time LINEAR spectrum equalizer: vertical frequency bars mirrored around the centre line, each
-      // drawing its own colour from a flowing cyan→sky→white neon gradient (crimson accent) across the strip.
-      const shift = (performance.now() / 5200) % 1;
-      c.clearRect(0, 0, cw, ch);
-      const midY = ch / 2;
-      const gap = 2;
-      const barW = Math.max(1.5, (cw - gap * (N - 1)) / N);
-      const maxH = ch * 0.92;
-      for (let i = 0; i < N; i++) {
-        const bv = bars[i] ?? 0;
-        const h = Math.max(2, bv * maxH);
-        const x = i * (barW + gap);
-        const col = orbBarColor(i / N, shift, bv, orbState);
-        // soft neon glow that swells with the bar's amplitude
-        c.shadowColor = rgba(col, 0.5);
-        c.shadowBlur = 5 + bv * 10;
-        c.fillStyle = rgba(col, 0.5 + bv * 0.45);
-        drawBar(c, x, midY - h / 2, barW, h);
+      // ── ease the core colour toward the target state gradient (flawless, snap-free transitions) ──
+      const gradient = ORB_STATE_GRADIENT[orbState];
+      const cur = orbColorRef.current;
+      cur[0] += (gradient.inner[0] - cur[0]) * 0.08;
+      cur[1] += (gradient.inner[1] - cur[1]) * 0.08;
+      cur[2] += (gradient.inner[2] - cur[2]) * 0.08;
+      const inner: RGB = [Math.round(cur[0]), Math.round(cur[1]), Math.round(cur[2])];
+      const outer = gradient.outer;
+
+      const t = performance.now() / 1000;
+      const cx = cw / 2;
+      const cy = ch / 2;
+      const baseR = Math.min(cw, ch) * (0.26 + level * 0.06);
+      const SAMPLES = 72;
+
+      // ── layered liquid blobs (back → front), additively blended for a luminous 3D feel ──
+      c.globalCompositeOperation = 'lighter';
+      const layers = [
+        { scale: 1.30, seed: 2.1, alpha: 0.15 },
+        { scale: 1.12, seed: 0.9, alpha: 0.26 },
+        { scale: 1.00, seed: 0.0, alpha: 0.85 },
+      ];
+      for (const ly of layers) {
+        c.beginPath();
+        for (let i = 0; i <= SAMPLES; i++) {
+          const a = i / SAMPLES;
+          const r = baseR * ly.scale * orbBlobRadius(a, t, level, ly.seed);
+          const ang = a * Math.PI * 2;
+          const x = cx + Math.cos(ang) * r;
+          const y = cy + Math.sin(ang) * r;
+          if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+        }
+        c.closePath();
+        const g = c.createRadialGradient(cx, cy, baseR * 0.15, cx, cy, baseR * ly.scale * 1.35);
+        g.addColorStop(0, rgba(inner, ly.alpha));
+        g.addColorStop(0.55, rgba(outer, ly.alpha * 0.7));
+        g.addColorStop(1, rgba(outer, 0));
+        c.fillStyle = g;
+        c.shadowColor = rgba(inner, 0.5);
+        c.shadowBlur = 16 + level * 26;
+        c.fill();
       }
       c.shadowBlur = 0;
+
+      // ── luminous core (brightens with loudness) ──
+      const coreR = baseR * (0.5 + level * 0.16);
+      const cg = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, coreR));
+      cg.addColorStop(0, rgba([255, 255, 255], 0.85 * (0.5 + level * 0.5)));
+      cg.addColorStop(0.4, rgba(inner, 0.55));
+      cg.addColorStop(1, rgba(inner, 0));
+      c.fillStyle = cg;
+      c.beginPath(); c.arc(cx, cy, Math.max(1, coreR), 0, Math.PI * 2); c.fill();
+
+      // ── thinking: a smooth clockwise silver/white orbit trail (intellectual processing) ──
+      if (orbState === 'processing') {
+        const orbitR = baseR * 1.36;
+        const head = t * 2.2; // clockwise
+        const TRAIL = 22;
+        for (let k = 0; k < TRAIL; k++) {
+          const ang = head - k * 0.09;
+          const fade = 1 - k / TRAIL;
+          c.beginPath();
+          c.arc(cx + Math.cos(ang) * orbitR, cy + Math.sin(ang) * orbitR, 2.4 * fade + 0.6, 0, Math.PI * 2);
+          c.fillStyle = rgba([226, 232, 240], 0.5 * fade);
+          c.fill();
+        }
+      }
+      c.globalCompositeOperation = 'source-over';
     };
 
     vizRafRef.current = requestAnimationFrame(draw);
@@ -571,24 +611,25 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         {error && <p className="mt-2 flex items-center justify-center gap-1.5 text-[12.5px] text-rose-400"><AlertCircle size={14} /> {error}</p>}
       </div>
 
-      {/* Real-time linear spectrum equalizer for every active-audio state; a tap glyph otherwise. Tapping
-          the panel starts / ends the turn (the whole strip is the mic control). */}
+      {/* Master Contract V16 — the LIQUID VOICE ORB. A circular canvas renders the morphing glowing orb for
+          every active-audio state; a tap glyph otherwise. Tapping the orb starts / ends the turn (the whole
+          disc is the mic control). */}
       <button
         type="button"
         onClick={onMicTap}
         disabled={busy}
         aria-label={label}
-        className={`relative flex h-20 w-72 max-w-[78vw] items-center justify-center overflow-hidden rounded-[24px] transition-all disabled:cursor-default ${
+        className={`relative flex h-44 w-44 max-w-[70vw] items-center justify-center overflow-hidden rounded-full transition-all disabled:cursor-default ${
           showViz
-            ? (status === 'listening' ? 'bg-rose-500/[0.06] ring-1 ring-rose-500/20' : 'bg-app-accent/[0.06] ring-1 ring-app-accent/20')
+            ? (status === 'listening' ? 'ring-1 ring-cyan-400/25' : status === 'speaking' ? 'ring-1 ring-rose-500/25' : 'ring-1 ring-white/15')
             : status === 'resume' ? 'bg-app-elevated text-app-accent ring-1 ring-app-border/15 hover:scale-[1.03]'
               : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-[1.03]'
         }`}
       >
         {showViz ? (
           <canvas ref={vizCanvasRef} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />
-        ) : status === 'resume' ? <RotateCcw size={26} />
-          : <Mic size={28} />}
+        ) : status === 'resume' ? <RotateCcw size={30} />
+          : <Mic size={34} />}
       </button>
       <span className="mt-5 text-[13.5px] font-medium text-app-muted">{label}</span>
       {status === 'listening' && vadModeRef.current && <span className="mt-2 max-w-xs px-6 text-center text-[11.5px] text-app-muted/70">{t.hint}</span>}

@@ -46,9 +46,13 @@ const SUPPORTED_LOCALES = new Set(['ka', 'en', 'ru']);
 export const viewport: Viewport = {
 	width: 'device-width',
 	initialScale: 1,
-	// v330 — pinch-zoom is NOT disabled (WCAG 1.4.4): low-vision users must be able to
-	// magnify. iOS focus auto-zoom is already prevented by the 16px input rule in CSS,
-	// so the zoom lock was both an accessibility failure and unnecessary.
+	// PHASE 39 (Master Contract V13) — product-owner directive: lock layout zoom on text focus.
+	// NOTE on mechanism: the ACTUAL iOS focus-auto-zoom fix is the `input{font-size:max(16px,1em)}`
+	// rule in globals.css (iOS Safari ignores maximum-scale/user-scalable for accessibility). These
+	// two are set per the directive and take effect on Android/other engines; iOS keeps pinch-zoom
+	// (WCAG 1.4.4) while the 16px rule stops the layout-breaking focus zoom everywhere.
+	maximumScale: 1,
+	userScalable: false,
 	viewportFit: 'cover',
 	interactiveWidget: 'resizes-content',
 	themeColor: '#000000',

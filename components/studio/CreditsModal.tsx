@@ -16,8 +16,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle } from 'lucide-react';
-import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
+import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle, Check } from 'lucide-react';
+import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig';
 import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -76,6 +76,32 @@ const COPY: Record<Lang, {
     videos: 'видео', images: 'фото',
     guideTitle: 'Что можно сделать за кредиты?', perCredit: '1 кредит = 0.10 ₾', viewAllPlans: 'Все тарифы →',
     gImage: '🖼 Фото', gMusic: '🎵 Музыка 30с', gVideo: '🎬 Видео 30с', gAvatar: '🎭 Аватар',
+  },
+};
+
+// PHASE 39 (Master Contract V1/V2) — localized tier NAMES + the exact premium USD feature bullets per tier.
+// The Georgian copy is authoritative (the directive's launch spec); en/ru are faithful translations.
+const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
+  starter: { ka: 'სტარტერი', en: 'Starter', ru: 'Стартер' },
+  pro_creator: { ka: 'პრო კრეატორი', en: 'Pro Creator', ru: 'Про-креатор' },
+  studio_annual: { ka: 'სტუდიური წლიური', en: 'Studio Annual', ru: 'Студийный годовой' },
+};
+
+const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
+  starter: {
+    ka: ['4 უმაღლესი ხარისხის ვიდეო კლიპი (Runway Gen-4)', '30 კინემატოგრაფიული სთორიბორდ სურათი', '10 მუსიკალური ტრეკი / ხმის სინთეზი', '150 კრედიტი ბალანსზე'],
+    en: ['4 premium video clips (Runway Gen-4)', '30 cinematic storyboard images', '10 music tracks / voice synthesis', '150 credits on balance'],
+    ru: ['4 видеоклипа высшего качества (Runway Gen-4)', '30 кинематографичных storyboard-изображений', '10 музыкальных треков / синтез голоса', '150 кредитов на баланс'],
+  },
+  pro_creator: {
+    ka: ['35 პროფესიონალური ვიდეო კლიპი', '200 უზადო სთორიბორდ სურათი', '80 მუსიკალური ტრეკი / ხმის სინთეზი', '1200 კრედიტი ბალანსზე', 'სრული ავტონომიური წვდომა Agent G-ზე'],
+    en: ['35 professional video clips', '200 flawless storyboard images', '80 music tracks / voice synthesis', '1200 credits on balance', 'Full autonomous access to Agent G'],
+    ru: ['35 профессиональных видеоклипов', '200 безупречных storyboard-изображений', '80 музыкальных треков / синтез голоса', '1200 кредитов на баланс', 'Полный автономный доступ к Agent G'],
+  },
+  studio_annual: {
+    ka: ['120 ულტრა-პრემიუმ ვიდეო კლიპი', '800 დეტალური სთორიბორდ სურათი', '300 მუსიკალური ტრეკი / ხმის სინთეზი', '4500 კრედიტი ბალანსზე', 'ულიმიტო სწრაფი რიგი (Priority Render)', 'VIP მხარდაჭერა და ადრეული ფუნქციები'],
+    en: ['120 ultra-premium video clips', '800 detailed storyboard images', '300 music tracks / voice synthesis', '4500 credits on balance', 'Unlimited priority render queue', 'VIP support & early features'],
+    ru: ['120 ультра-премиум видеоклипов', '800 детальных storyboard-изображений', '300 музыкальных треков / синтез голоса', '4500 кредитов на баланс', 'Безлимитная приоритетная очередь', 'VIP-поддержка и ранние функции'],
   },
 };
 
@@ -202,45 +228,48 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
               </p>
             </div>
 
-            {/* Top-up packages — stack to one readable column at 375px (cards were ~95px /
-                pay buttons ~26px in a 3-col grid), expand to 3 across on sm+ (>=640px). */}
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {/* PHASE 39 (Master Contract V1/V2) — ULTRA-PREMIUM USD tier cards. Priced in $ (the display), with
+                the exact launch feature bullets per tier. The whole flow stays INSIDE this modal — no "view all
+                plans →" redirect (deleted), no external testing-domain leak. The Pro tier is elevated. */}
+            <div className="mt-4 space-y-3">
               {PACKAGES.map((p) => {
                 const highlight = p.id === 'pro_creator';
+                const period = p.billing === 'annual'
+                  ? (lang === 'en' ? '/ yr' : lang === 'ru' ? '/ год' : '/ წელიწადში')
+                  : (lang === 'en' ? '/ mo' : lang === 'ru' ? '/ мес' : '/ თვეში');
+                const popular = lang === 'en' ? 'Popular' : lang === 'ru' ? 'Популярный' : 'პოპულარული';
                 return (
-                <div key={p.id}
-                  className={`relative flex flex-col items-center gap-1 rounded-2xl border p-3 text-center ${highlight ? 'border-app-border/25 bg-app-elevated' : 'border-app-border/15 bg-app-bg/40'}`}>
-                  {highlight && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-app-accent px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-app-bg">★</span>
-                  )}
-                  <span className="text-[12px] font-semibold text-app-text">{p.name}</span>
-                  <span className="text-[19px] font-bold leading-none tabular-nums text-app-text">{p.priceGel} ₾</span>
-                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-app-accent">{p.creditsIncluded} {t.credits}</span>
-                  <span className="text-[9px] leading-tight text-app-muted">{p.billing === 'annual' ? (lang === 'en' ? '/ year' : lang === 'ru' ? '/ год' : '/ წელ') : (lang === 'en' ? '/ month' : lang === 'ru' ? '/ мес' : '/ თვე')}</span>
-                  <button type="button" onClick={() => startCheckout(p)} disabled={busyId !== null}
-                    className={`mt-1 inline-flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 sm:min-h-0 sm:px-2 sm:py-1.5 ${highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text'}`}>
-                    {busyId === p.id ? <><Loader2 size={12} className="animate-spin" /> {t.redirecting}</> : t.pay}
-                  </button>
-                  <span className="text-[9px] leading-tight text-app-muted">{t.cardHint}</span>
-                </div>
+                  <div key={p.id}
+                    className={`relative rounded-2xl border p-4 ${highlight ? 'border-cyan-400/30 bg-app-elevated' : 'border-app-border/15 bg-app-bg/40'}`}
+                    style={highlight ? { boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(6,182,212,0.14), 0 22px 48px -26px rgba(6,182,212,0.42)' } : undefined}>
+                    {highlight && (
+                      <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg"
+                        style={{ background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', boxShadow: '0 6px 16px -5px rgba(6,182,212,0.6)' }}>
+                        <Sparkles size={10} strokeWidth={2.6} /> {popular}
+                      </span>
+                    )}
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[14.5px] font-bold tracking-tight text-app-text">{TIER_NAME[p.id][lang]}</span>
+                      <span className="text-[21px] font-black leading-none tabular-nums text-app-text">${p.priceUsd}<span className="ml-1 text-[11px] font-medium text-app-muted">{period}</span></span>
+                    </div>
+                    <ul className="mt-3 space-y-1.5">
+                      {TIER_FEATURES[p.id][lang].map((f) => (
+                        <li key={f} className="flex items-start gap-2 text-[12px] leading-snug text-app-text/80">
+                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(6,182,212,0.14)' }}>
+                            <Check size={11} strokeWidth={3} className="text-app-accent" />
+                          </span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button type="button" onClick={() => startCheckout(p)} disabled={busyId !== null}
+                      className={`mt-3.5 inline-flex min-h-[46px] w-full touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 ${highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15'}`}>
+                      {busyId === p.id ? <><Loader2 size={13} className="animate-spin" /> {t.redirecting}</> : <>{t.pay} · ${p.priceUsd}</>}
+                    </button>
+                  </div>
                 );
               })}
-            </div>
-
-            {/* PHASE 38 (Master Contract V2) — replaced the "view all plans →" /pricing link with an in-modal
-                CAPABILITY GUIDE. The user sees exactly what credits BUY (image · music · video · avatar) right
-                where they top up, instead of being bounced to a separate marketing page. Copy already lived in
-                COPY (guideTitle + g*); the per-credit RATE is shown (SSoT-safe), no hardcoded per-asset tetri. */}
-            <div className="mt-4 rounded-2xl border border-app-border/15 bg-app-bg/40 px-4 py-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[12px] font-semibold text-app-text">{t.guideTitle}</p>
-                <span className="whitespace-nowrap text-[10.5px] font-medium text-app-muted">{t.perCredit}</span>
-              </div>
-              <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
-                {[t.gImage, t.gMusic, t.gVideo, t.gAvatar].map((g) => (
-                  <span key={g} className="text-[12.5px] leading-tight text-app-muted">{g}</span>
-                ))}
-              </div>
+              <p className="pt-0.5 text-center text-[10.5px] text-app-muted">{t.cardHint}</p>
             </div>
           </div>
         )}

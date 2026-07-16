@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { smoothBar, lerpRgb, orbColorAt, orbBarColor, stateAccent, rgba, ORB_PALETTE } from './orbViz';
+import { smoothBar, lerpRgb, orbColorAt, orbBarColor, stateAccent, rgba, ORB_PALETTE, ORB_STATE_GRADIENT, orbBlobRadius } from './orbViz';
 
 describe('smoothBar — asymmetric attack/decay envelope', () => {
   test('rises fast toward a louder target (attack) but never overshoots', () => {
@@ -70,5 +70,46 @@ describe('rgba', () => {
     expect(rgba([10, 20, 30], 0.5)).toBe('rgba(10,20,30,0.5)');
     expect(rgba([10, 20, 30], 5)).toBe('rgba(10,20,30,1)');
     expect(rgba([10, 20, 30], -5)).toBe('rgba(10,20,30,0)');
+  });
+});
+
+// ── PHASE 39 (Master Contract V16) — liquid orb ──────────────────────────────
+describe('ORB_STATE_GRADIENT — brand-locked per-state colours', () => {
+  test('every conversation state has an inner+outer gradient', () => {
+    for (const s of ['idle', 'listening', 'processing', 'speaking', 'error'] as const) {
+      expect(ORB_STATE_GRADIENT[s].inner).toHaveLength(3);
+      expect(ORB_STATE_GRADIENT[s].outer).toHaveLength(3);
+    }
+  });
+  test('the mandated colours: listening cyan→blue, speaking crimson→violet, processing white→silver', () => {
+    expect(ORB_STATE_GRADIENT.listening.inner).toEqual([0, 209, 255]); // #00D1FF
+    expect(ORB_STATE_GRADIENT.listening.outer).toEqual([0, 102, 255]); // #0066FF
+    expect(ORB_STATE_GRADIENT.speaking.inner).toEqual([255, 0, 60]); //   #FF003C
+    expect(ORB_STATE_GRADIENT.speaking.outer).toEqual([209, 0, 209]); //  #D100D1
+    expect(ORB_STATE_GRADIENT.processing.inner).toEqual([255, 255, 255]);
+  });
+});
+
+describe('orbBlobRadius — morphing liquid boundary', () => {
+  test('wraps seamlessly: angleFrac 0 and 1 map to the same boundary point', () => {
+    expect(orbBlobRadius(0, 3.2, 0.4, 0.9)).toBeCloseTo(orbBlobRadius(1, 3.2, 0.4, 0.9), 10);
+  });
+  test('is deterministic (pure) for identical inputs', () => {
+    expect(orbBlobRadius(0.37, 1.1, 0.6, 2.1)).toBe(orbBlobRadius(0.37, 1.1, 0.6, 2.1));
+  });
+  test('louder amplitude swells the average radius', () => {
+    const avg = (amp: number) => {
+      let s = 0; const N = 64;
+      for (let i = 0; i < N; i++) s += orbBlobRadius(i / N, 0, amp, 0);
+      return s / N;
+    };
+    expect(avg(1)).toBeGreaterThan(avg(0)); // sound pushes the blob outward
+  });
+  test('stays in a sane band around 1 (never collapses or explodes)', () => {
+    for (let i = 0; i <= 20; i++) {
+      const r = orbBlobRadius(i / 20, i * 0.3, 0.5, 1.3);
+      expect(r).toBeGreaterThan(0.7);
+      expect(r).toBeLessThan(1.8);
+    }
   });
 });

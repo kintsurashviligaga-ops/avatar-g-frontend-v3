@@ -1,22 +1,30 @@
 /** @jest-environment node */
 import { PRICING_TIERS, tierCreditPool, TIER_STRIPE_PRICE_ENV, stripePriceIdForTier, tierByStripePriceId } from './pricingConfig';
 
-describe('PRICING_TIERS (Day-1 Task 6 — credit-pool mapping)', () => {
-  it('defines the three verified tiers with the confirmed GEL prices', () => {
-    expect(PRICING_TIERS.map((t) => [t.id, t.priceGel, t.billing])).toEqual([
-      ['starter', 38, 'monthly'],
-      ['pro_creator', 299, 'monthly'],
-      ['studio_annual', 899, 'annual'],
+describe('PRICING_TIERS (Master Contract V1/V2 — USD launch pricing)', () => {
+  it('defines the three launch tiers in USD with a GEL settlement kept in lockstep (× 2.7)', () => {
+    expect(PRICING_TIERS.map((t) => [t.id, t.priceUsd, t.billing])).toEqual([
+      ['starter', 15, 'monthly'],
+      ['pro_creator', 99, 'monthly'],
+      ['studio_annual', 299, 'annual'],
+    ]);
+    // priceGel = round(priceUsd × GEL_PER_USD) so a top-up never bills a number the user didn't see.
+    expect(PRICING_TIERS.map((t) => t.priceGel)).toEqual([41, 267, 807]);
+  });
+
+  it('carries the fixed marketing credit grants (150 / 1200 / 4500) and ceilings', () => {
+    const byId = Object.fromEntries(PRICING_TIERS.map((t) => [t.id, t.creditsIncluded]));
+    expect(byId).toEqual({ starter: 150, pro_creator: 1200, studio_annual: 4500 });
+    expect(PRICING_TIERS.map((t) => t.creditCeiling)).toEqual([
+      { videos: 4, music: 10, images: 30 },
+      { videos: 35, music: 80, images: 200 },
+      { videos: 120, music: 300, images: 800 },
     ]);
   });
 
-  it('derives the credit pool from the per-asset ceilings × media costs (video 25 · music 5 · image 2)', () => {
-    // Σ ceiling × cost — never hardcoded, so a media-cost change flows through.
+  it('tierCreditPool still derives Σ ceiling × media cost (kept for the pool helper)', () => {
     expect(tierCreditPool({ videos: 2, music: 10, images: 20 })).toBe(140); // 50 + 50 + 40
     expect(tierCreditPool({ videos: 10, music: 50, images: 100 })).toBe(700); // 250 + 250 + 200
-    expect(tierCreditPool({ videos: 40, music: 250, images: 500 })).toBe(3250); // 1000 + 1250 + 1000
-    const byId = Object.fromEntries(PRICING_TIERS.map((t) => [t.id, t.creditsIncluded]));
-    expect(byId).toEqual({ starter: 140, pro_creator: 700, studio_annual: 3250 });
   });
 });
 

@@ -118,14 +118,13 @@ export function PricingSection() {
                 <h3 className="text-[20px] md:text-[22px] font-extrabold tracking-[-0.01em]" style={{ color: 'var(--color-text)' }}>{name}</h3>
                 <p className="mt-1 text-[12.5px] font-medium" style={{ color: isPopular ? 'rgb(103,232,249)' : 'var(--color-text-tertiary)' }}>{tagline}</p>
 
-                {/* Price — the dominant element. number-span + ₾-span are ADJACENT (JSX strips the newline
-                    whitespace) so textContent stays '299₾', which the pinned test asserts. */}
+                {/* Price — the dominant element. PHASE 39 (Master Contract V1/V2): priced in USD ($). The
+                    "$N" renders as ONE span so textContent stays '$99', which the pinned test asserts. */}
                 <div className="mt-6 mb-7 flex items-baseline gap-1.5">
                   <span
                     className={`font-black leading-none tracking-[-0.035em] ${isPopular ? 'text-[54px] md:text-[62px]' : 'text-[46px] md:text-[54px]'}`}
                     style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', ...(isPopular ? { textShadow: '0 0 28px rgba(6,182,212,0.30)' } : {}) }}
-                  >{tier.priceGel}</span>
-                  <span className="text-[22px] md:text-[24px] font-bold leading-none" style={{ color: isPopular ? 'rgb(6,182,212)' : 'var(--color-text-tertiary)' }}>₾</span>
+                  >{`$${tier.priceUsd}`}</span>
                   <span className="ml-1 self-center text-[13px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{period}</span>
                 </div>
 
