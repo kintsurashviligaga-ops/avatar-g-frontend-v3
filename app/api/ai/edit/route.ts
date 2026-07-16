@@ -24,7 +24,7 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
-import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, type RenderDraft } from '@/lib/video/surgicalOps';
+import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 
 export const dynamic = 'force-dynamic';
@@ -99,6 +99,11 @@ export async function POST(req: NextRequest) {
     // Batch 'render' export:
     kind?: string;
     draft?: DraftPayload;
+    // Multi-clip concat export:
+    sources?: string[];
+    sequence?: { src: number; start: number; end: number; muted: boolean }[];
+    targetW?: number;
+    targetH?: number;
   } | null;
 
   const action = String(body?.action || '').trim() as EditAction;
@@ -106,6 +111,31 @@ export async function POST(req: NextRequest) {
   if (!action || (!DETERMINISTIC.has(action) && action !== 'inpaint')) {
     return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
   }
+
+  // ── MULTI-CLIP concat export — uses `sources` (not a single mediaUrl). Handled first. ──────────────
+  if (action === 'render' && Array.isArray(body?.sources) && body.sources.length > 1 && Array.isArray(body?.sequence)) {
+    const guard = await guardGeneration(req, 'video', { gate: false });
+    if (!guard.ok) return guard.response;
+    // Resolve ALL sources (positions must stay aligned with the sequence's `src` indices) — abort if any misses.
+    const resolved = await Promise.all(body.sources.slice(0, 5).map((s) => resolveMedia(s)));
+    if (resolved.some((u) => !u)) {
+      return NextResponse.json({ url: null, error: 'could not resolve all clip sources' }, { status: 400 });
+    }
+    const d = body?.draft ?? {};
+    const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec };
+    const seq = body.sequence
+      .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length && e.end > e.start)
+      .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted }));
+    if (!seq.length) return NextResponse.json({ url: null, error: 'empty sequence' }, { status: 400 });
+    try {
+      const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720);
+      if (url) void saveCreation(req, guard.userId, url, 'render');
+      return NextResponse.json({ url, error: url ? undefined : 'concat render failed' });
+    } catch (e) {
+      return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'concat failed' }, { status: 502 });
+    }
+  }
+
   if (!mediaUrl) {
     return NextResponse.json({ url: null, error: 'mediaUrl required (upload the media first)' }, { status: 400 });
   }

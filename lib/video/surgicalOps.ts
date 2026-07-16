@@ -326,6 +326,71 @@ async function renderSequenceDraft(videoUrl: string, segments: DraftSegment[], d
   }
 }
 
+/** One entry in a MULTI-CLIP sequence — references a source by index, with its own trim window + mute. */
+export interface ConcatEntry { src: number; start: number; end: number; muted: boolean }
+
+/**
+ * MULTI-CLIP concat — stitch trimmed windows of SEVERAL distinct sources into one clip. Each entry is trimmed
+ * from its own input, scaled + letterbox-padded to a UNIFORM target resolution (so mixed formats/resolutions
+ * line up), muted if flagged, then concatenated in order; grade + fade apply to the composed result.
+ * One ffmpeg pass, N inputs, one filter_complex. (Crop is a single-source op and is intentionally skipped here.)
+ *
+ * NOTE: assumes each source has an audio stream (concat with a=1). A silent source will fail the concat cleanly
+ * (→ null); pin audio-bearing clips, or split within one clip (single-source path) if a clip has no audio.
+ */
+export async function renderConcat(sources: string[], seq: ConcatEntry[], d: RenderDraft, targetW: number, targetH: number): Promise<string | null> {
+  const b = bin();
+  if (!b) return null;
+  const srcs = sources.filter((s) => typeof s === 'string' && s.length > 0);
+  const entries = seq.filter((e) => Number.isInteger(e.src) && e.src >= 0 && e.src < srcs.length && e.end > e.start);
+  if (!srcs.length || !entries.length) return null;
+  const W = even(targetW > 0 ? targetW : 1280);
+  const H = even(targetH > 0 ? targetH : 720);
+  const total = entries.reduce((a, e) => a + (e.end - e.start), 0);
+  const fi = Math.max(0, numFinite(d.fadeInSec, 0));
+  const fo = Math.max(0, numFinite(d.fadeOutSec, 0));
+
+  const args: string[] = ['-y'];
+  srcs.forEach((s) => { args.push('-i', s); });
+
+  const parts: string[] = [];
+  const concatInputs: string[] = [];
+  entries.forEach((e, i) => {
+    const st = Math.max(0, e.start).toFixed(3);
+    const en = Math.max(e.start + 0.04, e.end).toFixed(3);
+    parts.push(`[${e.src}:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`);
+    const a = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS'];
+    if (e.muted) a.push('volume=0');
+    parts.push(`[${e.src}:a]${a.join(',')}[a${i}]`);
+    concatInputs.push(`[v${i}][a${i}]`);
+  });
+  parts.push(`${concatInputs.join('')}concat=n=${entries.length}:v=1:a=1[cv][ca]`);
+
+  const post: string[] = [...buildGradeFilters(d.grade)];
+  if (fi > 0) post.push(`fade=t=in:st=0:d=${fi}`);
+  if (fo > 0 && total > 0.1) post.push(`fade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
+  parts.push(`[cv]${post.length ? post.join(',') : 'null'}[outv]`);
+  const apost: string[] = [];
+  if (fi > 0) apost.push(`afade=t=in:st=0:d=${fi}`);
+  if (fo > 0 && total > 0.1) apost.push(`afade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
+  parts.push(`[ca]${apost.length ? apost.join(',') : 'anull'}[outa]`);
+
+  args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...VIDEO_TAIL);
+
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'concat-'));
+    const out = join(dir, 'concat.mp4');
+    await exec(b, [...args, out], { maxBuffer: 1 << 26, timeout: 300_000 });
+    return await host(await readFile(out), 'concat', 'mp4', 'video/mp4');
+  } catch (err) {
+    console.warn('[surgical/renderConcat] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /** Render a photo draft in one pass: crop → grade → single output frame (PNG). */
 export async function renderPhotoDraft(imageUrl: string, d: RenderDraft): Promise<string | null> {
   const b = bin();

@@ -3,12 +3,12 @@
 /**
  * SurgicalEditor — a NON-LINEAR, Premiere-style editor (ქირურგიული მონტაჟი).
  *
- * Every edit is INSTANT + client-side: colour grade is a live CSS filter; splits slice the timeline into
- * `segments` you can delete, reorder and mute; nothing hits the server until Export, which sends the whole
- * ordered draft in ONE /api/ai/edit render call (one ffmpeg pass — trim+concat the sequence, then crop/grade/fade).
+ * Multi-clip: drop up to 5 different videos and they become blocks on ONE timeline, each block pointing at its
+ * own source file. Split / delete / reorder / mute work across clips, all in React state (<10ms, no server).
+ * Colour grade is a live CSS filter. On Export the whole ordered sequence goes in ONE /api/ai/edit call — a
+ * single ffmpeg pass that trims + scales-to-uniform + concatenates the distinct sources, then grade + fade.
  *
- * PHOTO mode swaps the timeline for a Crop + Colour + AI object-removal panel: you paint a mask directly on the
- * image, and the binary mask + image go to a Replicate inpaint model. AI removal is honest generative fill.
+ * PHOTO mode swaps the timeline for Crop + Colour + a mask-paint AI object-removal panel.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,13 +20,14 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
 const MAX_CLIPS = 35;
-const MASK_CAP = 1536; // cap mask resolution so the base64 mask stays under the function-body limit
+const MAX_SEQ_CLIPS = 5; // distinct video sources in one concat sequence
+const MASK_CAP = 1536;
 
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
-  clips: string; maxReached: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string;
+  maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
@@ -34,41 +35,42 @@ interface Copy {
 
 const T: Record<Lang, Copy> = {
   ka: {
-    title: 'ქირურგიული მონტაჟი', subtitle: 'არა-ლინეარული რედაქტორი — ცვლილებები მყისიერია',
-    drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 კლიპი', pick: 'ფაილის არჩევა',
+    title: 'ქირურგიული მონტაჟი', subtitle: 'არა-ლინეარული რედაქტორი — გადააბი სხვადასხვა კლიპი',
+    drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 ფაილი', pick: 'ფაილის არჩევა',
     crop: 'ჩამოჭრა', color: 'ფერის გრადაცია', fade: 'მილევა', split: 'გაჭრა', mute: 'დადუმება', unmute: 'ხმის ჩართვა', reset: 'გადატვირთვა',
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
-    clips: 'კლიპები', maxReached: 'მაქსიმუმ 35 კლიპი', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ',
-    exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ერთი ან მეტი ცვლილება ექსპორტისთვის',
+    maxReached: 'მაქსიმუმ 35 ფაილი', max5: 'მაქსიმუმ 5 კლიპი თანმიმდევრობაში', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
+    exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
   },
   en: {
-    title: 'Surgical Editor', subtitle: 'Non-linear editor — every edit is instant',
-    drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 clips', pick: 'Choose file',
+    title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
+    drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 files', pick: 'Choose file',
     crop: 'Crop', color: 'Color grade', fade: 'Fade', split: 'Split', mute: 'Mute', unmute: 'Unmute', reset: 'Reset',
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
-    clips: 'Clips', maxReached: 'Maximum 35 clips', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right',
-    exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit to enable export',
+    maxReached: 'Maximum 35 files', max5: 'Up to 5 clips in a sequence', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
+    exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
   },
   ru: {
-    title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — правки мгновенны',
-    drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 клипов', pick: 'Выбрать файл',
+    title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
+    drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 файлов', pick: 'Выбрать файл',
     crop: 'Обрезка', color: 'Цветокоррекция', fade: 'Затухание', split: 'Разрез', mute: 'Заглушить', unmute: 'Включить звук', reset: 'Сброс',
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
-    clips: 'Клипы', maxReached: 'Максимум 35 клипов', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо',
-    exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку, чтобы включить экспорт',
+    maxReached: 'Максимум 35 файлов', max5: 'До 5 клипов в последовательности', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
+    exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
   },
 };
 
-interface Clip { id: string; file: File; url: string; kind: 'video' | 'image'; name: string }
+interface Clip { id: string; file: File; url: string; kind: 'video' | 'image'; name: string; dur?: number; w?: number; h?: number }
 interface Grade { saturation: number; contrast: number; brightness: number; temperature: number }
 interface Rect { x: number; y: number; w: number; h: number }
-interface Segment { id: string; start: number; end: number; muted: boolean }
+/** One block in the export sequence — points at its OWN source clip. */
+interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean }
 
 const NEUTRAL: Grade = { saturation: 100, contrast: 100, brightness: 100, temperature: 0 };
 const isNeutral = (g: Grade) => g.saturation === 100 && g.contrast === 100 && g.brightness === 100 && g.temperature === 0;
@@ -78,6 +80,17 @@ function gradeFilter(g: Grade): string {
   const sepia = warm > 0 ? warm * 0.35 : 0;
   const hue = warm < 0 ? warm * 18 : 0;
   return `saturate(${g.saturation}%) contrast(${g.contrast}%) brightness(${g.brightness}%) sepia(${sepia.toFixed(2)}) hue-rotate(${hue.toFixed(0)}deg)`;
+}
+
+/** Read a video's duration + dimensions client-side (a throwaway <video>), so the sequence knows each clip. */
+function probeVideo(url: string): Promise<{ dur: number; w: number; h: number }> {
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true;
+    v.onloadedmetadata = () => resolve({ dur: v.duration || 0, w: v.videoWidth || 0, h: v.videoHeight || 0 });
+    v.onerror = () => resolve({ dur: 0, w: 0, h: 0 });
+    v.src = url;
+  });
 }
 
 async function uploadClip(file: File): Promise<string | null> {
@@ -113,7 +126,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   const [fade, setFade] = useState<{ inSec: number; outSec: number }>({ inSec: 0, outSec: 0 });
   const [crop, setCrop] = useState<Rect | null>(null);
   const [cropOn, setCropOn] = useState(false);
-  const [segments, setSegments] = useState<Segment[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]); // the export SEQUENCE (across clips)
   const [selectedSeg, setSelectedSeg] = useState(0);
 
   const [maskMode, setMaskMode] = useState(false);
@@ -136,18 +149,17 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   const clip = clips[active];
   const isPhoto = clip?.kind === 'image';
+  const distinctClipIds = useMemo(() => Array.from(new Set(segments.map((s) => s.clipId))), [segments]);
+  const videoClips = useMemo(() => clips.filter((c) => c.kind === 'video'), [clips]);
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => () => { clipsRef.current.forEach((c) => URL.revokeObjectURL(c.url)); }, []);
 
   const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2600); }, []);
 
-  const resetDraft = useCallback((dur: number) => {
-    setGrade(NEUTRAL); setFade({ inSec: 0, outSec: 0 }); setCrop(null); setCropOn(false);
-    setSegments(dur > 0 ? [{ id: 'seg-0', start: 0, end: dur, muted: false }] : []);
-    setSelectedSeg(0); setResult(null); setCurrent(0); setMaskMode(false); setMaskPainted(false); setPrompt('');
-  }, []);
-  useEffect(() => { resetDraft(0); setPhotoDim(null); }, [active, resetDraft]);
+  // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
+  // are the GLOBAL draft and persist across clips.
+  useEffect(() => { setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); }, [active]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -157,13 +169,32 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       if (!kind) continue;
       incoming.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: f, url: URL.createObjectURL(f), kind, name: f.name });
     }
+    if (!incoming.length) return;
     setClips((prev) => {
       if (prev.length + incoming.length > MAX_CLIPS) flash(t.maxReached);
       return [...prev, ...incoming].slice(0, MAX_CLIPS);
     });
-  }, [flash, t.maxReached]);
+    // Probe each new VIDEO + append it as a segment to the sequence (cap 5 distinct sources).
+    for (const c of incoming) {
+      if (c.kind !== 'video') continue;
+      void probeVideo(c.url).then(({ dur, w, h }) => {
+        setClips((prev) => prev.map((x) => (x.id === c.id ? { ...x, dur, w, h } : x)));
+        setSegments((prev) => {
+          if (prev.some((s) => s.clipId === c.id)) return prev;
+          if (new Set(prev.map((s) => s.clipId)).size >= MAX_SEQ_CLIPS) { flash(t.max5); return prev; }
+          return [...prev, { id: `seg-${c.id}`, clipId: c.id, start: 0, end: dur || 0, muted: false }];
+        });
+      });
+    }
+  }, [flash, t.maxReached, t.max5]);
 
-  const onLoadedMeta = useCallback((dur: number) => { setDuration(dur); setSegments([{ id: 'seg-0', start: 0, end: dur, muted: false }]); setSelectedSeg(0); }, []);
+  const resetDraft = useCallback(() => {
+    setGrade(NEUTRAL); setFade({ inSec: 0, outSec: 0 }); setCrop(null); setCropOn(false); setResult(null);
+    setMaskMode(false); setMaskPainted(false); setPrompt('');
+    // Rebuild the sequence to one full segment per video clip, in upload order.
+    setSegments(clipsRef.current.filter((c) => c.kind === 'video').slice(0, MAX_SEQ_CLIPS).map((c) => ({ id: `seg-${c.id}`, clipId: c.id, start: 0, end: c.dur || 0, muted: false })));
+    setSelectedSeg(0);
+  }, []);
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current; if (!v) return;
@@ -175,22 +206,29 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     v.currentTime = time; setCurrent(time);
   }, [duration]);
 
-  // ── Timeline segment ops (all pure React state — no server) ──
+  const clipIndexById = useCallback((id: string) => clips.findIndex((c) => c.id === id), [clips]);
+  const selectSeg = useCallback((i: number) => {
+    setSelectedSeg(i);
+    const seg = segments[i];
+    if (seg) { const idx = clipIndexById(seg.clipId); if (idx >= 0 && idx !== active) setActive(idx); }
+  }, [segments, clipIndexById, active]);
+
+  // Split the SELECTED segment (its clip == the previewed clip) at the playhead.
   const splitAtPlayhead = useCallback(() => {
-    if (!duration) return;
+    if (!duration || !clip || clip.kind !== 'video') return;
     setSegments((prev) => {
-      const src = prev.length ? prev : [{ id: 'seg-0', start: 0, end: duration, muted: false }];
       const out: Segment[] = []; let did = false;
-      for (const s of src) {
-        if (!did && current > s.start + 0.05 && current < s.end - 0.05) {
-          out.push({ id: `${s.id}a${Math.round(current * 100)}`, start: s.start, end: current, muted: s.muted });
-          out.push({ id: `${s.id}b${Math.round(current * 100)}`, start: current, end: s.end, muted: s.muted });
+      prev.forEach((s, i) => {
+        if (!did && i === selectedSeg && s.clipId === clip.id && current > s.start + 0.05 && current < s.end - 0.05) {
+          out.push({ id: `${s.id}a${Math.round(current * 100)}`, clipId: s.clipId, start: s.start, end: current, muted: s.muted });
+          out.push({ id: `${s.id}b${Math.round(current * 100)}`, clipId: s.clipId, start: current, end: s.end, muted: s.muted });
           did = true;
         } else out.push(s);
-      }
+      });
       return out;
     });
-  }, [current, duration]);
+  }, [current, duration, clip, selectedSeg]);
+
   const toggleMuteSeg = useCallback((i: number) => setSegments((prev) => prev.map((s, k) => (k === i ? { ...s, muted: !s.muted } : s))), []);
   const deleteSeg = useCallback((i: number) => {
     setSegments((prev) => (prev.length <= 1 ? prev : prev.filter((_, k) => k !== i)));
@@ -206,7 +244,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     setSelectedSeg((sel) => (sel === i ? i + dir : sel === i + dir ? i : sel));
   }, []);
 
-  // ── Crop overlay ──
+  // ── Crop overlay (single-source only) ──
   const onStageDown = useCallback((e: React.MouseEvent) => {
     if (!cropOn || !stageRef.current) return;
     const r = stageRef.current.getBoundingClientRect();
@@ -236,7 +274,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     return { x, y, w: Math.min(crop.w * sx, nw - x), h: Math.min(crop.h * sy, nh - y) };
   }, [crop, isPhoto]);
 
-  // ── Mask canvas (photo inpaint) — backing store at (capped) source res, so toDataURL is the source mask ──
+  // ── Mask canvas (photo inpaint) ──
   useEffect(() => {
     if (!maskMode || !photoDim) return;
     const c = maskCanvasRef.current; if (!c) return;
@@ -246,7 +284,6 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     const ctx = c.getContext('2d'); if (ctx) { ctx.fillStyle = 'black'; ctx.fillRect(0, 0, c.width, c.height); }
     setMaskPainted(false);
   }, [maskMode, photoDim]);
-
   const paintAt = useCallback((clientX: number, clientY: number) => {
     const c = maskCanvasRef.current; if (!c) return;
     const r = c.getBoundingClientRect(); if (!r.width || !r.height) return;
@@ -263,46 +300,64 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     setMaskPainted(false);
   }, []);
 
-  // ── Sequence bookkeeping ──
   const seqDuration = useMemo(() => segments.reduce((a, s) => a + Math.max(0, s.end - s.start), 0), [segments]);
-  const seqMutated = useMemo(() => {
-    if (segments.some((s) => s.muted)) return true;
-    let tt = 0;
-    for (const s of segments) { if (Math.abs(s.start - tt) > 0.06) return true; tt = s.end; }
-    return Math.abs(tt - duration) > 0.2;
-  }, [segments, duration]);
-
   const hasMutations = useMemo(() => (
-    !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || seqMutated
-  ), [grade, fade, crop, seqMutated]);
+    !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1 || segments.some((s) => s.muted)
+  ), [grade, fade, crop, segments]);
+  const cropAllowed = distinctClipIds.length <= 1; // crop is a single-source op
 
-  // ── Export: one POST with the whole ordered draft ──
+  // ── Export ──
   const doExport = useCallback(async () => {
     if (!clip) { flash(t.needClip); return; }
     if (!hasMutations || exporting) return;
     setExporting(true); setExportPct(6); setResult(null);
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 12)) : p)), 400);
     try {
-      const path = await uploadClip(clip.file);
-      if (!path) { flash(t.failed); return; }
-      const draft = {
-        grade: isNeutral(grade) ? undefined : grade,
-        fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined,
-        crop: sourceCrop(),
-        segments: isPhoto ? undefined : segments.map((s) => ({ start: s.start, end: s.end, muted: s.muted })),
-      };
-      const res = await fetch('/api/ai/edit', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ action: 'render', mediaUrl: path, kind: isPhoto ? 'photo' : 'video', durationSec: duration, draft }),
-      });
-      const j = (await res.json().catch(() => null)) as { url?: string | null; error?: string } | null;
-      if (res.ok && j?.url) { setExportPct(100); setResult({ url: j.url, kind: isPhoto ? 'image' : 'video' }); flash(t.done); }
-      else flash(t.failed);
+      const byId = new Map(clips.map((c) => [c.id, c]));
+      if (isPhoto) {
+        const path = await uploadClip(clip.file);
+        if (!path) { flash(t.failed); return; }
+        const res = await postEdit({ action: 'render', mediaUrl: path, kind: 'photo', draft: { grade: isNeutral(grade) ? undefined : grade, crop: sourceCrop() } });
+        finishExport(res, 'image');
+      } else if (distinctClipIds.length > 1) {
+        // MULTI-CLIP concat — upload each distinct source (aligned to sequence src indices).
+        const uploads = await Promise.all(distinctClipIds.map((id) => { const c = byId.get(id); return c ? uploadClip(c.file) : Promise.resolve(null); }));
+        if (uploads.some((u) => !u)) { flash(t.failed); return; }
+        const srcIndex = new Map(distinctClipIds.map((id, i) => [id, i]));
+        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted }));
+        const first = byId.get(distinctClipIds[0] ?? '');
+        const res = await postEdit({
+          action: 'render', kind: 'video', sources: uploads as string[], sequence,
+          targetW: first?.w || 1280, targetH: first?.h || 720,
+          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined },
+        });
+        finishExport(res, 'video');
+      } else {
+        // SINGLE clip — the legacy path keeps precise source-px crop.
+        const onlyId = distinctClipIds[0] ?? clip.id;
+        const only = byId.get(onlyId) ?? clip;
+        const path = await uploadClip(only.file);
+        if (!path) { flash(t.failed); return; }
+        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted }));
+        const res = await postEdit({
+          action: 'render', mediaUrl: path, kind: 'video', durationSec: only.dur || duration,
+          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, crop: sourceCrop(), segments: segs },
+        });
+        finishExport(res, 'video');
+      }
     } catch { flash(t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, hasMutations, exporting, grade, fade, segments, sourceCrop, isPhoto, duration, flash, t.needClip, t.failed, t.done]);
 
-  // ── AI object removal (photo) — mask canvas → binary PNG mask (data URI) + image → inpaint model ──
+    async function postEdit(payload: Record<string, unknown>) {
+      const r = await fetch('/api/ai/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
+      return (await r.json().catch(() => null)) as { url?: string | null } | null;
+    }
+    function finishExport(j: { url?: string | null } | null, kind: 'video' | 'image') {
+      if (j?.url) { setExportPct(100); setResult({ url: j.url, kind }); flash(t.done); } else flash(t.failed);
+    }
+  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, sourceCrop, duration, flash, t.needClip, t.failed, t.done]);
+
+  // ── AI object removal (photo) ──
   const runInpaint = useCallback(async () => {
     if (!clip) return;
     const c = maskCanvasRef.current;
@@ -312,11 +367,8 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       const maskUrl = c.toDataURL('image/png');
       const path = await uploadClip(clip.file);
       if (!path) { flash(t.failed); return; }
-      const res = await fetch('/api/ai/edit', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() }),
-      });
-      const j = (await res.json().catch(() => null)) as { url?: string | null; error?: string } | null;
+      const res = await fetch('/api/ai/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() }) });
+      const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
       if (res.status === 503) flash(t.inpaintOff);
       else if (res.ok && j?.url) { setResult({ url: j.url, kind: 'image' }); flash(t.done); }
       else flash(t.failed);
@@ -330,7 +382,6 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col bg-app-bg text-app-text">
-      {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-app-border/15 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-app-accent/15"><Scissors size={16} className="text-app-accent" /></span>
@@ -385,9 +436,8 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                   onLoad={(e) => setPhotoDim({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
               ) : (
                 <video ref={videoRef} src={clip?.url} playsInline style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full"
-                  onLoadedMetadata={(e) => onLoadedMeta(e.currentTarget.duration || 0)} onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+                  onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)} onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
               )}
-              {/* Mask paint canvas (photo, mask mode) — overlays the image box */}
               {isPhoto && maskMode && imgRef.current && stageRef.current && (() => {
                 const ir = imgRef.current.getBoundingClientRect(); const sr = stageRef.current.getBoundingClientRect();
                 return (
@@ -398,15 +448,14 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                     onMouseUp={() => { painting.current = false; }} onMouseLeave={() => { painting.current = false; }}
                     onTouchStart={(e) => { painting.current = true; const tp = e.touches[0]; if (tp) paintAt(tp.clientX, tp.clientY); }}
                     onTouchMove={(e) => { const tp = e.touches[0]; if (painting.current && tp) { e.preventDefault(); paintAt(tp.clientX, tp.clientY); } }}
-                    onTouchEnd={() => { painting.current = false; }}
-                  />
+                    onTouchEnd={() => { painting.current = false; }} />
                 );
               })()}
               {cropOn && crop && crop.w > 4 && <div className="pointer-events-none absolute border-2 border-app-accent bg-app-accent/10" style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }} />}
               {cropOn && !crop && <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-3 py-1 text-[11px] text-white">{t.cropHint}</div>}
             </div>
 
-            {/* Timeline + segments (VIDEO) */}
+            {/* Timeline + sequence (VIDEO) */}
             {!isPhoto && (
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
@@ -418,21 +467,22 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                   <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-app-muted">{fmt(current)} / {fmt(duration)}</span>
                 </div>
 
-                {segments.length > 1 && (
+                {segments.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <p className="text-[10px] uppercase tracking-wide text-app-muted">{t.sequence}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-app-muted">{t.sequence} · {distinctClipIds.length} {t.clipN.toLowerCase()}{distinctClipIds.length > 1 ? 's' : ''}</p>
                       <p className="text-[10px] tabular-nums text-app-muted">{t.seqDur}: {fmt(seqDuration)}</p>
                     </div>
-                    {/* Segment blocks in sequence order, each with a delete 'x' */}
                     <div className="flex gap-1">
                       {segments.map((s, i) => {
-                        const w = duration ? ((s.end - s.start) / duration) * 100 : 0;
+                        const w = seqDuration ? ((s.end - s.start) / seqDuration) * 100 : 0;
+                        const clipNo = videoClips.findIndex((c) => c.id === s.clipId) + 1;
                         return (
-                          <div key={s.id} style={{ flexBasis: `${Math.max(8, w)}%` }}
+                          <div key={s.id} style={{ flexBasis: `${Math.max(9, w)}%` }}
                             className={`group relative flex h-10 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-md border text-[10px] ${i === selectedSeg ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border/20 bg-app-elevated text-app-muted'}`}>
-                            <button type="button" onClick={() => setSelectedSeg(i)} className="flex h-full w-full items-center justify-center gap-1">
-                              {s.muted ? <VolumeX size={11} className="shrink-0 text-amber-400" /> : null}<span className="truncate">{fmt(s.end - s.start)}</span>
+                            <button type="button" onClick={() => selectSeg(i)} className="flex h-full w-full flex-col items-center justify-center leading-none">
+                              <span className="flex items-center gap-0.5">{s.muted ? <VolumeX size={10} className="text-amber-400" /> : null}<span className="opacity-60">#{clipNo}</span></span>
+                              <span className="truncate tabular-nums">{fmt(s.end - s.start)}</span>
                             </button>
                             {segments.length > 1 && (
                               <button type="button" onClick={(e) => { e.stopPropagation(); deleteSeg(i); }} aria-label={t.del}
@@ -442,14 +492,13 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                         );
                       })}
                     </div>
-                    {/* Selected-segment control bar: move ◄ ►, mute, delete */}
-                    {sel && (
+                    {sel && segments.length > 1 && (
                       <div className="flex items-center gap-1.5">
-                        <span className="mr-1 text-[10px] text-app-muted">{t.sequence} {selectedSeg + 1}</span>
+                        <span className="mr-1 text-[10px] text-app-muted">#{videoClips.findIndex((c) => c.id === sel.clipId) + 1}</span>
                         <MiniBtn icon={<ChevronLeft size={13} />} label={t.moveL} onClick={() => moveSeg(selectedSeg, -1)} disabled={selectedSeg === 0} />
                         <MiniBtn icon={<ChevronRight size={13} />} label={t.moveR} onClick={() => moveSeg(selectedSeg, 1)} disabled={selectedSeg >= segments.length - 1} />
                         <MiniBtn icon={sel.muted ? <VolumeX size={13} /> : <Volume2 size={13} />} label={sel.muted ? t.unmute : t.mute} active={sel.muted} onClick={() => toggleMuteSeg(selectedSeg)} />
-                        <MiniBtn icon={<Trash2 size={13} />} label={t.del} onClick={() => deleteSeg(selectedSeg)} disabled={segments.length <= 1} danger />
+                        <MiniBtn icon={<Trash2 size={13} />} label={t.del} onClick={() => deleteSeg(selectedSeg)} danger />
                       </div>
                     )}
                   </div>
@@ -459,12 +508,12 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
             {/* Tools */}
             <div className="grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3">
-              <ToolButton icon={<Crop size={15} />} label={t.crop} active={cropOn} onClick={() => setCropOn((v) => !v)} />
+              {(isPhoto || cropAllowed) && <ToolButton icon={<Crop size={15} />} label={t.crop} active={cropOn} onClick={() => setCropOn((v) => !v)} />}
               {!isPhoto && <ToolButton icon={<Scissors size={15} />} label={t.split} onClick={splitAtPlayhead} />}
-              <ToolButton icon={<RotateCcw size={15} />} label={t.reset} onClick={() => resetDraft(duration)} />
+              <ToolButton icon={<RotateCcw size={15} />} label={t.reset} onClick={resetDraft} />
             </div>
 
-            {/* Color grading (both) */}
+            {/* Color grading */}
             <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
               <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.color}</span>
               <Slider icon={<Droplet size={13} />} label={t.saturation} min={0} max={200} value={grade.saturation} onChange={(v) => setGrade((g) => ({ ...g, saturation: v }))} />
@@ -482,7 +531,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               </div>
             )}
 
-            {/* AI object removal (PHOTO) — paint a mask, then remove */}
+            {/* AI object removal (PHOTO) */}
             {isPhoto && (
               <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
                 <div className="flex items-center justify-between">
@@ -494,10 +543,8 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                 </div>
                 {maskMode && <Slider icon={<Brush size={13} />} label={t.brush} min={10} max={100} value={brush} onChange={setBrush} />}
                 <div className="flex items-center gap-2">
-                  <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t.aiPromptPh}
-                    className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none" />
-                  <button type="button" onClick={() => void runInpaint()} disabled={!maskPainted || exporting}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3.5 py-2 text-[12px] font-bold text-app-bg disabled:opacity-50">
+                  <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t.aiPromptPh} className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none" />
+                  <button type="button" onClick={() => void runInpaint()} disabled={!maskPainted || exporting} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3.5 py-2 text-[12px] font-bold text-app-bg disabled:opacity-50">
                     {exporting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}{t.remove}
                   </button>
                 </div>
@@ -521,7 +568,6 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         )}
       </div>
 
-      {/* Export progress modal */}
       {exporting && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
           <div className="w-full max-w-[340px] rounded-2xl border border-app-border/20 bg-app-surface p-6 text-center shadow-2xl">
