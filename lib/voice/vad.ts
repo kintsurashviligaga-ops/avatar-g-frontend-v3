@@ -46,7 +46,11 @@ export const DEFAULT_VAD_CONFIG: VadConfig = {
   minSpeechMs: 300,
   maxUtteranceMs: 15_000,
   onsetMult: 3.2,
-  bargeMult: 4.5,
+  // Master Contract V5 — barge-in desensitised (4.5→5.5): the user must OVER-talk the assistant's
+  // playback more clearly to interrupt, so ambient noise / echo / the assistant's own leaked audio no
+  // longer trip a false barge. Barge is already hard-gated to status==='speaking' (never during
+  // 'thinking'); this only raises the amplitude bar for a genuine interruption.
+  bargeMult: 5.5,
   bargeOnsetMs: 140,
   floorAttack: 0.08,
   floorMin: 0.006,

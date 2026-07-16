@@ -45,6 +45,17 @@ const STORYBOARD_PROMPT_MODEL = process.env.STORYBOARD_PROMPT_MODEL ?? 'claude-h
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
+// Master Contract V4 — anti-collage guards for storyboard FRAMES. The positive clause is the load-bearing
+// one: it reaches all three frame providers (flux-schnell / NanoBanana / Replicate FLUX), and flux-schnell
+// accepts no negative_prompt at all. The negative is passed additionally on the NanoBanana path where it is
+// honoured. Together they stop the reported split-screen / grid / comic-panel storyboard tiles.
+const SINGLE_SHOT_CLAUSE =
+  'A SINGLE full-frame photograph — one continuous image, NOT a collage, not split-screen, no grid, no ' +
+  'multiple panels, no side-by-side frames, no borders, no dividers, no picture-in-picture.';
+const STORYBOARD_FRAME_NEGATIVE =
+  'collage, split screen, split-screen, diptych, triptych, grid, multiple panels, side by side, comic ' +
+  'panels, borders, dividers, picture-in-picture, deformed face, extra limbs, watermark, text';
+
 const serviceManager = new ServiceManager();
 
 /**
@@ -260,9 +271,13 @@ export async function POST(req: NextRequest) {
   const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0 };
   const genFrame = async (scenePrompt: string): Promise<string | null> => {
     try {
+      // Master Contract V4 — a positive SINGLE-SHOT clause is the only anti-collage lever that reaches ALL
+      // three frame providers (flux-schnell takes no negative_prompt), fixing the reported split-screen /
+      // grid / comic-panel storyboard frames. The selfie branch also tightens the identity lock so the
+      // uploaded character photo is actually honoured per frame.
       const framePrompt = selfie
-        ? `Cinematic film still, ${aspect} composition. ${scenePrompt} Featuring the EXACT same person as the reference image — identical face, hair and wardrobe. Photorealistic, professional cinematic colour grade.`
-        : `Cinematic film still, ${aspect} composition. ${scenePrompt} Photorealistic, professional cinematic colour grade, sharp focus.`;
+        ? `Cinematic film still, ${aspect} composition. ${scenePrompt} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
+        : `Cinematic film still, ${aspect} composition. ${scenePrompt} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
       // Primary = NanoBanana (via ServiceManager). ISOLATE its failure: if it throws
       // (e.g. the key is absent on this deployment, which left storyboards blank) or
       // returns nothing, we still fall through to the Replicate FLUX fallback below —
@@ -280,7 +295,7 @@ export async function POST(req: NextRequest) {
             intent: 'image_generation',
             userPrompt: framePrompt,
             ...(selfie ? { imageUrl: selfie } : {}),
-            selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k' },
+            selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k', negativePrompt: STORYBOARD_FRAME_NEGATIVE },
             locale,
           });
           raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;

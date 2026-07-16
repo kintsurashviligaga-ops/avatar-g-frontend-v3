@@ -440,7 +440,12 @@ export interface FilmShared {
 export const FILM_DRIFT_NEGATIVE =
   'yellow tint, sepia, oversaturated, muddy colours, amber cast, colour banding, deformed face, ' +
   'distorted face, extra fingers, extra limbs, mutated hands, disfigured, cartoon, anime, illustration, ' +
-  '3d render, low quality, blurry, watermark, text, subtitles';
+  '3d render, low quality, blurry, watermark, text, subtitles, ' +
+  // Master Contract V4 — anti-collage. Kling/LTX clips inherit this on their native negative_prompt field,
+  // so a scene never renders as a split-screen/diptych/comic-grid (the storyboard FRAMES are guarded
+  // separately via a positive single-shot clause since flux-schnell takes no negative).
+  'collage, split screen, split-screen, diptych, triptych, grid, multiple panels, side by side, ' +
+  'comic panels, borders, dividers, picture-in-picture';
 
 /**
  * PHASE 47 §3 — Nano Banano's visual contingency plan for a single scene.

@@ -148,9 +148,10 @@ export interface ServiceManagerRequest {
   imageUrl?: string;
   locale?: string;
   confidence?: number;
-  /** PHASE 2 L5 — per-render i2v model override (Cinema panel: Kling vs Hailuo).
-   *  Unset → the REPLICATE_VIDEO_MODEL env default. */
-  videoModel?: 'kling' | 'hailuo';
+  /** PHASE 2 L5 / Master Contract V3 — per-render i2v engine override (Cinema panel: Runway vs Kling;
+   *  Hailuo retained as a valid routing value). 'runway'/unset → Runway-first cascade; 'kling' opts out
+   *  of the Runway attempt and renders Kling-first; then the REPLICATE_VIDEO_MODEL env default. */
+  videoModel?: 'runway' | 'kling' | 'hailuo';
 }
 
 export interface ServiceManagerResponse {
@@ -422,8 +423,12 @@ export class ServiceManager {
     // image / any create failure (401/429/quota/timeout) it returns null and we fall straight through
     // to the existing Replicate Kling→LTX cascade below — same scene params, seamless colour-science.
     // Inert + byte-identical in prod until RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is set + verified.
-    const runway = await this.tryRunwayClip(request, startImage, aspect, enrichedPrompt);
-    if (runway) return runway;
+    // Master Contract V3 — the Cinema-panel engine toggle is now authoritative: selecting Kling opts OUT
+    // of the Runway attempt (Kling-first); 'runway'/unset keeps the Runway-first cascade (the default).
+    if (request.videoModel !== 'kling' && request.videoModel !== 'hailuo') {
+      const runway = await this.tryRunwayClip(request, startImage, aspect, enrichedPrompt);
+      if (runway) return runway;
+    }
 
     // DAY-3 — native multi-engine cascade (Kling-native → Luma → LTX → Replicate). Gated on a genuinely
     // NEW provider key (Kling AK/SK or Luma) being provisioned: prod today has only Replicate + LTX, so this

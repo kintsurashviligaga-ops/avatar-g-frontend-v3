@@ -12,7 +12,7 @@ import {
 } from './vad';
 
 // Frozen floor (floorAttack:0) → the onset/barge thresholds are constant, so every timing
-// below is exact. floor 0.01 → listening onset = max(0.015, 0.032) = 0.032; barge = 0.045.
+// below is exact. floor 0.01 → listening onset = max(0.015, 0.032) = 0.032; barge = 0.055 (bargeMult 5.5).
 const CFG: VadConfig = { ...DEFAULT_VAD_CONFIG, floorAttack: 0 };
 const LOUD = 0.5;
 const QUIET = 0;
@@ -119,7 +119,7 @@ describe('stepVad — barge-in (assistant speaking)', () => {
   });
 
   test('barge threshold is strictly higher than the listening onset (state gate)', () => {
-    // 0.038: above the 0.032 listening onset, below the 0.045 barge onset
+    // 0.038: above the 0.032 listening onset, below the 0.055 barge onset (bargeMult 5.5)
     const mid = 0.038;
     const listening = run(createVadState(0.01), Array(8).fill(mid), { assistantSpeaking: false }, { stopOnTerminal: false });
     expect(listening.events).toContain('onset');

@@ -52,7 +52,10 @@ const COPY: Record<Lang, {
 };
 
 const VAD_INTERVAL_MS = 50;
-const BARGE_GRACE_MS = 300;
+// Master Contract V5 — per-chunk grace window after playback starts, during which barge is suppressed
+// so the assistant's own audio-onset transient can't self-interrupt. Widened 300→400ms alongside the
+// higher barge amplitude bar for a calmer, less trigger-happy hands-free loop.
+const BARGE_GRACE_MS = 400;
 const VIZ_BARS = 48; // linear spectrum equalizer bar count
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },

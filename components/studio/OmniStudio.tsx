@@ -827,7 +827,7 @@ interface FilmSnap {
   voiceTone: 'epic' | 'emotional' | 'energetic';
   videoCameraMove: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down';
   videoMotionIntensity: number;
-  videoModel: 'kling' | 'hailuo';
+  videoModel: 'runway' | 'kling' | 'hailuo';
   hasTrainedVoice: boolean;
 }
 
@@ -1592,8 +1592,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // PHASE 2 L1 — camera controls → clip prompt tokens (move + 1–10 motion intensity).
   const [videoCameraMove, setVideoCameraMove] = useState<'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down'>('auto');
   const [videoMotionIntensity, setVideoMotionIntensity] = useState(5);
-  // PHASE 2 L5 — per-render i2v model (Kling default · Hailuo/MiniMax alternative).
-  const [videoModel, setVideoModel] = useState<'kling' | 'hailuo'>('kling');
+  // PHASE 2 L5 / Master Contract V3 — per-render i2v engine. Runway Gen-3/4 is the wired PRIMARY i2v
+  // engine (ServiceManager tries it first, then falls to Kling → LTX), so it is the default selection;
+  // choosing Kling opts OUT of the Runway attempt and renders Kling-first. Hailuo/MiniMax stays a valid
+  // routing value but is retired from the toggle (it was an unmarked secondary; Runway supersedes it).
+  const [videoModel, setVideoModel] = useState<'runway' | 'kling' | 'hailuo'>('runway');
   // PHASE 2 L1 — Product-Ad mode: one product photo (hosted URL) + a commercial preset.
   const [productImage, setProductImage] = useState<string | null>(null);
   const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
@@ -4177,6 +4180,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: chunk, locale }),
+          // Master Contract V17 — bound the request so a HUNG TTS socket can't keep the read-aloud
+          // spinner up indefinitely; on timeout the fetch aborts → null → the loop clears/continues.
+          signal: AbortSignal.timeout(15_000),
         });
         if (!res.ok) return null;
         return URL.createObjectURL(await res.blob());
@@ -5725,7 +5731,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 the collapsed badge surfaces the current transition glyph + engine so nothing hides. */}
             <Section
               title={`⚙️ ${locale === 'en' ? 'Advanced' : locale === 'ru' ? 'Дополнительно' : 'დამატებითი'}`}
-              badge={`${videoTransition === 'crossfade' ? '⤫' : videoTransition === 'cut' ? '▮' : videoTransition === 'dissolve' ? '◈' : videoTransition === 'zoom' ? '⊕' : '▷'} · ${videoModel === 'kling' ? 'Kling' : 'Hailuo'}`}
+              badge={`${videoTransition === 'crossfade' ? '⤫' : videoTransition === 'cut' ? '▮' : videoTransition === 'dissolve' ? '◈' : videoTransition === 'zoom' ? '⊕' : '▷'} · ${videoModel === 'kling' ? 'Kling' : videoModel === 'hailuo' ? 'Hailuo' : 'Runway'}`}
             >
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -5738,8 +5744,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Engine:' : locale === 'ru' ? 'Движок:' : 'ძრავა:'}</span>
+                  <Chip active={videoModel === 'runway'} onClick={() => setVideoModel('runway')}>✨ Runway</Chip>
                   <Chip active={videoModel === 'kling'} onClick={() => setVideoModel('kling')}>🎬 Kling</Chip>
-                  <Chip active={videoModel === 'hailuo'} onClick={() => setVideoModel('hailuo')}>🌊 Hailuo</Chip>
                 </div>
               </div>
             </Section>

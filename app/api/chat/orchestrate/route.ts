@@ -84,8 +84,8 @@ const orchestrateSchema = z.object({
   // PHASE 2 L1 — user camera controls (move + motion intensity) → clip prompt tokens.
   cameraMove: z.enum(['auto', 'pan_left', 'pan_right', 'zoom_in', 'zoom_out', 'tilt_up', 'tilt_down']).optional(),
   motionIntensity: z.number().min(1).max(10).optional(),
-  // PHASE 2 L5 — per-render i2v model (Cinema panel Kling/Hailuo toggle).
-  videoModel: z.enum(['kling', 'hailuo']).optional(),
+  // PHASE 2 L5 / Master Contract V3 — per-render i2v engine (Cinema panel Runway/Kling toggle; Hailuo kept valid).
+  videoModel: z.enum(['runway', 'kling', 'hailuo']).optional(),
   // Multi-character dialogue script (video panel) → split per speaker (ქალი:/კაცი:/
   // Woman:/Man:), each line voiced in its gendered voice and mixed into one track.
   dialogueScript: z.string().max(4000).optional(),

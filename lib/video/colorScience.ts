@@ -19,7 +19,12 @@
 export const COLOR_SCIENCE_POSITIVE =
   'photorealistic cinematic 8K, professional colour grading, ARRI Alexa color science, neutral white balance, ' +
   'strictly neutral colour balance, photorealistic skin texture, natural soft overcast lighting, high-end commercial grade, ' +
-  'true-to-life colour, crisp sharp focus, zero sepia or yellow tint';
+  'true-to-life colour, crisp sharp focus, zero sepia or yellow tint, ' +
+  // Master Contract V8 — physical-grounding tokens. On the Runway primary i2v path these are the ONLY
+  // quality lever (the 2024-11-06 image_to_video contract has no negative_prompt field), so they target
+  // the reported flicker / warped-limb / floaty-physics failures directly. Kept tight — withColorScience
+  // clamps the whole clause into Runway's 512-char promptText, trimming the SCENE text (never the grade).
+  'physically consistent, correct gravity, no flicker, no warped or morphing limbs';
 
 /**
  * Append the shared colour-science tokens to a provider prompt, de-duped (never doubles the clause

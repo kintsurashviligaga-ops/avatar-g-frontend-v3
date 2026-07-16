@@ -227,17 +227,21 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
               })}
             </div>
 
-            {/* Surface the full high-fidelity plans page (PricingSection at /[locale]/pricing) from inside
-                the product — the modal shows the same PRICING_TIERS, this links to the detailed comparison. */}
-            <a
-              href={`/${lang}/pricing`}
-              className="mt-4 block text-center text-[12.5px] font-medium text-app-accent transition-opacity hover:opacity-80"
-            >
-              {t.viewAllPlans}
-            </a>
-
-            {/* TODO(GG): the per-item "tetri" cost guide (სურათი/მუსიკა/ვიდეო/ავატარი credit costs) was removed
-                on request. If a value guide is reinstated, it must derive from the SSoT — never hardcode tetri. */}
+            {/* PHASE 38 (Master Contract V2) — replaced the "view all plans →" /pricing link with an in-modal
+                CAPABILITY GUIDE. The user sees exactly what credits BUY (image · music · video · avatar) right
+                where they top up, instead of being bounced to a separate marketing page. Copy already lived in
+                COPY (guideTitle + g*); the per-credit RATE is shown (SSoT-safe), no hardcoded per-asset tetri. */}
+            <div className="mt-4 rounded-2xl border border-app-border/15 bg-app-bg/40 px-4 py-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[12px] font-semibold text-app-text">{t.guideTitle}</p>
+                <span className="whitespace-nowrap text-[10.5px] font-medium text-app-muted">{t.perCredit}</span>
+              </div>
+              <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
+                {[t.gImage, t.gMusic, t.gVideo, t.gAvatar].map((g) => (
+                  <span key={g} className="text-[12.5px] leading-tight text-app-muted">{g}</span>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

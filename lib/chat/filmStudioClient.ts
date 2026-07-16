@@ -184,8 +184,8 @@ export interface DriveFilmOptions {
   /** PHASE 2 L1 — camera controls → clip prompt tokens. */
   cameraMove?: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down';
   motionIntensity?: number;
-  /** PHASE 2 L5 — per-render i2v model (Cinema panel Kling/Hailuo toggle). */
-  videoModel?: 'kling' | 'hailuo';
+  /** PHASE 2 L5 / Master Contract V3 — per-render i2v engine (Cinema panel Runway/Kling toggle). */
+  videoModel?: 'runway' | 'kling' | 'hailuo';
   /** Multi-character dialogue script (video panel) — split per speaker, mixed into one track. */
   dialogueScript?: string;
   /** Music OFF → no score (voice-only film). */
