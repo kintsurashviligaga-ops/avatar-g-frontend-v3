@@ -53,9 +53,11 @@ ALTER TABLE public.chat_sessions
 ALTER TABLE public.chat_sessions
   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
--- Fast "active vs trashed" listing per user.
+-- Fast "active vs trashed" listing per user. Indexed on deleted_at (created just above) — NOT updated_at,
+-- which does not exist on this table (the live chat_sessions schema differs from lib/chat-history.ts's
+-- assumptions; the /chat sidebar uses localStorage anyway, so this table is a server-side store only).
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_deleted
-  ON public.chat_sessions(user_id, is_deleted, updated_at DESC);
+  ON public.chat_sessions(user_id, is_deleted, deleted_at DESC);
 
 -- Optional: a helper to permanently purge chats trashed for >30 days. The app also
 -- purges on Trash-Bin open (best-effort), so this is only needed if you schedule it
