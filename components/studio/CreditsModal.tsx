@@ -143,22 +143,21 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
   }, [open, onClose]);
 
-  // Start a Stripe Checkout for a credit package. POSTs the package's GEL amount to
-  // the canonical one-time top-up route, then redirects to the returned Checkout URL.
-  // On success the user lands back on /dashboard?topup=success and the chip refreshes.
-  // Fail-open: 401 → sign-in, anything else → a self-contained error toast.
-  const startCheckout = useCallback(async (pkg: { id: string; priceGel: number }) => {
+  // Start a Stripe Checkout for a launch USD tier. POSTs the tier ID to /api/billing/tier-checkout,
+  // which builds a USD-denominated Checkout Session ($15/$99/$299) and returns its URL. On success the
+  // user lands on /dashboard?tier=success and the webhook grants the tier's credit pool.
+  // CHECKOUT-BLOCKER FIX: the old path POSTed the tier's GEL amount to /wallet-topup, which only accepts
+  // the small refill amounts → 400 → plans were unpurchasable. Fail-open: 401 → sign-in, else error toast.
+  const startCheckout = useCallback(async (pkg: { id: string; priceUsd: number }) => {
     if (busyId) return;
     setBusyId(pkg.id);
-    track('payment_initiated', { package: pkg.id, amount: pkg.priceGel }); // PHASE 4 Task 1
+    track('payment_initiated', { package: pkg.id, amount: pkg.priceUsd }); // PHASE 4 Task 1
     try {
-      // Payment mechanism UNCHANGED — the existing wallet-topup route + Stripe are untouched; only the tier's
-      // GEL amount (from the SSoT) flows through. Credit-delivery reconciliation for subscription tiers = TODO(GG).
-      const res = await fetch('/api/billing/wallet-topup', {
+      const res = await fetch('/api/billing/tier-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ amountGel: pkg.priceGel }),
+        body: JSON.stringify({ tierId: pkg.id }),
       });
       if (res.status === 401) { setBusyId(null); onClose(); onSignIn(); return; }
       const j = (await res.json().catch(() => null)) as { url?: string } | null;

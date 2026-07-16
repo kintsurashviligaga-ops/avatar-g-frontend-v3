@@ -33,6 +33,31 @@ export async function creditWalletGel(userId: string, amountGel: number, ref: st
 }
 
 /**
+ * Idempotently GRANT purchased credits to `profiles.credits_balance` — the spendable balance-of-record
+ * that every generation debits (NOT the legacy `credits.balance_gel` wallet). Used by the Stripe webhook
+ * when a USD tier checkout completes.
+ *
+ * Implemented over the ref-idempotent `refund_credits` RPC: it appends a POSITIVE ledger delta deduped on
+ * `metadata->>'ref'`, so a re-delivered event — OR a second registered webhook endpoint — grants exactly
+ * ONCE (identical safety property to creditWalletGel for the GEL wallet). `ref` = `stripe:<session_id>`.
+ * Returns the new balance, or null when unavailable (fail-open).
+ *
+ * NOTE: the ledger row's `reason` is 'refund' (refund_credits is the existing ref-idempotent positive-credit
+ * primitive; no new RPC/DDL required). The `ref` + amount keep the purchase fully auditable.
+ */
+export async function grantPurchasedCredits(userId: string, credits: number, ref: string): Promise<number | null> {
+  const sb = client();
+  if (!sb || !Number.isFinite(credits) || credits <= 0) return null;
+  try {
+    const { data, error } = await sb.rpc('refund_credits', { p_user_id: userId, p_amount: Math.floor(credits), p_ref: ref });
+    if (error) return null;
+    return typeof data === 'number' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Atomically consume one free avatar response.
  *   >= 0 → a free slot was burned (new remaining count)
  *   -1   → none remaining (caller should charge)

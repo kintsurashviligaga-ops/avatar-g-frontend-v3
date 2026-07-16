@@ -10,7 +10,7 @@ import {
 import { updateAccountStatus } from '@/lib/stripe/connect';
 import { updateCommissionStatus } from '@/lib/stripe/payments';
 import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { creditWalletGel } from '@/lib/billing/wallet-ledger';
+import { creditWalletGel, grantPurchasedCredits } from '@/lib/billing/wallet-ledger';
 import { createNotification } from '@/lib/notifications/store';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
 import { enqueueQueueItem } from '@/lib/platform/queues';
@@ -338,6 +338,33 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
         } else {
           console.error('[Stripe Webhook] wallet top-up: no user for customer', customerId);
         }
+      }
+      return;
+    }
+
+    // USD TIER purchase (Starter/Pro/Studio, mode:'payment'). Grants the tier's credit pool to
+    // profiles.credits_balance. grantPurchasedCredits is idempotent on `stripe:<session.id>`, so a
+    // double-delivery across both registered webhooks (this + /api/billing/webhook) is a no-op.
+    if (session.metadata?.kind === 'tier_topup') {
+      const credits = Number(session.metadata?.credits);
+      const userId = session.metadata?.user_id
+        || (session.customer
+          ? (await createRouteHandlerClient()
+              .from('subscriptions')
+              .select('user_id')
+              .eq('stripe_customer_id', String(session.customer))
+              .maybeSingle()).data?.user_id as string | undefined
+          : undefined)
+        || null;
+      if (userId && Number.isFinite(credits) && credits > 0) {
+        await grantPurchasedCredits(userId, credits, `stripe:${session.id}`);
+        console.info('[Stripe Webhook] tier credits granted', { userId, credits, tier: session.metadata?.tier_id, sessionId: session.id });
+        try {
+          const svc = createServiceRoleClient();
+          if (svc) await createNotification(svc, userId, 'payment', `კრედიტები დამატებულია: +${credits} ✅`);
+        } catch { /* fail-open — never block the credit on a notification */ }
+      } else {
+        console.error('[Stripe Webhook] tier purchase: missing user/credits', { customer: session.customer, credits });
       }
       return;
     }

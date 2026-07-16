@@ -6,6 +6,7 @@ import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { guardGeneration } from '@/lib/api/generationGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,6 +32,11 @@ export async function POST(req: NextRequest) {
       label: 'replicate.image',
     });
     if (gate.response) return gate.response;
+
+    // FINANCIAL SHIELD — require a signed-in user. Balance-gate ONLY the initial generation; a poll
+    // (predictionId) starts no new compute, so it is auth-only and must never be blocked/re-gated.
+    const guard = await guardGeneration(req, 'image', { gate: !body?.predictionId });
+    if (!guard.ok) return guard.response;
 
     // ── Poll existing Replicate prediction (fallback path only) ────────
     if (body.predictionId) {

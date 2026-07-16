@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { guardGeneration } from '@/lib/api/generationGuard';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
 // The HeyGen create-chain (getVoiceId + getFirstStockAvatar + createVideo) can
@@ -209,6 +212,12 @@ export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
 
+  // FINANCIAL SHIELD — require a signed-in user with balance before the paid HeyGen avatar render.
+  // Avatar resolves ASYNC (client polls GET ?videoId), so the actual charge happens on completion in
+  // GET (ref-idempotent per videoId) — never at dispatch, so a failed render is never billed.
+  const guard = await guardGeneration(req, 'avatar');
+  if (!guard.ok) return guard.response;
+
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ success: false, error: 'HEYGEN_API_KEY not configured' }, { status: 500 });
@@ -271,6 +280,10 @@ export async function GET(req: NextRequest) {
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) return NextResponse.json({ error: 'HEYGEN_API_KEY not configured' }, { status: 500 });
 
+  // FINANCIAL SHIELD — auth-only (a poll starts no new compute, so it is NOT balance-gated).
+  const guard = await guardGeneration(req, 'avatar', { gate: false });
+  if (!guard.ok) return guard.response;
+
   const videoId = req.nextUrl.searchParams.get('videoId');
   if (!videoId) return NextResponse.json({ error: 'videoId required' }, { status: 400 });
 
@@ -284,6 +297,15 @@ export async function GET(req: NextRequest) {
       data?: { status?: string; video_url?: string; thumbnail_url?: string; duration?: number; error?: string };
     };
     const d = data.data ?? {};
+
+    // Charge on COMPLETION (never at dispatch → a failed render is never billed). deduct_credits is
+    // ref-idempotent on `avatar:<videoId>`, so the client polling every 5s after completion charges
+    // exactly ONCE. Best-effort: the asset is already produced, so a ledger hiccup never fails the poll,
+    // and deduct_credits rejects overdraw (the balance can never go negative).
+    if (d.status === 'completed' && d.video_url) {
+      void deductCredits(guard.userId, creditCostFor('avatar'), `avatar:${videoId}`)
+        .catch(() => { /* best-effort — asset already delivered */ });
+    }
 
     return NextResponse.json({
       status:       d.status    ?? 'processing',

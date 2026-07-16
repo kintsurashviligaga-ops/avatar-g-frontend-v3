@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -100,8 +100,151 @@ export function withAuthTimeout<T>(promise: PromiseLike<T>, ms: number = AUTH_TI
   });
 }
 
-const TIMEOUT_MESSAGE =
-  'The connection timed out. Please check your network and try again.';
+// ─── Localized copy (ka default · en · ru) ───────────────────────────────────
+// PHASE 49 — the whole auth journey is ka-first for the Georgian launch. One flat
+// map per locale keeps the JSX literal-free and the strings reviewable in one place.
+type AuthLocale = 'ka' | 'en' | 'ru';
+
+function authCopy(locale: string) {
+  const l: AuthLocale = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  const KA = {
+    welcomeBack: 'კეთილი იყოს თქვენი დაბრუნება',
+    createHeading: 'ანგარიშის შექმნა',
+    signInSubtitle: 'შედით MyAvatar-ში',
+    signUpSubtitle: 'შემოუერთდით MyAvatar-ს და დაიწყეთ შექმნა AI-ით',
+    continueApple: 'გაგრძელება Apple-ით',
+    continueGoogle: 'გაგრძელება Google-ით',
+    continueGitHub: 'გაგრძელება GitHub-ით',
+    redirecting: 'გადამისამართება…',
+    moreOptions: 'მეტი ვარიანტი',
+    fewerOptions: 'ნაკლები ვარიანტი',
+    orEmail: 'ან გააგრძელეთ ელ. ფოსტით',
+    emailPlaceholder: 'ელ. ფოსტის მისამართი',
+    passwordCreate: 'შექმენით პაროლი (მინ. 6 სიმბოლო)',
+    password: 'პაროლი',
+    confirmPassword: 'გაიმეორეთ პაროლი',
+    forgot: 'დაგავიწყდათ პაროლი?',
+    creatingAccount: 'ანგარიში იქმნება…',
+    signingIn: 'შესვლა…',
+    createAccountBtn: 'ანგარიშის შექმნა',
+    signInBtn: 'შესვლა',
+    newHere: 'ახალი ხართ MyAvatar-ზე?',
+    createAccountLink: 'შექმენით ანგარიში',
+    haveAccount: 'უკვე გაქვთ ანგარიში?',
+    signInLink: 'შესვლა',
+    verifyEmailTitle: 'დაადასტურეთ ელ. ფოსტა',
+    checkEmailTitle: 'შეამოწმეთ ელ. ფოსტა',
+    confirmationSent: 'გამოგიგზავნეთ დადასტურების ბმული ელ. ფოსტაზე. დააჭირეთ მას ანგარიშის გასააქტიურებლად.',
+    resetSent: 'გამოგიგზავნეთ პაროლის აღდგენის ბმული ელ. ფოსტაზე.',
+    backToSignIn: '← დაბრუნება შესვლაზე',
+    termsPrefix: 'გაგრძელებით თქვენ ეთანხმებით MyAvatar-ის',
+    terms: 'მომსახურების პირობებს',
+    refund: 'დაბრუნების პოლიტიკას',
+    and: 'და',
+    privacy: 'კონფიდენციალურობის პოლიტიკას',
+    demoMode: 'დემო რეჟიმში მუშაობს — სრული ავტორიზაცია საჭიროებს Supabase-ის კონფიგურაციას.',
+    continueToDashboard: 'გაგრძელება პანელზე →',
+    // Validation / errors
+    pwTooShort: 'პაროლი უნდა შეიცავდეს მინიმუმ 6 სიმბოლოს',
+    pwMismatch: 'პაროლები არ ემთხვევა',
+    signUpFailed: 'რეგისტრაცია ვერ მოხერხდა. გთხოვთ, სცადოთ თავიდან.',
+    signInFailed: 'შესვლა ვერ მოხერხდა. გთხოვთ, სცადოთ თავიდან.',
+    enterEmailFirst: 'ჯერ შეიყვანეთ ელ. ფოსტის მისამართი',
+    requestFailed: 'მოთხოვნა ვერ შესრულდა. გთხოვთ, სცადოთ თავიდან.',
+    timeout: 'კავშირის დრო ამოიწურა. შეამოწმეთ ინტერნეტი და სცადეთ თავიდან.',
+  };
+  const EN: typeof KA = {
+    welcomeBack: 'Welcome back',
+    createHeading: 'Create account',
+    signInSubtitle: 'Sign in to MyAvatar',
+    signUpSubtitle: 'Join MyAvatar and start creating with AI',
+    continueApple: 'Continue with Apple',
+    continueGoogle: 'Continue with Google',
+    continueGitHub: 'Continue with GitHub',
+    redirecting: 'Redirecting…',
+    moreOptions: 'More options',
+    fewerOptions: 'Fewer options',
+    orEmail: 'or continue with email',
+    emailPlaceholder: 'Email address',
+    passwordCreate: 'Create password (min 6 characters)',
+    password: 'Password',
+    confirmPassword: 'Confirm password',
+    forgot: 'Forgot password?',
+    creatingAccount: 'Creating account…',
+    signingIn: 'Signing in…',
+    createAccountBtn: 'Create Account',
+    signInBtn: 'Sign In',
+    newHere: 'New to MyAvatar?',
+    createAccountLink: 'Create account',
+    haveAccount: 'Already have an account?',
+    signInLink: 'Sign in',
+    verifyEmailTitle: 'Verify your email',
+    checkEmailTitle: 'Check your email',
+    confirmationSent: 'We sent a confirmation link to your email. Click it to activate your account.',
+    resetSent: 'We sent a password reset link to your email.',
+    backToSignIn: '← Back to Sign In',
+    termsPrefix: 'By continuing, you agree to MyAvatar’s',
+    terms: 'Terms of Service',
+    refund: 'Refund Policy',
+    and: 'and',
+    privacy: 'Privacy Policy',
+    demoMode: 'Running in demo mode — full auth requires Supabase configuration.',
+    continueToDashboard: 'Continue to Dashboard →',
+    pwTooShort: 'Password must be at least 6 characters',
+    pwMismatch: 'Passwords do not match',
+    signUpFailed: 'Sign-up failed. Please try again.',
+    signInFailed: 'Sign-in failed. Please try again.',
+    enterEmailFirst: 'Enter your email address first',
+    requestFailed: 'Request failed. Please try again.',
+    timeout: 'The connection timed out. Please check your network and try again.',
+  };
+  const RU: typeof KA = {
+    welcomeBack: 'С возвращением',
+    createHeading: 'Создать аккаунт',
+    signInSubtitle: 'Войдите в MyAvatar',
+    signUpSubtitle: 'Присоединяйтесь к MyAvatar и создавайте с ИИ',
+    continueApple: 'Продолжить с Apple',
+    continueGoogle: 'Продолжить с Google',
+    continueGitHub: 'Продолжить с GitHub',
+    redirecting: 'Перенаправление…',
+    moreOptions: 'Больше вариантов',
+    fewerOptions: 'Меньше вариантов',
+    orEmail: 'или продолжите по эл. почте',
+    emailPlaceholder: 'Адрес эл. почты',
+    passwordCreate: 'Создайте пароль (мин. 6 символов)',
+    password: 'Пароль',
+    confirmPassword: 'Повторите пароль',
+    forgot: 'Забыли пароль?',
+    creatingAccount: 'Создание аккаунта…',
+    signingIn: 'Вход…',
+    createAccountBtn: 'Создать аккаунт',
+    signInBtn: 'Войти',
+    newHere: 'Впервые в MyAvatar?',
+    createAccountLink: 'Создать аккаунт',
+    haveAccount: 'Уже есть аккаунт?',
+    signInLink: 'Войти',
+    verifyEmailTitle: 'Подтвердите эл. почту',
+    checkEmailTitle: 'Проверьте эл. почту',
+    confirmationSent: 'Мы отправили ссылку для подтверждения на вашу эл. почту. Нажмите её, чтобы активировать аккаунт.',
+    resetSent: 'Мы отправили ссылку для сброса пароля на вашу эл. почту.',
+    backToSignIn: '← Назад ко входу',
+    termsPrefix: 'Продолжая, вы соглашаетесь с',
+    terms: 'Условиями использования',
+    refund: 'Политикой возврата',
+    and: 'и',
+    privacy: 'Политикой конфиденциальности',
+    demoMode: 'Работает в демо-режиме — для полной авторизации нужна настройка Supabase.',
+    continueToDashboard: 'Перейти к панели →',
+    pwTooShort: 'Пароль должен содержать не менее 6 символов',
+    pwMismatch: 'Пароли не совпадают',
+    signUpFailed: 'Регистрация не удалась. Пожалуйста, попробуйте снова.',
+    signInFailed: 'Не удалось войти. Пожалуйста, попробуйте снова.',
+    enterEmailFirst: 'Сначала введите адрес эл. почты',
+    requestFailed: 'Запрос не выполнен. Пожалуйста, попробуйте снова.',
+    timeout: 'Время ожидания истекло. Проверьте подключение и попробуйте снова.',
+  };
+  return l === 'en' ? EN : l === 'ru' ? RU : KA;
+}
 
 /**
  * PHASE 49 §2 — Honest OAuth error translation.
@@ -246,18 +389,19 @@ function SpinnerIcon() {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 function DemoScreen({ locale }: { locale: string }) {
+  const c = authCopy(locale);
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
       <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
         <div className="text-4xl">🚀</div>
         <h2 className="text-2xl font-bold text-white">MyAvatar</h2>
-        <p className="text-slate-300">Running in demo mode — full auth requires Supabase configuration.</p>
+        <p className="text-slate-300">{c.demoMode}</p>
         <a
           href={`/${locale}/dashboard`}
           className="block w-full rounded-2xl py-3 text-center font-semibold text-white transition-all"
           style={{ background: 'var(--color-accent)' }}
         >
-          Continue to Dashboard →
+          {c.continueToDashboard}
         </a>
       </div>
     </div>
@@ -272,6 +416,7 @@ export default function AuthScreen({ mode: initialMode, locale, redirectTo = '/'
 }
 
 function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialError }: AuthScreenProps) {
+  const c = useMemo(() => authCopy(locale), [locale]);
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loading, setLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
@@ -356,11 +501,11 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
       // Success: the SDK is redirecting to the provider — keep the spinner.
     } catch (err) {
       // Hung handshake (timeout or network failure) — never freeze the screen.
-      setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : describeOAuthError(null, provider, locale));
+      setError(err instanceof AuthTimeoutError ? c.timeout : describeOAuthError(null, provider, locale));
       setLoading(false);
       setLoadingProvider(null);
     }
-  }, [supabase, callbackUrl, locale]);
+  }, [supabase, callbackUrl, locale, c]);
 
   // ─── Email handler ───────────────────────────────────────────────────────
 
@@ -377,13 +522,13 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
 
     if (mode === 'signup') {
       if (password.length < 6) {
-        setError('Password must be at least 6 characters');
+        setError(c.pwTooShort);
         setLoading(false);
         setLoadingProvider(null);
         return;
       }
       if (password !== confirmPassword) {
-        setError('Passwords do not match');
+        setError(c.pwMismatch);
         setLoading(false);
         setLoadingProvider(null);
         return;
@@ -404,7 +549,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           setSuccess(true);
         }
       } catch (err) {
-        setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Sign-up failed. Please try again.');
+        setError(err instanceof AuthTimeoutError ? c.timeout : c.signUpFailed);
       }
     } else {
       try {
@@ -419,20 +564,20 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           return;
         }
       } catch (err) {
-        setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Sign-in failed. Please try again.');
+        setError(err instanceof AuthTimeoutError ? c.timeout : c.signInFailed);
       }
     }
 
     setLoading(false);
     setLoadingProvider(null);
-  }, [supabase, mode, redirectTo, callbackUrl]);
+  }, [supabase, mode, redirectTo, callbackUrl, c]);
 
   // ─── Forgot password ────────────────────────────────────────────────────
 
   const handleForgotPassword = useCallback(async () => {
     const email = (document.querySelector('input[name="email"]') as HTMLInputElement)?.value;
     if (!email) {
-      setError('Enter your email address first');
+      setError(c.enterEmailFirst);
       return;
     }
 
@@ -454,31 +599,31 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         setSuccess(true);
       }
     } catch (err) {
-      setError(err instanceof AuthTimeoutError ? TIMEOUT_MESSAGE : 'Request failed. Please try again.');
+      setError(err instanceof AuthTimeoutError ? c.timeout : c.requestFailed);
     }
 
     setLoading(false);
     setLoadingProvider(null);
-  }, [supabase]);
+  }, [supabase, c]);
 
   // ─── Provider configs ────────────────────────────────────────────────────
 
   const primaryProviders: ProviderConfig[] = [
     {
       id: 'apple',
-      label: 'Continue with Apple',
+      label: c.continueApple,
       icon: <AppleIcon />,
       className: 'bg-white text-black hover:bg-gray-100',
     },
     {
       id: 'google',
-      label: 'Continue with Google',
+      label: c.continueGoogle,
       icon: <GoogleIcon />,
       className: 'bg-white text-gray-800 hover:bg-gray-100',
     },
     {
       id: 'github',
-      label: 'Continue with GitHub',
+      label: c.continueGitHub,
       icon: <GitHubIcon />,
       className: 'bg-[#24292f] text-white hover:bg-[#2f363d]',
     },
@@ -537,19 +682,17 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
             </svg>
           </div>
           <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-            {isForgot ? 'Check your email' : 'Verify your email'}
+            {isForgot ? c.checkEmailTitle : c.verifyEmailTitle}
           </h2>
           <p className="text-sm leading-relaxed mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-            {isForgot
-              ? 'We sent a password reset link to your email.'
-              : 'We sent a confirmation link to your email. Click it to activate your account.'}
+            {isForgot ? c.resetSent : c.confirmationSent}
           </p>
           <button
             onClick={() => { setSuccess(false); setMode('login'); setLoadingProvider(null); }}
             className="text-sm font-medium transition-colors"
             style={{ color: 'var(--color-accent)' }}
           >
-            ← Back to Sign In
+            {c.backToSignIn}
           </button>
         </div>
       </div>
@@ -575,12 +718,10 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
             />
           </div>
           <h1 className="text-[26px] font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>
-            {mode === 'signup' ? 'Create account' : 'Welcome back'}
+            {mode === 'signup' ? c.createHeading : c.welcomeBack}
           </h1>
           <p className="text-sm mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-            {mode === 'signup'
-              ? 'Join MyAvatar and start creating with AI'
-              : 'Sign in to MyAvatar'}
+            {mode === 'signup' ? c.signUpSubtitle : c.signInSubtitle}
           </p>
         </div>
 
@@ -599,7 +740,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
                   style={provider.style}
                 >
                   {loadingProvider === provider.id ? <SpinnerIcon /> : provider.icon}
-                  <span>{loadingProvider === provider.id ? 'Redirecting…' : provider.label}</span>
+                  <span>{loadingProvider === provider.id ? c.redirecting : provider.label}</span>
                 </button>
               ))}
             </div>
@@ -613,7 +754,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
                 className="w-full flex items-center justify-center gap-2 text-xs py-2 transition-colors"
                 style={{ color: 'var(--color-text-tertiary)' }}
               >
-                <span>{showMoreProviders ? 'Fewer options' : 'More options'}</span>
+                <span>{showMoreProviders ? c.fewerOptions : c.moreOptions}</span>
                 <svg
                   width="12"
                   height="12"
@@ -662,7 +803,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
               </div>
               <div className="relative flex justify-center">
                 <span className="px-4 text-xs" style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-surface)' }}>
-                  or continue with email
+                  {c.orEmail}
                 </span>
               </div>
             </div>
@@ -676,7 +817,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="Email address"
+                placeholder={c.emailPlaceholder}
                 className="w-full h-12 rounded-xl px-4 text-sm transition-all duration-200 focus:outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
@@ -695,7 +836,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
                 type={showPassword ? 'text' : 'password'}
                 required
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                placeholder={mode === 'signup' ? 'Create password (min 6 characters)' : 'Password'}
+                placeholder={mode === 'signup' ? c.passwordCreate : c.password}
                 minLength={mode === 'signup' ? 6 : undefined}
                 className="w-full h-12 rounded-xl px-4 pr-11 text-sm transition-all duration-200 focus:outline-none"
                 style={{
@@ -725,7 +866,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
                   type={showConfirmPassword ? 'text' : 'password'}
                   required
                   autoComplete="new-password"
-                  placeholder="Confirm password"
+                  placeholder={c.confirmPassword}
                   minLength={6}
                   className="w-full h-12 rounded-xl px-4 pr-11 text-sm transition-all duration-200 focus:outline-none"
                   style={{
@@ -758,7 +899,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
                   className="text-xs transition-colors hover:underline disabled:opacity-50"
                   style={{ color: 'var(--color-text-tertiary)' }}
                 >
-                  Forgot password?
+                  {c.forgot}
                 </button>
               </div>
             )}
@@ -784,10 +925,10 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
               {loading && loadingProvider === 'email' ? (
                 <span className="flex items-center justify-center gap-2">
                   <SpinnerIcon />
-                  {mode === 'signup' ? 'Creating account…' : 'Signing in…'}
+                  {mode === 'signup' ? c.creatingAccount : c.signingIn}
                 </span>
               ) : (
-                mode === 'signup' ? 'Create Account' : 'Sign In'
+                mode === 'signup' ? c.createAccountBtn : c.signInBtn
               )}
             </button>
           </form>
@@ -796,24 +937,24 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           <p className="text-center text-sm mt-6" style={{ color: 'var(--color-text-tertiary)' }}>
             {mode === 'login' ? (
               <>
-                New to MyAvatar?{' '}
+                {c.newHere}{' '}
                 <button
                   onClick={() => { setMode('signup'); setError(null); }}
                   className="font-medium transition-colors hover:underline"
                   style={{ color: 'var(--color-accent)' }}
                 >
-                  Create account
+                  {c.createAccountLink}
                 </button>
               </>
             ) : (
               <>
-                Already have an account?{' '}
+                {c.haveAccount}{' '}
                 <button
                   onClick={() => { setMode('login'); setError(null); }}
                   className="font-medium transition-colors hover:underline"
                   style={{ color: 'var(--color-accent)' }}
                 >
-                  Sign in
+                  {c.signInLink}
                 </button>
               </>
             )}
@@ -822,16 +963,16 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
 
         {/* Footer */}
         <p className="text-center text-xs mt-6 leading-relaxed" style={{ color: 'var(--color-text-tertiary)' }}>
-          By continuing, you agree to MyAvatar&apos;s{' '}
+          {c.termsPrefix}{' '}
           <Link href={`/${locale}/terms`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
-            Terms of Service
+            {c.terms}
           </Link>,{' '}
           <Link href={`/${locale}/refund`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
-            Refund Policy
+            {c.refund}
           </Link>{' '}
-          and{' '}
+          {c.and}{' '}
           <Link href={`/${locale}/privacy`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
-            Privacy Policy
+            {c.privacy}
           </Link>
         </p>
       </div>

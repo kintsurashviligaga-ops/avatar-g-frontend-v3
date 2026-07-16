@@ -14,7 +14,7 @@ import { getPlan, type PlanTier } from '../../../../lib/billing/plans';
 import { getPlanByStripePriceId } from '@/lib/billing/stripe-prices';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { BillingProviderUnavailableError, getBillingProvider } from '@/lib/monetization/provider';
-import { creditWalletGel } from '@/lib/billing/wallet-ledger';
+import { creditWalletGel, grantPurchasedCredits } from '@/lib/billing/wallet-ledger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -141,10 +141,26 @@ async function handleWalletTopup(session: Stripe.Checkout.Session) {
   await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
 }
 
+async function handleTierTopup(session: Stripe.Checkout.Session) {
+  const credits = Number(session.metadata?.credits);
+  const userId = session.metadata?.user_id
+    || (session.customer ? await getUserIdByCustomer(String(session.customer)) : null);
+  if (!userId || !Number.isFinite(credits) || credits <= 0) return;
+  // Idempotent on `stripe:<session.id>` (RPC ref-dedup + the outer event-id guard) → never double-credits,
+  // including across both registered webhook endpoints. Grants to profiles.credits_balance (spendable).
+  await grantPurchasedCredits(userId, credits, `stripe:${session.id}`);
+}
+
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // One-off GEL wallet top-up → credit the ledger, then stop (no subscription).
   if (session.metadata?.kind === 'wallet_topup') {
     await handleWalletTopup(session);
+    return;
+  }
+
+  // USD launch tier (Starter/Pro/Studio) → grant the tier's credit pool, then stop.
+  if (session.metadata?.kind === 'tier_topup') {
+    await handleTierTopup(session);
     return;
   }
 

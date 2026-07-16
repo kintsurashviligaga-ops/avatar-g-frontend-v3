@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { guardGeneration } from '@/lib/api/generationGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +40,10 @@ const ASPECT_TO_RESOLUTION: Record<string, string> = {
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (rl) return rl;
+
+  // FINANCIAL SHIELD — require a signed-in user with balance before the paid LTX render.
+  const guard = await guardGeneration(req, 'video');
+  if (!guard.ok) return guard.response;
 
   try {
     const body = await req.json();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { guardGeneration } from '@/lib/api/generationGuard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -8,6 +9,10 @@ export const maxDuration = 180;
 export async function POST(req: NextRequest) {
   const rateLimitError = await checkRateLimit(req, RATE_LIMITS.AI);
   if (rateLimitError) return rateLimitError;
+
+  // FINANCIAL SHIELD — require a signed-in user with balance before the paid Udio render.
+  const guard = await guardGeneration(req, 'music');
+  if (!guard.ok) return guard.response;
 
   const apiKey = process.env.UDIO_API_KEY;
   if (!apiKey) {
