@@ -331,8 +331,8 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               </div>
             )}
 
-            {/* Tools dashboard */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {/* Tools dashboard — auto-rows-fr keeps a wrapped Georgian label from making rows uneven. */}
+            <div className="grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3">
               <ToolButton icon={<Scissors size={15} />} label={t.split} busy={busy === 'split'} onClick={() => apply('split')} disabled={clip?.kind !== 'video'} />
               <ToolButton icon={<Crop size={15} />} label={t.crop} active={cropOn} busy={busy === 'crop'} onClick={() => { if (cropOn && crop) apply('crop'); else setCropOn((v) => !v); }} />
               <ToolButton icon={muted ? <VolumeX size={15} /> : <Volume2 size={15} />} label={t.detach} busy={busy === 'detach'} onClick={() => { setMuted(true); apply('detach'); }} disabled={clip?.kind !== 'video'} />
@@ -407,8 +407,9 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 function ToolButton({ icon, label, onClick, busy, active, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; busy?: boolean; active?: boolean; disabled?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled || busy}
-      className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold transition-colors disabled:opacity-40 ${active ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
-      {busy ? <Loader2 size={14} className="animate-spin" /> : icon}{label}
+      className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-center text-[12px] font-semibold leading-tight transition-colors disabled:opacity-40 ${active ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
+      <span className="shrink-0">{busy ? <Loader2 size={14} className="animate-spin" /> : icon}</span>
+      <span className="min-w-0 break-words">{label}</span>
     </button>
   );
 }
@@ -416,7 +417,7 @@ function ToolButton({ icon, label, onClick, busy, active, disabled }: { icon: Re
 function Slider({ icon, label, min, max, value, step = 1, suffix = '%', onChange }: { icon?: React.ReactNode; label: string; min: number; max: number; value: number; step?: number; suffix?: string; onChange: (v: number) => void }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex w-24 shrink-0 items-center gap-1.5 text-[12px] text-app-text/80">{icon}{label}</span>
+      <span className="flex w-20 shrink-0 items-center gap-1.5 text-[11.5px] leading-tight text-app-text/80 sm:w-24">{icon}<span className="min-w-0 break-words">{label}</span></span>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-app-elevated accent-app-accent" />
       <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-app-muted">{step < 1 ? value.toFixed(1) : Math.round(value)}{suffix}</span>
     </div>

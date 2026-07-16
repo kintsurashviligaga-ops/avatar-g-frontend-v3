@@ -105,6 +105,18 @@ export function extractProfileFacts(text: string): ProfileFact[] {
     ?? t.match(/(\d{1,3})\s*(?:years?\s*old|წლის|лет|года?)/i);
   if (age?.[1]) { const v = numInRange(age[1], 5, 120); if (v) put('age', v, 'personal_bio'); }
 
+  // The user's OWN name — "my name is Gaga", "call me Gaga", "ჩემი სახელია გაგა", "მქვია გაგა",
+  // "меня зовут Гага". Anchored to explicit declaration phrases only (NOT bare "I'm X" / "я X" / "მე ვარ X",
+  // which collide with "I'm tired" etc.), so it never mints a bogus name.
+  const nameM = t.match(/(?:my name is|call me|ჩემი სახელი[აის]?|მე მქვია|მქვია|меня зовут|мо[её] имя)\s+["“']?([A-Za-zႠ-ჿА-Яа-яЁё][\wႠ-ჿА-Яа-яЁё-]{1,20})/i);
+  if (nameM?.[1]) {
+    const name = nameM[1].replace(/["“'.,!?]+$/, '');
+    // Reject stop-words / phrasal-verb tails ("call me back|later|now|tomorrow…") that aren't real names.
+    if (name && !/^(me|you|it|is|not|the|a|an|so|just|really|actually|меня|тебя|back|later|now|soon|tonight|today|tomorrow|asap|maybe|please|when|if|after|before)$/i.test(name)) {
+      put('name', name, 'personal_bio');
+    }
+  }
+
   // Companion / bot name override — "call you Jarvis", "your name is Jarvis", "დაგარქმევ Jarvis"
   const bot = t.match(/(?:call you|name you|your name is|rename you to|i(?:'|’)?ll call you|დაგარქმევ|დაგიძახებ|зовут тебя|буду звать тебя)\s+["“']?([A-Za-zႠ-ჿ][\wႠ-ჿ-]{1,20})/i);
   if (bot?.[1]) {

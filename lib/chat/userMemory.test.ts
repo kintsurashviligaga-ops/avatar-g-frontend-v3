@@ -20,6 +20,21 @@ describe('extractProfileFacts — conservative personal-fact extraction', () => 
     expect(factMap(extractProfileFacts('მე 30 წლის ვარ')).age).toBe('30');
   });
 
+  test("user's OWN name in English / Georgian / Russian", () => {
+    expect(factMap(extractProfileFacts('my name is Gaga')).name).toBe('Gaga');
+    expect(factMap(extractProfileFacts('call me Nika')).name).toBe('Nika');
+    expect(factMap(extractProfileFacts('меня зовут Гага')).name).toBe('Гага');
+    // The launch-contract example: name + age from one Georgian turn.
+    const facts = factMap(extractProfileFacts('ჩემი სახელია გაგა, ვარ 30 წლის'));
+    expect(facts.name).toBe('გაგა');
+    expect(facts.age).toBe('30');
+  });
+
+  test('user-name extractor does NOT fire on phrasal-verb tails', () => {
+    expect(factMap(extractProfileFacts('call me back later')).name).toBeUndefined();
+    expect(factMap(extractProfileFacts('please call me now')).name).toBeUndefined();
+  });
+
   test('companion / bot-name override', () => {
     expect(factMap(extractProfileFacts('from now on I will call you Jarvis')).preferred_bot_name).toBe('Jarvis');
     expect(factMap(extractProfileFacts('your name is Nova now')).preferred_bot_name).toBe('Nova');
