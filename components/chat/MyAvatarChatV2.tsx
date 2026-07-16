@@ -56,6 +56,7 @@ import {
   Copy,
   Cpu,
   Download,
+  Eraser,
   Film,
   Globe,
   ImagePlus,
@@ -1022,6 +1023,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   const [switching, setSwitching] = useState(false);      // brief skeleton on restore
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // VECTOR 1B — "Save Context & Clear View": leading messages hidden from the DOM to free browser memory on
+  // very long sessions. The full `messages` state is untouched, so the LLM history (built from it above) and
+  // the persisted conversation keep the ENTIRE context — only the render is trimmed. Resets on chat switch.
+  const [clearedCount, setClearedCount] = useState(0);
   // Real-time history search (filters conversation titles in the sidebar).
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1119,7 +1124,17 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     endRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
   }, []);
 
-  useEffect(() => { pinBottom(true); }, [messages.length, isLoading, pipeline, pinBottom]);
+  // VECTOR 4 — also re-pin as the streamed assistant text GROWS (not only when a NEW message is added). The
+  // old deps (messages.length / isLoading) never fired while the last assistant bubble's text was patched in
+  // place during an active stream, so the view stranded the reader mid-response. Tracking the last bubble's
+  // char count makes the pin follow the tokens; stickRef still respects a user who scrolled up to re-read.
+  const lastMsg = messages[messages.length - 1];
+  const streamingChars = lastMsg && lastMsg.role === 'assistant' ? lastMsg.text.length : 0;
+  useEffect(() => { pinBottom(true); }, [messages.length, streamingChars, isLoading, pipeline, pinBottom]);
+
+  // VECTOR 1B — a fresh chat / restored conversation always shows its full view (never inherit the prior
+  // chat's cleared count, which would wrongly hide the newly-loaded messages).
+  useEffect(() => { setClearedCount(0); }, [conversationId]);
 
   // ── Restore focus to the composer the instant generation finishes ──
   // (only on the loading→idle transition, never on initial mount, so we
@@ -1900,6 +1915,22 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
         <BalanceChip balanceGel={balanceGel} onClick={() => setWalletOpen(true)} />
 
         <div className="flex items-center gap-1">
+          {/* VECTOR 1B — Save Context & Clear View: hides the on-screen messages to free memory on long
+              sessions while the LLM keeps the full context. Only shown when there's something to hide. */}
+          {messages.length > clearedCount && (
+            <button
+              type="button"
+              onClick={() => {
+                setClearedCount(messages.length);
+                showNotice(lang === 'ka' ? 'კონტექსტი შენახულია — ეკრანი გასუფთავდა' : lang === 'ru' ? 'Контекст сохранён — экран очищен' : 'Context saved — view cleared');
+              }}
+              aria-label={lang === 'ka' ? 'კონტექსტის შენახვა და ეკრანის გასუფთავება' : lang === 'ru' ? 'Сохранить контекст и очистить экран' : 'Save context & clear view'}
+              title={lang === 'ka' ? 'კონტექსტის შენახვა და ეკრანის გასუფთავება' : lang === 'ru' ? 'Сохранить контекст и очистить экран' : 'Save context & clear view'}
+              className="h-9 w-9 rounded-full flex items-center justify-center transition active:scale-95 text-app-muted hover:text-app-text hover:bg-app-elevated/60"
+            >
+              <Eraser size={17} />
+            </button>
+          )}
           {/* RAG grounding toggle — ground text answers in the knowledge corpus.
               Tinted (accent) when ON; hairline-muted when OFF. Persisted. */}
           <button
@@ -1982,27 +2013,48 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
               </motion.h1>
             </div>
           ) : (
-            messages.map((m, i) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                accent={ACCENT}
-                lang={lang}
-                autoplay={prefs.autoplayMedia}
-                eager={i === messages.length - 1}
-                mediaExpiredLabel={xc.mediaExpired}
-                expandLabel={xc.expandHint}
-                ttsLabels={{ readAloud: xc.readAloud, pause: xc.pauseReading, via: xc.via }}
-                streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
-                onStreamTick={() => pinBottom(false)}
-                onRegenerate={() => sendMessage(m.sourcePrompt)}
-                onEdit={editPrompt}
-                onFeedback={sendFeedback}
-                onPlayAudio={playAssetAudio}
-                onExpand={openWorkspace}
-                onRefine={applyRefinement}
-              />
-            ))
+            <>
+              {/* VECTOR 1B — when the view has been cleared, a single restore pill brings the hidden
+                  (still fully in-context) messages back on demand. */}
+              {clearedCount > 0 && clearedCount <= messages.length && (
+                <div className="flex justify-center pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setClearedCount(0)}
+                    className="rounded-full border border-app-border/15 bg-app-elevated/60 px-3.5 py-1.5 text-[12px] font-medium text-app-muted transition hover:text-app-text active:scale-95"
+                  >
+                    {lang === 'ka'
+                      ? `${clearedCount} ადრინდელი შეტყობინება დამალულია — ჩვენება`
+                      : lang === 'ru'
+                        ? `${clearedCount} прошлых сообщений скрыто — показать`
+                        : `${clearedCount} earlier message${clearedCount === 1 ? '' : 's'} hidden — show`}
+                  </button>
+                </div>
+              )}
+              {messages.map((m, i) => (
+                i < clearedCount ? null : (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    accent={ACCENT}
+                    lang={lang}
+                    autoplay={prefs.autoplayMedia}
+                    eager={i === messages.length - 1}
+                    mediaExpiredLabel={xc.mediaExpired}
+                    expandLabel={xc.expandHint}
+                    ttsLabels={{ readAloud: xc.readAloud, pause: xc.pauseReading, via: xc.via }}
+                    streaming={i === messages.length - 1 && m.role === 'assistant' && !!m.text && !isLoading}
+                    onStreamTick={() => pinBottom(false)}
+                    onRegenerate={() => sendMessage(m.sourcePrompt)}
+                    onEdit={editPrompt}
+                    onFeedback={sendFeedback}
+                    onPlayAudio={playAssetAudio}
+                    onExpand={openWorkspace}
+                    onRefine={applyRefinement}
+                  />
+                )
+              ))}
+            </>
           )}
           {isLoading ? (
             <div className="flex flex-col gap-2.5">
