@@ -32,6 +32,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // ffmpeg re-encode / inpaint poll headroom
 
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
+// Standard LaMa-based object-removal model (inputs: image + mask). Best-effort default when the operator hasn't
+// pinned REPLICATE_INPAINT_MODEL — createPrediction resolves its latest version; a bad slug fails cleanly + refunds.
+const DEFAULT_INPAINT_MODEL = 'zylim0702/remove-object';
 
 /** Resolve a client media ref (https / bare storage path from uploadBigFile) to a fetchable https URL. */
 async function resolveMedia(v: unknown): Promise<string | null> {
@@ -57,6 +60,8 @@ interface DraftPayload {
   fade?: { inSec?: number; outSec?: number };
   crop?: { x: number; y: number; w: number; h: number } | null;
   mutedRanges?: { start: number; end: number }[];
+  /** Ordered export sequence (delete = omitted, reorder = array order). */
+  segments?: { start: number; end: number; muted: boolean }[];
 }
 
 /** Best-effort save of an edited asset to the user's library (never blocks the response). */
@@ -124,6 +129,7 @@ export async function POST(req: NextRequest) {
           fadeOutSec: d.fade?.outSec,
           crop: d.crop ?? null,
           mutedRanges: d.mutedRanges,
+          segments: d.segments,
           durationSec: Number(body?.durationSec) || 0,
         };
         const url = body?.kind === 'photo'
@@ -174,10 +180,15 @@ export async function POST(req: NextRequest) {
   const guard = await guardGeneration(req, 'image');
   if (!guard.ok) return guard.response;
 
-  const model = process.env.REPLICATE_INPAINT_MODEL; // e.g. 'owner/lama-cleaner' — unset ⇒ feature inert
-  if (!process.env.REPLICATE_API_TOKEN || !model) {
+  // Read the operator's pinned model; if unset, fall back to a standard LaMa-style object-removal model (which
+  // takes {image, mask}) and WARN in non-prod so nobody ships on an unverified default. Still needs the token.
+  const model = process.env.REPLICATE_INPAINT_MODEL?.trim() || DEFAULT_INPAINT_MODEL;
+  if (!process.env.REPLICATE_INPAINT_MODEL && process.env.NODE_ENV !== 'production') {
+    console.warn(`[ai/edit] REPLICATE_INPAINT_MODEL unset — falling back to default inpaint model "${DEFAULT_INPAINT_MODEL}". Pin your own via the env var.`);
+  }
+  if (!process.env.REPLICATE_API_TOKEN) {
     return NextResponse.json(
-      { url: null, error: 'inpaint_unconfigured', message: 'AI object-removal is not configured (set REPLICATE_API_TOKEN + REPLICATE_INPAINT_MODEL).' },
+      { url: null, error: 'inpaint_unconfigured', message: 'AI object-removal needs REPLICATE_API_TOKEN.' },
       { status: 503 },
     );
   }
