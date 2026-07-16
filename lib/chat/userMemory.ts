@@ -81,6 +81,18 @@ function numInRange(raw: string, min: number, max: number): string | null {
 }
 
 /**
+ * Does a captured token plausibly look like a NAME (vs an ordinary word the declaration phrase happened to
+ * precede — "my name is important", "call me crazy")? Real Latin/Cyrillic names are Capitalized in a genuine
+ * declaration; a lowercase Latin/Cyrillic token almost never is a name. Georgian has no letter case, so we can't
+ * use capitalization there and instead rely on the (strong, explicit) declaration-phrase anchor upstream.
+ */
+function looksLikeName(name: string): boolean {
+  const first = name[0] ?? '';
+  if (/[A-Za-zА-Яа-яЁё]/.test(first)) return /[A-ZА-ЯЁ]/.test(first); // Latin/Cyrillic → require a capital
+  return true; // Georgian / other scripts
+}
+
+/**
  * Conservatively extract explicit personal facts from ONE user message. Pure + deterministic → unit-testable.
  * Deliberately narrow (only clear, self-declared statements) so it never stores noise. Handles en / ka / ru.
  */
@@ -91,17 +103,19 @@ export function extractProfileFacts(text: string): ProfileFact[] {
 
   // Weight (kg) — "I weigh 80kg", "my weight is 80", "ჩემი წონა 80", "мой вес 80". English triggers are \b-anchored
   // so a substring inside another word (e.g. "average"/"install") can never mint a bogus fact.
-  const weight = t.match(/(?:\bweigh(?:t)?(?:\s+is)?|წონა(?:ა)?|\bвес)\D{0,6}(\d{2,3})\s*(?:kg|kgs|kilos?|კგ|кг)?/i)
+  // NB: JS `\b` is ASCII-only, so `\bвес` never fires before a Cyrillic letter — Russian uses an explicit
+  // Cyrillic whole-word boundary (lookbehind + lookahead) instead so 'вес'/'рост'/'мне' actually match.
+  const weight = t.match(/(?:\bweigh(?:t)?(?:\s+is)?|წონა(?:ა)?|(?<![А-Яа-яЁё])вес(?![А-Яа-яЁё]))\D{0,6}(\d{2,3})\s*(?:kg|kgs|kilos?|კგ|кг)?/i)
     ?? t.match(/(\d{2,3})\s*(?:kg|კგ|кг)/i);
   if (weight?.[1]) { const v = numInRange(weight[1], 30, 400); if (v) put('weight', `${v} kg`, 'personal_bio'); }
 
   // Height (cm) — "I'm 180cm", "my height is 180", "სიმაღლე 180", "рост 180"
-  const height = t.match(/(?:\bheight(?:\s+is)?|\btall\b|სიმაღლ[ეი]|\bрост)\D{0,6}(\d{2,3})\s*(?:cm|სმ|см)?/i)
+  const height = t.match(/(?:\bheight(?:\s+is)?|\btall\b|სიმაღლ[ეი]|(?<![А-Яа-яЁё])рост(?![А-Яа-яЁё]))\D{0,6}(\d{2,3})\s*(?:cm|სმ|см)?/i)
     ?? t.match(/(\d{3})\s*(?:cm|სმ|см)/i);
   if (height?.[1]) { const v = numInRange(height[1], 100, 260); if (v) put('height', `${v} cm`, 'personal_bio'); }
 
   // Age — "I'm 25 years old", "my age is 25", "25 წლის ვარ", "мне 25 лет"
-  const age = t.match(/(?:\bage(?:\s+is)?|\byears?\s*old|ასაკ[ია]?|\bмне\b)\D{0,6}(\d{1,3})/i)
+  const age = t.match(/(?:\bage(?:\s+is)?|\byears?\s*old|ასაკ[ია]?|(?<![А-Яа-яЁё])мне(?![А-Яа-яЁё]))\D{0,6}(\d{1,3})/i)
     ?? t.match(/(\d{1,3})\s*(?:years?\s*old|წლის|лет|года?)/i);
   if (age?.[1]) { const v = numInRange(age[1], 5, 120); if (v) put('age', v, 'personal_bio'); }
 
@@ -111,8 +125,9 @@ export function extractProfileFacts(text: string): ProfileFact[] {
   const nameM = t.match(/(?:my name is|call me|ჩემი სახელი[აის]?|მე მქვია|მქვია|меня зовут|мо[её] имя)\s+["“']?([A-Za-zႠ-ჿА-Яа-яЁё][\wႠ-ჿА-Яа-яЁё-]{1,20})/i);
   if (nameM?.[1]) {
     const name = nameM[1].replace(/["“'.,!?]+$/, '');
-    // Reject stop-words / phrasal-verb tails ("call me back|later|now|tomorrow…") that aren't real names.
-    if (name && !/^(me|you|it|is|not|the|a|an|so|just|really|actually|меня|тебя|back|later|now|soon|tonight|today|tomorrow|asap|maybe|please|when|if|after|before)$/i.test(name)) {
+    // Must look like a name (Latin/Cyrillic → Capitalized) AND not be a stop-word / phrasal-verb tail
+    // ("call me back|later|now…") — together these keep "my name is important" / "call me crazy" from storing a name.
+    if (name && looksLikeName(name) && !/^(me|you|it|is|not|the|a|an|so|just|really|actually|меня|тебя|back|later|now|soon|tonight|today|tomorrow|asap|maybe|please|when|if|after|before)$/i.test(name)) {
       put('name', name, 'personal_bio');
     }
   }
@@ -121,8 +136,8 @@ export function extractProfileFacts(text: string): ProfileFact[] {
   const bot = t.match(/(?:call you|name you|your name is|rename you to|i(?:'|’)?ll call you|დაგარქმევ|დაგიძახებ|зовут тебя|буду звать тебя)\s+["“']?([A-Za-zႠ-ჿ][\wႠ-ჿ-]{1,20})/i);
   if (bot?.[1]) {
     const name = bot[1].replace(/["“'.,!?]+$/, '');
-    // Don't capture stop-words that follow the trigger phrase but aren't a name.
-    if (name && !/^(me|you|it|that|this|the|a|an)$/i.test(name)) put('preferred_bot_name', name, 'preferred_bot_name');
+    // Must look like a name + not a stop-word — stops "your name is now set" etc. minting a bogus bot name.
+    if (name && looksLikeName(name) && !/^(me|you|it|that|this|the|a|an|now|not|so)$/i.test(name)) put('preferred_bot_name', name, 'preferred_bot_name');
   }
 
   return [...out.values()];

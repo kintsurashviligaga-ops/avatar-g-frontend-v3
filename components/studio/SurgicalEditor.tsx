@@ -133,12 +133,17 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   const [toast, setToast] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const clipsRef = useRef<Clip[]>([]);
 
   const clip = clips[active];
 
-  useEffect(() => () => { clips.forEach((c) => URL.revokeObjectURL(c.url)); }, [clips]);
+  // Revoke object URLs ONLY on unmount (via a ref) — a [clips]-deps cleanup would revoke still-in-use URLs on
+  // every upload, blanking earlier previews. Keep the ref in sync so unmount frees exactly the live set.
+  useEffect(() => { clipsRef.current = clips; }, [clips]);
+  useEffect(() => () => { clipsRef.current.forEach((c) => URL.revokeObjectURL(c.url)); }, []);
   useEffect(() => { setSplits([]); setGrade(NEUTRAL); setFade({ inSec: 0, outSec: 0 }); setCrop(null); setResult(null); setCurrent(0); }, [active]);
 
   const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2600); }, []);
@@ -215,12 +220,22 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       if (action === 'split') { body.startSec = current; body.durationSec = Math.max(1, duration - current || 5); }
       if (action === 'color') { body.saturation = grade.saturation; body.contrast = grade.contrast; body.brightness = grade.brightness; body.temperature = grade.temperature; }
       if (action === 'fade') { body.fadeInSec = fade.inSec; body.fadeOutSec = fade.outSec; body.durationSec = duration; }
-      if (action === 'crop' && crop && stageRef.current && videoRef.current) {
-        const el = videoRef.current;
-        const rect = stageRef.current.getBoundingClientRect();
-        const nw = el.videoWidth || rect.width, nh = el.videoHeight || rect.height;
-        const sx = nw / rect.width, sy = nh / rect.height;
-        body.bounds = { x: crop.x * sx, y: crop.y * sy, w: crop.w * sx, h: crop.h * sy };
+      if (action === 'crop') {
+        // The media is letterboxed/centered inside the stage, so crop coords (measured from the STAGE) must be
+        // translated into media-local space, scaled by the SOURCE/displayed ratio, and clamped to the source
+        // frame. Works for both video (videoWidth/Height) and image (naturalWidth/Height). No valid media ⇒ abort.
+        const isVid = clip?.kind === 'video';
+        const el: HTMLVideoElement | HTMLImageElement | null = isVid ? videoRef.current : imgRef.current;
+        if (!crop || !el || !stageRef.current) { flash(t.failed); setBusy(null); return; }
+        const mediaRect = el.getBoundingClientRect();
+        const stageRect = stageRef.current.getBoundingClientRect();
+        const nw = isVid ? (el as HTMLVideoElement).videoWidth : (el as HTMLImageElement).naturalWidth;
+        const nh = isVid ? (el as HTMLVideoElement).videoHeight : (el as HTMLImageElement).naturalHeight;
+        if (!nw || !nh || !mediaRect.width || !mediaRect.height) { flash(t.failed); setBusy(null); return; }
+        const sx = nw / mediaRect.width, sy = nh / mediaRect.height;
+        const x = Math.max(0, Math.min(nw - 2, (crop.x - (mediaRect.left - stageRect.left)) * sx));
+        const y = Math.max(0, Math.min(nh - 2, (crop.y - (mediaRect.top - stageRect.top)) * sy));
+        body.bounds = { x, y, w: Math.min(crop.w * sx, nw - x), h: Math.min(crop.h * sy, nh - y) };
       }
       const res = await fetch('/api/ai/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
       const j = (await res.json().catch(() => null)) as { url?: string | null; audioUrl?: string | null; error?: string } | null;
@@ -299,7 +314,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={clip?.url} alt="" style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full" />
+                <img ref={imgRef} src={clip?.url} alt="" style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full" />
               )}
               {cropOn && crop && crop.w > 4 && (
                 <div className="pointer-events-none absolute border-2 border-app-accent bg-app-accent/10" style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }} />

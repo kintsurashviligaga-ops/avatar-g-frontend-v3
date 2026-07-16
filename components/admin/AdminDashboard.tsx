@@ -11,6 +11,7 @@ import AdminSignOutButton from '@/components/admin/AdminSignOutButton';
 import FeatureFlags from '@/components/admin/FeatureFlags';
 import BillingConfig from '@/components/admin/BillingConfig';
 import JobsMonitor from '@/components/admin/JobsMonitor';
+import LaunchHealthCard from '@/components/admin/LaunchHealthCard';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
@@ -168,6 +169,8 @@ function Overview({ ka, stats, top, pipelineHealth, fmt }: { ka: boolean; stats:
           )}
         </section>
       )}
+      {/* Launch readiness — live /api/health/memory checklist (migration 007 + env keys). */}
+      <LaunchHealthCard ka={ka} />
     </div>
   );
 }

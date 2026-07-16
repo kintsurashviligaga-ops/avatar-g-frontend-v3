@@ -75,10 +75,13 @@ export interface GradeParams {
 export async function gradeClip(videoUrl: string, p: GradeParams): Promise<string | null> {
   const b = bin();
   if (!b || !videoUrl) return null;
-  const sat = Math.max(0, (p.saturation ?? 100) / 100);            // eq saturation: 1 = neutral
-  const con = Math.max(0, (p.contrast ?? 100) / 100);              // eq contrast:   1 = neutral
-  const bri = Math.max(-1, Math.min(1, ((p.brightness ?? 100) - 100) / 100)); // eq brightness: 0 neutral, [-1,1]
-  const t = Math.max(-100, Math.min(100, p.temperature ?? 0));
+  // Finite guard — the route coerces with Number(...), so an OMITTED field arrives as NaN, and `?? default`
+  // does NOT catch NaN. Without this a single missing slider NaNs the whole eq filter string → ffmpeg errors.
+  const num = (v: number | undefined, d: number) => (Number.isFinite(v) ? (v as number) : d);
+  const sat = Math.max(0, num(p.saturation, 100) / 100);            // eq saturation: 1 = neutral
+  const con = Math.max(0, num(p.contrast, 100) / 100);              // eq contrast:   1 = neutral
+  const bri = Math.max(-1, Math.min(1, (num(p.brightness, 100) - 100) / 100)); // eq brightness: 0 neutral, [-1,1]
+  const t = Math.max(-100, Math.min(100, num(p.temperature, 0)));
   const kelvin = Math.round(6500 - t * 25); // +100 → 4000K (warm), -100 → 9000K (cool)
   const filters = [`eq=saturation=${sat.toFixed(3)}:contrast=${con.toFixed(3)}:brightness=${bri.toFixed(3)}`];
   if (t !== 0) filters.push(`colortemperature=temperature=${kelvin}`);

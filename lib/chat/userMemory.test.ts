@@ -30,9 +30,20 @@ describe('extractProfileFacts — conservative personal-fact extraction', () => 
     expect(facts.age).toBe('30');
   });
 
-  test('user-name extractor does NOT fire on phrasal-verb tails', () => {
+  test('user-name extractor does NOT fire on phrasal-verb tails or non-name words', () => {
     expect(factMap(extractProfileFacts('call me back later')).name).toBeUndefined();
     expect(factMap(extractProfileFacts('please call me now')).name).toBeUndefined();
+    // A lowercase Latin token after the declaration phrase is almost never a name (looksLikeName).
+    expect(factMap(extractProfileFacts('my name is important to me')).name).toBeUndefined();
+    expect(factMap(extractProfileFacts('call me crazy')).name).toBeUndefined();
+  });
+
+  test('Russian weight/height/age fire without a unit (Cyrillic word boundary, not ASCII \\b)', () => {
+    expect(factMap(extractProfileFacts('мой вес 80')).weight).toBe('80 kg');
+    expect(factMap(extractProfileFacts('рост 180')).height).toBe('180 cm');
+    expect(factMap(extractProfileFacts('мне 25')).age).toBe('25');
+    // …and 'вес' inside another word ('весна') must NOT mint a fact.
+    expect(factMap(extractProfileFacts('весна началась 80 дней назад')).weight).toBeUndefined();
   });
 
   test('companion / bot-name override', () => {

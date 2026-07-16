@@ -18,11 +18,11 @@
  * Every op is FAIL-OPEN: a miss returns { url: null, error } (never a 500 dead-end).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { guardGeneration } from '@/lib/api/generationGuard';
+import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip } from '@/lib/video/surgicalOps';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
@@ -38,7 +38,10 @@ async function resolveMedia(v: unknown): Promise<string | null> {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   if (!s || s.length > 4000) return null;
-  if (/^https:\/\//i.test(s)) return reSignIfInternal(s);
+  // SSRF guard — an https ref is honored ONLY when it's one of OUR OWN Supabase storage objects; an arbitrary
+  // external host must never be handed to `ffmpeg -i` (it could reach internal metadata/services). Editor
+  // uploads always send a bare storage path, so this rejects nothing legitimate.
+  if (/^https:\/\//i.test(s)) return parseSupabaseObjectUrl(s) ? reSignIfInternal(s) : null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null; // reject data:/other schemes
   return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600);
 }
@@ -162,9 +165,18 @@ export async function POST(req: NextRequest) {
 
   const cost = creditCostFor('image');
   const ref = `edit:inpaint:${guard.userId}:${Date.now()}`;
+  // Reserve-before-render: debit FIRST and HONOR the result. The pre-gate is fail-OPEN (a transient balance
+  // read-miss lets a user through), so a genuinely broke user can reach here — an insufficient debit must block
+  // the paid provider call, not fall through to a free inpaint. Only a POSITIVE 'insufficient' blocks; a
+  // 'skipped' (RPC absent) or transient 'error' degrades to proceeding (the ledger's documented behavior).
+  const debit = await deductCredits(guard.userId, cost, ref);
+  if (!debit.ok && debit.reason === 'insufficient') {
+    return NextResponse.json(
+      { url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) },
+      { status: 402 },
+    );
+  }
   try {
-    // Charge up front (reserve-before), refund on failure — the ref is idempotent so a retry never double-bills.
-    await deductCredits(guard.userId, cost, ref);
     const created = await createPrediction(model, { image: src, mask, prompt: body?.prompt || '' });
     let out = created;
     if (created.status !== 'succeeded' && created.status !== 'failed') {
@@ -172,13 +184,13 @@ export async function POST(req: NextRequest) {
     }
     const url = out.status === 'succeeded' ? firstUrl(out.output) : null;
     if (!url) {
-      await refundCredits(guard.userId, cost, ref); // compensation — no asset delivered
+      if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // compensation ONLY if we charged
       return NextResponse.json({ url: null, error: 'inpaint produced no output' }, { status: 502 });
     }
     void saveCreation(req, guard.userId, url, 'inpaint');
     return NextResponse.json({ url });
   } catch (e) {
-    await refundCredits(guard.userId, cost, ref).catch(() => {});
+    if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge
     return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'inpaint failed' }, { status: 502 });
   }
 }
