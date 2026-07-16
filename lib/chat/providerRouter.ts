@@ -360,10 +360,10 @@ export async function orchestrate(
   return handleTextIntent(input, detected);
 }
 
-export async function pollOrchestrationTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+export async function pollOrchestrationTask(predictionId: string, sessionId?: string, userId?: string): Promise<ChatResponse> {
   // Film union poll (5 clips + audio + editor) — decode and poll the whole
   // matrix in lock-step. Checked FIRST: a `film:` token must never fall through
-  // to the composite/udio single-leg pollers.
+  // to the composite/udio single-leg pollers. (Film bills per-clip in its own pipeline.)
   if (isFilmRef(predictionId)) {
     return pollFilmTask(predictionId, sessionId);
   }
@@ -379,7 +379,25 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
   }
 
   const response = await serviceManager.poll(predictionId, sessionId);
-  return toChatResponse(response, 'text_chat');
+  const mapped = toChatResponse(response, 'text_chat');
+
+  // VECTOR 2 — an ASYNC single-leg generation (Avatar via HeyGen, an async image, etc.) resolves HERE on the
+  // poll path, NOT on the dispatch path that charges post-success — so before this it was gated-but-never-debited
+  // (free unlimited). Charge on TERMINAL success only (a failed/pending poll is never billed), idempotent on
+  // `poll:<predictionId>` so repeated polls of a finished render are no-ops, using the SAME billableCreditCost
+  // SSoT as the sync path. Fail-open; deduct_credits rejects overdraw. Video stays 0 here (film-composite bills it).
+  if (userId && userId !== 'anonymous' && mapped.predictionStatus !== 'processing' && mapped.assetUrl) {
+    const provider = String(mapped.metadata?.provider ?? '');
+    const intent: IntentCategory | null =
+      provider === 'heygen' ? 'avatar_generation'
+      : (mapped.assetType === 'image' || mapped.responseType === 'image') ? 'image_generation'
+      : mapped.responseType === 'audio' ? 'music_generation'
+      : null;
+    const cost = intent ? billableCreditCost(intent) : 0;
+    if (cost > 0) await deductCredits(userId, cost, `poll:${predictionId}`).catch(() => { /* best-effort */ });
+  }
+
+  return mapped;
 }
 
 /**

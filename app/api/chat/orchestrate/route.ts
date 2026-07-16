@@ -155,7 +155,13 @@ export async function POST(req: NextRequest) {
 
     // ── Poll path (check status of running prediction) ───────────────
     if (data.predictionId) {
-      return handlePoll(data.predictionId, data.sessionId);
+      // Resolve the caller so an async gen (Avatar/HeyGen) can be debited the moment it completes on THIS
+      // poll path (VECTOR 2 — the dispatch charge never fires for async legs). Cookie session first, then Bearer.
+      let pollUserId = gate.auth?.userId || 'anonymous';
+      if (pollUserId === 'anonymous') {
+        try { const { user } = await authedClientFromRequest(req); if (user?.id) pollUserId = user.id; } catch { /* stays anon */ }
+      }
+      return handlePoll(data.predictionId, data.sessionId, pollUserId);
     }
 
     // The gate's auth (getAuthContext → createServerClient) only reads the SSR COOKIE
@@ -313,9 +319,9 @@ export async function POST(req: NextRequest) {
 
 // ─── Poll handler ────────────────────────────────────────────────────────────
 
-async function handlePoll(predictionId: string, sessionId?: string) {
+async function handlePoll(predictionId: string, sessionId?: string, userId?: string) {
   try {
-    const result = await pollOrchestrationTask(predictionId, sessionId);
+    const result = await pollOrchestrationTask(predictionId, sessionId, userId);
     return NextResponse.json(result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Poll failed';

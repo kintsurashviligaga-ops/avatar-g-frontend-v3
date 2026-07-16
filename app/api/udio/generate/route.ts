@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration } from '@/lib/api/generationGuard';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -47,6 +49,10 @@ export async function POST(req: NextRequest) {
         { status: 502 },
       );
     }
+
+    // FINANCIAL SHIELD — the track resolved successfully (this route blocks until Udio is done), so debit now.
+    // Post-success ⇒ a failed/empty render (returned above) is never billed. Best-effort; rejects overdraw.
+    await deductCredits(guard.userId, creditCostFor('music'), `udio:${guard.userId}:${Date.now()}`).catch(() => {});
 
     return NextResponse.json({
       success: true,

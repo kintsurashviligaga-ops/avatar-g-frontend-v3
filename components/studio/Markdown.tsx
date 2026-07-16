@@ -7,7 +7,7 @@
  * (`app-*`) so it flips light/dark. GitHub-flavoured markdown via remark-gfm.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check } from 'lucide-react';
@@ -34,7 +34,10 @@ function CodeBlock({ text }: { text: string }) {
   );
 }
 
-export function Markdown({ children }: { children: string }) {
+// PERF (Master Contract V5) — memoized on the `children` string. The dashboard chat maps every history
+// bubble through <Markdown>, so WITHOUT this every keystroke in the composer (a parent state change) re-parsed
+// the full markdown AST of EVERY bubble → visible input latency on long sessions. Same string ⇒ skip re-render.
+function MarkdownImpl({ children }: { children: string }) {
   return (
     <div className="space-y-2 text-[16px] leading-[1.7] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
       <ReactMarkdown
@@ -72,5 +75,7 @@ export function Markdown({ children }: { children: string }) {
     </div>
   );
 }
+
+export const Markdown = memo(MarkdownImpl);
 
 export default Markdown;

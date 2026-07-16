@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration } from '@/lib/api/generationGuard';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -104,6 +106,10 @@ export async function POST(req: NextRequest) {
         { status: ltxRes.status >= 400 && ltxRes.status < 600 ? ltxRes.status : 500 },
       );
     }
+
+    // FINANCIAL SHIELD — LTX returned 200 (the render succeeded), so debit now (post-success, never bills a
+    // failure — control returned above on !ok). Best-effort + fail-open; deduct_credits rejects overdraw.
+    await deductCredits(guard.userId, creditCostFor('video'), `ltx:${guard.userId}:${Date.now()}`).catch(() => {});
 
     // Forward the video stream directly — LTX returns video/mp4 synchronously.
     // Expose the EXACT render params the client persists as truthful media meta.
