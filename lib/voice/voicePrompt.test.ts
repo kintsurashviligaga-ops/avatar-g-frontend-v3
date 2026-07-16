@@ -30,6 +30,16 @@ describe('buildVoiceReplyPrompt', () => {
     const { user } = buildVoiceReplyPrompt('hi', 'en', [{ role: 'x' as never, content: 'bad' }, { role: 'user', content: '  ' }]);
     expect(user).toBe('User: hi\nAssistant:');
   });
+
+  it('VECTOR 2 — Georgian persona enforces the short-reply latency constraint (1-2 sentences, ≤20 words)', () => {
+    const { system } = buildVoiceReplyPrompt('რა ამინდია?', 'ka');
+    expect(system).toMatch(/1-2/);            // at most 1-2 sentences
+    expect(system).toMatch(/20\s*სიტყვ/);    // up to 20 words (ქართული: "20 სიტყვამდე")
+    // every locale carries the tight constraint so voice replies stay low-latency
+    for (const l of ['ka', 'en', 'ru'] as const) {
+      expect(buildVoiceReplyPrompt('x', l).system).toMatch(/1-2|20/);
+    }
+  });
 });
 
 describe('trimForSpeech', () => {
@@ -41,6 +51,12 @@ describe('trimForSpeech', () => {
   });
   it('keeps clean Georgian spoken text', () => {
     expect(trimForSpeech('დღეს მზიანი ამინდია.')).toBe('დღეს მზიანი ამინდია.');
+  });
+
+  it('VECTOR 2 — honors the tighter Georgian spoken-char cap the voice route passes (320)', () => {
+    // /api/voice/chat passes speechCap=320 for ka so eleven_v3 synthesizes a small payload → lower latency.
+    expect(trimForSpeech('ა'.repeat(1000), 320).length).toBe(320);
+    expect(trimForSpeech('ა'.repeat(1000), 520).length).toBe(520); // en/ru cap
   });
 });
 

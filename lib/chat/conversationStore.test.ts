@@ -247,6 +247,52 @@ describe('Trash Bin (soft delete / restore / purge) — VECTOR 8', () => {
     expect(loadTrashedConversations().map((c) => c.id)).toEqual(['fresh']); // recent survives
     expect(loadConversations().map((c) => c.id).sort()).toEqual(['fresh']);
   });
+
+  test('30-day boundary: exactly 30d is KEPT, 30d+1ms is purged', () => {
+    const trashedAt = 100_000;
+    upsertConversation(makeConvo('edge', 5000));
+    softDeleteConversation('edge');
+    window.localStorage.setItem('myavatar.conversations.v1',
+      JSON.stringify(loadConversations().map((c) => ({ ...c, deletedAt: trashedAt }))));
+    purgeExpiredTrash(trashedAt + 30 * DAY);       // exactly 30 days → NOT past retention
+    expect(loadTrashedConversations().map((c) => c.id)).toEqual(['edge']);
+    purgeExpiredTrash(trashedAt + 30 * DAY + 1);    // one ms over → purged
+    expect(loadTrashedConversations()).toHaveLength(0);
+  });
+});
+
+describe('Trash Bin — the 60-cap edge (VECTOR 8 hardening)', () => {
+  // MAX_CONVERSATIONS is 60 in conversationStore.ts.
+  const seedActive = (n: number) => { for (let i = 0; i < n; i++) upsertConversation(makeConvo(`a${i}`, 1000 + i)); };
+
+  test('60 active + 5 trashed: adding a NEW active preserves ALL trashed and evicts only the oldest active', () => {
+    seedActive(60);
+    for (const id of ['a0', 'a1', 'a2', 'a3', 'a4']) softDeleteConversation(id); // trash 5 (now 55 active, 5 trashed)
+    // Top the active list back up to 60 so the next insert forces the cap.
+    for (let i = 60; i < 65; i++) upsertConversation(makeConvo(`a${i}`, 1000 + i)); // 60 active, 5 trashed
+    expect(loadActiveConversations()).toHaveLength(60);
+    expect(loadTrashedConversations()).toHaveLength(5);
+
+    upsertConversation(makeConvo('brand_new', 999_999)); // newest → forces one active eviction
+    const active = loadActiveConversations();
+    const trashed = loadTrashedConversations();
+    expect(active).toHaveLength(60);                                   // active still capped at 60
+    expect(active.some((c) => c.id === 'brand_new')).toBe(true);       // the new chat is present
+    expect(trashed).toHaveLength(5);                                   // NONE of the trashed were evicted
+    expect(trashed.map((c) => c.id).sort()).toEqual(['a0', 'a1', 'a2', 'a3', 'a4']);
+    // No corruption: every stored row is a valid, uniquely-id'd conversation.
+    const raw = loadConversations();
+    expect(new Set(raw.map((c) => c.id)).size).toBe(raw.length);
+    expect(raw.every((c) => typeof c.id === 'string' && Array.isArray(c.messages))).toBe(true);
+  });
+
+  test('under the cap (55 active + 5 trashed): adding an active evicts NO active and keeps all trash', () => {
+    seedActive(55);
+    for (const id of ['a0', 'a1', 'a2', 'a3', 'a4']) softDeleteConversation(id); // 50 active, 5 trashed
+    upsertConversation(makeConvo('n', 999_999));
+    expect(loadActiveConversations()).toHaveLength(51); // 50 + 1, well under 60 → nothing evicted
+    expect(loadTrashedConversations()).toHaveLength(5);
+  });
 });
 
 describe('preferences', () => {
