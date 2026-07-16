@@ -24,7 +24,7 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
-import { cropClip, gradeClip, detachAudio, fadeClip } from '@/lib/video/surgicalOps';
+import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, type RenderDraft } from '@/lib/video/surgicalOps';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 
 export const dynamic = 'force-dynamic';
@@ -46,10 +46,18 @@ async function resolveMedia(v: unknown): Promise<string | null> {
   return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600);
 }
 
-type EditAction = 'split' | 'crop' | 'detach' | 'color' | 'fade' | 'inpaint';
-const DETERMINISTIC = new Set<EditAction>(['split', 'crop', 'detach', 'color', 'fade']);
+type EditAction = 'split' | 'crop' | 'detach' | 'color' | 'fade' | 'inpaint' | 'render';
+const DETERMINISTIC = new Set<EditAction>(['split', 'crop', 'detach', 'color', 'fade', 'render']);
 
 interface Bounds { x?: number; y?: number; w?: number; h?: number }
+
+/** The client-accumulated non-linear edit draft, sent ONCE on "Export". */
+interface DraftPayload {
+  grade?: { saturation?: number; contrast?: number; brightness?: number; temperature?: number };
+  fade?: { inSec?: number; outSec?: number };
+  crop?: { x: number; y: number; w: number; h: number } | null;
+  mutedRanges?: { start: number; end: number }[];
+}
 
 /** Best-effort save of an edited asset to the user's library (never blocks the response). */
 async function saveCreation(req: NextRequest, userId: string, url: string, action: EditAction): Promise<void> {
@@ -83,6 +91,9 @@ export async function POST(req: NextRequest) {
     temperature?: number;
     fadeInSec?: number;
     fadeOutSec?: number;
+    // Batch 'render' export:
+    kind?: string;
+    draft?: DraftPayload;
   } | null;
 
   const action = String(body?.action || '').trim() as EditAction;
@@ -103,6 +114,24 @@ export async function POST(req: NextRequest) {
     if (!src) return NextResponse.json({ url: null, error: 'could not resolve media' }, { status: 400 });
 
     try {
+      // BATCH EXPORT — the non-linear editor's single round-trip: apply the whole accumulated draft in ONE
+      // ffmpeg pass (crop → grade → fade + per-range audio mute for video; crop → grade for photo).
+      if (action === 'render') {
+        const d = body?.draft ?? {};
+        const params: RenderDraft = {
+          grade: d.grade,
+          fadeInSec: d.fade?.inSec,
+          fadeOutSec: d.fade?.outSec,
+          crop: d.crop ?? null,
+          mutedRanges: d.mutedRanges,
+          durationSec: Number(body?.durationSec) || 0,
+        };
+        const url = body?.kind === 'photo'
+          ? await renderPhotoDraft(src, params)
+          : await renderVideoDraft(src, params);
+        if (url) void saveCreation(req, guard.userId, url, action);
+        return NextResponse.json({ url, error: url ? undefined : 'render failed' });
+      }
       if (action === 'split') {
         const url = await trimClip(src, Number(body?.startSec) || 0, Math.max(1, Number(body?.durationSec) || 5));
         if (url) void saveCreation(req, guard.userId, url, action);

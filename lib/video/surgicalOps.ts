@@ -67,6 +67,27 @@ export interface GradeParams {
   /** -100..100, 0 = neutral (positive = warmer) */ temperature?: number;
 }
 
+const numFinite = (v: number | undefined, d: number) => (Number.isFinite(v) ? (v as number) : d);
+const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+
+/** eq + colortemperature filter strings for a grade (shared by gradeClip + the batch renderers). */
+function buildGradeFilters(g?: GradeParams): string[] {
+  if (!g) return [];
+  const sat = Math.max(0, numFinite(g.saturation, 100) / 100);
+  const con = Math.max(0, numFinite(g.contrast, 100) / 100);
+  const bri = Math.max(-1, Math.min(1, (numFinite(g.brightness, 100) - 100) / 100));
+  const t = Math.max(-100, Math.min(100, numFinite(g.temperature, 0)));
+  const out = [`eq=saturation=${sat.toFixed(3)}:contrast=${con.toFixed(3)}:brightness=${bri.toFixed(3)}`];
+  if (t !== 0) out.push(`colortemperature=temperature=${Math.round(6500 - t * 25)}`);
+  return out;
+}
+
+/** A crop filter string for a bounds rect (even dims, clamped ≥0), or null when there's no crop. */
+function buildCropFilter(crop?: { x: number; y: number; w: number; h: number } | null): string | null {
+  if (!crop || !(crop.w > 0) || !(crop.h > 0)) return null;
+  return `crop=${even(crop.w)}:${even(crop.h)}:${Math.max(0, Math.round(crop.x))}:${Math.max(0, Math.round(crop.y))}`;
+}
+
 /**
  * COLOR GRADE via the `eq` filter (saturation/contrast/brightness) plus `colortemperature` for warmth.
  * Slider units (0–200%, temp -100..100) map onto ffmpeg's native ranges. Deterministic per-pixel math —
@@ -157,6 +178,96 @@ export async function fadeClip(videoUrl: string, p: FadeParams): Promise<string 
     return await host(await readFile(out), 'fade', 'mp4', 'video/mp4');
   } catch (err) {
     console.warn('[surgical/fade] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// ─── BATCH RENDER (Premiere-style export) ────────────────────────────────────────────────────────────────
+// The non-linear editor accumulates every edit into a client-side draft and calls the server ONCE. These render
+// the whole draft in a SINGLE ffmpeg pass — crop → colour grade → fade, plus (video) audio muting of the ranges
+// the user split-and-muted. No per-action server round-trips.
+
+export interface DraftMutedRange { start: number; end: number }
+export interface RenderDraft {
+  grade?: GradeParams;
+  fadeInSec?: number;
+  fadeOutSec?: number;
+  crop?: { x: number; y: number; w: number; h: number } | null;
+  /** Time ranges (s) to silence — from timeline segments the user muted. */
+  mutedRanges?: DraftMutedRange[];
+  /** Total clip length (s) — positions the out-fade. */
+  durationSec?: number;
+}
+
+/** Render a full video draft in one pass: crop → grade → fade (video) + afade + per-range mute (audio). */
+export async function renderVideoDraft(videoUrl: string, d: RenderDraft): Promise<string | null> {
+  const b = bin();
+  if (!b || !videoUrl) return null;
+  const total = Math.max(0.1, numFinite(d.durationSec, 0));
+  const fi = Math.max(0, numFinite(d.fadeInSec, 0));
+  const fo = Math.max(0, numFinite(d.fadeOutSec, 0));
+
+  const vf: string[] = [];
+  const cropF = buildCropFilter(d.crop);
+  if (cropF) vf.push(cropF);
+  vf.push(...buildGradeFilters(d.grade));
+  if (fi > 0) vf.push(`fade=t=in:st=0:d=${fi}`);
+  if (fo > 0 && total > 0.1) vf.push(`fade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
+
+  const af: string[] = [];
+  if (fi > 0) af.push(`afade=t=in:st=0:d=${fi}`);
+  if (fo > 0 && total > 0.1) af.push(`afade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
+  const muted = (d.mutedRanges ?? []).filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start);
+  if (muted.length) {
+    // Single volume filter, enabled (→ 0) whenever t is inside ANY muted range. The commas inside between()
+    // are protected by the surrounding single quotes so ffmpeg doesn't read them as filter separators.
+    const expr = muted.map((r) => `between(t,${Math.max(0, r.start).toFixed(3)},${r.end.toFixed(3)})`).join('+');
+    af.push(`volume=0:enable='${expr}'`);
+  }
+
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'render-'));
+    const out = join(dir, 'render.mp4');
+    const args = ['-y', '-i', videoUrl];
+    if (vf.length) args.push('-vf', vf.join(','));
+    if (af.length) args.push('-af', af.join(','));
+    args.push(...VIDEO_TAIL, out);
+    await exec(b, args, { maxBuffer: 1 << 26, timeout: 180_000 });
+    return await host(await readFile(out), 'render', 'mp4', 'video/mp4');
+  } catch (err) {
+    console.warn('[surgical/renderVideo] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Render a photo draft in one pass: crop → grade → single output frame (PNG). */
+export async function renderPhotoDraft(imageUrl: string, d: RenderDraft): Promise<string | null> {
+  const b = bin();
+  if (!b || !imageUrl) return null;
+  const vf: string[] = [];
+  const cropF = buildCropFilter(d.crop);
+  if (cropF) vf.push(cropF);
+  vf.push(...buildGradeFilters(d.grade));
+
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'photo-'));
+    const out = join(dir, 'render.png');
+    const args = ['-y', '-i', imageUrl];
+    if (vf.length) args.push('-vf', vf.join(','));
+    args.push('-frames:v', '1', out);
+    await exec(b, args, { maxBuffer: 1 << 26, timeout: 60_000 });
+    const buf = await readFile(out);
+    if (buf.byteLength < 128) return null;
+    const path = `edits/photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'image/png', WEEK_SEC)) ?? null;
+  } catch (err) {
+    console.warn('[surgical/renderPhoto] failed:', err instanceof Error ? err.message : err);
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
