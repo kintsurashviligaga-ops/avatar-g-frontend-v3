@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
-import { FloatingChatButton } from './chat/FloatingChatButton';
 import { PageEnvironment } from './ui/PageEnvironment';
 import CookieConsent from './CookieConsent';
 
@@ -176,7 +175,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </ClientErrorBoundary>
       </main>
       {!hideShellChrome && <BottomNavigation />}
-      {!hideShellChrome && <FloatingChatButton hidden={sidebarOpen} />}
+      {/* PHASE 37.1 — removed the global floating Agent-G buttons (a RED phone/call button bottom-left + a
+          cyan chat button bottom-right). They floated at z-[9999] over the production dashboard; the red one
+          was the reported "red phone button". No external redirect existed (it opened an in-app CallScreen);
+          Agent G is still reachable at /services/agent-g. */}
       {!isEmbed && !isAdmin && <CookieConsent />}
     </div>
   );
