@@ -7,6 +7,7 @@ import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
 import { webSearch, likelyNeedsWebSearch, buildSearchPreamble } from '@/lib/ai/webSearch';
+import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
@@ -282,6 +283,25 @@ export async function POST(req: NextRequest) {
     // fails for any reason we fall back to the base system prompt.
     const memoryPreamble = await buildMemoryPreamble(req, messages);
 
+    // VECTOR 3 — cross-chat PERSISTENT user memory. Read the user's stored facts (name/weight/height/age,
+    // preferred companion name) → inject them so Agent G remembers the user across every separate chat, and
+    // (fire-and-forget) extract any explicit new fact from this turn. Fully fail-open: no user / absent table
+    // (pre-migration 007) / any error → null preamble + no write, so the chat is byte-identical until the
+    // table exists, then springs to life. See lib/chat/userMemory.
+    let profilePreamble: string | null = null;
+    try {
+      const { supabase: memClient, user: memUser } = await authedClientFromRequest(req);
+      const facts = await getUserProfileFacts(memClient, memUser?.id ?? null);
+      profilePreamble = buildProfilePreamble(facts);
+      const latestUser = extractLatestUserText(messages);
+      if (memUser?.id && latestUser) {
+        const fresh = extractProfileFacts(latestUser);
+        if (fresh.length) void saveUserProfileFacts(memClient, memUser.id, fresh);
+      }
+    } catch {
+      // memory is best-effort — never block the chat
+    }
+
     // Best-effort live web search (#19). Grounds answers in up-to-date results
     // when the query looks time-sensitive (or the client sets webSearch:true).
     // Env-driven (TAVILY_API_KEY) — null without a key, so chat is unaffected.
@@ -302,7 +322,7 @@ export async function POST(req: NextRequest) {
     const nowTbilisi = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tbilisi', dateStyle: 'full', timeStyle: 'short' });
     const datePreamble = `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${nowTbilisi}. When the user asks the time, date, or day, answer using THIS exact value — never output a placeholder like "[current time]".`;
 
-    const effectiveSystem = [datePreamble, langDirective, memoryPreamble, searchPreamble, SYSTEM_PROMPT]
+    const effectiveSystem = [datePreamble, langDirective, profilePreamble, memoryPreamble, searchPreamble, SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n');
 

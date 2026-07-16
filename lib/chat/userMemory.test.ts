@@ -1,0 +1,48 @@
+/** @jest-environment node */
+import { extractProfileFacts, buildProfilePreamble, type ProfileFact } from './userMemory';
+
+const factMap = (facts: ProfileFact[]) => Object.fromEntries(facts.map((f) => [f.key, f.value]));
+
+describe('extractProfileFacts — conservative personal-fact extraction', () => {
+  test('weight in English + Georgian (with range clamp)', () => {
+    expect(factMap(extractProfileFacts('I weigh 80kg after the holidays')).weight).toBe('80 kg');
+    expect(factMap(extractProfileFacts('ჩემი წონა 75 კგ')).weight).toBe('75 kg');
+    expect(extractProfileFacts('it cost 5000 kg of effort')).toEqual([]); // out of sane range → ignored
+  });
+
+  test('height', () => {
+    expect(factMap(extractProfileFacts('my height is 180cm')).height).toBe('180 cm');
+    expect(factMap(extractProfileFacts('სიმაღლე 172 სმ')).height).toBe('172 cm');
+  });
+
+  test('age', () => {
+    expect(factMap(extractProfileFacts("I'm 25 years old")).age).toBe('25');
+    expect(factMap(extractProfileFacts('მე 30 წლის ვარ')).age).toBe('30');
+  });
+
+  test('companion / bot-name override', () => {
+    expect(factMap(extractProfileFacts('from now on I will call you Jarvis')).preferred_bot_name).toBe('Jarvis');
+    expect(factMap(extractProfileFacts('your name is Nova now')).preferred_bot_name).toBe('Nova');
+  });
+
+  test('does NOT extract from unrelated chatter', () => {
+    expect(extractProfileFacts('what is the weather like today?')).toEqual([]);
+    expect(extractProfileFacts('write me a poem about the sea')).toEqual([]);
+  });
+});
+
+describe('buildProfilePreamble', () => {
+  test('null when there are no facts', () => {
+    expect(buildProfilePreamble([])).toBeNull();
+  });
+
+  test('formats bio facts + the preferred bot name', () => {
+    const p = buildProfilePreamble([
+      { key: 'weight', value: '80 kg', category: 'personal_bio' },
+      { key: 'preferred_bot_name', value: 'Jarvis', category: 'preferred_bot_name' },
+    ]);
+    expect(p).toContain('USER PROFILE');
+    expect(p).toContain('weight: 80 kg');
+    expect(p).toContain('"Jarvis"');
+  });
+});
