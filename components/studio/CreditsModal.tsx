@@ -274,6 +274,20 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
           </div>
         )}
 
+        {/* PHASE 39.5 (Master Contract V2) — legal-compliance links, always visible at the bottom of the
+            billing modal (a mandatory checklist item for the Georgian bank e-commerce approval). Open in a
+            new tab so the user never loses their place in the studio. */}
+        <div className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-1 px-5 pb-4 pt-1 text-[11px]">
+          {[
+            { href: `/${lang}/terms`, label: lang === 'en' ? 'Terms' : lang === 'ru' ? 'Условия' : 'პირობები' },
+            { href: `/${lang}/refund`, label: lang === 'en' ? 'Refunds' : lang === 'ru' ? 'Возврат' : 'დაბრუნება' },
+            { href: `/${lang}/privacy`, label: lang === 'en' ? 'Privacy' : lang === 'ru' ? 'Приватность' : 'კონფიდენციალურობა' },
+          ].map((l) => (
+            <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
+              className="text-app-muted underline-offset-2 transition-colors hover:text-app-text hover:underline">{l.label}</a>
+          ))}
+        </div>
+
         {/* Self-contained toast (no ToastProvider in this tree) */}
         {toast && (
           <div className="mx-5 mb-5 flex items-center gap-2 rounded-xl bg-app-elevated px-3.5 py-2.5 text-[12.5px] font-medium text-app-text ring-1 ring-app-border/15">

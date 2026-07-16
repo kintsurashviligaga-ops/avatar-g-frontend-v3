@@ -551,7 +551,7 @@ export function AccountSection({
               { href: `/${locale}/support`, label: locale === 'ka' ? 'მხარდაჭერა' : locale === 'ru' ? 'Поддержка' : 'Support' },
               { href: `/${locale}/privacy`, label: locale === 'ka' ? 'კონფიდენც.' : locale === 'ru' ? 'Приватность' : 'Privacy' },
               { href: `/${locale}/terms`, label: locale === 'ka' ? 'პირობები' : locale === 'ru' ? 'Условия' : 'Terms' },
-              { href: `/${locale}/refund-policy`, label: locale === 'ka' ? 'დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds' },
+              { href: `/${locale}/refund`, label: locale === 'ka' ? 'დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds' },
             ].map((lnk, i, arr) => (
               <span key={lnk.href} className="inline-flex items-center gap-2.5">
                 <a

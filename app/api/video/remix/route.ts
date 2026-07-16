@@ -36,6 +36,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -344,6 +345,28 @@ export async function POST(req: NextRequest) {
   const gender: Gender = body.gender === 'male' ? 'male' : 'female';
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1500) : '';
 
+  // Master Contract 39.5 (V1) — file the PAID remixed output into the user's durable Library BEFORE
+  // returning, so a dropped client socket never loses a paid asset (mirrors app/api/pipeline/remix's
+  // recordCompletedFilm). Best-effort + signed-in only; the id is keyed by the client jobId (or a hash of
+  // the output url) so a retry UPSERTS the same row instead of duplicating. NEVER fails the remix response.
+  const PERSIST_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove']);
+  const finishOk = async (mediaUrl: string | null, extra: Record<string, unknown> = {}): Promise<NextResponse> => {
+    if (mediaUrl && remixUid && PERSIST_OPS.has(op)) {
+      try {
+        const suffix = jobId ?? (await hashPayload({ u: remixUid, url: mediaUrl })).slice(0, 20);
+        await recordCompletedFilm({
+          id: `vremix:${op}:${suffix}`,
+          userId: remixUid,
+          url: mediaUrl,
+          prompt: `Video remix — ${op}`,
+          orientation: aspect === '9:16' ? 'vertical' : 'landscape',
+          result: { url: mediaUrl, kind: 'video', remix: true, op, ...extra },
+        });
+      } catch { /* Library filing is best-effort — never blocks the paid response */ }
+    }
+    return ok(mediaUrl, extra);
+  };
+
   try {
     switch (op) {
       case 'trim': {
@@ -365,7 +388,7 @@ export async function POST(req: NextRequest) {
         const vo = await textToHostedSpeech(text, georgianVoiceId(gender));
         if (!vo) return failRefund('Voice synthesis is unavailable.');
         const url = await muxAudioOntoVideo(videoUrl, vo, 'mix', 12);
-        return url ? ok(url) : failRefund('Mixing the voice-over failed.');
+        return url ? await finishOk(url) : failRefund('Mixing the voice-over failed.');
       }
 
       case 'music': {
@@ -373,7 +396,7 @@ export async function POST(req: NextRequest) {
         if (!audioUrl) return failRefund('Add a music track.', 'no-track');
         const replace = body.mix !== true; // default: replace the original audio
         const url = await muxAudioOntoVideo(videoUrl, audioUrl, replace ? 'replace' : 'mix', 12);
-        return url ? ok(url) : failRefund('Adding the music failed.');
+        return url ? await finishOk(url) : failRefund('Adding the music failed.');
       }
 
       case 'redub': {
@@ -382,7 +405,7 @@ export async function POST(req: NextRequest) {
         const audioUrl = uploaded || (text ? await textToHostedSpeech(text, georgianVoiceId(gender)) : null);
         if (!audioUrl) return failRefund('Add redub text or an audio track.', 'no-audio');
         const url = await runLipsync(videoUrl, audioUrl);
-        return url ? ok(url) : failRefund('Lip-sync is unavailable right now.');
+        return url ? await finishOk(url) : failRefund('Lip-sync is unavailable right now.');
       }
 
       case 'color_grade': {
@@ -425,7 +448,7 @@ export async function POST(req: NextRequest) {
         // seeded by one frame — Kling is i2v-only, so that path can't preserve motion).
         if (op === 'character' && swapPhoto) {
           const swapped = await roopFaceSwapVideo(videoUrl, swapPhoto);
-          if (swapped) return ok(swapped, { method: 'faceswap' });
+          if (swapped) return await finishOk(swapped, { method: 'faceswap' });
         }
         const editPrompt =
           op === 'restyle'
@@ -451,7 +474,7 @@ export async function POST(req: NextRequest) {
         // startImage = the source-aspect frame). Post-fit to the requested aspect, mirroring the
         // Motion Control path. Fail-open: keep the raw clip if the fit itself misses.
         const fitted = await fitAspect(url, aspect).catch(() => null);
-        return ok(fitted || url, { still: styled?.url ?? null });
+        return await finishOk(fitted || url, { still: styled?.url ?? null });
       }
 
       default:

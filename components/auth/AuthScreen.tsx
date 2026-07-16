@@ -825,6 +825,9 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
           By continuing, you agree to MyAvatar&apos;s{' '}
           <Link href={`/${locale}/terms`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
             Terms of Service
+          </Link>,{' '}
+          <Link href={`/${locale}/refund`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
+            Refund Policy
           </Link>{' '}
           and{' '}
           <Link href={`/${locale}/privacy`} className="underline hover:no-underline" style={{ color: 'var(--color-text-secondary)' }}>
