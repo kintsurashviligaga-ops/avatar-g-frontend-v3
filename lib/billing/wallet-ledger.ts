@@ -37,10 +37,14 @@ export async function creditWalletGel(userId: string, amountGel: number, ref: st
  * that every generation debits (NOT the legacy `credits.balance_gel` wallet). Used by the Stripe webhook
  * when a USD tier checkout completes.
  *
- * Implemented over the ref-idempotent `refund_credits` RPC: it appends a POSITIVE ledger delta deduped on
- * `metadata->>'ref'`, so a re-delivered event — OR a second registered webhook endpoint — grants exactly
- * ONCE (identical safety property to creditWalletGel for the GEL wallet). `ref` = `stripe:<session_id>`.
- * Returns the new balance, or null when unavailable (fail-open).
+ * Implemented over the ref-idempotent `refund_credits` RPC (appends a POSITIVE ledger delta deduped on
+ * `metadata->>'ref'`). `ref` = `stripe:<session_id>`. Returns the new balance, or null when unavailable.
+ *
+ * RACE-SAFETY depends on migration 008's partial UNIQUE index (user_id, ref) WHERE delta > 0: refund_credits'
+ * EXISTS check is NOT atomic on its own, so under concurrent double-delivery the second INSERT relies on that
+ * unique constraint to fail (→ this returns null → the webhook throws → Stripe retries → the retry finds the
+ * committed row and no-ops). WITHOUT migration 008 a concurrent double-webhook can double-grant, so the caller
+ * MUST treat a null return as "retry", never as "granted".
  *
  * NOTE: the ledger row's `reason` is 'refund' (refund_credits is the existing ref-idempotent positive-credit
  * primitive; no new RPC/DDL required). The `ref` + amount keep the purchase fully auditable.

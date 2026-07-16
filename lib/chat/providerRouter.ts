@@ -375,7 +375,14 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
 
   const udioWorkId = extractUdioWorkId(predictionId);
   if (udioWorkId) {
-    return pollUdioTask(udioWorkId, predictionId);
+    // BUGFIX (audit) — the Udio music poll used to early-return BEFORE the poll-completion charge below, so a
+    // /chat Udio track was gated at dispatch but NEVER debited (free unlimited music when UDIO is the provider).
+    // Charge here on terminal success, idempotent on `poll:udio:<workId>` (repeat polls no-op), post-success only.
+    const res = await pollUdioTask(udioWorkId, predictionId);
+    if (userId && userId !== 'anonymous' && res.predictionStatus !== 'processing' && res.assetUrl) {
+      await deductCredits(userId, billableCreditCost('music_generation'), `poll:udio:${udioWorkId}`).catch(() => { /* best-effort */ });
+    }
+    return res;
   }
 
   const response = await serviceManager.poll(predictionId, sessionId);

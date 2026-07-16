@@ -357,7 +357,14 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
           : undefined)
         || null;
       if (userId && Number.isFinite(credits) && credits > 0) {
-        await grantPurchasedCredits(userId, credits, `stripe:${session.id}`);
+        const newBal = await grantPurchasedCredits(userId, credits, `stripe:${session.id}`);
+        if (newBal === null) {
+          // Grant failed (transient RPC error, OR the losing side of a concurrent double-delivery hitting the
+          // migration-008 unique index). THROW so the event is NOT marked processed and Stripe retries: the retry
+          // finds the committed grant via the idempotency check and no-ops, or finally succeeds after a transient
+          // blip. Never leaves the customer "paid but no credits".
+          throw new Error('tier credit grant failed — signalling Stripe to retry');
+        }
         console.info('[Stripe Webhook] tier credits granted', { userId, credits, tier: session.metadata?.tier_id, sessionId: session.id });
         try {
           const svc = createServiceRoleClient();

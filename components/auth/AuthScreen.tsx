@@ -424,6 +424,9 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
   // instead of a blank form; cleared as soon as the user retries (every handler calls setError(null)).
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [success, setSuccess] = useState(false);
+  // Which success copy to show. `loadingProvider` is reset to null before the success screen renders, so it can't
+  // distinguish signup ("verify your email") from a password reset ("check your email") — track it explicitly.
+  const [successKind, setSuccessKind] = useState<'signup' | 'forgot'>('signup');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
@@ -546,6 +549,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         if (error) {
           setError(error.message);
         } else {
+          setSuccessKind('signup');
           setSuccess(true);
         }
       } catch (err) {
@@ -596,6 +600,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         setError(error.message);
       } else {
         setError(null);
+        setSuccessKind('forgot');
         setSuccess(true);
       }
     } catch (err) {
@@ -670,7 +675,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
   // ─── Success state (email confirmation) ──────────────────────────────────
 
   if (success) {
-    const isForgot = loadingProvider === 'forgot';
+    const isForgot = successKind === 'forgot';
     return (
       <div className="relative min-h-[100dvh] flex items-center justify-center px-4 overflow-hidden">
         <BgGlow />

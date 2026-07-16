@@ -146,9 +146,11 @@ async function handleTierTopup(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.user_id
     || (session.customer ? await getUserIdByCustomer(String(session.customer)) : null);
   if (!userId || !Number.isFinite(credits) || credits <= 0) return;
-  // Idempotent on `stripe:<session.id>` (RPC ref-dedup + the outer event-id guard) → never double-credits,
-  // including across both registered webhook endpoints. Grants to profiles.credits_balance (spendable).
-  await grantPurchasedCredits(userId, credits, `stripe:${session.id}`);
+  // Grants to profiles.credits_balance (spendable). Race-safe via migration 008's unique index: a null return
+  // (transient error OR the losing side of a concurrent double-delivery) THROWS so Stripe retries — the retry
+  // finds the committed grant and no-ops. Never double-credits, never leaves "paid but no credits".
+  const newBal = await grantPurchasedCredits(userId, credits, `stripe:${session.id}`);
+  if (newBal === null) throw new Error('tier credit grant failed — signalling Stripe to retry');
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
