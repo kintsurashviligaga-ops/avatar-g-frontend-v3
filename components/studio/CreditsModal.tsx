@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle, Check } from 'lucide-react';
 import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig';
+import { usdFromGel } from '@/lib/billing/gel';
 import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -222,7 +223,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             {/* Balance + free videos */}
             <div className="rounded-2xl bg-app-elevated/60 px-4 py-4 text-center">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.balance}</p>
-              <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</p>
+              <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">${usdFromGel(balanceGel)}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] text-app-muted">
                 🎬 {t.freeVideos}: <span className="font-semibold tabular-nums text-app-text">{loading && freeFilms === null ? <Loader2 size={12} className="inline animate-spin" /> : (freeFilms ?? '—')}</span> / 3
               </p>

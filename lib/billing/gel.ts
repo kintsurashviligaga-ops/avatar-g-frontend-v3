@@ -9,6 +9,8 @@
  * server-side per-tool GEL metering are backend/console activations.
  */
 
+import { GEL_PER_USD } from '@/lib/billing/pricingConfig';
+
 export type MeteredAction = 'chat' | 'voice_tts' | 'geometry_3d' | 'video_film' | 'avatar';
 
 /** Fixed production cost matrix, in GEL (₾). */
@@ -33,6 +35,14 @@ export const MIN_REFILL_GEL = 5;
 export function formatGEL(amount: number): string {
   const n = Number.isFinite(amount) ? amount : 0;
   return `${n.toFixed(2)} ₾`;
+}
+
+/** The GEL wallet balance as a bare USD amount string, `XX.XX` (render with a leading `$`). Master Contract
+ *  V10 — the wallet is GEL internally, but the balance is DISPLAYED in USD to match the Phase-39 USD pricing;
+ *  uses the single FX constant (GEL_PER_USD) so display never drifts. */
+export function usdFromGel(gel: number | null | undefined): string {
+  const g = typeof gel === 'number' && Number.isFinite(gel) ? gel : 0;
+  return (g / GEL_PER_USD).toFixed(2);
 }
 
 /** Cost of a metered action in GEL. Unknown actions are free (0). */

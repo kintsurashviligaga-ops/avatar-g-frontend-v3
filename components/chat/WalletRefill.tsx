@@ -9,11 +9,12 @@
 import { useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wallet, X, Loader2 } from 'lucide-react';
-import { REFILL_TIERS_GEL, MIN_REFILL_GEL, formatGEL, insufficientBalanceMessage } from '@/lib/billing/gel';
+import { REFILL_TIERS_GEL, MIN_REFILL_GEL, usdFromGel, insufficientBalanceMessage } from '@/lib/billing/gel';
 
 export function BalanceChip({ balanceGel, onClick }: { balanceGel: number | null; onClick: () => void }) {
   // Theme-aware chip: app-bg base, app-border hairline, app-text label, soft
   // cyan glow held back to a hint rather than a full neon ring.
+  // Master Contract V10 — balance DISPLAYED in USD ($) though the wallet is GEL internally.
   return (
     <button
       type="button"
@@ -21,8 +22,8 @@ export function BalanceChip({ balanceGel, onClick }: { balanceGel: number | null
       aria-label="Wallet balance"
       className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-app-border/15 bg-app-bg/85 backdrop-blur-md text-[12px] font-semibold text-app-text hover:border-app-border/30 hover:bg-app-elevated transition active:scale-95 shadow-[0_0_14px_-7px_rgba(56,189,248,0.55)]"
     >
-      <span aria-hidden className="text-app-muted">₾</span>
-      <span className="tabular-nums">{formatGEL(balanceGel ?? 0)}</span>
+      <span aria-hidden className="text-app-muted">$</span>
+      <span className="tabular-nums">{usdFromGel(balanceGel)}</span>
     </button>
   );
 }

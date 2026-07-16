@@ -57,6 +57,7 @@ import {
   Cpu,
   Download,
   Eraser,
+  FileDown,
   Film,
   Globe,
   ImagePlus,
@@ -4023,6 +4024,40 @@ function MessageBubble({
   const isError = message.role === 'error';
   const bubbleVideoRef = useRef<HTMLVideoElement>(null);
   const bubbleAudioRef = useRef<HTMLAudioElement>(null);
+  // VECTOR 4 — one-click PDF export. Dep-free: clone the ALREADY-RENDERED message HTML (tables/markdown intact)
+  // into a branded print document and invoke the browser's native "Save as PDF". No jspdf/html2canvas bundle.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const exportPdf = useCallback(() => {
+    const node = contentRef.current;
+    if (!node) return;
+    const win = window.open('', '_blank', 'width=840,height=1040');
+    if (!win) return; // popup blocked → no-op
+    const safeHtml = node.innerHTML;
+    win.document.write(
+      '<!doctype html><html><head><meta charset="utf-8"><title>MyAvatar — Agent G</title>' +
+      '<style>' +
+      "*{box-sizing:border-box}" +
+      "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Georgian','Noto Sans',sans-serif;color:#111;margin:0;padding:40px 44px;line-height:1.6;font-size:14px}" +
+      ".brand{display:flex;align-items:baseline;gap:8px;border-bottom:2px solid #06b6d4;padding-bottom:12px;margin-bottom:24px}" +
+      ".brand b{font-size:18px;letter-spacing:-0.02em}.brand span{color:#0891b2;font-size:12px;font-weight:600}" +
+      "table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}" +
+      "th,td{border:1px solid #d4d4d8;padding:8px 10px;text-align:left;vertical-align:top}" +
+      "th{background:#f4f4f5;font-weight:700}" +
+      "h1,h2,h3{letter-spacing:-0.02em;margin:16px 0 8px}" +
+      "code{background:#f4f4f5;padding:1px 5px;border-radius:4px;font-size:12px}" +
+      "pre{background:#f4f4f5;padding:12px;border-radius:8px;overflow:auto;white-space:pre-wrap}" +
+      "a{color:#0891b2}img{max-width:100%}" +
+      "@media print{body{padding:0 12px}}" +
+      '</style></head><body>' +
+      '<div class="brand"><b>MyAvatar</b><span>Agent G · myavatar.ge</span></div>' +
+      '<div class="content">' + safeHtml + '</div>' +
+      '</body></html>',
+    );
+    win.document.close();
+    win.focus();
+    // Let the new document lay out, then fire the native print dialog → "Save as PDF".
+    setTimeout(() => { try { win.print(); } catch { /* user can print manually */ } }, 350);
+  }, []);
   const [lightbox, setLightbox] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   // Reactive feedback selection (Tier-1 micro-interaction). Local-only; the
@@ -4316,6 +4351,7 @@ function MessageBubble({
         ) : null}
         {message.text ? (
           <div
+            ref={contentRef}
             className={
               isError
                 ? 'max-w-full min-w-0 overflow-hidden break-words rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed tracking-[-0.01em] border border-rose-500/25 bg-rose-500/[0.06] text-rose-600 dark:text-rose-200'
@@ -4590,6 +4626,17 @@ function MessageBubble({
                 className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
               >
                 {copiedText ? <Check size={18} className="text-emerald-400" /> : <Copy size={18} />}
+              </button>
+            ) : null}
+            {/* VECTOR 4 — one-click PDF export for Agent G text/table replies (dep-free, native Save-as-PDF). */}
+            {!isUser && !isError && message.text ? (
+              <button
+                onClick={exportPdf}
+                aria-label={lang === 'ka' ? 'PDF-ად ჩამოტვირთვა' : lang === 'ru' ? 'Скачать в PDF' : 'Download as PDF'}
+                title={lang === 'ka' ? 'PDF-ად ჩამოტვირთვა' : lang === 'ru' ? 'Скачать в PDF' : 'Download as PDF'}
+                className="h-9 w-9 flex items-center justify-center rounded-full text-app-muted hover:bg-app-elevated/60 hover:text-app-text transition-all duration-200 active:scale-95"
+              >
+                <FileDown size={18} />
               </button>
             ) : null}
             {message.sourcePrompt ? (

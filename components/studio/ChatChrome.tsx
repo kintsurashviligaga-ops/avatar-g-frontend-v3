@@ -30,6 +30,7 @@ import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { track } from '@/lib/analytics/track';
+import { usdFromGel } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
@@ -709,7 +710,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
               <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
                 className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
-                <span className="text-[14px] font-semibold tabular-nums">{(balanceGel ?? 0).toFixed(2)} ₾</span>
+                <span className="text-[14px] font-semibold tabular-nums">${usdFromGel(balanceGel)}</span>
                 <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
               </button>
               {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an
