@@ -190,8 +190,10 @@ export async function fadeClip(videoUrl: string, p: FadeParams): Promise<string 
 // the user split-and-muted. No per-action server round-trips.
 
 export interface DraftMutedRange { start: number; end: number }
+/** How a segment blends FROM the previous one. 'none' = hard cut; 'crossfade' = xfade; 'fade' = fade through black. */
+export type Transition = 'none' | 'crossfade' | 'fade';
 /** One timeline segment in the FINAL sequence order (delete = omitted, reorder = array order changes). */
-export interface DraftSegment { start: number; end: number; muted: boolean }
+export interface DraftSegment { start: number; end: number; muted: boolean; transition?: Transition }
 export interface RenderDraft {
   grade?: GradeParams;
   fadeInSec?: number;
@@ -270,125 +272,128 @@ export async function renderVideoDraft(videoUrl: string, d: RenderDraft): Promis
   }
 }
 
+/** Probe whether an input has an audio stream (via ffmpeg-static's own stderr — no separate ffprobe binary). */
+async function probeHasAudio(url: string): Promise<boolean> {
+  const b = bin();
+  if (!b) return false;
+  try {
+    // `-i` with no output makes ffmpeg print stream info to stderr then exit non-zero → the catch parses it.
+    await exec(b, ['-hide_banner', '-i', url], { maxBuffer: 1 << 22, timeout: 20_000 });
+    return false;
+  } catch (e) {
+    const stderr = String((e as { stderr?: string }).stderr ?? (e as Error).message ?? '');
+    return /Stream #\d+:\d+.*: Audio:/i.test(stderr);
+  }
+}
+
+interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition }
+
 /**
- * Render a NON-trivial timeline sequence (segments deleted/reordered) with a single filter_complex: trim each
- * kept segment (+ mute its audio if flagged), concat in the given order, then apply crop → grade → fade globally.
- * The exported clip length = Σ kept-segment durations. One ffmpeg pass, no intermediate files.
+ * CORE sequence renderer (single ffmpeg pass, N inputs). For each entry it builds a UNIFORM, audio-safe stream —
+ * real audio normalised to 44.1k/stereo/fltp, OR an `anullsrc` silence generator of the exact length when the
+ * source has NO audio track (so concat/xfade never crash on a silent clip). Then it folds the segments
+ * left-to-right: a 'none' boundary is a hard concat; 'crossfade'/'fade' is an `xfade` (+ `acrossfade`) — mixing
+ * transition types in one graph. Finally crop → grade → fade. `scaleW/H` letterboxes mixed resolutions (multi-clip).
  */
-async function renderSequenceDraft(videoUrl: string, segments: DraftSegment[], d: RenderDraft): Promise<string | null> {
+async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDraft, opts: { scaleW?: number; scaleH?: number }, tag: string): Promise<string | null> {
   const b = bin();
   if (!b) return null;
-  const segs = segments.filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
-  if (!segs.length) return null;
-  const total = segs.reduce((acc, s) => acc + (s.end - s.start), 0);
+  const entries = rawEntries.filter((e) => Number.isInteger(e.src) && e.src >= 0 && e.src < inputs.length && e.end > e.start);
+  if (!inputs.length || !entries.length) return null;
+  const first = entries[0];
+  if (!first) return null;
+
+  const hasAudio = await Promise.all(inputs.map((u) => probeHasAudio(u)));
+  const scale = opts.scaleW && opts.scaleH
+    ? `scale=${even(opts.scaleW)}:${even(opts.scaleH)}:force_original_aspect_ratio=decrease,pad=${even(opts.scaleW)}:${even(opts.scaleH)}:(ow-iw)/2:(oh-ih)/2,setsar=1,`
+    : '';
+  const parts: string[] = [];
+
+  entries.forEach((e, i) => {
+    const st = Math.max(0, e.start).toFixed(3);
+    const en = Math.max(e.start + 0.04, e.end).toFixed(3);
+    const dur = (e.end - e.start).toFixed(3);
+    // fps + yuv420p make every segment concat/xfade-compatible (uniform timebase + pixel format).
+    parts.push(`[${e.src}:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS,${scale}fps=30,format=yuv420p[v${i}]`);
+    if (hasAudio[e.src]) {
+      const af = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
+      if (e.muted) af.push('volume=0');
+      parts.push(`[${e.src}:a]${af.join(',')}[a${i}]`);
+    } else {
+      // SILENT-CLIP FALLBACK — synthesise stereo silence of the exact segment length.
+      parts.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${dur},asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+    }
+  });
+
+  // Left-fold with a per-boundary transition.
+  let curV = '[v0]', curA = '[a0]';
+  let curDur = first.end - first.start;
+  const XD = 0.6;
+  for (let k = 1; k < entries.length; k += 1) {
+    const e = entries[k]!;
+    const segDur = e.end - e.start;
+    const trans: Transition = e.transition === 'crossfade' || e.transition === 'fade' ? e.transition : 'none';
+    if (trans === 'none') {
+      parts.push(`${curV}${curA}[v${k}][a${k}]concat=n=2:v=1:a=1[cv${k}][ca${k}]`);
+      curV = `[cv${k}]`; curA = `[ca${k}]`; curDur += segDur;
+    } else {
+      const dd = Math.max(0.1, Math.min(XD, segDur * 0.5, curDur * 0.5));
+      const off = Math.max(0, curDur - dd).toFixed(3);
+      const xf = trans === 'fade' ? 'fadeblack' : 'fade';
+      parts.push(`${curV}[v${k}]xfade=transition=${xf}:duration=${dd.toFixed(3)}:offset=${off}[xv${k}]`);
+      parts.push(`${curA}[a${k}]acrossfade=d=${dd.toFixed(3)}[xa${k}]`);
+      curV = `[xv${k}]`; curA = `[xa${k}]`; curDur += segDur - dd;
+    }
+  }
+
   const fi = Math.max(0, numFinite(d.fadeInSec, 0));
   const fo = Math.max(0, numFinite(d.fadeOutSec, 0));
-
-  const parts: string[] = [];
-  const concatInputs: string[] = [];
-  segs.forEach((s, i) => {
-    const st = Math.max(0, s.start).toFixed(3);
-    const en = Math.max(s.start + 0.04, s.end).toFixed(3);
-    parts.push(`[0:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS[v${i}]`);
-    const a = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS'];
-    if (s.muted) a.push('volume=0');
-    parts.push(`[0:a]${a.join(',')}[a${i}]`);
-    concatInputs.push(`[v${i}][a${i}]`);
-  });
-  parts.push(`${concatInputs.join('')}concat=n=${segs.length}:v=1:a=1[cv][ca]`);
-
   const post: string[] = [];
   const cropF = buildCropFilter(d.crop);
   if (cropF) post.push(cropF);
   post.push(...buildGradeFilters(d.grade));
   if (fi > 0) post.push(`fade=t=in:st=0:d=${fi}`);
-  if (fo > 0 && total > 0.1) post.push(`fade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
-  parts.push(`[cv]${post.length ? post.join(',') : 'null'}[outv]`);
-
+  if (fo > 0 && curDur > 0.1) post.push(`fade=t=out:st=${Math.max(0, curDur - fo).toFixed(3)}:d=${fo}`);
+  parts.push(`${curV}${post.length ? post.join(',') : 'null'}[outv]`);
   const apost: string[] = [];
   if (fi > 0) apost.push(`afade=t=in:st=0:d=${fi}`);
-  if (fo > 0 && total > 0.1) apost.push(`afade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
-  parts.push(`[ca]${apost.length ? apost.join(',') : 'anull'}[outa]`);
+  if (fo > 0 && curDur > 0.1) apost.push(`afade=t=out:st=${Math.max(0, curDur - fo).toFixed(3)}:d=${fo}`);
+  parts.push(`${curA}${apost.length ? apost.join(',') : 'anull'}[outa]`);
+
+  const args: string[] = ['-y'];
+  inputs.forEach((u) => args.push('-i', u));
+  args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...VIDEO_TAIL);
 
   let dir: string | null = null;
   try {
-    dir = await mkdtemp(join(tmpdir(), 'seq-'));
-    const out = join(dir, 'seq.mp4');
-    await exec(b, [
-      '-y', '-i', videoUrl, '-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...VIDEO_TAIL, out,
-    ], { maxBuffer: 1 << 26, timeout: 240_000 });
-    return await host(await readFile(out), 'seq', 'mp4', 'video/mp4');
+    dir = await mkdtemp(join(tmpdir(), `${tag}-`));
+    const out = join(dir, `${tag}.mp4`);
+    await exec(b, [...args, out], { maxBuffer: 1 << 26, timeout: 300_000 });
+    return await host(await readFile(out), tag, 'mp4', 'video/mp4');
   } catch (err) {
-    console.warn('[surgical/renderSequence] failed:', err instanceof Error ? err.message : err);
+    console.warn(`[surgical/${tag}] failed:`, err instanceof Error ? err.message : err);
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
-/** One entry in a MULTI-CLIP sequence — references a source by index, with its own trim window + mute. */
-export interface ConcatEntry { src: number; start: number; end: number; muted: boolean }
+/** Single-source split sequence (delete/reorder/transition within ONE clip) — native res, precise crop. */
+async function renderSequenceDraft(videoUrl: string, segments: DraftSegment[], d: RenderDraft): Promise<string | null> {
+  return runSequence([videoUrl], segments.map((s) => ({ src: 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition })), d, {}, 'seq');
+}
+
+/** One entry in a MULTI-CLIP sequence — references a source by index, with its trim window + mute + transition. */
+export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition }
 
 /**
- * MULTI-CLIP concat — stitch trimmed windows of SEVERAL distinct sources into one clip. Each entry is trimmed
- * from its own input, scaled + letterbox-padded to a UNIFORM target resolution (so mixed formats/resolutions
- * line up), muted if flagged, then concatenated in order; grade + fade apply to the composed result.
- * One ffmpeg pass, N inputs, one filter_complex. (Crop is a single-source op and is intentionally skipped here.)
- *
- * NOTE: assumes each source has an audio stream (concat with a=1). A silent source will fail the concat cleanly
- * (→ null); pin audio-bearing clips, or split within one clip (single-source path) if a clip has no audio.
+ * MULTI-CLIP concat — stitch trimmed windows of SEVERAL distinct sources into one clip, each scaled +
+ * letterbox-padded to a UNIFORM target resolution, with silent-clip audio fallback and per-boundary transitions
+ * (hard cut / crossfade / fade-through-black). One ffmpeg pass, N inputs. (Crop is skipped for the multi path.)
  */
 export async function renderConcat(sources: string[], seq: ConcatEntry[], d: RenderDraft, targetW: number, targetH: number): Promise<string | null> {
-  const b = bin();
-  if (!b) return null;
   const srcs = sources.filter((s) => typeof s === 'string' && s.length > 0);
-  const entries = seq.filter((e) => Number.isInteger(e.src) && e.src >= 0 && e.src < srcs.length && e.end > e.start);
-  if (!srcs.length || !entries.length) return null;
-  const W = even(targetW > 0 ? targetW : 1280);
-  const H = even(targetH > 0 ? targetH : 720);
-  const total = entries.reduce((a, e) => a + (e.end - e.start), 0);
-  const fi = Math.max(0, numFinite(d.fadeInSec, 0));
-  const fo = Math.max(0, numFinite(d.fadeOutSec, 0));
-
-  const args: string[] = ['-y'];
-  srcs.forEach((s) => { args.push('-i', s); });
-
-  const parts: string[] = [];
-  const concatInputs: string[] = [];
-  entries.forEach((e, i) => {
-    const st = Math.max(0, e.start).toFixed(3);
-    const en = Math.max(e.start + 0.04, e.end).toFixed(3);
-    parts.push(`[${e.src}:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`);
-    const a = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS'];
-    if (e.muted) a.push('volume=0');
-    parts.push(`[${e.src}:a]${a.join(',')}[a${i}]`);
-    concatInputs.push(`[v${i}][a${i}]`);
-  });
-  parts.push(`${concatInputs.join('')}concat=n=${entries.length}:v=1:a=1[cv][ca]`);
-
-  const post: string[] = [...buildGradeFilters(d.grade)];
-  if (fi > 0) post.push(`fade=t=in:st=0:d=${fi}`);
-  if (fo > 0 && total > 0.1) post.push(`fade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
-  parts.push(`[cv]${post.length ? post.join(',') : 'null'}[outv]`);
-  const apost: string[] = [];
-  if (fi > 0) apost.push(`afade=t=in:st=0:d=${fi}`);
-  if (fo > 0 && total > 0.1) apost.push(`afade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
-  parts.push(`[ca]${apost.length ? apost.join(',') : 'anull'}[outa]`);
-
-  args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...VIDEO_TAIL);
-
-  let dir: string | null = null;
-  try {
-    dir = await mkdtemp(join(tmpdir(), 'concat-'));
-    const out = join(dir, 'concat.mp4');
-    await exec(b, [...args, out], { maxBuffer: 1 << 26, timeout: 300_000 });
-    return await host(await readFile(out), 'concat', 'mp4', 'video/mp4');
-  } catch (err) {
-    console.warn('[surgical/renderConcat] failed:', err instanceof Error ? err.message : err);
-    return null;
-  } finally {
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
+  return runSequence(srcs, seq, { ...d, crop: null }, { scaleW: targetW > 0 ? targetW : 1280, scaleH: targetH > 0 ? targetH : 720 }, 'concat');
 }
 
 /** Render a photo draft in one pass: crop → grade → single output frame (PNG). */

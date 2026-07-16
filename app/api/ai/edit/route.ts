@@ -61,7 +61,7 @@ interface DraftPayload {
   crop?: { x: number; y: number; w: number; h: number } | null;
   mutedRanges?: { start: number; end: number }[];
   /** Ordered export sequence (delete = omitted, reorder = array order). */
-  segments?: { start: number; end: number; muted: boolean }[];
+  segments?: { start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade' }[];
 }
 
 /** Best-effort save of an edited asset to the user's library (never blocks the response). */
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     draft?: DraftPayload;
     // Multi-clip concat export:
     sources?: string[];
-    sequence?: { src: number; start: number; end: number; muted: boolean }[];
+    sequence?: { src: number; start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade' }[];
     targetW?: number;
     targetH?: number;
   } | null;
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec };
     const seq = body.sequence
       .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length && e.end > e.start)
-      .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted }));
+      .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition }));
     if (!seq.length) return NextResponse.json({ url: null, error: 'empty sequence' }, { status: 400 });
     try {
       const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720);

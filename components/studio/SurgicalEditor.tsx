@@ -28,6 +28,7 @@ interface Copy {
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
+  transition: string; tCut: string; tCross: string; tFade: string;
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
@@ -40,6 +41,7 @@ const T: Record<Lang, Copy> = {
     crop: 'ჩამოჭრა', color: 'ფერის გრადაცია', fade: 'მილევა', split: 'გაჭრა', mute: 'დადუმება', unmute: 'ხმის ჩართვა', reset: 'გადატვირთვა',
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
     maxReached: 'მაქსიმუმ 35 ფაილი', max5: 'მაქსიმუმ 5 კლიპი თანმიმდევრობაში', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
+    transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
@@ -50,6 +52,7 @@ const T: Record<Lang, Copy> = {
     crop: 'Crop', color: 'Color grade', fade: 'Fade', split: 'Split', mute: 'Mute', unmute: 'Unmute', reset: 'Reset',
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
     maxReached: 'Maximum 35 files', max5: 'Up to 5 clips in a sequence', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
+    transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
@@ -60,6 +63,7 @@ const T: Record<Lang, Copy> = {
     crop: 'Обрезка', color: 'Цветокоррекция', fade: 'Затухание', split: 'Разрез', mute: 'Заглушить', unmute: 'Включить звук', reset: 'Сброс',
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
     maxReached: 'Максимум 35 файлов', max5: 'До 5 клипов в последовательности', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
+    transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
@@ -69,8 +73,9 @@ const T: Record<Lang, Copy> = {
 interface Clip { id: string; file: File; url: string; kind: 'video' | 'image'; name: string; dur?: number; w?: number; h?: number }
 interface Grade { saturation: number; contrast: number; brightness: number; temperature: number }
 interface Rect { x: number; y: number; w: number; h: number }
-/** One block in the export sequence — points at its OWN source clip. */
-interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean }
+type Transition = 'none' | 'crossfade' | 'fade';
+/** One block in the export sequence — points at its OWN source clip; `transition` = blend FROM the previous block. */
+interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean; transition?: Transition }
 
 const NEUTRAL: Grade = { saturation: 100, contrast: 100, brightness: 100, temperature: 0 };
 const isNeutral = (g: Grade) => g.saturation === 100 && g.contrast === 100 && g.brightness === 100 && g.temperature === 0;
@@ -243,6 +248,12 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     });
     setSelectedSeg((sel) => (sel === i ? i + dir : sel === i + dir ? i : sel));
   }, []);
+  // Cycle the transition INTO segment i (none → crossfade → fade → none).
+  const cycleTransition = useCallback((i: number) => {
+    const nextOf = (tr: Transition | undefined): Transition => (tr === 'crossfade' ? 'fade' : tr === 'fade' ? 'none' : 'crossfade');
+    setSegments((prev) => prev.map((s, k) => (k === i ? { ...s, transition: nextOf(s.transition) } : s)));
+  }, []);
+  const transLabel = useCallback((tr: Transition | undefined): string => (tr === 'crossfade' ? t.tCross : tr === 'fade' ? t.tFade : t.tCut), [t.tCross, t.tFade, t.tCut]);
 
   // ── Crop overlay (single-source only) ──
   const onStageDown = useCallback((e: React.MouseEvent) => {
@@ -324,7 +335,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         const uploads = await Promise.all(distinctClipIds.map((id) => { const c = byId.get(id); return c ? uploadClip(c.file) : Promise.resolve(null); }));
         if (uploads.some((u) => !u)) { flash(t.failed); return; }
         const srcIndex = new Map(distinctClipIds.map((id, i) => [id, i]));
-        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted }));
+        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none' }));
         const first = byId.get(distinctClipIds[0] ?? '');
         const res = await postEdit({
           action: 'render', kind: 'video', sources: uploads as string[], sequence,
@@ -338,7 +349,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         const only = byId.get(onlyId) ?? clip;
         const path = await uploadClip(only.file);
         if (!path) { flash(t.failed); return; }
-        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted }));
+        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none' }));
         const res = await postEdit({
           action: 'render', mediaUrl: path, kind: 'video', durationSec: only.dur || duration,
           draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, crop: sourceCrop(), segments: segs },
@@ -480,6 +491,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                         return (
                           <div key={s.id} style={{ flexBasis: `${Math.max(9, w)}%` }}
                             className={`group relative flex h-10 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-md border text-[10px] ${i === selectedSeg ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border/20 bg-app-elevated text-app-muted'}`}>
+                            {s.transition && s.transition !== 'none' && i > 0 && <span className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l bg-cyan-400/80" title={transLabel(s.transition)} />}
                             <button type="button" onClick={() => selectSeg(i)} className="flex h-full w-full flex-col items-center justify-center leading-none">
                               <span className="flex items-center gap-0.5">{s.muted ? <VolumeX size={10} className="text-amber-400" /> : null}<span className="opacity-60">#{clipNo}</span></span>
                               <span className="truncate tabular-nums">{fmt(s.end - s.start)}</span>
@@ -497,6 +509,9 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                         <span className="mr-1 text-[10px] text-app-muted">#{videoClips.findIndex((c) => c.id === sel.clipId) + 1}</span>
                         <MiniBtn icon={<ChevronLeft size={13} />} label={t.moveL} onClick={() => moveSeg(selectedSeg, -1)} disabled={selectedSeg === 0} />
                         <MiniBtn icon={<ChevronRight size={13} />} label={t.moveR} onClick={() => moveSeg(selectedSeg, 1)} disabled={selectedSeg >= segments.length - 1} />
+                        {selectedSeg > 0 && (
+                          <MiniBtn icon={<Film size={13} />} label={transLabel(sel.transition)} active={!!sel.transition && sel.transition !== 'none'} onClick={() => cycleTransition(selectedSeg)} />
+                        )}
                         <MiniBtn icon={sel.muted ? <VolumeX size={13} /> : <Volume2 size={13} />} label={sel.muted ? t.unmute : t.mute} active={sel.muted} onClick={() => toggleMuteSeg(selectedSeg)} />
                         <MiniBtn icon={<Trash2 size={13} />} label={t.del} onClick={() => deleteSeg(selectedSeg)} danger />
                       </div>
