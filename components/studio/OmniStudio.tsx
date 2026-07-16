@@ -4348,6 +4348,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       try { recRef.current?.stop(); } catch { /* noop */ }
       return;
     }
+    // Master Contract V17 — INSTANT capture: flip the mic UI to "recording" the moment the user taps,
+    // BEFORE the async recognizer / getUserMedia spins up, so there is zero perceived lag and no lost first
+    // words. Every failure path below reverts it (SR onerror/onend + the recorder fallback's catch).
+    setRecording(true);
     const SR = (typeof window !== 'undefined'
       ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
         ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)

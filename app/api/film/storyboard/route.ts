@@ -50,11 +50,13 @@ export const maxDuration = 300;
 // accepts no negative_prompt at all. The negative is passed additionally on the NanoBanana path where it is
 // honoured. Together they stop the reported split-screen / grid / comic-panel storyboard tiles.
 const SINGLE_SHOT_CLAUSE =
-  'A SINGLE full-frame photograph — one continuous image, NOT a collage, not split-screen, no grid, no ' +
-  'multiple panels, no side-by-side frames, no borders, no dividers, no picture-in-picture.';
+  'A single, unified, continuous cinematic film still. One isolated focused shot. Strictly single frame — ' +
+  'NOT a collage, not split-screen, no grid, no multiple panels, no side-by-side frames, no borders, no ' +
+  'dividers, no picture-in-picture. Every object is realistically grounded and held by human hands where held.';
 const STORYBOARD_FRAME_NEGATIVE =
-  'collage, split screen, split-screen, diptych, triptych, grid, multiple panels, side by side, comic ' +
-  'panels, borders, dividers, picture-in-picture, deformed face, extra limbs, watermark, text';
+  'split screen, collage, grid, panels, comic templates, comic book style, diptych, triptych, multiple ' +
+  'angles, floating objects, ungrounded physics, borders, dividers, picture-in-picture, deformed face, ' +
+  'extra limbs, watermark, text';
 
 const serviceManager = new ServiceManager();
 
