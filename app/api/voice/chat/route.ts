@@ -39,8 +39,13 @@ export async function POST(req: NextRequest) {
     const history = Array.isArray(body?.history) ? body.history.slice(-12) : undefined;
     const { system, user: prompt } = buildVoiceReplyPrompt(text, locale, history);
 
-    const raw = await llmText({ system, user: prompt, maxTokens: 220, temperature: 0.6, timeoutMs: 12_000 }).catch(() => null);
-    const reply = trimForSpeech(raw) || voiceFallbackReply(locale);
+    // VECTOR 2 — Georgian rides the slow eleven_v3 TTS (synthesis time scales with CHARACTER count), so keep
+    // the payload SMALL: a tight token cap on generation + a tight spoken-char cap on the result directly cut
+    // synthesis latency. en/ru (fast turbo) get a little more room. The persona already enforces 1-2 sentences.
+    const maxTokens = locale === 'ka' ? 120 : 160;
+    const speechCap = locale === 'ka' ? 320 : 520;
+    const raw = await llmText({ system, user: prompt, maxTokens, temperature: 0.6, timeoutMs: 12_000 }).catch(() => null);
+    const reply = trimForSpeech(raw, speechCap) || voiceFallbackReply(locale);
     return NextResponse.json({ reply, locale });
   } catch (e) {
     // eslint-disable-next-line no-console

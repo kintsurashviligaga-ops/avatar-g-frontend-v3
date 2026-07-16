@@ -89,18 +89,19 @@ export function extractProfileFacts(text: string): ProfileFact[] {
   const t = (text || '').slice(0, 2000);
   const put = (key: string, value: string, category: string) => { if (value) out.set(key, { key, value, category }); };
 
-  // Weight (kg) — "I weigh 80kg", "my weight is 80", "ჩემი წონა 80", "мой вес 80"
-  const weight = t.match(/(?:weigh(?:t)?(?:\s+is)?|წონა(?:ა)?|вес)\D{0,6}(\d{2,3})\s*(?:kg|kgs|kilos?|კგ|кг)?/i)
+  // Weight (kg) — "I weigh 80kg", "my weight is 80", "ჩემი წონა 80", "мой вес 80". English triggers are \b-anchored
+  // so a substring inside another word (e.g. "average"/"install") can never mint a bogus fact.
+  const weight = t.match(/(?:\bweigh(?:t)?(?:\s+is)?|წონა(?:ა)?|\bвес)\D{0,6}(\d{2,3})\s*(?:kg|kgs|kilos?|კგ|кг)?/i)
     ?? t.match(/(\d{2,3})\s*(?:kg|კგ|кг)/i);
   if (weight?.[1]) { const v = numInRange(weight[1], 30, 400); if (v) put('weight', `${v} kg`, 'personal_bio'); }
 
   // Height (cm) — "I'm 180cm", "my height is 180", "სიმაღლე 180", "рост 180"
-  const height = t.match(/(?:height(?:\s+is)?|tall|სიმაღლ[ეი]|рост)\D{0,6}(\d{2,3})\s*(?:cm|სმ|см)?/i)
+  const height = t.match(/(?:\bheight(?:\s+is)?|\btall\b|სიმაღლ[ეი]|\bрост)\D{0,6}(\d{2,3})\s*(?:cm|სმ|см)?/i)
     ?? t.match(/(\d{3})\s*(?:cm|სმ|см)/i);
   if (height?.[1]) { const v = numInRange(height[1], 100, 260); if (v) put('height', `${v} cm`, 'personal_bio'); }
 
   // Age — "I'm 25 years old", "my age is 25", "25 წლის ვარ", "мне 25 лет"
-  const age = t.match(/(?:age(?:\s+is)?|years?\s*old|ასაკ[ია]?|мне)\D{0,6}(\d{1,3})/i)
+  const age = t.match(/(?:\bage(?:\s+is)?|\byears?\s*old|ასაკ[ია]?|\bмне\b)\D{0,6}(\d{1,3})/i)
     ?? t.match(/(\d{1,3})\s*(?:years?\s*old|წლის|лет|года?)/i);
   if (age?.[1]) { const v = numInRange(age[1], 5, 120); if (v) put('age', v, 'personal_bio'); }
 

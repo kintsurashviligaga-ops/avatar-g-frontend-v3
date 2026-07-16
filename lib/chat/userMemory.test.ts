@@ -29,6 +29,12 @@ describe('extractProfileFacts — conservative personal-fact extraction', () => 
     expect(extractProfileFacts('what is the weather like today?')).toEqual([]);
     expect(extractProfileFacts('write me a poem about the sea')).toEqual([]);
   });
+
+  test('does NOT mint bogus facts from substrings inside other words (\\b-anchored)', () => {
+    expect(extractProfileFacts('the average temperature is 50 degrees')).toEqual([]); // "age" in "average"
+    expect(extractProfileFacts('please install version 180 today')).toEqual([]);       // "tall" in "install"
+    expect(extractProfileFacts('the message has 3 parts')).toEqual([]);                // "age" in "message"
+  });
 });
 
 describe('buildProfilePreamble', () => {

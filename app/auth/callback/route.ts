@@ -70,12 +70,14 @@ export async function GET(request: Request) {
     }
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    await ensureProfile(user);
+  // FAIL-OPEN (V4): the session cookies are already written by exchangeCodeForSession above, so the profile
+  // bootstrap is best-effort ONLY. A transient auth-server hiccup on getUser()/ensureProfile() must never turn a
+  // COMPLETED login into a 500 dead-end on /auth/callback — always fall through to the post-login redirect.
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await ensureProfile(user);
+  } catch {
+    // logged in already (cookies set); the profile row self-heals on the next authed request
   }
 
   return NextResponse.redirect(new URL(next || DEFAULT_POST_LOGIN, requestUrl.origin));

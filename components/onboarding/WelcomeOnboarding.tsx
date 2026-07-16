@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Film, Music2, ImageIcon, Sparkles, ArrowRight } from 'lucide-react';
+import { usdFromGel } from '@/lib/billing/gel';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Service = 'video' | 'music' | 'image';
@@ -153,7 +154,7 @@ export default function WelcomeOnboarding({ locale, balanceGel, onComplete }: {
               <p className="text-[13px] text-app-muted">{t.s3Sub}</p>
               <div className="w-full rounded-2xl bg-app-elevated/60 px-4 py-3">
                 <p className="text-[10.5px] font-semibold uppercase tracking-wider text-app-muted">{t.balance}</p>
-                <p className="mt-0.5 text-[26px] font-bold tabular-nums text-app-text">{(balanceGel ?? 0).toFixed(2)} ₾</p>
+                <p className="mt-0.5 text-[26px] font-bold tabular-nums text-app-text">${usdFromGel(balanceGel)}</p>
               </div>
               <button type="button" onClick={() => finish(service)}
                 className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent py-3 text-[14px] font-semibold text-app-bg transition hover:opacity-90">

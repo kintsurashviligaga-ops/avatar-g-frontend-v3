@@ -144,9 +144,13 @@ export function upsertConversation(convo: StoredConversation): StoredConversatio
   const idx = list.findIndex((c) => c.id === convo.id);
   if (idx >= 0) list[idx] = sanitized;
   else list.unshift(sanitized);
-  const sorted = list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_CONVERSATIONS);
-  persist(sorted);
-  return sorted;
+  const sorted = list.sort((a, b) => b.updatedAt - a.updatedAt);
+  // VECTOR 8 fix — apply the MAX_CONVERSATIONS cap to ACTIVE chats only and PRESERVE trashed rows. Trashed
+  // chats keep their original (older) updatedAt, so a raw sort+slice would evict them from the bottom before
+  // their 30-day retention window; they should only age out via purgeExpiredTrash, never via the count cap.
+  const next = [...sorted.filter((c) => !c.deleted).slice(0, MAX_CONVERSATIONS), ...sorted.filter((c) => !!c.deleted)];
+  persist(next);
+  return next;
 }
 
 export function deleteConversation(id: string): StoredConversation[] {

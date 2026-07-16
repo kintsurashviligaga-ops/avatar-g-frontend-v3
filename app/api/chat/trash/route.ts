@@ -85,7 +85,14 @@ export async function POST(req: NextRequest) {
       if (!id) return NextResponse.json({ ok: false, error: 'no_id' }, { status: 400 });
       const { error } = await sb.from('chat_sessions').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('session_id', id).eq('user_id', uid);
       if (error) {
-        // Pre-migration fallback: the soft-delete columns don't exist yet → hard delete so it still works.
+        // Fall back to a HARD delete ONLY when the soft-delete COLUMNS genuinely don't exist yet (pre-migration
+        // 007). For any OTHER error (transient / permission / lock) keep the row intact and surface a failure —
+        // never destroy the chat + its messages on a blip. (undefined_column = 42703; PostgREST schema-cache miss.)
+        const e = error as { code?: string; message?: string };
+        const missingColumn = e.code === '42703' || /column .*does not exist|is_deleted|deleted_at|schema cache|PGRST\d/i.test(e.message || '');
+        if (!missingColumn) {
+          return NextResponse.json({ ok: false, error: 'delete_failed' }, { status: 500 });
+        }
         await sb.from('chat_messages').delete().eq('session_id', id);
         await sb.from('chat_sessions').delete().eq('session_id', id).eq('user_id', uid);
         return NextResponse.json({ ok: true, soft: false });

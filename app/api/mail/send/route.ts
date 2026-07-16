@@ -18,7 +18,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAIL_FROM = process.env.MAIL_FROM || 'MyAvatar <info@myavatar.ge>';
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Wrap the message content in a branded, email-client-safe HTML shell. */
 function brandedEmail(subject: string, contentHtml: string): string {
@@ -47,15 +46,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
     }
 
-    const body = (await req.json().catch(() => null)) as { subject?: string; html?: string; text?: string; to?: string } | null;
-    const to = typeof body?.to === 'string' && EMAIL_RE.test(body.to.trim()) ? body.to.trim() : user.email;
+    const body = (await req.json().catch(() => null)) as { subject?: string; text?: string } | null;
+    // V4 hardening — SELF-SERVICE ONLY: always deliver to the signed-in user's OWN account address (never a
+    // client-supplied recipient), and always render from `text` through the escaped markdown→HTML path (no raw
+    // `html` passthrough), so this route can't be turned into an open relay or an HTML/XSS injection vector.
+    const to = user.email;
     const subject = (typeof body?.subject === 'string' && body.subject.trim() ? body.subject.trim() : 'MyAvatar — Agent G').slice(0, 200);
-
-    const contentHtml = typeof body?.html === 'string' && body.html.trim()
-      ? body.html
-      : typeof body?.text === 'string' && body.text.trim()
-        ? markdownToEmailHtml(body.text)
-        : '';
+    const contentHtml = typeof body?.text === 'string' && body.text.trim() ? markdownToEmailHtml(body.text) : '';
     if (!contentHtml) {
       return NextResponse.json({ ok: false, error: 'no_content' }, { status: 400 });
     }

@@ -832,7 +832,7 @@ interface FilmSnap {
   hasTrainedVoice: boolean;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -1319,6 +1319,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // ("−N credits · X.XX ₾"). Pricing is centralised in lib/credits/pricing.ts; the
   // real balance is still the GEL wallet (the ₾ pill re-reads it on the next open).
   const [creditToast, setCreditToast] = useState<{ credits: number; balanceGel: number | null } | null>(null);
+  // Single dismiss timer — cleared before rescheduling so overlapping generations don't stack stale timers
+  // that prematurely hide a newer toast (V4).
+  const creditToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ── Video Remix mode — upload an existing video and edit it ──
   const [remixVideo, setRemixVideo] = useState<{ name: string; url: string } | null>(null);
   const [remixVideoBusy, setRemixVideoBusy] = useState(false);
@@ -1388,7 +1391,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ action: kind, creditsDelta: -credits }),
     }).catch(() => {});
-    setTimeout(() => setCreditToast(null), 4000);
+    if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
+    creditToastTimerRef.current = setTimeout(() => setCreditToast(null), 4000);
   }, [locale]);
   // Iteration 2 Phase 6 — silently file a result into the Library. Image / music / film
   // already persist server-side via the produce routes; remix / character-swap / product-ad
@@ -1400,10 +1404,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     void fetch('/api/studio/library', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ url, kind, ...(prompt ? { prompt } : {}) }),
-    }).then(() => {
-      // Remix persistence last-mile — tell an OPEN Library panel to refetch so a just-generated
-      // remix/render appears instantly instead of only on the next reopen.
-      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
+    }).then((res) => {
+      // Remix persistence last-mile — tell an OPEN Library panel to refetch so a just-generated render appears
+      // instantly. Only fire on a CONFIRMED save (res.ok): a failed save (400/502) must NOT trigger a refetch,
+      // which would collapse the user's infinite-scrolled library back to page 0.
+      if (res.ok) { try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ } }
     }).catch(() => {});
   }, []);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
@@ -2220,7 +2225,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
             ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true, ...(bubbleId ? { id: bubbleId } : {}) })
+            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
@@ -2375,7 +2380,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Canceled render (own signal aborted / superseded genId): leave it — when queued the
       // engine has already settled this job as canceled via its own cancel path.
       if (!mine()) return;
-      patchFilmBubble((last) => last.role === 'assistant' ? { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true, ...(bubbleId ? { id: bubbleId } : {}) } : null);
+      patchFilmBubble((last) => last.role === 'assistant' ? { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) } : null);
       // Queued mode: propagate so the job settles FAILED (tray + durable row) via onSettle.
       if (jobCtx) throw err instanceof Error ? err : new Error('video failed');
     } finally {
@@ -4928,7 +4933,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {m.retryVideo && !busy && (
                 <button
                   type="button"
-                  onClick={() => { const r = lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
+                  onClick={() => { const r = m.retryReq ?? lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
                   className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
                 >
                   {t.retry}

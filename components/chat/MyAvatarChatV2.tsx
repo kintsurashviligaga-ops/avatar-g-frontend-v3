@@ -35,7 +35,7 @@
  *      ↑ safe-area-inset-bottom padding so iOS Safari can't clip
  */
 
-import { Component, isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Component, isValidElement, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1269,20 +1269,31 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     return () => { try { rec.stop(); } catch { /* noop */ } };
   }, []);
 
-  // ── Fetch wallet balance ──────────────────────────────────────────
-  useEffect(() => {
+  // ── Fetch wallet balance (REACTIVE — VECTOR 4) ─────────────────────
+  const fetchBalance = useCallback(() => {
     if (!isAuthenticated) return;
-    let alive = true;
     fetch('/api/billing/credits', { credentials: 'include' })
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => (r.ok ? r.json() : null))
       .then((j: { balance?: number; plan_id?: string } | null) => {
-        if (!alive || !j) return;
+        if (!j) return;
         if (typeof j.balance === 'number') setBalanceGel(j.balance);
         if (typeof j.plan_id === 'string') setPlanId(j.plan_id);
       })
       .catch(() => {});
-    return () => { alive = false; };
   }, [isAuthenticated]);
+  useEffect(() => { fetchBalance(); }, [fetchBalance]);
+  // Keep the USD balance live: refetch on any broadcast spend (cross-component) AND when a turn finishes
+  // (this chat's own paid generation), so BalanceChip / footer / settings never show a stale amount.
+  useEffect(() => {
+    const onSpend = () => fetchBalance();
+    window.addEventListener('myavatar:credits-updated', onSpend);
+    return () => window.removeEventListener('myavatar:credits-updated', onSpend);
+  }, [fetchBalance]);
+  const prevLoadingRef = useRef(false);
+  useEffect(() => {
+    if (prevLoadingRef.current && !isLoading) fetchBalance();
+    prevLoadingRef.current = isLoading;
+  }, [isLoading, fetchBalance]);
 
   // Sound preference mirrored to a ref so the expand effect can read it
   // without re-running (and restarting playback) on every toggle.
@@ -1769,8 +1780,11 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       // tag. 'ka-GE' forces the engine to decode the Georgian script + phonology
       // (mojibake/empty results otherwise); 'ru-RU'/'en-US' for the other locales.
       rec.lang = lang === 'ka' ? 'ka-GE' : lang === 'ru' ? 'ru-RU' : 'en-US';
-      try { rec.start(); dispatch({ type: 'SET_RECORDING', value: true }); }
-      catch { /* already started — ignore */ }
+      // VECTOR 3 — optimistic: flip the recording UI FIRST (<30ms feedback on the pre-warmed recognizer) so the
+      // user can speak immediately; revert only if start() throws. onerror handles any async permission failure.
+      dispatch({ type: 'SET_RECORDING', value: true });
+      try { rec.start(); }
+      catch { dispatch({ type: 'SET_RECORDING', value: false }); /* already started / failed */ }
     }
   }, [isRecording, lang, inputText, speechSupported, showNotice, copy.voiceUnsupported]);
 
@@ -3321,7 +3335,9 @@ const MD_COMPONENTS: Components = {
   },
 };
 
-function MarkdownView({ source }: { source: string }) {
+// VECTOR 3 — memoized on `source` (a primitive), so a keystroke in the composer re-renders the parent WITHOUT
+// re-parsing markdown for every historical message. Only a bubble whose text actually changed re-parses.
+const MarkdownView = memo(function MarkdownView({ source }: { source: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
@@ -3331,7 +3347,7 @@ function MarkdownView({ source }: { source: string }) {
       {source}
     </ReactMarkdown>
   );
-}
+});
 
 function StreamingText({
   text, active, onTick,

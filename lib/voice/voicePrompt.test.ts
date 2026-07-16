@@ -15,7 +15,7 @@ describe('buildVoiceReplyPrompt', () => {
   it('uses the Georgian short-spoken persona + the user turn', () => {
     const { system, user } = buildVoiceReplyPrompt('რა ამინდია?', 'ka');
     expect(system).toMatch(/MyAvatar/);
-    expect(system).toMatch(/1-3/);          // short-reply directive
+    expect(system).toMatch(/1-2/);          // short-reply directive (VECTOR 2 — tightened for voice latency)
     expect(user).toContain('User: რა ამინდია?');
     expect(user.endsWith('Assistant:')).toBe(true);
   });
