@@ -26,15 +26,14 @@ type PhotoAction = 'remove_bg' | 'upscale' | 'face_restore' | 'colorize';
 const ACTIONS: PhotoAction[] = ['remove_bg', 'upscale', 'face_restore', 'colorize'];
 const COST: Record<PhotoAction, number> = { remove_bg: 2, upscale: 5, face_restore: 3, colorize: 3 };
 
-// Default Replicate checkpoints per action — each fully overridable via env (Vercel dashboard). A wrong/absent
-// version fails cleanly and REFUNDS, so the feature is safe to ship before the operator pins real values.
-// NOTE: these fallback version hashes are TRUNCATED (Replicate versions are 64-char); the fallback will NOT resolve
-// at runtime — set the env var to a valid `owner/name:fullversion` (or a bare `owner/name` to use its latest).
+// Default Replicate checkpoints per action — BARE SLUGS (owner/name, no :version). resolveModelVersion resolves a
+// bare slug to the model's LATEST active version via the /models API, so there is no truncated/stale-hash runtime
+// crash. Each is overridable via env (Vercel dashboard); a wrong/absent model fails cleanly and REFUNDS.
 const DEFAULT_MODEL: Record<PhotoAction, string> = {
-  remove_bg: 'lucataco/birefnet-general:a64010a3', // BiRefNet transparent-PNG background removal
-  upscale: 'nightmareai/real-esrgan:f121d6f5',     // Real-ESRGAN super-resolution
-  face_restore: 'tencentarc/gfpgan:8a0fcd04',      // GFPGAN v1.4 face restoration
-  colorize: 'tencentarc/ddcolor:afd1d42a',         // DDColor B/W → colour
+  remove_bg: 'cjwbw/rembg',            // rembg transparent-PNG background removal
+  upscale: 'nightmareai/real-esrgan',  // Real-ESRGAN super-resolution
+  face_restore: 'tencentarc/gfpgan',   // GFPGAN v1.4 face restoration
+  colorize: 'tencentarc/ddcolor',      // DDColor B/W → colour
 };
 const ENV_KEY: Record<PhotoAction, string> = {
   remove_bg: 'REPLICATE_REMOVE_BG_MODEL',

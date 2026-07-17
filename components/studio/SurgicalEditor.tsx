@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Crop, Volume2, VolumeX, Play, Pause, Upload, X, Download, Loader2, Trash2, ChevronLeft, ChevronRight,
   SunMedium, Contrast as ContrastIcon, Droplet, Thermometer, RotateCcw, Sparkles, Film, Clapperboard, Brush,
-  Eraser, Maximize2, Smile, Palette,
+  Eraser, Maximize2, Smile, Palette, Share2, Check,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -32,6 +32,7 @@ interface Copy {
   transition: string; tCut: string; tCross: string; tFade: string;
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
   aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
+  exportSuccess: string; share: string; linkCopied: string;
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
@@ -47,6 +48,7 @@ const T: Record<Lang, Copy> = {
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
     aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო ჯერ არ არის კონფიგურირებული',
+    exportSuccess: 'ექსპორტი წარმატებულია', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა',
     exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
@@ -60,6 +62,7 @@ const T: Record<Lang, Copy> = {
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
     aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is not configured yet',
+    exportSuccess: 'Export Successful', share: 'Share', linkCopied: 'Link copied',
     exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
@@ -73,6 +76,7 @@ const T: Record<Lang, Copy> = {
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
     aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент ещё не настроен',
+    exportSuccess: 'Экспорт успешен', share: 'Поделиться', linkCopied: 'Ссылка скопирована',
     exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
@@ -129,6 +133,33 @@ function fmt(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+function extFromUrl(url: string, fallback: string): string {
+  const m = /\.([a-z0-9]{2,4})(?:\?|#|$)/i.exec(url);
+  return m && m[1] ? m[1] : fallback;
+}
+
+/**
+ * Force a real file download. A cross-origin `<a download>` is ignored by browsers (it navigates instead), so we
+ * fetch the asset into a Blob and download THAT — the reliable path on mobile Safari/Chrome. Falls back to a direct
+ * link if the fetch is CORS-blocked (rare — our storage + Replicate delivery allow GET).
+ */
+async function downloadAsset(url: string, filename: string): Promise<void> {
+  try {
+    const res = await fetch(url, { credentials: 'omit' });
+    if (!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
+    const obj = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = obj; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(obj), 5000);
+  } catch {
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+}
+
 export default function SurgicalEditor({ locale, onExit }: { locale: string; onExit: () => void }) {
   const t = T[norm(locale)];
   const [clips, setClips] = useState<Clip[]>([]);
@@ -157,6 +188,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [result, setResult] = useState<{ url: string; kind: 'video' | 'image' } | null>(null);
+  const [successAsset, setSuccessAsset] = useState<{ url: string; kind: 'video' | 'image' } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -176,6 +208,27 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   useEffect(() => () => { clipsRef.current.forEach((c) => URL.revokeObjectURL(c.url)); }, []);
 
   const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2600); }, []);
+
+  const filenameFor = useCallback((url: string, kind: 'video' | 'image') => `myavatar-${Date.now()}.${extFromUrl(url, kind === 'video' ? 'mp4' : 'png')}`, []);
+
+  // On any successful export / AI photo action: keep the result for the viewport, open the success card, and
+  // AUTO-DOWNLOAD the asset to the device immediately.
+  const onAssetReady = useCallback((url: string, kind: 'video' | 'image') => {
+    setResult({ url, kind });
+    setSuccessAsset({ url, kind });
+    void downloadAsset(url, filenameFor(url, kind));
+  }, [filenameFor]);
+
+  // Native share sheet (mobile) → clipboard-copy fallback (desktop / unsupported). A user cancel is a no-op.
+  const shareAsset = useCallback(async (url: string) => {
+    const nav = navigator as Navigator & { share?: (d: { url?: string; title?: string }) => Promise<void> };
+    if (typeof nav.share === 'function') {
+      try { await nav.share({ url, title: 'MyAvatar' }); return; }
+      catch (e) { if ((e as Error).name === 'AbortError') return; /* else fall through to copy */ }
+    }
+    try { await navigator.clipboard.writeText(url); flash(t.linkCopied); }
+    catch { flash(t.failed); }
+  }, [flash, t.linkCopied, t.failed]);
 
   // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
   // are the GLOBAL draft and persist across clips.
@@ -344,7 +397,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   const doExport = useCallback(async () => {
     if (!clip) { flash(t.needClip); return; }
     if (!hasMutations || exporting) return;
-    setExporting(true); setExportPct(6); setResult(null);
+    setExporting(true); setExportPct(6); setResult(null); setSuccessAsset(null);
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 12)) : p)), 400);
     try {
       const byId = new Map(clips.map((c) => [c.id, c]));
@@ -387,16 +440,16 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       return (await r.json().catch(() => null)) as { url?: string | null } | null;
     }
     function finishExport(j: { url?: string | null } | null, kind: 'video' | 'image') {
-      if (j?.url) { setExportPct(100); setResult({ url: j.url, kind }); flash(t.done); } else flash(t.failed);
+      if (j?.url) { setExportPct(100); onAssetReady(j.url, kind); flash(t.done); } else flash(t.failed);
     }
-  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, sourceCrop, duration, flash, t.needClip, t.failed, t.done]);
+  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done]);
 
   // ── AI object removal (photo) ──
   const runInpaint = useCallback(async () => {
     if (!clip) return;
     const c = maskCanvasRef.current;
     if (!maskPainted || !c) { flash(t.paintFirst); return; }
-    setExporting(true); setExportPct(25); setResult(null);
+    setExporting(true); setExportPct(25); setResult(null); setSuccessAsset(null);
     try {
       const maskUrl = c.toDataURL('image/png');
       const path = await uploadClip(clip.file);
@@ -404,16 +457,16 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       const res = await fetch('/api/ai/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() }) });
       const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
       if (res.status === 503) flash(t.inpaintOff);
-      else if (res.ok && j?.url) { setResult({ url: j.url, kind: 'image' }); flash(t.done); }
+      else if (res.ok && j?.url) { onAssetReady(j.url, 'image'); flash(t.done); }
       else flash(t.failed);
     } catch { flash(t.failed); }
     finally { setExporting(false); setExportPct(0); }
-  }, [clip, maskPainted, prompt, flash, t.paintFirst, t.failed, t.done, t.inpaintOff]);
+  }, [clip, maskPainted, prompt, onAssetReady, flash, t.paintFirst, t.failed, t.done, t.inpaintOff]);
 
   // ── AI Photo Studio — remove_bg / upscale / face_restore / colorize via Replicate (billed server-side) ──
   const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
     if (!clip || exporting) return;
-    setExporting(true); setExportPct(15);
+    setExporting(true); setExportPct(15); setSuccessAsset(null);
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 14)) : p)), 500);
     try {
       // CHAIN: run on the last AI result if present, else the cached original (upload once, then reuse).
@@ -432,15 +485,15 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       else if (res.status === 503) flash(t.notConfig);
       else if (res.ok && j?.url) {
         setExportPct(100);
-        setResult({ url: j.url, kind: 'image' });
         if (j.path) setChainPath(j.path); // subsequent actions run on THIS result
         // Persist appears server-side; nudge any open Library panel to refetch immediately.
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
+        onAssetReady(j.url, 'image');
         flash(t.done);
       } else flash(t.failed);
     } catch { flash(t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, chainPath, originalPath, flash, t.failed, t.done, t.insufficient, t.notConfig]);
+  }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig]);
 
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
@@ -692,14 +745,34 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         )}
       </div>
 
-      {exporting && (
+      {(exporting || successAsset) && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
-          <div className="w-full max-w-[340px] rounded-2xl border border-app-border/20 bg-app-surface p-6 text-center shadow-2xl">
-            <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-app-accent/15"><Clapperboard size={22} className="text-app-accent" /></span>
-            <div className="mb-3 text-[13.5px] font-semibold text-app-text">{isPhoto ? t.photoProcessing : t.exporting}</div>
-            <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
-            <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
-          </div>
+          {exporting ? (
+            <div className="w-full max-w-[340px] rounded-2xl border border-app-border/20 bg-app-surface p-6 text-center shadow-2xl">
+              <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-app-accent/15"><Clapperboard size={22} className="text-app-accent" /></span>
+              <div className="mb-3 text-[13.5px] font-semibold text-app-text">{isPhoto ? t.photoProcessing : t.exporting}</div>
+              <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
+              <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
+            </div>
+          ) : successAsset ? (
+            <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">
+              <div className="mb-3 flex flex-col items-center text-center">
+                <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15"><Check size={24} className="text-emerald-400" strokeWidth={3} /></span>
+                <div className="text-[14px] font-bold text-app-text">{t.exportSuccess}</div>
+              </div>
+              {successAsset.kind === 'image'
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={successAsset.url} alt="" className="mb-3 max-h-48 w-full rounded-lg bg-black object-contain" />
+                : <video src={successAsset.url} controls playsInline className="mb-3 max-h-48 w-full rounded-lg bg-black" />}
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => void downloadAsset(successAsset.url, filenameFor(successAsset.url, successAsset.kind))}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2.5 text-[13px] font-bold text-app-bg transition-opacity hover:opacity-90"><Download size={15} />{t.download}</button>
+                <button type="button" onClick={() => void shareAsset(successAsset.url)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13px] font-semibold text-app-text ring-1 ring-app-border/15 hover:bg-app-surface"><Share2 size={15} />{t.share}</button>
+              </div>
+              <button type="button" onClick={() => setSuccessAsset(null)} className="mt-2 w-full rounded-xl px-3 py-2 text-[12px] font-medium text-app-muted hover:text-app-text">{t.close}</button>
+            </div>
+          ) : null}
         </div>
       )}
 
