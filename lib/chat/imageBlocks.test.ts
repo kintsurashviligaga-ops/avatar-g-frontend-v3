@@ -96,6 +96,48 @@ describe('parseImageBlocks', () => {
     expect(r.audioUrls).toEqual([]);
     expect(r.text).toBe('[Music: my jam](https://x/page)');
   });
+
+  it('strips a raw <audio><source> HTML block and lifts the track URL into audioUrls (VECTOR 4)', () => {
+    const r = parseImageBlocks('Here is your song: <audio controls><source src="https://cdn.myavatar.ge/t/song.mp3" type="audio/mpeg"></audio> enjoy!');
+    expect(r.audioUrls).toEqual(['https://cdn.myavatar.ge/t/song.mp3']);
+    expect(r.text).not.toMatch(/<audio|<source|<\/audio>/i); // no raw markup leaks into the bubble
+    expect(r.text).toContain('Here is your song:');
+    expect(r.text).toContain('enjoy!');
+  });
+
+  it('handles a self-closing <audio src …/> and an <audio src=…> attribute form', () => {
+    expect(parseImageBlocks('<audio src="https://x.io/a.mp3" controls />').audioUrls).toEqual(['https://x.io/a.mp3']);
+    const r = parseImageBlocks('<audio controls src="https://x.io/b.wav"></audio>');
+    expect(r.audioUrls).toEqual(['https://x.io/b.wav']);
+    expect(r.text).toBe('');
+  });
+
+  it('hasImageBlocks fires on a raw <audio> tag so the parse+strip path runs', () => {
+    expect(hasImageBlocks('<audio controls><source src="https://x/y.mp3"></audio>')).toBe(true);
+    expect(hasImageBlocks('<source src="https://x/y.mp3">')).toBe(true);
+  });
+
+  it('handles a LONG signed CDN URL in the audio tag (tag bound must exceed the URL bound — review fix)', () => {
+    const longUrl = 'https://proj.supabase.co/storage/v1/object/sign/audio/track.mp3?token=' + 'e'.repeat(340);
+    const r = parseImageBlocks(`Here you go: <audio src="${longUrl}" controls />`);
+    expect(r.audioUrls).toEqual([longUrl]);
+    expect(r.text).not.toMatch(/<audio/i); // the long-URL tag is stripped, not leaked
+  });
+
+  it('KEEPS a URL-less <audio> example (relative src / code) verbatim — never deletes legit prose (review fix)', () => {
+    const r = parseImageBlocks('To embed audio use: <audio controls><source src="song.mp3" type="audio/mpeg"></audio> and it plays.');
+    expect(r.audioUrls).toEqual([]);                 // no real https track → not a player
+    expect(r.text).toContain('<audio controls>');    // the example markup is preserved
+    expect(r.text).toContain('<source src="song.mp3"');
+  });
+
+  it('does NOT strip an <audio>/<source> example inside a fenced code block (review fix)', () => {
+    const src = 'To embed audio:\n\n```html\n<audio controls>\n  <source src="https://cdn.x/song.mp3" type="audio/mpeg">\n</audio>\n```\n\nThat plays it.';
+    const r = parseImageBlocks(src);
+    expect(r.audioUrls).toEqual([]);                 // fenced code is a tutorial, not a real player
+    expect(r.text).toContain('<audio controls>');    // the fenced example survives intact
+    expect(r.text).toContain('```html');
+  });
 });
 
 describe('hasImageBlocks', () => {

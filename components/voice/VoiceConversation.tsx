@@ -396,8 +396,11 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       if (stale()) return;
       if (cr && cr.status === 401) { go('error'); setError(t.retry); return; } // signed out → stop, don't loop
       if (cr && cr.status === 429) { go('error'); setError(t.rateLimited); return; } // rate-limited → stop, don't re-pay STT in a loop
-      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string } | null) : null;
+      const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string; locale?: string } | null) : null;
       const answer = (cj?.reply || '').trim();
+      // The server answers in the language actually SPOKEN (detected from the transcript), which may differ from the
+      // UI locale — use THAT locale for TTS so the voice + engine match the reply (Russian speech → Russian voice).
+      const spokenLocale: Lang = cj?.locale === 'en' || cj?.locale === 'ru' || cj?.locale === 'ka' ? cj.locale : lang;
       if (stale()) return;
       if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
       setReply(answer);
@@ -411,7 +414,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       try {
         const res = await fetch('/api/elevenlabs/tts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ text: answer, locale: lang }), signal: turnSignal(30_000, ttsSig),
+          body: JSON.stringify({ text: answer, locale: spokenLocale }), signal: turnSignal(30_000, ttsSig),
         });
         if (res.ok) {
           const bytes = await res.arrayBuffer();

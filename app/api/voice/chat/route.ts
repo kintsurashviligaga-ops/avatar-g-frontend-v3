@@ -16,7 +16,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { llmText } from '@/lib/ai/llmText';
-import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, type VoiceTurn } from '@/lib/voice/voicePrompt';
+import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale, type VoiceTurn } from '@/lib/voice/voicePrompt';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 
 export const runtime = 'nodejs';
@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
     const text = typeof body?.text === 'string' ? body.text.trim() : '';
     if (!text) return NextResponse.json({ error: 'no text' }, { status: 400 });
 
-    const locale = normalizeVoiceLocale(body?.locale);
+    // Answer in the language the user actually SPOKE (transcript script), not merely the UI locale — so a Russian
+    // utterance in a Georgian-UI session gets a Russian reply + Russian TTS voice, never a Georgian one. Falls back
+    // to the UI locale when the transcript has no decisive script. The client uses the returned `locale` for TTS.
+    const uiLocale = normalizeVoiceLocale(body?.locale);
+    const locale = detectSpokenLocale(text, uiLocale);
     const history = Array.isArray(body?.history) ? body.history.slice(-12) : undefined;
     const { system, user: prompt } = buildVoiceReplyPrompt(text, locale, history);
 

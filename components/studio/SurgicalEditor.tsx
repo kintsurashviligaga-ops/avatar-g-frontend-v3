@@ -800,7 +800,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     <div className="relative flex h-full min-h-0 w-full flex-col bg-app-bg text-app-text">
       <div className="flex items-center justify-between gap-2 border-b border-app-border/15 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          {/* Locked 44×44 asset thumbnail (never shrinks) when a clip is loaded; the Scissors glyph before then. */}
+          {/* Locked 48×48 asset thumbnail (h-12 w-12, shrink-0 → never squished on iPad/mobile) when a clip is
+              loaded; the Scissors glyph before then. The left group is min-w-0 so the title truncates instead of
+              pushing the thumbnail to 0px, and the right actions are shrink-0 with icon-only labels below sm. */}
           {clip ? (
             <span className="block h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-app-border/20 bg-app-elevated">
               {clip.kind === 'image' ? (

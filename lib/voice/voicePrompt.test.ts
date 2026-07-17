@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale } from './voicePrompt';
+import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale } from './voicePrompt';
 
 describe('normalizeVoiceLocale', () => {
   it('defaults to ka; honors en/ru', () => {
@@ -8,6 +8,33 @@ describe('normalizeVoiceLocale', () => {
     expect(normalizeVoiceLocale('ru')).toBe('ru');
     expect(normalizeVoiceLocale('fr')).toBe('ka');
     expect(normalizeVoiceLocale(undefined)).toBe('ka');
+  });
+});
+
+describe('detectSpokenLocale — answer in the language actually spoken (VECTOR 2)', () => {
+  it('detects the dominant script regardless of the UI-locale fallback', () => {
+    expect(detectSpokenLocale('რა ამინდია დღეს?', 'en')).toBe('ka');   // Georgian speech, en UI
+    expect(detectSpokenLocale('Какая сегодня погода?', 'ka')).toBe('ru'); // THE reported bug: Russian in a ka session
+    expect(detectSpokenLocale('What is the weather today?', 'ka')).toBe('en'); // English in a ka session
+  });
+  it('falls back to the UI locale when the transcript has no decisive letters', () => {
+    expect(detectSpokenLocale('', 'ka')).toBe('ka');
+    expect(detectSpokenLocale('123 456 — !!', 'ru')).toBe('ru');
+    expect(detectSpokenLocale('   ', 'en')).toBe('en');
+  });
+  it('picks the majority script when languages are mixed (a Latin brand name inside Georgian stays ka)', () => {
+    expect(detectSpokenLocale('გადმომიწერე MyAvatar-ზე ინფორმაცია', 'ka')).toBe('ka');
+    expect(detectSpokenLocale('открой Instagram сейчас', 'ka')).toBe('ru');
+  });
+
+  it('a SHORT native command whose Latin brand name out-counts the native letters still stays native (review fix)', () => {
+    // regression: raw letter-count made these flip to 'en' (Instagram=9 Latin > 7 Georgian). Native must win.
+    expect(detectSpokenLocale('გახსენი Instagram', 'en')).toBe('ka');
+    expect(detectSpokenLocale('დამირეკე Facebook Messenger', 'en')).toBe('ka');
+    expect(detectSpokenLocale('открой Instagram', 'ka')).toBe('ru');
+    expect(detectSpokenLocale('включи YouTube', 'ka')).toBe('ru');
+    // a genuinely English utterance (no native script) still answers in English
+    expect(detectSpokenLocale('open Instagram please', 'ka')).toBe('en');
   });
 });
 

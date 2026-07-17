@@ -25,6 +25,18 @@ function pushUnique(arr: string[], v: string): void {
   if (c && !arr.includes(c)) arr.push(c);
 }
 
+/**
+ * Strip raw <audio>/<source> HTML → audioUrls, but ONLY when a real https track URL is present. A URL-less block
+ * (a relative-src demo or an HTML code EXAMPLE) is kept verbatim — a genuine generated-track player ALWAYS carries
+ * an https CDN URL, so this loses zero real players while honouring "never delete legit prose". `seg` is already
+ * OUTSIDE any fenced code block (the caller skips fences), so tutorial code stays intact too.
+ */
+function stripAudioHtml(seg: string, audioUrls: string[]): string {
+  return seg
+    .replace(AUDIO_HTML_BLOCK, (block) => { const u = block.match(MEDIA_SRC); if (!u || !u[1]) return block; pushUnique(audioUrls, u[1]); return ''; })
+    .replace(AUDIO_ORPHAN_TAG, (tag) => { const u = tag.match(MEDIA_SRC); if (!u || !u[1]) return tag; pushUnique(audioUrls, u[1]); return ''; });
+}
+
 // Every quantifier is BOUNDED so the regexes are linear (no catastrophic backtracking / ReDoS): a truncated
 // `[image:` streamed with a long whitespace run can no longer freeze the render thread.
 const HTTP_URL = /https?:\/\/[^\s)\]]+/i;
@@ -33,6 +45,16 @@ const HTTP_URL = /https?:\/\/[^\s)\]]+/i;
 const PLACEHOLDER = /(?<!!)\[\s{0,4}(?:image|სურათი|изображение)\s{0,4}:\s{0,4}([^\]\n]{0,600})\](?!\()/gi;
 const AUDIO_PLACEHOLDER = /(?<!!)\[\s{0,4}(?:audio|music|track|აუდიო|მუსიკა|музыка|трек)\s{0,4}:\s{0,4}([^\]\n]{0,600})\](?!\()/gi;
 const MD_IMAGE = /!\[[^\]\n]{0,200}\]\(\s{0,4}(https?:\/\/[^\s)]{1,2000})\s{0,4}\)/gi;
+// Raw <audio …>…</audio> / <source src> HTML the CHAT MODEL sometimes emits verbatim for a generated track — it
+// would otherwise leak as un-rendered markup in the bubble. Every quantifier BOUNDED (no ReDoS on a truncated tag).
+// The tag-attribute bound (2100) must EXCEED MEDIA_SRC's URL bound (2000) so a long signed CDN URL (base + ?token=
+// <~300-char JWT>) inside the tag still matches — a 300 cap silently dropped those and leaked the raw markup.
+const MEDIA_SRC = /\bsrc\s{0,4}=\s{0,4}["']?(https?:\/\/[^\s"'>]{1,2000})/i;
+const AUDIO_HTML_BLOCK = /<audio\b[^>]{0,2100}>[\s\S]{0,3000}?<\/audio>/gi; // a full <audio>…</audio> element
+const AUDIO_ORPHAN_TAG = /<\/?(?:audio|source)\b[^>]{0,2100}\/?>/gi;        // self-closing / stray <audio>, <source>, </audio>
+// Fenced code (``` … ``` / ~~~ … ~~~), bounded. Media stripping SKIPS these so an HTML tutorial that shows an
+// <audio>/<source> example is never mangled (Markdown renders fenced content literally anyway).
+const CODE_FENCE = /(?:```|~~~)[\s\S]{0,20000}?(?:```|~~~)/g;
 
 /**
  * Parse `[Image: …]` placeholders and markdown images out of an assistant reply.
@@ -64,6 +86,23 @@ export function parseImageBlocks(raw: string): ParsedImageBlocks {
     return '';
   });
 
+  // 2b) Raw <audio …>…</audio> HTML → lift the track URL into the native player and STRIP the markup, so a model
+  //     that answers with a literal <audio controls><source src=…></audio> never leaks raw tags into the bubble.
+  //     Applied ONLY to prose OUTSIDE fenced code blocks (an HTML tutorial's ```<audio>…</audio>``` is left intact),
+  //     and only when a real https URL is present (stripAudioHtml keeps URL-less example markup verbatim).
+  {
+    const parts: string[] = [];
+    let last = 0;
+    for (const m of text.matchAll(CODE_FENCE)) {
+      const idx = m.index ?? 0;
+      parts.push(stripAudioHtml(text.slice(last, idx), audioUrls)); // transform the prose before this fence
+      parts.push(m[0]);                                             // keep the fenced code verbatim
+      last = idx + m[0].length;
+    }
+    parts.push(stripAudioHtml(text.slice(last), audioUrls));        // transform the trailing prose
+    text = parts.join('');
+  }
+
   // 3) markdown images ![alt](url) — NOTE the leading `!`, so a plain markdown LINK [text](url) is left intact.
   text = text.replace(MD_IMAGE, (_m, url: string) => { pushUnique(urls, url); return ''; });
 
@@ -81,5 +120,6 @@ export function hasImageBlocks(raw: string): boolean {
   if (typeof raw !== 'string' || !raw) return false;
   return /\[\s{0,4}(?:image|სურათი|изображение)\s{0,4}:/i.test(raw)
     || /\[\s{0,4}(?:audio|music|track|აუდიო|მუსიკა|музыка|трек)\s{0,4}:/i.test(raw)
-    || /!\[[^\]\n]{0,200}\]\(https?:/i.test(raw);
+    || /!\[[^\]\n]{0,200}\]\(https?:/i.test(raw)
+    || /<(?:audio|source)\b/i.test(raw); // a raw <audio>/<source> HTML tag must trigger the parse+strip path
 }

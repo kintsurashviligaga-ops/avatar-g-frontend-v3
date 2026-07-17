@@ -15,6 +15,30 @@ export function normalizeVoiceLocale(raw: unknown): VoiceLocale {
   return raw === 'en' || raw === 'ru' ? raw : 'ka';
 }
 
+/**
+ * Detect the language the user actually SPOKE from the transcript's dominant script, so the reply + TTS follow
+ * the speech rather than the UI locale. This fixes the reported "user speaks Russian while the UI is Georgian →
+ * gets a Georgian reply" leak. Deterministic + script-based (no ML, no latency, unit-testable): Georgian block
+ * U+10A0–U+10FF → 'ka', Cyrillic U+0400–U+04FF → 'ru', Latin A–Z → 'en'. Falls back to `fallback` (the UI locale)
+ * only when the transcript carries no decisive letters (empty / digits / punctuation), so it never regresses the
+ * common case where the UI language and the spoken language already match. Ties resolve ka > ru > en (Georgian-first).
+ */
+export function detectSpokenLocale(text: string, fallback: VoiceLocale): VoiceLocale {
+  const s = typeof text === 'string' ? text : '';
+  const georgian = (s.match(/[Ⴀ-ჿ]/g) || []).length; // Georgian (Asomtavruli + Mkhedruli)
+  const cyrillic = (s.match(/[Ѐ-ӿ]/g) || []).length; // Cyrillic → Russian
+  const latin = (s.match(/[A-Za-z]/g) || []).length;           // Latin → English
+  // Native scripts (Georgian, Cyrillic) are highly distinctive and essentially never appear inside genuine English
+  // speech, whereas a Latin-script brand/app name ("Instagram", "YouTube") COMMONLY rides inside native speech. So
+  // any real native script (≥2 letters — shrugs off a stray transliterated char) decides the language REGARDLESS of
+  // how many Latin brand-name letters outnumber it; otherwise "გახსენი Instagram" / "открой YouTube" would flip to an
+  // English reply. Latin wins only when there is no meaningful native script. Ties resolve ka > ru (Georgian-first).
+  const nativeMax = Math.max(georgian, cyrillic);
+  if (nativeMax >= 2) return georgian >= cyrillic ? 'ka' : 'ru';
+  if (latin >= 2) return 'en';
+  return fallback;
+}
+
 // VECTOR 2 — voice replies are enforced EXTREMELY short. Georgian is synthesized on the slow eleven_v3
 // engine, and synthesis time scales with character count, so a punchy 1-2 sentence / ≤20-word reply cuts the
 // spoken latency dramatically. en/ru ride the fast turbo engine but stay terse too — voice wants brevity.
