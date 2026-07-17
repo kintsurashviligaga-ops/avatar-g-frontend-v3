@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Crop, Volume2, VolumeX, Play, Pause, Upload, X, Download, Loader2, Trash2, ChevronLeft, ChevronRight,
   SunMedium, Contrast as ContrastIcon, Droplet, Thermometer, RotateCcw, Sparkles, Film, Clapperboard, Brush,
+  Eraser, Maximize2, Smile, Palette,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -30,6 +31,7 @@ interface Copy {
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   transition: string; tCut: string; tCross: string; tFade: string;
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
+  aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
@@ -44,6 +46,7 @@ const T: Record<Lang, Copy> = {
     maxReached: 'მაქსიმუმ 35 ფაილი', max5: 'მაქსიმუმ 5 კლიპი თანმიმდევრობაში', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
+    aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო ჯერ არ არის კონფიგურირებული',
     exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
@@ -56,6 +59,7 @@ const T: Record<Lang, Copy> = {
     maxReached: 'Maximum 35 files', max5: 'Up to 5 clips in a sequence', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
+    aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is not configured yet',
     exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
@@ -68,6 +72,7 @@ const T: Record<Lang, Copy> = {
     maxReached: 'Максимум 35 файлов', max5: 'До 5 клипов в последовательности', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
+    aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент ещё не настроен',
     exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
@@ -401,6 +406,32 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     finally { setExporting(false); setExportPct(0); }
   }, [clip, maskPainted, prompt, flash, t.paintFirst, t.failed, t.done, t.inpaintOff]);
 
+  // ── AI Photo Studio — remove_bg / upscale / face_restore / colorize via Replicate (billed server-side) ──
+  const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
+    if (!clip || exporting) return;
+    setExporting(true); setExportPct(15); setResult(null);
+    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 14)) : p)), 500);
+    try {
+      const path = await uploadClip(clip.file);
+      if (!path) { flash(t.failed); return; }
+      const res = await fetch('/api/ai/edit-photo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ action, mediaUrl: path }),
+      });
+      const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
+      if (res.status === 402) flash(t.insufficient);
+      else if (res.status === 503) flash(t.notConfig);
+      else if (res.ok && j?.url) {
+        setExportPct(100);
+        setResult({ url: j.url, kind: 'image' });
+        // Persist appears server-side; nudge any open Library panel to refetch immediately.
+        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
+        flash(t.done);
+      } else flash(t.failed);
+    } catch { flash(t.failed); }
+    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+  }, [clip, exporting, flash, t.failed, t.done, t.insufficient, t.notConfig]);
+
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
   const sel = segments[selectedSeg];
@@ -457,7 +488,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               className={`relative flex items-center justify-center overflow-hidden rounded-xl bg-black ${cropOn ? 'cursor-crosshair' : ''}`} style={{ minHeight: 220, maxHeight: 360 }}>
               {isPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img ref={imgRef} src={clip?.url} alt="" style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full"
+                <img ref={imgRef} src={result?.kind === 'image' ? result.url : clip?.url} alt="" style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full"
                   onLoad={(e) => setPhotoDim({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
               ) : (
                 <video ref={videoRef} src={clip?.url} playsInline style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full"
@@ -558,6 +589,19 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               <ToolButton icon={<RotateCcw size={15} />} label={t.reset} onClick={resetDraft} />
             </div>
 
+            {/* AI Photo Studio actions (PHOTO) — one-click Replicate transforms, billed server-side */}
+            {isPhoto && (
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.aiStudio}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <PhotoCard icon={<Eraser size={16} />} label={t.removeBg} cost={2} disabled={exporting} onClick={() => void runPhotoAction('remove_bg')} />
+                  <PhotoCard icon={<Maximize2 size={16} />} label={t.upscale} cost={5} disabled={exporting} onClick={() => void runPhotoAction('upscale')} />
+                  <PhotoCard icon={<Smile size={16} />} label={t.faceRestore} cost={3} disabled={exporting} onClick={() => void runPhotoAction('face_restore')} />
+                  <PhotoCard icon={<Palette size={16} />} label={t.colorize} cost={3} disabled={exporting} onClick={() => void runPhotoAction('colorize')} />
+                </div>
+              </div>
+            )}
+
             {/* Color grading */}
             <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
               <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.color}</span>
@@ -642,7 +686,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
           <div className="w-full max-w-[340px] rounded-2xl border border-app-border/20 bg-app-surface p-6 text-center shadow-2xl">
             <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-app-accent/15"><Clapperboard size={22} className="text-app-accent" /></span>
-            <div className="mb-3 text-[13.5px] font-semibold text-app-text">{t.exporting}</div>
+            <div className="mb-3 text-[13.5px] font-semibold text-app-text">{isPhoto ? t.photoProcessing : t.exporting}</div>
             <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
             <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
           </div>
@@ -659,6 +703,19 @@ function ToolButton({ icon, label, onClick, active, disabled }: { icon: React.Re
     <button type="button" onClick={onClick} disabled={disabled}
       className={`inline-flex min-h-[42px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-center text-[12px] font-semibold leading-tight transition-colors disabled:opacity-40 ${active ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
       <span className="shrink-0">{icon}</span><span className="min-w-0 break-words">{label}</span>
+    </button>
+  );
+}
+
+function PhotoCard({ icon, label, cost, onClick, disabled }: { icon: React.ReactNode; label: string; cost: number; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className="flex min-h-[64px] flex-col items-start justify-between gap-2 rounded-xl border border-app-border/15 bg-app-elevated p-3 text-left transition-colors hover:border-app-accent/40 hover:bg-app-surface disabled:opacity-40">
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-app-accent/15 text-app-accent">{icon}</span>
+      <span className="flex w-full items-center justify-between gap-1.5">
+        <span className="min-w-0 truncate text-[12px] font-semibold text-app-text">{label}</span>
+        <span className="shrink-0 rounded-full bg-app-bg/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-app-muted">{cost}</span>
+      </span>
     </button>
   );
 }
