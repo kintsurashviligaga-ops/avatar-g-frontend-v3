@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Crop, Volume2, VolumeX, Play, Pause, Upload, X, Download, Loader2, Trash2, ChevronLeft, ChevronRight,
   SunMedium, Contrast as ContrastIcon, Droplet, Thermometer, RotateCcw, Sparkles, Film, Clapperboard, Brush,
-  Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2,
+  Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2, CornerUpLeft,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -38,6 +38,7 @@ interface Copy {
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
   audioStudio: string; vocalIso: string; vocalSplit: string; pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string; instrumental: string; vocals: string;
   selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
+  returnChat: string;
 }
 
 const T: Record<Lang, Copy> = {
@@ -56,6 +57,7 @@ const T: Record<Lang, Copy> = {
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
     audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
     selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ჩააგდე ან ატვირთე აუდიო', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
+    returnChat: 'ჩატში დაბრუნება ფაილით',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
@@ -72,6 +74,7 @@ const T: Record<Lang, Copy> = {
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
     audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
     selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Drop or upload audio', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
+    returnChat: 'Return to chat with asset',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
@@ -88,6 +91,7 @@ const T: Record<Lang, Copy> = {
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
     audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
     selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Перетащите или загрузите аудио', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
+    returnChat: 'Вернуться в чат с файлом',
   },
 };
 
@@ -212,7 +216,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: T): Promise<T> {
   return Promise.race([p, new Promise<T>((resolve) => window.setTimeout(() => resolve(onTimeout), ms))]);
 }
 
-export default function SurgicalEditor({ locale, onExit, initialAsset }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio'; autoAction?: string } | null }) {
+export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnToChat }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null; onReturnToChat?: (asset: { url: string; kind: 'video' | 'image' | 'audio' }) => void }) {
   const t = T[norm(locale)];
   const [clips, setClips] = useState<Clip[]>([]);
   // Empty-state workspace pre-selection (V1): which media the dropzone is scoped to before any file is loaded.
@@ -295,6 +299,14 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     catch { flash(t.failed); }
   }, [flash, t.linkCopied, t.failed]);
 
+  // Reverse context pipeline (V4): hand the CURRENT asset back to the chat surface. Prefers the latest AI/export
+  // RESULT (the edited file) over the untouched source, so the user keeps conversing about their edit.
+  const returnToChat = useCallback(() => {
+    if (!onReturnToChat) return;
+    const asset = result ?? (clip ? { url: clip.url, kind: clip.kind } : null);
+    if (asset) onReturnToChat({ url: asset.url, kind: asset.kind });
+  }, [onReturnToChat, result, clip]);
+
   // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
   // are the GLOBAL draft and persist across clips.
   useEffect(() => {
@@ -332,7 +344,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
 
   // ── "Open in Editor" / Agent G bridge: a forwarded asset URL → fetch → File → clip, and jump to it. Agent G may
   //    also request a one-shot AI action to auto-run once the clip is loaded (e.g. remove_bg, splitter). ──
-  const [pendingAutoAction, setPendingAutoAction] = useState<string | null>(null);
+  const [pendingAutoActions, setPendingAutoActions] = useState<string[] | null>(null);
   const loadedAssetRef = useRef<string | null>(null);
   useEffect(() => {
     if (!initialAsset?.url || loadedAssetRef.current === initialAsset.url) return;
@@ -353,7 +365,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
         const idx = Math.min(clipsRef.current.length, MAX_CLIPS - 1);
         setClips((prev) => [...prev, nclip].slice(0, MAX_CLIPS));
         setActive(idx);
-        setPendingAutoAction(initialAsset.autoAction ?? null); // Agent G one-shot, fired by the effect below once loaded
+        setPendingAutoActions(initialAsset.autoActions?.length ? initialAsset.autoActions : null); // Agent G chain, fired once loaded
         if (kind === 'audio') void decodeAudioPeaks(file).then((peaks) => setClips((prev) => prev.map((x) => (x.id === id ? { ...x, peaks } : x))));
         else if (kind === 'video') void probeVideo(nclip.url).then(({ dur, w, h }) => {
           setClips((prev) => prev.map((x) => (x.id === id ? { ...x, dur, w, h } : x)));
@@ -599,6 +611,30 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
+  // Agent G multi-action CHAIN (photo): the server runs each op in sequence (rehosting each intermediary) and bills
+  // the whole chain atomically — one request, one final URL, one refund on any failure.
+  const runPhotoChain = useCallback(async (actions: string[]) => {
+    if (!clip || exporting || actions.length < 2) return;
+    setExporting(true); setExportPct(10); setSuccessAsset(null);
+    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 18)) : p)), 600);
+    try {
+      let src = chainPath;
+      if (!src) { src = originalPath ?? await uploadClip(clip.file); if (src && !originalPath) setOriginalPath(src); }
+      if (!src) { flash(t.failed); return; }
+      const { status, ok, body } = await postJson('/api/ai/edit-photo', { actions, mediaUrl: src });
+      const j = body as { url?: string | null; path?: string | null } | null;
+      if (status === 402) flash(t.insufficient);
+      else if (status === 503) flash(t.notConfig);
+      else if (ok && j?.url) {
+        setExportPct(100);
+        if (j.path) setChainPath(j.path);
+        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
+        onAssetReady(j.url, 'image'); flash(t.done);
+      } else flash(t.failed);
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
+    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+  }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
+
   // ── Audio Studio: playback, generative separation (billed), deterministic process (free) ──
   const toggleAudioPlay = useCallback(() => {
     const a = audioRef.current; if (!a) return;
@@ -655,15 +691,21 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
 
-  // Agent G one-shot: once the forwarded clip is loaded in its workspace, auto-run the requested AI action. Cleared
-  // immediately so it fires exactly once; a mismatched/unknown action just leaves the workspace open.
+  // Agent G one-shot: once the forwarded clip is loaded, auto-run the requested AI action(s). A photo CHAIN (>1)
+  // runs server-side atomically; a single action runs directly. Cleared immediately so it fires exactly once.
   useEffect(() => {
-    if (!pendingAutoAction || !clip || exporting) return;
-    const a = pendingAutoAction;
-    setPendingAutoAction(null);
-    if (clip.kind === 'image' && (a === 'remove_bg' || a === 'upscale' || a === 'face_restore' || a === 'colorize')) void runPhotoAction(a);
-    else if (clip.kind === 'audio' && (a === 'vocal_isolation' || a === 'splitter')) void runAudioAI(a);
-  }, [pendingAutoAction, clip, exporting, runPhotoAction, runAudioAI]);
+    if (!pendingAutoActions || !pendingAutoActions.length || !clip || exporting) return;
+    const acts = pendingAutoActions;
+    setPendingAutoActions(null);
+    if (clip.kind === 'image') {
+      const photo = acts.filter((a): a is 'remove_bg' | 'upscale' | 'face_restore' | 'colorize' => a === 'remove_bg' || a === 'upscale' || a === 'face_restore' || a === 'colorize');
+      if (photo.length > 1) void runPhotoChain(photo);
+      else if (photo[0]) void runPhotoAction(photo[0]);
+    } else if (clip.kind === 'audio') {
+      const a = acts.find((x) => x === 'vocal_isolation' || x === 'splitter');
+      if (a === 'vocal_isolation' || a === 'splitter') void runAudioAI(a);
+    }
+  }, [pendingAutoActions, clip, exporting, runPhotoChain, runPhotoAction, runAudioAI]);
 
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
@@ -686,6 +728,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
               className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40"
               style={hasMutations ? { background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', color: '#06121a', boxShadow: '0 0 0 1px rgba(6,182,212,0.4), 0 10px 30px -8px rgba(6,182,212,0.7)' } : { background: 'var(--color-elevated)', color: 'var(--color-muted)' }}>
               {exporting ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />}{isPhoto ? t.exportPhoto : t.exportVideo}
+            </button>
+          )}
+          {onReturnToChat && clips.length > 0 && (
+            <button type="button" onClick={returnToChat} title={t.returnChat} aria-label={t.returnChat}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-app-elevated px-3 py-2 text-[12.5px] font-semibold text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent hover:opacity-90 active:scale-95">
+              <CornerUpLeft size={15} /><span className="hidden sm:inline">{t.returnChat}</span>
             </button>
           )}
           <button type="button" onClick={onExit} aria-label={t.close} className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted hover:bg-app-elevated hover:text-app-text"><X size={17} /></button>

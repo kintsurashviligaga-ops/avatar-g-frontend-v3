@@ -24,9 +24,29 @@ export type AudioAction = 'vocal_isolation' | 'splitter';
 export interface AgentGDecision {
   route: AgentGRoute;
   mode: EditorMode | null;          // null only for CLARIFY
-  action: PhotoAction | AudioAction | null; // concrete auto-run action (photo/audio); null = open workspace only
+  action: PhotoAction | AudioAction | null; // FIRST action (back-compat); null = open workspace only
+  actions: (PhotoAction | AudioAction)[]; // ORDERED chain — a compound prompt ("remove bg AND upscale") maps to >1
   confidence: number;               // 0..1
   reason: string;
+}
+
+// Clause separators for compound prompts — matched as whole connector words so they don't split mid-word.
+const CHAIN_SPLIT = /\s+(?:და|and|then|მერე|შემდეგ|потом|затем|плюс)\s+|\s*[,+]\s*|\s+&\s+/u;
+
+/**
+ * Ordered, de-duplicated photo actions in a (possibly compound) prompt: "remove bg and upscale" → [remove_bg, upscale].
+ * Each clause must carry its OWN edit verb before it maps to an action — otherwise photoAction's noun-only fallbacks
+ * ("...and KEEP the background" / "...leave her face alone") would inject spurious, unwanted (and billed) links.
+ */
+export function photoActions(text: string): PhotoAction[] {
+  const out: PhotoAction[] = [];
+  for (const part of text.split(CHAIN_SPLIT)) {
+    if (!has(part, PHOTO_VERBS)) continue; // per-clause verb gate — a noun-only clause is not an action
+    const a = photoAction(part);
+    if (a && !out.includes(a)) out.push(a);
+  }
+  if (!out.length && has(text, PHOTO_VERBS)) { const a = photoAction(text); if (a) out.push(a); } // whole-prompt fallback
+  return out;
 }
 
 const GEORGIAN = /[Ⴀ-ჿ]/;
@@ -126,7 +146,7 @@ export function isImperativeCommand(text: string): boolean {
 
 const routeFor = (mode: EditorMode): AgentGRoute => (mode === 'photo' ? 'PHOTO_STUDIO' : mode === 'video' ? 'VIDEO_EDITOR' : 'AUDIO_STUDIO');
 const modeForAsset = (kind: AssetKind): EditorMode => (kind === 'image' ? 'photo' : kind === 'audio' ? 'audio' : 'video');
-const clarify = (reason: string): AgentGDecision => ({ route: 'CLARIFY', mode: null, action: null, confidence: 0, reason });
+const clarify = (reason: string): AgentGDecision => ({ route: 'CLARIFY', mode: null, action: null, actions: [], confidence: 0, reason });
 
 /**
  * Classify a prompt into an editor workspace + optional auto-action.
@@ -142,8 +162,9 @@ export function classifyIntent(rawText: string, assetKind?: AssetKind | null): A
   if (assetKind) {
     if (!verbHit) return clarify('attached asset but no edit verb — treat as conversational');
     const mode = modeForAsset(assetKind);
-    const action = mode === 'photo' ? photoAction(text) : mode === 'audio' ? audioAction(text) : null;
-    return { route: routeFor(mode), mode, action, confidence: 0.9, reason: `attached ${assetKind} + edit intent` };
+    // Photo supports a CHAIN (remove bg → upscale …); audio/video resolve to at most one action.
+    const actions: (PhotoAction | AudioAction)[] = mode === 'photo' ? photoActions(text) : mode === 'audio' ? (audioAction(text) ? [audioAction(text) as AudioAction] : []) : [];
+    return { route: routeFor(mode), mode, action: actions[0] ?? null, actions, confidence: 0.9, reason: `attached ${assetKind} + edit intent` };
   }
 
   if (!verbHit) return clarify('no editable asset and no edit verb');
@@ -159,6 +180,6 @@ export function classifyIntent(rawText: string, assetKind?: AssetKind | null): A
   };
   const order: EditorMode[] = ['photo', 'video', 'audio'];
   const mode = order.reduce((a, b) => (cat[b] > cat[a] ? b : a), 'photo' as EditorMode);
-  const action = mode === 'photo' ? pa : mode === 'audio' ? aa : null;
-  return { route: routeFor(mode), mode, action, confidence: 0.7, reason: 'keyword-classified (no asset)' };
+  const actions: (PhotoAction | AudioAction)[] = mode === 'photo' ? photoActions(text) : mode === 'audio' ? (aa ? [aa] : []) : [];
+  return { route: routeFor(mode), mode, action: actions[0] ?? null, actions, confidence: 0.7, reason: 'keyword-classified (no asset)' };
 }

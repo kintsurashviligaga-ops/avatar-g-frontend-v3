@@ -1,4 +1,4 @@
-import { classifyIntent, photoAction, audioAction, isImperativeCommand } from './agentG';
+import { classifyIntent, photoAction, photoActions, audioAction, isImperativeCommand } from './agentG';
 
 describe('Agent G — classifyIntent', () => {
   describe('with an attached asset (workspace fixed by kind)', () => {
@@ -117,6 +117,43 @@ describe('Agent G — classifyIntent', () => {
       expect(isImperativeCommand('can you enhance my understanding of this?')).toBe(false);
       expect(isImperativeCommand('what should I do with this image')).toBe(false);
       expect(isImperativeCommand('რა ლამაზი ფოტოა')).toBe(false);
+    });
+  });
+
+  describe('multi-action chaining (compound prompts)', () => {
+    it('ka "მოაშორე ფონი და გაზარდე ხარისხი" → [remove_bg, upscale]', () => {
+      const d = classifyIntent('მოაშორე ფონი და გაზარდე ხარისხი', 'image');
+      expect(d.route).toBe('PHOTO_STUDIO');
+      expect(d.actions).toEqual(['remove_bg', 'upscale']);
+      expect(d.action).toBe('remove_bg'); // back-compat: first of the chain
+    });
+    it('en "remove the background and upscale" → [remove_bg, upscale]', () => {
+      expect(classifyIntent('remove the background and upscale', 'image').actions).toEqual(['remove_bg', 'upscale']);
+    });
+    it('en "remove bg, colorize, then upscale" (3-link, comma + then) preserves order', () => {
+      expect(photoActions('remove bg, colorize, then upscale')).toEqual(['remove_bg', 'colorize', 'upscale']);
+    });
+    it('a single action yields a one-element chain', () => {
+      const d = classifyIntent('colorize this', 'image');
+      expect(d.actions).toEqual(['colorize']);
+    });
+    it('de-dupes repeated actions preserving first position', () => {
+      expect(photoActions('upscale and enhance the quality')).toEqual(['upscale']);
+    });
+    it('CLARIFY / video carry an empty chain', () => {
+      expect(classifyIntent('describe this', 'image').actions).toEqual([]);
+      expect(classifyIntent('trim this', 'video').actions).toEqual([]);
+    });
+    // Regression: a noun-only clause must NOT inject a spurious (billed, destructive) link.
+    it('"upscale the photo and keep the background" → [upscale] only (never remove_bg)', () => {
+      expect(photoActions('upscale the photo and keep the background')).toEqual(['upscale']);
+      expect(classifyIntent('upscale the photo and keep the background', 'image').actions).toEqual(['upscale']);
+    });
+    it('"upscale this and leave her face alone" → [upscale] only (never face_restore)', () => {
+      expect(photoActions('upscale this and leave her face alone')).toEqual(['upscale']);
+    });
+    it('ka "გააფერადე მაგრამ ფონი დატოვე" (colorize but keep the background) → [colorize] only', () => {
+      expect(photoActions('გააფერადე მაგრამ ფონი დატოვე')).toEqual(['colorize']);
     });
   });
 

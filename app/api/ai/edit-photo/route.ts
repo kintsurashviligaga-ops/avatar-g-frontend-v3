@@ -107,11 +107,13 @@ async function saveCreation(req: NextRequest, userId: string, url: string, actio
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as { action?: string; mediaUrl?: string } | null;
-  const action = String(body?.action || '').trim() as PhotoAction;
-  if (!ACTIONS.includes(action)) {
-    return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
-  }
+  const body = (await req.json().catch(() => null)) as { action?: string; actions?: unknown; mediaUrl?: string } | null;
+  // A CHAIN of actions ("remove bg AND upscale") OR a single action. De-dupe-preserving order, cap at the 4 real ops.
+  const requested = Array.isArray(body?.actions) ? (body!.actions as unknown[]).map(String) : body?.action ? [String(body.action)] : [];
+  const chain: PhotoAction[] = [];
+  for (const a of requested) if ((ACTIONS as string[]).includes(a) && !chain.includes(a as PhotoAction)) chain.push(a as PhotoAction);
+  const CHAIN = chain.slice(0, 4);
+  if (!CHAIN.length) return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
 
   // Strict auth + a floor balance check (guard 402 if below the smallest cost). Anonymous → 401.
   const guard = await guardGeneration(req, 'image');
@@ -123,34 +125,36 @@ export async function POST(req: NextRequest) {
   const src = await resolveMedia(body?.mediaUrl);
   if (!src) return NextResponse.json({ url: null, error: 'could not resolve image (upload it first)' }, { status: 400 });
 
-  const cost = COST[action];
-  const ref = `photo:${action}:${guard.userId}:${Date.now()}`;
-  // RESERVE-before-render: debit and HONOR the result. A positive 'insufficient' blocks the paid call (the pre-gate
-  // is fail-open, so a broke user can reach here); 'skipped'/'error' degrade to proceeding (ledger's documented behavior).
-  const debit = await deductCredits(guard.userId, cost, ref);
+  // ATOMIC chain billing: reserve the SUM of all links up front (reserve-before-render). A positive 'insufficient'
+  // blocks the whole chain; any mid-chain failure refunds the ENTIRE sum (all-or-nothing) — the user is never left
+  // charged for a partial result they can't use.
+  const totalCost = CHAIN.reduce((s, a) => s + COST[a], 0);
+  const ref = `photo:chain:${CHAIN.join('-')}:${guard.userId}:${Date.now()}`;
+  const debit = await deductCredits(guard.userId, totalCost, ref);
   if (!debit.ok && debit.reason === 'insufficient') {
     return NextResponse.json({ url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
   }
 
   try {
-    const created = await createPrediction(modelFor(action), inputFor(action, src));
-    let out = created;
-    if (created.status !== 'succeeded' && created.status !== 'failed') {
-      out = await pollPrediction(created.id);
+    let curUrl = src;                                   // fetchable URL fed into each model in turn
+    let finalHosted: { url: string; path: string } | null = null;
+    for (const act of CHAIN) {
+      const created = await createPrediction(modelFor(act), inputFor(act, curUrl));
+      let out = created;
+      if (created.status !== 'succeeded' && created.status !== 'failed') out = await pollPrediction(created.id);
+      const raw = out.status === 'succeeded' ? firstUrl(out.output) : null;
+      if (!raw) throw new Error(`${act} produced no output`);
+      // Re-host each intermediary so the NEXT model consumes a persistent URL (Replicate outputs expire).
+      const hosted = await rehost(raw);
+      finalHosted = hosted;
+      curUrl = hosted?.url ?? raw;
     }
-    const raw = out.status === 'succeeded' ? firstUrl(out.output) : null;
-    if (!raw) {
-      if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge
-      return NextResponse.json({ url: null, error: `${action} produced no output` }, { status: 502 });
-    }
-    // Re-host into our storage → persistent URL + a chainable path (the ephemeral Replicate URL expires and
-    // wouldn't pass the SSRF-guarded resolveMedia on the next action). Falls back to the raw URL for display.
-    const hosted = await rehost(raw);
-    const displayUrl = hosted?.url ?? raw;
-    void saveCreation(req, guard.userId, displayUrl, action, cost);
-    return NextResponse.json({ url: displayUrl, path: hosted?.path });
+    const displayUrl = finalHosted?.url ?? curUrl;
+    const last = CHAIN[CHAIN.length - 1];
+    if (last) void saveCreation(req, guard.userId, displayUrl, last, totalCost);
+    return NextResponse.json({ url: displayUrl, path: finalHosted?.path, actions: CHAIN });
   } catch (e) {
-    if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
-    return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : `${action} failed` }, { status: 502 });
+    if (debit.ok) await refundCredits(guard.userId, totalCost, ref).catch(() => {}); // ATOMIC refund of the whole chain
+    return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'chain failed' }, { status: 502 });
   }
 }
