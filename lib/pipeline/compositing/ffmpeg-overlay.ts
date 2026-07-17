@@ -198,6 +198,48 @@ export async function renderOverlayPng(m: MarketingOverlay, w: number, h: number
   }
 }
 
+// ── Surgical Editor text/title overlay (Phase 59) ──────────────────────────
+// A single burned-in line (title / watermark / social handle) positioned in one of four corners/centre. Rendered
+// full-frame + transparent so the caller just `overlay=0:0`s it. FiraGO covers ka/en/ru, so Georgian never tofus.
+export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-center' | 'center';
+export interface TextLayer { text: string; position: OverlayPosition; fontSize: number; fontColor: string }
+
+function safeHexColor(c: string | undefined): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((c ?? '').trim());
+  return m ? `#${m[1]}` : '#ffffff';
+}
+
+export function buildTextLayerSvg(o: TextLayer, w: number, h: number): string {
+  const fs = Math.max(8, Math.min(Math.round(h * 0.5), Math.round(o.fontSize) || 24));
+  const color = safeHexColor(o.fontColor);
+  const pad = Math.round(fs * 0.7) + 12;
+  let x: number, y: number, anchor: 'start' | 'middle' | 'end';
+  switch (o.position) {
+    case 'top-left': x = pad; y = pad + fs; anchor = 'start'; break;
+    case 'top-right': x = w - pad; y = pad + fs; anchor = 'end'; break;
+    case 'center': x = Math.round(w / 2); y = Math.round(h / 2 + fs * 0.35); anchor = 'middle'; break;
+    default: x = Math.round(w / 2); y = h - pad; anchor = 'middle'; break; // bottom-center
+  }
+  const txt = esc(o.text);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`
+    + `<text x="${x + 2}" y="${y + 2}" font-family="${FONT_TITLE}" font-size="${fs}" fill="#000000" fill-opacity="0.55" text-anchor="${anchor}">${txt}</text>`
+    + `<text x="${x}" y="${y}" font-family="${FONT_TITLE}" font-size="${fs}" fill="${color}" text-anchor="${anchor}">${txt}</text>`
+    + `</svg>`;
+}
+
+/** Full-frame transparent PNG with the overlay line burned at its position (or null when empty/failed). */
+export async function renderTextLayerPng(o: TextLayer, w: number, h: number): Promise<Buffer | null> {
+  if (!o.text || !o.text.trim()) return null;
+  try {
+    const resvg = new Resvg(buildTextLayerSvg(o, w, h), {
+      font: { fontFiles: overlayFontFiles(), loadSystemFonts: false, defaultFontFamily: 'FiraGO' },
+    });
+    return Buffer.from(resvg.render().asPng());
+  } catch {
+    return null;
+  }
+}
+
 // ── MTV-style music info bug (v330) ────────────────────────────────────────
 // A stylized lower-left "now playing" card baked over the first few seconds of a
 // music video, inspired by classic music-network on-screen graphics. Composited with

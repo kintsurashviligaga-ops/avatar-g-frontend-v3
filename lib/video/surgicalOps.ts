@@ -14,7 +14,7 @@
 import 'server-only';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
@@ -192,8 +192,11 @@ export async function fadeClip(videoUrl: string, p: FadeParams): Promise<string 
 export interface DraftMutedRange { start: number; end: number }
 /** How a segment blends FROM the previous one. 'none' = hard cut; 'crossfade' = xfade; 'fade' = fade through black. */
 export type Transition = 'none' | 'crossfade' | 'fade';
+export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-center' | 'center';
+/** A burned-in title/watermark/handle on a segment. Rendered via resvg (Georgian-safe) + ffmpeg overlay. */
+export interface TextOverlay { text: string; position: OverlayPosition; fontSize: number; fontColor: string }
 /** One timeline segment in the FINAL sequence order (delete = omitted, reorder = array order changes). */
-export interface DraftSegment { start: number; end: number; muted: boolean; transition?: Transition }
+export interface DraftSegment { start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 export interface RenderDraft {
   grade?: GradeParams;
   fadeInSec?: number;
@@ -286,7 +289,21 @@ async function probeHasAudio(url: string): Promise<boolean> {
   }
 }
 
-interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition }
+/** Probe an input's video WxH (same ffmpeg-static stderr trick) — used to size overlay layers on the native frame. */
+async function probeDimensions(url: string): Promise<{ w: number; h: number }> {
+  const b = bin();
+  if (!b) return { w: 0, h: 0 };
+  try {
+    await exec(b, ['-hide_banner', '-i', url], { maxBuffer: 1 << 22, timeout: 20_000 });
+    return { w: 0, h: 0 };
+  } catch (e) {
+    const s = String((e as { stderr?: string }).stderr ?? (e as Error).message ?? '');
+    const m = /Video:.*?[,\s](\d{2,5})x(\d{2,5})/.exec(s);
+    return m && m[1] && m[2] ? { w: parseInt(m[1], 10), h: parseInt(m[2], 10) } : { w: 0, h: 0 };
+  }
+}
+
+interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 
 /**
  * CORE sequence renderer (single ffmpeg pass, N inputs). For each entry it builds a UNIFORM, audio-safe stream —
@@ -307,14 +324,47 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   const scale = opts.scaleW && opts.scaleH
     ? `scale=${even(opts.scaleW)}:${even(opts.scaleH)}:force_original_aspect_ratio=decrease,pad=${even(opts.scaleW)}:${even(opts.scaleH)}:(ow-iw)/2:(oh-ih)/2,setsar=1,`
     : '';
-  const parts: string[] = [];
 
+  // ── TEXT OVERLAYS — drawtext is unavailable on Vercel (no libfreetype), so each overlay line is rasterised
+  // to a full-frame transparent PNG via resvg (FiraGO = Georgian-safe) and composited with the UNIVERSAL overlay
+  // filter. PNGs must be written BEFORE the graph so their ffmpeg input indices are known. ────────────────────
+  const anyOverlay = entries.some((e) => !!e.textOverlay && !!e.textOverlay.text.trim());
+  let FW = opts.scaleW ?? 0, FH = opts.scaleH ?? 0;
+  if (anyOverlay && (!FW || !FH)) {
+    const dim = await probeDimensions(inputs[first.src] ?? inputs[0] ?? '');
+    FW = FW || dim.w || 1280; FH = FH || dim.h || 720;
+  }
+  const dir = await mkdtemp(join(tmpdir(), `${tag}-`));
+  const overlayInputIdx: (number | null)[] = entries.map(() => null);
+  const overlayPaths: string[] = [];
+  if (anyOverlay) {
+    const { renderTextLayerPng } = await import('@/lib/pipeline/compositing/ffmpeg-overlay');
+    for (let i = 0; i < entries.length; i += 1) {
+      const ov = entries[i]!.textOverlay;
+      if (!ov || !ov.text.trim()) continue;
+      const png = await renderTextLayerPng({ text: ov.text, position: ov.position, fontSize: ov.fontSize, fontColor: ov.fontColor }, FW || 1280, FH || 720).catch(() => null);
+      if (!png) continue;
+      const p = join(dir, `ov${i}.png`);
+      await writeFile(p, png);
+      overlayInputIdx[i] = inputs.length + overlayPaths.length; // index among ALL -i inputs (videos first, then PNGs)
+      overlayPaths.push(p);
+    }
+  }
+
+  const parts: string[] = [];
   entries.forEach((e, i) => {
     const st = Math.max(0, e.start).toFixed(3);
     const en = Math.max(e.start + 0.04, e.end).toFixed(3);
     const dur = (e.end - e.start).toFixed(3);
     // fps + yuv420p make every segment concat/xfade-compatible (uniform timebase + pixel format).
-    parts.push(`[${e.src}:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS,${scale}fps=30,format=yuv420p[v${i}]`);
+    const vchain = `[${e.src}:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS,${scale}fps=30,format=yuv420p`;
+    const ovIdx = overlayInputIdx[i];
+    if (ovIdx !== null) {
+      parts.push(`${vchain}[vpre${i}]`);
+      parts.push(`[vpre${i}][${ovIdx}:v]overlay=0:0[v${i}]`);
+    } else {
+      parts.push(`${vchain}[v${i}]`);
+    }
     if (hasAudio[e.src]) {
       const af = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
       if (e.muted) af.push('volume=0');
@@ -362,11 +412,10 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
 
   const args: string[] = ['-y'];
   inputs.forEach((u) => args.push('-i', u));
+  overlayPaths.forEach((p) => args.push('-loop', '1', '-i', p)); // still overlay layers — loop so they persist over the segment
   args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...VIDEO_TAIL);
 
-  let dir: string | null = null;
   try {
-    dir = await mkdtemp(join(tmpdir(), `${tag}-`));
     const out = join(dir, `${tag}.mp4`);
     await exec(b, [...args, out], { maxBuffer: 1 << 26, timeout: 300_000 });
     return await host(await readFile(out), tag, 'mp4', 'video/mp4');
@@ -374,17 +423,17 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     console.warn(`[surgical/${tag}] failed:`, err instanceof Error ? err.message : err);
     return null;
   } finally {
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
 /** Single-source split sequence (delete/reorder/transition within ONE clip) — native res, precise crop. */
 async function renderSequenceDraft(videoUrl: string, segments: DraftSegment[], d: RenderDraft): Promise<string | null> {
-  return runSequence([videoUrl], segments.map((s) => ({ src: 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition })), d, {}, 'seq');
+  return runSequence([videoUrl], segments.map((s) => ({ src: 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition, textOverlay: s.textOverlay })), d, {}, 'seq');
 }
 
 /** One entry in a MULTI-CLIP sequence — references a source by index, with its trim window + mute + transition. */
-export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition }
+export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 
 /**
  * MULTI-CLIP concat — stitch trimmed windows of SEVERAL distinct sources into one clip, each scaled +

@@ -61,8 +61,10 @@ interface DraftPayload {
   crop?: { x: number; y: number; w: number; h: number } | null;
   mutedRanges?: { start: number; end: number }[];
   /** Ordered export sequence (delete = omitted, reorder = array order). */
-  segments?: { start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade' }[];
+  segments?: { start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade'; textOverlay?: TextOverlayPayload }[];
 }
+
+interface TextOverlayPayload { text: string; position: 'top-left' | 'top-right' | 'bottom-center' | 'center'; fontSize: number; fontColor: string }
 
 /** Best-effort save of an edited asset to the user's library (never blocks the response). */
 async function saveCreation(req: NextRequest, userId: string, url: string, action: EditAction): Promise<void> {
@@ -101,7 +103,7 @@ export async function POST(req: NextRequest) {
     draft?: DraftPayload;
     // Multi-clip concat export:
     sources?: string[];
-    sequence?: { src: number; start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade' }[];
+    sequence?: { src: number; start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade'; textOverlay?: TextOverlayPayload }[];
     targetW?: number;
     targetH?: number;
   } | null;
@@ -125,7 +127,7 @@ export async function POST(req: NextRequest) {
     const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec };
     const seq = body.sequence
       .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length && e.end > e.start)
-      .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition }));
+      .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition, textOverlay: e.textOverlay }));
     if (!seq.length) return NextResponse.json({ url: null, error: 'empty sequence' }, { status: 400 });
     try {
       const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720);

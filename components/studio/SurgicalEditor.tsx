@@ -29,6 +29,7 @@ interface Copy {
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   transition: string; tCut: string; tCross: string; tFade: string;
+  textOverlay: string; overlayPh: string; oSize: string; oColor: string;
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
@@ -42,6 +43,7 @@ const T: Record<Lang, Copy> = {
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
     maxReached: 'მაქსიმუმ 35 ფაილი', max5: 'მაქსიმუმ 5 კლიპი თანმიმდევრობაში', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
+    textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
     exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
@@ -53,6 +55,7 @@ const T: Record<Lang, Copy> = {
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
     maxReached: 'Maximum 35 files', max5: 'Up to 5 clips in a sequence', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
+    textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
     exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
@@ -64,6 +67,7 @@ const T: Record<Lang, Copy> = {
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
     maxReached: 'Максимум 35 файлов', max5: 'До 5 клипов в последовательности', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
+    textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
     exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
@@ -74,8 +78,10 @@ interface Clip { id: string; file: File; url: string; kind: 'video' | 'image'; n
 interface Grade { saturation: number; contrast: number; brightness: number; temperature: number }
 interface Rect { x: number; y: number; w: number; h: number }
 type Transition = 'none' | 'crossfade' | 'fade';
+type OverlayPosition = 'top-left' | 'top-right' | 'bottom-center' | 'center';
+interface TextOverlay { text: string; position: OverlayPosition; fontSize: number; fontColor: string }
 /** One block in the export sequence — points at its OWN source clip; `transition` = blend FROM the previous block. */
-interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean; transition?: Transition }
+interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 
 const NEUTRAL: Grade = { saturation: 100, contrast: 100, brightness: 100, temperature: 0 };
 const isNeutral = (g: Grade) => g.saturation === 100 && g.contrast === 100 && g.brightness === 100 && g.temperature === 0;
@@ -254,6 +260,14 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     setSegments((prev) => prev.map((s, k) => (k === i ? { ...s, transition: nextOf(s.transition) } : s)));
   }, []);
   const transLabel = useCallback((tr: Transition | undefined): string => (tr === 'crossfade' ? t.tCross : tr === 'fade' ? t.tFade : t.tCut), [t.tCross, t.tFade, t.tCut]);
+  // Merge a patch into the selected segment's text overlay (creating a default overlay on first edit).
+  const setSegOverlay = useCallback((i: number, patch: Partial<TextOverlay>) => {
+    setSegments((prev) => prev.map((s, k) => {
+      if (k !== i) return s;
+      const cur: TextOverlay = s.textOverlay ?? { text: '', position: 'bottom-center', fontSize: 24, fontColor: '#ffffff' };
+      return { ...s, textOverlay: { ...cur, ...patch } };
+    }));
+  }, []);
 
   // ── Crop overlay (single-source only) ──
   const onStageDown = useCallback((e: React.MouseEvent) => {
@@ -313,7 +327,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   const seqDuration = useMemo(() => segments.reduce((a, s) => a + Math.max(0, s.end - s.start), 0), [segments]);
   const hasMutations = useMemo(() => (
-    !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1 || segments.some((s) => s.muted)
+    !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1 || segments.some((s) => s.muted || !!s.textOverlay?.text.trim())
   ), [grade, fade, crop, segments]);
   const cropAllowed = distinctClipIds.length <= 1; // crop is a single-source op
 
@@ -335,7 +349,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         const uploads = await Promise.all(distinctClipIds.map((id) => { const c = byId.get(id); return c ? uploadClip(c.file) : Promise.resolve(null); }));
         if (uploads.some((u) => !u)) { flash(t.failed); return; }
         const srcIndex = new Map(distinctClipIds.map((id, i) => [id, i]));
-        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none' }));
+        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const first = byId.get(distinctClipIds[0] ?? '');
         const res = await postEdit({
           action: 'render', kind: 'video', sources: uploads as string[], sequence,
@@ -349,7 +363,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
         const only = byId.get(onlyId) ?? clip;
         const path = await uploadClip(only.file);
         if (!path) { flash(t.failed); return; }
-        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none' }));
+        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const res = await postEdit({
           action: 'render', mediaUrl: path, kind: 'video', durationSec: only.dur || duration,
           draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, crop: sourceCrop(), segments: segs },
@@ -464,6 +478,22 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               })()}
               {cropOn && crop && crop.w > 4 && <div className="pointer-events-none absolute border-2 border-app-accent bg-app-accent/10" style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }} />}
               {cropOn && !crop && <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-3 py-1 text-[11px] text-white">{t.cropHint}</div>}
+              {/* Instant CSS preview of the selected segment's text overlay, positioned over the video box. */}
+              {!isPhoto && sel?.textOverlay?.text.trim() && sel.clipId === clip?.id && videoRef.current && stageRef.current && (() => {
+                const vr = videoRef.current.getBoundingClientRect(); const sr = stageRef.current.getBoundingClientRect();
+                const nh = videoRef.current.videoHeight || 720;
+                const fsPx = Math.max(9, (sel.textOverlay.fontSize || 24) * (vr.height / nh));
+                const pos = sel.textOverlay.position;
+                return (
+                  <div className="pointer-events-none absolute flex p-3" style={{
+                    left: vr.left - sr.left, top: vr.top - sr.top, width: vr.width, height: vr.height,
+                    alignItems: pos === 'center' ? 'center' : pos.startsWith('top') ? 'flex-start' : 'flex-end',
+                    justifyContent: pos === 'top-left' ? 'flex-start' : pos === 'top-right' ? 'flex-end' : 'center',
+                  }}>
+                    <span style={{ color: sel.textOverlay.fontColor, fontSize: fsPx, fontWeight: 600, lineHeight: 1.1, textShadow: '0 2px 4px rgba(0,0,0,0.7)', maxWidth: '96%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sel.textOverlay.text}</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Timeline + sequence (VIDEO) */}
@@ -543,6 +573,31 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                 <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.fade}</span>
                 <Slider label={t.fadeIn} min={0} max={5} step={0.1} value={fade.inSec} onChange={(v) => setFade((f) => ({ ...f, inSec: v }))} suffix="s" />
                 <Slider label={t.fadeOut} min={0} max={5} step={0.1} value={fade.outSec} onChange={(v) => setFade((f) => ({ ...f, outSec: v }))} suffix="s" />
+              </div>
+            )}
+
+            {/* Text overlay for the selected segment */}
+            {!isPhoto && sel && (
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.textOverlay}</span>
+                <input value={sel.textOverlay?.text ?? ''} onChange={(e) => setSegOverlay(selectedSeg, { text: e.target.value })} placeholder={t.overlayPh}
+                  className="w-full rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none" />
+                <div className="flex items-center gap-1.5">
+                  {(['top-left', 'top-right', 'bottom-center', 'center'] as OverlayPosition[]).map((p) => {
+                    const on = (sel.textOverlay?.position ?? 'bottom-center') === p;
+                    return (
+                      <button key={p} type="button" onClick={() => setSegOverlay(selectedSeg, { position: p })} title={p}
+                        className={`flex h-8 flex-1 items-center justify-center rounded-lg text-[14px] ${on ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-muted ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
+                        {p === 'top-left' ? '↖' : p === 'top-right' ? '↗' : p === 'center' ? '⊙' : '▽'}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Slider label={t.oSize} min={10} max={120} value={sel.textOverlay?.fontSize ?? 24} onChange={(v) => setSegOverlay(selectedSeg, { fontSize: v })} suffix="px" />
+                <div className="flex items-center gap-3">
+                  <span className="w-20 shrink-0 text-[11.5px] text-app-text/80 sm:w-24">{t.oColor}</span>
+                  <input type="color" value={sel.textOverlay?.fontColor ?? '#ffffff'} onChange={(e) => setSegOverlay(selectedSeg, { fontColor: e.target.value })} className="h-7 w-14 cursor-pointer rounded bg-transparent" aria-label={t.oColor} />
+                </div>
               </div>
             )}
 
