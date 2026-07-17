@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Crop, Volume2, VolumeX, Play, Pause, Upload, X, Download, Loader2, Trash2, ChevronLeft, ChevronRight,
   SunMedium, Contrast as ContrastIcon, Droplet, Thermometer, RotateCcw, Sparkles, Film, Clapperboard, Brush,
-  Eraser, Maximize2, Smile, Palette, Share2, Check,
+  Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 
@@ -36,6 +36,7 @@ interface Copy {
   exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
+  audioStudio: string; vocalIso: string; vocalSplit: string; pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string; instrumental: string; vocals: string;
 }
 
 const T: Record<Lang, Copy> = {
@@ -52,6 +53,7 @@ const T: Record<Lang, Copy> = {
     exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
+    audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
@@ -66,6 +68,7 @@ const T: Record<Lang, Copy> = {
     exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
+    audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
@@ -80,10 +83,11 @@ const T: Record<Lang, Copy> = {
     exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
+    audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
   },
 };
 
-interface Clip { id: string; file: File; url: string; kind: 'video' | 'image'; name: string; dur?: number; w?: number; h?: number }
+interface Clip { id: string; file: File; url: string; kind: 'video' | 'image' | 'audio'; name: string; dur?: number; w?: number; h?: number; peaks?: number[] }
 interface Grade { saturation: number; contrast: number; brightness: number; temperature: number }
 interface Rect { x: number; y: number; w: number; h: number }
 type Transition = 'none' | 'crossfade' | 'fade';
@@ -111,6 +115,27 @@ function probeVideo(url: string): Promise<{ dur: number; w: number; h: number }>
     v.onerror = () => resolve({ dur: 0, w: 0, h: 0 });
     v.src = url;
   });
+}
+
+/** Decode an audio file into ~72 normalized amplitude peaks for the waveform visualizer (best-effort, off-thread). */
+async function decodeAudioPeaks(file: File, buckets = 72): Promise<number[]> {
+  try {
+    const AC = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
+    if (!AC) return [];
+    const ctx = new AC();
+    const audio = await ctx.decodeAudioData(await file.arrayBuffer());
+    const data = audio.getChannelData(0);
+    const block = Math.max(1, Math.floor(data.length / buckets));
+    const peaks: number[] = [];
+    for (let i = 0; i < buckets; i++) {
+      let max = 0;
+      for (let j = 0; j < block; j++) { const v = Math.abs(data[i * block + j] || 0); if (v > max) max = v; }
+      peaks.push(max);
+    }
+    void ctx.close();
+    const norm = Math.max(...peaks, 0.01);
+    return peaks.map((p) => Math.max(0.04, p / norm));
+  } catch { return []; }
 }
 
 async function uploadClip(file: File): Promise<string | null> {
@@ -160,7 +185,7 @@ async function downloadAsset(url: string, filename: string): Promise<void> {
   }
 }
 
-export default function SurgicalEditor({ locale, onExit }: { locale: string; onExit: () => void }) {
+export default function SurgicalEditor({ locale, onExit, initialAsset }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio' } | null }) {
   const t = T[norm(locale)];
   const [clips, setClips] = useState<Clip[]>([]);
   const [active, setActive] = useState(0);
@@ -187,9 +212,19 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
-  const [result, setResult] = useState<{ url: string; kind: 'video' | 'image' } | null>(null);
-  const [successAsset, setSuccessAsset] = useState<{ url: string; kind: 'video' | 'image' } | null>(null);
+  const [result, setResult] = useState<{ url: string; kind: 'video' | 'image' | 'audio' } | null>(null);
+  const [successAsset, setSuccessAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio' } | null>(null);
+  const [secondaryAudio, setSecondaryAudio] = useState<string | null>(null); // splitter's instrumental stem
   const [toast, setToast] = useState<string | null>(null);
+
+  // ── Audio Studio state ──
+  const [audioDur, setAudioDur] = useState(0);
+  const [audioCur, setAudioCur] = useState(0);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [pitch, setPitch] = useState(0);        // semitones, -12..12
+  const [audioSpeed, setAudioSpeed] = useState(1); // 0.5..2
+  const [aTrim, setATrim] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -201,6 +236,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   const clip = clips[active];
   const isPhoto = clip?.kind === 'image';
+  const isAudio = clip?.kind === 'audio';
   const distinctClipIds = useMemo(() => Array.from(new Set(segments.map((s) => s.clipId))), [segments]);
   const videoClips = useMemo(() => clips.filter((c) => c.kind === 'video'), [clips]);
 
@@ -209,11 +245,11 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2600); }, []);
 
-  const filenameFor = useCallback((url: string, kind: 'video' | 'image') => `myavatar-${Date.now()}.${extFromUrl(url, kind === 'video' ? 'mp4' : 'png')}`, []);
+  const filenameFor = useCallback((url: string, kind: 'video' | 'image' | 'audio') => `myavatar-${Date.now()}.${extFromUrl(url, kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'png')}`, []);
 
   // On any successful export / AI photo action: keep the result for the viewport, open the success card, and
   // AUTO-DOWNLOAD the asset to the device immediately.
-  const onAssetReady = useCallback((url: string, kind: 'video' | 'image') => {
+  const onAssetReady = useCallback((url: string, kind: 'video' | 'image' | 'audio') => {
     setResult({ url, kind });
     setSuccessAsset({ url, kind });
     void downloadAsset(url, filenameFor(url, kind));
@@ -232,13 +268,16 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
   // are the GLOBAL draft and persist across clips.
-  useEffect(() => { setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null); }, [active]);
+  useEffect(() => {
+    setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null);
+    setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 }); setSecondaryAudio(null);
+  }, [active]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files) return;
     const incoming: Clip[] = [];
     for (const f of Array.from(files)) {
-      const kind: 'video' | 'image' | null = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : null;
+      const kind: 'video' | 'image' | 'audio' | null = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : f.type.startsWith('audio/') ? 'audio' : null;
       if (!kind) continue;
       incoming.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: f, url: URL.createObjectURL(f), kind, name: f.name });
     }
@@ -247,8 +286,9 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       if (prev.length + incoming.length > MAX_CLIPS) flash(t.maxReached);
       return [...prev, ...incoming].slice(0, MAX_CLIPS);
     });
-    // Probe each new VIDEO + append it as a segment to the sequence (cap 5 distinct sources).
+    // Probe each new VIDEO + append it as a segment to the sequence (cap 5 distinct sources); decode AUDIO peaks.
     for (const c of incoming) {
+      if (c.kind === 'audio') { void decodeAudioPeaks(c.file).then((peaks) => setClips((prev) => prev.map((x) => (x.id === c.id ? { ...x, peaks } : x)))); continue; }
       if (c.kind !== 'video') continue;
       void probeVideo(c.url).then(({ dur, w, h }) => {
         setClips((prev) => prev.map((x) => (x.id === c.id ? { ...x, dur, w, h } : x)));
@@ -260,6 +300,37 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
       });
     }
   }, [flash, t.maxReached, t.max5]);
+
+  // ── "Open in Editor" bridge (Vector 1): a forwarded asset URL → fetch → File → clip, and jump to it. ──
+  const loadedAssetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialAsset?.url || loadedAssetRef.current === initialAsset.url) return;
+    loadedAssetRef.current = initialAsset.url;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(initialAsset.url, { credentials: 'omit' });
+        if (!res.ok || cancelled) return;
+        const blob = await res.blob();
+        const kind = initialAsset.kind;
+        const type = blob.type || (kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/mpeg' : 'image/png');
+        const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png';
+        const file = new File([blob], `import-${Date.now()}.${ext}`, { type });
+        if (cancelled) return;
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const nclip: Clip = { id, file, url: URL.createObjectURL(file), kind, name: file.name };
+        const idx = Math.min(clipsRef.current.length, MAX_CLIPS - 1);
+        setClips((prev) => [...prev, nclip].slice(0, MAX_CLIPS));
+        setActive(idx);
+        if (kind === 'audio') void decodeAudioPeaks(file).then((peaks) => setClips((prev) => prev.map((x) => (x.id === id ? { ...x, peaks } : x))));
+        else if (kind === 'video') void probeVideo(nclip.url).then(({ dur, w, h }) => {
+          setClips((prev) => prev.map((x) => (x.id === id ? { ...x, dur, w, h } : x)));
+          setSegments((prev) => (prev.some((s) => s.clipId === id) || new Set(prev.map((s) => s.clipId)).size >= MAX_SEQ_CLIPS ? prev : [...prev, { id: `seg-${id}`, clipId: id, start: 0, end: dur || 0, muted: false }]));
+        });
+      } catch { if (!cancelled) flash(t.failed); }
+    })();
+    return () => { cancelled = true; };
+  }, [initialAsset, flash, t.failed]);
 
   const resetDraft = useCallback(() => {
     setGrade(NEUTRAL); setFade({ inSec: 0, outSec: 0 }); setCrop(null); setCropOn(false); setResult(null);
@@ -495,8 +566,68 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig]);
 
+  // ── Audio Studio: playback, generative separation (billed), deterministic process (free) ──
+  const toggleAudioPlay = useCallback(() => {
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) { void a.play(); setAudioPlaying(true); } else { a.pause(); setAudioPlaying(false); }
+  }, []);
+  const seekAudio = useCallback((frac: number) => {
+    const a = audioRef.current; if (!a || !audioDur) return;
+    a.currentTime = Math.max(0, Math.min(audioDur, frac * audioDur)); setAudioCur(a.currentTime);
+  }, [audioDur]);
+
+  // Resolve the source once (upload original → cache), reusing the last AI result when chaining.
+  const audioSource = useCallback(async (): Promise<string | null> => {
+    if (chainPath) return chainPath;
+    const src = originalPath ?? (clip ? await uploadClip(clip.file) : null);
+    if (src && !originalPath) setOriginalPath(src);
+    return src;
+  }, [chainPath, originalPath, clip]);
+
+  const runAudioAI = useCallback(async (action: 'vocal_isolation' | 'splitter') => {
+    if (!clip || exporting) return;
+    setExporting(true); setExportPct(12); setSuccessAsset(null); setSecondaryAudio(null);
+    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 16)) : p)), 600);
+    try {
+      const src = await audioSource();
+      if (!src) { flash(t.failed); return; }
+      const res = await fetch('/api/ai/edit-audio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action, mediaUrl: src }) });
+      const j = (await res.json().catch(() => null)) as { url?: string | null; path?: string | null; secondaryUrl?: string | null } | null;
+      if (res.status === 402) flash(t.insufficient);
+      else if (res.status === 503) flash(t.notConfig);
+      else if (res.ok && j?.url) {
+        setExportPct(100);
+        if (j.path) setChainPath(j.path);
+        if (j.secondaryUrl) setSecondaryAudio(j.secondaryUrl);
+        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
+        onAssetReady(j.url, 'audio'); flash(t.done);
+      } else flash(t.failed);
+    } catch { flash(t.failed); }
+    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+  }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig]);
+
+  const audioHasEdit = pitch !== 0 || Math.abs(audioSpeed - 1) > 0.01 || fade.inSec > 0 || fade.outSec > 0 || aTrim.end > aTrim.start + 0.05;
+  const runAudioProcess = useCallback(async () => {
+    if (!clip || exporting) return;
+    if (!audioHasEdit) { flash(t.exportHint); return; }
+    setExporting(true); setExportPct(15); setSuccessAsset(null); setSecondaryAudio(null);
+    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 12)) : p)), 350);
+    try {
+      const src = await audioSource();
+      if (!src) { flash(t.failed); return; }
+      const res = await fetch('/api/ai/edit-audio', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ action: 'process', mediaUrl: src, semitones: pitch, speed: audioSpeed, trimStart: aTrim.start, trimEnd: aTrim.end, fadeInSec: fade.inSec, fadeOutSec: fade.outSec, durationSec: audioDur }),
+      });
+      const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
+      if (res.ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(t.failed);
+    } catch { flash(t.failed); }
+    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint]);
+
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
+  const audioProgress = audioDur ? Math.min(1, audioCur / audioDur) : 0;
   const sel = segments[selectedSeg];
 
   return (
@@ -510,7 +641,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {clips.length > 0 && (
+          {clips.length > 0 && !isAudio && (
             <button type="button" onClick={doExport} disabled={!hasMutations || exporting} title={hasMutations ? '' : t.exportHint}
               className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40"
               style={hasMutations ? { background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', color: '#06121a', boxShadow: '0 0 0 1px rgba(6,182,212,0.4), 0 10px 30px -8px rgba(6,182,212,0.7)' } : { background: 'var(--color-elevated)', color: 'var(--color-muted)' }}>
@@ -529,7 +660,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
             <div className="text-[15px] font-semibold">{t.drop}</div>
             <div className="text-[12px] text-app-muted">{t.dropHint}</div>
             <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
-            <input type="file" accept="video/*,image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+            <input type="file" accept="video/*,image/*,audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
           </label>
         ) : (
           <>
@@ -538,14 +669,69 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               {clips.map((c, i) => (
                 <button key={c.id} type="button" onClick={() => setActive(i)}
                   className={`relative flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border ${i === active ? 'border-app-accent ring-1 ring-app-accent' : 'border-app-border/20'} bg-app-elevated`}>
-                  {c.kind === 'image' ? <img src={c.url} alt="" className="h-full w-full object-cover" /> : <Film size={16} className="text-app-muted" />}
+                  {c.kind === 'image' ? <img src={c.url} alt="" className="h-full w-full object-cover" /> : c.kind === 'audio' ? <Music2 size={16} className="text-app-accent" /> : <Film size={16} className="text-app-muted" />}
                 </button>
               ))}
               <label className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed border-app-border/25 text-app-muted hover:border-app-accent/40">
-                <Upload size={15} /><input type="file" accept="video/*,image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+                <Upload size={15} /><input type="file" accept="video/*,image/*,audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
               </label>
             </div>
 
+            {isAudio ? (
+            /* ── AI AUDIO STUDIO ── */
+            <div className="space-y-4">
+              {/* Waveform visualizer + transport */}
+              <div className="rounded-xl border border-app-border/15 bg-gradient-to-b from-app-surface/70 to-app-bg/50 p-4">
+                <audio ref={audioRef} src={result?.kind === 'audio' ? result.url : clip?.url} preload="metadata"
+                  onLoadedMetadata={(e) => { const d = e.currentTarget.duration || 0; setAudioDur(d); setATrim((tr) => (tr.end > tr.start ? tr : { start: 0, end: d })); }}
+                  onTimeUpdate={(e) => setAudioCur(e.currentTarget.currentTime)} onEnded={() => setAudioPlaying(false)} className="hidden" />
+                <div className="mb-3 flex items-center gap-2.5">
+                  <button type="button" onClick={toggleAudioPlay} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-lg">{audioPlaying ? <Pause size={17} /> : <Play size={17} className="ml-0.5" />}</button>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 truncate text-[12.5px] font-semibold"><Music2 size={13} className="shrink-0 text-app-accent" /><span className="truncate">{clip?.name}</span></div>
+                    <div className="text-[10.5px] tabular-nums text-app-muted">{fmt(audioCur)} / {fmt(audioDur)}</div>
+                  </div>
+                </div>
+                <div role="button" tabIndex={0} aria-label="seek"
+                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seekAudio((e.clientX - r.left) / r.width); }}
+                  onKeyDown={(e) => { if (e.key === 'ArrowRight') seekAudio(Math.min(1, audioProgress + 0.05)); if (e.key === 'ArrowLeft') seekAudio(Math.max(0, audioProgress - 0.05)); }}
+                  className="flex h-24 cursor-pointer items-center gap-[2px]">
+                  {(clip?.peaks?.length ? clip.peaks : Array.from({ length: 56 }, () => 0.12)).map((p, i, arr) => {
+                    const played = i / arr.length <= audioProgress;
+                    return <span key={i} className={`flex-1 rounded-full ${played && audioPlaying ? 'animate-pulse' : ''}`} style={{ height: `${Math.max(6, p * 100)}%`, background: played ? 'rgb(34,211,238)' : 'rgba(148,163,184,0.32)', transition: 'background-color 120ms' }} />;
+                  })}
+                </div>
+              </div>
+
+              {/* AI separation (Demucs) — billed server-side, reserve-before-render */}
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.audioStudio}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <PhotoCard icon={<Mic size={16} />} label={t.vocalIso} cost={3} disabled={exporting} onClick={() => void runAudioAI('vocal_isolation')} />
+                  <PhotoCard icon={<Waves size={16} />} label={t.vocalSplit} cost={4} disabled={exporting} onClick={() => void runAudioAI('splitter')} />
+                </div>
+              </div>
+
+              {/* Deterministic process — pitch / speed / trim / fade (free) */}
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.applyAudio}</span>
+                <Slider icon={<Music2 size={13} />} label={t.pitch} min={-12} max={12} value={pitch} onChange={setPitch} suffix=" st" />
+                <Slider icon={<Gauge size={13} />} label={t.speed} min={0.5} max={2} step={0.05} value={audioSpeed} onChange={setAudioSpeed} suffix="×" />
+                {audioDur > 0 && (
+                  <>
+                    <Slider label={t.aStart} min={0} max={Math.max(0.1, audioDur)} step={0.1} value={aTrim.start} onChange={(v) => setATrim((tr) => ({ ...tr, start: Math.min(v, tr.end - 0.1) }))} suffix="s" />
+                    <Slider label={t.aEnd} min={0} max={Math.max(0.1, audioDur)} step={0.1} value={aTrim.end} onChange={(v) => setATrim((tr) => ({ ...tr, end: Math.max(v, tr.start + 0.1) }))} suffix="s" />
+                  </>
+                )}
+                <Slider label={t.fadeIn} min={0} max={5} step={0.1} value={fade.inSec} onChange={(v) => setFade((f) => ({ ...f, inSec: v }))} suffix="s" />
+                <Slider label={t.fadeOut} min={0} max={5} step={0.1} value={fade.outSec} onChange={(v) => setFade((f) => ({ ...f, outSec: v }))} suffix="s" />
+                <button type="button" onClick={() => void runAudioProcess()} disabled={!audioHasEdit || exporting}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2.5 text-[13px] font-bold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
+                  {exporting ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}{t.applyAudio}
+                </button>
+              </div>
+            </div>
+            ) : (<>
             {/* Preview stage */}
             <div ref={stageRef} onMouseDown={onStageDown} onMouseMove={onStageMove} onMouseUp={onStageUp} onMouseLeave={onStageUp}
               className={`relative flex items-center justify-center overflow-hidden rounded-xl bg-black ${cropOn ? 'cursor-crosshair' : ''}`} style={{ minHeight: 220, maxHeight: 360 }}>
@@ -727,6 +913,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                 </div>
               </div>
             )}
+            </>)}
 
             {/* Result */}
             {result && (
@@ -738,7 +925,15 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
                 {result.kind === 'image'
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img src={result.url} alt="" className="max-h-52 w-full rounded-lg bg-black object-contain" />
+                  : result.kind === 'audio'
+                  ? <audio src={result.url} controls className="w-full" />
                   : <video src={result.url} controls playsInline className="max-h-52 w-full rounded-lg bg-black" />}
+                {secondaryAudio && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg bg-app-elevated/60 px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-app-muted"><Waves size={12} className="text-app-accent" />{t.instrumental}</span>
+                    <button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex items-center gap-1 rounded-md bg-app-bg/50 px-2.5 py-1 text-[11px] font-semibold text-app-text"><Download size={11} />{t.download}</button>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -750,7 +945,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
           {exporting ? (
             <div className="w-full max-w-[340px] rounded-2xl border border-app-border/20 bg-app-surface p-6 text-center shadow-2xl">
               <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-app-accent/15"><Clapperboard size={22} className="text-app-accent" /></span>
-              <div className="mb-3 text-[13.5px] font-semibold text-app-text">{isPhoto ? t.photoProcessing : t.exporting}</div>
+              <div className="mb-3 text-[13.5px] font-semibold text-app-text">{isAudio ? t.audioProcessing : isPhoto ? t.photoProcessing : t.exporting}</div>
               <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
               <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
             </div>
@@ -763,6 +958,8 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
               {successAsset.kind === 'image'
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={successAsset.url} alt="" className="mb-3 max-h-48 w-full rounded-lg bg-black object-contain" />
+                : successAsset.kind === 'audio'
+                ? <div className="mb-3 rounded-lg bg-app-elevated/60 p-3"><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-app-muted"><Music2 size={13} className="text-app-accent" />{t.vocals}</div><audio src={successAsset.url} controls className="w-full" />{secondaryAudio && <div className="mt-2 border-t border-app-border/15 pt-2"><div className="mb-1.5 flex items-center justify-between text-[11.5px] font-semibold text-app-muted"><span className="flex items-center gap-1.5"><Waves size={12} className="text-app-accent" />{t.instrumental}</span><button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex items-center gap-1 rounded-md bg-app-bg/50 px-2 py-0.5 text-[10.5px] text-app-text"><Download size={10} />{t.download}</button></div><audio src={secondaryAudio} controls className="w-full" /></div>}</div>
                 : <video src={successAsset.url} controls playsInline className="mb-3 max-h-48 w-full rounded-lg bg-black" />}
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void downloadAsset(successAsset.url, filenameFor(successAsset.url, successAsset.kind))}

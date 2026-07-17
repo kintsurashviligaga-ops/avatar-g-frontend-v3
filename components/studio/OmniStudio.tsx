@@ -1301,6 +1301,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
   const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
+  // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor.
+  const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio' } | null>(null);
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -4545,6 +4547,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     );
   }, [savedUrls, saveToLibrary, locale]);
 
+  // "Open in Editor" — forward a generated asset into the Surgical Editor (SurgicalEditor fetches the URL → File).
+  const openInEditor = useCallback((url: string, kind: 'video' | 'image' | 'audio') => {
+    if (!url) return;
+    setEditorAsset({ url, kind });
+    setMode('surgical');
+  }, []);
+  const editButton = useCallback((url: string, kind: 'video' | 'image' | 'audio') => {
+    const label = locale === 'en' ? 'Open in Editor' : locale === 'ru' ? 'Открыть в редакторе' : 'რედაქტირება ედიტორში';
+    return (
+      <button type="button" onClick={() => openInEditor(url, kind)} title={label} aria-label={label}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+        <Scissors size={16} />
+      </button>
+    );
+  }, [openInEditor, locale]);
+
   // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
   const writeLyrics = useCallback(async () => {
     if (writingLyrics) return;
@@ -4590,7 +4608,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   if (mode === 'surgical') {
     return (
       <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden text-app-text">
-        <SurgicalEditor locale={locale} onExit={() => setMode('chat')} />
+        <SurgicalEditor locale={locale} initialAsset={editorAsset} onExit={() => { setEditorAsset(null); setMode('chat'); }} />
       </div>
     );
   }
@@ -4709,6 +4727,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Pencil size={16} />
                     </button>
                     {saveLibButton(m.imageUrl, 'image', m.regen?.kind === 'image' ? m.regen.prompt : undefined)}
+                    {editButton(m.imageUrl, 'image')}
                   </div>
                 </div>
               )}
@@ -4768,6 +4787,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       </button>
                     )}
                     {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
+                    {editButton(m.audioUrl, 'audio')}
                     {/* Cross-service bridge — turn this track into a music video (Video studio). The 🎤 IS the icon. */}
                     <button type="button" onClick={() => sendMusicToMusicVideo(m.audioUrl!, 0, m.regen?.kind === 'music' ? (m.regen.prompt || 'Generated Track') : 'Generated Track')}
                       title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
@@ -4803,6 +4823,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       <Share2 size={16} />
                     </button>
                     {saveLibButton(m.videoUrl, 'film', m.filmPrompt)}
+                    {editButton(m.videoUrl, 'video')}
                   </div>
                   {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
                       shown once the film captured its landed clips + brief. */}
