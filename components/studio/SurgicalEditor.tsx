@@ -302,12 +302,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 }); setSecondaryAudio(null);
   }, [active]);
 
-  const addFiles = useCallback((files: FileList | null) => {
+  const addFiles = useCallback((files: FileList | null, only?: 'video' | 'image' | 'audio') => {
     if (!files) return;
     const incoming: Clip[] = [];
     for (const f of Array.from(files)) {
       const kind: 'video' | 'image' | 'audio' | null = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : f.type.startsWith('audio/') ? 'audio' : null;
-      if (!kind) continue;
+      if (!kind || (only && kind !== only)) continue; // `only` scopes a drop/pick to the chosen workspace lane
       incoming.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, file: f, url: URL.createObjectURL(f), kind, name: f.name });
     }
     if (!incoming.length) return;
@@ -693,17 +693,23 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
             </div>
           ) : (
             /* Scoped dropzone for the chosen workspace (accept filtered to the picked media) */
+            (() => {
+              // The kind this lane accepts — used to STRICTLY scope both drag-drop and the file picker.
+              const laneKind: 'video' | 'image' | 'audio' = workspaceMode === 'photo' ? 'image' : workspaceMode;
+              return (
             <div className="flex flex-1 flex-col gap-3">
               <button type="button" onClick={() => setWorkspaceMode(null)} className="inline-flex w-fit items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text"><ChevronLeft size={14} />{t.changeMode}</button>
-              <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+              <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files, laneKind); }}
                 className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-app-border/25 bg-app-surface/40 p-10 text-center transition-colors hover:border-app-accent/40">
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-app-accent/12">{workspaceMode === 'audio' ? <Music2 size={24} className="text-app-accent" /> : workspaceMode === 'photo' ? <Crop size={24} className="text-app-accent" /> : <Film size={24} className="text-app-accent" />}</span>
                 <div className="text-[15px] font-semibold">{workspaceMode === 'video' ? t.wsVideoHint : workspaceMode === 'photo' ? t.wsPhotoHint : t.wsAudioHint}</div>
                 <div className="text-[12px] text-app-muted">{t.dropHint}</div>
                 <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
-                <input type="file" accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'} multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+                <input type="file" accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'} multiple className="hidden" onChange={(e) => addFiles(e.target.files, laneKind)} />
               </label>
             </div>
+              );
+            })()
           )
         ) : (
           <>
