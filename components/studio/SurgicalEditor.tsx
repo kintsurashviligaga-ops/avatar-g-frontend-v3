@@ -137,6 +137,10 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [photoDim, setPhotoDim] = useState<{ w: number; h: number } | null>(null);
+  // Photo AI chaining: `originalPath` caches the uploaded source; `chainPath` is the latest AI result's storage
+  // path — when set, the NEXT action runs on the result (transparent PNG → upscale → colorize…), not the original.
+  const [originalPath, setOriginalPath] = useState<string | null>(null);
+  const [chainPath, setChainPath] = useState<string | null>(null);
 
   const [grade, setGrade] = useState<Grade>(NEUTRAL);
   const [fade, setFade] = useState<{ inSec: number; outSec: number }>({ inSec: 0, outSec: 0 });
@@ -175,7 +179,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
   // are the GLOBAL draft and persist across clips.
-  useEffect(() => { setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); }, [active]);
+  useEffect(() => { setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null); }, [active]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -206,7 +210,7 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
 
   const resetDraft = useCallback(() => {
     setGrade(NEUTRAL); setFade({ inSec: 0, outSec: 0 }); setCrop(null); setCropOn(false); setResult(null);
-    setMaskMode(false); setMaskPainted(false); setPrompt('');
+    setMaskMode(false); setMaskPainted(false); setPrompt(''); setChainPath(null); // revert photo chaining to the original
     // Rebuild the sequence to one full segment per video clip, in upload order.
     setSegments(clipsRef.current.filter((c) => c.kind === 'video').slice(0, MAX_SEQ_CLIPS).map((c) => ({ id: `seg-${c.id}`, clipId: c.id, start: 0, end: c.dur || 0, muted: false })));
     setSelectedSeg(0);
@@ -409,28 +413,34 @@ export default function SurgicalEditor({ locale, onExit }: { locale: string; onE
   // ── AI Photo Studio — remove_bg / upscale / face_restore / colorize via Replicate (billed server-side) ──
   const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
     if (!clip || exporting) return;
-    setExporting(true); setExportPct(15); setResult(null);
+    setExporting(true); setExportPct(15);
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 14)) : p)), 500);
     try {
-      const path = await uploadClip(clip.file);
-      if (!path) { flash(t.failed); return; }
+      // CHAIN: run on the last AI result if present, else the cached original (upload once, then reuse).
+      let src = chainPath;
+      if (!src) {
+        src = originalPath ?? await uploadClip(clip.file);
+        if (src && !originalPath) setOriginalPath(src);
+      }
+      if (!src) { flash(t.failed); return; }
       const res = await fetch('/api/ai/edit-photo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ action, mediaUrl: path }),
+        body: JSON.stringify({ action, mediaUrl: src }),
       });
-      const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
+      const j = (await res.json().catch(() => null)) as { url?: string | null; path?: string | null } | null;
       if (res.status === 402) flash(t.insufficient);
       else if (res.status === 503) flash(t.notConfig);
       else if (res.ok && j?.url) {
         setExportPct(100);
         setResult({ url: j.url, kind: 'image' });
+        if (j.path) setChainPath(j.path); // subsequent actions run on THIS result
         // Persist appears server-side; nudge any open Library panel to refetch immediately.
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
         flash(t.done);
       } else flash(t.failed);
     } catch { flash(t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, flash, t.failed, t.done, t.insufficient, t.notConfig]);
+  }, [clip, exporting, chainPath, originalPath, flash, t.failed, t.done, t.insufficient, t.notConfig]);
 
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;

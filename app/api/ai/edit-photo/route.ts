@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 
 export const dynamic = 'force-dynamic';
@@ -26,12 +26,15 @@ type PhotoAction = 'remove_bg' | 'upscale' | 'face_restore' | 'colorize';
 const ACTIONS: PhotoAction[] = ['remove_bg', 'upscale', 'face_restore', 'colorize'];
 const COST: Record<PhotoAction, number> = { remove_bg: 2, upscale: 5, face_restore: 3, colorize: 3 };
 
-/** Default Replicate checkpoints per action — override any via env. A wrong slug fails cleanly (+ refund). */
+// Default Replicate checkpoints per action — each fully overridable via env (Vercel dashboard). A wrong/absent
+// version fails cleanly and REFUNDS, so the feature is safe to ship before the operator pins real values.
+// NOTE: these fallback version hashes are TRUNCATED (Replicate versions are 64-char); the fallback will NOT resolve
+// at runtime — set the env var to a valid `owner/name:fullversion` (or a bare `owner/name` to use its latest).
 const DEFAULT_MODEL: Record<PhotoAction, string> = {
-  remove_bg: 'lucataco/remove-bg',        // BiRefNet/Rembg-style transparent-PNG background removal
-  upscale: 'nightmareai/real-esrgan',     // Real-ESRGAN super-resolution
-  face_restore: 'tencentarc/gfpgan',      // GFPGAN v1.4 face restoration
-  colorize: 'tencentarc/ddcolor',         // DDColor B/W → colour
+  remove_bg: 'lucataco/birefnet-general:a64010a3', // BiRefNet transparent-PNG background removal
+  upscale: 'nightmareai/real-esrgan:f121d6f5',     // Real-ESRGAN super-resolution
+  face_restore: 'tencentarc/gfpgan:8a0fcd04',      // GFPGAN v1.4 face restoration
+  colorize: 'tencentarc/ddcolor:afd1d42a',         // DDColor B/W → colour
 };
 const ENV_KEY: Record<PhotoAction, string> = {
   remove_bg: 'REPLICATE_REMOVE_BG_MODEL',
@@ -68,6 +71,27 @@ function firstUrl(output: unknown): string | null {
   if (typeof output === 'string') return output;
   if (Array.isArray(output)) { const s = output.find((v) => typeof v === 'string'); return typeof s === 'string' ? s : null; }
   return null;
+}
+
+/**
+ * Re-host the ephemeral Replicate output into OUR storage → returns a persistent signed URL + storage PATH.
+ * The PATH is what enables CHAINING: it's an own-storage ref the SSRF-guarded resolveMedia accepts, so the
+ * result can be fed straight back into the next action. Fail-soft → null (caller shows the raw Replicate URL).
+ */
+async function rehost(srcUrl: string): Promise<{ url: string; path: string } | null> {
+  try {
+    const res = await fetch(srcUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) return null;
+    const ct = res.headers.get('content-type') || 'image/png';
+    const ext = /jpe?g/.test(ct) ? 'jpg' : /webp/.test(ct) ? 'webp' : 'png';
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength < 64) return null;
+    const path = `photo-studio/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const signed = await uploadAndSign(UPLOAD_BUCKET, path, buf.toString('base64'), ct, 604_800);
+    return signed ? { url: signed, path } : null;
+  } catch {
+    return null;
+  }
 }
 /** Best-effort save to the user's library (never blocks the response). */
 async function saveCreation(req: NextRequest, userId: string, url: string, action: PhotoAction, cost: number): Promise<void> {
@@ -112,13 +136,17 @@ export async function POST(req: NextRequest) {
     if (created.status !== 'succeeded' && created.status !== 'failed') {
       out = await pollPrediction(created.id);
     }
-    const url = out.status === 'succeeded' ? firstUrl(out.output) : null;
-    if (!url) {
+    const raw = out.status === 'succeeded' ? firstUrl(out.output) : null;
+    if (!raw) {
       if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge
       return NextResponse.json({ url: null, error: `${action} produced no output` }, { status: 502 });
     }
-    void saveCreation(req, guard.userId, url, action, cost);
-    return NextResponse.json({ url });
+    // Re-host into our storage → persistent URL + a chainable path (the ephemeral Replicate URL expires and
+    // wouldn't pass the SSRF-guarded resolveMedia on the next action). Falls back to the raw URL for display.
+    const hosted = await rehost(raw);
+    const displayUrl = hosted?.url ?? raw;
+    void saveCreation(req, guard.userId, displayUrl, action, cost);
+    return NextResponse.json({ url: displayUrl, path: hosted?.path });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
     return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : `${action} failed` }, { status: 502 });
