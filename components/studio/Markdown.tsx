@@ -44,6 +44,9 @@ function MarkdownImpl({ children }: { children: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-app-accent underline-offset-2 hover:underline" />,
+          // Render any inline markdown image as a clean framed picture (not raw text/alt).
+          // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+          img: ({ node: _n, ...props }) => <img {...props} loading="lazy" className="my-2 max-h-[60vh] max-w-full rounded-xl bg-black/20 object-contain ring-1 ring-app-border/10" />,
           p: ({ node: _n, ...props }) => <p {...props} className="whitespace-pre-wrap break-words" />,
           ul: ({ node: _n, ...props }) => <ul {...props} className="list-disc space-y-1 pl-5" />,
           ol: ({ node: _n, ...props }) => <ol {...props} className="list-decimal space-y-1 pl-5" />,

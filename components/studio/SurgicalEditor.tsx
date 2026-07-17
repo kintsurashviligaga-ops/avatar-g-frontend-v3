@@ -317,6 +317,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   useEffect(() => {
     setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null);
     setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 }); setSecondaryAudio(null);
+    setResult(null); setSuccessAsset(null); // the last result belongs to the PREVIOUS clip — never bleed it into the new one
   }, [active]);
 
   const addFiles = useCallback((files: FileList | null, only?: 'video' | 'image' | 'audio') => {
@@ -711,11 +712,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       if (a) void runAudioAI(a); else flash(t.agentNoOp);
     } else {
       const lc = trimmed.toLowerCase();
-      if (/split|cut|გაჭერ|ამოჭერ|разрежь|обрежь|нарежь/.test(lc)) splitAtPlayhead();
-      else if (/mute|დაადუმ|заглуши/.test(lc)) toggleMuteSeg(selectedSeg);
+      // Video ops act on the timeline (not a paid render), so confirm with a toast — the command must never feel dead.
+      if (/split|cut|გაჭერ|ამოჭერ|разрежь|обрежь|нарежь/.test(lc)) { splitAtPlayhead(); flash(t.done); }
+      else if (/mute|დაადუმ|заглуши/.test(lc)) { toggleMuteSeg(selectedSeg); flash(t.done); }
       else flash(t.agentNoOp);
     }
-  }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, selectedSeg, flash, t.agentNoOp]);
+  }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, selectedSeg, flash, t.agentNoOp, t.done]);
 
   // Agent G one-shot: once the forwarded clip is loaded, auto-run the requested AI action(s). A photo CHAIN (>1)
   // runs server-side atomically; a single action runs directly. Cleared immediately so it fires exactly once.
@@ -741,8 +743,22 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col bg-app-bg text-app-text">
       <div className="flex items-center justify-between gap-2 border-b border-app-border/15 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-app-accent/15"><Scissors size={16} className="text-app-accent" /></span>
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Locked 44×44 asset thumbnail (never shrinks) when a clip is loaded; the Scissors glyph before then. */}
+          {clip ? (
+            <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-app-border/20 bg-app-elevated">
+              {clip.kind === 'image' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={result?.kind === 'image' ? result.url : clip.url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${clip.kind === 'audio' ? 'from-cyan-500/25 to-cyan-500/[0.04]' : 'from-violet-500/25 to-violet-500/[0.04]'}`}>
+                  {clip.kind === 'audio' ? <Music2 size={18} className="text-app-accent" /> : <Film size={18} className="text-app-text/70" />}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-app-accent/15"><Scissors size={16} className="text-app-accent" /></span>
+          )}
           <div className="min-w-0">
             <div className="truncate text-[14px] font-bold leading-tight">{t.title}</div>
             <div className="truncate text-[11px] text-app-muted">{t.subtitle}</div>
@@ -750,10 +766,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {clips.length > 0 && !isAudio && (
-            <button type="button" onClick={doExport} disabled={!hasMutations || exporting} title={hasMutations ? '' : t.exportHint}
-              className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40"
+            <button type="button" onClick={doExport} disabled={!hasMutations || exporting} title={isPhoto ? t.exportPhoto : t.exportVideo}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 sm:px-3.5"
               style={hasMutations ? { background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', color: '#06121a', boxShadow: '0 0 0 1px rgba(6,182,212,0.4), 0 10px 30px -8px rgba(6,182,212,0.7)' } : { background: 'var(--color-elevated)', color: 'var(--color-muted)' }}>
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />}{isPhoto ? t.exportPhoto : t.exportVideo}
+              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />}<span className="hidden sm:inline">{isPhoto ? t.exportPhoto : t.exportVideo}</span>
             </button>
           )}
           {onReturnToChat && clips.length > 0 && (

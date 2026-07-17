@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors } from 'lucide-react';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
+import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
@@ -5072,20 +5073,44 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     </div>
                   );
                 }
-                // Assistant replies render as rich markdown (bold · lists · code ·
-                // links · tables); the user's own text stays verbatim.
-                return m.role === 'assistant'
-                  ? (
-                    <>
-                      {typeof m.videoProgress === 'number' && !m.videoUrl && (
-                        <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
-                          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
+                // The user's own text stays verbatim; assistant replies render as rich markdown.
+                if (m.role !== 'assistant') return <span className="whitespace-pre-wrap break-words">{m.text}</span>;
+                // VECTOR 1 — split out image blocks so a `[Image: …]` placeholder never renders as a raw bracketed
+                // text block: real URLs become <img> frames (Download + Open-in-Editor), URL-less descriptions
+                // become a one-tap "Generate" card. Plain prose is untouched (fast-path when there are no blocks).
+                const parsed = hasImageBlocks(m.text) ? parseImageBlocks(m.text) : { text: m.text, urls: [] as string[], prompts: [] as string[] };
+                return (
+                  <>
+                    {typeof m.videoProgress === 'number' && !m.videoUrl && (
+                      <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
+                        <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
+                      </div>
+                    )}
+                    {parsed.text && <Markdown>{parsed.text}</Markdown>}
+                    {parsed.urls.map((url, k) => (
+                      <div key={`imgblk-${k}`} className="mt-2 overflow-hidden rounded-xl ring-1 ring-app-border/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" loading="lazy" decoding="async" onClick={() => setLightbox(url)}
+                          className="block max-h-[60vh] w-full max-w-[min(82vw,420px)] cursor-zoom-in bg-black/40 object-contain" />
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.png`)} title={t.imgDownload} aria-label={t.imgDownload}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
+                          {editButton(url, 'image')}
                         </div>
-                      )}
-                      <Markdown>{m.text}</Markdown>
-                    </>
-                  )
-                  : <span className="whitespace-pre-wrap break-words">{m.text}</span>;
+                      </div>
+                    ))}
+                    {parsed.prompts.map((p, k) => (
+                      <div key={`genblk-${k}`} className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
+                        <ImageIcon size={16} className="shrink-0 text-app-accent" />
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{p}</span>
+                        <button type="button" disabled={busy} onClick={() => void runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
+                          <Sparkles size={13} />{locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია'}
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                );
               })()}
               {/* FIX 4 — one-click retry on a failed video render (reuses the stored
                   prompt + refs + orientation; no re-typing / re-uploading). */}
