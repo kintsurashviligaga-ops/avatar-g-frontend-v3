@@ -34,6 +34,31 @@ describe('buildDirectorUserContent — reference-image identity lock (VECTOR 2)'
   });
 });
 
+describe('buildDirectorUserContent — vision character-lock (Phase 71)', () => {
+  const vid = 'an elderly weathered man in his 70s with a thick white beard and grey hair, wearing a dark wool vest, standing in the mountains';
+
+  it('injects the [CORE CHARACTER VISUAL ID LOCK] with the extracted description verbatim', () => {
+    const out = buildDirectorUserContent({ ...base, characterVisualId: vid, hasReferenceImage: true }, 6);
+    expect(out).toMatch(/\[CORE CHARACTER VISUAL ID LOCK\]/);
+    expect(out).toContain(vid);
+    expect(out).toMatch(/GROUND-TRUTH identity/);
+    // the exact stereotypes the user reported are explicitly named as forbidden
+    expect(out).toMatch(/30-year-old man/i);
+    expect(out).toMatch(/skydiver/i);
+  });
+
+  it('the vision lock OVERRIDES the generic text-only fallback (no double instruction)', () => {
+    const out = buildDirectorUserContent({ ...base, characterVisualId: vid, hasReferenceImage: true }, 6);
+    expect(out).not.toMatch(/the exact same person shown in the reference image/i);
+  });
+
+  it('falls back to the generic reference lock when no description was extracted', () => {
+    const out = buildDirectorUserContent({ ...base, characterVisualId: '', hasReferenceImage: true }, 6);
+    expect(out).not.toMatch(/CORE CHARACTER VISUAL ID LOCK/);
+    expect(out).toMatch(/REFERENCE IMAGE ACTIVE/);
+  });
+});
+
 describe('SYSTEM_PROMPT — no invented placeholder characters (VECTOR 1)', () => {
   it('carries an explicit rule forbidding fabricated stock characters', () => {
     expect(SYSTEM_PROMPT).toMatch(/NO INVENTED PLACEHOLDER CHARACTERS/);

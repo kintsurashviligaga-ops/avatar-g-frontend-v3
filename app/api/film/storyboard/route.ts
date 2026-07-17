@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { parseMasterScript } from '@/lib/pipeline/script/masterScript';
 import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
+import { describeCharacterFromImage } from '@/lib/gemini/image-analysis';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
@@ -365,10 +366,15 @@ export async function POST(req: NextRequest) {
     // as `character`, which the client threads to the render so the protagonist never
     // drifts. Fail-open: a miss falls back to the haiku Script Agent.
     const tPA = Date.now();
+    // VISION PRE-EXTRACTION — read the actual uploaded person off the photo so the (text-only) agent locks the REAL
+    // subject rather than inventing a stock persona. Fail-open (null) → the strong text instruction still applies.
+    const characterVisualId = selfie ? await describeCharacterFromImage(selfie, locale) : null;
+    if (characterVisualId) console.log(`[storyboard] scriptsOnly vision character-lock: "${characterVisualId.slice(0, 120)}"`);
     const brief = await runPromptAgent({
       brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
       length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
       model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
+      ...(characterVisualId ? { characterVisualId } : {}),
     });
     const promptAgentMs = Date.now() - tPA;
     // eslint-disable-next-line no-console
@@ -420,10 +426,13 @@ export async function POST(req: NextRequest) {
   // character + per-scene image prompts), fail-open to the haiku Script Agent, then
   // render all frames in one request. Fail-open: a miss leaves `plan` in place.
   const tPromptAgent = Date.now();
+  const characterVisualIdFull = selfie ? await describeCharacterFromImage(selfie, locale) : null;
+  if (characterVisualIdFull) console.log(`[storyboard] full vision character-lock: "${characterVisualIdFull.slice(0, 120)}"`);
   const masterBrief: MasterFilmBrief | null = await runPromptAgent({
     brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
     length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
-    model: STORYBOARD_PROMPT_MODEL,
+    model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
+    ...(characterVisualIdFull ? { characterVisualId: characterVisualIdFull } : {}),
   });
   const promptAgentMs = Date.now() - tPromptAgent;
   const sceneScripts = masterBrief

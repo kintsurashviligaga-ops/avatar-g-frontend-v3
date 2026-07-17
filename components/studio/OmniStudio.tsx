@@ -2819,8 +2819,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         let character: string | null = null;
         try {
           const sr = await fetch('/api/film/storyboard', {
+            // Pass the uploaded reference(s): without them the scene-script agent gets hasReferenceImage=false and
+            // INVENTS a persona (the "30-year-old man in a skydiver suit" drift). With refs it locks the real subject
+            // and the route vision-extracts the actual character from the photo.
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: [], style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
           });
           const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;

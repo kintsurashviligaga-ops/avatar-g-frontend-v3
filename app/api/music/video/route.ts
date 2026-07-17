@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { renderPhotoMusicVideo } from '@/lib/pipeline/photoMusicVideo';
-import { isAllowedAudioUrl, fetchAllowlistedAudio } from '@/lib/security/allowlistedAudioFetch';
+import { isAllowedAudioUrl, fetchAllowlistedAudio, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -47,12 +47,11 @@ export async function POST(req: Request) {
 
     const ar = await fetchAllowlistedAudio(audioUrl, { timeoutMs: AUDIO_FETCH_TIMEOUT_MS });
     if (!ar) return NextResponse.json({ error: 'could not fetch audio' }, { status: 502 });
-    // Reject an oversized track BEFORE buffering it into memory when the server declared its length.
-    const declaredLen = Number(ar.headers.get('content-length'));
-    if (Number.isFinite(declaredLen) && declaredLen > MAX_AUDIO_BYTES) return NextResponse.json({ error: 'audio too large' }, { status: 413 });
-    const audioBuffer = Buffer.from(await ar.arrayBuffer());
+    // Cap enforced DURING download (readBodyWithCap): fast-rejects an oversized Content-Length AND aborts a
+    // chunked / lying-length stream the instant it exceeds MAX_AUDIO_BYTES, so it can never buffer into an OOM.
+    const audioBuffer = await readBodyWithCap(ar, MAX_AUDIO_BYTES);
+    if (!audioBuffer) return NextResponse.json({ error: 'audio too large' }, { status: 413 });
     if (audioBuffer.byteLength < 128) return NextResponse.json({ error: 'empty audio' }, { status: 400 });
-    if (audioBuffer.byteLength > MAX_AUDIO_BYTES) return NextResponse.json({ error: 'audio too large' }, { status: 413 });
 
     const { mp4, durationSec } = await renderPhotoMusicVideo(imageBuffer, audioBuffer, EXT[mime]);
 

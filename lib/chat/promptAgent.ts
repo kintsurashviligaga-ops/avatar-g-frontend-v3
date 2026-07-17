@@ -101,6 +101,10 @@ export interface PromptAgentInput {
    *  photo or an uploaded selfie). When set, the agent is FORBIDDEN from inventing a persona — the
    *  photo is the identity ground truth, so it must not guess a character from the (text-only) brief. */
   hasReferenceImage?: boolean;
+  /** A vision-extracted description of the uploaded reference person ("an elderly weathered man with a thick white
+   *  beard…"). When present it becomes the LITERAL character-lock the agent must carry across every scene — this is
+   *  the strongest anti-hallucination signal (the agent is otherwise text-only + blind to the photo). */
+  characterVisualId?: string;
 }
 
 export const SYSTEM_PROMPT = `You are a Master Film Director.
@@ -383,9 +387,13 @@ export function buildDirectorUserContent(input: PromptAgentInput, sceneCount: nu
     `Effect: ${input.effect}\n` +
     `Language: ${input.language}` +
     (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
-    // VECTOR 2 — the agent is TEXT-ONLY (it cannot see the photo), so when a reference image is
-    // active it must be told, in the strongest terms, to NOT invent a person from the brief text.
-    (input.hasReferenceImage
+    // VISION LOCK (strongest): a description was extracted directly FROM the user's photo — use it verbatim as the
+    // one true identity. This makes the text-only agent effectively vision-aware and kills the stock-persona drift.
+    (input.characterVisualId && input.characterVisualId.trim()
+      ? `\n\n[CORE CHARACTER VISUAL ID LOCK] The main character is EXACTLY this real person, extracted directly from the user's uploaded reference photo — this is the GROUND-TRUTH identity, it OVERRIDES any character the brief text might imply: "${input.characterVisualId.trim().slice(0, 500)}". You are STRICTLY FORBIDDEN from substituting a different person: do NOT change the age, gender, ethnicity, face, hair/beard, build or wardrobe; do NOT invent a younger/older or alternate persona (never a "30-year-old man", a skydiver, a chokha, a stock "Georgian" character) and do NOT infer identity from the brief text. In EVERY character field and EVERY scene.imagePrompt (Scene 1 through the last, without exception) describe THIS SAME person by these exact features, photorealistic live-action, never illustrated/animated. The brief text and dialogue only drive the ACTION, wardrobe changes the story explicitly states, camera and setting — never the person's core identity.`
+      // FALLBACK — the agent is TEXT-ONLY (it cannot see the photo). With no extracted description it must at least
+      // be told, in the strongest terms, to NOT invent a person from the brief text.
+      : input.hasReferenceImage
       ? `\n\nCRITICAL — REFERENCE IMAGE ACTIVE: The main character is VISUALLY LOCKED to a reference photo of a REAL person the user already chose. You are STRICTLY FORBIDDEN from inventing, substituting or describing any ALTERNATIVE persona — do NOT invent an older man, a weathered face, a chokha, or any stock "Georgian" character; do NOT turn the subject into a cartoon, anime, illustrated, 3D-rendered or animated character; do NOT swap the subject's gender (never introduce a woman/female profile the photo does not show); and do NOT infer age / gender / ethnicity / wardrobe from the brief text. In EVERY character description and EVERY scene.imagePrompt (Scene 1 through the final scene, without exception), assert the SAME single identity: "the exact same person shown in the reference image — identical face, age, gender, hair, build and wardrobe, photorealistic live-action, never illustrated or animated". Every scene breakdown must maintain that one identity from the photo — no drift, no alternate character, no illustration style.`
       : '') +
     `\n\nProduce EXACTLY ${sceneCount} scenes.`
@@ -421,6 +429,16 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
     const t0 = Date.now();
     const text = await llmText({ system: SYSTEM_PROMPT, user: userContent, maxTokens, temperature: 0.6, timeoutMs: timeoutMs - 4_000 });
     const brief = text ? coerceBrief(extractJson(text), sceneCount) : null;
+    // HARD LOCK: when the photo was vision-extracted, the character fragment threaded to the render is the GROUND
+    // TRUTH — never the agent's own (text-only) guess, which can still drift. This is what the render conditions on.
+    // Assign the locked object to BOTH `character` AND `characters[0]` so no downstream reader (whichever field it
+    // reads) ever sees a stale, un-locked identity.
+    if (brief && input.characterVisualId && input.characterVisualId.trim()) {
+      const vid = input.characterVisualId.trim().slice(0, 400);
+      const locked = { ...brief.character, imagePromptFragment: `${vid}, photorealistic live-action, the exact same person in every scene` };
+      brief.character = locked;
+      if (Array.isArray(brief.characters) && brief.characters.length > 0) brief.characters[0] = locked;
+    }
     // eslint-disable-next-line no-console
     console.log(`[promptAgent] ${brief ? 'ok' : 'miss'} in ${Date.now() - t0}ms (${brief?.scenes.length ?? 0} scenes)`);
     return brief;

@@ -27,6 +27,55 @@ export function isAllowedAudioUrl(raw: string, env: NodeJS.ProcessEnv = process.
   return host.endsWith('.supabase.co') || host.endsWith('.supabase.in');
 }
 
+/**
+ * STRICTER than isAllowedAudioUrl: true ONLY for an HTTPS URL on the app's OWN Supabase project host (exact
+ * hostname match against NEXT_PUBLIC_SUPABASE_URL / SUPABASE_URL). Use this where the URL is user-supplied AND we
+ * must fetch only content WE hosted — e.g. server-side vision on a user's reference photo — so a caller cannot point
+ * us at an arbitrary OTHER Supabase tenant's `*.supabase.co` bucket (which isAllowedAudioUrl's suffix rule allows).
+ * Returns false when the project host is unknown (env unset) → the caller fails open (skips the fetch entirely).
+ */
+export function isOwnSupabaseUrl(raw: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (u.protocol !== 'https:') return false;
+  let projectHost = '';
+  try { projectHost = new URL(env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL || '').hostname.toLowerCase(); } catch { /* unset */ }
+  return !!projectHost && u.hostname.toLowerCase() === projectHost;
+}
+
+/**
+ * Read a fetched Response body into a Buffer with a HARD byte cap enforced DURING the download, not after. An honest
+ * Content-Length over the cap short-circuits with no body read; otherwise the body is streamed and the read is
+ * aborted the instant the running total exceeds `maxBytes` (this also defeats chunked responses with no
+ * Content-Length). Returns null on over-cap / read error. Bounds peak memory to ~maxBytes + one chunk, so a
+ * malicious host streaming gigabytes to an unauthenticated route can never OOM the server.
+ */
+export async function readBodyWithCap(res: Response, maxBytes: number): Promise<Buffer | null> {
+  const cl = Number(res.headers.get('content-length'));
+  if (Number.isFinite(cl) && cl > maxBytes) return null; // fast reject on an honest oversized Content-Length
+  const body = res.body as ReadableStream<Uint8Array> | null;
+  if (!body || typeof body.getReader !== 'function') {
+    // No stream (e.g. a mock/undici edge case) — fall back to a bounded read; CL was already checked ≤ cap or absent.
+    try { const buf = Buffer.from(await res.arrayBuffer()); return buf.byteLength <= maxBytes ? buf : null; }
+    catch { return null; }
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.byteLength) {
+        total += value.byteLength;
+        if (total > maxBytes) { await reader.cancel().catch(() => {}); return null; } // abort the download mid-stream
+        chunks.push(value);
+      }
+    }
+  } catch { try { await reader.cancel(); } catch { /* already closed */ } return null; }
+  return Buffer.concat(chunks, total);
+}
+
 export interface AllowlistedFetchOpts { fetchImpl?: FetchLike; timeoutMs?: number; maxHops?: number; env?: NodeJS.ProcessEnv }
 
 /**
