@@ -29,11 +29,13 @@ const COST: Record<PhotoAction, number> = { remove_bg: 2, upscale: 5, face_resto
 // Default Replicate checkpoints per action — BARE SLUGS (owner/name, no :version). resolveModelVersion resolves a
 // bare slug to the model's LATEST active version via the /models API, so there is no truncated/stale-hash runtime
 // crash. Each is overridable via env (Vercel dashboard); a wrong/absent model fails cleanly and REFUNDS.
+// These are the stable, high-traffic, currently-active checkpoints for each op. Premium alternatives an operator
+// may pin via env: remove_bg → 851-labs/background-remover or men1scus/birefnet; upscale → lucataco/real-esrgan-large.
 const DEFAULT_MODEL: Record<PhotoAction, string> = {
   remove_bg: 'cjwbw/rembg',            // rembg transparent-PNG background removal
-  upscale: 'nightmareai/real-esrgan',  // Real-ESRGAN super-resolution
-  face_restore: 'tencentarc/gfpgan',   // GFPGAN v1.4 face restoration
-  colorize: 'tencentarc/ddcolor',      // DDColor B/W → colour
+  upscale: 'nightmareai/real-esrgan',  // Real-ESRGAN super-resolution (most-run, bulletproof)
+  face_restore: 'tencentarc/gfpgan',   // GFPGAN v1.4 face restoration (industry standard)
+  colorize: 'tencentarc/ddcolor',      // DDColor B/W → colour (stable, realistic)
 };
 const ENV_KEY: Record<PhotoAction, string> = {
   remove_bg: 'REPLICATE_REMOVE_BG_MODEL',

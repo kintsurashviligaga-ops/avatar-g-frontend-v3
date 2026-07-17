@@ -37,6 +37,7 @@ interface Copy {
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
   audioStudio: string; vocalIso: string; vocalSplit: string; pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string; instrumental: string; vocals: string;
+  selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
 }
 
 const T: Record<Lang, Copy> = {
@@ -54,6 +55,7 @@ const T: Record<Lang, Copy> = {
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
     audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
+    selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ჩააგდე ან ატვირთე აუდიო', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
@@ -69,6 +71,7 @@ const T: Record<Lang, Copy> = {
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
     audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
+    selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Drop or upload audio', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
@@ -84,6 +87,7 @@ const T: Record<Lang, Copy> = {
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
     audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
+    selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Перетащите или загрузите аудио', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
   },
 };
 
@@ -140,14 +144,14 @@ async function decodeAudioPeaks(file: File, buckets = 72): Promise<number[]> {
 
 async function uploadClip(file: File): Promise<string | null> {
   try {
-    const signRes = await fetch('/api/upload/sign', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ contentType: file.type || 'application/octet-stream' }),
-    });
-    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string };
-    if (!signRes.ok || !sign.path || !sign.token) return null;
+    // Both legs are bounded so a stalled upload can never strand the caller's loader: the sign call goes through
+    // postJson (aborts on hang), and the supabase PUT is raced against a timeout (it's a supabase-js call, not fetch).
+    const signed = await postJson('/api/upload/sign', { contentType: file.type || 'application/octet-stream' }, 60_000);
+    const sign = signed.body as { bucket?: string; path?: string; token?: string } | null;
+    if (!signed.ok || !sign?.path || !sign?.token) return null;
     const sb = createBrowserClient();
-    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, file, { contentType: file.type || 'application/octet-stream' });
+    const put = sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, file, { contentType: file.type || 'application/octet-stream' });
+    const { error } = await withTimeout(put, 300_000, { error: { message: 'upload timeout' } } as Awaited<typeof put>);
     return error ? null : (sign.path ?? null);
   } catch { return null; }
 }
@@ -185,9 +189,34 @@ async function downloadAsset(url: string, filename: string): Promise<void> {
   }
 }
 
+/**
+ * POST JSON with a hard timeout that stays armed THROUGH the body read. A try/catch/finally can only strand a
+ * loader if an awaited promise never settles — and that covers TWO legs: a fetch that never connects AND a response
+ * whose body stream hangs open after headers arrive. We keep ONE AbortController live across both fetch() and
+ * res.json(), clearing the timer only in `finally` (after the body is consumed), so every network await is bounded
+ * and `finally` in the callers always runs. Server routes cap at maxDuration=300s, so we back off to 315s.
+ */
+async function postJson(url: string, payload: unknown, ms = 315_000): Promise<{ status: number; ok: boolean; body: unknown }> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload), signal: ctrl.signal });
+    const body = (await res.json().catch(() => null)) as unknown; // still under the abort timer — a stalled body aborts too
+    return { status: res.status, ok: res.ok, body };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+/** Bound an arbitrary promise (e.g. a supabase-js call that isn't our fetch) so a stalled op can't hang forever. */
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((resolve) => window.setTimeout(() => resolve(onTimeout), ms))]);
+}
+
 export default function SurgicalEditor({ locale, onExit, initialAsset }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio' } | null }) {
   const t = T[norm(locale)];
   const [clips, setClips] = useState<Clip[]>([]);
+  // Empty-state workspace pre-selection (V1): which media the dropzone is scoped to before any file is loaded.
+  const [workspaceMode, setWorkspaceMode] = useState<'video' | 'photo' | 'audio' | null>(null);
   const [active, setActive] = useState(0);
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
@@ -503,12 +532,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
         });
         finishExport(res, 'video');
       }
-    } catch { flash(t.failed); }
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
 
     async function postEdit(payload: Record<string, unknown>) {
-      const r = await fetch('/api/ai/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
-      return (await r.json().catch(() => null)) as { url?: string | null } | null;
+      const { body } = await postJson('/api/ai/edit', payload);
+      return body as { url?: string | null } | null;
     }
     function finishExport(j: { url?: string | null } | null, kind: 'video' | 'image') {
       if (j?.url) { setExportPct(100); onAssetReady(j.url, kind); flash(t.done); } else flash(t.failed);
@@ -517,22 +546,26 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
 
   // ── AI object removal (photo) ──
   const runInpaint = useCallback(async () => {
-    if (!clip) return;
+    if (!clip || exporting) return;
     const c = maskCanvasRef.current;
+    // MASK SAFETY GUARD (V3) — never POST without a painted mask; the Remove button is also disabled until then.
     if (!maskPainted || !c) { flash(t.paintFirst); return; }
-    setExporting(true); setExportPct(25); setResult(null); setSuccessAsset(null);
+    setExporting(true); setExportPct(20); setResult(null); setSuccessAsset(null);
+    // Progress TICK so the bar keeps moving during the (long) Replicate poll instead of appearing frozen at 25%.
+    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 16)) : p)), 600);
     try {
       const maskUrl = c.toDataURL('image/png');
       const path = await uploadClip(clip.file);
       if (!path) { flash(t.failed); return; }
-      const res = await fetch('/api/ai/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() }) });
-      const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
-      if (res.status === 503) flash(t.inpaintOff);
-      else if (res.ok && j?.url) { onAssetReady(j.url, 'image'); flash(t.done); }
+      const { status, ok, body } = await postJson('/api/ai/edit', { action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() });
+      const j = body as { url?: string | null } | null;
+      if (status === 402) flash(t.insufficient);
+      else if (status === 503) flash(t.inpaintOff);
+      else if (ok && j?.url) { setExportPct(100); try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ } onAssetReady(j.url, 'image'); flash(t.done); }
       else flash(t.failed);
-    } catch { flash(t.failed); }
-    finally { setExporting(false); setExportPct(0); }
-  }, [clip, maskPainted, prompt, onAssetReady, flash, t.paintFirst, t.failed, t.done, t.inpaintOff]);
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
+    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+  }, [clip, exporting, maskPainted, prompt, onAssetReady, flash, t.paintFirst, t.failed, t.done, t.inpaintOff, t.insufficient, t.timedOut]);
 
   // ── AI Photo Studio — remove_bg / upscale / face_restore / colorize via Replicate (billed server-side) ──
   const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
@@ -547,14 +580,11 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
         if (src && !originalPath) setOriginalPath(src);
       }
       if (!src) { flash(t.failed); return; }
-      const res = await fetch('/api/ai/edit-photo', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ action, mediaUrl: src }),
-      });
-      const j = (await res.json().catch(() => null)) as { url?: string | null; path?: string | null } | null;
-      if (res.status === 402) flash(t.insufficient);
-      else if (res.status === 503) flash(t.notConfig);
-      else if (res.ok && j?.url) {
+      const { status, ok, body } = await postJson('/api/ai/edit-photo', { action, mediaUrl: src });
+      const j = body as { url?: string | null; path?: string | null } | null;
+      if (status === 402) flash(t.insufficient);
+      else if (status === 503) flash(t.notConfig);
+      else if (ok && j?.url) {
         setExportPct(100);
         if (j.path) setChainPath(j.path); // subsequent actions run on THIS result
         // Persist appears server-side; nudge any open Library panel to refetch immediately.
@@ -562,9 +592,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
         onAssetReady(j.url, 'image');
         flash(t.done);
       } else flash(t.failed);
-    } catch { flash(t.failed); }
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig]);
+  }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   // ── Audio Studio: playback, generative separation (billed), deterministic process (free) ──
   const toggleAudioPlay = useCallback(() => {
@@ -591,20 +621,20 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
-      const res = await fetch('/api/ai/edit-audio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action, mediaUrl: src }) });
-      const j = (await res.json().catch(() => null)) as { url?: string | null; path?: string | null; secondaryUrl?: string | null } | null;
-      if (res.status === 402) flash(t.insufficient);
-      else if (res.status === 503) flash(t.notConfig);
-      else if (res.ok && j?.url) {
+      const { status, ok, body } = await postJson('/api/ai/edit-audio', { action, mediaUrl: src });
+      const j = body as { url?: string | null; path?: string | null; secondaryUrl?: string | null } | null;
+      if (status === 402) flash(t.insufficient);
+      else if (status === 503) flash(t.notConfig);
+      else if (ok && j?.url) {
         setExportPct(100);
         if (j.path) setChainPath(j.path);
         if (j.secondaryUrl) setSecondaryAudio(j.secondaryUrl);
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
         onAssetReady(j.url, 'audio'); flash(t.done);
       } else flash(t.failed);
-    } catch { flash(t.failed); }
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig]);
+  }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   const audioHasEdit = pitch !== 0 || Math.abs(audioSpeed - 1) > 0.01 || fade.inSec > 0 || fade.outSec > 0 || aTrim.end > aTrim.start + 0.05;
   const runAudioProcess = useCallback(async () => {
@@ -615,15 +645,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
-      const res = await fetch('/api/ai/edit-audio', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ action: 'process', mediaUrl: src, semitones: pitch, speed: audioSpeed, trimStart: aTrim.start, trimEnd: aTrim.end, fadeInSec: fade.inSec, fadeOutSec: fade.outSec, durationSec: audioDur }),
-      });
-      const j = (await res.json().catch(() => null)) as { url?: string | null } | null;
-      if (res.ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(t.failed);
-    } catch { flash(t.failed); }
+      const { ok, body } = await postJson('/api/ai/edit-audio', { action: 'process', mediaUrl: src, semitones: pitch, speed: audioSpeed, trimStart: aTrim.start, trimEnd: aTrim.end, fadeInSec: fade.inSec, fadeOutSec: fade.outSec, durationSec: audioDur });
+      const j = body as { url?: string | null } | null;
+      if (ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(t.failed);
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint]);
+  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
 
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
@@ -654,14 +681,30 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         {clips.length === 0 ? (
-          <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-            className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-app-border/25 bg-app-surface/40 p-10 text-center transition-colors hover:border-app-accent/40">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-app-accent/12"><Upload size={24} className="text-app-accent" /></span>
-            <div className="text-[15px] font-semibold">{t.drop}</div>
-            <div className="text-[12px] text-app-muted">{t.dropHint}</div>
-            <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
-            <input type="file" accept="video/*,image/*,audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
-          </label>
+          workspaceMode === null ? (
+            /* ── V1: workspace selector — pick a lane before the dropzone appears ── */
+            <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
+              <div className="max-w-sm text-[16px] font-bold leading-snug">{t.selectMode}</div>
+              <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
+                <WorkspaceCard emoji="🎥" label={t.wsVideo} onClick={() => setWorkspaceMode('video')} />
+                <WorkspaceCard emoji="📸" label={t.wsPhoto} onClick={() => setWorkspaceMode('photo')} />
+                <WorkspaceCard emoji="🎵" label={t.wsAudio} onClick={() => setWorkspaceMode('audio')} />
+              </div>
+            </div>
+          ) : (
+            /* Scoped dropzone for the chosen workspace (accept filtered to the picked media) */
+            <div className="flex flex-1 flex-col gap-3">
+              <button type="button" onClick={() => setWorkspaceMode(null)} className="inline-flex w-fit items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text"><ChevronLeft size={14} />{t.changeMode}</button>
+              <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+                className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-app-border/25 bg-app-surface/40 p-10 text-center transition-colors hover:border-app-accent/40">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-app-accent/12">{workspaceMode === 'audio' ? <Music2 size={24} className="text-app-accent" /> : workspaceMode === 'photo' ? <Crop size={24} className="text-app-accent" /> : <Film size={24} className="text-app-accent" />}</span>
+                <div className="text-[15px] font-semibold">{workspaceMode === 'video' ? t.wsVideoHint : workspaceMode === 'photo' ? t.wsPhotoHint : t.wsAudioHint}</div>
+                <div className="text-[12px] text-app-muted">{t.dropHint}</div>
+                <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
+                <input type="file" accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'} multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+              </label>
+            </div>
+          )
         ) : (
           <>
             {/* Clip strip */}
@@ -975,6 +1018,17 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
 
       {toast && <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-[12px] text-white shadow-lg">{toast}</div>}
     </div>
+  );
+}
+
+function WorkspaceCard({ emoji, label, onClick }: { emoji: string; label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="group flex flex-col items-center justify-center gap-3 rounded-2xl border border-app-border/15 bg-app-surface/60 p-6 transition-all hover:-translate-y-0.5 hover:border-app-accent/50 hover:bg-app-surface active:scale-95"
+      style={{ boxShadow: '0 0 0 1px rgba(6,182,212,0.06), 0 10px 30px -18px rgba(6,182,212,0.5)' }}>
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-app-accent/12 text-[26px] leading-none transition-transform group-hover:scale-110 group-hover:bg-app-accent/20">{emoji}</span>
+      <span className="text-[13.5px] font-bold leading-tight text-app-text">{label}</span>
+    </button>
   );
 }
 

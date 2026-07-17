@@ -32,9 +32,11 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // ffmpeg re-encode / inpaint poll headroom
 
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
-// Standard LaMa-based object-removal model (inputs: image + mask). Best-effort default when the operator hasn't
-// pinned REPLICATE_INPAINT_MODEL — createPrediction resolves its latest version; a bad slug fails cleanly + refunds.
-const DEFAULT_INPAINT_MODEL = 'zylim0702/remove-object';
+// TEXT-GUIDED inpainting (inputs: image + mask + prompt) — the panel takes an optional description
+// ("replace the background with a beach"), so a prompt-aware model makes that description actually matter. This is
+// the very stable, widely-run SD-inpainting checkpoint; createPrediction resolves its latest version, and a bad
+// slug fails cleanly + refunds. Operators wanting pure LaMa object-removal can pin REPLICATE_INPAINT_MODEL instead.
+const DEFAULT_INPAINT_MODEL = 'stability-ai/stable-diffusion-inpainting';
 
 /** Resolve a client media ref (https / bare storage path from uploadBigFile) to a fetchable https URL. */
 async function resolveMedia(v: unknown): Promise<string | null> {
