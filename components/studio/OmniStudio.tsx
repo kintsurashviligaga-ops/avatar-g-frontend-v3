@@ -18,6 +18,7 @@ import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, 
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
+import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
@@ -1447,6 +1448,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Resolver for the CURRENTLY-playing chunk's await — invoked on stop / message-switch so the loop unblocks and its
+  // blob URL is revoked (pause/src-swap fire neither `ended` nor `error`, so without this the promise + URL leak).
+  const ttsResolveRef = useRef<(() => void) | null>(null);
   // Monotonic token so a tap that cancels (or supersedes) an in-flight read-aloud
   // doesn't let the orphaned fetch start playing after the user moved on.
   const ttsTokenRef = useRef(0);
@@ -3434,6 +3438,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     return () => { alive = false; };
   }, []);
 
+  // VECTOR 1 — run the generation the chat model tried to route via a hallucinated { "service": … } JSON (the
+  // deterministic intentDetector missed the phrasing, so it fell through to the LLM). Invoked ONLY from the one-tap
+  // Generate chip (a user gesture) — NEVER auto-fired, so a hallucinated/teaching JSON can never silently charge.
+  // image/music dispatch straight to their Cap-3 queue; video/avatar switch to that studio with the prompt prefilled
+  // (heavy multi-step jobs the user should launch from the panel).
+  const dispatchServiceBlock = useCallback((service: ChatService, prompt: string) => {
+    const p = prompt.trim().slice(0, 2000);
+    if (!p) return;
+    if (service === 'image') {
+      const neg = imgNegative.trim();
+      const spec: ImageRegenSpec = { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(neg ? { negativePrompt: neg } : {}) };
+      runImageJob(p, undefined, spec);
+    } else if (service === 'music') {
+      runMusicJob({
+        prompt: p, userBubble: p, useTrained: false, audioMode: musicAudioMode, genre: musicGenre,
+        duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental, voiceType: musicVoiceType, lyrics: '',
+      });
+    } else if (service === 'video') {
+      setMode('video'); setInput(p);
+    } else if (service === 'avatar') {
+      setMode('lipsync'); setInput(p);
+    }
+  }, [runImageJob, runMusicJob, imgNegative, imgQuality, imgAspect, imgStyle, musicAudioMode, musicGenre, musicDuration, musicTempo, musicInstrumental, musicVoiceType]);
+
   const streamChat = useCallback(async (history: Msg[]) => {
     const myGen = ++genIdRef.current;
     const ac = new AbortController();
@@ -3490,8 +3518,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           } catch { /* ignore non-JSON keepalive lines */ }
         }
       }
-      // Stream finished cleanly (not superseded) → mirror the completed reply to the server.
-      if (mine() && assistantText.trim()) persistChatTurn('assistant', assistantText);
+      // Stream finished cleanly (not superseded) → mirror the reply to the server. VECTOR 1: when a hallucinated
+      // { "service": … } routing block DOMINATES the reply, persist the CLEANED text so the raw JSON never lives in
+      // history (the bubble keeps the original so its render can still offer the one-tap Generate chip). A long
+      // answer that merely contains an example JSON is persisted verbatim. Generation is NEVER auto-fired here.
+      if (mine() && assistantText.trim()) {
+        const svc = hasServiceBlock(assistantText) ? parseServiceBlock(assistantText) : null;
+        const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : assistantText;
+        persistChatTurn('assistant', cleaned);
+      }
     } catch {
       if (!mine()) return; // stopped / superseded — keep the partial stream as-is
       setMessages((prev) => {
@@ -4258,15 +4293,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // voice, Google-TTS fallback). Toggles: tapping the speaking message stops it.
   // Only one plays at a time. Fail-soft: any miss just clears the speaking state.
   const speakMsg = useCallback(async (text: string, i: number) => {
-    if (ttsAudioRef.current) {
-      ttsAudioRef.current.pause();
-      ttsAudioRef.current = null;
-    }
     // Tapping the active bubble (loading OR playing) stops it — bump the token so any
-    // in-flight synthesis for it is abandoned rather than auto-playing later.
-    if (speakingIdx === i) { ttsTokenRef.current++; setSpeakingIdx(null); setSpeakPhase(null); return; }
+    // in-flight synthesis for it is abandoned rather than auto-playing later, and unblock+revoke the current chunk.
+    if (speakingIdx === i) { ttsTokenRef.current++; if (ttsAudioRef.current) ttsAudioRef.current.pause(); ttsResolveRef.current?.(); setSpeakingIdx(null); setSpeakPhase(null); return; }
+    // Switching to a DIFFERENT message mid-read: unblock+revoke the prior chunk before we retarget the element.
+    ttsResolveRef.current?.();
     const token = ++ttsTokenRef.current;
     const live = () => token === ttsTokenRef.current;
+
+    // AUTOPLAY UNLOCK — the "speaker button does nothing" bug. The first audio.play() previously ran AFTER an awaited
+    // TTS fetch, by which time the click's user-activation had expired, so iOS/Safari silently blocked playback. Fix:
+    // reuse ONE <audio> element and prime it with a tiny silent WAV SYNCHRONOUSLY here (inside the click gesture) so
+    // the later src+play() after the fetch is already user-activated. Everything below this line may await freely.
+    const SILENT_WAV = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==';
+    let audioEl = ttsAudioRef.current;
+    if (!audioEl) { audioEl = new Audio(); ttsAudioRef.current = audioEl; }
+    audioEl.pause();
+    audioEl.src = SILENT_WAV;
+    void audioEl.play().catch(() => {}); // primes playback permission within the gesture (must NOT be awaited)
+
     setSpeakingIdx(i);
     setSpeakPhase('loading'); // spinner while eleven_v3 synthesises the cloned voice
 
@@ -4292,6 +4337,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       } catch { return null; }
     };
 
+    // Revoke a still-pending prefetched chunk URL so an aborted read never leaks its blob.
+    const drainNext = (pr: Promise<string | null>) => { void pr.then((u) => { if (u) URL.revokeObjectURL(u); }); };
     try {
       let nextUrlPromise: Promise<string | null> = synth(chunks[0]!);
       for (let idx = 0; idx < chunks.length; idx++) {
@@ -4300,26 +4347,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // Kick off the next chunk's synthesis while this one plays (hides the gap).
         nextUrlPromise = idx + 1 < chunks.length ? synth(chunks[idx + 1]!) : Promise.resolve(null);
         if (!url) continue; // a chunk failed → skip it, keep reading the rest
-        const audio = new Audio(url);
-        ttsAudioRef.current = audio;
+        const el = ttsAudioRef.current;
+        if (!el) { URL.revokeObjectURL(url); drainNext(nextUrlPromise); return; }
+        el.src = url; // reuse the SAME (already user-activated) element so play() is never blocked
         if (live()) setSpeakPhase('playing');
         await new Promise<void>((resolve) => {
-          const done = () => { if (ttsAudioRef.current === audio) ttsAudioRef.current = null; URL.revokeObjectURL(url); resolve(); };
-          audio.onended = done;
-          audio.onerror = done;
-          audio.play().catch(done);
+          let settled = false;
+          const done = () => { if (settled) return; settled = true; ttsResolveRef.current = null; URL.revokeObjectURL(url); resolve(); };
+          // Register with the ref so a stop / message-switch can force this to resolve (pause fires neither event).
+          ttsResolveRef.current = done;
+          el.onended = done;
+          el.onerror = done;
+          el.play().catch(done);
         });
-        if (!live()) return; // stopped mid-read
+        if (!live()) { drainNext(nextUrlPromise); return; } // stopped mid-read → don't leak the prefetched chunk
       }
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
     } catch {
       if (live()) { setSpeakingIdx(null); setSpeakPhase(null); }
-      ttsAudioRef.current = null;
     }
   }, [speakingIdx, locale]);
 
-  // Stop any in-flight read-aloud when the studio unmounts.
-  useEffect(() => () => { try { ttsAudioRef.current?.pause(); } catch { /* noop */ } }, []);
+  // Stop any in-flight read-aloud when the studio unmounts (pause + unblock/revoke the current chunk).
+  useEffect(() => () => { try { ttsAudioRef.current?.pause(); ttsResolveRef.current?.(); } catch { /* noop */ } }, []);
 
   // ── Voice SAMPLE for "sing in my voice" (music) ──────────────────────────────
   // Add an audio blob/file as the music VOICE reference (replaces any prior audio),
@@ -5083,6 +5133,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 // text block: real URLs become <img> frames (Download + Open-in-Editor), URL-less descriptions
                 // become a one-tap "Generate" card. Plain prose is untouched (fast-path when there are no blocks).
                 const parsed = hasImageBlocks(m.text) ? parseImageBlocks(m.text) : { text: m.text, urls: [] as string[], prompts: [] as string[], audioUrls: [] as string[] };
+                // VECTOR 1 — a chat model sometimes hallucinates a { "service": … } routing JSON. Never render it raw
+                // (stripDanglingServiceBlock also hides a still-streaming partial), and when the block DOMINATES the
+                // reply, offer a ONE-TAP Generate chip wired to the right backend. A long answer that merely contains
+                // an example JSON is left intact. Generation is only ever triggered by the user tapping the chip.
+                const svcBlk = hasServiceBlock(parsed.text) ? parseServiceBlock(parsed.text) : null;
+                const routingChip = svcBlk && svcBlk.service && svcBlk.text.length < 200 ? svcBlk.service : null;
+                const routingPrompt = ((svcBlk?.prompt) || (i > 0 && messages[i - 1]?.role === 'user' ? messages[i - 1]!.text : '') || '').trim();
+                const displayText = stripDanglingServiceBlock(parsed.text);
                 return (
                   <>
                     {typeof m.videoProgress === 'number' && !m.videoUrl && (
@@ -5090,7 +5148,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
                       </div>
                     )}
-                    {parsed.text && <Markdown>{parsed.text}</Markdown>}
+                    {displayText && <Markdown>{displayText}</Markdown>}
+                    {routingChip && routingPrompt && (
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
+                        {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <Volume2 size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{routingPrompt}</span>
+                        <button type="button" disabled={busy} onClick={() => dispatchServiceBlock(routingChip, routingPrompt)}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
+                          <Sparkles size={13} />{(routingChip === 'image' || routingChip === 'music')
+                            ? (locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია')
+                            : (locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა')}
+                        </button>
+                      </div>
+                    )}
                     {parsed.urls.map((url, k) => (
                       <div key={`imgblk-${k}`} className="mt-2 overflow-hidden rounded-xl ring-1 ring-app-border/10">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
