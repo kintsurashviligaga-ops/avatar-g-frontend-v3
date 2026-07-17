@@ -16,6 +16,7 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors } from 'lucide-react';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
+import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
@@ -1301,8 +1302,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
   const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
-  // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor.
-  const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio' } | null>(null);
+  // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
+  // additionally seed an `autoAction` so the editor auto-runs an AI op (remove_bg / splitter …) on arrival.
+  const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoAction?: string } | null>(null);
+  // Agent G — brief glowing overlay while the router classifies a chat submission with an attached asset.
+  const [agentGBusy, setAgentGBusy] = useState(false);
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -3511,6 +3515,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // for generative modes only. Must ride a user gesture (Chrome/Firefox block mount-time
     // prompts); once granted/denied it never re-prompts. Fire-and-forget — never blocks the send.
     if (mode !== 'chat') void ensureNotificationPermission();
+    // ── AGENT G — the central router. In CHAT mode, a single attached image/video/audio + an edit intent is routed
+    // straight into the Surgical Editor workspace (and, for photo/audio, the mapped AI action auto-runs there). It is
+    // strictly gated: agent-g only returns a route when a real edit VERB is present, so "describe this photo" and
+    // ordinary multimodal chat return CLARIFY and fall through here untouched — zero regression to the chat stream.
+    if (mode === 'chat' && attachments.length === 1) {
+      const a0 = attachments[0];
+      const gKind = a0 ? (isImage(a0.mimeType) ? 'image' : isVideo(a0.mimeType) ? 'video' : isAudio(a0.mimeType) ? 'audio' : null) : null;
+      // Cheap LOCAL pre-check (same pure classifier the API uses) so the overlay + round-trip only happen for a real
+      // edit COMMAND. Gated on isImperativeCommand so questions/descriptions that merely contain an edit verb
+      // ("should I delete this photo?", "can you enhance my understanding?") stay in the chat stream — and, since we
+      // only intercept imperatives, the auto-run below can never fire a paid action on a conversational message.
+      if (a0 && gKind && isImperativeCommand(text) && classifyIntent(text, gKind).route !== 'CLARIFY') {
+        setAgentGBusy(true);
+        try {
+          const gRes = await fetch('/api/ai/agent-g', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ text, mediaKind: gKind }) });
+          const gj = (await gRes.json().catch(() => null)) as { route?: string; action?: string | null } | null;
+          if (gRes.ok && gj?.route && gj.route !== 'CLARIFY') {
+            setEditorAsset({ url: a0.dataUrl, kind: gKind, ...(gj.action ? { autoAction: gj.action } : {}) });
+            setInput(''); setAttachments([]); setOptionsOpen(false);
+            setMode('surgical');
+            setAgentGBusy(false);
+            return;
+          }
+        } catch { /* network/route error → fall through to normal chat */ }
+        setAgentGBusy(false);
+      }
+    }
     // IMAGE (single OR ×2/×4 batch) → the capped-parallel JOB QUEUE. This bypasses the
     // single-slot busy gate below, so a user can fire several images (they render 3-at-a-
     // time with live positions in the tray) AND start an image while a heavy video/avatar
@@ -4618,6 +4649,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden px-4 pt-2 text-app-text"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
+      {/* Agent G — glowing transition overlay while the router classifies a chat submission with an attached asset. */}
+      {agentGBusy && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-app-bg/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 px-6 text-center">
+            <span className="relative flex h-16 w-16 items-center justify-center">
+              <span className="absolute inset-0 animate-ping rounded-full bg-app-accent/25" />
+              <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-app-accent/15 ring-1 ring-app-accent/40" style={{ boxShadow: '0 0 40px -8px rgba(6,182,212,0.6)' }}>
+                <Sparkles size={26} className="animate-pulse text-app-accent" />
+              </span>
+            </span>
+            <div className="text-[15px] font-bold text-app-text">
+              {locale === 'en' ? 'G-Agent orchestrating pipeline…' : locale === 'ru' ? 'G-Agent запускает пайплайн…' : 'G-Agent აანალიზებს ბრძანებას…'}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Chat-history button — opens the list of past conversations (resume/delete). */}
       <button
         type="button"

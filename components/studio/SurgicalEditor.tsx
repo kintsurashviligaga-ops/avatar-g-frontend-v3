@@ -212,7 +212,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: T): Promise<T> {
   return Promise.race([p, new Promise<T>((resolve) => window.setTimeout(() => resolve(onTimeout), ms))]);
 }
 
-export default function SurgicalEditor({ locale, onExit, initialAsset }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio' } | null }) {
+export default function SurgicalEditor({ locale, onExit, initialAsset }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio'; autoAction?: string } | null }) {
   const t = T[norm(locale)];
   const [clips, setClips] = useState<Clip[]>([]);
   // Empty-state workspace pre-selection (V1): which media the dropzone is scoped to before any file is loaded.
@@ -330,7 +330,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     }
   }, [flash, t.maxReached, t.max5]);
 
-  // ── "Open in Editor" bridge (Vector 1): a forwarded asset URL → fetch → File → clip, and jump to it. ──
+  // ── "Open in Editor" / Agent G bridge: a forwarded asset URL → fetch → File → clip, and jump to it. Agent G may
+  //    also request a one-shot AI action to auto-run once the clip is loaded (e.g. remove_bg, splitter). ──
+  const [pendingAutoAction, setPendingAutoAction] = useState<string | null>(null);
   const loadedAssetRef = useRef<string | null>(null);
   useEffect(() => {
     if (!initialAsset?.url || loadedAssetRef.current === initialAsset.url) return;
@@ -351,6 +353,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
         const idx = Math.min(clipsRef.current.length, MAX_CLIPS - 1);
         setClips((prev) => [...prev, nclip].slice(0, MAX_CLIPS));
         setActive(idx);
+        setPendingAutoAction(initialAsset.autoAction ?? null); // Agent G one-shot, fired by the effect below once loaded
         if (kind === 'audio') void decodeAudioPeaks(file).then((peaks) => setClips((prev) => prev.map((x) => (x.id === id ? { ...x, peaks } : x))));
         else if (kind === 'video') void probeVideo(nclip.url).then(({ dur, w, h }) => {
           setClips((prev) => prev.map((x) => (x.id === id ? { ...x, dur, w, h } : x)));
@@ -651,6 +654,16 @@ export default function SurgicalEditor({ locale, onExit, initialAsset }: { local
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
+
+  // Agent G one-shot: once the forwarded clip is loaded in its workspace, auto-run the requested AI action. Cleared
+  // immediately so it fires exactly once; a mismatched/unknown action just leaves the workspace open.
+  useEffect(() => {
+    if (!pendingAutoAction || !clip || exporting) return;
+    const a = pendingAutoAction;
+    setPendingAutoAction(null);
+    if (clip.kind === 'image' && (a === 'remove_bg' || a === 'upscale' || a === 'face_restore' || a === 'colorize')) void runPhotoAction(a);
+    else if (clip.kind === 'audio' && (a === 'vocal_isolation' || a === 'splitter')) void runAudioAI(a);
+  }, [pendingAutoAction, clip, exporting, runPhotoAction, runAudioAI]);
 
   const filterCss = useMemo(() => gradeFilter(grade), [grade]);
   const progress = duration ? Math.min(1, current / duration) : 0;
