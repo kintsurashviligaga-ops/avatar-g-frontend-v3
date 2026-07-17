@@ -13,7 +13,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -118,10 +117,7 @@ export default function CookieConsent() {
     >
       <div className="text-[14px] font-semibold mb-1">{t.title}</div>
       <p className="text-[12px] text-app-muted leading-relaxed">
-        {t.body}{' '}
-        <Link href={`/${locale}/privacy`} className="text-violet-500 dark:text-violet-300 hover:text-violet-400 dark:hover:text-violet-200 underline-offset-4 hover:underline transition">
-          {t.privacyLink}
-        </Link>
+        {t.body}
       </p>
       <div className="mt-3 flex gap-2">
         <button

@@ -17,6 +17,7 @@ import {
   Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2, CornerUpLeft,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { photoActions, audioAction } from '@/lib/ai/agentG';
 
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -39,6 +40,7 @@ interface Copy {
   audioStudio: string; vocalIso: string; vocalSplit: string; pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string; instrumental: string; vocals: string;
   selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
   returnChat: string;
+  agentTitle: string; agentPhPhoto: string; agentPhVideo: string; agentPhAudio: string; agentSend: string; agentNoOp: string;
 }
 
 const T: Record<Lang, Copy> = {
@@ -58,6 +60,7 @@ const T: Record<Lang, Copy> = {
     audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
     selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ჩააგდე ან ატვირთე აუდიო', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
     returnChat: 'ჩატში დაბრუნება ფაილით',
+    agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
@@ -75,6 +78,7 @@ const T: Record<Lang, Copy> = {
     audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
     selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Drop or upload audio', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
     returnChat: 'Return to chat with asset',
+    agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
@@ -92,6 +96,7 @@ const T: Record<Lang, Copy> = {
     audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
     selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Перетащите или загрузите аудио', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
     returnChat: 'Вернуться в чат с файлом',
+    agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
   },
 };
 
@@ -691,6 +696,27 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
 
+  // In-editor Agent G command box: classify a typed instruction with the SAME brain and dispatch it on the current
+  // clip — photo → the AI action/chain, audio → the AI action, video → the matching timeline op. Unrecognised → toast.
+  const onAgentCommand = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || !clip || exporting) return;
+    if (clip.kind === 'image') {
+      const acts = photoActions(trimmed);
+      if (acts.length > 1) void runPhotoChain(acts);
+      else if (acts[0]) void runPhotoAction(acts[0]);
+      else flash(t.agentNoOp);
+    } else if (clip.kind === 'audio') {
+      const a = audioAction(trimmed);
+      if (a) void runAudioAI(a); else flash(t.agentNoOp);
+    } else {
+      const lc = trimmed.toLowerCase();
+      if (/split|cut|გაჭერ|ამოჭერ|разрежь|обрежь|нарежь/.test(lc)) splitAtPlayhead();
+      else if (/mute|დაადუმ|заглуши/.test(lc)) toggleMuteSeg(selectedSeg);
+      else flash(t.agentNoOp);
+    }
+  }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, selectedSeg, flash, t.agentNoOp]);
+
   // Agent G one-shot: once the forwarded clip is loaded, auto-run the requested AI action(s). A photo CHAIN (>1)
   // runs server-side atomically; a single action runs directly. Cleared immediately so it fires exactly once.
   useEffect(() => {
@@ -774,18 +800,30 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
           )
         ) : (
           <>
-            {/* Clip strip */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {/* Clip strip — premium 64×64 tiles: crisp object-cover previews, gradient icon tiles for audio/video,
+                a ring+offset accent on the active clip, and a small type badge. */}
+            <div className="flex items-center gap-2.5 overflow-x-auto px-0.5 pb-2 pt-0.5">
               {clips.map((c, i) => (
-                <button key={c.id} type="button" onClick={() => setActive(i)}
-                  className={`relative flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border ${i === active ? 'border-app-accent ring-1 ring-app-accent' : 'border-app-border/20'} bg-app-elevated`}>
-                  {c.kind === 'image' ? <img src={c.url} alt="" className="h-full w-full object-cover" /> : c.kind === 'audio' ? <Music2 size={16} className="text-app-accent" /> : <Film size={16} className="text-app-muted" />}
+                <button key={c.id} type="button" onClick={() => setActive(i)} title={c.name}
+                  className={`group relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border bg-app-elevated transition-all ${i === active ? 'border-app-accent ring-2 ring-app-accent/60 ring-offset-2 ring-offset-app-bg' : 'border-app-border/20 hover:border-app-accent/40'}`}>
+                  {c.kind === 'image' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.url} alt={c.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${c.kind === 'audio' ? 'from-cyan-500/25 to-cyan-500/[0.04]' : 'from-violet-500/25 to-violet-500/[0.04]'}`}>
+                      {c.kind === 'audio' ? <Music2 size={20} className="text-app-accent" /> : <Film size={20} className="text-app-text/70" />}
+                    </span>
+                  )}
+                  <span className="pointer-events-none absolute bottom-0.5 right-0.5 rounded bg-black/55 px-1 text-[8px] font-bold uppercase tracking-wide text-white/90">{c.kind === 'image' ? 'IMG' : c.kind === 'audio' ? 'AUD' : 'VID'}</span>
                 </button>
               ))}
-              <label className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed border-app-border/25 text-app-muted hover:border-app-accent/40">
-                <Upload size={15} /><input type="file" accept="video/*,image/*,audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+              <label title={t.pick} className="flex h-16 w-16 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-app-border/30 text-app-muted transition-colors hover:border-app-accent/50 hover:text-app-accent">
+                <Upload size={16} /><input type="file" accept="video/*,image/*,audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
               </label>
             </div>
+
+            {/* In-editor Agent G prompt box — natural-language command dispatched onto the current clip. */}
+            <AgentBox title={t.agentTitle} placeholder={isAudio ? t.agentPhAudio : isPhoto ? t.agentPhPhoto : t.agentPhVideo} sendLabel={t.agentSend} busy={exporting} onSubmit={onAgentCommand} />
 
             {isAudio ? (
             /* ── AI AUDIO STUDIO ── */
@@ -1084,6 +1122,23 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       )}
 
       {toast && <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-[12px] text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function AgentBox({ title, placeholder, sendLabel, busy, onSubmit }: { title: string; placeholder: string; sendLabel: string; busy: boolean; onSubmit: (text: string) => void }) {
+  const [val, setVal] = useState('');
+  const submit = () => { const t = val.trim(); if (!t || busy) return; onSubmit(t); setVal(''); };
+  return (
+    <div className="space-y-2 rounded-xl border border-app-accent/25 bg-gradient-to-b from-app-accent/[0.06] to-transparent p-3">
+      <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-accent"><Sparkles size={12} />{title}</span>
+      <div className="flex items-center gap-2">
+        <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} placeholder={placeholder}
+          className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none focus:ring-1 focus:ring-app-accent/40" />
+        <button type="button" onClick={submit} disabled={busy || !val.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3.5 py-2 text-[12px] font-bold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}{sendLabel}
+        </button>
+      </div>
     </div>
   );
 }
