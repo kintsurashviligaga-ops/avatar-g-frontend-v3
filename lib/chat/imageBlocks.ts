@@ -10,12 +10,14 @@
  */
 
 export interface ParsedImageBlocks {
-  /** the prose with every image block/placeholder removed + whitespace tidied */
+  /** the prose with every media block/placeholder removed + whitespace tidied */
   text: string;
   /** real image URLs found (deduped, in order) — render as <img> */
   urls: string[];
   /** URL-less `[Image: description]` placeholders → offer a "Generate" action */
   prompts: string[];
+  /** real audio/music URLs found (deduped, in order) — render as a native player */
+  audioUrls: string[];
 }
 
 function pushUnique(arr: string[], v: string): void {
@@ -26,7 +28,10 @@ function pushUnique(arr: string[], v: string): void {
 // Every quantifier is BOUNDED so the regexes are linear (no catastrophic backtracking / ReDoS): a truncated
 // `[image:` streamed with a long whitespace run can no longer freeze the render thread.
 const HTTP_URL = /https?:\/\/[^\s)\]]+/i;
-const PLACEHOLDER = /\[\s{0,4}(?:image|სურათი|изображение)\s{0,4}:\s{0,4}([^\]\n]{0,600})\]/gi;
+// `(?<!!)` + `(?!\()` ensure a placeholder is a STANDALONE bracket — never the alt of a markdown image `![...](...)`
+// nor the text of a markdown link `[...](...)`, so those are left for MD_IMAGE / Markdown to handle intact.
+const PLACEHOLDER = /(?<!!)\[\s{0,4}(?:image|სურათი|изображение)\s{0,4}:\s{0,4}([^\]\n]{0,600})\](?!\()/gi;
+const AUDIO_PLACEHOLDER = /(?<!!)\[\s{0,4}(?:audio|music|track|აუდიო|მუსიკა|музыка|трек)\s{0,4}:\s{0,4}([^\]\n]{0,600})\](?!\()/gi;
 const MD_IMAGE = /!\[[^\]\n]{0,200}\]\(\s{0,4}(https?:\/\/[^\s)]{1,2000})\s{0,4}\)/gi;
 
 /**
@@ -39,6 +44,7 @@ const MD_IMAGE = /!\[[^\]\n]{0,200}\]\(\s{0,4}(https?:\/\/[^\s)]{1,2000})\s{0,4}
 export function parseImageBlocks(raw: string): ParsedImageBlocks {
   const urls: string[] = [];
   const prompts: string[] = [];
+  const audioUrls: string[] = [];
   let text = typeof raw === 'string' ? raw : '';
 
   // 1) [Image: …] / [სურათი: …] / [изображение: …] — a URL inside ⇒ real image, else a description to (offer to) generate.
@@ -49,7 +55,16 @@ export function parseImageBlocks(raw: string): ParsedImageBlocks {
     return '';
   });
 
-  // 2) markdown images ![alt](url) — NOTE the leading `!`, so a plain markdown LINK [text](url) is left intact.
+  // 2) [Audio: url] / [Music: url] — a real track URL becomes a native player. A URL-LESS bracket (e.g. a
+  //    "[music: jazz]" description or citation) is LEFT INTACT so we never delete legit prose.
+  text = text.replace(AUDIO_PLACEHOLDER, (m, inner: string) => {
+    const u = inner.match(HTTP_URL);
+    if (!u) return m; // no URL → not a media object, keep the original text
+    pushUnique(audioUrls, u[0]);
+    return '';
+  });
+
+  // 3) markdown images ![alt](url) — NOTE the leading `!`, so a plain markdown LINK [text](url) is left intact.
   text = text.replace(MD_IMAGE, (_m, url: string) => { pushUnique(urls, url); return ''; });
 
   text = text
@@ -58,11 +73,13 @@ export function parseImageBlocks(raw: string): ParsedImageBlocks {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  return { text, urls, prompts };
+  return { text, urls, prompts, audioUrls };
 }
 
-/** Does this reply contain an explicit image marker? (cheap, bounded pre-check before the fuller parse) */
+/** Does this reply contain an explicit image/audio marker? (cheap, bounded pre-check before the fuller parse) */
 export function hasImageBlocks(raw: string): boolean {
   if (typeof raw !== 'string' || !raw) return false;
-  return /\[\s{0,4}(?:image|სურათი|изображение)\s{0,4}:/i.test(raw) || /!\[[^\]\n]{0,200}\]\(https?:/i.test(raw);
+  return /\[\s{0,4}(?:image|სურათი|изображение)\s{0,4}:/i.test(raw)
+    || /\[\s{0,4}(?:audio|music|track|აუდიო|მუსიკა|музыка|трек)\s{0,4}:/i.test(raw)
+    || /!\[[^\]\n]{0,200}\]\(https?:/i.test(raw);
 }

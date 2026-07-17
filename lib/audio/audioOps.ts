@@ -37,6 +37,7 @@ export interface AudioProcessParams {
   /** trim end (s); <= start ⇒ no trim */ trimEnd?: number;
   fadeInSec?: number;
   fadeOutSec?: number;
+  /** loudness gain multiplier, 0..2 (1 = unchanged, 2 = +6dB doubled) */ volume?: number;
   /** full track length (s) — used to position the out-fade when there's no trim */ durationSec?: number;
 }
 
@@ -54,12 +55,14 @@ export async function audioProcess(audioUrl: string, p: AudioProcessParams): Pro
   const outDur = speed > 0 ? trimDur / speed : trimDur; // net speed == `speed` (pitch's asetrate is compensated)
   const fi = Math.max(0, num(p.fadeInSec, 0));
   const fo = Math.max(0, num(p.fadeOutSec, 0));
+  const vol = clamp(num(p.volume, 1), 0, 2);
 
   const af: string[] = [];
   if (hasTrim) af.push(`atrim=start=${ts.toFixed(3)}:end=${teRaw.toFixed(3)}`, 'asetpts=PTS-STARTPTS');
   if (Math.abs(f - 1) > 1e-3) af.push(`asetrate=44100*${f.toFixed(6)}`, 'aresample=44100');
   // Net tempo = user speed / f (compensates the asetrate speed-up from the pitch shift).
   af.push(...atempoChain(speed / f));
+  if (Math.abs(vol - 1) > 1e-3) af.push(`volume=${vol.toFixed(3)}`);
   if (fi > 0) af.push(`afade=t=in:st=0:d=${fi}`);
   if (fo > 0 && outDur > 0.1) af.push(`afade=t=out:st=${Math.max(0, outDur - fo).toFixed(3)}:d=${fo}`);
 

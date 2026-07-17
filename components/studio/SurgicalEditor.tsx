@@ -25,6 +25,16 @@ const MAX_CLIPS = 35;
 const MAX_SEQ_CLIPS = 5; // distinct video sources in one concat sequence
 const MASK_CAP = 1536;
 
+// Agent G granular reasoning steps shown in the editor's processing overlay (mirrors the chat overlay's 5 steps).
+const EDITOR_STEPS: { icon: string; ka: string; en: string; ru: string }[] = [
+  { icon: '🔍', ka: 'მიმდინარეობს ბრძანების ანალიზი…', en: 'Parsing command parameters…', ru: 'Разбираю параметры…' },
+  { icon: '⚙️', ka: 'AI მოდელების ინიციალიზაცია…', en: 'Spinning up specialized models…', ru: 'Запускаю нейромодели…' },
+  { icon: '🎨', ka: 'მიმდინარეობს კრეატიული გენერაცია…', en: 'Rendering creative modifications…', ru: 'Генерирую изменения…' },
+  { icon: '💾', ka: 'ფაილი ინახება ბიბლიოთეკაში…', en: 'Securely persisting final asset…', ru: 'Надёжно сохраняю результат…' },
+  { icon: '🚀', ka: 'მზადაა! სამუშაო სივრცე ახლდება…', en: 'Content ready. Refreshing workspace…', ru: 'Готово! Обновляю область…' },
+];
+const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95 ? 3 : 4);
+
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
@@ -41,6 +51,7 @@ interface Copy {
   selectMode: string; wsVideo: string; wsPhoto: string; wsAudio: string; wsVideoHint: string; wsPhotoHint: string; wsAudioHint: string; changeMode: string; timedOut: string;
   returnChat: string;
   agentTitle: string; agentPhPhoto: string; agentPhVideo: string; agentPhAudio: string; agentSend: string; agentNoOp: string;
+  detach: string; undetach: string; aspect: string; aspectOrig: string; bgReplace: string; bgReplacePh: string; volume: string;
 }
 
 const T: Record<Lang, Copy> = {
@@ -61,6 +72,7 @@ const T: Record<Lang, Copy> = {
     selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ჩააგდე ან ატვირთე აუდიო', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
     returnChat: 'ჩატში დაბრუნება ფაილით',
     agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
+    detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
@@ -79,6 +91,7 @@ const T: Record<Lang, Copy> = {
     selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Drop or upload audio', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
     returnChat: 'Return to chat with asset',
     agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
+    detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
@@ -97,6 +110,7 @@ const T: Record<Lang, Copy> = {
     selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Перетащите или загрузите аудио', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
     returnChat: 'Вернуться в чат с файлом',
     agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
+    detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
   },
 };
 
@@ -238,6 +252,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
 
   const [grade, setGrade] = useState<Grade>(NEUTRAL);
   const [fade, setFade] = useState<{ inSec: number; outSec: number }>({ inSec: 0, outSec: 0 });
+  // Pro tools (V2): video speed + a global audio-detach; a photo aspect-crop preset; audio volume; a bg-replace prompt.
+  const [videoSpeed, setVideoSpeed] = useState(1);
+  const [detached, setDetached] = useState(false);
+  const [aspectCrop, setAspectCrop] = useState<Rect | null>(null);
+  const [audioVol, setAudioVol] = useState(1);
+  const [bgPrompt, setBgPrompt] = useState('');
   const [crop, setCrop] = useState<Rect | null>(null);
   const [cropOn, setCropOn] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([]); // the export SEQUENCE (across clips)
@@ -318,6 +338,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null);
     setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 }); setSecondaryAudio(null);
     setResult(null); setSuccessAsset(null); // the last result belongs to the PREVIOUS clip — never bleed it into the new one
+    setVideoSpeed(1); setDetached(false); setAspectCrop(null); setAudioVol(1); setBgPrompt('');
   }, [active]);
 
   const addFiles = useCallback((files: FileList | null, only?: 'video' | 'image' | 'audio') => {
@@ -511,7 +532,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const seqDuration = useMemo(() => segments.reduce((a, s) => a + Math.max(0, s.end - s.start), 0), [segments]);
   const hasMutations = useMemo(() => (
     !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1 || segments.some((s) => s.muted || !!s.textOverlay?.text.trim())
-  ), [grade, fade, crop, segments]);
+    || Math.abs(videoSpeed - 1) > 0.01 || detached || !!aspectCrop
+  ), [grade, fade, crop, segments, videoSpeed, detached, aspectCrop]);
   const cropAllowed = distinctClipIds.length <= 1; // crop is a single-source op
 
   // ── Export ──
@@ -525,19 +547,19 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       if (isPhoto) {
         const path = await uploadClip(clip.file);
         if (!path) { flash(t.failed); return; }
-        const res = await postEdit({ action: 'render', mediaUrl: path, kind: 'photo', draft: { grade: isNeutral(grade) ? undefined : grade, crop: sourceCrop() } });
+        const res = await postEdit({ action: 'render', mediaUrl: path, kind: 'photo', draft: { grade: isNeutral(grade) ? undefined : grade, crop: aspectCrop ?? sourceCrop() } });
         finishExport(res, 'image');
       } else if (distinctClipIds.length > 1) {
         // MULTI-CLIP concat — upload each distinct source (aligned to sequence src indices).
         const uploads = await Promise.all(distinctClipIds.map((id) => { const c = byId.get(id); return c ? uploadClip(c.file) : Promise.resolve(null); }));
         if (uploads.some((u) => !u)) { flash(t.failed); return; }
         const srcIndex = new Map(distinctClipIds.map((id, i) => [id, i]));
-        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
+        const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted || detached, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const first = byId.get(distinctClipIds[0] ?? '');
         const res = await postEdit({
           action: 'render', kind: 'video', sources: uploads as string[], sequence,
           targetW: first?.w || 1280, targetH: first?.h || 720,
-          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined },
+          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, speed: Math.abs(videoSpeed - 1) > 0.01 ? videoSpeed : undefined },
         });
         finishExport(res, 'video');
       } else {
@@ -546,10 +568,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         const only = byId.get(onlyId) ?? clip;
         const path = await uploadClip(only.file);
         if (!path) { flash(t.failed); return; }
-        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
+        const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted || detached, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const res = await postEdit({
           action: 'render', mediaUrl: path, kind: 'video', durationSec: only.dur || duration,
-          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, crop: sourceCrop(), segments: segs },
+          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, crop: sourceCrop(), segments: segs, speed: Math.abs(videoSpeed - 1) > 0.01 ? videoSpeed : undefined },
         });
         finishExport(res, 'video');
       }
@@ -563,7 +585,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     function finishExport(j: { url?: string | null } | null, kind: 'video' | 'image') {
       if (j?.url) { setExportPct(100); onAssetReady(j.url, kind); flash(t.done); } else flash(t.failed);
     }
-  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done]);
+  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, videoSpeed, detached, aspectCrop, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done]);
 
   // ── AI object removal (photo) ──
   const runInpaint = useCallback(async () => {
@@ -681,7 +703,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
-  const audioHasEdit = pitch !== 0 || Math.abs(audioSpeed - 1) > 0.01 || fade.inSec > 0 || fade.outSec > 0 || aTrim.end > aTrim.start + 0.05;
+  const audioHasEdit = pitch !== 0 || Math.abs(audioSpeed - 1) > 0.01 || fade.inSec > 0 || fade.outSec > 0 || aTrim.end > aTrim.start + 0.05 || Math.abs(audioVol - 1) > 0.01;
   const runAudioProcess = useCallback(async () => {
     if (!clip || exporting) return;
     if (!audioHasEdit) { flash(t.exportHint); return; }
@@ -690,12 +712,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
-      const { ok, body } = await postJson('/api/ai/edit-audio', { action: 'process', mediaUrl: src, semitones: pitch, speed: audioSpeed, trimStart: aTrim.start, trimEnd: aTrim.end, fadeInSec: fade.inSec, fadeOutSec: fade.outSec, durationSec: audioDur });
+      const { ok, body } = await postJson('/api/ai/edit-audio', { action: 'process', mediaUrl: src, semitones: pitch, speed: audioSpeed, trimStart: aTrim.start, trimEnd: aTrim.end, fadeInSec: fade.inSec, fadeOutSec: fade.outSec, volume: audioVol, durationSec: audioDur });
       const j = body as { url?: string | null } | null;
       if (ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(t.failed);
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
+  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioVol, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
 
   // In-editor Agent G command box: classify a typed instruction with the SAME brain and dispatch it on the current
   // clip — photo → the AI action/chain, audio → the AI action, video → the matching timeline op. Unrecognised → toast.
@@ -718,6 +740,40 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       else flash(t.agentNoOp);
     }
   }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, selectedSeg, flash, t.agentNoOp, t.done]);
+
+  // Photo aspect preset (V2): center-crop the SOURCE to a ratio (or clear → original). Uses natural dims.
+  const applyAspect = useCallback((ratio: number | null) => {
+    if (ratio === null || !photoDim || photoDim.w < 2 || photoDim.h < 2) { setAspectCrop(null); return; }
+    const { w, h } = photoDim;
+    let cw = w, ch = h;
+    if (w / h > ratio) { cw = Math.round(h * ratio); ch = h; } else { cw = w; ch = Math.round(w / ratio); }
+    setAspectCrop({ x: Math.round((w - cw) / 2), y: Math.round((h - ch) / 2), w: cw, h: ch });
+  }, [photoDim]);
+
+  // AI Background Replace (V2): prompt-driven bg swap via the metered edit-photo route (reserve-before + refund).
+  const runBgReplace = useCallback(async () => {
+    if (!clip || exporting) return;
+    const p = bgPrompt.trim();
+    if (!p) { flash(t.agentNoOp); return; }
+    setExporting(true); setExportPct(15); setSuccessAsset(null);
+    const tick = window.setInterval(() => setExportPct((prev) => (prev < 90 ? prev + Math.max(1, Math.round((90 - prev) / 16)) : prev)), 600);
+    try {
+      let src = chainPath;
+      if (!src) { src = originalPath ?? await uploadClip(clip.file); if (src && !originalPath) setOriginalPath(src); }
+      if (!src) { flash(t.failed); return; }
+      const { status, ok, body } = await postJson('/api/ai/edit-photo', { action: 'background_replace', mediaUrl: src, prompt: p });
+      const j = body as { url?: string | null; path?: string | null } | null;
+      if (status === 402) flash(t.insufficient);
+      else if (status === 503) flash(t.notConfig);
+      else if (ok && j?.url) {
+        setExportPct(100);
+        if (j.path) setChainPath(j.path);
+        try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
+        onAssetReady(j.url, 'image'); flash(t.done);
+      } else flash(t.failed);
+    } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
+    finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
+  }, [clip, exporting, bgPrompt, chainPath, originalPath, onAssetReady, flash, t.agentNoOp, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
   // Agent G one-shot: once the forwarded clip is loaded, auto-run the requested AI action(s). A photo CHAIN (>1)
   // runs server-side atomically; a single action runs directly. Cleared immediately so it fires exactly once.
@@ -746,13 +802,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         <div className="flex min-w-0 items-center gap-3">
           {/* Locked 44×44 asset thumbnail (never shrinks) when a clip is loaded; the Scissors glyph before then. */}
           {clip ? (
-            <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-app-border/20 bg-app-elevated">
+            <span className="block h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-app-border/20 bg-app-elevated">
               {clip.kind === 'image' ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={result?.kind === 'image' ? result.url : clip.url} alt="" className="h-full w-full object-cover" />
               ) : (
                 <span className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${clip.kind === 'audio' ? 'from-cyan-500/25 to-cyan-500/[0.04]' : 'from-violet-500/25 to-violet-500/[0.04]'}`}>
-                  {clip.kind === 'audio' ? <Music2 size={18} className="text-app-accent" /> : <Film size={18} className="text-app-text/70" />}
+                  {clip.kind === 'audio' ? <Music2 size={20} className="text-app-accent" /> : <Film size={20} className="text-app-text/70" />}
                 </span>
               )}
             </span>
@@ -889,6 +945,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 )}
                 <Slider label={t.fadeIn} min={0} max={5} step={0.1} value={fade.inSec} onChange={(v) => setFade((f) => ({ ...f, inSec: v }))} suffix="s" />
                 <Slider label={t.fadeOut} min={0} max={5} step={0.1} value={fade.outSec} onChange={(v) => setFade((f) => ({ ...f, outSec: v }))} suffix="s" />
+                <Slider icon={<Volume2 size={13} />} label={t.volume} min={0} max={200} step={5} value={Math.round(audioVol * 100)} onChange={(v) => setAudioVol(v / 100)} suffix="%" />
                 <button type="button" onClick={() => void runAudioProcess()} disabled={!audioHasEdit || exporting}
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2.5 text-[13px] font-bold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
                   {exporting ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}{t.applyAudio}
@@ -958,13 +1015,15 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                       <p className="text-[10px] uppercase tracking-wide text-app-muted">{t.sequence} · {distinctClipIds.length} {t.clipN.toLowerCase()}{distinctClipIds.length > 1 ? 's' : ''}</p>
                       <p className="text-[10px] tabular-nums text-app-muted">{t.seqDur}: {fmt(seqDuration)}</p>
                     </div>
-                    <div className="flex gap-1">
+                    {/* Touch-friendly clip track: each tile keeps a 44px minimum and the whole track scrolls
+                        horizontally rather than squishing to unusable slivers on narrow (mobile/iPad) screens. */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {segments.map((s, i) => {
                         const w = seqDuration ? ((s.end - s.start) / seqDuration) * 100 : 0;
                         const clipNo = videoClips.findIndex((c) => c.id === s.clipId) + 1;
                         return (
-                          <div key={s.id} style={{ flexBasis: `${Math.max(9, w)}%` }}
-                            className={`group relative flex h-10 min-w-0 items-center justify-center gap-1 overflow-hidden rounded-md border text-[10px] ${i === selectedSeg ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border/20 bg-app-elevated text-app-muted'}`}>
+                          <div key={s.id} style={{ flexBasis: `${Math.max(12, w)}%`, minWidth: 44 }}
+                            className={`group relative flex h-11 shrink-0 items-center justify-center gap-1 overflow-hidden rounded-md border text-[10px] ${i === selectedSeg ? 'border-app-accent bg-app-accent/15 text-app-text' : 'border-app-border/20 bg-app-elevated text-app-muted'}`}>
                             {s.transition && s.transition !== 'none' && i > 0 && <span className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l bg-cyan-400/80" title={transLabel(s.transition)} />}
                             <button type="button" onClick={() => selectSeg(i)} className="flex h-full w-full flex-col items-center justify-center leading-none">
                               <span className="flex items-center gap-0.5">{s.muted ? <VolumeX size={10} className="text-amber-400" /> : null}<span className="opacity-60">#{clipNo}</span></span>
@@ -1012,6 +1071,33 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                   <PhotoCard icon={<Smile size={16} />} label={t.faceRestore} cost={3} disabled={exporting} onClick={() => void runPhotoAction('face_restore')} />
                   <PhotoCard icon={<Palette size={16} />} label={t.colorize} cost={3} disabled={exporting} onClick={() => void runPhotoAction('colorize')} />
                 </div>
+                {/* AI Background Replace — prompt-driven bg swap (metered) */}
+                <div className="flex items-center gap-2 border-t border-app-border/10 pt-2.5">
+                  <input value={bgPrompt} onChange={(e) => setBgPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void runBgReplace(); } }} placeholder={t.bgReplacePh}
+                    className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none focus:ring-1 focus:ring-app-accent/40" />
+                  <button type="button" onClick={() => void runBgReplace()} disabled={exporting || !bgPrompt.trim()} title={t.bgReplace}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3 py-2 text-[12px] font-bold text-app-bg disabled:opacity-50">
+                    <Palette size={13} /><span className="hidden sm:inline">{t.bgReplace}</span><span className="ml-0.5 rounded-full bg-app-bg/25 px-1.5 text-[10px] tabular-nums">5</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Aspect ratio presets (PHOTO) */}
+            {isPhoto && (
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.aspect}</span>
+                <div className="flex items-center gap-2">
+                  {([['1:1', 1], ['16:9', 16 / 9], ['9:16', 9 / 16], [t.aspectOrig, null]] as [string, number | null][]).map(([label, ratio]) => {
+                    const on = ratio === null ? !aspectCrop : !!aspectCrop && Math.abs(aspectCrop.w / aspectCrop.h - ratio) < 0.02;
+                    return (
+                      <button key={label} type="button" onClick={() => applyAspect(ratio)}
+                        className={`flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition-colors ${on ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -1023,6 +1109,25 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <Slider icon={<SunMedium size={13} />} label={t.brightness} min={0} max={200} value={grade.brightness} onChange={(v) => setGrade((g) => ({ ...g, brightness: v }))} />
               <Slider icon={<Thermometer size={13} />} label={t.temperature} min={-100} max={100} value={grade.temperature} onChange={(v) => setGrade((g) => ({ ...g, temperature: v }))} />
             </div>
+
+            {/* Speed + audio-detach (VIDEO) */}
+            {!isPhoto && (
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.speed}</span>
+                <div className="flex items-center gap-2">
+                  {[0.5, 1, 1.5, 2].map((s) => (
+                    <button key={s} type="button" onClick={() => setVideoSpeed(s)}
+                      className={`flex-1 rounded-lg px-2 py-2 text-[12.5px] font-bold transition-colors ${Math.abs(videoSpeed - s) < 0.01 ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
+                      {s}×
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setDetached((v) => !v)}
+                  className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold transition-colors ${detached ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/40' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
+                  {detached ? <VolumeX size={14} /> : <Volume2 size={14} />}{detached ? t.undetach : t.detach}
+                </button>
+              </div>
+            )}
 
             {/* Fade (VIDEO) */}
             {!isPhoto && (
@@ -1107,9 +1212,22 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       {(exporting || successAsset) && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
           {exporting ? (
-            <div className="w-full max-w-[340px] rounded-2xl border border-app-border/20 bg-app-surface p-6 text-center shadow-2xl">
-              <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-app-accent/15"><Clapperboard size={22} className="text-app-accent" /></span>
-              <div className="mb-3 text-[13.5px] font-semibold text-app-text">{isAudio ? t.audioProcessing : isPhoto ? t.photoProcessing : t.exporting}</div>
+            <div className="w-full max-w-[360px] rounded-2xl border border-app-border/20 bg-app-surface p-5 shadow-2xl">
+              <div className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent"><Sparkles size={13} className="animate-pulse" />G-Agent</div>
+              {/* Granular 5-step reasoning card, active step derived from the live progress. */}
+              <div className="mb-3 flex flex-col gap-1.5">
+                {EDITOR_STEPS.map((ph, i) => {
+                  const cur = stepForPct(exportPct);
+                  const state = i < cur ? 'done' : i === cur ? 'active' : 'pending';
+                  return (
+                    <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all ${state === 'active' ? 'bg-app-accent/12 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
+                      <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
+                      <span className="min-w-0 flex-1 font-medium">{norm(locale) === 'en' ? ph.en : norm(locale) === 'ru' ? ph.ru : ph.ka}</span>
+                      {state === 'active' && <Loader2 size={13} className="shrink-0 animate-spin text-app-accent" />}
+                    </div>
+                  );
+                })}
+              </div>
               <div className="h-2 overflow-hidden rounded-full bg-app-elevated"><div className="h-full rounded-full transition-all duration-300" style={{ width: `${exportPct}%`, background: 'linear-gradient(90deg, rgb(34,211,238), rgb(6,182,212))' }} /></div>
               <div className="mt-2 text-[11px] tabular-nums text-app-muted">{exportPct}%</div>
             </div>

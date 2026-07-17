@@ -61,13 +61,40 @@ describe('parseImageBlocks', () => {
 
   it('leaves plain prose untouched', () => {
     const r = parseImageBlocks('Just a normal answer with no images.');
-    expect(r).toEqual({ text: 'Just a normal answer with no images.', urls: [], prompts: [] });
+    expect(r).toEqual({ text: 'Just a normal answer with no images.', urls: [], prompts: [], audioUrls: [] });
   });
 
   it('handles empty / non-string input safely', () => {
-    expect(parseImageBlocks('')).toEqual({ text: '', urls: [], prompts: [] });
+    expect(parseImageBlocks('')).toEqual({ text: '', urls: [], prompts: [], audioUrls: [] });
     // @ts-expect-error runtime guard for non-string
-    expect(parseImageBlocks(null)).toEqual({ text: '', urls: [], prompts: [] });
+    expect(parseImageBlocks(null)).toEqual({ text: '', urls: [], prompts: [], audioUrls: [] });
+  });
+
+  it('extracts [Audio: url] / [Music: url] markers into audioUrls', () => {
+    const r = parseImageBlocks('Your track is ready: [Audio: https://cdn.myavatar.ge/t/song.mp3]');
+    expect(r.audioUrls).toEqual(['https://cdn.myavatar.ge/t/song.mp3']);
+    expect(r.text).toBe('Your track is ready:');
+    expect(parseImageBlocks('[Music: https://x.io/beat.wav]').audioUrls).toEqual(['https://x.io/beat.wav']);
+    expect(hasImageBlocks('[Audio: https://x/y.mp3]')).toBe(true);
+  });
+
+  it('leaves a URL-less [music: …] description in the prose (never deletes legit text)', () => {
+    const r = parseImageBlocks('My favorite [music: jazz classics] this year');
+    expect(r.audioUrls).toEqual([]);
+    expect(r.text).toContain('[music: jazz classics]');
+  });
+
+  it('a markdown IMAGE whose alt starts with an audio keyword is rendered, not corrupted', () => {
+    const r = parseImageBlocks('![Music: album cover](https://x/cover.png)');
+    expect(r.urls).toEqual(['https://x/cover.png']); // extracted as an image, not stripped to "!"
+    expect(r.audioUrls).toEqual([]);
+    expect(r.text).not.toContain('!(');
+  });
+
+  it('a markdown LINK whose text starts with an audio keyword stays intact', () => {
+    const r = parseImageBlocks('[Music: my jam](https://x/page)');
+    expect(r.audioUrls).toEqual([]);
+    expect(r.text).toBe('[Music: my jam](https://x/page)');
   });
 });
 

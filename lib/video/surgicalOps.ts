@@ -43,7 +43,7 @@ const VIDEO_TAIL = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-p
 export async function cropClip(videoUrl: string, x: number, y: number, w: number, h: number): Promise<string | null> {
   const b = bin();
   if (!b || !videoUrl) return null;
-  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2); // round DOWN so a crop dim never exceeds the source
   const cw = even(w), ch = even(h), cx = Math.max(0, Math.round(x)), cy = Math.max(0, Math.round(y));
   if (!(cw > 0 && ch > 0)) return null;
   let dir: string | null = null;
@@ -68,7 +68,19 @@ export interface GradeParams {
 }
 
 const numFinite = (v: number | undefined, d: number) => (Number.isFinite(v) ? (v as number) : d);
-const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+const clampNum = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+/** atempo accepts 0.5–2.0 per instance, so chain factors to cover the wider speed range. */
+function atempoChainV(factor: number): string[] {
+  let f = clampNum(factor, 0.25, 4);
+  const out: string[] = [];
+  while (f > 2.0 + 1e-6) { out.push('atempo=2.0'); f /= 2.0; }
+  while (f < 0.5 - 1e-6) { out.push('atempo=0.5'); f /= 0.5; }
+  if (Math.abs(f - 1) > 1e-3) out.push(`atempo=${f.toFixed(4)}`);
+  return out;
+}
+// Round DOWN to an even number: a crop dim can never exceed the source (a full-axis aspect crop of an odd-width
+// photo, e.g. 1001, must stay ≤ 1001, not round UP to 1002 and overflow the frame → ffmpeg crop failure).
+const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
 
 /** eq + colortemperature filter strings for a grade (shared by gradeClip + the batch renderers). */
 function buildGradeFilters(g?: GradeParams): string[] {
@@ -206,6 +218,8 @@ export interface RenderDraft {
   mutedRanges?: DraftMutedRange[];
   /** The ordered export sequence. When it isn't the pristine full clip (deleted/reordered), it is concat-rendered. */
   segments?: DraftSegment[];
+  /** Playback speed multiplier, 0.25..4 (1 = unchanged). Video via setpts, audio via atempo. */
+  speed?: number;
   /** Total clip length (s) — positions the out-fade. */
   durationSec?: number;
 }
@@ -236,24 +250,32 @@ export async function renderVideoDraft(videoUrl: string, d: RenderDraft): Promis
 
   const fi = Math.max(0, numFinite(d.fadeInSec, 0));
   const fo = Math.max(0, numFinite(d.fadeOutSec, 0));
+  // Speed: guarded so an UNSET/1.0 speed produces byte-identical output to before (zero blast radius). When set,
+  // video is retimed with setpts and audio with atempo; every time-based value below uses the OUTPUT duration.
+  const spd = clampNum(numFinite(d.speed, 1), 0.25, 4);
+  const sped = Math.abs(spd - 1) > 1e-3;
+  const totalOut = sped ? total / spd : total;
+  const ot = (v: number) => (sped ? v / spd : v); // source time → output time
 
   const vf: string[] = [];
   const cropF = buildCropFilter(d.crop);
   if (cropF) vf.push(cropF);
   vf.push(...buildGradeFilters(d.grade));
+  if (sped) vf.push(`setpts=PTS/${spd.toFixed(4)}`);
   if (fi > 0) vf.push(`fade=t=in:st=0:d=${fi}`);
-  if (fo > 0 && total > 0.1) vf.push(`fade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
+  if (fo > 0 && totalOut > 0.1) vf.push(`fade=t=out:st=${Math.max(0, totalOut - fo).toFixed(3)}:d=${fo}`);
 
   const af: string[] = [];
+  if (sped) af.push(...atempoChainV(spd));
   if (fi > 0) af.push(`afade=t=in:st=0:d=${fi}`);
-  if (fo > 0 && total > 0.1) af.push(`afade=t=out:st=${Math.max(0, total - fo).toFixed(3)}:d=${fo}`);
-  // Muted ranges come from muted segments (trivial sequence) or an explicit list.
+  if (fo > 0 && totalOut > 0.1) af.push(`afade=t=out:st=${Math.max(0, totalOut - fo).toFixed(3)}:d=${fo}`);
+  // Muted ranges come from muted segments (trivial sequence) or an explicit list. Times are in OUTPUT space.
   const segMuted = (d.segments ?? []).filter((s) => s.muted).map((s) => ({ start: s.start, end: s.end }));
   const muted = (segMuted.length ? segMuted : (d.mutedRanges ?? [])).filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start);
   if (muted.length) {
     // Single volume filter, enabled (→ 0) whenever t is inside ANY muted range. The commas inside between()
     // are protected by the surrounding single quotes so ffmpeg doesn't read them as filter separators.
-    const expr = muted.map((r) => `between(t,${Math.max(0, r.start).toFixed(3)},${r.end.toFixed(3)})`).join('+');
+    const expr = muted.map((r) => `between(t,${Math.max(0, ot(r.start)).toFixed(3)},${ot(r.end).toFixed(3)})`).join('+');
     af.push(`volume=0:enable='${expr}'`);
   }
 
@@ -320,6 +342,11 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   const first = entries[0];
   if (!first) return null;
 
+  // Speed — guarded so 1.0 is byte-identical to before. Video retimed via setpts, audio via atempo; all durations
+  // used for transition offsets/fades are in OUTPUT space (source ÷ spd).
+  const spd = clampNum(numFinite(d.speed, 1), 0.25, 4);
+  const sped = Math.abs(spd - 1) > 1e-3;
+
   const hasAudio = await Promise.all(inputs.map((u) => probeHasAudio(u)));
   const scale = opts.scaleW && opts.scaleH
     ? `scale=${even(opts.scaleW)}:${even(opts.scaleH)}:force_original_aspect_ratio=decrease,pad=${even(opts.scaleW)}:${even(opts.scaleH)}:(ow-iw)/2:(oh-ih)/2,setsar=1,`
@@ -355,9 +382,10 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   entries.forEach((e, i) => {
     const st = Math.max(0, e.start).toFixed(3);
     const en = Math.max(e.start + 0.04, e.end).toFixed(3);
-    const dur = (e.end - e.start).toFixed(3);
+    const durOut = ((e.end - e.start) / spd).toFixed(3); // per-segment OUTPUT length (for the silence fallback)
     // fps + yuv420p make every segment concat/xfade-compatible (uniform timebase + pixel format).
-    const vchain = `[${e.src}:v]trim=start=${st}:end=${en},setpts=PTS-STARTPTS,${scale}fps=30,format=yuv420p`;
+    const setptsV = sped ? `setpts=(PTS-STARTPTS)/${spd.toFixed(4)}` : 'setpts=PTS-STARTPTS';
+    const vchain = `[${e.src}:v]trim=start=${st}:end=${en},${setptsV},${scale}fps=30,format=yuv420p`;
     const ovIdx = overlayInputIdx[i];
     if (ovIdx !== null) {
       parts.push(`${vchain}[vpre${i}]`);
@@ -367,21 +395,22 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     }
     if (hasAudio[e.src]) {
       const af = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
+      if (sped) af.push(...atempoChainV(spd));
       if (e.muted) af.push('volume=0');
       parts.push(`[${e.src}:a]${af.join(',')}[a${i}]`);
     } else {
-      // SILENT-CLIP FALLBACK — synthesise stereo silence of the exact segment length.
-      parts.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${dur},asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+      // SILENT-CLIP FALLBACK — synthesise stereo silence of the exact segment OUTPUT length.
+      parts.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${durOut},asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
     }
   });
 
-  // Left-fold with a per-boundary transition.
+  // Left-fold with a per-boundary transition. Durations are OUTPUT-space (÷ spd) so xfade offsets stay correct.
   let curV = '[v0]', curA = '[a0]';
-  let curDur = first.end - first.start;
+  let curDur = (first.end - first.start) / spd;
   const XD = 0.6;
   for (let k = 1; k < entries.length; k += 1) {
     const e = entries[k]!;
-    const segDur = e.end - e.start;
+    const segDur = (e.end - e.start) / spd;
     const trans: Transition = e.transition === 'crossfade' || e.transition === 'fade' ? e.transition : 'none';
     if (trans === 'none') {
       parts.push(`${curV}${curA}[v${k}][a${k}]concat=n=2:v=1:a=1[cv${k}][ca${k}]`);

@@ -856,10 +856,11 @@ const isVideo = (m: string) => m.startsWith('video/');
 
 // Agent G granular reasoning steps (shown in the glowing overlay as the router orchestrates).
 const AGENT_G_PHASES: { icon: string; ka: string; en: string; ru: string }[] = [
-  { icon: '🔍', ka: 'ბრძანება ანალიზდება…', en: 'Interpreting command…', ru: 'Анализирую команду…' },
-  { icon: '⚙️', ka: 'AI მოდელების გააქტიურება…', en: 'Activating sub-agents…', ru: 'Активирую суб-агентов…' },
-  { icon: '💾', ka: 'ფაილი ინახება ბიბლიოთეკაში…', en: 'Persisting output asset…', ru: 'Сохраняю результат…' },
-  { icon: '🚀', ka: 'გადავყავართ რედაქტორში…', en: 'Opening in workspace…', ru: 'Открываю в редакторе…' },
+  { icon: '🔍', ka: 'მიმდინარეობს ბრძანების ანალიზი…', en: 'Parsing command parameters…', ru: 'Разбираю параметры команды…' },
+  { icon: '⚙️', ka: 'ხდება AI მოდელების ინიციალიზაცია…', en: 'Spinning up specialized models…', ru: 'Запускаю нейромодели…' },
+  { icon: '🎨', ka: 'მიმდინარეობს კრეატიული გენერაცია…', en: 'Rendering creative modifications…', ru: 'Генерирую творческие изменения…' },
+  { icon: '💾', ka: 'ფაილი საიმედოდ ინახება ბიბლიოთეკაში…', en: 'Securely persisting final asset…', ru: 'Надёжно сохраняю результат…' },
+  { icon: '🚀', ka: 'დასრულდა! სამუშაო სივრცე მზადაა…', en: 'Content ready. Refreshing workspace…', ru: 'Готово! Обновляю рабочую область…' },
 ];
 
 // FIX 2 — Chat-mode video intent. When the user describes a video in plain Chat
@@ -3523,7 +3524,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const gKind = a0 ? (isImage(a0.mimeType) ? 'image' : isVideo(a0.mimeType) ? 'video' : isAudio(a0.mimeType) ? 'audio' : null) : null;
     if (!a0 || !gKind || !isImperativeCommand(text) || classifyIntent(text, gKind).route === 'CLARIFY') return false;
     setAgentGPhase(0); setAgentGBusy(true);
-    const phaseTimer = window.setInterval(() => setAgentGPhase((p) => (p < 2 ? p + 1 : p)), 550);
+    const phaseTimer = window.setInterval(() => setAgentGPhase((p) => (p < 3 ? p + 1 : p)), 500);
     try {
       const gRes = await fetch('/api/ai/agent-g', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -3532,7 +3533,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const gj = (await gRes.json().catch(() => null)) as { route?: string; action?: string | null; actions?: string[] } | null;
       window.clearInterval(phaseTimer);
       if (gRes.ok && gj?.route && gj.route !== 'CLARIFY') {
-        setAgentGPhase(3);
+        setAgentGPhase(4);
         const actions = Array.isArray(gj.actions) && gj.actions.length ? gj.actions : gj.action ? [gj.action] : [];
         setEditorAsset({ url: a0.dataUrl, kind: gKind, ...(actions.length ? { autoActions: actions } : {}) });
         setInput(''); setAttachments([]); setOptionsOpen(false);
@@ -5078,7 +5079,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 // VECTOR 1 — split out image blocks so a `[Image: …]` placeholder never renders as a raw bracketed
                 // text block: real URLs become <img> frames (Download + Open-in-Editor), URL-less descriptions
                 // become a one-tap "Generate" card. Plain prose is untouched (fast-path when there are no blocks).
-                const parsed = hasImageBlocks(m.text) ? parseImageBlocks(m.text) : { text: m.text, urls: [] as string[], prompts: [] as string[] };
+                const parsed = hasImageBlocks(m.text) ? parseImageBlocks(m.text) : { text: m.text, urls: [] as string[], prompts: [] as string[], audioUrls: [] as string[] };
                 return (
                   <>
                     {typeof m.videoProgress === 'number' && !m.videoUrl && (
@@ -5107,6 +5108,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
                           <Sparkles size={13} />{locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია'}
                         </button>
+                      </div>
+                    ))}
+                    {/* VECTOR 3 — a generated track referenced in text ([Audio: url]) renders as a native player + actions. */}
+                    {parsed.audioUrls.map((url, k) => (
+                      <div key={`audblk-${k}`} className="mt-2 w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
+                        <TrackPlayer url={url} label={t.modeMusic} />
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                          <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.mp3`)} title={t.imgDownload} aria-label={t.imgDownload}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
+                          <button type="button" onClick={() => void share(url, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90"><Share2 size={15} /></button>
+                          {editButton(url, 'audio')}
+                        </div>
                       </div>
                     ))}
                   </>

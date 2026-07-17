@@ -64,6 +64,8 @@ interface DraftPayload {
   mutedRanges?: { start: number; end: number }[];
   /** Ordered export sequence (delete = omitted, reorder = array order). */
   segments?: { start: number; end: number; muted: boolean; transition?: 'none' | 'crossfade' | 'fade'; textOverlay?: TextOverlayPayload }[];
+  /** Playback speed multiplier (0.25..4). */
+  speed?: number;
 }
 
 interface TextOverlayPayload { text: string; position: 'top-left' | 'top-right' | 'bottom-center' | 'center'; fontSize: number; fontColor: string }
@@ -126,7 +128,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ url: null, error: 'could not resolve all clip sources' }, { status: 400 });
     }
     const d = body?.draft ?? {};
-    const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec };
+    const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec, speed: d.speed };
     const seq = body.sequence
       .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length && e.end > e.start)
       .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition, textOverlay: e.textOverlay }));
@@ -164,6 +166,7 @@ export async function POST(req: NextRequest) {
           crop: d.crop ?? null,
           mutedRanges: d.mutedRanges,
           segments: d.segments,
+          speed: d.speed,
           durationSec: Number(body?.durationSec) || 0,
         };
         const url = body?.kind === 'photo'

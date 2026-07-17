@@ -67,7 +67,7 @@ async function saveCreation(req: NextRequest, userId: string, url: string, actio
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     action?: string; mediaUrl?: string;
-    semitones?: number; speed?: number; trimStart?: number; trimEnd?: number; fadeInSec?: number; fadeOutSec?: number; durationSec?: number;
+    semitones?: number; speed?: number; trimStart?: number; trimEnd?: number; fadeInSec?: number; fadeOutSec?: number; volume?: number; durationSec?: number;
   } | null;
   const action = String(body?.action || '').trim() as AudioAction;
   if (!['vocal_isolation', 'splitter', 'process'].includes(action)) {
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
         semitones: Number(body?.semitones) || 0, speed: Number(body?.speed) || 1,
         trimStart: Number(body?.trimStart) || 0, trimEnd: Number(body?.trimEnd) || 0,
         fadeInSec: Number(body?.fadeInSec) || 0, fadeOutSec: Number(body?.fadeOutSec) || 0,
+        volume: body?.volume === undefined ? 1 : Number(body.volume),
         durationSec: Number(body?.durationSec) || 0,
       });
       if (url) void saveCreation(req, guard.userId, url, action, 0);
