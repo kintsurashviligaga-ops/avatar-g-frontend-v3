@@ -1329,6 +1329,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Agent G — glowing granular loader while the router classifies + orchestrates. `agentGPhase` drives the step text.
   const [agentGBusy, setAgentGBusy] = useState(false);
   const [agentGPhase, setAgentGPhase] = useState(0);
+  // Drag-over overlay — a frosted-glass "drop your file here" affordance shown while a
+  // FILE is dragged anywhere over the chat surface. `dragDepthRef` counts enter/leave so
+  // moving across child elements doesn't flicker the overlay (dragleave fires per child).
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
   // Full-screen image lightbox — holds the URL of the tapped picture (generated or
   // attached). null = closed. Tap a chat image to open; backdrop / X / Esc closes.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -1757,6 +1762,42 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setShareToast(locale === 'en' ? 'Invalid file format. Please upload a text script (.txt, .md)' : locale === 'ru' ? 'Неверный формат файла. Загрузите текстовый сценарий (.txt, .md)' : 'არასწორი ფაილის ფორმატი. გთხოვთ ატვირთოთ ტექსტური სცენარი (.txt, .md)');
     setTimeout(() => setShareToast((s) => (s && /\.txt|формат|ფორმატ/.test(s) ? null : s)), 3200);
   }, [isScriptFile, loadScriptFile, locale, videoScriptBusy]);
+  // Whole-surface drag-over overlay (V3). Only reacts to FILE drags (a text selection drag
+  // is ignored). A depth counter survives dragleave firing once per crossed child. The Script
+  // slot handles its own drop (stopPropagation), so a drop there never double-fires here.
+  const dragHasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  const onChatDragEnter = useCallback((e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }, []);
+  const onChatDragOver = useCallback((e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault(); // required so the browser fires `drop` instead of navigating to the file
+  }, []);
+  const onChatDragLeave = useCallback((e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }, []);
+  const onChatDrop = useCallback((e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
+    const first = files[0]!;
+    // In Video mode a dropped script goes straight into the Director's Script slot.
+    if (mode === 'video' && isScriptFile({ name: first.name, type: first.type })) { void loadScriptFile(first); return; }
+    // Otherwise ingest as chat attachment(s), same as the composer "+" picker.
+    files.forEach((f) => {
+      const r = new FileReader();
+      r.onload = () => setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }]);
+      r.readAsDataURL(f);
+    });
+  }, [mode, isScriptFile, loadScriptFile]);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
@@ -4798,15 +4839,56 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     <div
       className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden px-4 pt-2 text-app-text"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      onDragEnter={onChatDragEnter}
+      onDragOver={onChatDragOver}
+      onDragLeave={onChatDragLeave}
+      onDrop={onChatDrop}
     >
+      {/* V3 — premium drag-over overlay: frosted glass + high-contrast dashed emerald frame,
+          shown whenever a file is dragged over the chat. Pointer-events-none so the drop lands
+          on the real surface underneath (which bubbles to onChatDrop); fades out on ingestion. */}
+      {dragActive && (
+        <div className="mya-drop-overlay pointer-events-none absolute inset-0 z-[55] flex items-center justify-center p-5" style={{ animation: 'mya-drop-in 0.16s ease-out' }}>
+          <div className="absolute inset-0 bg-app-bg/55 backdrop-blur-md" />
+          <div
+            className="mya-drop-card relative flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-emerald-400 bg-app-elevated/70 px-8 py-10 text-center"
+            style={{ animation: 'mya-drop-card 0.2s ease-out', boxShadow: '0 0 60px -12px rgba(16,185,129,0.55)' }}
+          >
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-400 ring-1 ring-emerald-400/40">
+              <Upload size={26} />
+            </span>
+            <div className="text-[17px] font-bold text-app-text">
+              {mode === 'video'
+                ? (locale === 'en' ? 'Drop Script File Here' : locale === 'ru' ? 'Перетащите файл сценария' : 'ჩააგდეთ ფაილი სცენარისთვის')
+                : (locale === 'en' ? 'Drop file here' : locale === 'ru' ? 'Перетащите файл сюда' : 'ჩააგდეთ ფაილი')}
+            </div>
+            <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-emerald-400/90">
+              {mode === 'video'
+                ? 'TXT · MD · PDF · DOCX'
+                : (locale === 'en' ? 'Image · Audio · Video' : locale === 'ru' ? 'Фото · Аудио · Видео' : 'სურათი · აუდიო · ვიდეო')}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Agent G — glowing transition overlay while the router classifies a chat submission with an attached asset. */}
       {agentGBusy && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-app-bg/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 px-6 text-center">
-            <span className="relative flex h-16 w-16 items-center justify-center">
-              <span className="absolute inset-0 animate-ping rounded-full bg-app-accent/25" />
-              <span className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-app-accent/15 ring-1 ring-app-accent/40" style={{ boxShadow: '0 0 40px -8px rgba(6,182,212,0.6)' }}>
-                <Sparkles size={26} className="animate-pulse text-app-accent" />
+            {/* Pulsating gradient orb — a rotating conic ring + breathing glow behind a
+                calm core. Replaces the flat spinner square with a living "thinking" state. */}
+            <span className="relative flex h-20 w-20 items-center justify-center">
+              <span className="mya-orb-glow absolute inset-0 rounded-full bg-app-accent/25 blur-xl" style={{ animation: 'mya-orb-breathe 2.4s ease-in-out infinite' }} />
+              <span
+                className="mya-orb-ring absolute inset-0 rounded-full opacity-80"
+                style={{
+                  background: 'conic-gradient(from 0deg, rgba(6,210,255,0) 0deg, rgba(6,210,255,0.95) 130deg, rgba(16,185,129,0.9) 250deg, rgba(6,210,255,0) 360deg)',
+                  WebkitMaskImage: 'radial-gradient(circle, transparent 57%, #000 60%)',
+                  maskImage: 'radial-gradient(circle, transparent 57%, #000 60%)',
+                  animation: 'mya-orb-spin 2.6s linear infinite',
+                }}
+              />
+              <span className="mya-orb-core relative flex h-14 w-14 items-center justify-center rounded-full bg-app-bg ring-1 ring-app-accent/40" style={{ animation: 'mya-orb-breathe 2.4s ease-in-out infinite', boxShadow: '0 0 44px -6px rgba(6,210,255,0.6)' }}>
+                <Sparkles size={24} className="text-app-accent" />
               </span>
             </span>
             <div className="text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent">G-Agent</div>
@@ -4814,10 +4896,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {AGENT_G_PHASES.map((ph, i) => {
                 const state = i < agentGPhase ? 'done' : i === agentGPhase ? 'active' : 'pending';
                 return (
-                  <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all ${state === 'active' ? 'bg-app-accent/12 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
+                  <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all duration-300 ease-out ${state === 'active' ? 'bg-app-accent/15 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
                     <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
                     <span className="min-w-0 flex-1 font-medium">{locale === 'en' ? ph.en : locale === 'ru' ? ph.ru : ph.ka}</span>
-                    {state === 'active' && <Loader2 size={13} className="shrink-0 animate-spin text-app-accent" />}
+                    {state === 'active' && (
+                      <span className="relative flex h-2.5 w-2.5 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-app-accent/60" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-app-accent" />
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -5180,12 +5267,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       </div>
                     )}
                     {displayText && <Markdown>{displayText}</Markdown>}
+                    {/* Streaming caret — a soft blink while the reply is still arriving, so the
+                        text reads as live-typed rather than snapping in as chunks land. */}
+                    {pending && !m.genKind && (
+                      <span aria-hidden className="mya-caret -mt-1 inline-block h-4 w-[3px] translate-y-[3px] rounded-full bg-app-accent" style={{ animation: 'mya-caret 1.05s ease-in-out infinite' }} />
+                    )}
                     {routingChip && routingPrompt && (
                       <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
                         {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <Volume2 size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
                         <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{routingPrompt}</span>
                         <button type="button" disabled={busy} onClick={() => dispatchServiceBlock(routingChip, routingPrompt)}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
                           <Sparkles size={13} />{(routingChip === 'image' || routingChip === 'music')
                             ? (locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია')
                             : (locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა')}
@@ -5209,7 +5301,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <ImageIcon size={16} className="shrink-0 text-app-accent" />
                         <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{p}</span>
                         <button type="button" disabled={busy} onClick={() => void runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
                           <Sparkles size={13} />{locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია'}
                         </button>
                       </div>
@@ -5278,7 +5370,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void speakMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
                     title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${speakingIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${speakingIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {speakingIdx === i
                       ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
@@ -5289,7 +5381,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => void copyMsg(m.text, i)}
                     aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
                     title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${copiedIdx === i ? 'text-app-accent' : ''}`}
                   >
                     {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -5298,7 +5390,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'up', m.text)}
                     aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
                     title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsUp size={13} />
                   </button>
@@ -5307,7 +5399,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     onClick={() => rateMsg(i, 'down', m.text)}
                     aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
                     title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
+                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
                   >
                     <ThumbsDown size={13} />
                   </button>
@@ -5317,7 +5409,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       onClick={() => regenerateChat()}
                       aria-label={t.regenerate}
                       title={t.regenerate}
-                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition hover:bg-app-elevated hover:text-app-accent active:scale-90"
+                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90"
                     >
                       <RotateCcw size={13} />
                     </button>
@@ -6950,7 +7042,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. (Dictation → fills the text box.) */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-300 ease-out hover:scale-105 hover:bg-app-surface hover:text-app-text active:scale-95">
                   <Mic size={19} />
                 </button>
                 {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
@@ -6961,7 +7053,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative ml-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors hover:bg-app-accent/10 active:scale-95">
+                  className="group relative ml-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-accent transition-all duration-300 ease-out hover:scale-105 hover:bg-app-accent/10 active:scale-95">
                   {/* Soft, steady accent aura (the motion comes from the equalizer, not a strobing halo). */}
                   <span aria-hidden="true" className="pointer-events-none absolute inset-[7px] rounded-full bg-app-accent/20 blur-md" />
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
@@ -6976,7 +7068,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 )}
                 {canSend && (
                   <button type="button" onClick={() => void send()} aria-label="send"
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity hover:opacity-90">
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-all duration-300 ease-out hover:scale-105 hover:opacity-95 active:scale-95">
                     <Send size={17} />
                   </button>
                 )}
