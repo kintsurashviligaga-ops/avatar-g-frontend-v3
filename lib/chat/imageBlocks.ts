@@ -56,6 +56,48 @@ const AUDIO_ORPHAN_TAG = /<\/?(?:audio|source)\b[^>]{0,2100}\/?>/gi;        // s
 // <audio>/<source> example is never mangled (Markdown renders fenced content literally anyway).
 const CODE_FENCE = /(?:```|~~~)[\s\S]{0,20000}?(?:```|~~~)/g;
 
+/** Steps 2b+2c as a reusable unit: strip complete <audio>…</audio> blocks (fence-aware, URL-guarded, pushing track
+ *  URLs into `audioUrls`) and hide a still-streaming UNCLOSED <audio…> partial. Returns the cleaned text. */
+function applyRawAudioStrip(input: string, audioUrls: string[]): string {
+  const parts: string[] = [];
+  let last = 0;
+  for (const m of input.matchAll(CODE_FENCE)) {
+    const idx = m.index ?? 0;
+    parts.push(stripAudioHtml(input.slice(last, idx), audioUrls)); // prose before this fence
+    parts.push(m[0]);                                              // keep the fenced code verbatim
+    last = idx + m[0].length;
+  }
+  parts.push(stripAudioHtml(input.slice(last), audioUrls));        // trailing prose
+  let text = parts.join('');
+  // Hide a genuinely MID-STREAM partial: the buffer ends INSIDE an UNTERMINATED <audio/<source tag — a trailing `<`
+  // with NO closing `>` after it (e.g. "…<audio controls><source src=\"htt") — which would flash as raw markup before
+  // </audio> streams in. A COMPLETE prose mention ("use the <audio> element", "the <audio controls> tag plays media")
+  // always has its closing `>`, so `indexOf('>', lt) === -1` is false and it is NEVER touched → no data loss.
+  const lt = text.lastIndexOf('<');
+  if (lt !== -1 && text.indexOf('>', lt) === -1 && /^<\/?(?:audio|source)\b/i.test(text.slice(lt, lt + 9))) {
+    const ai = text.toLowerCase().lastIndexOf('<audio'); // strip the whole partial player from its <audio opening
+    text = text.slice(0, ai !== -1 && ai <= lt ? ai : lt);
+  }
+  return text;
+}
+
+/**
+ * Strip ONLY raw <audio>/<source> HTML (complete blocks + a still-streaming partial) from an assistant reply,
+ * returning the cleaned prose + any extracted track URLs. Leaves markdown, [Image:]/[Audio:] markers, and prose
+ * untouched — for renderers (e.g. MyAvatarChatV2 on /chat) that feed text straight to react-markdown WITHOUT
+ * rehype-raw, where a raw <audio> tag would otherwise render as ESCAPED literal text in the bubble. Bounded +
+ * linear (no ReDoS). Pure + unit-tested.
+ */
+export function stripRawAudioTags(raw: string): { text: string; audioUrls: string[] } {
+  const s = typeof raw === 'string' ? raw : '';
+  const audioUrls: string[] = [];
+  const stripped = applyRawAudioStrip(s, audioUrls);
+  // Only tidy whitespace when a tag was ACTUALLY removed — otherwise return the source verbatim so a plain
+  // (audio-free) message's markdown (trailing-space hard-breaks, leading indent) is never altered.
+  if (stripped === s) return { text: s, audioUrls };
+  return { text: stripped.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), audioUrls };
+}
+
 /**
  * Parse `[Image: …]` placeholders and markdown images out of an assistant reply.
  *
@@ -86,34 +128,10 @@ export function parseImageBlocks(raw: string): ParsedImageBlocks {
     return '';
   });
 
-  // 2b) Raw <audio …>…</audio> HTML → lift the track URL into the native player and STRIP the markup, so a model
-  //     that answers with a literal <audio controls><source src=…></audio> never leaks raw tags into the bubble.
-  //     Applied ONLY to prose OUTSIDE fenced code blocks (an HTML tutorial's ```<audio>…</audio>``` is left intact),
-  //     and only when a real https URL is present (stripAudioHtml keeps URL-less example markup verbatim).
-  {
-    const parts: string[] = [];
-    let last = 0;
-    for (const m of text.matchAll(CODE_FENCE)) {
-      const idx = m.index ?? 0;
-      parts.push(stripAudioHtml(text.slice(last, idx), audioUrls)); // transform the prose before this fence
-      parts.push(m[0]);                                             // keep the fenced code verbatim
-      last = idx + m[0].length;
-    }
-    parts.push(stripAudioHtml(text.slice(last), audioUrls));        // transform the trailing prose
-    text = parts.join('');
-  }
-
-  // 2c) A still-STREAMING <audio…> that hasn't closed yet (its </audio> hasn't arrived) would flash as raw markup in
-  //     the bubble mid-stream, before step 2b can strip the complete block. Hide from the last UNCLOSED opening to the
-  //     end. Plain string ops → linear, no ReDoS; a COMPLETE <audio>…</audio> above is untouched (it has a </audio>).
-  {
-    const lc = text.toLowerCase();
-    const li = lc.lastIndexOf('<audio');
-    // a real tag opening: the char after "<audio" is whitespace / > / / (or end-of-string while streaming)
-    if (li !== -1 && /[\s/>]|^$/.test(lc.charAt(li + 6) || '') && lc.indexOf('</audio>', li) === -1) {
-      text = text.slice(0, li);
-    }
-  }
+  // 2b/2c) Raw <audio …>…</audio> HTML (complete blocks, fence-aware + URL-guarded) AND a still-streaming UNCLOSED
+  //     <audio…> partial → lift the track URL into the native player + strip the markup, so a model that answers with
+  //     a literal <audio controls><source src=…></audio> never leaks raw tags into the bubble. See applyRawAudioStrip.
+  text = applyRawAudioStrip(text, audioUrls);
 
   // 3) markdown images ![alt](url) — NOTE the leading `!`, so a plain markdown LINK [text](url) is left intact.
   text = text.replace(MD_IMAGE, (_m, url: string) => { pushUnique(urls, url); return ''; });

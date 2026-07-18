@@ -41,6 +41,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { chunkForTts } from '@/lib/audio/ttsChunks';
+import { stripRawAudioTags } from '@/lib/chat/imageBlocks';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
@@ -3338,14 +3339,24 @@ const MD_COMPONENTS: Components = {
 // VECTOR 3 — memoized on `source` (a primitive), so a keystroke in the composer re-renders the parent WITHOUT
 // re-parsing markdown for every historical message. Only a bubble whose text actually changed re-parses.
 const MarkdownView = memo(function MarkdownView({ source }: { source: string }) {
+  // A raw <audio controls><source src=…></audio> the chat model sometimes emits would render as ESCAPED literal text
+  // here — this react-markdown has no rehype-raw — which is the "raw HTML leaking into the bubble" the user sees on
+  // /chat. Strip it before markdown and play the extracted track(s) in a native player instead.
+  const { text, audioUrls } = stripRawAudioTags(source);
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-      components={MD_COMPONENTS}
-    >
-      {source}
-    </ReactMarkdown>
+    <>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        components={MD_COMPONENTS}
+      >
+        {text}
+      </ReactMarkdown>
+      {audioUrls.map((url, i) => (
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <audio key={`rawaud-${i}`} src={url} controls preload="metadata" className="mt-2 w-full max-w-[360px] rounded-lg" />
+      ))}
+    </>
   );
 });
 

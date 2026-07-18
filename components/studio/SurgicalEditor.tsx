@@ -811,7 +811,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               loaded; the Scissors glyph before then. The left group is min-w-0 so the title truncates instead of
               pushing the thumbnail to 0px, and the right actions are shrink-0 with icon-only labels below sm. */}
           {clip ? (
-            <span className="block h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-app-border/20 bg-app-elevated">
+            <span className="block h-12 w-12 min-h-[48px] min-w-[48px] shrink-0 overflow-hidden rounded-lg border border-app-border/20 bg-app-elevated">
               {clip.kind === 'image' ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={result?.kind === 'image' ? result.url : clip.url} alt="" className="h-full w-full object-cover" />

@@ -1,4 +1,57 @@
-import { parseImageBlocks, hasImageBlocks } from './imageBlocks';
+import { parseImageBlocks, hasImageBlocks, stripRawAudioTags } from './imageBlocks';
+
+describe('stripRawAudioTags — audio-only strip for react-markdown surfaces (MyAvatarChatV2 /chat)', () => {
+  it('strips the EXACT screenshot leak "<audio controls> <source src=… type=audio/mpeg></audio>" and extracts the url', () => {
+    const raw = 'Here is your song:\n<audio controls> <source src="https://cdn.myavatar.ge/gen/generated_spanish_upbeat_song_2.mp3" type="audio/mpeg"></audio>\nEnjoy!';
+    const r = stripRawAudioTags(raw);
+    expect(r.audioUrls).toEqual(['https://cdn.myavatar.ge/gen/generated_spanish_upbeat_song_2.mp3']);
+    expect(r.text).not.toMatch(/<audio|<source|controls|audio\/mpeg/i); // no raw markup survives to react-markdown
+    expect(r.text).toContain('Here is your song:');
+    expect(r.text).toContain('Enjoy!');
+  });
+
+  it('hides a still-streaming unclosed <audio…> partial (no </audio> yet)', () => {
+    expect(stripRawAudioTags('Track: <audio controls><source src="https://x/y.mp').text).toBe('Track:');
+  });
+
+  it('leaves markdown images and ordinary prose untouched (audio-only — never touches images)', () => {
+    const md = 'Look: ![a cat](https://x/cat.png) and read more.';
+    const r = stripRawAudioTags(md);
+    expect(r.text).toBe(md);          // markdown image is preserved for react-markdown to render
+    expect(r.audioUrls).toEqual([]);
+  });
+
+  it('does NOT touch a [Audio: url] marker (that is parseImageBlocks territory) or a fenced example', () => {
+    expect(stripRawAudioTags('[Audio: https://x/y.mp3]').text).toBe('[Audio: https://x/y.mp3]');
+    const fenced = 'Example:\n```html\n<audio controls><source src="https://x/z.mp3"></audio>\n```';
+    expect(stripRawAudioTags(fenced).audioUrls).toEqual([]); // fenced tutorial preserved
+  });
+
+  it('returns an audio-free message VERBATIM (never alters markdown trailing-space hard-breaks / indent)', () => {
+    const md = 'line one  \nline two\n\n    indented block';   // 2 trailing spaces = a markdown hard break
+    expect(stripRawAudioTags(md)).toEqual({ text: md, audioUrls: [] });
+  });
+
+  it('NEVER truncates a COMPLETED message that merely MENTIONS the <audio> HTML element (review fix)', () => {
+    // the dangling strip must only hit an UNTERMINATED trailing tag, never a complete <audio> with a `>` + prose after
+    for (const s of [
+      'To embed sound, use the <audio> element with a controls attribute.',
+      'The HTML <audio controls> tag plays media in the browser.',
+      'Compare <video> and <audio> tags when building players.',
+      'The <audio> tag is the standard way to embed sound.',
+    ]) {
+      expect(stripRawAudioTags(s)).toEqual({ text: s, audioUrls: [] });
+    }
+  });
+
+  it('does not corrupt a CLOSED code fence whose <audio> lacks a </audio> (review fix)', () => {
+    const src = "Here's the tag:\n```html\n<audio src=\"clip.mp3\" controls>\n```\nThat's it.";
+    const r = stripRawAudioTags(src);
+    expect(r.text).toContain('```html');   // fence intact
+    expect(r.text).toContain("That's it."); // trailing prose intact
+    expect(r.text).toContain('<audio src="clip.mp3"'); // the example survives
+  });
+});
 
 describe('parseImageBlocks', () => {
   it('extracts a URL-less [Image: …] placeholder as a prompt and strips it from the prose', () => {
