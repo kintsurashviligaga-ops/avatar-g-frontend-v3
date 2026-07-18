@@ -37,7 +37,7 @@ const EDITOR_STEPS: { icon: string; ka: string; en: string; ru: string }[] = [
 const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95 ? 3 : 4);
 
 interface Copy {
-  title: string; subtitle: string; drop: string; dropHint: string; pick: string;
+  title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
@@ -58,7 +58,7 @@ interface Copy {
 const T: Record<Lang, Copy> = {
   ka: {
     title: 'ქირურგიული მონტაჟი', subtitle: 'არა-ლინეარული რედაქტორი — გადააბი სხვადასხვა კლიპი',
-    drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 ფაილი', pick: 'ფაილის არჩევა',
+    drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 ფაილი', dropHintAudio: 'MP3 · WAV · M4A', pick: 'ფაილის არჩევა',
     crop: 'ჩამოჭრა', color: 'ფერის გრადაცია', fade: 'მილევა', split: 'გაჭრა', mute: 'დადუმება', unmute: 'ხმის ჩართვა', reset: 'გადატვირთვა',
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
     maxReached: 'მაქსიმუმ 35 ფაილი', max5: 'მაქსიმუმ 5 კლიპი თანმიმდევრობაში', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
@@ -70,14 +70,14 @@ const T: Record<Lang, Copy> = {
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
     audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
-    selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ჩააგდე ან ატვირთე აუდიო', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
+    selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ატვირთეთ აუდიო ფაილი ან მუსიკალური ტრეკი დასამუშავებლად', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
     returnChat: 'ჩატში დაბრუნება ფაილით',
     agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
     detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
   },
   en: {
     title: 'Surgical Editor', subtitle: 'Non-linear editor — stitch different clips',
-    drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 files', pick: 'Choose file',
+    drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 files', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Choose file',
     crop: 'Crop', color: 'Color grade', fade: 'Fade', split: 'Split', mute: 'Mute', unmute: 'Unmute', reset: 'Reset',
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
     maxReached: 'Maximum 35 files', max5: 'Up to 5 clips in a sequence', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
@@ -89,14 +89,14 @@ const T: Record<Lang, Copy> = {
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
     audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
-    selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Drop or upload audio', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
+    selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Upload an audio file or music track to process', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
     returnChat: 'Return to chat with asset',
     agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
     detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
   },
   ru: {
     title: 'Хирургический редактор', subtitle: 'Нелинейный редактор — сшивайте разные клипы',
-    drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 файлов', pick: 'Выбрать файл',
+    drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 файлов', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Выбрать файл',
     crop: 'Обрезка', color: 'Цветокоррекция', fade: 'Затухание', split: 'Разрез', mute: 'Заглушить', unmute: 'Включить звук', reset: 'Сброс',
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
     maxReached: 'Максимум 35 файлов', max5: 'До 5 клипов в последовательности', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
@@ -108,7 +108,7 @@ const T: Record<Lang, Copy> = {
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
     audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
-    selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Перетащите или загрузите аудио', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
+    selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Загрузите аудиофайл или музыкальный трек для обработки', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
     returnChat: 'Вернуться в чат с файлом',
     agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
     detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
@@ -871,7 +871,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-app-border/25 bg-app-surface/40 p-10 text-center transition-colors hover:border-app-accent/40">
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-app-accent/12">{workspaceMode === 'audio' ? <Music2 size={24} className="text-app-accent" /> : workspaceMode === 'photo' ? <Crop size={24} className="text-app-accent" /> : <Film size={24} className="text-app-accent" />}</span>
                 <div className="text-[15px] font-semibold">{workspaceMode === 'video' ? t.wsVideoHint : workspaceMode === 'photo' ? t.wsPhotoHint : t.wsAudioHint}</div>
-                <div className="text-[12px] text-app-muted">{t.dropHint}</div>
+                <div className="text-[12px] text-app-muted">{workspaceMode === 'audio' ? t.dropHintAudio : t.dropHint}</div>
                 <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
                 <input type="file" accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'} multiple className="hidden" onChange={(e) => addFiles(e.target.files, laneKind)} />
               </label>

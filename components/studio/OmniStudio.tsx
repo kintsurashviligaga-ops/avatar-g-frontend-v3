@@ -1744,6 +1744,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return false;
     } finally { setVideoScriptBusy(false); }
   }, [locale]);
+  // VECTOR 1 — DROP a script file ONTO the Script slot. Without an explicit handler the browser default fires and
+  // NAVIGATES the tab to the dropped file (loading it as a raw URL — the reported "opens in a new tab" bug).
+  // preventDefault on the drop (and dragOver, on the element) stops that; a script file is read via loadScriptFile
+  // (.txt/.md decoded in-browser, .pdf/.docx via extract-text), and a non-script file gets a clear format toast.
+  const handleScriptDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const f = e.dataTransfer?.files?.[0];
+    if (!f || videoScriptBusy) return;
+    if (isScriptFile({ name: f.name, type: f.type })) { void loadScriptFile(f); return; }
+    setShareToast(locale === 'en' ? 'Invalid file format. Please upload a text script (.txt, .md)' : locale === 'ru' ? 'Неверный формат файла. Загрузите текстовый сценарий (.txt, .md)' : 'არასწორი ფაილის ფორმატი. გთხოვთ ატვირთოთ ტექსტური სცენარი (.txt, .md)');
+    setTimeout(() => setShareToast((s) => (s && /\.txt|формат|ფორმატ/.test(s) ? null : s)), 3200);
+  }, [isScriptFile, loadScriptFile, locale, videoScriptBusy]);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
@@ -5720,6 +5733,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="grid grid-cols-1 gap-2">
               <div role="button" tabIndex={0} onClick={() => { if (!videoScriptBusy) scriptFileRef.current?.click(); }}
                 onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !videoScriptBusy) { e.preventDefault(); scriptFileRef.current?.click(); } }}
+                onDragOver={(e) => { e.preventDefault(); }} onDrop={handleScriptDrop}
                 className={`relative flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoScriptDoc ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
                 {videoScriptBusy ? (
                   <><Loader2 size={18} className="animate-spin text-app-accent" /><span className="text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Reading script…' : locale === 'ru' ? 'Читаю сценарий…' : 'სცენარს ვკითხულობ…'}</span></>
