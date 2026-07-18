@@ -58,6 +58,14 @@ export async function GET(request: NextRequest) {
         ltx: has('LTX_API_KEY'),
         udio: has('UDIO_API_KEY'),
       },
+      // Active model config (P90) — base image defaults to FLUX 1.1 Pro unless IMAGE_PRIMARY_PROVIDER=nanobanana;
+      // video clips read REPLICATE_VIDEO_MODEL (a v1.6 value here is the usual "Kling v1.6" cause).
+      pipeline: {
+        imageBase: /^nanobanana$/i.test((process.env.IMAGE_PRIMARY_PROVIDER || '').trim()) ? 'NanoBanana' : 'FLUX 1.1 Pro',
+        videoClipModel: (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim(),
+        videoPinnedToV16: /v1[.\-]?6/i.test((process.env.REPLICATE_VIDEO_MODEL || '').trim()),
+        anchor: /^(fast|schnell)$/i.test((process.env.ANCHOR_MODEL || '').trim()) ? 'FLUX Schnell' : 'FLUX 1.1 Pro',
+      },
       runwayModel: runwayModel(),
     });
   } catch (e) {

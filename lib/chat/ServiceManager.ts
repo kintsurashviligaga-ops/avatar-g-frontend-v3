@@ -288,7 +288,13 @@ export class ServiceManager {
   private async runTextToImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const provider = this.resolveImageProvider(request.selectedOptions);
     if (provider === 'replicate') {
-      return this.runReplicateImage(request);
+      // P90 — FLUX 1.1 Pro primary, NanoBanana fail-open: a FLUX outage/quota still yields a real
+      // preview (resilience preserved, just inverted from the old NanoBanana→FLUX order).
+      try {
+        const res = await this.runReplicateImage(request);
+        if (res.success && res.assetUrl) return res;
+      } catch { /* fall through to NanoBanana */ }
+      return this.runNanoBananaImage(request);
     }
 
     return this.runNanoBananaImage(request);
@@ -2226,8 +2232,13 @@ export class ServiceManager {
   }
 
   private resolveImageProvider(selectedOptions?: Record<string, string>): 'nanobanana' | 'replicate' {
-    const preferred = this.getOption(selectedOptions || {}, ['provider', 'image_provider', 'providerMode']);
-    return preferred?.toLowerCase() === 'replicate' ? 'replicate' : 'nanobanana';
+    const preferred = this.getOption(selectedOptions || {}, ['provider', 'image_provider', 'providerMode'])?.toLowerCase();
+    if (preferred === 'replicate') return 'replicate';
+    if (preferred === 'nanobanana') return 'nanobanana';
+    // P90 — the BASE image now defaults to FLUX 1.1 Pro (Replicate) for elite photoreal quality; the prior
+    // NanoBanana default was a cost choice. Ops can revert per-deploy with IMAGE_PRIMARY_PROVIDER=nanobanana
+    // (no code push). runTextToImage keeps NanoBanana as the fail-open, so a FLUX outage still yields a preview.
+    return (process.env.IMAGE_PRIMARY_PROVIDER || '').trim().toLowerCase() === 'nanobanana' ? 'nanobanana' : 'replicate';
   }
 
   private resolveVideoProvider(request: ServiceManagerRequest): 'ltx' | 'heygen' {

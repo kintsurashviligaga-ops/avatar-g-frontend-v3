@@ -120,15 +120,23 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       icon: dot(musicAvail, musicAvail ? (hasUdio || hasElevenLabs ? 'high' : 'medium') : 'unavailable'),
     });
 
-    // 6 · BASE IMAGE — NanoBanana (storyboard frames / image mode)
+    // 6 · BASE IMAGE — FLUX 1.1 Pro (Replicate) primary (P90); NanoBanana fail-open. Revert per-deploy
+    //     with IMAGE_PRIMARY_PROVIDER=nanobanana.
+    const baseIsNano = /^nanobanana$/i.test((env.IMAGE_PRIMARY_PROVIDER || '').trim());
     const hasNanoBanana = !!env.NANOBANANA_API_KEY;
+    const baseAvail = hasReplicate || hasNanoBanana;
+    const baseTier: ServiceTier = baseIsNano
+      ? (hasNanoBanana ? 'high' : hasReplicate ? 'medium' : 'unavailable')
+      : (hasReplicate ? 'high' : hasNanoBanana ? 'medium' : 'unavailable');
     services.push({
       service: 'სურათი (Base)',
-      provider: 'NanoBanana',
-      available: hasNanoBanana || hasReplicate,
-      tier: hasNanoBanana ? 'high' : hasReplicate ? 'medium' : 'unavailable',
-      note: hasNanoBanana ? 'NanoBanana generation (flux-schnell fallback via Replicate)' : hasReplicate ? 'NanoBanana key missing — flux-schnell fallback only' : 'no NANOBANANA_API_KEY / REPLICATE_API_TOKEN',
-      icon: dot(hasNanoBanana || hasReplicate, hasNanoBanana ? 'high' : hasReplicate ? 'medium' : 'unavailable'),
+      provider: baseIsNano ? 'NanoBanana' : 'FLUX 1.1 Pro',
+      available: baseAvail,
+      tier: baseTier,
+      note: !baseAvail ? 'no REPLICATE_API_TOKEN / NANOBANANA_API_KEY'
+        : baseIsNano ? 'NanoBanana primary (IMAGE_PRIMARY_PROVIDER=nanobanana) → FLUX fallback'
+        : 'FLUX 1.1 Pro primary → NanoBanana fail-open',
+      icon: dot(baseAvail, baseTier),
     });
 
     // 7 · SUBTITLES — ffmpeg-static + SVG→PNG (resvg). NO libass on Vercel; FiraGO Georgian font bundled.
@@ -154,8 +162,9 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     });
 
     // ── WARNINGS ──────────────────────────────────────────────────────────────
-    const fastImage = env.FAST_IMAGE_MODEL === 'true' || env.FAST_IMAGE_MODEL === '1';
-    if (!fastImage) warnings.push('FAST_IMAGE_MODEL not set — storyboard frames use NanoBanana (slower). Set "true" for flux-schnell.');
+    // The v1.6 pin is the usual cause of a "Kling v1.6" showing where the v2.1 lock is expected —
+    // REPLICATE_VIDEO_MODEL overrides the modelLock default; unset it (or set a v2.1 value) to restore v2.1.
+    if (/v1[.\-]?6/i.test(videoModel)) warnings.push(`Video clips pinned to a v1.6 tier (${videoModel}) via REPLICATE_VIDEO_MODEL — unset it (or set kwaivgi/kling-v2.1) to restore the v2.1 lock.`);
     if (!autoAnchor) warnings.push('AUTO_ANCHOR_FRAME=1 not set — text-only briefs fall to LTX instead of Kling.');
     const unavailable = services.filter((s) => !s.available);
     if (unavailable.length) warnings.push(`${unavailable.length} service(s) unavailable: ${unavailable.map((s) => s.service).join(', ')}`);
