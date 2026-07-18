@@ -19,6 +19,7 @@ import {
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
+import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
 
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -731,8 +732,17 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       else if (acts[0]) void runPhotoAction(acts[0]);
       else flash(t.agentNoOp);
     } else if (clip.kind === 'audio') {
+      // AUDIO — first the AI Demucs actions (isolate / splitter); otherwise a slider command drives the SAME
+      // pitch / speed / fade / volume the user could set by hand ("fade in 2s", "duck to -12dB", "mute", "faster").
       const a = audioAction(trimmed);
-      if (a) void runAudioAI(a); else flash(t.agentNoOp);
+      if (a) { void runAudioAI(a); return; }
+      const cmd = parseAudioEditCommand(trimmed);
+      if (!cmd) { flash(t.agentNoOp); return; }
+      if (cmd.pitch !== undefined) setPitch(cmd.pitch);
+      if (cmd.speed !== undefined) setAudioSpeed(cmd.speed);
+      if (cmd.volume !== undefined) setAudioVol(cmd.volume);
+      const fd = cmd.fade; if (fd) setFade((f) => ({ ...f, ...fd }));
+      flash(t.done);
     } else {
       // VIDEO — a natural-language command drives the SAME grade / speed / fade / timeline controls the user could set
       // by hand (not just split/mute). It's a local edit (no paid render), so confirm with a toast — never feel dead.
