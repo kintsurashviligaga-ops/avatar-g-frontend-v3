@@ -82,9 +82,12 @@ async function pollGenerationStatus(generationId: string): Promise<string> {
 // E2E-tested here, so fail-open is load-bearing — a wrong detail degrades to Replicate,
 // never a broken render.
 //
-// MODEL: defaults to `gen3a_turbo` (the mandated "Gen-3 Alpha"), but that model is
-// DEPRECATED (Runway EOL ~2026-07-08). Set RUNWAY_VIDEO_MODEL=gen4_turbo to move to the
-// current production model when ready — the adapter is otherwise identical.
+// MODEL: defaults to `gen4_turbo` — Runway's CURRENT flagship image-to-video model. The prior default
+// `gen3a_turbo` reached END-OF-LIFE ~2026-07-08, so Runway's API now REJECTS it → every clip silently fell over to
+// the Replicate-Kling cascade (the "trash despite same provider" report — it was NOT actually using Runway). NOTE:
+// Runway's Developer API only exposes the *_turbo i2v models (there is no bare `gen3a` model to select); `gen4_turbo`
+// IS the highest-fidelity i2v tier the API offers. Env-overridable via RUNWAY_VIDEO_MODEL; mapRunwayRatio auto-picks
+// the gen4 720-family resolutions. Fail-open is preserved — a bad model still degrades to Replicate, never a crash.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const RUNWAY_BASE = 'https://api.dev.runwayml.com/v1';
@@ -108,9 +111,10 @@ export function hasRunwayProvider(): boolean {
   return runwayKey().length > 0;
 }
 
-/** The active Runway video model (env-overridable; default honours the mandated Gen-3 Alpha turbo). */
+/** The active Runway video model (env-overridable). Default = `gen4_turbo`, Runway's current flagship i2v model
+ *  (the prior `gen3a_turbo` default is EOL as of ~2026-07-08 → the API rejects it and clips fall to Replicate). */
 export function runwayModel(): string {
-  return String(process.env.RUNWAY_VIDEO_MODEL || 'gen3a_turbo').trim();
+  return String(process.env.RUNWAY_VIDEO_MODEL || 'gen4_turbo').trim();
 }
 
 /**

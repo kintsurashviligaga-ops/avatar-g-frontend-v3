@@ -15,15 +15,15 @@ describe('runway adapter — pure mappers', () => {
   const saved = { ...process.env };
   afterEach(() => { process.env = { ...saved }; });
 
-  test('mapRunwayRatio emits RESOLUTION strings (never the version-broken 16:9/9:16)', () => {
-    expect(mapRunwayRatio('9:16')).toBe('768:1280');
-    expect(mapRunwayRatio('vertical')).toBe('768:1280');
-    expect(mapRunwayRatio('768:1280')).toBe('768:1280');
-    expect(mapRunwayRatio('16:9')).toBe('1280:768');
-    expect(mapRunwayRatio('landscape')).toBe('1280:768');
-    expect(mapRunwayRatio(undefined)).toBe('1280:768');
+  test('mapRunwayRatio emits RESOLUTION strings (never 16:9/9:16) — gen4_turbo default → the 720-family', () => {
+    // default model is now gen4_turbo, so the default ratios are the gen4 720-family (not the gen3a 768-family)
+    expect(mapRunwayRatio('9:16')).toBe('720:1280');
+    expect(mapRunwayRatio('vertical')).toBe('720:1280');
+    expect(mapRunwayRatio('16:9')).toBe('1280:720');
+    expect(mapRunwayRatio('landscape')).toBe('1280:720');
+    expect(mapRunwayRatio(undefined)).toBe('1280:720');
     // never emits the deprecated aspect forms that the 2024-11-06 API rejects
-    expect(['768:1280', '1280:768']).toContain(mapRunwayRatio('9:16'));
+    expect(['720:1280', '1280:720']).toContain(mapRunwayRatio('9:16'));
   });
 
   test('mapRunwayRatio honours per-orientation env overrides (e.g. gen4_turbo ratios)', () => {
@@ -51,11 +51,11 @@ describe('runway adapter — pure mappers', () => {
     expect(mapRunwayDuration(undefined)).toBe(5);
   });
 
-  test('runwayModel defaults to the mandated gen3a_turbo, env-overridable', () => {
+  test('runwayModel defaults to the flagship gen4_turbo (gen3a_turbo is EOL), env-overridable', () => {
     delete process.env.RUNWAY_VIDEO_MODEL;
-    expect(runwayModel()).toBe('gen3a_turbo');
-    process.env.RUNWAY_VIDEO_MODEL = 'gen4_turbo';
     expect(runwayModel()).toBe('gen4_turbo');
+    process.env.RUNWAY_VIDEO_MODEL = 'gen3a_turbo';
+    expect(runwayModel()).toBe('gen3a_turbo');
   });
 });
 
@@ -94,7 +94,8 @@ describe('runway adapter — createRunwayI2V (fail-open create)', () => {
     expect(url).toContain('/v1/image_to_video');
     expect((init.headers as Record<string, string>)['X-Runway-Version']).toBe('2024-11-06');
     const body = JSON.parse(init.body as string);
-    expect(body.ratio).toBe('768:1280'); // resolution string, not 9:16
+    expect(body.ratio).toBe('720:1280'); // resolution string (gen4_turbo default portrait), not 9:16
+    expect(body.model).toBe('gen4_turbo'); // the flagship default reaches the payload
     expect(body.promptImage).toBe('https://x/f.jpg');
     expect(body.duration).toBe(5);
   });
