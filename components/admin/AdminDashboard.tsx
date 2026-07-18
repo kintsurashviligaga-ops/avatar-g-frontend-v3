@@ -11,12 +11,13 @@ import AdminSignOutButton from '@/components/admin/AdminSignOutButton';
 import FeatureFlags from '@/components/admin/FeatureFlags';
 import BillingConfig from '@/components/admin/BillingConfig';
 import JobsMonitor from '@/components/admin/JobsMonitor';
+import ReliabilityPanel from '@/components/admin/ReliabilityPanel';
 import LaunchHealthCard from '@/components/admin/LaunchHealthCard';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
 
-type Tab = 'overview' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags';
+type Tab = 'overview' | 'reliability' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags';
 type Accent = 'default' | 'green' | 'red' | 'cyan' | 'amber';
 
 const ACCENT: Record<Accent, string> = {
@@ -64,6 +65,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
 
   const TABS: { id: Tab; label: string }[] = [
     { id: 'overview', label: ka ? 'მიმოხილვა' : 'Overview' },
+    { id: 'reliability', label: ka ? 'სანდოობა' : 'Reliability' },
     { id: 'users', label: ka ? 'მომხმარებლები' : 'Users' },
     { id: 'activity', label: ka ? 'აქტივობა' : 'Activity' },
     { id: 'billing', label: ka ? 'ბილინგი' : 'Billing' },
@@ -112,6 +114,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
         </div>
 
         {tab === 'overview' && <Overview ka={ka} stats={stats} top={top} pipelineHealth={pipelineHealth} fmt={fmt} />}
+        {tab === 'reliability' && <ReliabilityPanel ka={ka} />}
         {tab === 'users' && <Users ka={ka} initial={initialUsers} fmt={fmt} />}
         {tab === 'activity' && <Activity ka={ka} stats={stats} fmt={fmt} />}
         {tab === 'billing' && <BillingConfig ka={ka} />}
