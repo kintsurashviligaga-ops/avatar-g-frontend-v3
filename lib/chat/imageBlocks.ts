@@ -103,6 +103,18 @@ export function parseImageBlocks(raw: string): ParsedImageBlocks {
     text = parts.join('');
   }
 
+  // 2c) A still-STREAMING <audio…> that hasn't closed yet (its </audio> hasn't arrived) would flash as raw markup in
+  //     the bubble mid-stream, before step 2b can strip the complete block. Hide from the last UNCLOSED opening to the
+  //     end. Plain string ops → linear, no ReDoS; a COMPLETE <audio>…</audio> above is untouched (it has a </audio>).
+  {
+    const lc = text.toLowerCase();
+    const li = lc.lastIndexOf('<audio');
+    // a real tag opening: the char after "<audio" is whitespace / > / / (or end-of-string while streaming)
+    if (li !== -1 && /[\s/>]|^$/.test(lc.charAt(li + 6) || '') && lc.indexOf('</audio>', li) === -1) {
+      text = text.slice(0, li);
+    }
+  }
+
   // 3) markdown images ![alt](url) — NOTE the leading `!`, so a plain markdown LINK [text](url) is left intact.
   text = text.replace(MD_IMAGE, (_m, url: string) => { pushUnique(urls, url); return ''; });
 

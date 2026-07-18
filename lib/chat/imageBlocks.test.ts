@@ -138,6 +138,20 @@ describe('parseImageBlocks', () => {
     expect(r.text).toContain('<audio controls>');    // the fenced example survives intact
     expect(r.text).toContain('```html');
   });
+
+  it('hides a still-STREAMING unclosed <audio…> partial so raw markup never flashes mid-stream (P75)', () => {
+    // the exact leak: tokens arrive before </audio> does
+    expect(parseImageBlocks('Your track: <audio controls><source src="https://cdn.x/song.mp').text).toBe('Your track:');
+    expect(parseImageBlocks('here <audio').text).toBe('here');
+    // a COMPLETE block earlier is untouched by the dangling strip; only the trailing unclosed one is hidden
+    const mixed = parseImageBlocks('a <audio src="https://x/a.mp3"></audio> b <audio controls><source src="https://x/b.mp');
+    expect(mixed.audioUrls).toEqual(['https://x/a.mp3']); // the complete one became a player
+    expect(mixed.text).not.toMatch(/<audio controls>/);   // the trailing partial is hidden
+  });
+
+  it('does NOT treat a non-tag word like "<audiobook" as a streaming audio tag', () => {
+    expect(parseImageBlocks('I read an <audiobook chapter today').text).toBe('I read an <audiobook chapter today');
+  });
 });
 
 describe('hasImageBlocks', () => {
