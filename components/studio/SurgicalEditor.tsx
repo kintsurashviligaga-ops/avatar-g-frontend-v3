@@ -47,7 +47,7 @@ interface Copy {
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
   aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
   exportSuccess: string; share: string; linkCopied: string;
-  exportVideo: string; exportPhoto: string; exporting: string; exportHint: string;
+  exportVideo: string; exportPhoto: string; exporting: string; exportHint: string; applyChanges: string; editHint: string;
   result: string; download: string; done: string; failed: string; needClip: string; close: string;
   aiRemove: string; brush: string; drawMask: string; clearMask: string; remove: string; paintFirst: string; inpaintOff: string; aiPromptPh: string;
   audioStudio: string; vocalIso: string; vocalSplit: string; pitch: string; speed: string; aStart: string; aEnd: string; applyAudio: string; audioProcessing: string; instrumental: string; vocals: string;
@@ -68,7 +68,7 @@ const T: Record<Lang, Copy> = {
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
     aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო ჯერ არ არის კონფიგურირებული',
     exportSuccess: 'ექსპორტი წარმატებულია', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა',
-    exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი',
+    exportVideo: 'ვიდეოს ექსპორტი', exportPhoto: 'სურათის შენახვა', exporting: 'მიმდინარეობს ვიდეოს დამუშავება…', exportHint: 'გამოიყენე ცვლილება ან დაამატე მეორე კლიპი', applyChanges: 'ცვლილებების შენახვა', editHint: 'შეიტანე ცვლილება გასააქტიურებლად',
     result: 'შედეგი', download: 'ჩამოტვირთვა', done: 'მზადაა', failed: 'ვერ შესრულდა', needClip: 'ჯერ ატვირთე კლიპი', close: 'დახურვა',
     aiRemove: 'AI ობიექტის მოშორება', brush: 'ფუნჯი', drawMask: 'მასკის დახატვა', clearMask: 'გასუფთავება', remove: 'მოშორება', paintFirst: 'ჯერ მონიშნე მოსაშორებელი არე', inpaintOff: 'ობიექტის მოშორება ჯერ არ არის კონფიგურირებული', aiPromptPh: 'აღწერა (არჩევითი)…',
     audioStudio: 'AI აუდიო სტუდია', vocalIso: 'ვოკალის იზოლაცია', vocalSplit: 'ვოკალი / მუსიკა', pitch: 'ტონი', speed: 'სიჩქარე', aStart: 'დასაწყისი', aEnd: 'დასასრული', applyAudio: 'დამუშავება', audioProcessing: 'მიმდინარეობს აუდიოს დამუშავება…', instrumental: 'ინსტრუმენტალი', vocals: 'ვოკალი',
@@ -87,7 +87,7 @@ const T: Record<Lang, Copy> = {
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
     aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is not configured yet',
     exportSuccess: 'Export Successful', share: 'Share', linkCopied: 'Link copied',
-    exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip',
+    exportVideo: 'Export Video', exportPhoto: 'Export Photo', exporting: 'Exporting render…', exportHint: 'Make an edit or add a second clip', applyChanges: 'Apply Changes', editHint: 'Make an edit to apply',
     result: 'Result', download: 'Download', done: 'Ready', failed: 'Failed', needClip: 'Upload a clip first', close: 'Close',
     aiRemove: 'AI object removal', brush: 'Brush', drawMask: 'Draw mask', clearMask: 'Clear', remove: 'Remove', paintFirst: 'Paint the area to remove first', inpaintOff: 'Object removal is not configured yet', aiPromptPh: 'Description (optional)…',
     audioStudio: 'AI Audio Studio', vocalIso: 'Vocal isolation', vocalSplit: 'Vocal / instrumental', pitch: 'Pitch', speed: 'Speed', aStart: 'Start', aEnd: 'End', applyAudio: 'Apply', audioProcessing: 'Processing audio…', instrumental: 'Instrumental', vocals: 'Vocals',
@@ -106,7 +106,7 @@ const T: Record<Lang, Copy> = {
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
     aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент ещё не настроен',
     exportSuccess: 'Экспорт успешен', share: 'Поделиться', linkCopied: 'Ссылка скопирована',
-    exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип',
+    exportVideo: 'Экспорт видео', exportPhoto: 'Сохранить фото', exporting: 'Обработка видео…', exportHint: 'Сделайте правку или добавьте второй клип', applyChanges: 'Применить изменения', editHint: 'Внесите правку',
     result: 'Результат', download: 'Скачать', done: 'Готово', failed: 'Не удалось', needClip: 'Сначала загрузите клип', close: 'Закрыть',
     aiRemove: 'AI-удаление объектов', brush: 'Кисть', drawMask: 'Нарисовать маску', clearMask: 'Очистить', remove: 'Удалить', paintFirst: 'Сначала закрасьте область', inpaintOff: 'Удаление объектов ещё не настроено', aiPromptPh: 'Описание (необязательно)…',
     audioStudio: 'AI аудиостудия', vocalIso: 'Изоляция вокала', vocalSplit: 'Вокал / музыка', pitch: 'Тон', speed: 'Скорость', aStart: 'Начало', aEnd: 'Конец', applyAudio: 'Применить', audioProcessing: 'Обработка аудио…', instrumental: 'Инструментал', vocals: 'Вокал',
@@ -706,10 +706,14 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
 
-  const audioHasEdit = pitch !== 0 || Math.abs(audioSpeed - 1) > 0.01 || fade.inSec > 0 || fade.outSec > 0 || aTrim.end > aTrim.start + 0.05 || Math.abs(audioVol - 1) > 0.01;
+  // Trim counts as an edit only when the user NARROWED the range from the full clip — not the
+  // default {0, duration} that onLoadedMetadata sets (else the Apply CTA is enabled on load and
+  // a tap runs a no-op re-encode; adversarial-review fix, P88).
+  const audioTrimmed = aTrim.start > 0.05 || (audioDur > 0 && aTrim.end < audioDur - 0.05);
+  const audioHasEdit = pitch !== 0 || Math.abs(audioSpeed - 1) > 0.01 || fade.inSec > 0 || fade.outSec > 0 || audioTrimmed || Math.abs(audioVol - 1) > 0.01;
   const runAudioProcess = useCallback(async () => {
     if (!clip || exporting) return;
-    if (!audioHasEdit) { flash(t.exportHint); return; }
+    if (!audioHasEdit) { flash(t.editHint); return; }
     setExporting(true); setExportPct(15); setSuccessAsset(null); setSecondaryAudio(null);
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 12)) : p)), 350);
     try {
@@ -720,7 +724,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       if (ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(t.failed);
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
-  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioVol, audioDur, onAssetReady, flash, t.failed, t.done, t.exportHint, t.timedOut]);
+  }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioVol, audioDur, onAssetReady, flash, t.failed, t.done, t.editHint, t.timedOut]);
 
   // In-editor Agent G command box: classify a typed instruction with the SAME brain and dispatch it on the current
   // clip — photo → the AI action/chain, audio → the AI action, video → the matching timeline op. Unrecognised → toast.
@@ -846,10 +850,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {clips.length > 0 && !isAudio && (
-            <button type="button" onClick={doExport} disabled={!hasMutations || exporting} title={isPhoto ? t.exportPhoto : t.exportVideo}
-              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 sm:px-3.5"
+            <button type="button" onClick={doExport} disabled={!hasMutations || exporting} title={t.applyChanges}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3.5"
               style={hasMutations ? { background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', color: '#06121a', boxShadow: '0 0 0 1px rgba(6,182,212,0.4), 0 10px 30px -8px rgba(6,182,212,0.7)' } : { background: 'var(--color-elevated)', color: 'var(--color-muted)' }}>
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />}<span className="hidden sm:inline">{isPhoto ? t.exportPhoto : t.exportVideo}</span>
+              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />}<span className="hidden sm:inline">{t.applyChanges}</span>
             </button>
           )}
           {onReturnToChat && clips.length > 0 && (
@@ -970,10 +974,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 <Slider label={t.fadeIn} min={0} max={5} step={0.1} value={fade.inSec} onChange={(v) => setFade((f) => ({ ...f, inSec: v }))} suffix="s" />
                 <Slider label={t.fadeOut} min={0} max={5} step={0.1} value={fade.outSec} onChange={(v) => setFade((f) => ({ ...f, outSec: v }))} suffix="s" />
                 <Slider icon={<Volume2 size={13} />} label={t.volume} min={0} max={200} step={5} value={Math.round(audioVol * 100)} onChange={(v) => setAudioVol(v / 100)} suffix="%" />
-                <button type="button" onClick={() => void runAudioProcess()} disabled={!audioHasEdit || exporting}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2.5 text-[13px] font-bold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">
-                  {exporting ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}{t.applyAudio}
-                </button>
+                {/* Apply action lives in the unified sticky bottom "Apply Changes" CTA (P88 parity) —
+                    no separate inline button, so all three lanes commit edits the same way. */}
               </div>
             </div>
             ) : (<>
@@ -1282,17 +1284,22 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       {/* VECTOR 1 — a PROMINENT, always-visible sticky bottom CTA to commit the edit. The header export button is
           small + icon-only on mobile, so sliders/fades sat with no obvious way to run them; this full-width primary
           button (video/photo lanes) is the discoverable Apply/Render action. Audio has its own inline Apply. */}
-      {clips.length > 0 && !isAudio && (
+      {/* V2 (P88) — ONE identical full-width "Apply Changes" bottom CTA across ALL lanes
+          (photo · video · audio). Audio wires to runAudioProcess (deterministic pitch/speed/
+          trim/fade/volume mix); photo/video wire to doExport. Unified label + `active:scale-95`. */}
+      {clips.length > 0 && (
         <div className="shrink-0 border-t border-app-border/15 bg-app-bg/95 p-3 backdrop-blur"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
-          <button type="button" onClick={doExport} disabled={!hasMutations || exporting}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-[15px] font-bold transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
-            style={hasMutations && !exporting
+          <button type="button"
+            onClick={isAudio ? () => void runAudioProcess() : doExport}
+            disabled={(isAudio ? !audioHasEdit : !hasMutations) || exporting}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-[15px] font-bold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            style={(isAudio ? audioHasEdit : hasMutations) && !exporting
               ? { background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', color: '#06121a', boxShadow: '0 0 0 1px rgba(6,182,212,0.4), 0 10px 34px -8px rgba(6,182,212,0.75)' }
               : { background: 'var(--color-elevated)', color: 'var(--color-muted)' }}>
-            {exporting ? <><Loader2 size={17} className="animate-spin" />{t.exporting}</> : <><Clapperboard size={17} />{isPhoto ? t.exportPhoto : t.exportVideo}</>}
+            {exporting ? <><Loader2 size={17} className="animate-spin" />{t.exporting}</> : <><Clapperboard size={17} />{t.applyChanges}</>}
           </button>
-          {!hasMutations && !exporting && <p className="mt-1.5 text-center text-[11px] text-app-muted">{t.exportHint}</p>}
+          {(isAudio ? !audioHasEdit : !hasMutations) && !exporting && <p className="mt-1.5 text-center text-[11px] text-app-muted">{isAudio || isPhoto ? t.editHint : t.exportHint}</p>}
         </div>
       )}
 

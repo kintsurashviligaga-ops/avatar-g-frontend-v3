@@ -65,5 +65,16 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
     const t = await provider(o);
     if (t) return t;
   }
+  // ALL premium providers missed. This is the SOLE trigger for degraded, deterministic
+  // camera-beat planning (a WWII script keeps its setting but loses the LLM's rich per-scene
+  // action) — and it is almost always an operational env-key gap on the deployment
+  // (ATLAS_API_KEY / GEMINI_API_KEY absent or dead), NOT a routing bug: the chain already
+  // LEADS with the premium brains. Log loudly with which keys are present so the real cause is
+  // visible in prod logs instead of silently falling through to generic beats.
+  console.error('[llmText] ALL text-LLM providers missed — scene planning will fall back to deterministic camera beats. Check deployment keys.', {
+    atlas: atlasConfigured(),
+    gemini: !!process.env.GEMINI_API_KEY,
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+  });
   return null;
 }
