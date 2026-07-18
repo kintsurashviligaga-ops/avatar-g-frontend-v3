@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
+import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
 
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -733,13 +734,19 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       const a = audioAction(trimmed);
       if (a) void runAudioAI(a); else flash(t.agentNoOp);
     } else {
-      const lc = trimmed.toLowerCase();
-      // Video ops act on the timeline (not a paid render), so confirm with a toast — the command must never feel dead.
-      if (/split|cut|გაჭერ|ამოჭერ|разрежь|обрежь|нарежь/.test(lc)) { splitAtPlayhead(); flash(t.done); }
-      else if (/mute|დაადუმ|заглуши/.test(lc)) { toggleMuteSeg(selectedSeg); flash(t.done); }
-      else flash(t.agentNoOp);
+      // VIDEO — a natural-language command drives the SAME grade / speed / fade / timeline controls the user could set
+      // by hand (not just split/mute). It's a local edit (no paid render), so confirm with a toast — never feel dead.
+      const cmd = parseVideoEditCommand(trimmed);
+      if (!cmd) { flash(t.agentNoOp); return; }
+      if (cmd.op === 'split') splitAtPlayhead();
+      else if (cmd.op === 'mute') toggleMuteSeg(selectedSeg);
+      else if (cmd.op === 'reset') resetDraft();
+      if (cmd.speed !== undefined) setVideoSpeed(cmd.speed);
+      const gr = cmd.grade; if (gr) setGrade((g) => ({ ...g, ...gr }));
+      const fd = cmd.fade; if (fd) setFade((f) => ({ ...f, ...fd }));
+      flash(t.done);
     }
-  }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, selectedSeg, flash, t.agentNoOp, t.done]);
+  }, [clip, exporting, runPhotoChain, runPhotoAction, runAudioAI, splitAtPlayhead, toggleMuteSeg, resetDraft, selectedSeg, flash, t.agentNoOp, t.done]);
 
   // Photo aspect preset (V2): center-crop the SOURCE to a ratio (or clear → original). Uses natural dims.
   const applyAspect = useCallback((ratio: number | null) => {
@@ -1257,7 +1264,24 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         </div>
       )}
 
-      {toast && <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-[12px] text-white shadow-lg">{toast}</div>}
+      {/* VECTOR 1 — a PROMINENT, always-visible sticky bottom CTA to commit the edit. The header export button is
+          small + icon-only on mobile, so sliders/fades sat with no obvious way to run them; this full-width primary
+          button (video/photo lanes) is the discoverable Apply/Render action. Audio has its own inline Apply. */}
+      {clips.length > 0 && !isAudio && (
+        <div className="shrink-0 border-t border-app-border/15 bg-app-bg/95 p-3 backdrop-blur"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+          <button type="button" onClick={doExport} disabled={!hasMutations || exporting}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-[15px] font-bold transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+            style={hasMutations && !exporting
+              ? { background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', color: '#06121a', boxShadow: '0 0 0 1px rgba(6,182,212,0.4), 0 10px 34px -8px rgba(6,182,212,0.75)' }
+              : { background: 'var(--color-elevated)', color: 'var(--color-muted)' }}>
+            {exporting ? <><Loader2 size={17} className="animate-spin" />{t.exporting}</> : <><Clapperboard size={17} />{isPhoto ? t.exportPhoto : t.exportVideo}</>}
+          </button>
+          {!hasMutations && !exporting && <p className="mt-1.5 text-center text-[11px] text-app-muted">{t.exportHint}</p>}
+        </div>
+      )}
+
+      {toast && <div className="pointer-events-none absolute bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-[12px] text-white shadow-lg">{toast}</div>}
     </div>
   );
 }
@@ -1269,7 +1293,7 @@ function AgentBox({ title, placeholder, sendLabel, busy, onSubmit }: { title: st
     <div className="space-y-2 rounded-xl border border-app-accent/25 bg-gradient-to-b from-app-accent/[0.06] to-transparent p-3">
       <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-accent"><Sparkles size={12} />{title}</span>
       <div className="flex items-center gap-2">
-        <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} placeholder={placeholder}
+        <input value={val} maxLength={2000} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} placeholder={placeholder}
           className="min-w-0 flex-1 rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none focus:ring-1 focus:ring-app-accent/40" />
         <button type="button" onClick={submit} disabled={busy || !val.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-app-accent px-3.5 py-2 text-[12px] font-bold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}{sendLabel}
