@@ -235,11 +235,11 @@ export async function POST(req: NextRequest) {
   const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' ? 'vertical' : 'landscape';
   const style = typeof body.style === 'string' && body.style.trim() ? body.style.trim() : null;
   const locale = typeof body.locale === 'string' ? body.locale : 'ka';
-  // Scene count = film length: the user picks 10s (2 scenes) or 30s (6). The scene
-  // count is driven by totalSec (count × clip seconds) — planFilmScenes splits the
-  // runtime into FILM_CLIP_SEC beats, so totalSec is what actually sets the count.
-  // Up to 12 scenes (the 60s Music-Video variant); 10s→2, 30s→6, 60s→12.
-  const sceneCount = Math.max(2, Math.min(12, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
+  // Scene count = film length: the user picks 6s (1 scene) · 30s (6) · 60s (12). The scene count is driven by
+  // totalSec (count × clip seconds) — planFilmScenes splits the runtime into FILM_CLIP_SEC beats.
+  // FLOOR is 1, NOT 2 — the 6-second package is a SINGLE scene. A `Math.max(2, …)` floor here was silently bumping a
+  // sceneCount:1 request up to 2, so the 6s tier produced 2 clips (~10s) with two different characters. [1, 12].
+  const sceneCount = Math.max(1, Math.min(12, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
   const sceneTotalSec = sceneCount * FILM_CLIP_SEC;
 
   // Host any uploaded reference photos so the storyboard frames can lock the
@@ -404,6 +404,7 @@ export async function POST(req: NextRequest) {
     // render as per-scene anchors, so the film matches the uploaded images. A SINGLE
     // image stays a character-lock reference (unchanged behaviour).
     const anchorMode = hostedRefs.length >= 2;
+    const lockScene1Plan = !!selfie && !anchorMode; // single selfie → Scene 1 IS that exact image (V1)
     return NextResponse.json({
       success: true,
       sessionId,
@@ -411,13 +412,21 @@ export async function POST(req: NextRequest) {
       orientation,
       planOnly: true,
       anchorMode,
-      scenes: plan.scenes.map((s, i) => ({
-        ordinal: s.ordinal,
-        beat: s.beat,
-        prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
-        framePrompt: s.prompt,
-        frameUrl: anchorMode && i < hostedRefs.length ? hostedRefs[i]! : null,
-      })),
+      scenes: plan.scenes.map((s, i) => {
+        const uploadedAnchor = anchorMode && i < hostedRefs.length;
+        const scene1Locked = i === 0 && lockScene1Plan;
+        return {
+          ordinal: s.ordinal,
+          beat: s.beat,
+          prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
+          framePrompt: s.prompt,
+          // VECTOR 1 — Scene 1 shows the user's EXACT uploaded image (never a to-be-generated frame). Other scenes
+          // stay null here and get an identity-locked frame from the per-scene generation pass.
+          frameUrl: uploadedAnchor ? hostedRefs[i]! : (scene1Locked ? selfie : null),
+          anchored: uploadedAnchor || scene1Locked, // V3 — drives the "Source Reference Locked" badge
+          durationSec: FILM_CLIP_SEC,
+        };
+      }),
       sceneScripts: null,
     });
   }
@@ -451,7 +460,13 @@ export async function POST(req: NextRequest) {
   // flux-schnell coverage is a higher Replicate rate-limit tier, not a concurrency knob.
   const frameConcurrency = 3;
   const tFrames = Date.now();
-  const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene) => genFrame(scene.prompt));
+  // VECTOR 1 — Scene 1 is FORCE-ANCHORED to the EXACT uploaded image (never a generated frame), so the film opens on
+  // the real person and the identity can never drift on the first shot. Only scenes 2..N are generated (each still
+  // identity-locked to the selfie). We skip generating frame[0] entirely — no wasted flux call, no throwaway frame.
+  // (With ≥2 uploads the anchorModeFull path below already maps every scene to its own uploaded frame.)
+  const lockScene1 = !!selfie && hostedRefs.length < 2;
+  const frames = await mapWithConcurrency(storyPlan.scenes, frameConcurrency, (scene, i) =>
+    (i === 0 && lockScene1) ? Promise.resolve<string | null>(selfie) : genFrame(scene.prompt));
   // Retry any frame that failed (NanoBanana transient / rate-limit) in a second pass —
   // so the storyboard rarely shows a scene with a missing image ("not all scenes
   // generate"). One extra attempt per missing frame; still fail-soft to null.
@@ -467,13 +482,20 @@ export async function POST(req: NextRequest) {
   // ANCHOR MODE (full path) — ≥2 uploaded images override the generated frames as the
   // ordered per-scene anchors, mirroring the planOnly path.
   const anchorModeFull = hostedRefs.length >= 2;
-  const scenes = storyPlan.scenes.map((s, i) => ({
-    ordinal: s.ordinal,
-    beat: s.beat,
-    // A short, human-readable shot summary (the full enriched prompt is long).
-    prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
-    frameUrl: anchorModeFull && i < hostedRefs.length ? hostedRefs[i]! : (frames[i] ?? null),
-  }));
+  const scenes = storyPlan.scenes.map((s, i) => {
+    const uploadedAnchor = anchorModeFull && i < hostedRefs.length; // this scene maps to its own uploaded image
+    return {
+      ordinal: s.ordinal,
+      beat: s.beat,
+      // A short, human-readable shot summary (the full enriched prompt is long).
+      prompt: s.prompt.replace(/\s+/g, ' ').slice(0, 160),
+      frameUrl: uploadedAnchor ? hostedRefs[i]! : (frames[i] ?? null),
+      // V1/V3 — true when this frame IS the user's uploaded image (Scene 1 lock, or a per-scene upload anchor), so
+      // the UI can show a "Source Reference Locked" badge and the render trusts it as a hard identity anchor.
+      anchored: uploadedAnchor || (i === 0 && lockScene1),
+      durationSec: FILM_CLIP_SEC,
+    };
+  });
 
   return NextResponse.json({
     success: true,

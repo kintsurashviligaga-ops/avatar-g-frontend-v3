@@ -147,7 +147,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -169,7 +169,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -191,7 +191,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -213,7 +213,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -1083,11 +1083,17 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
       <div className={`group/media relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
-        {/* Anchor badge — 📸 = a USER-uploaded scene frame · 🤖 = AI-generated. */}
-        {s.frameUrl && (
-          <span title={s.anchored ? 'Uploaded frame' : 'AI-generated'}
-            className={`pointer-events-none absolute right-1.5 top-1.5 z-20 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${s.anchored ? 'bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-500/40' : 'bg-app-accent/25 text-app-accent ring-1 ring-app-accent/40'}`}>
-            {s.anchored ? '📸' : '🤖'}
+        {/* AI-generated indicator — kept clear of the re-roll button (top-right). The ANCHORED case gets the
+            prominent "Source Reference Locked" badge below instead. */}
+        {s.frameUrl && !s.anchored && (
+          <span title="AI-generated"
+            className="pointer-events-none absolute right-9 top-1.5 z-20 rounded-full bg-app-accent/25 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent ring-1 ring-app-accent/40">🤖</span>
+        )}
+        {/* VECTOR 3 — "Source Reference Locked": this scene's frame IS the user's exact uploaded image. */}
+        {s.frameUrl && s.anchored && (
+          <span title={t.sbSourceLocked}
+            className="pointer-events-none absolute bottom-1.5 left-1.5 z-20 inline-flex max-w-[calc(100%-16px)] items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[9.5px] font-bold text-white shadow ring-1 ring-emerald-300/50">
+            <span aria-hidden>🔒</span><span className="truncate">{t.sbSourceLocked}</span>
           </span>
         )}
         {s.frameUrl ? (
@@ -1132,7 +1138,11 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
           </div>
         )}
 
-        <span className="absolute left-1.5 top-1.5 z-20 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">{t.sbScene} {s.ordinal}</span>
+        {/* VECTOR 3 — explicit frame index (#1, #2…) + per-clip duration tag. */}
+        <span className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1">
+          <span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">#{s.ordinal}</span>
+          <span className="rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white/85">{FILM_CLIP_SEC}s</span>
+        </span>
         <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy} aria-label={t.sbReroll} title={t.sbReroll}
           className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40 touch-manipulation before:absolute before:-inset-2 before:content-['']">
           <RotateCcw size={13} />
@@ -2183,6 +2193,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ...(!isMusicVideo ? { audioMix: { threeTrack: true, smartDuck: videoSmartDuck, duckDb: videoDuckDb } } : {}),
         ...(sceneFrames?.length ? { sceneFrames } : {}),
         ...(sceneScripts?.length ? { sceneScripts } : {}),
+        // PIN the render's clip count to the user's package so a scriptless/raced dispatch can never default to the
+        // 30s/6-scene fallback (which also discards a single approved selfie frame). Prefer the approved storyboard /
+        // script count; else derive from the chosen duration (6s→1 · 30s→6 · 60s→12) captured in the submit snapshot.
+        sceneCount: storyboardScenes?.length || sceneScripts?.length || (snap.videoDuration <= 6 ? 1 : Math.max(2, Math.min(12, Math.round(snap.videoDuration / 5)))),
         locale,
         signal,
         onProgress: (p) => {
@@ -2792,7 +2806,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const userAction = (ordinal: number) => scenePrompts[ordinal - 1]?.trim() || '';
       const scenes: StoryboardScene[] = planned.map((s) => {
         const ua = userAction(s.ordinal);
-        return { ordinal: s.ordinal, beat: s.beat, prompt: ua || s.prompt, ...(ua ? { edited: true } : {}), frameUrl: s.frameUrl ?? null, anchored: anchorMode && !!s.frameUrl };
+        // Trust the route's `anchored` flag (Scene 1 lock from a single selfie, OR a per-scene upload with ≥2 refs)
+        // so the "Source Reference Locked" badge shows even for the single-selfie case (anchorMode false).
+        return { ordinal: s.ordinal, beat: s.beat, prompt: ua || s.prompt, ...(ua ? { edited: true } : {}), frameUrl: s.frameUrl ?? null, anchored: !!s.anchored || (anchorMode && !!s.frameUrl) };
       });
       const framePrompts: Record<number, string> = {};
       // Also steer each scene's FRAME IMAGE with the user's action (falls back to the AI prompt).
@@ -2966,7 +2982,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       if (j.success && typeof j.frameUrl === 'string') {
         const url = j.frameUrl;
         setStoryboard((prev) => prev
-          ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url } : s)) }
+          // The re-rolled frame is AI-generated (the sceneOrdinal route always genFrames), so it is NO LONGER the
+          // user's exact uploaded image — clear `anchored` so the "Source Reference Locked" badge doesn't go stale.
+          ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, frameUrl: url, anchored: false } : s)) }
           : prev);
       }
     } catch {

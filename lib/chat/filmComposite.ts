@@ -443,6 +443,13 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // metadata. Drives the per-clip aspect ratio so the cut never changes shape.
   const orientation: 'landscape' | 'vertical' =
     input.metadata?.orientation === 'vertical' ? 'vertical' : 'landscape';
+  // The user's PINNED clip count (6s→1 · 30s→6 · 60s→12). When present it fixes the render's scene count so a
+  // scriptless / raced dispatch can never fall back to FILM_SCENE_COUNT (30s/6 scenes) — the "6s selection → 30s
+  // film with a dropped selfie anchor" bug. Null → prior behaviour (derive from sceneScripts.length, else default).
+  const pinnedSceneCount = (() => {
+    const n = Number(input.metadata?.sceneCount);
+    return Number.isFinite(n) && n >= 1 && n <= 12 ? Math.round(n) : null;
+  })();
   // Approved LLM story scenes from the storyboard step — the clips render from
   // these exact scene descriptions (real story) instead of the deterministic beats.
   let sceneScripts = Array.isArray(input.metadata?.sceneScripts)
@@ -496,11 +503,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // A reference image (bridged photo / uploaded selfie) present → the agent must NOT invent a persona.
       const refImgs = input.metadata?.referenceImages as unknown;
       const hasRefImg = !!input.metadata?.avatarUrl || (Array.isArray(refImgs) && refImgs.length > 0);
+      const fbCount = pinnedSceneCount ?? FILM_SCENE_COUNT; // honour the user's package, not the 30s/6 default
       const brief = await runPromptAgent({
         brief: input.message,
         mode: input.metadata?.musicVideoMode ? 'music_video' : 'documentary',
-        sceneCount: FILM_SCENE_COUNT,
-        length: FILM_SCENE_COUNT * FILM_CLIP_SEC,
+        sceneCount: fbCount,
+        length: fbCount * FILM_CLIP_SEC,
         effect: style ?? 'Cinematic',
         language: input.locale,
         hasReferenceImage: hasRefImg,
@@ -561,7 +569,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : {}), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegative ? { negativePrompt: filmNegative } : {}) });
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : (pinnedSceneCount ? { totalSec: pinnedSceneCount * FILM_CLIP_SEC } : {})), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegative ? { negativePrompt: filmNegative } : {}) });
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');

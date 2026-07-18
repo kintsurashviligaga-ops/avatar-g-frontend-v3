@@ -207,6 +207,9 @@ export interface DriveFilmOptions {
    * rendered from these exact scene descriptions so the film matches the storyboard.
    */
   sceneScripts?: string[];
+  /** The user's chosen scene count (6s→1 · 30s→6 · 60s→12). PINS the render's clip count so a scriptless / raced
+   *  render can never default to the 30s/6-scene fallback — the exact "6s selection → 30s film" bug. [1,12]. */
+  sceneCount?: number;
   /** The Video-panel effect (Cinematic / Vintage / Neon …). Threaded to the render so
    *  the CLIP prompts' style guide matches the chosen look (was only on the frames). */
   style?: string;
@@ -689,6 +692,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.sceneFrames?.length ? { sceneFrames: opts.sceneFrames } : {}),
           // Approved LLM story scenes → the clips render from these exact scenes.
           ...(opts.sceneScripts?.length ? { sceneScripts: opts.sceneScripts } : {}),
+          // PIN the clip count to the user's package (6s→1 · 30s→6 · 60s→12) so a scriptless/raced render can't
+          // fall back to the 30s/6-scene default (which also discards a single approved selfie frame).
+          ...(Number.isFinite(opts.sceneCount) && (opts.sceneCount as number) >= 1 ? { sceneCount: Math.round(opts.sceneCount as number) } : {}),
           // Verbatim dialogue the user typed → spoken as the film's voice-over.
           ...(opts.narrationScript?.trim() ? { narrationScript: opts.narrationScript.trim() } : {}),
           // Narrator gender + multi-character dialogue (video panel voice selection).
