@@ -2052,12 +2052,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // engine's onSettle; best-effort (fire-and-forget POST). id === jobId, so the hydration
   // poll dedupes it via mergeTrayJobs.
   const trackJobSettle = useCallback((job: QueueJob) => {
-    if (job.status === 'done') trackJobComplete(job.id, typeof job.result === 'string' ? job.result : undefined);
-    else trackJobFail(job.id, job.status === 'canceled' ? 'canceled' : (job.error ?? undefined));
+    if (job.status === 'done') {
+      trackJobComplete(job.id, typeof job.result === 'string' ? job.result : undefined);
+      // P91 — a QUEUED (background) video render just finished. The completion choke point
+      // (notifyCredit) already files a credit toast + in-app bell + native OS notification, and the
+      // bubble hydrates into the player; add an in-chat "asset ready" toast for the case where the
+      // user stayed in the app (on another mode) and never saw the OS notification.
+      if (job.kind === 'video' || job.kind === 'product') {
+        const msg = locale === 'en' ? '🎥 Your video finished rendering in the background!'
+          : locale === 'ru' ? '🎥 Видео сгенерировано в фоновом режиме!'
+          : '🎥 ვიდეო წარმატებით დაგენერირდა ფონურ რეჟიმში!';
+        setShareToast(msg);
+        setTimeout(() => setShareToast((s) => (s === msg ? null : s)), 3600);
+      }
+    } else {
+      trackJobFail(job.id, job.status === 'canceled' ? 'canceled' : (job.error ?? undefined));
+    }
     // TASK 6 — a terminal job holds NO queue position; null it so no ghost "#N" lingers in the DB
     // (isolated from the status write above so a pre-migration column-miss can't undo the terminal).
     trackJobPosition(job.id, null);
-  }, []);
+  }, [locale]);
   useEffect(() => {
     if (transitCharacterUrl) {
       setMode('video');
