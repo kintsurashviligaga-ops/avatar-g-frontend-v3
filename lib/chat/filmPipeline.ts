@@ -272,7 +272,7 @@ export function splitStructuredScript(text: string, maxScenes: number): string[]
   idxs.push(text.length);
   const scenes: string[] = [];
   for (let i = 0; i < idxs.length - 1 && scenes.length < maxScenes; i++) {
-    const block = cleanSceneBlock(text.slice(idxs[i]!, idxs[i + 1]!)).slice(0, 600);
+    const block = cleanSceneBlock(text.slice(idxs[i]!, idxs[i + 1]!)).slice(0, 1200);
     if (block.length >= 20) scenes.push(block);
   }
   return scenes.length >= 2 ? scenes : null;

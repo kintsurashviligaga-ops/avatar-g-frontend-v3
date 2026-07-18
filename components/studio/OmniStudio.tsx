@@ -3963,7 +3963,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // The manual fields are AUTHORITATIVE in the brief → the Director (runPromptAgent) follows them
       // instead of inventing a different story / character / setting.
       const filmPrompt = `${styledText}`
-        + (scriptBlock ? `\n\nSCRIPT (follow this EXACTLY — do not invent different characters, era, or setting):\n${scriptBlock.slice(0, 6000)}` : '')
+        + (scriptBlock ? `\n\nSCRIPT — the SINGLE source of truth. Base EVERY scene ONLY on this text; keep its exact era/period, setting, location, and characters; invent nothing outside it:\n${scriptBlock.slice(0, 16000)}` : '')
         + (videoDlg ? `\n\nCHARACTER DIALOGUE (spoken verbatim by the SAME character — never replace the speaker):\n${videoDlg.slice(0, 2000)}` : '')
         + (videoLyrics ? `\n\nLYRICS (the song's EXACT words — the singer performs THESE verbatim, do not rewrite them):\n${videoLyrics.slice(0, 2000)}` : '')
         + (wantNarration ? t.narrationCue : '');
