@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
 import { ATLAS_DEFAULT_MODEL, atlasConfigured } from '@/lib/ai/atlasClient';
+import { DEEPSEEK_DEFAULT_MODEL, deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { GEMINI_MODELS } from '@/lib/gemini/client';
 import { runwayModel } from '@/lib/ai/runway';
 
@@ -30,7 +31,8 @@ export async function GET(request: NextRequest) {
 
     // Text-LLM brains — mirror llmText.ts's exact per-provider gates.
     const text = {
-      atlasDeepseek: atlasConfigured(),          // ATLAS_API_KEY || ATLAS_KLING_API_KEY
+      deepseekDirect: deepseekConfigured(),      // DEEPSEEK_API_KEY (api.deepseek.com, deepseek-chat)
+      atlasDeepseek: atlasConfigured(),          // ATLAS_API_KEY || ATLAS_KLING_API_KEY (Atlas-hosted DeepSeek-V3)
       gemini: has('GEMINI_API_KEY'),             // llmText.viaGemini gates on GEMINI_API_KEY specifically
       anthropic: has('ANTHROPIC_API_KEY'),       // llmText.viaAnthropic
     };
@@ -38,11 +40,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       // TRUE ⇒ at least one premium brain is live, so scene planning uses the LLM (not generic beats).
-      scenePlanningLive: text.atlasDeepseek || text.gemini || text.anthropic,
+      scenePlanningLive: text.deepseekDirect || text.atlasDeepseek || text.gemini || text.anthropic,
       llm: {
         text,
         models: {
-          deepseek: ATLAS_DEFAULT_MODEL,
+          deepseekDirect: DEEPSEEK_DEFAULT_MODEL,
+          deepseekAtlas: ATLAS_DEFAULT_MODEL,
           geminiPro: GEMINI_MODELS.pro,
           geminiFlash: GEMINI_MODELS.flash,
           anthropic: process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',

@@ -2,9 +2,11 @@
  * lib/ai/llmText.ts
  * =================
  * ONE text-LLM entry point for the film pipeline, trying the providers in quality order:
- *   1. DeepSeek-V3 (Atlas)  — strong creative writer; the preferred brain.
- *   2. Gemini 2.5-flash      — fast, always-live fallback (also powers chat).
- *   3. Anthropic (haiku)     — last resort (currently dead in prod, kept for completeness).
+ *   1. DeepSeek-V3 (DIRECT api.deepseek.com, DEEPSEEK_API_KEY) — the preferred brain.
+ *   2. DeepSeek-V3 (Atlas Cloud, ATLAS_API_KEY)                — same model, independent route (resilience).
+ *   3. Gemini 2.5-flash                                        — fast, always-live fallback (also powers chat).
+ *   4. Anthropic (haiku)                                       — last resort (env-overridable ANTHROPIC_MODEL).
+ * (geminiFirst reorders to Gemini → DeepSeek-direct → Atlas → Anthropic for latency-critical paths.)
  *
  * WHY: the film agents (storyboard decomposition, Master Prompt Agent, narration) used to
  * call Anthropic directly, which is DEAD in prod → the script never became scenes and the
@@ -15,6 +17,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
+import { deepseekChat, deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { generateWithGemini } from '@/lib/gemini/client';
 
 export interface LlmTextOpts {
@@ -26,6 +29,12 @@ export interface LlmTextOpts {
   signal?: AbortSignal;
   /** Skip DeepSeek and lead with Gemini (e.g. a latency-critical path). Default false. */
   geminiFirst?: boolean;
+}
+
+async function viaDeepSeek(o: LlmTextOpts): Promise<string | null> {
+  if (!deepseekConfigured()) return null;
+  const t = await deepseekChat({ system: o.system, user: o.user, maxTokens: o.maxTokens ?? 2000, temperature: o.temperature ?? 0.6, timeoutMs: o.timeoutMs ?? 40_000, signal: o.signal });
+  return t && t.trim() ? t : null;
 }
 
 async function viaAtlas(o: LlmTextOpts): Promise<string | null> {
@@ -60,7 +69,12 @@ async function viaAnthropic(o: LlmTextOpts): Promise<string | null> {
 
 /** Run the provider chain in quality order; first non-empty wins. null = all missed. */
 export async function llmText(o: LlmTextOpts): Promise<string | null> {
-  const chain = o.geminiFirst ? [viaGemini, viaAtlas, viaAnthropic] : [viaAtlas, viaGemini, viaAnthropic];
+  // DeepSeek-V3 is reachable two ways — the DIRECT api.deepseek.com key (DEEPSEEK_API_KEY) and the
+  // Atlas-hosted route (ATLAS_API_KEY). Try DIRECT first, then Atlas as the same-model backup, so one
+  // provider's rate-limit/outage fails over to the other instead of dropping to the deterministic plan.
+  const chain = o.geminiFirst
+    ? [viaGemini, viaDeepSeek, viaAtlas, viaAnthropic]
+    : [viaDeepSeek, viaAtlas, viaGemini, viaAnthropic];
   for (const provider of chain) {
     const t = await provider(o);
     if (t) return t;
@@ -72,6 +86,7 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
   // LEADS with the premium brains. Log loudly with which keys are present so the real cause is
   // visible in prod logs instead of silently falling through to generic beats.
   console.error('[llmText] ALL text-LLM providers missed — scene planning will fall back to deterministic camera beats. Check deployment keys.', {
+    deepseek: deepseekConfigured(),
     atlas: atlasConfigured(),
     gemini: !!process.env.GEMINI_API_KEY,
     anthropic: !!process.env.ANTHROPIC_API_KEY,
