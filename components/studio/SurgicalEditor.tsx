@@ -20,6 +20,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
 import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
+import { parsePhotoEditSliders } from '@/lib/ai/photoEditSliders';
 
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -727,10 +728,14 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     const trimmed = text.trim();
     if (!trimmed || !clip || exporting) return;
     if (clip.kind === 'image') {
+      // AI actions first (remove_bg / upscale / colorize / face_restore); otherwise a colour-grade command drives the
+      // SAME brightness / contrast / saturation / temperature sliders the user could set by hand.
       const acts = photoActions(trimmed);
-      if (acts.length > 1) void runPhotoChain(acts);
-      else if (acts[0]) void runPhotoAction(acts[0]);
-      else flash(t.agentNoOp);
+      if (acts.length > 1) { void runPhotoChain(acts); return; }
+      if (acts[0]) { void runPhotoAction(acts[0]); return; }
+      const g = parsePhotoEditSliders(trimmed);
+      if (g) { setGrade((prev) => ({ ...prev, ...g })); flash(t.done); return; }
+      flash(t.agentNoOp);
     } else if (clip.kind === 'audio') {
       // AUDIO — first the AI Demucs actions (isolate / splitter); otherwise a slider command drives the SAME
       // pitch / speed / fade / volume the user could set by hand ("fade in 2s", "duck to -12dB", "mute", "faster").
