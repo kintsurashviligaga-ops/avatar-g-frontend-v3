@@ -18,6 +18,7 @@ import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, 
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
+import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
@@ -147,7 +148,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -169,7 +170,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -191,7 +192,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked',
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -213,7 +214,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -1079,6 +1080,9 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
     if (!f) return;
     try { onRegenScene(s.ordinal, await fileToDataUrl(f)); } catch { /* ignore unreadable file */ }
   }, [onRegenScene, s.ordinal]);
+  // Motion cue — derived from this scene's own visible text (no server field is threaded to
+  // the client board). null ⇒ no chip (a missing cue beats a wrong one). See lib/chat/cameraCue.
+  const cam = inferCameraMove(s.beat, s.prompt);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
@@ -1089,11 +1093,22 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
           <span title="AI-generated"
             className="pointer-events-none absolute right-9 top-1.5 z-20 rounded-full bg-app-accent/25 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent ring-1 ring-app-accent/40">🤖</span>
         )}
-        {/* VECTOR 3 — "Source Reference Locked": this scene's frame IS the user's exact uploaded image. */}
+        {/* V1 — "Origin Identity Anchor Locked": this scene's frame IS the user's exact uploaded
+            image (P78 `lockScene1`). Glowing emerald metadata chip so the identity lock reads as held. */}
         {s.frameUrl && s.anchored && (
-          <span title={t.sbSourceLocked}
-            className="pointer-events-none absolute bottom-1.5 left-1.5 z-20 inline-flex max-w-[calc(100%-16px)] items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[9.5px] font-bold text-white shadow ring-1 ring-emerald-300/50">
-            <span aria-hidden>🔒</span><span className="truncate">{t.sbSourceLocked}</span>
+          // max-width reserves room on the right for the camera badge ONLY when one is present,
+          // so the two bottom-row chips never overlap (adversarial-review fix, P85).
+          <span title={t.sbAnchorLocked}
+            className={`mya-anchor-glow pointer-events-none absolute bottom-1.5 left-1.5 z-20 inline-flex items-center gap-1 rounded-full bg-emerald-500/95 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white ring-1 ring-emerald-300/60 ${cam ? 'max-w-[calc(100%-88px)]' : 'max-w-[calc(100%-16px)]'}`}
+            style={{ animation: 'mya-anchor-glow 2.6s ease-in-out infinite' }}>
+            <span className="truncate">{t.sbAnchorLocked}</span>
+          </span>
+        )}
+        {/* V1 — motion cue: a soft camera-move badge derived from the scene's text. */}
+        {cam && (
+          <span title={`Camera: ${cam}`}
+            className="pointer-events-none absolute bottom-1.5 right-1.5 z-20 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[9.5px] font-semibold text-white/90 ring-1 ring-white/10 backdrop-blur-sm">
+            🎥 {cam}
           </span>
         )}
         {s.frameUrl ? (
@@ -1141,10 +1156,10 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
         {/* VECTOR 3 — explicit frame index (#1, #2…) + per-clip duration tag. */}
         <span className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1">
           <span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">#{s.ordinal}</span>
-          <span className="rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white/85">{FILM_CLIP_SEC}s</span>
+          <span className="rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white/85">⏳{FILM_CLIP_SEC}s</span>
         </span>
         <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy} aria-label={t.sbReroll} title={t.sbReroll}
-          className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-app-accent hover:text-app-bg disabled:opacity-40 touch-manipulation before:absolute before:-inset-2 before:content-['']">
+          className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-all duration-200 hover:bg-app-accent hover:text-app-bg active:scale-90 disabled:opacity-40 touch-manipulation before:absolute before:-inset-2 before:content-['']">
           <RotateCcw size={13} />
         </button>
         {s.baseImage && (
@@ -1169,22 +1184,22 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
           className="min-h-[72px] w-full flex-1 resize-y rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
         />
         <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy}
-          className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-40">
+          className="inline-flex items-center justify-center gap-1 rounded-md bg-app-bg/40 px-2 py-1 text-[10.5px] font-medium text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-40">
           <RotateCcw size={11} /> {t.sbRegen}
         </button>
         {/* P9 — reorder (earlier/later) + delete, enabled once frames have settled. */}
         {structEnabled && (
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label={t.sbMoveEarlier} title={t.sbMoveEarlier}
-              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation">
               <ChevronLeft size={14} />
             </button>
             <button type="button" onClick={() => onMove(s.ordinal, 1)} disabled={busy || index === total - 1} aria-label={t.sbMoveLater} title={t.sbMoveLater}
-              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-app-accent/15 hover:text-app-accent disabled:opacity-30 touch-manipulation">
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation">
               <ChevronRight size={14} />
             </button>
             <button type="button" onClick={() => onDelete(s.ordinal)} disabled={busy || total <= 2} aria-label={t.sbDeleteScene} title={t.sbDeleteScene}
-              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-400 disabled:opacity-30 touch-manipulation">
+              className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-red-500/15 hover:text-red-400 active:scale-95 disabled:opacity-30 touch-manipulation">
               <Trash2 size={13} />
             </button>
           </div>
@@ -1218,29 +1233,53 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
   const total = sb.scenes.length;
   const loaded = sb.scenes.filter((s) => s.frameUrl).length;
   const streaming = pending.length > 0; // frames are still arriving
+  const prog = total > 0 ? loaded / total : 0;
+  // V2 — the Cinematic Compiling Core's hue tracks REAL frame progress (not a fabricated state
+  // machine): early → Deep Azure (planning/optimizing), mid → Emerald (identity-locked frames
+  // landing), near-done → Amber (ready to compile the video). Honest signal → honest colour.
+  const coreColor = prog >= 0.8 ? '#f59e0b' : prog >= 0.4 ? '#10b981' : '#2563eb';
+  const pkgSec = total * FILM_CLIP_SEC; // package length: 1→~5s · 6→30s · 12→60s
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()} className="mx-auto flex h-full w-full max-w-3xl flex-col">
         <div className="flex items-start justify-between gap-2 px-4 py-3">
           <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold tracking-tight text-app-text">📋 {t.sbTitle}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[15px] font-semibold tracking-tight text-app-text">📋 {t.sbTitle}</h2>
+              {/* Package length chip — makes the 6s / 30s / 60s worktree explicit. */}
+              <span className="rounded-full bg-app-elevated px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-app-muted ring-1 ring-app-border/15">{pkgSec}s · {total}×{FILM_CLIP_SEC}s</span>
+            </div>
             {streaming ? (
-              <p className="flex items-center gap-1.5 text-[12px] text-app-accent">
-                <Loader2 size={12} className="animate-spin" />
-                <span className="tabular-nums">{loaded}/{total}</span> {t.sbFrames}…
-              </p>
+              // V2 — Cinematic Compiling Core: a pulsing radial glow whose hue tracks real progress.
+              <div className="mt-1 flex items-center gap-2">
+                <span className="relative flex h-5 w-5 items-center justify-center">
+                  <span className="mya-core-pulse absolute inset-0 rounded-full" style={{ background: `radial-gradient(circle, ${coreColor} 0%, transparent 70%)`, animation: 'mya-core-pulse 1.6s ease-in-out infinite' }} />
+                  <span className="relative h-2 w-2 rounded-full" style={{ background: coreColor, boxShadow: `0 0 8px ${coreColor}` }} />
+                </span>
+                <span className="text-[12px] font-medium" style={{ color: coreColor }}>{t.sbCompiling} · <span className="tabular-nums">{loaded}/{total}</span> {t.sbFrames}</span>
+              </div>
             ) : (
               <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
             )}
           </div>
-          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
+          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-200 hover:bg-app-elevated hover:text-app-text active:scale-90 touch-manipulation sm:h-8 sm:w-8">
             <X size={18} />
           </button>
         </div>
-        {/* Live frame-load progress — fills as each scene's frame streams in. */}
+        {/* V3 — pipeline lane: Script → Storyboard → Render, so the typed script visibly maps onto
+            the compiled sequence. Storyboard is the live stage; Render is the next tap (Generate). */}
+        <div className="flex items-center gap-1.5 px-4 pb-1 text-[10.5px] font-semibold uppercase tracking-wide">
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400 ring-1 ring-emerald-400/30"><Check size={10} /> {t.sbPipeScript}</span>
+          <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-emerald-400/40 to-app-accent/40" />
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-accent/15 text-app-accent ring-app-accent/40' : 'bg-emerald-500/15 text-emerald-400 ring-emerald-400/30'}`}>{streaming ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} {t.sbPipeBoard}</span>
+          <span aria-hidden className={`h-px flex-1 ${streaming ? 'bg-app-border/20' : 'bg-gradient-to-r from-app-accent/40 to-app-accent/60'}`} />
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${streaming ? 'bg-app-elevated text-app-muted/60 ring-app-border/15' : 'bg-app-accent/15 text-app-accent ring-app-accent/40'}`}><Film size={10} /> {t.sbPipeRender}</span>
+        </div>
+        {/* Live frame-load progress — a hue-shifting bar (azure → compiling-core hue) fills as
+            each scene's frame streams in. */}
         {streaming && (
-          <div className="mx-4 mb-2 h-1 overflow-hidden rounded-full bg-app-border/15">
-            <div className="h-full rounded-full bg-app-accent transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.round((loaded / Math.max(1, total)) * 100))}%` }} />
+          <div className="mx-4 mb-2 h-1.5 overflow-hidden rounded-full bg-app-border/15">
+            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${Math.max(5, Math.round(prog * 100))}%`, background: `linear-gradient(90deg, #2563eb, ${coreColor})` }} />
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
@@ -1270,7 +1309,7 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
                 type="button"
                 onClick={onAddScene}
                 disabled={busy || regenningOrdinal !== null}
-                className={`flex ${portrait ? 'aspect-[9/16]' : 'aspect-video'} flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-app-border/25 bg-app-elevated/40 text-app-muted transition-colors hover:border-app-accent/50 hover:bg-app-accent/[0.06] hover:text-app-accent disabled:opacity-40 touch-manipulation`}
+                className={`flex ${portrait ? 'aspect-[9/16]' : 'aspect-video'} flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-app-border/25 bg-app-elevated/40 text-app-muted transition-all duration-200 hover:border-app-accent/50 hover:bg-app-accent/[0.06] hover:text-app-accent active:scale-[0.98] disabled:opacity-40 touch-manipulation`}
               >
                 <Plus size={22} />
                 <span className="text-[11px] font-medium">{t.sbAddScene}</span>
@@ -1279,10 +1318,10 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
           </div>
         </div>
         <div className="flex items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
-          <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-colors hover:bg-app-border/10 disabled:opacity-50">
+          <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-all duration-200 hover:bg-app-border/10 active:scale-95 disabled:opacity-50">
             <RotateCcw size={15} /> {t.sbRegen}
           </button>
-          <button type="button" onClick={onGenerate} disabled={busy} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-50">
+          <button type="button" onClick={onGenerate} disabled={busy} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
             <Film size={16} /> {t.sbGenerate}
           </button>
         </div>
