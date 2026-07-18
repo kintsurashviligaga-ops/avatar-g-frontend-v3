@@ -10,6 +10,7 @@ import { webSearch, likelyNeedsWebSearch, buildSearchPreamble } from '@/lib/ai/w
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { detectReplyLocale } from '@/lib/chat/replyLocale';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -219,22 +220,12 @@ const SAFETY_MESSAGE_EN = '⚠️ This request was blocked by safety filters. Pl
 // HTTP error. Tells the user what to do instead of a misleading "safety" claim.
 const PROVIDERS_DOWN_KA = '⚠️ AI სერვისები დროებით მიუწვდომელია (Gemini + Anthropic ცარიელ პასუხს აბრუნებენ). სცადე რამდენიმე წუთში — ეს ხშირად ლიმიტის ან მცირე outage-ის შედეგია. თუ პრობლემა გრძელდება, შეტყობინე ადმინს.';
 const PROVIDERS_DOWN_EN = '⚠️ AI services temporarily unavailable (Gemini + Anthropic both returned empty responses). Please try again in a few minutes — this is usually a rate-limit or brief outage. If it persists, contact support.';
+const PROVIDERS_DOWN_RU = '⚠️ AI-сервисы временно недоступны (Gemini и Anthropic вернули пустой ответ). Повторите через пару минут — обычно это лимит запросов или кратковременный сбой. Если не проходит, напишите в поддержку.';
+const providersDownMsg = (loc: 'ka' | 'en' | 'ru'): string => (loc === 'en' ? PROVIDERS_DOWN_EN : loc === 'ru' ? PROVIDERS_DOWN_RU : PROVIDERS_DOWN_KA);
 
-function localeFromMessages(messages: IncomingMessage[]): 'ka' | 'en' {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (!m) continue;
-    const txt = typeof m.content === 'string'
-      ? m.content
-      : (m.content as IncomingPart[])
-          .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-          .map(p => p.text)
-          .join(' ');
-    if (txt && /[Ⴀ-ჿ]/.test(txt)) return 'ka';
-    if (txt) return 'en';
-  }
-  return 'ka';
-}
+// Reply-language detection (3-script, prose-only) lives in a pure, unit-tested lib so it's testable without the
+// route's env/SDK import chain. See lib/chat/replyLocale.ts.
+const localeFromMessages = (messages: IncomingMessage[]): 'ka' | 'en' | 'ru' => detectReplyLocale(messages);
 
 // ─── 6. ROUTE HANDLER ────────────────────────────────────────────────────────
 
@@ -266,9 +257,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { messages: IncomingMessage[]; webSearch?: boolean; language?: string; tier?: string };
     const { messages = [] } = body;
-    // P5 — explicit response language (overrides the auto-detect default) + model tier.
-    const langName = body.language === 'en' ? 'English' : body.language === 'ru' ? 'Russian (Русский)' : body.language === 'ka' ? 'Georgian (ქართული)' : '';
-    const langDirective = langName ? `RESPONSE LANGUAGE: Always reply in ${langName}, regardless of the language the user writes in.` : '';
+    // P5 / P83 — response language. An explicit UI selection wins; otherwise (auto mode) DETERMINISTICALLY lock the
+    // reply to the latest message's dominant script (localeFromMessages, prose-only) so a Russian or short Georgian
+    // turn is answered in the SAME language — not skewed to Georgian by the "default when ambiguous" prompt rule.
+    const explicitLang = body.language === 'en' || body.language === 'ru' || body.language === 'ka' ? body.language : null;
+    const respLocale: 'ka' | 'en' | 'ru' = explicitLang ?? (Array.isArray(messages) ? localeFromMessages(messages) : 'ka');
+    const langName = respLocale === 'en' ? 'English' : respLocale === 'ru' ? 'Russian (Русский)' : 'Georgian (ქართული)';
+    const langDirective = `RESPONSE LANGUAGE: reply in ${langName} — match the exact language/script the user wrote in.`;
     const isPro = body.tier === 'pro';
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -423,11 +418,11 @@ export async function POST(req: NextRequest) {
                 }
               }
               if (streamed === 0) {
-                send(localeFromMessages(messages) === 'en' ? PROVIDERS_DOWN_EN : PROVIDERS_DOWN_KA);
+                send(providersDownMsg(respLocale));
               }
             } catch (anthropicErr) {
               console.error('[/api/chat/gemini] Anthropic fallback failed:', anthropicErr);
-              send(localeFromMessages(messages) === 'en' ? PROVIDERS_DOWN_EN : PROVIDERS_DOWN_KA);
+              send(providersDownMsg(respLocale));
             }
           }
 
