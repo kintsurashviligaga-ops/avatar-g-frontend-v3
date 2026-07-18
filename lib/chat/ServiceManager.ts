@@ -290,9 +290,12 @@ export class ServiceManager {
     if (provider === 'replicate') {
       // P90 — FLUX 1.1 Pro primary, NanoBanana fail-open: a FLUX outage/quota still yields a real
       // preview (resilience preserved, just inverted from the old NanoBanana→FLUX order).
+      // NOTE: createPrediction is `Prefer: respond-async`, so the NORMAL success return carries a
+      // `predictionId` (client polls it) and NO `assetUrl` — accept that in-flight prediction as
+      // success; only fail open to NanoBanana on a throw / !success / a synchronously-failed status.
       try {
         const res = await this.runReplicateImage(request);
-        if (res.success && res.assetUrl) return res;
+        if (res.success && (res.assetUrl || res.predictionId) && res.predictionStatus !== 'failed') return res;
       } catch { /* fall through to NanoBanana */ }
       return this.runNanoBananaImage(request);
     }
