@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingPoll } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { failJob, recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { generateMusic } from '@/lib/ai/replicate';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 
@@ -47,6 +48,8 @@ export async function GET(req: Request) {
   const poll = await klingPoll(id);
   if (poll.status === 'processing') return NextResponse.json({ done: false });
   if (poll.status === 'failed' || !poll.url) {
+    // TRACK 1 — close the motion telemetry lifecycle (the pending row from POST) as failed. Fail-open.
+    void failJob(`motion:${id}`, poll.error || 'motion generation failed');
     return NextResponse.json({ done: true, error: poll.error || 'motion generation failed' });
   }
 
@@ -94,6 +97,10 @@ export async function GET(req: Request) {
       } catch { /* fail-open — return the silent clip */ }
     }
   }
+
+  // TRACK 1 — complete the motion telemetry lifecycle (upserts the POST's pending row → completed +
+  // files it into the Library). service_type stays 'film'; params.subtype='motion' is the dashboard label.
+  void recordCompletedAsset({ id: `motion:${id}`, userId: user.id, serviceType: 'film', url: finalUrl, source: 'motion-control', subtype: 'motion' });
 
   return NextResponse.json({ done: true, videoUrl: finalUrl, music });
 }

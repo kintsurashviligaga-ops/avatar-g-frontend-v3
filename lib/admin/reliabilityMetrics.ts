@@ -14,6 +14,15 @@ export interface RelJobRow {
   status: string; // pending | processing | completed | failed
   created_at: string;
   updated_at: string;
+  /** Optional finer label in params (product | swap | motion …). When present it groups the row under
+   *  the subtype instead of the coarse service_type, so hidden subsystems appear as their own service. */
+  params?: { subtype?: unknown } | null;
+}
+
+/** The dashboard label for a row: params.subtype when it's a non-empty string, else the service_type. */
+function labelOf(row: RelJobRow): string {
+  const st = row.params && typeof row.params === 'object' ? (row.params as { subtype?: unknown }).subtype : undefined;
+  return typeof st === 'string' && st.trim() ? st.trim() : row.service_type;
 }
 
 export interface ServiceStat {
@@ -38,6 +47,29 @@ export interface ReliabilitySnapshot {
 
 const round = (n: number, dp = 3) => Math.round(n * 10 ** dp) / 10 ** dp;
 
+export interface TierBucket { tier: string; count: number; totalGel: number }
+
+/**
+ * Bucket top-up amounts (GEL) into the pricing tiers for the package-distribution view. Each top-up maps
+ * to the nearest tier by price (within ±20%), else 'Custom'. Pure + deterministic (tiers injected).
+ */
+export function tierDistribution(amountsGel: readonly number[], tiers: readonly { name: string; priceGel: number }[]): TierBucket[] {
+  const sorted = [...(tiers || [])].filter((t) => t && Number.isFinite(t.priceGel) && t.priceGel > 0).sort((a, b) => a.priceGel - b.priceGel);
+  const buckets = new Map<string, { count: number; total: number }>();
+  for (const raw of amountsGel || []) {
+    const a = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+    if (a <= 0) continue;
+    let best: { name: string; priceGel: number } | null = null;
+    let bestDiff = Infinity;
+    for (const t of sorted) { const d = Math.abs(t.priceGel - a); if (d < bestDiff) { bestDiff = d; best = t; } }
+    const label = best && bestDiff <= best.priceGel * 0.2 ? best.name : 'Custom';
+    const e = buckets.get(label) ?? { count: 0, total: 0 };
+    e.count += 1; e.total += a;
+    buckets.set(label, e);
+  }
+  return [...buckets.entries()].map(([tier, v]) => ({ tier, count: v.count, totalGel: round(v.total, 2) })).sort((a, b) => b.totalGel - a.totalGel);
+}
+
 function durationSec(row: RelJobRow): number | null {
   const a = Date.parse(row.created_at);
   const b = Date.parse(row.updated_at);
@@ -50,9 +82,10 @@ export function computeReliability(rows: readonly RelJobRow[], windowDays: numbe
   const list = Array.isArray(rows) ? rows.filter((r) => r && typeof r.service_type === 'string' && typeof r.status === 'string') : [];
   const byService = new Map<string, RelJobRow[]>();
   for (const r of list) {
-    const arr = byService.get(r.service_type) ?? [];
+    const key = labelOf(r); // params.subtype (product|swap|motion) when present, else service_type
+    const arr = byService.get(key) ?? [];
     arr.push(r);
-    byService.set(r.service_type, arr);
+    byService.set(key, arr);
   }
 
   const perService: ServiceStat[] = [...byService.entries()]
@@ -84,7 +117,7 @@ export function computeReliability(rows: readonly RelJobRow[], windowDays: numbe
     .filter((r) => r.status === 'failed')
     .sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0))
     .slice(0, maxFailures)
-    .map((r) => ({ service: r.service_type, at: r.updated_at }));
+    .map((r) => ({ service: labelOf(r), at: r.updated_at }));
 
   return {
     windowDays,

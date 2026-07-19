@@ -856,7 +856,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
           return { voiceUrl: stemsRes.mergedUrl, dialogueStems: stemsRes.stems };
         }
       }
-      const single = (masterTurns || dialogueScript)
+      // TRACK 3.3 — Music Video mode: the SONG leads, so skip the spoken narrator/dialogue VO track
+      // ENTIRELY (no VO mixed over the vocal → zero sync drift). Documentary is byte-identical to before.
+      const single = input.metadata?.musicVideoMode
+        ? null
+        : (masterTurns || dialogueScript)
         ? await generateDialogueVoiceover(
             // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
             masterTurns ? { turns: masterTurns, compositeId } : { script: dialogueScript!, compositeId },

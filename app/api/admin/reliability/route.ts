@@ -10,7 +10,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
-import { computeReliability, type RelJobRow } from '@/lib/admin/reliabilityMetrics';
+import { computeReliability, tierDistribution, type RelJobRow } from '@/lib/admin/reliabilityMetrics';
+import { computeFinancials } from '@/lib/financials/adminMetrics';
+import { BANK_FEE_RATE } from '@/lib/financials/constants';
+import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 import { atlasConfigured } from '@/lib/ai/atlasClient';
 import { deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { runwayModel } from '@/lib/ai/runway';
@@ -37,13 +40,38 @@ export async function GET(request: NextRequest) {
       const admin = createServiceRoleClient();
       const { data } = await admin
         .from('generation_jobs')
-        .select('service_type, status, created_at, updated_at')
+        .select('service_type, status, created_at, updated_at, params')
         .gte('created_at', sinceIso)
         .order('created_at', { ascending: false })
         .limit(MAX_ROWS);
       rows = (data ?? []) as RelJobRow[];
     } catch { /* fail-open */ }
     const reliability = computeReliability(rows, days);
+
+    // TRACK 2 — real financials (revenue from wallet_topups; REAL wholesale cost from agent_evolution_traces
+    // via computeFinancials — not an estimate) + package/tier distribution. Fail-open: an absent table → 0/[].
+    let financials: {
+      grossRevenueGel: number; apiRawCostGel: number; netMarginGel: number; netMarginPct: number | null;
+      topupCount: number; packageDistribution: { tier: string; count: number; totalGel: number }[];
+    } = { grossRevenueGel: 0, apiRawCostGel: 0, netMarginGel: 0, netMarginPct: null, topupCount: 0, packageDistribution: [] };
+    try {
+      const admin = createServiceRoleClient();
+      const [topupsRes, tracesRes] = await Promise.all([
+        admin.from('wallet_topups').select('amount_gel').gte('created_at', sinceIso),
+        admin.from('agent_evolution_traces').select('cost_wholesale_gel, cost_retail_gel, worker_kind, status').gte('created_at', sinceIso),
+      ]);
+      const topups = topupsRes.data ?? [];
+      const summary = computeFinancials({ topups, traces: tracesRes.data ?? [], bankFeeRate: BANK_FEE_RATE });
+      const amounts = topups.map((t) => (typeof t?.amount_gel === 'number' ? t.amount_gel : parseFloat(String(t?.amount_gel)) || 0));
+      financials = {
+        grossRevenueGel: summary.grossRevenueGel,
+        apiRawCostGel: summary.apiRawCostGel,
+        netMarginGel: summary.netMarginGel,
+        netMarginPct: summary.netMarginPct,
+        topupCount: summary.topupCount,
+        packageDistribution: tierDistribution(amounts, PRICING_TIERS.map((t) => ({ name: t.name, priceGel: t.priceGel }))),
+      };
+    } catch { /* fail-open → zeros */ }
 
     // Provider-key state (presence only; mirrors llmText/health gates). scenePlanningLive is the decisive
     // "is generation degraded to deterministic beats?" signal.
@@ -57,12 +85,15 @@ export async function GET(request: NextRequest) {
       runway: has('RUNWAY_API_KEY', 'RUNWAYML_API_SECRET'),
       elevenlabs: has('ELEVENLABS_API_KEY'),
       nanobanana: has('NANOBANANA_API_KEY'),
+      heygen: has('HEYGEN_API_KEY'),
       udio: has('UDIO_API_KEY'),
     };
     const scenePlanningLive = providers.deepseekDirect || providers.atlasDeepseek || providers.gemini || providers.anthropic;
 
     const warnings: string[] = [];
     if (!scenePlanningLive) warnings.push('No text-LLM key bound — scene planning falls back to deterministic beats. Bind DEEPSEEK_API_KEY / ATLAS_API_KEY / GEMINI_API_KEY.');
+    // TRACK 4 — HeyGen integration gate: the avatar/talking-photo path silently drops without this key.
+    if (!providers.heygen) warnings.push('HEYGEN_API_KEY not bound — the HeyGen avatar/talking-photo path is unavailable (renders fall to the Replicate lip-sync leg).');
     if (/v1[.\-]?6/i.test((process.env.REPLICATE_VIDEO_MODEL || '').trim())) warnings.push('REPLICATE_VIDEO_MODEL pinned to a v1.6 tier — unset it to restore the Kling v2.1 lock.');
     for (const s of reliability.perService) {
       if (s.successRate !== null && s.successRate < 0.7 && s.completed + s.failed >= 5) {
@@ -78,6 +109,7 @@ export async function GET(request: NextRequest) {
       videoModel: (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim(),
       runwayModel: runwayModel(),
       reliability,
+      financials,
       warnings,
     });
   } catch (e) {

@@ -349,7 +349,10 @@ export async function POST(req: NextRequest) {
   // returning, so a dropped client socket never loses a paid asset (mirrors app/api/pipeline/remix's
   // recordCompletedFilm). Best-effort + signed-in only; the id is keyed by the client jobId (or a hash of
   // the output url) so a retry UPSERTS the same row instead of duplicating. NEVER fails the remix response.
-  const PERSIST_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove']);
+  // TRACK 1 — productad now records too (was invisible to telemetry); character→'swap' & productad→'product'
+  // ride as params.subtype so the reliability dashboard isolates Face-Swap / Product-Ad as their own labels.
+  const PERSIST_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
+  const REMIX_SUBTYPE: Record<string, string> = { character: 'swap', productad: 'product' };
   const finishOk = async (mediaUrl: string | null, extra: Record<string, unknown> = {}): Promise<NextResponse> => {
     if (mediaUrl && remixUid && PERSIST_OPS.has(op)) {
       try {
@@ -361,6 +364,7 @@ export async function POST(req: NextRequest) {
           prompt: `Video remix — ${op}`,
           orientation: aspect === '9:16' ? 'vertical' : 'landscape',
           result: { url: mediaUrl, kind: 'video', remix: true, op, ...extra },
+          ...(REMIX_SUBTYPE[op] ? { subtype: REMIX_SUBTYPE[op] } : {}),
         });
       } catch { /* Library filing is best-effort — never blocks the paid response */ }
     }

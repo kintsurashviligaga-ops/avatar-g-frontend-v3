@@ -19,10 +19,12 @@ interface Snapshot {
   videoModel: string;
   runwayModel: string;
   reliability: { windowDays: number; totals: { total: number; completed: number; failed: number; inFlight: number; successRate: number | null }; perService: ServiceStat[]; recentFailures: { service: string; at: string }[] };
+  financials: { grossRevenueGel: number; apiRawCostGel: number; netMarginGel: number; netMarginPct: number | null; topupCount: number; packageDistribution: { tier: string; count: number; totalGel: number }[] };
   warnings: string[];
 }
 
 const pct = (r: number | null) => (r === null ? '—' : `${Math.round(r * 100)}%`);
+const gel = (n: number) => `${n.toLocaleString('en-US', { maximumFractionDigits: 0 })} ₾`;
 const rateClass = (r: number | null) => (r === null ? 'text-gray-400' : r >= 0.9 ? 'text-emerald-400' : r >= 0.7 ? 'text-amber-400' : 'text-rose-400');
 const dur = (s: number | null) => (s === null ? '—' : s >= 60 ? `${(s / 60).toFixed(1)}m` : `${Math.round(s)}s`);
 
@@ -89,7 +91,41 @@ export default function ReliabilityPanel({ ka }: { ka: boolean }) {
             </ul>
           )}
 
-          {/* Per-service success rate + timings */}
+          {/* TRACK 4 — Financial Analytics & Subscription Tiers */}
+          <div className="rounded-xl bg-white/[0.03] p-4 ring-1 ring-white/10">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h3 className="text-[13px] font-semibold text-white">{ka ? 'ფინანსური ანალიტიკა' : 'Financial Analytics'}</h3>
+              <span className="text-[11px] text-gray-500">{ka ? `${snap.financials.topupCount} გადახდა` : `${snap.financials.topupCount} top-ups`} · {snap.reliability.windowDays}d</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">{ka ? 'შემოსავალი' : 'Gross revenue'}</p>
+                <p className="mt-0.5 text-[19px] font-bold tabular-nums text-emerald-400">{gel(snap.financials.grossRevenueGel)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">{ka ? 'პროვაიდერის ხარჯი' : 'Provider cost'}</p>
+                <p className="mt-0.5 text-[19px] font-bold tabular-nums text-amber-400">{gel(snap.financials.apiRawCostGel)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">{ka ? 'წმინდა მარჟა' : 'Net margin'}</p>
+                <p className={`mt-0.5 text-[19px] font-bold tabular-nums ${snap.financials.netMarginGel >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {gel(snap.financials.netMarginGel)}{snap.financials.netMarginPct !== null && <span className="ml-1 text-[12px] text-gray-500">({Math.round(snap.financials.netMarginPct * 100)}%)</span>}
+                </p>
+              </div>
+            </div>
+            {snap.financials.packageDistribution.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+                {snap.financials.packageDistribution.map((b) => (
+                  <span key={b.tier} className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-[11.5px] text-gray-300 ring-1 ring-white/10">
+                    {b.tier}: <span className="font-semibold tabular-nums text-white">{b.count}</span> <span className="text-gray-500">({gel(b.totalGel)})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-gray-600">{ka ? 'ხარჯი — რეალური wholesale (agent_evolution_traces), არა შეფასება.' : 'Cost = real wholesale from traces, not an estimate.'}</p>
+          </div>
+
+          {/* Per-service success rate + timings (Product-Ad / Face-Swap / Motion appear as their own labels) */}
           <div className="overflow-x-auto rounded-xl ring-1 ring-white/10">
             <table className="w-full min-w-[520px] text-[12.5px]">
               <thead>

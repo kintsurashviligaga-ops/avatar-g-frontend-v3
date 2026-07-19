@@ -156,6 +156,9 @@ export async function recordCompletedFilm(input: {
   costUsd?: number;
   costGel?: number;
   durationMs?: number;
+  /** Telemetry sub-label (product | swap | motion …) stored in params — the DB service_type CHECK only
+   *  allows film|avatar|interior|image|music|voice, so distinct dashboard labels ride here, not there. */
+  subtype?: string;
 }): Promise<boolean> {
   const sb = client();
   if (!sb) return false;
@@ -171,6 +174,7 @@ export async function recordCompletedFilm(input: {
       prompt: input.prompt ?? null,
       orientation: input.orientation ?? 'landscape',
       source: 'film-studio',
+      ...(input.subtype ? { subtype: input.subtype } : {}),
     },
     result: input.result ?? { url: input.url },
     signed_url: input.url,
@@ -210,6 +214,8 @@ export async function recordCompletedAsset(input: {
   url: string;
   prompt?: string | null;
   source?: string;
+  /** Telemetry sub-label (e.g. 'motion') → params.subtype; service_type stays a CHECK-allowed value. */
+  subtype?: string;
 }): Promise<boolean> {
   const sb = client();
   if (!sb) return false;
@@ -222,7 +228,7 @@ export async function recordCompletedAsset(input: {
         status: 'completed' as JobStatus,
         current_stage: 'completed',
         pct: 100,
-        params: { prompt: input.prompt ?? null, source: input.source ?? 'smart-assistant' },
+        params: { prompt: input.prompt ?? null, source: input.source ?? 'smart-assistant', ...(input.subtype ? { subtype: input.subtype } : {}) },
         result: { url: input.url },
         signed_url: input.url,
       },

@@ -15,6 +15,7 @@ import sharp from 'sharp';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { createJob } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -96,6 +97,11 @@ export async function POST(req: Request) {
       modelName,
       ...(referenceVideoUrl ? { videoUrl: referenceVideoUrl } : {}),
     });
+    // TRACK 1 — motion was invisible to telemetry (wrote no generation_jobs row). File a `pending` row
+    // (service_type stays a CHECK-allowed 'film'; the real label rides in params.subtype) so the render is
+    // measured, the reliability dashboard shows a "motion" service, and the drainer can reap it if abandoned.
+    // Fire-and-forget + fail-open — never blocks the fast submit response. The /status route finalizes it.
+    void createJob({ id: `motion:${jobId}`, userId: user.id, serviceType: 'film', params: { subtype: 'motion', method, prompt: motionPrompt.slice(0, 200) } });
     return NextResponse.json({ success: true, jobId, method });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
