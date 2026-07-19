@@ -34,6 +34,10 @@ export interface GeminiRequest {
   history?: { role: 'user' | 'model'; parts: { text: string }[] }[];
   maxTokens?: number;
   temperature?: number;
+  /** Nucleus sampling. Omit → DEFAULT_TOP_P (0.95). */
+  topP?: number;
+  /** Top-k sampling. Omit → DEFAULT_TOP_K (40). */
+  topK?: number;
   /** gemini-2.5-* "thinking" budget in tokens. Omit = model default (can add many seconds
    *  of latency). Set 0 to DISABLE thinking for fast, latency-sensitive calls. */
   thinkingBudget?: number;
@@ -50,12 +54,50 @@ export interface GeminiResponse {
 
 // ─── Safety thresholds ────────────────────────────────────────────────────────
 
+// BLOCK_ONLY_HIGH (not MEDIUM): organic business/creative Georgian conversation — ad copy,
+// competitor talk, edgy film briefs — routinely trips the MEDIUM filter into an empty
+// "bail" (finishReason=SAFETY → text=''). Only HIGH-confidence genuinely harmful content is
+// blocked. Central chokepoint → every Gemini caller inherits the looser, natural-conversation
+// posture. Override the whole set via env if a deployment needs a stricter stance.
 const SAFETY_SETTINGS = [
-  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
 ];
+
+// ─── Sampling defaults (anti-repetition) ──────────────────────────────────────
+// Explicit topP/topK so vocabulary doesn't collapse into cyclic phrasing; overridable per-call.
+const DEFAULT_TOP_P = 0.95;
+const DEFAULT_TOP_K = 40;
+
+// ─── History sanitization ─────────────────────────────────────────────────────
+
+/**
+ * Clean a caller-supplied history into a Gemini-valid `contents` prefix:
+ *  - keep only 'user' | 'model' turns,
+ *  - drop parts whose text is empty/whitespace-only (an empty part 400s the API),
+ *  - drop turns left with no text,
+ *  - drop any LEADING 'model' turn(s) — multi-turn contents must open on a 'user' turn.
+ * Content order is otherwise preserved (we never reorder or fabricate turns). Pure + fail-open:
+ * malformed shapes are filtered out, never thrown.
+ */
+export function sanitizeGeminiHistory(
+  history?: { role: 'user' | 'model'; parts: { text: string }[] }[],
+): { role: 'user' | 'model'; parts: { text: string }[] }[] {
+  if (!Array.isArray(history)) return [];
+  const cleaned = history
+    .filter((t): t is { role: 'user' | 'model'; parts: { text: string }[] } => !!t && (t.role === 'user' || t.role === 'model'))
+    .map((t) => ({
+      role: t.role,
+      parts: (Array.isArray(t.parts) ? t.parts : [])
+        .filter((p) => !!p && typeof p.text === 'string' && p.text.trim().length > 0)
+        .map((p) => ({ text: p.text })),
+    }))
+    .filter((t) => t.parts.length > 0);
+  while (cleaned.length > 0 && cleaned[0]!.role === 'model') cleaned.shift();
+  return cleaned;
+}
 
 // ─── Part builders ────────────────────────────────────────────────────────────
 
@@ -87,13 +129,11 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
 
   const url = `${GEMINI_BASE_URL}/models/${modelName}:generateContent?key=${apiKey}`;
 
-  // Build contents array from history + current message
+  // Build contents array from (sanitized) history + current message
   const contents: { role: string; parts: Part[] }[] = [];
 
-  if (req.history?.length) {
-    for (const turn of req.history) {
-      contents.push({ role: turn.role, parts: turn.parts });
-    }
+  for (const turn of sanitizeGeminiHistory(req.history)) {
+    contents.push({ role: turn.role, parts: turn.parts });
   }
 
   contents.push({ role: 'user', parts: buildParts(req.prompt, req.attachments) });
@@ -104,6 +144,8 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
     generationConfig: {
       maxOutputTokens: req.maxTokens ?? 4096,
       temperature: req.temperature ?? 0.7,
+      topP: req.topP ?? DEFAULT_TOP_P,
+      topK: req.topK ?? DEFAULT_TOP_K,
       // Disable/limit gemini-2.5 "thinking" when a budget is given — thinking can add tens
       // of seconds, which breaks latency-bounded callers (e.g. the storyboard decomposer).
       ...(req.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: req.thinkingBudget } } : {}),
@@ -154,10 +196,8 @@ export async function* streamWithGemini(
   const url = `${GEMINI_BASE_URL}/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
   const contents: { role: string; parts: Part[] }[] = [];
 
-  if (req.history?.length) {
-    for (const turn of req.history) {
-      contents.push({ role: turn.role, parts: turn.parts });
-    }
+  for (const turn of sanitizeGeminiHistory(req.history)) {
+    contents.push({ role: turn.role, parts: turn.parts });
   }
   contents.push({ role: 'user', parts: buildParts(req.prompt, req.attachments) });
 
@@ -167,6 +207,8 @@ export async function* streamWithGemini(
     generationConfig: {
       maxOutputTokens: req.maxTokens ?? 4096,
       temperature: req.temperature ?? 0.7,
+      topP: req.topP ?? DEFAULT_TOP_P,
+      topK: req.topK ?? DEFAULT_TOP_K,
     },
   };
 
