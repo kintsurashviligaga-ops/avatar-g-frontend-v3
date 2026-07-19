@@ -6893,8 +6893,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {attachments.map((a, ai) => (
               <div key={ai} className="relative">
                 {isImage(a.mimeType) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.dataUrl} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-xl object-cover" />
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.dataUrl} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-xl object-cover" />
+                    {/* Scanline processing sweep — plays once as the thumbnail mounts (i.e. on upload). */}
+                    <span aria-hidden="true" className="mya-scanline pointer-events-none absolute inset-0" />
+                  </>
                 ) : isVideo(a.mimeType) ? (
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />

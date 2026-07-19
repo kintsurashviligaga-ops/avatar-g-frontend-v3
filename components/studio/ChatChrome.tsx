@@ -23,6 +23,11 @@ import dynamic from 'next/dynamic';
 // DAY-5 — the real-time voice node. Lazy-loaded so it (and its media plumbing) never enters the initial
 // chat bundle; opens as a full-screen overlay from a floating mic button. Additive: the text chat is untouched.
 const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversation'), { ssr: false });
+// Gemini Multimodal Live overlay — additive + feature-flagged (NEXT_PUBLIC_GEMINI_LIVE_ENABLED). When
+// the flag is OFF (default) this dynamic chunk is never fetched and the existing VoiceConversation path
+// is byte-identical to before. Requires a signed-in userId to mint an ephemeral Live token.
+const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLiveConversation'), { ssr: false });
+const GEMINI_LIVE_ENABLED = (process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED || '').trim() === '1';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
@@ -180,6 +185,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const lastAvatarUserIdRef = useRef<string | null>(null);
   // DAY-5 — real-time voice node overlay (opt-in from the floating mic button; text chat untouched).
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // Signed-in user id — needed to mint a Gemini Live ephemeral token (flag-gated live voice only).
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Theme (Dark / Light / System) for the Appearance section. ThemeContext is binary
   // (dark|light); "System" resolves the OS preference once via matchMedia.
@@ -226,6 +233,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     const syncUser = (user: { id?: string; email?: string | null; user_metadata?: { name?: string } | null } | null) => {
       apply(user);
       const uid = user?.id ?? null;
+      setUserId(uid);
       if (uid && uid !== lastAvatarUserIdRef.current) { lastAvatarUserIdRef.current = uid; loadAvatar(uid); }
       else if (!uid) { lastAvatarUserIdRef.current = null; setAvatarUrl(null); }
     };
@@ -890,7 +898,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           Gemini-style live-voice chip, right of the dictation mic), which dispatches
           'myavatar:voice-open' — handled by the effect above (authed → open; guest → sign-in).
           This de-clutters the workspace (no redundant floating FAB) while keeping one clear CTA. */}
-      {voiceOpen && <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />}
+      {voiceOpen && (GEMINI_LIVE_ENABLED && userId
+        ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} />
+        : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />)}
 
       {/* Avatar-upload feedback toast — transient, self-contained (no global toast system here). */}
       {avatarError && (
