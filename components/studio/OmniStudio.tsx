@@ -51,6 +51,7 @@ import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
+import { computeCloudAdditions } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { toast } from 'sonner';
@@ -900,7 +901,7 @@ export const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
 const HISTORY_MAX = 80;  // max turns kept per conversation
 const CONV_MAX = 40;     // max conversations kept overall
 
-interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number }
+interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number; /** Supabase chat_sessions.session_id — set once a conversation is persisted/hydrated; enables cross-device merge + lazy transcript load. */ serverSid?: string }
 
 function newConversationId(): string {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1898,12 +1899,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setHistoryList(loadConversations());
     setHistoryOpen(true);
   }, [conversationId, messages]);
-  const resumeConversation = useCallback((id: string) => {
+  const resumeConversation = useCallback(async (id: string) => {
     upsertConversation(conversationId, messages); // save current before leaving
     setConversationId(id);
     setCurrentConversationId(id);
-    setMessages(loadConversationMessages(id));
     setHistoryOpen(false);
+    const convo = loadConversations().find((c) => c.id === id);
+    // A "cloud:" entry (a conversation from ANOTHER device, merged into the sidebar) carries a serverSid
+    // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
+    if (convo?.serverSid && (convo.messages?.length ?? 0) === 0) {
+      chatSessionIdRef.current = convo.serverSid; // ensureChatSession returns this → no session fork
+      setMessages([]);
+      try {
+        const rows = await getMessages(convo.serverSid);
+        const msgs: Msg[] = rows
+          .filter((r) => r.role === 'user' || r.role === 'assistant')
+          .map((r) => ({ role: r.role as 'user' | 'assistant', text: r.content }));
+        setMessages(msgs);
+      } catch { /* fail-open → empty view; the server row persists, a re-open can hydrate */ }
+    } else {
+      setMessages(loadConversationMessages(id));
+    }
   }, [conversationId, messages]);
   const startNewConversation = useCallback(() => {
     upsertConversation(conversationId, messages); // save current
@@ -3559,6 +3575,37 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           }));
         }
       } catch { /* fail-open → localStorage view */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // CROSS-DEVICE SIDEBAR SYNC — on mount, for an AUTHENTICATED user, pull the account's server chat
+  // sessions (getConversations) and MERGE any not already local into the sidebar, so a PC / iPad /
+  // iPhone all show identical history (the sidebar's real cross-device gap: it previously initialized
+  // ONLY from this device's localStorage). Strictly ADDITIVE + non-destructive (only ADDS "cloud"
+  // entries, never deletes a local chat) + fail-open (anonymous / no server / error → the localStorage
+  // sidebar stands unchanged). The persistent ChatChrome sidebar refreshes on the dispatched event.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const sb = createBrowserClient();
+        if (!sb) return;
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user || !alive) return;
+        const server = await getConversations(user.id); // [{ session_id, title, updated_at }]
+        if (!alive || !server.length) return;
+        const localList = loadConversations();
+        const additions = computeCloudAdditions(localList, server);
+        if (!additions.length) return;
+        const merged = [...localList, ...additions.map((a) => ({ ...a, messages: [] as Msg[] }))]
+          .sort((x, y) => (y.updatedAt ?? 0) - (x.updatedAt ?? 0))
+          .slice(0, CONV_MAX);
+        saveConversations(merged);
+        if (!alive) return;
+        setHistoryList(loadConversations());
+        window.dispatchEvent(new Event('myavatar:conversations-updated')); // refresh the persistent sidebar
+      } catch { /* fail-open → localStorage sidebar */ }
     })();
     return () => { alive = false; };
   }, []);
