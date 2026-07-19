@@ -350,6 +350,12 @@ export async function POST(req: NextRequest) {
                 messages: modelMessages,
                 maxOutputTokens: 4096,
                 temperature: 0.7,
+                // Explicit nucleus + top-k sampling: broadens vocabulary and curbs cyclic
+                // phrasing on long conversational turns. topP is the dominant limiter; topK is
+                // a mild guard that rarely binds under 0.95. @ai-sdk/google maps both into the
+                // Gemini generationConfig. Matches the REST client's DEFAULT_TOP_P/DEFAULT_TOP_K.
+                topP: 0.95,
+                topK: 40,
                 maxRetries: 0, // fail instantly on quota/error — we rotate ourselves
               });
               for await (const chunk of result.textStream) {
