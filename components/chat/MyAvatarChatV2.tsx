@@ -1340,6 +1340,18 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     });
   }, []);
 
+  // Kill any live dictation echo on a COMMITTED send so a late/continuing recognizer onresult can't
+  // re-fill the composer after we clear it. Shared by BOTH committed paths in sendMessage — the
+  // send-to-email intercept AND the normal LLM dispatch — because when this kill lived only on the
+  // normal path, a DICTATED "გააგზავნე ეს მეილზე" cleared the box but the still-running continuous
+  // recognizer (onresult is gated ONLY by sttDiscardRef) re-populated it with the dictated command.
+  const stopDictationEcho = useCallback(() => {
+    sttDiscardRef.current = true;
+    try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    baseTranscriptRef.current = '';
+    dispatch({ type: 'SET_RECORDING', value: false });
+  }, []);
+
   // ── Send message (real async lifecycle: POST → poll predictionId) ──
   const sendMessage = useCallback(async (overrideText?: string) => {
     if (isLoading) return;
@@ -1356,6 +1368,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     if (rawText && detectSendToEmailCommand(rawText)) {
       const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && !!m.text && !!m.text.trim());
       dispatch({ type: 'SET_INPUT', text: '' });
+      stopDictationEcho(); // a DICTATED "send to email" command must not re-appear via a late onresult
       if (!lastAssistant) {
         showNotice(lang === 'ka' ? 'ჯერ არაფერია გასაგზავნი — ჯერ დააგენერირე პასუხი' : lang === 'ru' ? 'Пока нечего отправлять — сначала сгенерируйте ответ' : 'Nothing to send yet — generate a reply first');
         return;
@@ -1420,12 +1433,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       assetType: imageUrl ? 'image' : null,
     } });
     dispatch({ type: 'SET_INPUT', text: '' });
-    // Voice: stop the recognizer and DISCARD any buffered transcription so a late
-    // onresult can't re-fill the box after we clear it; reset the dictation base too.
-    sttDiscardRef.current = true;
-    try { recognitionRef.current?.stop(); } catch { /* noop */ }
-    baseTranscriptRef.current = '';
-    dispatch({ type: 'SET_RECORDING', value: false });
+    stopDictationEcho(); // stop the recognizer + discard buffered transcription so a late onresult can't re-fill the box
     dispatch({ type: 'CLEAR_ATTACHMENTS' });
     dispatch({ type: 'SET_LOADING', value: true });
     setPipeline(derivePipeline(null));
@@ -1654,7 +1662,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
       setPipeline(null);
       abortRef.current = null;
     }
-  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError, showNotice, xc, useRag]);
+  }, [inputText, isLoading, messages, lang, mode, attachments, conversationId, prefs.customInstructions, copy.genericError, showNotice, xc, useRag, stopDictationEcho]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

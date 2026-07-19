@@ -3728,6 +3728,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Agent G router (shared by typed send + voice dictation). Returns true if it consumed the message + routed the
   // attached asset into the Surgical Editor. Strictly gated (chat mode · one editable asset · imperative edit intent)
   // and fail-open (a timeout/error just returns false → the message continues to normal chat with a gentle toast).
+  // Kill every live-dictation echo on a COMMITTED dispatch so the sent/routed text can't linger or
+  // re-appear. There are TWO recognizers — the Web Speech recognizer AND the record-and-transcribe
+  // fallback (iOS/WebView) — and the recorder kept streaming transcription into the composer AFTER
+  // send, which is exactly why the dictated text "stayed" in the input. We discard any further
+  // transcription, stop both recognizers, reset the STT accumulators, then blur so a mobile IME
+  // COMMITS its buffer (a programmatic value='' alone doesn't visibly clear on-screen). Shared by
+  // tryAgentGRoute (the dictate-then-route path) AND send's image/music/chat-generative intercepts,
+  // which all `return` before the main dispatch block — without it they leaked the lingering-input bug.
+  const stopDictationEcho = useCallback(() => {
+    sttDiscardRef.current = true;
+    try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    try { recRef.current?.stop(); } catch { /* noop */ }
+    sttBaseRef.current = '';
+    sttFinalRef.current = '';
+    try { taRef.current?.blur(); } catch { /* noop */ }
+  }, []);
+
   const tryAgentGRoute = useCallback(async (text: string): Promise<boolean> => {
     if (mode !== 'chat' || attachments.length !== 1) return false;
     const a0 = attachments[0];
@@ -3747,6 +3764,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const actions = Array.isArray(gj.actions) && gj.actions.length ? gj.actions : gj.action ? [gj.action] : [];
         setEditorAsset({ url: a0.dataUrl, kind: gKind, ...(actions.length ? { autoActions: actions } : {}) });
         setInput(''); setAttachments([]); setOptionsOpen(false);
+        stopDictationEcho(); // a DICTATED edit command must not linger/re-appear after routing to the editor
         await new Promise((r) => window.setTimeout(r, 320)); // let "opening" show for a beat
         setMode('surgical');
         setAgentGBusy(false);
@@ -3759,7 +3777,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
     setAgentGBusy(false);
     return false;
-  }, [mode, attachments, locale]);
+  }, [mode, attachments, locale, stopDictationEcho]);
 
   // Voice → Agent G (V2): the dictated transcript settles into `input`; when recording stops, route it the same way
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
@@ -3788,23 +3806,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }, 900);
     return () => window.clearTimeout(id);
   }, [input, recording, tryAgentGRoute]);
-
-  // Kill every live-dictation echo on a COMMITTED send so the sent text can't linger or re-appear.
-  // There are TWO recognizers — the Web Speech recognizer AND the record-and-transcribe fallback
-  // (iOS/WebView) — and the recorder kept streaming transcription into the composer AFTER send,
-  // which is exactly why the dictated/sent text "stayed" in the input. We discard any further
-  // transcription, stop both recognizers, reset the STT accumulators, then blur so a mobile IME
-  // COMMITS its buffer (a programmatic value='' alone doesn't visibly clear on-screen). This MUST
-  // run on every dispatch path: the image / music / chat-generative intercepts below `return`
-  // before the old inline block, so without a shared helper they leaked the lingering-input bug.
-  const stopDictationEcho = useCallback(() => {
-    sttDiscardRef.current = true;
-    try { recognitionRef.current?.stop(); } catch { /* noop */ }
-    try { recRef.current?.stop(); } catch { /* noop */ }
-    sttBaseRef.current = '';
-    sttFinalRef.current = '';
-    try { taRef.current?.blur(); } catch { /* noop */ }
-  }, []);
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string }) => {
     const text = (opts?.promptOverride ?? input).trim();
