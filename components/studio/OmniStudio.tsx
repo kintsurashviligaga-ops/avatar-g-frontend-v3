@@ -3789,6 +3789,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     return () => window.clearTimeout(id);
   }, [input, recording, tryAgentGRoute]);
 
+  // Kill every live-dictation echo on a COMMITTED send so the sent text can't linger or re-appear.
+  // There are TWO recognizers — the Web Speech recognizer AND the record-and-transcribe fallback
+  // (iOS/WebView) — and the recorder kept streaming transcription into the composer AFTER send,
+  // which is exactly why the dictated/sent text "stayed" in the input. We discard any further
+  // transcription, stop both recognizers, reset the STT accumulators, then blur so a mobile IME
+  // COMMITS its buffer (a programmatic value='' alone doesn't visibly clear on-screen). This MUST
+  // run on every dispatch path: the image / music / chat-generative intercepts below `return`
+  // before the old inline block, so without a shared helper they leaked the lingering-input bug.
+  const stopDictationEcho = useCallback(() => {
+    sttDiscardRef.current = true;
+    try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    try { recRef.current?.stop(); } catch { /* noop */ }
+    sttBaseRef.current = '';
+    sttFinalRef.current = '';
+    try { taRef.current?.blur(); } catch { /* noop */ }
+  }, []);
+
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string }) => {
     const text = (opts?.promptOverride ?? input).trim();
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
@@ -3819,6 +3836,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       else runImageJob(text, ref, spec);
       setInput('');
       setAttachments([]);
+      stopDictationEcho();
       return;
     }
     // MUSIC → the capped-parallel JOB QUEUE (also bypasses the busy gate below), so a track
@@ -3844,6 +3862,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         });
         setInput('');
         setAttachments([]);
+        stopDictationEcho();
         return;
       }
     }
@@ -3870,7 +3889,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const neg = imgNegative.trim();
         const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}) };
         if (imgCount > 1) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
-        setInput(''); setAttachments([]);
+        setInput(''); setAttachments([]); stopDictationEcho();
         return;
       }
       // MUSIC — text→music using the Music panel defaults (genre/duration/tempo). A non-audio
@@ -3886,7 +3905,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
           voiceType: musicVoiceType, lyrics: musicLyrics.trim(),
         });
-        setInput(''); setAttachments([]);
+        setInput(''); setAttachments([]); stopDictationEcho();
         return;
       }
     }
@@ -3899,20 +3918,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
     // then fills the screen; the user re-opens settings to tweak the next run.
     setOptionsOpen(false);
-    // Stop ALL live dictation and DISCARD any further transcription so a late async
-    // result can't re-populate the box after we clear it below. There are TWO
-    // recognizers — the Web Speech recognizer AND the record-and-transcribe
-    // fallback (the iOS/WebView path) — and the recorder kept streaming text into
-    // the composer after send, which is exactly why the dictated text "stayed" in
-    // the input. Reset the STT accumulators too so the next dictation starts clean.
-    sttDiscardRef.current = true;
-    try { recognitionRef.current?.stop(); } catch { /* noop */ }
-    try { recRef.current?.stop(); } catch { /* noop */ }
-    sttBaseRef.current = '';
-    sttFinalRef.current = '';
-    // Mobile: blur the composer so the on-screen keyboard COMMITS the IME buffer —
-    // otherwise a programmatic value='' doesn't visibly clear and the sent text lingers.
-    try { taRef.current?.blur(); } catch { /* noop */ }
+    // Kill dictation echo on every committed send (shared with the image/music/chat-generative
+    // intercepts above, which return before this point) so a late transcription can't re-fill the
+    // composer and the mobile IME buffer commits — see stopDictationEcho for the full rationale.
+    stopDictationEcho();
 
     // New generation token + abort controller. Every async finalizer below checks
     // `mine()` before mutating state, so Stop (which bumps the token + aborts) or a
