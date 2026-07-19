@@ -4,7 +4,7 @@
  * Gemini is opened by the BROWSER (lib/voice/geminiLive.ts) using this token, so the raw GEMINI_API_KEY
  * never reaches the client.
  *
- * INERT BY DEFAULT + fail-closed: returns 503 unless GEMINI_LIVE_ENABLED === '1' AND a Gemini key is
+ * INERT BY DEFAULT + fail-closed: returns 503 unless GEMINI_LIVE_ENABLED is truthy ('1'|'true'|'yes'|'on') AND a Gemini key is
  * configured. The principal is the AUTHENTICATED CALLER (requireUser → session cookie), never a userId
  * from the request body — otherwise anyone could mint a cost-bearing token against another funded
  * account (IDOR). Rate-limited (EXPENSIVE) + credit-gated so a flipped flag can't be abused to burn the
@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
+import { isTruthyFlag } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
@@ -37,8 +38,8 @@ async function getCreditsBalance(userId: string): Promise<number> {
 
 export async function POST(request: NextRequest) {
   try {
-    // ── Gate 1: feature flag (inert by default) ──────────────────────────────
-    if (String(process.env.GEMINI_LIVE_ENABLED || '').trim() !== '1') {
+    // ── Gate 1: feature flag (inert by default; accepts '1'|'true'|'yes'|'on') ──
+    if (!isTruthyFlag(process.env.GEMINI_LIVE_ENABLED)) {
       return NextResponse.json({ error: 'gemini_live_disabled' }, { status: 503 });
     }
     // ── Gate 2: key present (fail-closed, never leaked) ──────────────────────

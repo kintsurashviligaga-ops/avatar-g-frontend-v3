@@ -14,11 +14,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Mic, MicOff, Paperclip, PhoneOff } from 'lucide-react';
 
+import { isTruthyFlag } from '@/lib/env/flag';
 import { GeminiLiveSession } from '@/lib/voice/geminiLive';
 import { encodeMicChunk, decodePlaybackChunk } from '@/lib/voice/pcm';
 
-export const geminiLiveEnabled = (): boolean =>
-  (process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED || '').trim() === '1';
+export const geminiLiveEnabled = (): boolean => isTruthyFlag(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 
 type Status = 'connecting' | 'live' | 'speaking' | 'error' | 'closed';
 
@@ -263,19 +263,19 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
         <button type="button" onClick={toggleMute} aria-label="mute"
-          className={`flex h-12 w-12 items-center justify-center rounded-full transition ${micMuted ? 'bg-app-danger/20 text-app-danger' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
+          className={`flex h-12 w-12 touch-manipulation items-center justify-center rounded-full transition ${micMuted ? 'bg-app-danger/20 text-app-danger' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
           {micMuted ? <MicOff size={20} /> : <Mic size={20} />}
         </button>
         <button type="button" onClick={toggleCamera} aria-label="camera"
-          className={`flex h-12 w-12 items-center justify-center rounded-full transition ${camOn ? 'bg-app-accent/20 text-app-accent' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
+          className={`flex h-12 w-12 touch-manipulation items-center justify-center rounded-full transition ${camOn ? 'bg-app-accent/20 text-app-accent' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
           {camOn ? <Camera size={20} /> : <CameraOff size={20} />}
         </button>
         <button type="button" aria-label="attach"
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.08] text-app-text transition hover:bg-white/[0.14]">
+          className="flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-white/[0.08] text-app-text transition hover:bg-white/[0.14]">
           <Paperclip size={20} />
         </button>
         <button type="button" onClick={endCall} aria-label="end call"
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-app-danger text-white shadow-lg transition hover:brightness-110">
+          className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-app-danger text-white shadow-lg transition hover:brightness-110">
           <PhoneOff size={22} />
         </button>
       </div>

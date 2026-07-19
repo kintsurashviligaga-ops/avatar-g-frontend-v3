@@ -27,7 +27,8 @@ const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversa
 // the flag is OFF (default) this dynamic chunk is never fetched and the existing VoiceConversation path
 // is byte-identical to before. Requires a signed-in userId to mint an ephemeral Live token.
 const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLiveConversation'), { ssr: false });
-const GEMINI_LIVE_ENABLED = (process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED || '').trim() === '1';
+const GEMINI_LIVE_ENABLED = isTruthyFlag(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
+import { isTruthyFlag } from '@/lib/env/flag';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
