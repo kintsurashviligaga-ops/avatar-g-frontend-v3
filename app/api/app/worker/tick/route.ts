@@ -60,32 +60,26 @@ export async function POST(request: NextRequest) {
   let processingExecuted = 0;
   let billingProcessed = 0;
 
-  for (const job of staleJobs ?? []) {
-    const isDeadLetter = (job.attempt_count ?? 0) >= (job.max_attempts ?? 3);
+  // Batch the two disjoint transitions into set-based updates. This replaced up to 100 SEQUENTIAL
+  // per-row UPDATE round-trips — a real serverless-latency bottleneck on a hot recovery tick.
+  const jobs = staleJobs ?? [];
+  const heartbeatAt = new Date().toISOString();
+  const deadIds = jobs.filter((j) => (j.attempt_count ?? 0) >= (j.max_attempts ?? 3)).map((j) => j.id);
+  const recycleIds = jobs.filter((j) => (j.attempt_count ?? 0) < (j.max_attempts ?? 3)).map((j) => j.id);
 
+  if (deadIds.length > 0) {
     const { error } = await supabase
       .from('service_jobs')
-      .update(
-        isDeadLetter
-          ? {
-              status: 'failed',
-              progress: 100,
-              error_message: 'Moved to dead-letter after max retries',
-              heartbeat_at: new Date().toISOString(),
-            }
-          : {
-              status: 'queued',
-              progress: 0,
-              error_message: 'Recovered from stale processing heartbeat',
-              heartbeat_at: new Date().toISOString(),
-            }
-      )
-      .eq('id', job.id);
-
-    if (!error) {
-      if (isDeadLetter) deadLettered += 1;
-      else recycled += 1;
-    }
+      .update({ status: 'failed', progress: 100, error_message: 'Moved to dead-letter after max retries', heartbeat_at: heartbeatAt })
+      .in('id', deadIds);
+    if (!error) deadLettered = deadIds.length;
+  }
+  if (recycleIds.length > 0) {
+    const { error } = await supabase
+      .from('service_jobs')
+      .update({ status: 'queued', progress: 0, error_message: 'Recovered from stale processing heartbeat', heartbeat_at: heartbeatAt })
+      .in('id', recycleIds);
+    if (!error) recycled = recycleIds.length;
   }
 
   const webhookEvents = await dequeueQueueItems<Record<string, unknown>>('webhooks_ingest', 50);

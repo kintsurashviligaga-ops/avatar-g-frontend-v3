@@ -516,6 +516,10 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       // The overlay can close (teardown) while the permission prompt is up; if the grant lands after
       // unmount, drop the stream instead of leaving a hot mic + graph behind.
       if (!mountedRef.current) { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } }); return; }
+      // Reentrancy (double-tap on the orb): a concurrent boot already acquired the mic + built the
+      // graph. Drop this duplicate stream instead of overwriting streamRef — otherwise the earlier
+      // stream + its MediaRecorder become an orphaned hot mic that teardown never sees.
+      if (streamRef.current) { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } }); return; }
       streamRef.current = stream;
       mimeRef.current = pickMime();
       runningRef.current = true;

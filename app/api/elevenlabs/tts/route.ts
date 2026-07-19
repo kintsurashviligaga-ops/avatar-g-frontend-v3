@@ -72,23 +72,32 @@ async function streamElevenLabs(
   modelId: ElevenLabsModelId,
   voiceStyle?: string,
 ): Promise<NextResponse | null> {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': apiKey,
-      'Content-Type': 'application/json',
-      Accept: 'audio/mpeg',
-    },
-    body: JSON.stringify({
-      text: text.slice(0, 5000),
-      // v329 — model is chosen per-language by selectTtsModel. Georgian → eleven_v3
-      // (the only model supporting `ka`); turbo is English-first. Settings are tuned
-      // per model. PHASE 52 §5 — an explicit delivery directive mirrors the tone.
-      model_id: modelId,
-      voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
-      apply_text_normalization: 'auto',
-    }),
-  });
+  // A network THROW here must NOT propagate — it would bypass the Azure/Google fallback chain and 500.
+  // (No whole-request timeout on the streaming fetch: it would abort a valid long TTS stream mid-flight,
+  // after the caller has already returned this response and the fallback window is closed.)
+  let res: Response;
+  try {
+    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'audio/mpeg',
+      },
+      body: JSON.stringify({
+        text: text.slice(0, 5000),
+        // v329 — model is chosen per-language by selectTtsModel. Georgian → eleven_v3
+        // (the only model supporting `ka`); turbo is English-first. Settings are tuned
+        // per model. PHASE 52 §5 — an explicit delivery directive mirrors the tone.
+        model_id: modelId,
+        voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
+        apply_text_normalization: 'auto',
+      }),
+    });
+  } catch (e) {
+    console.error('[elevenlabs/tts] stream fetch failed', e instanceof Error ? e.message : String(e));
+    return null;
+  }
 
   if (!res.ok || !res.body) {
     const errBody = await res.text().catch(() => '');
@@ -119,15 +128,24 @@ async function bufferElevenLabs(
   modelId: ElevenLabsModelId,
   voiceStyle?: string,
 ): Promise<NextResponse | null> {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({
-      text: text.slice(0, 5000),
-      model_id: modelId,
-      voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
-    }),
-  });
+  // Try/catch + a bounded timeout: a throw or a stall must return null so the Azure/Google fallback
+  // runs, not propagate a 500 or hang the function. Buffered (non-streaming) → timeout is safe here.
+  let res: Response;
+  try {
+    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+      body: JSON.stringify({
+        text: text.slice(0, 5000),
+        model_id: modelId,
+        voice_settings: enforceVoiceSettings(voiceSettingsForModel(modelId), voiceStyle),
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    console.error('[elevenlabs/tts] buffered fetch failed', e instanceof Error ? e.message : String(e));
+    return null;
+  }
   if (!res.ok) {
     console.error('[elevenlabs/tts] buffered error', res.status, (await res.text().catch(() => '')).slice(0, 200));
     return null;

@@ -35,6 +35,9 @@ export const POST = compose()
         max_tokens: 2048,
         temperature: 0.7,
       }),
+      // A stalled provider must not hang the function to the platform limit — reject fast so the
+      // compose() error path returns a clean response instead of a gateway timeout.
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {

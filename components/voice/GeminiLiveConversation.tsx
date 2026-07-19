@@ -121,8 +121,9 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      // The modal may have been torn down while the permission prompt was up — don't leak the stream.
-      if (closedRef.current) { stream.getTracks().forEach((tk) => tk.stop()); return; }
+      // Drop this stream if we've torn down during the permission prompt OR a concurrent double-tap
+      // already acquired one (else the earlier stream + its frame interval leak as a hot camera).
+      if (closedRef.current || camStreamRef.current) { stream.getTracks().forEach((tk) => tk.stop()); return; }
       camStreamRef.current = stream;
       const video = videoRef.current;
       if (video) { video.srcObject = stream; await video.play().catch(() => {}); }
@@ -179,6 +180,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   // ── Connect once on mount (opening the modal is the user gesture). ──
   useEffect(() => {
     let cancelled = false;
+    closedRef.current = false; // re-arm after any prior teardown (a userId-change remount keeps us mounted)
     (async () => {
       try {
         const res = await fetch('/api/voice/live', {
