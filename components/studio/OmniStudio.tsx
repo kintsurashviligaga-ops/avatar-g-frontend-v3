@@ -5834,7 +5834,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   )}
                 </span>
               </span>
-              <div className={`grid gap-2 ${sceneFrameCount === 1 ? 'grid-cols-1' : sceneFrameCount <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              <div className={`grid gap-2 ${sceneFrameCount === 1 ? 'grid-cols-1' : sceneFrameCount <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
                 {Array.from({ length: sceneFrameCount }).map((_, i) => {
                   const url = videoCharacterRefs[i];
                   const isAdd = !url && i === videoCharacterRefs.length;
