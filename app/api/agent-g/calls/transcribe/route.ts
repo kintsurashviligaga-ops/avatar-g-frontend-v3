@@ -17,6 +17,13 @@ const jsonSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // WS2 — paid STT for the telephony call flow. Server-to-server sub-route (no user session) → gated by
+  // the internal worker token (same convention as app/worker/tick, growth/*). Fail-closed: with
+  // WORKER_INTERNAL_TOKEN unset the route rejects all calls — it was previously anonymous.
+  const internalToken = request.headers.get('x-internal-worker-token');
+  if (!process.env.WORKER_INTERNAL_TOKEN || internalToken !== process.env.WORKER_INTERNAL_TOKEN) {
+    return apiError(new Error('unauthorized'), 401, 'Unauthorized');
+  }
   try {
     const contentType = request.headers.get('content-type') || '';
 

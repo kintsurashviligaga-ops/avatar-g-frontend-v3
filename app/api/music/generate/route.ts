@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { MusicTrackRequestSchema, validateInput } from '@/lib/api/validation';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import type { GenerateTrackRequest } from '@/types/music-video';
 
 export const dynamic = 'force-dynamic';
@@ -61,6 +63,16 @@ export async function POST(request: NextRequest) {
         { error: 'Unauthorized' },
         { status: 401 }
       );
+    }
+
+    // WS2 audit — this route is authed + WRITE-rate-limited, but it only ENQUEUES a job (no direct paid
+    // call here). Add a spend guard so an authenticated 0-balance user can't flood the queue with
+    // unbillable work: require enough credits to cover a music render before enqueuing. Fail-open on a
+    // read miss (matches hasSufficientBalance). NOTE: the enqueue is NOT the charge point — the worker
+    // that consumes this `jobs` row MUST deduct credits on actual generation (tracked in WS3).
+    const affordable = await hasSufficientBalance(user.id, PRODUCE_COST.music).catch(() => true);
+    if (!affordable) {
+      return NextResponse.json({ error: 'Insufficient credits', required: PRODUCE_COST.music }, { status: 402 });
     }
 
     // 2. Parse & validate request

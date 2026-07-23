@@ -10,6 +10,13 @@
  * allowlist entry. Adding a new provider route now forces a visible decision: guard it, or justify it.
  *
  * It is a STATIC scan (reads route source from disk) — no network, no runtime, deterministic.
+ *
+ * Iteration 6 (WS2) — CLOSED THE HELPER-ABSTRACTION BLIND SPOT: the original scan only matched a direct
+ * `api.elevenlabs.io` / `createPrediction(` string in the route file, so a route that drained a paid
+ * vendor via a helper import (e.g. `synthesizeWithTimestamps` from `@/lib/elevenlabs/ttsTimestamps`)
+ * showed no provider string and slipped through unguarded (ads/tts, audio/isolate, agent-g/calls/*).
+ * PAID_PROVIDER_SIGNALS now also flags imports of the known paid-provider helper libs, so call-site
+ * abstraction no longer hides a drain from the gate.
  */
 import fs from 'fs';
 import path from 'path';
@@ -29,12 +36,20 @@ function collectRouteFiles(dir: string): string[] {
 
 /** Signals that a route actually CALLS a paid media-generation provider (the drain vectors). */
 const PAID_PROVIDER_SIGNALS: RegExp[] = [
+  // ── Direct provider endpoints / SDK calls ────────────────────────────────────────────────────
   /createPrediction\s*\(/,               // Replicate (image / video / avatar)
   /api\.replicate\.com/,
   /api\.elevenlabs\.io/,                 // ElevenLabs TTS / SFX / voice
   /api\.heygen\.com|upload\.heygen\.com/, // HeyGen avatar / presenter
   /klingai\.com|['"`]kling/i,            // Kling video
   /api\.udio|UDIO_API_KEY/,              // Udio music
+  // ── Helper-abstracted calls (WS2): importing one of these lib modules means the route drains a paid
+  //    vendor even without a direct api.* string. Any such route must still be guarded or allowlisted.
+  /from\s+['"]@\/lib\/elevenlabs\//,                              // ElevenLabs helpers (TTS / SFX / isolation / music)
+  /from\s+['"]@\/lib\/voice-v2v\/providers['"]/,                  // synthesizeSpeechChunk / transcribeRealtimePcmChunk (paid TTS+STT)
+  /from\s+['"]@\/lib\/voice-v2v\/(geminiStt|replicateStt)['"]/,   // paid STT helpers
+  /from\s+['"]@\/lib\/heygen/,                                    // HeyGen helpers
+  /\b(synthesizeWithTimestamps|isolateVocal|synthesizeSpeechChunk|transcribeRealtimePcmChunk)\s*\(/, // named paid helpers (defence in depth)
 ];
 
 /** Signals that a route enforces auth OR a canonical gate (NOT rate-limiting — that is not auth). */
@@ -48,6 +63,7 @@ const AUTH_SIGNALS: RegExp[] = [
   /x-admin-key|ADMIN_KEY|MIGRATION_RUN_KEY/,    // admin-key gated
   /constructEvent\s*\(/,                        // Stripe webhook signature verification
   /CRON_SECRET/,                                // cron-secret gated
+  /WORKER_INTERNAL_TOKEN|x-internal-worker-token|x-internal-key/, // internal server-to-server token (telephony / worker sub-routes)
 ];
 
 /**
@@ -66,6 +82,13 @@ const ALLOWLIST: Record<string, string> = {
   'app/api/matilda/route.ts': 'Matilda voice (ElevenLabs TTS) — user-auth TODO (audit follow-up)',
   'app/api/film/storyboard/route.ts': 'FLUX storyboard frames — STORYBOARD rate-limited; user-auth TODO (audit follow-up)',
   'app/api/pipeline/route.ts': 'Pipeline Replicate image — rate-limited; user-auth TODO (audit follow-up)',
+  // ── WS2: interactive chat-mic voice routes. Client-facing + rate-limited + low per-call cost (short
+  //    Whisper/STT utterances); guest voice input is a live product feature, so requiring user-auth is a
+  //    PRODUCT decision (would remove guest voice), not a pure security fix. Listed as a reasoned exception
+  //    rather than broken. voice/realtime/session additionally soft-auths (getAuthenticatedUser) + is inert
+  //    in prod without VOICE_V2V_WS_URL + is WS-token gated.
+  'app/api/voice/transcribe/route.ts': 'Chat-mic STT (Whisper) — rate-limited (RATE_LIMITS.READ); guest voice = product feature; user-auth is a product decision',
+  'app/api/voice/realtime/session/route.ts': 'Realtime voice session-token minter — soft-auths, inert without VOICE_V2V_WS_URL, WS-token gated; user-auth is a product decision',
   // ── Health / status / diagnostic monitoring: reference or PING provider endpoints (env presence,
   //    /v1/user, /v2/voices) — no media generation, no drain. Should ideally be admin-gated; low risk.
   'app/api/health/public/route.ts': 'Public health — pings provider status endpoints (/v1/user, /v2/voices), no generation',

@@ -13,6 +13,13 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // WS2 — paid TTS (ElevenLabs/Cartesia) for the telephony call flow. This is a server-to-server sub-route
+  // (no user session), so it's gated by the internal worker token (same convention as app/worker/tick,
+  // growth/*). Fail-closed: with WORKER_INTERNAL_TOKEN unset the route rejects all calls — was anonymous.
+  const internalToken = request.headers.get('x-internal-worker-token');
+  if (!process.env.WORKER_INTERNAL_TOKEN || internalToken !== process.env.WORKER_INTERNAL_TOKEN) {
+    return apiError(new Error('unauthorized'), 401, 'Unauthorized');
+  }
   try {
     const payload = schema.safeParse(await request.json());
     if (!payload.success) return apiError(payload.error, 400, 'Invalid TTS payload');

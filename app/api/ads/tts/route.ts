@@ -7,6 +7,7 @@
  * is hosted to the private `uploads` bucket. Requires ELEVENLABS_API_KEY (prod/preview env).
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { synthesizeWithTimestamps } from '@/lib/elevenlabs/ttsTimestamps';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -16,6 +17,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  // WS2 — this hits paid ElevenLabs (with-timestamps TTS) on the platform key. It was fully
+  // unauthenticated (anonymous drain). Require a signed-in user so anonymous callers can't spend.
+  try { await requireAuthenticatedUser(req); } catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
+
   let body: { text?: unknown; gender?: unknown; voiceId?: unknown };
   try {
     body = (await req.json()) as typeof body;
