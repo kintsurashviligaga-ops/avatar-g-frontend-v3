@@ -21,6 +21,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const localePriority = (locale: string, base: number) =>
     locale === 'ka' ? base : Math.max(0.3, Math.round((base - 0.1) * 10) / 10);
 
+  // Per-URL hreflang (Iteration 2 international SEO). Every entry advertises the SAME path in each
+  // locale + x-default=ka, so Google serves the right language per market and the return tags match
+  // across the cluster. `path` is the post-locale segment, e.g. '/pricing' or '/services/avatar'.
+  const langAlternates = (path: string) => ({
+    languages: {
+      ka: `${baseUrl}/ka${path}`,
+      en: `${baseUrl}/en${path}`,
+      ru: `${baseUrl}/ru${path}`,
+      'x-default': `${baseUrl}/ka${path}`,
+    },
+  });
+
   // Root domain (redirects to the default-locale landing; the root itself is
   // the canonical entry point so it stays at priority 1).
   const rootPage = {
@@ -28,6 +40,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: now,
     changeFrequency: 'daily' as const,
     priority: 1,
+    alternates: langAlternates(''),
   };
 
   // Core app / marketing pages, emitted per-locale at their canonical 200 URL.
@@ -43,6 +56,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency,
       priority: localePriority(locale, priority),
+      alternates: langAlternates(`/${slug}`),
     }))
   );
 
@@ -58,6 +72,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'weekly' as const,
       priority: localePriority(locale, 0.9),
+      alternates: langAlternates(`/services/${service}`),
     }))
   );
 
@@ -69,6 +84,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'monthly' as const,
       priority: 0.4,
+      alternates: langAlternates(`/${slug}`),
     }))
   );
 
