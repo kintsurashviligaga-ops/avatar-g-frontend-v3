@@ -6,15 +6,16 @@
  * "insufficient balance" interception (PHASE 4).
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wallet, X, Loader2 } from 'lucide-react';
-import { REFILL_TIERS_GEL, MIN_REFILL_GEL, usdFromGel, insufficientBalanceMessage } from '@/lib/billing/gel';
+import { REFILL_TIERS_GEL, MIN_REFILL_GEL, formatWalletBalance, insufficientBalanceMessage } from '@/lib/billing/gel';
 
-export function BalanceChip({ balanceGel, onClick }: { balanceGel: number | null; onClick: () => void }) {
+export function BalanceChip({ balanceGel, locale = 'en', onClick }: { balanceGel: number | null; locale?: string; onClick: () => void }) {
   // Theme-aware chip: app-bg base, app-border hairline, app-text label, soft
   // cyan glow held back to a hint rather than a full neon ring.
-  // Master Contract V10 — balance DISPLAYED in USD ($) though the wallet is GEL internally.
+  // Iteration 4 — currency honesty: local (ka) users see the ₾ balance they actually top up in;
+  // international users keep the USD equivalent. formatWalletBalance returns the full symbol'd string.
   return (
     <button
       type="button"
@@ -22,8 +23,7 @@ export function BalanceChip({ balanceGel, onClick }: { balanceGel: number | null
       aria-label="Wallet balance"
       className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-app-border/15 bg-app-bg/85 backdrop-blur-md text-[12px] font-semibold text-app-text hover:border-app-border/30 hover:bg-app-elevated transition active:scale-95 shadow-[0_0_14px_-7px_rgba(56,189,248,0.55)]"
     >
-      <span aria-hidden className="text-app-muted">$</span>
-      <span className="tabular-nums">{usdFromGel(balanceGel)}</span>
+      <span className="tabular-nums">{formatWalletBalance(balanceGel, locale)}</span>
     </button>
   );
 }
@@ -45,7 +45,21 @@ export function WalletRefillModal({
 }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Iteration 4 — is the native Bank of Georgia (GEL) rail fully live on this deployment? Probed from the
+  // secretless /api/checkout/capabilities (true only when BOG creds AND the callback public key are set,
+  // so the button never appears unless a payment can actually be credited). Fail-soft → Stripe only.
+  const [bogAvailable, setBogAvailable] = useState(false);
   const obsidian = variant === 'obsidian';
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    fetch('/api/checkout/capabilities', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { bog?: boolean } | null) => { if (alive && j) setBogAvailable(Boolean(j.bog)); })
+      .catch(() => { /* fail-soft — default to the Stripe rail */ });
+    return () => { alive = false; };
+  }, [open]);
 
   // Skin map — the 'theme' branch keeps the exact original token classes so the
   // chat surfaces are untouched; 'obsidian' hardcodes the 3-tone studio palette.
@@ -70,25 +84,47 @@ export function WalletRefillModal({
     error: obsidian ? 'text-red-300' : 'text-rose-600 dark:text-rose-300',
   };
 
+  const msgAuth = locale === 'ka' ? 'გაიარე ავტორიზაცია საფულის შესავსებად.' : locale === 'ru' ? 'Войдите, чтобы пополнить кошелёк.' : 'Sign in to top up your wallet.';
+  const msgGeneric = locale === 'ka' ? 'გადახდა ვერ დაიწყო. სცადე მოგვიანებით.' : locale === 'ru' ? 'Не удалось начать оплату. Попробуйте позже.' : 'Could not start checkout. Please try again later.';
+  const msgNetwork = locale === 'ka' ? 'ქსელის შეცდომა.' : locale === 'ru' ? 'Сетевая ошибка.' : 'Network error.';
+
   const charge = useCallback(async (amountGel: number) => {
     setBusy(amountGel); setError(null);
-    try {
+    // Stripe wallet-topup (GEL Checkout). Returns { url }. → true = handled (redirected or 401 shown).
+    const tryStripe = async (): Promise<boolean> => {
       const res = await fetch('/api/billing/wallet-topup', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ amountGel }),
       });
-      const j = await res.json().catch(() => ({})) as { url?: string; error?: string };
-      if (res.ok && j.url) { window.location.href = j.url; return; }
-      setError(
-        res.status === 401 ? (locale === 'ka' ? 'გაიარე ავტორიზაცია საფულის შესავსებად.' : locale === 'ru' ? 'Войдите, чтобы пополнить кошелёк.' : 'Sign in to top up your wallet.')
-        : (locale === 'ka' ? 'გადახდა ვერ დაიწყო. სცადე მოგვიანებით.' : locale === 'ru' ? 'Не удалось начать оплату. Попробуйте позже.' : 'Could not start checkout. Please try again later.'),
-      );
+      const j = await res.json().catch(() => ({})) as { url?: string };
+      if (res.ok && j.url) { window.location.href = j.url; return true; }
+      if (res.status === 401) { setError(msgAuth); return true; }
+      return false;
+    };
+    try {
+      // Prefer the native Bank of Georgia (GEL) rail when it's fully live — it settles in ₾ directly, so
+      // it never hits Stripe's GEL-settlement gating. Returns { redirectUrl }. On ANY BOG init failure
+      // (auth/order/unconfigured) transparently fall back to Stripe so the user is never left unable to pay.
+      if (bogAvailable) {
+        const res = await fetch('/api/checkout/bog/initiate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ amountGel }),
+        });
+        const j = await res.json().catch(() => ({})) as { redirectUrl?: string };
+        if (res.ok && j.redirectUrl) { window.location.href = j.redirectUrl; return; }
+        if (res.status === 401) { setError(msgAuth); return; }
+        if (await tryStripe()) return;   // BOG down → Stripe fallback
+        setError(msgGeneric);
+        return;
+      }
+      if (await tryStripe()) return;
+      setError(msgGeneric);
     } catch {
-      setError(locale === 'ka' ? 'ქსელის შეცდომა.' : locale === 'ru' ? 'Сетевая ошибка.' : 'Network error.');
+      setError(msgNetwork);
     } finally {
       setBusy(null);
     }
-  }, [locale]);
+  }, [bogAvailable, msgAuth, msgGeneric, msgNetwork]);
 
   if (!open) return null;
   const title = locale === 'ka' ? 'შეავსე საფულე' : locale === 'ru' ? 'Пополнить кошелёк' : 'Top up wallet';
@@ -156,7 +192,9 @@ export function WalletRefillModal({
 
           {error && <p className={`mt-3 text-[12px] leading-relaxed ${skin.error}`}>{error}</p>}
           <p className={`mt-3 text-[11px] leading-relaxed ${skin.note}`}>
-            {locale === 'ka' ? 'გადახდა მუშავდება Stripe-ით (₾ / GEL).' : locale === 'ru' ? 'Оплата через Stripe (₾ / GEL).' : 'Secure checkout via Stripe (₾ / GEL).'}
+            {bogAvailable
+              ? (locale === 'ka' ? 'უსაფრთხო გადახდა ბარათით — Bank of Georgia (₾).' : locale === 'ru' ? 'Безопасная оплата картой — Bank of Georgia (₾).' : 'Secure card payment via Bank of Georgia (₾).')
+              : (locale === 'ka' ? 'გადახდა მუშავდება Stripe-ით (₾ / GEL).' : locale === 'ru' ? 'Оплата через Stripe (₾ / GEL).' : 'Secure checkout via Stripe (₾ / GEL).')}
           </p>
         </motion.div>
       </motion.div>

@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle, Check } from 'lucide-react';
 import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig';
-import { usdFromGel } from '@/lib/billing/gel';
+import { formatWalletBalance } from '@/lib/billing/gel';
 import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -50,7 +50,7 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     title: 'კრედიტები', balance: 'ბალანსი', freeVideos: 'უფასო ვიდეო', pay: 'გადახდა',
-    cardHint: 'TBC / BOG ბარათით', comingSoon: 'მალე — გადახდა მალე დაემატება',
+    cardHint: 'უსაფრთხო გადახდა ბარათით', comingSoon: 'მალე — გადახდა მალე დაემატება',
     payError: 'გადახდა ვერ დაიწყო — სცადეთ თავიდან', redirecting: 'გადამისამართება…',
     signInNeeded: 'შესვლა საჭიროა', signIn: 'შესვლა', credits: 'კრედიტი', close: 'დახურვა',
     starter: '📦 სტარტერი', pro: '💎 პრო', max: '🚀 მაქსი',
@@ -60,7 +60,7 @@ const COPY: Record<Lang, {
   },
   en: {
     title: 'Credits', balance: 'Balance', freeVideos: 'Free videos', pay: 'Pay',
-    cardHint: 'TBC / BOG card', comingSoon: 'Coming soon — payments arrive shortly',
+    cardHint: 'Secure card checkout', comingSoon: 'Coming soon — payments arrive shortly',
     payError: 'Could not start checkout — please try again', redirecting: 'Redirecting…',
     signInNeeded: 'Please sign in first', signIn: 'Sign In', credits: 'credits', close: 'Close',
     starter: '📦 Starter', pro: '💎 Pro', max: '🚀 Max',
@@ -70,7 +70,7 @@ const COPY: Record<Lang, {
   },
   ru: {
     title: 'Кредиты', balance: 'Баланс', freeVideos: 'Бесплатные видео', pay: 'Оплатить',
-    cardHint: 'Картой TBC / BOG', comingSoon: 'Скоро — оплата появится в ближайшее время',
+    cardHint: 'Безопасная оплата картой', comingSoon: 'Скоро — оплата появится в ближайшее время',
     payError: 'Не удалось начать оплату — попробуйте снова', redirecting: 'Перенаправление…',
     signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кред.', close: 'Закрыть',
     starter: '📦 Стартер', pro: '💎 Про', max: '🚀 Макс',
@@ -222,7 +222,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             {/* Balance + free videos */}
             <div className="rounded-2xl bg-app-elevated/60 px-4 py-4 text-center">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.balance}</p>
-              <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">${usdFromGel(balanceGel)}</p>
+              <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">{formatWalletBalance(balanceGel, locale)}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] text-app-muted">
                 🎬 {t.freeVideos}: <span className="font-semibold tabular-nums text-app-text">{loading && freeFilms === null ? <Loader2 size={12} className="inline animate-spin" /> : (freeFilms ?? '—')}</span> / 3
               </p>

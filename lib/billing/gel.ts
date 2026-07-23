@@ -45,6 +45,19 @@ export function usdFromGel(gel: number | null | undefined): string {
   return (g / GEL_PER_USD).toFixed(2);
 }
 
+/**
+ * Locale-aware wallet-balance display (Iteration 4 — currency honesty). The wallet is denominated in
+ * GEL internally (₾ is what the top-up rails — BOG + Stripe wallet-topup — actually charge), so:
+ *   • local (ka)          → show ₾ directly (`X.XX ₾`), matching the ₾ refill tiers the user pays.
+ *   • international (en/ru)→ show the USD equivalent (`$X.XX`) via the single FX constant.
+ * Returns the full display string INCLUDING the symbol (leading `$` or trailing ` ₾`) so callers don't
+ * re-prefix. Keeps display in lockstep with the charged currency instead of always showing `$`.
+ */
+export function formatWalletBalance(gel: number | null | undefined, locale: string): string {
+  if (locale === 'ka') return formatGEL(typeof gel === 'number' && Number.isFinite(gel) ? gel : 0);
+  return `$${usdFromGel(gel)}`;
+}
+
 /** Cost of a metered action in GEL. Unknown actions are free (0). */
 export function costOf(action: MeteredAction): number {
   return GEL_COST[action] ?? 0;

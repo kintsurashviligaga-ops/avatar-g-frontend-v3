@@ -36,7 +36,7 @@ import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { track } from '@/lib/analytics/track';
-import { usdFromGel } from '@/lib/billing/gel';
+import { formatWalletBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
@@ -178,6 +178,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [avatarBusy, setAvatarBusy] = useState(false);
   // Transient, self-contained toast for avatar-upload feedback (ChatChrome has no toast system).
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  // Iteration 4 — checkout return feedback (success / declined / cancelled), self-contained toast.
+  const [payNotice, setPayNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   // Ref (not state) so the async DB-read closure sees the CURRENT value: true while an upload is in flight,
   // to stop an auth-transition read from clobbering the optimistic/just-uploaded photo. lastAvatarUserId
@@ -278,22 +280,52 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return () => window.removeEventListener('myavatar:voice-open', openVoice);
   }, [authed]);
 
-  // Stripe Checkout returns to /dashboard?topup=success. The crediting webhook is
-  // async, so poll the balance a few times to catch the credit landing, then strip
-  // the query param so a refresh doesn't re-trigger. Fail-soft on every step.
+  // Checkout return handler (Iteration 4). Every rail lands back on /dashboard with a status param:
+  //   ?topup=success   — BOG or Stripe wallet-topup settled  → poll the balance (async crediting webhook)
+  //   ?tier=success    — Stripe USD tier purchased           → poll the balance too (was previously ignored)
+  //   ?topup=failed    — BOG declined / order failed         → dismissible retry notice (NON-locking)
+  //   ?topup=canceled  — user cancelled Stripe checkout      → dismissible cancelled notice
+  // The param is always stripped so a refresh never re-triggers. Fail-soft on every step.
   useEffect(() => {
     if (typeof window === 'undefined' || !authed) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('topup') !== 'success') return;
-    track('payment_completed', {}); // PHASE 4 Task 1 — landed back from Stripe Checkout
-    let n = 0;
-    const id = window.setInterval(() => { n += 1; void refreshBalance(true); if (n >= 5) window.clearInterval(id); }, 1500);
-    void refreshBalance(true);
+    const topup = params.get('topup');
+    const tier = params.get('tier');
+    const paidOk = topup === 'success' || tier === 'success';
+    const paidFail = topup === 'failed';
+    const paidCancel = topup === 'canceled';
+    if (!paidOk && !paidFail && !paidCancel) return;
+
+    let cleanup: (() => void) | undefined;
+    if (paidOk) {
+      track('payment_completed', {}); // PHASE 4 Task 1 — landed back from checkout
+      let n = 0;
+      const id = window.setInterval(() => { n += 1; void refreshBalance(true); if (n >= 5) window.clearInterval(id); }, 1500);
+      void refreshBalance(true);
+      setPayNotice({ ok: true, text: locale === 'ka' ? 'გადახდა მიღებულია — ბალანსი განახლდა.' : locale === 'ru' ? 'Оплата получена — баланс обновлён.' : 'Payment received — balance updated.' });
+      cleanup = () => window.clearInterval(id);
+    } else {
+      // Declined / cancelled bank txn → clean recovery: a dismissible notice, the workflow stays open.
+      setPayNotice({
+        ok: false,
+        text: paidCancel
+          ? (locale === 'ka' ? 'გადახდა გაუქმდა.' : locale === 'ru' ? 'Оплата отменена.' : 'Payment cancelled.')
+          : (locale === 'ka' ? 'გადახდა ვერ შესრულდა. სცადე თავიდან.' : locale === 'ru' ? 'Платёж не прошёл. Попробуйте снова.' : 'Payment failed. Please try again.'),
+      });
+    }
     params.delete('topup');
+    params.delete('tier');
     const qs = params.toString();
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
-    return () => window.clearInterval(id);
-  }, [authed, refreshBalance]);
+    return cleanup;
+  }, [authed, refreshBalance, locale]);
+
+  // Auto-dismiss the checkout-return notice so it never lingers.
+  useEffect(() => {
+    if (!payNotice) return;
+    const id = setTimeout(() => setPayNotice(null), 4500);
+    return () => clearTimeout(id);
+  }, [payNotice]);
 
   // PHASE 3 Task 2 — show the first-login welcome once per device.
   useEffect(() => {
@@ -719,7 +751,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
               <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
                 className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
-                <span className="text-[14px] font-semibold tabular-nums">${usdFromGel(balanceGel)}</span>
+                <span className="text-[14px] font-semibold tabular-nums">{formatWalletBalance(balanceGel, locale)}</span>
                 <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
               </button>
               {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an
@@ -909,6 +941,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <div role="status" className="pointer-events-auto flex items-center gap-2 rounded-full border border-rose-400/30 bg-app-surface/95 px-4 py-2 text-[12.5px] font-medium text-rose-300 shadow-lg backdrop-blur">
             {avatarError}
           </div>
+        </div>
+      )}
+
+      {/* Checkout-return feedback toast (Iteration 4) — success / declined / cancelled. Dismissible on tap;
+          the workflow behind it is never blocked, so a declined bank txn recovers cleanly. */}
+      {payNotice && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[1000] flex justify-center px-4" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
+          <button
+            type="button"
+            onClick={() => setPayNotice(null)}
+            role="status"
+            className={`pointer-events-auto flex items-center gap-2 rounded-full border bg-app-surface/95 px-4 py-2 text-[12.5px] font-medium shadow-lg backdrop-blur transition active:scale-95 ${payNotice.ok ? 'border-emerald-400/30 text-emerald-300' : 'border-amber-400/30 text-amber-300'}`}
+          >
+            {payNotice.text}
+          </button>
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { GEL_COST, REFILL_TIERS_GEL, MIN_REFILL_GEL, formatGEL, costOf, canAfford, insufficientBalanceMessage, type MeteredAction } from './gel';
+import { GEL_COST, REFILL_TIERS_GEL, MIN_REFILL_GEL, formatGEL, formatWalletBalance, usdFromGel, costOf, canAfford, insufficientBalanceMessage, type MeteredAction } from './gel';
 
 describe('GEL cost matrix', () => {
   test('matches the fixed production matrix', () => {
@@ -26,6 +26,24 @@ describe('formatGEL', () => {
   test('coerces NaN/Infinity to 0.00', () => {
     expect(formatGEL(NaN)).toBe('0.00 ₾');
     expect(formatGEL(Infinity)).toBe('0.00 ₾');
+  });
+});
+
+describe('formatWalletBalance (Iteration 4 — locale-honest currency)', () => {
+  it('shows ₾ for local (ka) users — matching the ₾ they are charged', () => {
+    expect(formatWalletBalance(5, 'ka')).toBe('5.00 ₾');
+    expect(formatWalletBalance(20, 'ka')).toBe('20.00 ₾');
+  });
+  it('shows the USD equivalent (with $) for international (en/ru) users', () => {
+    expect(formatWalletBalance(5, 'en')).toBe(`$${usdFromGel(5)}`);
+    expect(formatWalletBalance(20, 'ru')).toBe(`$${usdFromGel(20)}`);
+    // an unknown locale defaults to the international USD form (never a bare number)
+    expect(formatWalletBalance(20, 'de')).toBe(`$${usdFromGel(20)}`);
+  });
+  it('treats null/NaN as 0 in both currencies (never renders NaN/undefined)', () => {
+    expect(formatWalletBalance(null, 'ka')).toBe('0.00 ₾');
+    expect(formatWalletBalance(undefined, 'en')).toBe('$0.00');
+    expect(formatWalletBalance(NaN, 'ka')).toBe('0.00 ₾');
   });
 });
 

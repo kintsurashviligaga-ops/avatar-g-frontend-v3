@@ -4,6 +4,7 @@ jest.mock('server-only', () => ({}));
 import { generateKeyPairSync, createSign } from 'node:crypto';
 import {
   bogConfig,
+  bogFullyConfigured,
   getBogAccessToken,
   createBogOrder,
   extractRedirectUrl,
@@ -59,6 +60,27 @@ describe('bogConfig', () => {
     expect(cfg!.callbackPublicKey).toContain('\n');
     expect(cfg!.callbackPublicKey).not.toContain('\\n');
     expect(cfg!.callbackIpAllowlist).toEqual(['1.2.3.4', '5.6.7.8']);
+  });
+});
+
+describe('bogFullyConfigured — the wallet-UI capability gate (money-in-no-credit guard)', () => {
+  const creds = { BOG_CLIENT_ID: 'id', BOG_SECRET_KEY: 'sk' } as unknown as NodeJS.ProcessEnv;
+
+  it('is FALSE with no credentials at all', () => {
+    expect(bogFullyConfigured({} as NodeJS.ProcessEnv)).toBe(false);
+  });
+
+  it('is FALSE with merchant creds but NO callback public key (initiate would succeed but the webhook 401s → user pays, never credited)', () => {
+    // The load-bearing case: bogConfig() is non-null here, so gating on it alone would wrongly show the button.
+    expect(bogConfig(creds)).not.toBeNull();
+    expect(bogFullyConfigured(creds)).toBe(false);
+  });
+
+  it('is TRUE only when creds AND the callback public key are both present (full credit path live)', () => {
+    expect(bogFullyConfigured({
+      ...creds,
+      BOG_CALLBACK_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\\nABC\\n-----END PUBLIC KEY-----',
+    } as unknown as NodeJS.ProcessEnv)).toBe(true);
   });
 });
 

@@ -1693,7 +1693,7 @@ export default function MyAvatarChat({ locale, userName, isAuthenticated }: MyAv
           )}
           {/* GEL wallet balance — freemium badge removed for clean corporate brand. */}
           <div className="max-w-2xl mx-auto mb-2 flex items-center">
-            <BalanceChip balanceGel={balanceGel} onClick={() => { setRefillRequired(null); setRefillOpen(true); }} />
+            <BalanceChip balanceGel={balanceGel} locale={locale} onClick={() => { setRefillRequired(null); setRefillOpen(true); }} />
           </div>
           {/* One-tap cinematic production — button → live SSE telemetry → inline film */}
           <div className="max-w-2xl mx-auto mb-2">

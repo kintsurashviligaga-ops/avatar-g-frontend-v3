@@ -58,6 +58,19 @@ export function bogConfig(env: NodeJS.ProcessEnv = process.env): BogConfig | nul
   };
 }
 
+/**
+ * True only when the FULL native GEL path is live: merchant creds present (an order can be created) AND
+ * the callback public key present (the settlement callback can be RSA-verified and credited). The wallet
+ * UI gates its "Pay with BOG" affordance on THIS, not bogConfig() alone — client creds without the
+ * callback public key would let a user PAY while app/api/billing/bog/webhook 401s every callback (no
+ * public key → line ~60), i.e. money in, never credited. Kept here so the capability endpoint and its
+ * test share one definition of "BOG is safe to offer".
+ */
+export function bogFullyConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  const cfg = bogConfig(env);
+  return cfg !== null && cfg.callbackPublicKey !== null;
+}
+
 export interface BogFetchDeps {
   readonly fetch: typeof fetch;
   /** Per-request timeout (ms). */

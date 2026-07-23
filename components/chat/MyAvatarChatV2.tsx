@@ -1991,7 +1991,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
           </button>
         </div>
 
-        <BalanceChip balanceGel={balanceGel} onClick={() => setWalletOpen(true)} />
+        <BalanceChip balanceGel={balanceGel} locale={locale} onClick={() => setWalletOpen(true)} />
 
         <div className="flex items-center gap-1">
           {/* VECTOR 1B — Save Context & Clear View: hides the on-screen messages to free memory on long
