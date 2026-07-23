@@ -20,6 +20,43 @@ export interface DrainJobRow {
   status: string;
   /** ISO — last time the client (or a drainer tick) advanced the row. */
   updated_at: string;
+  /** Owner — selected by the drainer so a reaped, credit-charged render can be refunded. */
+  user_id?: string | null;
+  /** Job params JSONB. Carries `_reserve { ref, credits }` when credits were debited up front. */
+  params?: Record<string, unknown> | null;
+}
+
+/** A refundable reservation extracted from a reaped job row. */
+export interface ReapReserve {
+  userId: string;
+  credits: number;
+  /** The IN-ROUTE reserve ref. The drainer refunds `${ref}:refund` (identical to refundProduce), and
+   *  refund_credits dedupes on that ref → a drainer refund + the in-route refund collapse to one credit-back. */
+  ref: string;
+}
+
+/**
+ * Extract a refundable reservation from a reaped job row, or null when there is nothing SAFE to refund.
+ *
+ * A row qualifies ONLY with a non-empty user_id AND a well-formed params._reserve { ref:string, credits>0 }.
+ * Only charged reservations are ever stamped (recordJobReservation) — a free-slot or skipped reservation
+ * carries no `_reserve`, so the drainer never mints credits for one. Every field is guarded: a malformed
+ * or partial `_reserve` yields null (never guess an amount). The caller refunds `${ref}:refund`; because
+ * refund_credits is idempotent on that ref, a re-reap (e.g. failJob missed after a refund) can't double-pay.
+ */
+export function reapReserve(job: DrainJobRow): ReapReserve | null {
+  if (!job) return null;
+  const userId = typeof job.user_id === 'string' ? job.user_id.trim() : '';
+  if (!userId) return null;
+  const p = job.params;
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+  const r = (p as Record<string, unknown>)._reserve;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const rec = r as Record<string, unknown>;
+  const ref = typeof rec.ref === 'string' ? rec.ref.trim() : '';
+  const credits = typeof rec.credits === 'number' && Number.isFinite(rec.credits) ? Math.round(rec.credits) : 0;
+  if (!ref || credits <= 0) return null;
+  return { userId, credits, ref };
 }
 
 /**

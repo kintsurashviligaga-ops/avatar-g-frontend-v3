@@ -18,7 +18,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
-import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
+import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
 import {
   normalizeIntake, intakeHasMedia, normalizeRoomGeometry, normalizeStyleGuide,
   buildGeometrySystemPrompt, buildStyleSystemPrompt, buildStyleUserPrompt,
@@ -107,6 +107,9 @@ export async function POST(req: NextRequest) {
         if (user) {
           reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref);
           if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+          // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
+          // render is abandoned (tab closed) and the in-route refund below never fires. Only when charged.
+          if (jobId && reservation.charged) await recordJobReservation(jobId, { ref, credits: PRODUCE_COST.interior });
         }
         emit({ stage: 'extracting', pct: 10, ticker: intake.videoUrl ? '[Extracting Spatial Matrix from Video Frames…]' : '[Extracting Spatial Matrix from Photos…]' });
 

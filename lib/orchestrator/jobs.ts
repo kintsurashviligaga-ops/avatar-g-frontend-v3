@@ -94,6 +94,35 @@ export async function createJob(input: {
   }
 }
 
+/**
+ * Stamp the canonical reserve info onto a durable job's params so a render REAPED by the cron
+ * drainer (tab closed → the in-route refund never fired) can refund the exact reserved credits
+ * idempotently. The drainer refunds with `${ref}:refund` — the SAME ref refundProduce uses in-route —
+ * so refund_credits dedupes to EXACTLY ONCE regardless of which path wins.
+ *
+ * ONLY call when credits were actually charged (reservation.charged): a free-slot or `skipped`
+ * reservation has no matching debit, so stamping it would let the drainer MINT credits. Merges into
+ * the existing params (never clobbers the render inputs). Best-effort, never throws — a lost stamp
+ * just means the drainer can't auto-refund that one job (the in-route refund still covers the normal
+ * failure path). No migration: params is JSONB.
+ */
+export async function recordJobReservation(id: string, reserve: { ref: string; credits: number }): Promise<void> {
+  const sb = client();
+  if (!sb) return;
+  if (!reserve || !reserve.ref || !(reserve.credits > 0)) return;
+  try {
+    const { data } = await sb.from(TABLE).select('params').eq('id', id).maybeSingle();
+    const raw = (data as { params?: unknown } | null)?.params;
+    const prev = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    await sb
+      .from(TABLE)
+      .update({ params: { ...prev, _reserve: { ref: reserve.ref, credits: Math.round(reserve.credits) } } })
+      .eq('id', id);
+  } catch {
+    /* fail-open — no stamp just forgoes the drainer's auto-refund for this one job */
+  }
+}
+
 /** Patch arbitrary columns by job id. Internal; never throws. */
 async function patch(id: string, fields: Record<string, unknown>): Promise<void> {
   const sb = client();

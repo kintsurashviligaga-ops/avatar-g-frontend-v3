@@ -13,7 +13,7 @@ import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
-import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
+import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
 import { extractPersonaDirective } from '@/lib/orchestrator/avatar';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
@@ -52,6 +52,9 @@ export async function POST(req: NextRequest) {
         if (user) {
           reservation = await reserveProduce(user.id, PRODUCE_COST.voice, ref);
           if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+          // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
+          // render is abandoned (tab closed) and the in-route refund below never fires. Only when charged.
+          if (jobId && reservation.charged) await recordJobReservation(jobId, { ref, credits: PRODUCE_COST.voice });
         }
         emit({ stage: 'synthesizing', pct: 15, ticker: '[Agent H: Synthesizing Vocal Frequency Spectrum…]', expression: persona.expression });
         emit({ stage: 'cloning', pct: 40, ticker: '[ElevenLabs: Injecting Emotional Voice Clones…]' });

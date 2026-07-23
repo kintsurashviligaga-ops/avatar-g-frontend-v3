@@ -1,4 +1,4 @@
-import { isReapable, selectReapable, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from './renderDrainer';
+import { isReapable, selectReapable, reapReserve, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from './renderDrainer';
 
 const NOW = Date.parse('2026-08-01T12:00:00Z');
 const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();
@@ -42,6 +42,58 @@ describe('renderDrainer.selectReapable', () => {
     ];
     expect(selectReapable(jobs, NOW).map((j) => j.id)).toEqual(['stale']);
     expect(selectReapable([], NOW)).toEqual([]);
+  });
+});
+
+describe('renderDrainer.reapReserve — refund only a real, charged reservation', () => {
+  const base = { id: 'j', status: 'processing', updated_at: at(0) };
+
+  it('extracts a well-formed charged reservation', () => {
+    const j: DrainJobRow = { ...base, user_id: 'u-1', params: { prompt: 'x', _reserve: { ref: 'film:prod_1', credits: 50 } } };
+    expect(reapReserve(j)).toEqual({ userId: 'u-1', credits: 50, ref: 'film:prod_1' });
+  });
+
+  it('rounds a fractional credits value', () => {
+    const j: DrainJobRow = { ...base, user_id: 'u-1', params: { _reserve: { ref: 'r', credits: 12.6 } } };
+    expect(reapReserve(j)?.credits).toBe(13);
+  });
+
+  it('returns null for a FREE-slot / skipped render (no _reserve stamped)', () => {
+    // the whole point: an un-charged render is never refunded → no minted credits
+    expect(reapReserve({ ...base, user_id: 'u-1', params: { prompt: 'x' } })).toBeNull();
+    expect(reapReserve({ ...base, user_id: 'u-1', params: {} })).toBeNull();
+    expect(reapReserve({ ...base, user_id: 'u-1', params: null })).toBeNull();
+    expect(reapReserve({ ...base, user_id: 'u-1' })).toBeNull();
+  });
+
+  it('returns null when the owner is missing', () => {
+    expect(reapReserve({ ...base, params: { _reserve: { ref: 'r', credits: 50 } } })).toBeNull();
+    expect(reapReserve({ ...base, user_id: '', params: { _reserve: { ref: 'r', credits: 50 } } })).toBeNull();
+    expect(reapReserve({ ...base, user_id: '   ', params: { _reserve: { ref: 'r', credits: 50 } } })).toBeNull();
+  });
+
+  it('never guesses an amount from a malformed _reserve', () => {
+    const bad = [
+      { ref: 'r' },                       // no credits
+      { ref: 'r', credits: 0 },           // zero
+      { ref: 'r', credits: -10 },         // negative
+      { ref: 'r', credits: 'lots' },      // non-numeric
+      { ref: 'r', credits: NaN },         // NaN
+      { ref: '', credits: 50 },           // empty ref
+      { credits: 50 },                    // no ref
+      'not-an-object',
+      42,
+      null,
+      [{ ref: 'r', credits: 50 }],        // array, not object
+    ];
+    for (const r of bad) {
+      expect(reapReserve({ ...base, user_id: 'u-1', params: { _reserve: r } as Record<string, unknown> })).toBeNull();
+    }
+  });
+
+  it('handles a null/garbage job defensively', () => {
+    expect(reapReserve(null as unknown as DrainJobRow)).toBeNull();
+    expect(reapReserve({ ...base, user_id: 'u-1', params: [] as unknown as Record<string, unknown> })).toBeNull();
   });
 });
 

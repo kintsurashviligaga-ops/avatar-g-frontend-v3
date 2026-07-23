@@ -16,7 +16,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { failJob } from '@/lib/orchestrator/jobs';
-import { selectReapable, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from '@/lib/pipeline/renderDrainer';
+import { refundCredits } from '@/lib/orchestrator/ledger';
+import { selectReapable, reapReserve, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from '@/lib/pipeline/renderDrainer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,12 +38,13 @@ async function handle(req: NextRequest) {
   if (!drainerEnabled()) return NextResponse.json({ ok: true, enabled: false, drained: 0 });
 
   let reaped = 0;
+  let refunded = 0;
   try {
     const sb = createServiceRoleClient();
     const staleIso = new Date(Date.now() - RENDER_STALE_THRESHOLD_MS).toISOString();
     const { data } = await sb
       .from('generation_jobs')
-      .select('id, status, updated_at')
+      .select('id, status, updated_at, user_id, params')
       .eq('status', 'processing')
       .lt('updated_at', staleIso)
       .order('updated_at', { ascending: true })
@@ -50,13 +52,24 @@ async function handle(req: NextRequest) {
     // Double-guard: the SQL filter AND the pure invariant must both agree a row is abandoned.
     const reapable = selectReapable((data ?? []) as DrainJobRow[], Date.now());
     for (const j of reapable) {
+      // Refund the up-front reservation FIRST — while the row is still `processing`. If failJob landed
+      // first and the refund then failed, the next tick could no longer re-reap (status → failed) and the
+      // credit-back would be lost forever. refund_credits is idempotent on `${ref}:refund` — the exact ref
+      // the in-route refundProduce uses — so this collapses to EXACTLY ONE credit-back whether the in-route
+      // finally ran, this drainer ran, or (after a failJob miss) a later tick re-runs it. Only charged
+      // reservations carry `_reserve`; free-slot / skipped renders yield null → never minted.
+      const rr = reapReserve(j);
+      if (rr) {
+        const res = await refundCredits(rr.userId, rr.credits, `${rr.ref}:refund`).catch(() => null);
+        if (res?.ok) refunded++;
+      }
       await failJob(j.id, 'render abandoned (tab closed) — reaped by drainer');
       reaped++;
     }
   } catch {
     /* fail-open — a bad tick is a silent no-op, never a 500 that alarms the cron */
   }
-  return NextResponse.json({ ok: true, enabled: true, drained: reaped });
+  return NextResponse.json({ ok: true, enabled: true, drained: reaped, refunded });
 }
 
 export async function GET(req: NextRequest) { return handle(req); }

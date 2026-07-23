@@ -19,7 +19,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
-import { createJob, recordJobEvent } from '@/lib/orchestrator/jobs';
+import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
 import {
   buildScriptSystemPrompt, buildScriptUserPrompt, extractJson, normalizeBreakdown,
   type ScriptSegment,
@@ -123,6 +123,10 @@ export async function POST(req: NextRequest) {
           } else {
             reservation = await reserveProduce(user.id, PRODUCE_COST.film, ref);
             if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+            // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
+            // render is abandoned (tab closed) and the in-route refund never fires. Credit path only — a
+            // consumed free film carries no debit, so it is NEVER stamped (the drainer would else mint credits).
+            if (jobId && reservation.charged) await recordJobReservation(jobId, { ref, credits: PRODUCE_COST.film });
           }
         }
         emit({ stage: 'initiated', pct: 5 });
