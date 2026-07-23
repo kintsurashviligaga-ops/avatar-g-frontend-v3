@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -149,7 +149,7 @@ const COPY: Record<Lang, {
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
-  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string; sbReady: string; sbAutoFill: string; sbRenderNote: string;
+  sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string; sbReady: string; sbAutoFill: string; sbRenderNote: string; sbDrag: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
 }> = {
@@ -171,7 +171,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -193,7 +193,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready",
+    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -215,7 +215,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -987,7 +987,13 @@ function deleteConversation(id: string): void {
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
-interface StoryboardScene { ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean; /** True when this scene's frame is a USER-uploaded anchor (vs AI-generated). */ anchored?: boolean; /** Per-scene base image (data URL) the user supplied to override this scene's identity reference. */ baseImage?: string }
+// A stable per-scene id (session-unique, assigned once at creation) used as the React key so a
+// drag-reorder MOVES the existing DOM node instead of reconciling content by position — this is what
+// prevents the ~0.7s blur-up morph from re-firing on a branch-flip tile (the "no flicker" invariant).
+let sceneUidSeq = 0;
+const nextSceneUid = (): string => `sc${++sceneUidSeq}`;
+
+interface StoryboardScene { uid: string; ordinal: number; beat: string; prompt: string; frameUrl: string | null; edited?: boolean; /** True when this scene's frame is a USER-uploaded anchor (vs AI-generated). */ anchored?: boolean; /** Per-scene base image (data URL) the user supplied to override this scene's identity reference. */ baseImage?: string }
 interface StoryboardState {
   filmPrompt: string;
   refs: string[];
@@ -1050,7 +1056,7 @@ function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): St
  *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
  *     an agent's delivery glides in with no layout pop (fixed-aspect container).
  */
-function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove }: {
+function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
   s: StoryboardScene;
   t: (typeof COPY)[Lang];
   portrait: boolean;
@@ -1067,9 +1073,21 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
   onView: (url: string) => void;
   onDelete: (ordinal: number) => void;
   onMove: (ordinal: number, dir: -1 | 1) => void;
+  /** Drag-to-reorder (desktop): enabled once the board has settled; touch keeps the chevron buttons. */
+  dragEnabled: boolean;
+  /** A SCENE drag is currently in flight — gates the card's drop handlers so native text drag-drop
+   *  inside the prompt textarea (dragActive=false) is never suppressed. */
+  dragActive: boolean;
+  dragging: boolean;
+  dragOver: boolean;
+  onDragStartScene: (ordinal: number) => void;
+  onDragOverScene: (ordinal: number) => void;
+  onDropScene: (ordinal: number) => void;
+  onDragEndScene: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const pickBase = useCallback(() => fileRef.current?.click(), []);
   const focusPrompt = useCallback(() => {
     const el = taRef.current;
@@ -1086,7 +1104,13 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
   const cam = inferCameraMove(s.beat, s.prompt);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)]">
+    <div
+      ref={cardRef}
+      onDragOver={dragEnabled && dragActive ? (e) => { e.preventDefault(); onDragOverScene(s.ordinal); } : undefined}
+      onDrop={dragEnabled && dragActive ? (e) => { e.preventDefault(); onDropScene(s.ordinal); } : undefined}
+      onDragEnd={dragActive ? onDragEndScene : undefined}
+      className={`flex flex-col overflow-hidden rounded-xl border bg-app-elevated shadow-[0_4px_16px_rgba(0,0,0,0.13)] transition-[opacity,box-shadow,border-color] duration-150 ${dragging ? 'opacity-40' : ''} ${dragOver ? 'border-app-accent ring-2 ring-app-accent/60' : 'border-app-border/15'}`}
+    >
       <div className={`group/media relative ${portrait ? 'aspect-[9/16]' : 'aspect-video'} bg-app-surface`}>
         {/* AI-generated indicator — kept clear of the re-roll button (top-right). The ANCHORED case gets the
             prominent "Source Reference Locked" badge below instead. */}
@@ -1193,6 +1217,17 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
         {/* P9 — reorder (earlier/later) + delete, enabled once frames have settled. */}
         {structEnabled && (
           <div className="flex items-center gap-1">
+            {/* Desktop drag handle — grab to reorder (HTML5 DnD). The chevrons below cover touch + keyboard. */}
+            <span role="button" aria-label={t.sbDrag} title={t.sbDrag} draggable={dragEnabled}
+              onDragStart={dragEnabled ? (e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', String(s.ordinal)); } catch { /* noop */ }
+                if (cardRef.current) { try { e.dataTransfer.setDragImage(cardRef.current, 24, 24); } catch { /* noop */ } }
+                onDragStartScene(s.ordinal);
+              } : undefined}
+              className={`flex h-7 w-8 shrink-0 select-none items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 ${dragEnabled ? 'cursor-grab hover:bg-app-accent/15 hover:text-app-accent active:cursor-grabbing' : 'cursor-default opacity-40'}`}>
+              <GripVertical size={14} />
+            </span>
             <button type="button" onClick={() => onMove(s.ordinal, -1)} disabled={busy || index === 0} aria-label={t.sbMoveEarlier} title={t.sbMoveEarlier}
               className="flex h-7 flex-1 items-center justify-center rounded-md bg-app-bg/40 text-app-muted transition-all duration-200 hover:bg-app-accent/15 hover:text-app-accent active:scale-95 disabled:opacity-30 touch-manipulation">
               <ChevronLeft size={14} />
@@ -1214,7 +1249,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onAddScene }: {
+function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -1229,6 +1264,7 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
   onCancel: () => void;
   onDelete: (ordinal: number) => void;
   onMove: (ordinal: number, dir: -1 | 1) => void;
+  onReorder: (from: number, to: number) => void;
   onAddScene: () => void;
 }) {
   const portrait = sb.orientation === 'vertical';
@@ -1236,6 +1272,11 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
   const total = sb.scenes.length;
   const loaded = sb.scenes.filter((s) => s.frameUrl).length;
   const streaming = pending.length > 0; // frames are still arriving
+  // Drag-to-reorder state (desktop). dragOrd = the scene being dragged; overOrd = the current drop
+  // target (deduped on set so the continuous dragover stream never re-renders on an unchanged target).
+  const [dragOrd, setDragOrd] = useState<number | null>(null);
+  const [overOrd, setOverOrd] = useState<number | null>(null);
+  const dragEnabled = !streaming && !busy && regenningOrdinal === null;
   const prog = total > 0 ? loaded / total : 0;
   // V2 — the Cinematic Compiling Core's hue tracks REAL frame progress (not a fabricated state
   // machine): early → Deep Azure (planning/optimizing), mid → Emerald (identity-locked frames
@@ -1289,7 +1330,7 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sb.scenes.map((s, i) => (
               <SceneTile
-                key={s.ordinal}
+                key={s.uid}
                 s={s}
                 t={t}
                 portrait={portrait}
@@ -1304,6 +1345,14 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
                 onView={onView}
                 onDelete={onDelete}
                 onMove={onMove}
+                dragEnabled={dragEnabled}
+                dragActive={dragOrd !== null}
+                dragging={dragOrd === s.ordinal}
+                dragOver={overOrd === s.ordinal && dragOrd !== null && dragOrd !== s.ordinal}
+                onDragStartScene={(ord) => setDragOrd(ord)}
+                onDragOverScene={(ord) => setOverOrd((p) => (p === ord ? p : ord))}
+                onDropScene={(ord) => { if (dragOrd !== null) onReorder(dragOrd, ord); setDragOrd(null); setOverOrd(null); }}
+                onDragEndScene={() => { setDragOrd(null); setOverOrd(null); }}
               />
             ))}
             {/* P9 — append a new scene (max 8). Disabled while frames are still streaming. */}
@@ -2945,7 +2994,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const ua = userAction(s.ordinal);
         // Trust the route's `anchored` flag (Scene 1 lock from a single selfie, OR a per-scene upload with ≥2 refs)
         // so the "Source Reference Locked" badge shows even for the single-selfie case (anchorMode false).
-        return { ordinal: s.ordinal, beat: s.beat, prompt: ua || s.prompt, ...(ua ? { edited: true } : {}), frameUrl: s.frameUrl ?? null, anchored: !!s.anchored || (anchorMode && !!s.frameUrl) };
+        return { uid: nextSceneUid(), ordinal: s.ordinal, beat: s.beat, prompt: ua || s.prompt, ...(ua ? { edited: true } : {}), frameUrl: s.frameUrl ?? null, anchored: !!s.anchored || (anchorMode && !!s.frameUrl) };
       });
       const framePrompts: Record<number, string> = {};
       // Also steer each scene's FRAME IMAGE with the user's action (falls back to the AI prompt).
@@ -3162,6 +3211,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     });
   }, []);
 
+  // Drag-to-reorder (desktop HTML5 DnD): pull the dragged scene OUT and re-insert it at the drop
+  // target's slot, then renumber via the same commitSceneOrder the chevron move uses (positional
+  // keys → React reconciles in place, no remount flicker). Touch + keyboard keep the chevron buttons
+  // (HTML5 drag events don't fire on touch). No-op when source === target or either is missing.
+  const reorderScene = useCallback((fromOrdinal: number, toOrdinal: number) => {
+    if (fromOrdinal === toOrdinal) return;
+    setStoryboard((prev) => {
+      if (!prev) return prev;
+      const from = prev.scenes.findIndex((s) => s.ordinal === fromOrdinal);
+      const to = prev.scenes.findIndex((s) => s.ordinal === toOrdinal);
+      if (from < 0 || to < 0 || from === to) return prev;
+      const ordered = prev.scenes.slice();
+      const [moved] = ordered.splice(from, 1);
+      if (!moved) return prev;
+      ordered.splice(to, 0, moved);
+      return commitSceneOrder(prev, ordered);
+    });
+  }, []);
+
   // P9 — append a blank scene (max 8). Seeded with the film idea as its prompt so a
   // re-roll produces a frame even before the user edits it; it has no frame yet, so
   // the user re-rolls (or edits then re-rolls) before generating.
@@ -3169,7 +3237,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setStoryboard((prev) => {
       if (!prev || prev.scenes.length >= 8) return prev;
       const beat = locale === 'en' ? 'New scene' : locale === 'ru' ? 'Новая сцена' : 'ახალი სცენა';
-      const blank: StoryboardScene = { ordinal: 90000 + prev.scenes.length, beat, prompt: prev.filmPrompt, frameUrl: null, edited: true };
+      const blank: StoryboardScene = { uid: nextSceneUid(), ordinal: 90000 + prev.scenes.length, beat, prompt: prev.filmPrompt, frameUrl: null, edited: true };
       return commitSceneOrder(prev, [...prev.scenes, blank]);
     });
   }, [locale]);
@@ -7357,6 +7425,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           onView={(url) => setLightbox(url)}
           onDelete={deleteScene}
           onMove={moveScene}
+          onReorder={reorderScene}
           onAddScene={addScene}
           onGenerate={() => {
             // Stop any still-streaming frame fetches — the user has approved; we
