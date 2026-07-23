@@ -1,0 +1,65 @@
+# CI — the hard quality gate (Iteration 6, WS1).
+#
+# Runs the three checks that were previously enforced only by whoever remembered to run them locally,
+# on a branch that AUTO-DEPLOYS to production:
+#     1. typecheck  (tsc --noEmit)      — the real type gate; next.config.js sets eslint.ignoreDuringBuilds
+#     2. test       (jest, 1534+ unit tests incl. __tests__/api-security.test.ts — the anonymous-drain guard)
+#     3. build      (next build production compile)
+# If ANY step fails the job fails, so the commit's status check is red.
+#
+# ⚠ TO ACTUALLY BLOCK MERGES: this workflow only PRODUCES a status check. Make it blocking by enabling
+#   branch protection on `main` (GitHub → Settings → Branches → Add rule → require the "verify" status
+#   check to pass before merging, and require PRs). Without that rule the check runs and reports red but
+#   GitHub won't stop a direct push. That is a one-time repo setting, not something a workflow file can set.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Don't stack redundant runs on the same ref — a new push cancels the previous in-flight CI.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # next build evaluates the Supabase client at build time (lib/supabase/server.ts throws on missing
+      # url/key). Dummy values are enough to compile — no real project is contacted. Mirrors e2e.yml.
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      # Runs even if typecheck failed, so one CI run surfaces BOTH fast checks' results.
+      - name: Unit tests (jest — incl. API security guard)
+        if: ${{ !cancelled() }}
+        run: npm test
+
+      # Only builds once the fast checks pass — no point burning ~minutes compiling known-broken code.
+      - name: Production build (next build)
+        run: npm run build

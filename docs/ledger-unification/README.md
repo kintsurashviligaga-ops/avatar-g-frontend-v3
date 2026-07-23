@@ -138,3 +138,31 @@ Full detail in `05_enforce_repoint_plan.md`. In short, once balances are reconci
   the refs written.
 - **Code repoint** — behind a flag / revertible commit; the legacy tables/RPCs are left intact until a
   later, separate cleanup migration, so a revert restores the old path with zero data change.
+
+---
+
+## 7. Safety attestation (Iteration 6, WS5 pt 1 — re-verified 2026-07-23)
+
+This whole directory is **schema-discovery only** and is decoupled from any auto-applied path. Verified:
+
+- **`01_introspect.sql`, `02_report_divergence.sql`, `04_verify.sql` contain ZERO active mutating
+  statements** (no `INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE/GRANT/REVOKE/MERGE` outside comments).
+  They are pure `SELECT` / catalog reads.
+- **`03_reconcile.sql` is the ONLY mutating file, and it is fail-safe by construction:** it ships wrapped
+  `BEGIN; … ROLLBACK;` with both its `INSERT` and its `COMMIT` **commented out**, so a first run commits
+  nothing and only prints a preview. A human must uncomment the `INSERT` and flip `ROLLBACK`→`COMMIT` by
+  hand after reviewing.
+- **Nothing here auto-applies.** These files live in `docs/`, NOT `supabase/migrations/`, so no deploy or
+  CI step can run them; no `package.json` script references them.
+- **The only runner is read-only + guarded.** `scripts/report-ledger-divergence.mjs` executes ONLY 01+02
+  and refuses any statement containing a mutating keyword (regex guard), so it cannot write even if a file
+  is later edited. `03` is deliberately not runnable by any script — apply by hand in the SQL editor.
+
+Re-verify at any time:
+```bash
+# expect "0 active mutating statements" for 01/02/04:
+for f in 01_introspect 02_report_divergence 04_verify; do
+  echo "$f: $(grep -viE '^\s*--|^\s*$' docs/ledger-unification/$f.sql \
+    | grep -icE '\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|MERGE)\b') mutating"
+done
+```
