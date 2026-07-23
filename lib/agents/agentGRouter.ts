@@ -3,7 +3,7 @@ import { AGENT_G_BUNDLES } from '@/types/agents'
 import { SERVICE_REGISTRY } from '@/lib/services/registry'
 import { structuredLog } from '@/lib/logger'
 import type { BundleType } from '@/types/agents'
-import type { ExecutionPlan } from '@/types/core'
+import type { ExecutionPlan, ExecutionStep } from '@/types/core'
 
 function supabase() {
   return createServiceRoleClient()
@@ -74,8 +74,46 @@ class AgentGRouter {
     mode: 'single' | 'bundle'
     bundleType?: BundleType
     projectId?: string
+    /** WS3 — a client Idempotency-Key. A retry with the same key REPLAYS the existing dispatch instead of
+     *  creating a second root job + duplicate execution_trace rows (ghost traces). */
+    idempotencyKey?: string
   }): Promise<ExecutionPlan> {
     const db = supabase()
+
+    // Idempotent replay: if this key already produced a plan, return it (no new rows). This dedupes the
+    // common sequential-retry case; the residual concurrent-double-submit window needs a UNIQUE index on
+    // payload->>idempotency_key (DDL-blocked — WS5/WS6), so it is narrowed here, not fully closed.
+    if (params.idempotencyKey) {
+      const { data: existing } = await db
+        .from('jobs')
+        .select('id')
+        .eq('user_id', params.userId)
+        .eq('agent_id', 'agent-g')
+        .filter('payload->>idempotency_key', 'eq', params.idempotencyKey)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (existing?.id) {
+        const { data: traces } = await db
+          .from('execution_trace')
+          .select('step_index, agent_id, label, status')
+          .eq('root_job_id', existing.id)
+          .order('step_index', { ascending: true })
+        structuredLog('info', 'agent_g_plan_replayed', { rootJobId: existing.id, idempotencyKey: params.idempotencyKey })
+        return {
+          rootJobId: existing.id,
+          steps: (traces ?? []).map((t) => ({
+            stepIndex: t.step_index as number,
+            agentId: t.agent_id as string,
+            label: t.label as string,
+            status: t.status as ExecutionStep['status'],
+          })),
+          bundleType: params.bundleType,
+          createdAt: new Date().toISOString(),
+        }
+      }
+    }
+
     const taskMemory = await this.getTaskMemory(params.userId)
 
     // Create root job (agent-g is director, status=queued triggers worker)
@@ -94,6 +132,7 @@ class AgentGRouter {
           bundle_type: params.bundleType,
           project_id: params.projectId ?? null,
           task_memory: taskMemory,
+          ...(params.idempotencyKey ? { idempotency_key: params.idempotencyKey } : {}),
         },
       })
       .select('id')
@@ -115,7 +154,12 @@ class AgentGRouter {
     }))
 
     const { error: traceError } = await db.from('execution_trace').insert(traceRows)
-    if (traceError) throw traceError
+    if (traceError) {
+      // Clean failure — never leave a root job with no traces (a ghost the queue can't act on). Roll the
+      // just-created job back before surfacing, so a failed dispatch leaves NO orphan row.
+      await db.from('jobs').delete().eq('id', rootJob.id).then(() => undefined, () => undefined)
+      throw traceError
+    }
 
     structuredLog('info', 'agent_g_plan_dispatched', {
       rootJobId: rootJob.id,

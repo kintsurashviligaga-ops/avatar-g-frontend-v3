@@ -69,6 +69,10 @@ export async function POST(request: NextRequest) {
       cost,
     })
 
+    // WS3 — one stable idempotency key for the whole request: replays the SAME dispatch (no duplicate
+    // execution_trace rows) AND dedupes the deduct. Client-supplied header preferred.
+    const clientIdempotencyKey = request.headers.get('idempotency-key') || undefined
+
     // Route through Agent G
     const plan = await agentGRouter.buildAndDispatch({
       userId: user.id,
@@ -77,10 +81,11 @@ export async function POST(request: NextRequest) {
       mode: body.mode,
       bundleType: body.bundle_type,
       projectId: body.project_id,
+      idempotencyKey: clientIdempotencyKey,
     })
 
-    // Deduct credits
-    const idempotencyKey = request.headers.get('idempotency-key') || `exec:${plan.rootJobId}:deduct`
+    // Deduct credits (idempotent on the same key, or a deterministic per-root-job ref as fallback)
+    const idempotencyKey = clientIdempotencyKey || `exec:${plan.rootJobId}:deduct`
     const deduction = await deductCreditsTransaction({
       userId: user.id,
       amount: cost,

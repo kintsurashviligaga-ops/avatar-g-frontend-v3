@@ -27,6 +27,18 @@ import {
 import { videoFramingSuffix } from '@/lib/orchestrator/agents/profiles';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import {
+  mapWithConcurrency, clipDispatchConcurrency, clipDispatchJitterMs, clipRetryBackoffMs,
+  MAX_CLIP_DISPATCH_ATTEMPTS,
+} from '@/lib/chat/filmClipRetry';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
+
+// Per-subrequest hang guards (WS3). The clip sub-route (/api/ltx-video) caps at 300s; a foreign hang past
+// this bound would otherwise pin the produce worker until its own maxDuration. Non-streaming fetches, so
+// AbortSignal.timeout is safe here. ENV-tunable.
+const CLIP_FETCH_TIMEOUT_MS = Math.max(30_000, Number(process.env.PRODUCE_CLIP_TIMEOUT_MS) || 180_000);
+const VOICE_FETCH_TIMEOUT_MS = Math.max(10_000, Number(process.env.PRODUCE_VOICE_TIMEOUT_MS) || 45_000);
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +46,7 @@ export const maxDuration = 300;
 
 const SCRIPT_MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
-interface ProduceBody { prompt?: string; totalDurationSec?: number; withVoice?: boolean }
+interface ProduceBody { prompt?: string; totalDurationSec?: number; withVoice?: boolean; idempotencyKey?: string }
 
 async function planScript(prompt: string, totalSec: number): Promise<ScriptSegment[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -53,12 +65,13 @@ async function planScript(prompt: string, totalSec: number): Promise<ScriptSegme
   }
 }
 
-/** Generate one 6s LTX clip and upload it to Storage; returns the signed URL or null. */
+/** Generate one 6s LTX clip and upload it to Storage; returns the signed URL or null. Single attempt. */
 async function genClip(origin: string, pipelineId: string, idx: number, seg: ScriptSegment): Promise<string | null> {
   try {
     const r = await fetch(`${origin}/api/ltx-video`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: seg.prompt + videoFramingSuffix(), aspect_ratio: '16:9', duration: 6, generate_audio: false, ...(seg.cameraMotion ? { camera_motion: seg.cameraMotion } : {}) }),
+      signal: AbortSignal.timeout(CLIP_FETCH_TIMEOUT_MS),
     });
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
@@ -67,12 +80,30 @@ async function genClip(origin: string, pipelineId: string, idx: number, seg: Scr
   } catch { return null; }
 }
 
+/**
+ * Resilient per-clip dispatch (WS3 — back-ported from filmClipRetry, the pattern the conversational film
+ * path uses). A clip that fails (transient 429 / rate-limit burst / hang-timeout) retries ONLY itself, up
+ * to MAX_CLIP_DISPATCH_ATTEMPTS, with jitter on the first shot and an exponential, ordinal-spread backoff
+ * between retries so several legs don't re-collide into the same provider throttle. genClip never throws
+ * (returns null), so this always resolves — satisfying mapWithConcurrency's contract.
+ */
+async function genClipWithRetry(origin: string, pipelineId: string, idx: number, seg: ScriptSegment): Promise<string | null> {
+  const ordinal = idx + 1;
+  for (let attempt = 1; attempt <= MAX_CLIP_DISPATCH_ATTEMPTS; attempt++) {
+    await sleep(attempt === 1 ? clipDispatchJitterMs() : clipRetryBackoffMs(attempt, ordinal));
+    const url = await genClip(origin, pipelineId, idx, seg);
+    if (url) return url;
+  }
+  return null;
+}
+
 async function genVoice(origin: string, pipelineId: string, segments: ScriptSegment[]): Promise<string | null> {
   try {
     const text = segments.map(s => s.prompt).join('. ').slice(0, 800);
     const r = await fetch(`${origin}/api/elevenlabs/tts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, locale: 'en' }),
+      signal: AbortSignal.timeout(VOICE_FETCH_TIMEOUT_MS),
     });
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
@@ -96,7 +127,13 @@ export async function POST(req: NextRequest) {
   const totalSec = Number.isFinite(body.totalDurationSec) ? Number(body.totalDurationSec) : 30;
   const withVoice = body.withVoice !== false;
   const origin = new URL(req.url).origin;
-  const pipelineId = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  // WS3 idempotency — when the client sends a stable key (header Idempotency-Key or body.idempotencyKey),
+  // DERIVE the pipelineId (= the durable job id) from it so a retry of the SAME logical render reuses the
+  // same job row instead of minting a duplicate. createJob then no-ops on the existing id, and the reserve
+  // ref (idemRef, below) collapses too → the retry can't double-create a job or double-charge.
+  const clientIdemKey = (req.headers.get('idempotency-key') || (typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '') || '')
+    .trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+  const pipelineId = clientIdemKey ? `prod_${clientIdemKey}` : `prod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Durable job row (#5) — persisted before streaming so an immediate reload recovers it.
   const jobId = user ? pipelineId : null;
@@ -136,9 +173,13 @@ export async function POST(req: NextRequest) {
         const segments = await planScript(prompt, totalSec);
         emit({ stage: 'script.compiled', pct: 25, shots: segments.length });
 
-        // ── Agent I: clips (parallel generate + upload) ──
+        // ── Agent I: clips (WS3 — capped create fan-out + per-leg retry, not a raw Promise.all) ──
+        // A single Promise.all fired all N create-calls in the same instant and tripped the provider's
+        // burst throttle (429) → clips dropped → the whole film failed. Cap concurrent dispatches to the
+        // provider-aware limit (serial on Replicate free tier, small wave with a direct LTX key), and let
+        // each failing leg retry itself with jittered backoff. Renders still run in parallel provider-side.
         emit({ stage: 'generating_clips', pct: 30, total: segments.length });
-        const clipUrls = (await Promise.all(segments.map((s, i) => genClip(origin, pipelineId, i, s))))
+        const clipUrls = (await mapWithConcurrency(segments, clipDispatchConcurrency(), (s, i) => genClipWithRetry(origin, pipelineId, i, s)))
           .filter((u): u is string => Boolean(u));
         emit({ stage: 'video.segments.ready', pct: 65, ready: clipUrls.length, total: segments.length });
         if (clipUrls.length < 2) { emit({ stage: 'failed', error: `only ${clipUrls.length} clip(s) rendered (need ≥2)` }); return; }
