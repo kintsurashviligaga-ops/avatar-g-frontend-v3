@@ -38,3 +38,22 @@ export async function register() {
     });
   }
 }
+
+/**
+ * Next.js 15 server error hook — REQUIRED for Sentry to auto-capture uncaught errors thrown in Route
+ * Handlers, Server Components and middleware (without it, server errors never reach Sentry). Lazily
+ * loads the SDK and no-ops when no DSN is configured, so it's inert + build-safe when unconfigured.
+ * Wrapped so a capture failure can never propagate into the request.
+ */
+export async function onRequestError(
+  ...args: Parameters<typeof import('@sentry/nextjs').captureRequestError>
+): Promise<void> {
+  const DSN = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
+  if (!DSN) return;
+  try {
+    const Sentry = await import('@sentry/nextjs');
+    Sentry.captureRequestError(...args);
+  } catch {
+    /* observability must never crash a request */
+  }
+}

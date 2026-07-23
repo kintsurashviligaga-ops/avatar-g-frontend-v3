@@ -19,6 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
 import { deepseekChat, deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { generateWithGemini } from '@/lib/gemini/client';
+import { reportReliability } from '@/lib/observability/reliability';
 
 export interface LlmTextOpts {
   user: string;
@@ -72,13 +73,23 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
   // DeepSeek-V3 is reachable two ways — the DIRECT api.deepseek.com key (DEEPSEEK_API_KEY) and the
   // Atlas-hosted route (ATLAS_API_KEY). Try DIRECT first, then Atlas as the same-model backup, so one
   // provider's rate-limit/outage fails over to the other instead of dropping to the deterministic plan.
-  const chain = o.geminiFirst
-    ? [viaGemini, viaDeepSeek, viaAtlas, viaAnthropic]
-    : [viaDeepSeek, viaAtlas, viaGemini, viaAnthropic];
-  for (const provider of chain) {
+  const chain: Array<[string, (opts: LlmTextOpts) => Promise<string | null>]> = o.geminiFirst
+    ? [['gemini', viaGemini], ['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['anthropic', viaAnthropic]]
+    : [['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['gemini', viaGemini], ['anthropic', viaAnthropic]];
+  for (let i = 0; i < chain.length; i++) {
+    const entry = chain[i];
+    if (!entry) continue;
+    const [label, provider] = entry;
     const t = await provider(o);
-    if (t) return t;
+    if (t) {
+      // WS4 reliability: which brain served + how deep the failover went (0 = primary). degraded when a
+      // non-primary provider had to cover for an outage/rate-limit on the leads.
+      reportReliability({ surface: 'llm.text', providerServed: label, fallbackDepth: i, degraded: i > 0 });
+      return t;
+    }
   }
+  // WS4 reliability: every premium provider missed → the caller drops to deterministic beats.
+  reportReliability({ surface: 'llm.text', providerServed: null, fallbackDepth: chain.length, degraded: true });
   // ALL premium providers missed. This is the SOLE trigger for degraded, deterministic
   // camera-beat planning (a WWII script keeps its setting but loses the LLM's rich per-scene
   // action) — and it is almost always an operational env-key gap on the deployment

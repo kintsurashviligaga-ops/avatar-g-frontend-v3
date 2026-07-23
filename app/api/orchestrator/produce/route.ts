@@ -27,6 +27,8 @@ import {
 import { videoFramingSuffix } from '@/lib/orchestrator/agents/profiles';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { reportError } from '@/lib/observability/report-error';
+import { reportReliability, opsMarker } from '@/lib/observability/reliability';
 import {
   mapWithConcurrency, clipDispatchConcurrency, clipDispatchJitterMs, clipRetryBackoffMs,
   MAX_CLIP_DISPATCH_ATTEMPTS,
@@ -182,7 +184,15 @@ export async function POST(req: NextRequest) {
         const clipUrls = (await mapWithConcurrency(segments, clipDispatchConcurrency(), (s, i) => genClipWithRetry(origin, pipelineId, i, s)))
           .filter((u): u is string => Boolean(u));
         emit({ stage: 'video.segments.ready', pct: 65, ready: clipUrls.length, total: segments.length });
-        if (clipUrls.length < 2) { emit({ stage: 'failed', error: `only ${clipUrls.length} clip(s) rendered (need ≥2)` }); return; }
+        // WS4 — clips that render short of the full set are a degraded pass (provider throttle survived the
+        // retries); when < 2 land the whole film fails. Emit the fallbackDepth so partial-render rate is visible.
+        if (clipUrls.length < segments.length) {
+          reportReliability({ surface: 'produce.film.clips', providerServed: 'ltx-video', fallbackDepth: segments.length - clipUrls.length, degraded: true, ready: clipUrls.length, total: segments.length });
+        }
+        if (clipUrls.length < 2) {
+          opsMarker('error', 'produce_pass_failed', { surface: 'produce.film', pipelineId, reason: 'insufficient_clips', ready: clipUrls.length, total: segments.length });
+          emit({ stage: 'failed', error: `only ${clipUrls.length} clip(s) rendered (need ≥2)` }); return;
+        }
 
         // ── Agent H: voiceover (best-effort) ──
         let voiceUrl: string | null = null;
@@ -204,6 +214,10 @@ export async function POST(req: NextRequest) {
         succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 200) : 'production failed' });
+        // WS4 — a failed generation pass was previously only surfaced to the client SSE stream (invisible
+        // in prod logs). Capture it to Sentry + emit an alertable marker. Non-blocking (both never throw).
+        reportError(e, { route: '/api/orchestrator/produce', pipelineId, stage: 'assemble_or_render' });
+        opsMarker('error', 'produce_pass_failed', { surface: 'produce.film', pipelineId, charged: reservation.charged });
       } finally {
         // Compensate any non-success: restore the consumed free film, else refund the debited credits.
         if (user && !succeeded) {

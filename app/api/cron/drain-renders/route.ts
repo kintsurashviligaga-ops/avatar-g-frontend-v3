@@ -18,6 +18,8 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { failJob } from '@/lib/orchestrator/jobs';
 import { refundCredits } from '@/lib/orchestrator/ledger';
 import { selectReapable, reapReserve, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from '@/lib/pipeline/renderDrainer';
+import { reportError } from '@/lib/observability/report-error';
+import { opsMarker } from '@/lib/observability/reliability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -66,8 +68,14 @@ async function handle(req: NextRequest) {
       await failJob(j.id, 'render abandoned (tab closed) — reaped by drainer');
       reaped++;
     }
-  } catch {
-    /* fail-open — a bad tick is a silent no-op, never a 500 that alarms the cron */
+    // WS4 — surface drainer activity: a non-zero reap means renders were abandoned mid-flight (degraded),
+    // and a mismatch (reaped > refunded) is a credit-back gap worth watching. Alertable ops marker.
+    if (reaped > 0) opsMarker('warn', 'render_drainer_reap', { reaped, refunded, unrefunded: reaped - refunded });
+  } catch (e) {
+    // WS4 — this catch used to be a fully SILENT fail-open (a broken drainer produced zero signal). Keep
+    // fail-open (a bad tick must never 500 the cron) but emit a durable, alertable failure marker + Sentry.
+    reportError(e, { route: '/api/cron/drain-renders', reaped, refunded });
+    opsMarker('error', 'render_drainer_failure', { reaped, refunded, error: e instanceof Error ? e.message : String(e) });
   }
   return NextResponse.json({ ok: true, enabled: true, drained: reaped, refunded });
 }

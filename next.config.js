@@ -273,8 +273,15 @@ const sentryConfig = {
   },
 };
 
-// Only wrap with Sentry if auth token is present (avoids build errors without token)
-const sentryWrapped = process.env.SENTRY_AUTH_TOKEN
+// WS4 — activate Sentry whenever a DSN is present, NOT only when the source-map auth token is set. Error
+// CAPTURE needs only a DSN; the SENTRY_AUTH_TOKEN gates SOURCE-MAP UPLOAD (via sentryConfig.authToken, which
+// is undefined + skipped with silent:true when unset). The old token-only gate meant a prod with a DSN but
+// no token captured NOTHING. Verified build-safe without a token (withSentryConfig + silent + no authToken
+// compiles cleanly). Unconfigured (no DSN, no token) still takes the plain path → never breaks the build.
+const sentryEnabled = Boolean(
+  process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN,
+);
+const sentryWrapped = sentryEnabled
   ? withSentryConfig(withBundleAnalyzer(withNextIntl(nextConfig)), sentryConfig)
   : withBundleAnalyzer(withNextIntl(nextConfig));
 
