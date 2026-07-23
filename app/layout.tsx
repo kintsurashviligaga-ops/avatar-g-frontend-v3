@@ -137,14 +137,41 @@ const structuredData = {
 			"@type": "Organization",
 			"@id": `${metadataBaseUrl}/#organization`,
 			name: "MyAvatar",
-			alternateName: "MyAvatar",
+			alternateName: "MyAvatar.ge",
 			url: metadataBaseUrl,
+			// Enriched (Iteration 5) with FACTUAL fields only — the real support address (from the
+			// /support + /contact pages) and country. No telephone / street address / social profiles
+			// are invented (none exist in the repo); add them here when the owner supplies real values.
+			email: "support@myavatar.ge",
+			address: { "@type": "PostalAddress", addressCountry: "GE" },
+			areaServed: [{ "@type": "Country", name: "Georgia" }, "Worldwide"],
+			contactPoint: {
+				"@type": "ContactPoint",
+				contactType: "customer support",
+				email: "support@myavatar.ge",
+				availableLanguage: ["ka", "en", "ru"]
+			},
 			logo: {
 				"@type": "ImageObject",
 				url: `${metadataBaseUrl}/icons/icon-512x512.png`,
 				width: 512,
 				height: 512
 			}
+		},
+		{
+			// LocalBusiness — MyAvatar is a Georgian company. Honest partial NAP: country only (no
+			// verified street/phone yet). Weakly-eligible but harmless; complete it when the owner
+			// provides a registered address + phone. priceRange spans the real $15–$299 tier band.
+			"@type": "LocalBusiness",
+			"@id": `${metadataBaseUrl}/#localbusiness`,
+			name: "MyAvatar",
+			image: `${metadataBaseUrl}/og-image.png`,
+			url: metadataBaseUrl,
+			email: "support@myavatar.ge",
+			address: { "@type": "PostalAddress", addressCountry: "GE" },
+			areaServed: { "@type": "Country", name: "Georgia" },
+			priceRange: "$$",
+			parentOrganization: { "@id": `${metadataBaseUrl}/#organization` }
 		},
 		{
 			"@type": "WebSite",

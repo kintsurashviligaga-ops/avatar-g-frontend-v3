@@ -34,6 +34,20 @@ describe('rateWindowKeys', () => {
     expect(k.minKey).toContain('rl:min:giorgi:');
     expect(k.dayKey).toContain('rl:day:giorgi:');
   });
+  test('default (empty) namespace is byte-identical to the original produce keys (no regression)', () => {
+    const original = rateWindowKeys('u', t0);
+    const explicitEmpty = rateWindowKeys('u', t0, '');
+    expect(explicitEmpty).toEqual(original);
+    // exact legacy shape — the 6 produce routes depend on these
+    expect(original.minKey).toBe(`rl:min:u:${Math.floor(t0 / 60_000)}`);
+  });
+  test('a distinct namespace gets its OWN budget (agent traffic never trips produce caps)', () => {
+    const produce = rateWindowKeys('u', t0);
+    const agent = rateWindowKeys('u', t0, 'agent');
+    expect(agent.minKey).not.toBe(produce.minKey);
+    expect(agent.dayKey).not.toBe(produce.dayKey);
+    expect(agent.minKey).toContain('rl:min:agent:u:');
+  });
 });
 
 describe('rate caps', () => {

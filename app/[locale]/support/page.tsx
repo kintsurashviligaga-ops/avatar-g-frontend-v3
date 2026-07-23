@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { faqSchema } from '@/lib/seo/schema';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -197,6 +199,8 @@ export default async function SupportPage({ params }: { params: Promise<{ locale
 
   return (
     <section className="min-h-screen bg-black text-white px-6 py-16">
+      {/* Rich-result eligible FAQ — built from the SAME localized Q&A rendered below (no new data). */}
+      <JsonLd data={faqSchema(t.faq.items)} />
       <div className="max-w-3xl mx-auto space-y-10">
         <header className="space-y-2">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{t.title}</h1>

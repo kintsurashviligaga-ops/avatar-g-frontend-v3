@@ -7,12 +7,14 @@
  * <audio controls> (palette: navy/cyan, app tokens).
  */
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { memo, useRef, useState, useCallback, useEffect } from 'react';
 import { Play, Pause, Music2 } from 'lucide-react';
 
 const fmt = (s: number) => (!isFinite(s) || s < 0 ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
-export function TrackPlayer({ url, coverUrl, label, engine }: { url: string; coverUrl?: string; label: string; engine?: string }) {
+// memo (Iteration 5): primitive-prop leaf (url/label/coverUrl/engine strings). Playback state is
+// component-owned, so memo only skips re-renders driven by unrelated parent updates — never a needed one.
+export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, engine }: { url: string; coverUrl?: string; label: string; engine?: string }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
@@ -146,6 +148,6 @@ export function TrackPlayer({ url, coverUrl, label, engine }: { url: string; cov
       />
     </div>
   );
-}
+});
 
 export default TrackPlayer;

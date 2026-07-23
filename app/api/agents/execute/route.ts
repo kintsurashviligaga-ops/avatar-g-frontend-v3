@@ -11,6 +11,7 @@ import { BillingEnforcementError, deductCreditsTransaction, enforcePlanAndCredit
 import { getAgent } from '@/lib/agents/registry'
 import { getCreditCost } from '@/lib/billing/plans'
 import { agentGRouter } from '@/lib/agents/agentGRouter'
+import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit'
 import type { BundleType } from '@/types/agents'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,14 @@ const ExecuteSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuthenticatedUser(request)
+
+    // Per-user rate cap under a DEDICATED 'agent' namespace (Iteration 5). Agent runs were credit-gated
+    // only, so a multi-tab burst could hammer this route (DB-insert amplification). The 'agent' namespace
+    // keeps a separate budget from the 6 produce pipelines, so it can never 429 the film/produce revenue
+    // path. Fail-open (returns ok) when Upstash is unconfigured — no regression in dev.
+    const rate = await checkProduceRate(user.id, Date.now(), 'agent')
+    if (!rate.ok) return rateLimitedResponse(rate)
+
     const raw = await request.json()
     const body = ExecuteSchema.parse(raw)
 

@@ -1,7 +1,12 @@
 ﻿import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getLocalizedMeta, getAgentIdForService } from '@/lib/services/metadata';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { serviceSchema, breadcrumbSchema } from '@/lib/seo/schema';
 import ServicePageClient from './ServicePageClient';
+
+/** Localized "Services" breadcrumb crumb (leaf uses the service's own headline). */
+const SERVICES_CRUMB: Record<string, string> = { ka: 'სერვისები', en: 'Services', ru: 'Сервисы' };
 
 type ServiceDetailPageProps = {
   params: Promise<{ locale: string; slug: string }>;
@@ -95,15 +100,29 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
 
   const agentId = getAgentIdForService(slug);
 
+  // Structured data — only for a KNOWN slug (guarded by the !meta return above), so the noindex
+  // not-found branch never emits it. Server-rendered, additive, links to the root Organization @id.
+  const structuredData = [
+    serviceSchema({ slug, name: meta.headline, description: meta.description, locale }),
+    breadcrumbSchema([
+      { name: 'MyAvatar', path: `/${locale}` },
+      { name: SERVICES_CRUMB[locale] ?? SERVICES_CRUMB.en!, path: `/${locale}/services` },
+      { name: meta.headline, path: `/${locale}/services/${slug}` },
+    ]),
+  ];
+
   return (
-    <ServicePageClient
-      serviceId={slug}
-      serviceName={meta.headline}
-      serviceIcon={meta.icon}
-      agentId={agentId}
-      locale={locale}
-      features={meta.features}
-      description={meta.description}
-    />
+    <>
+      <JsonLd data={structuredData} />
+      <ServicePageClient
+        serviceId={slug}
+        serviceName={meta.headline}
+        serviceIcon={meta.icon}
+        agentId={agentId}
+        locale={locale}
+        features={meta.features}
+        description={meta.description}
+      />
+    </>
   );
 }

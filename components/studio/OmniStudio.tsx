@@ -11,7 +11,7 @@
  * #00D2FF. Fail-soft throughout.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
@@ -340,7 +340,10 @@ function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
  * image glyph — when the URL is missing or fails to load (e.g. a CSP-blocked or
  * expired provider URL). Fixes the "all six slots show a broken placeholder" report.
  */
-function StoryboardFrame({ url, label, onZoom }: { url: string | null; label: string; onZoom: (u: string) => void }) {
+// memo (Iteration 5): pure primitive-prop leaf. In a storyboard grid it re-renders on every parent tick
+// (elapsed timer / keystroke) though its own url/label are unchanged; memo skips those. Internal load
+// state is component-owned so memo never gates a needed frame update.
+const StoryboardFrame = memo(function StoryboardFrame({ url, label, onZoom }: { url: string | null; label: string; onZoom: (u: string) => void }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>(url ? 'loading' : 'error');
   useEffect(() => { setState(url ? 'loading' : 'error'); }, [url]);
   if (!url) {
@@ -367,10 +370,11 @@ function StoryboardFrame({ url, label, onZoom }: { url: string | null; label: st
       />
     </>
   );
-}
+});
 
 // Animated three-dot "typing" indicator for the chat-mode pending bubble.
-function TypingDots() {
+// memo (Iteration 5): zero props → always shallow-equal → never re-renders after mount.
+const TypingDots = memo(function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1 py-1" aria-label="…">
       {[0, 1, 2].map((i) => (
@@ -378,7 +382,7 @@ function TypingDots() {
       ))}
     </span>
   );
-}
+});
 
 // The five generative modes — declared once, rendered as a clean borderless chip
 // row (no bordered container, no dividers — minimalist, Grok-style).
@@ -5806,7 +5810,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <div className="grid grid-cols-3 gap-1.5">
                           {imgBoardScenes.map((c) => (
                             <div key={c.ordinal} className={`relative overflow-hidden rounded-lg bg-app-bg/40 ring-1 ring-app-border/15 ${imgAspect === '9:16' ? 'aspect-[9/16]' : 'aspect-video'}`}>
-                              <StoryboardFrame url={c.frameUrl ?? null} label={`Scene ${c.ordinal}`} onZoom={(u) => setLightbox(u)} />
+                              <StoryboardFrame url={c.frameUrl ?? null} label={`Scene ${c.ordinal}`} onZoom={setLightbox} />
                               <span className="absolute left-1 top-1 rounded bg-black/55 px-1 text-[9px] font-semibold text-white">{c.ordinal}</span>
                             </div>
                           ))}

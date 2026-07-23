@@ -40,11 +40,17 @@ function redis(): Redis | null {
   try { return new Redis({ url, token }); } catch { return null; }
 }
 
-/** Deterministic window keys for a user at a given instant (pure → testable). */
-export function rateWindowKeys(userId: string, now: number = Date.now()): { minKey: string; dayKey: string } {
+/**
+ * Deterministic window keys for a user at a given instant (pure → testable). An optional `ns` namespace
+ * gives a caller its OWN budget without touching the produce routes: `ns=''` (the default) yields keys
+ * byte-identical to before, so the 6 produce pipelines are unchanged; a distinct ns (e.g. 'agent') gets
+ * separate counters and never trips the produce per-user/global caps.
+ */
+export function rateWindowKeys(userId: string, now: number = Date.now(), ns: string = ''): { minKey: string; dayKey: string } {
   const minute = Math.floor(now / 60_000);
   const day = new Date(now).toISOString().slice(0, 10);
-  return { minKey: `rl:min:${userId}:${minute}`, dayKey: `rl:day:${userId}:${day}` };
+  const p = ns ? `${ns}:` : '';
+  return { minKey: `rl:min:${p}${userId}:${minute}`, dayKey: `rl:day:${p}${userId}:${day}` };
 }
 
 export interface RateResult {
@@ -53,14 +59,28 @@ export interface RateResult {
   retryAfterSec?: number;
 }
 
+/** One-shot guard so the "limiter inert in prod" warning is logged once per lambda, not per request. */
+let warnedRedisAbsent = false;
+
 /**
- * Increment + check the per-user fixed-window counters. Fail-open on missing /
- * erroring Redis so a transient cache problem never blocks generation.
+ * Increment + check the per-user fixed-window counters (optionally under a `ns` namespace with its own
+ * budget). Fail-open on missing / erroring Redis so a transient cache problem never blocks generation —
+ * but in PRODUCTION that fail-open means every per-user cap AND the global kill-switch are silently OFF,
+ * so we now emit an observability signal (log only; behavior is unchanged — a Redis blip must not 429
+ * all generation).
  */
-export async function checkProduceRate(userId: string, now: number = Date.now()): Promise<RateResult> {
+export async function checkProduceRate(userId: string, now: number = Date.now(), ns: string = ''): Promise<RateResult> {
   const r = redis();
-  if (!r) return { ok: true };
-  const { minKey, dayKey } = rateWindowKeys(userId, now);
+  if (!r) {
+    if (process.env.NODE_ENV === 'production' && !warnedRedisAbsent) {
+      warnedRedisAbsent = true;
+      // eslint-disable-next-line no-console
+      console.warn('[rate-limit] Upstash not configured in production — per-user + global produce caps are INERT (fail-open). Set UPSTASH_REDIS_REST_URL/TOKEN to enforce.');
+    }
+    return { ok: true };
+  }
+  const { minKey, dayKey } = rateWindowKeys(userId, now, ns);
+  const p = ns ? `${ns}:` : '';
   try {
     const minN = await r.incr(minKey);
     await r.expire(minKey, 70);
@@ -68,13 +88,17 @@ export async function checkProduceRate(userId: string, now: number = Date.now())
     const dayN = await r.incr(dayKey);
     await r.expire(dayKey, 90_000);
     if (dayN > RATE_PER_DAY) return { ok: false, reason: 'rate_day', retryAfterSec: 3600 };
-    // Platform-wide daily kill-switch.
-    const gKey = `rl:global:${new Date(now).toISOString().slice(0, 10)}`;
+    // Namespaced daily kill-switch (the '' namespace keeps the original produce global key).
+    const gKey = `rl:global:${p}${new Date(now).toISOString().slice(0, 10)}`;
     const gN = await r.incr(gKey);
     await r.expire(gKey, 90_000);
     if (gN > GLOBAL_DAILY_CAP) return { ok: false, reason: 'global_ceiling', retryAfterSec: 3600 };
     return { ok: true };
-  } catch {
+  } catch (e) {
+    if (process.env.NODE_ENV === 'production') {
+      // eslint-disable-next-line no-console
+      console.error('[rate-limit] Redis error — produce cap failed OPEN for this request:', e instanceof Error ? e.message : e);
+    }
     return { ok: true }; // fail-open
   }
 }

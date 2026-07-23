@@ -3,6 +3,15 @@ import Image from 'next/image';
 import type { Metadata } from 'next';
 import type { ComponentType } from 'react';
 import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { serviceItemListSchema } from '@/lib/seo/schema';
+import { getLocalizedMeta } from '@/lib/services/metadata';
+
+// The 14 canonical AI service landing pages (matches app/sitemap.ts) — for the ItemList structured data.
+const CATALOG_SLUGS = [
+  'avatar', 'video', 'image', 'music', 'voice', 'game', 'interior',
+  'prompt', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism',
+] as const;
 import {
   Briefcase,
   Calendar,
@@ -482,8 +491,15 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
       : 'All services in one studio — dashboard, pipelines, real-time generation';
   const hubLabel = locale === 'ka' ? 'AI ᲡᲢᲣᲓᲘᲐ' : locale === 'ru' ? 'AI СТУДИЯ' : 'AI STUDIO';
 
+  // ItemList structured data over the real service catalog (localized names via the metadata SSoT).
+  const catalogServices = CATALOG_SLUGS
+    .map((slug): { slug: string; name: string } | null => { const m = getLocalizedMeta(slug, locale); return m ? { slug, name: m.headline } : null; })
+    .filter((s): s is { slug: string; name: string } => s !== null);
+  const itemListSchema = serviceItemListSchema({ locale, name: 'MyAvatar AI Services', services: catalogServices });
+
   return (
     <section className='relative overflow-hidden px-4 py-16 sm:px-6 md:py-20 lg:px-10 lg:py-24 bg-transparent' style={{ color: 'var(--color-text)' }}>
+      <JsonLd data={itemListSchema} />
       <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
         <header className='mx-auto max-w-4xl text-center'>
           <div className='mx-auto mb-5 relative w-[83px] h-[83px] sm:w-[104px] sm:h-[104px]'>
