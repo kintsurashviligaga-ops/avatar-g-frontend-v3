@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardGeneration } from '@/lib/api/generationGuard';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction, pollUntilDone } from '@/lib/replicate/client';
@@ -12,6 +13,9 @@ export async function POST(req: NextRequest) {
 
     // ── Poll existing prediction ─────────────────────────────────────
     if (body.predictionId) {
+      // Auth-only — a status poll starts no compute but still requires a signed-in user.
+      const pollGuard = await guardGeneration(req, 'avatar', { gate: false });
+      if (!pollGuard.ok) return pollGuard.response;
       const result = await pollPrediction(String(body.predictionId));
       const model = resolveModel('avatar', body.variant);
       const normalized = normalizeOutput(
@@ -38,6 +42,11 @@ export async function POST(req: NextRequest) {
     }
 
     const input = validation.sanitized;
+
+    // ── FINANCIAL SHIELD — auth + balance gate BEFORE the paid Replicate avatar render ──
+    const guard = await guardGeneration(req, 'avatar');
+    if (!guard.ok) return guard.response;
+
     const model = resolveModel(input.service, input.variant);
     const modelInput = buildModelInput(input);
 

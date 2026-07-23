@@ -27,18 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid referral code' }, { status: 400 });
     }
 
-    // Check current user hasn't already redeemed a code
-    const { data: selfProfile } = await supabase
-      .from('profiles')
-      .select('referral_redeemed, referral_code')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (selfProfile?.referral_redeemed) {
-      return NextResponse.json({ error: 'Already redeemed a referral code', alreadyRedeemed: true }, { status: 409 });
-    }
-
-    // Find referrer by code
+    // Find referrer by code (read-only — no side effects before the atomic claim below).
     const { data: referrer } = await supabase
       .from('profiles')
       .select('id, referral_count, referral_credits_earned')
@@ -53,16 +42,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot use your own referral code' }, { status: 400 });
     }
 
-    // Award credits to new user
-    try { await supabase.rpc('add_credits', { p_user_id: user.id, p_amount: NEW_USER_BONUS }); } catch { /* graceful */ }
-
-    // Mark as redeemed on new user profile
-    await supabase
+    // ── ATOMIC CLAIM ─────────────────────────────────────────────────────────────────────────
+    // Flip referral_redeemed false→true in a SINGLE conditional UPDATE. Postgres row-locks during
+    // the write, so of N concurrent redeems from the same user EXACTLY ONE changes the row (and gets
+    // it back via .select); the rest re-evaluate the WHERE against the updated row, match 0 rows, and
+    // bail. This closes the previous read-then-award-then-write race that let a user multiply the
+    // 50-credit bonus N× — credits are now only ever awarded by the one request that claimed it.
+    const { data: claimed, error: claimErr } = await supabase
       .from('profiles')
       .update({ referral_redeemed: true, referral_used_code: code })
-      .eq('id', user.id);
+      .eq('id', user.id)
+      .eq('referral_redeemed', false)
+      .select('id');
 
-    // Award credits to referrer + increment referral count
+    if (claimErr) {
+      console.error('Referral claim error:', claimErr);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+    if (!claimed || claimed.length === 0) {
+      return NextResponse.json({ error: 'Already redeemed a referral code', alreadyRedeemed: true }, { status: 409 });
+    }
+
+    // ── WINNER ONLY — award both sides exactly once ──────────────────────────────────────────────
+    try { await supabase.rpc('add_credits', { p_user_id: user.id, p_amount: NEW_USER_BONUS }); } catch { /* graceful */ }
+
     await supabase
       .from('profiles')
       .update({
@@ -71,7 +74,6 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', referrer.id);
 
-    // Try to add credits to referrer's credits table too
     try { await supabase.rpc('add_credits', { p_user_id: referrer.id, p_amount: REFERRER_BONUS }); } catch { /* graceful */ }
 
     return NextResponse.json({

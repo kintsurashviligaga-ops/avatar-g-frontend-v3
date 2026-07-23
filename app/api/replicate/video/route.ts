@@ -25,7 +25,9 @@ export async function POST(req: NextRequest) {
 
   const upstream = await fetch(new URL('/api/replicate/generate', req.url), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // Forward the caller's session cookie so /api/replicate/generate's guardGeneration authenticates
+    // the user (this proxy already rate/budget-gates via applyApiGuards; auth now flows downstream).
+    headers: { 'Content-Type': 'application/json', cookie: req.headers.get('cookie') ?? '' },
     body: JSON.stringify({
       service: 'video',
       prompt: body?.prompt,

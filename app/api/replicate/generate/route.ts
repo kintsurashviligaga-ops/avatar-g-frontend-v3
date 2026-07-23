@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardGeneration, type GenKind } from '@/lib/api/generationGuard';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel, isValidService, type ServiceType } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
@@ -13,12 +14,24 @@ const LEGACY_TYPE_MAP: Record<string, ServiceType> = {
   music: 'music',
 };
 
+// FINANCIAL SHIELD — map each generation service to the guard's cost tier. This route is the
+// chokepoint for its own direct callers AND the photo/video proxies (which forward the caller's
+// cookie), so every paid create passes through guardGeneration here (avatar has its own guard).
+const SERVICE_GEN_KIND: Record<string, GenKind> = {
+  image: 'image', photo: 'image', 'visual-ai': 'image',
+  video: 'video', music: 'music', avatar: 'avatar',
+};
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as Record<string, unknown>;
 
     // ── Poll existing prediction ───────────────────────────────────
     if (body.predictionId) {
+      // Auth-only (gate:false) — a status poll starts no compute, so it is never balance-gated,
+      // but it still must require a signed-in user (no anonymous prediction inspection).
+      const pollGuard = await guardGeneration(req, 'image', { gate: false });
+      if (!pollGuard.ok) return pollGuard.response;
       const prediction = await pollPrediction(String(body.predictionId));
       return NextResponse.json({
         id: prediction.id,
@@ -47,6 +60,11 @@ export async function POST(req: NextRequest) {
     }
 
     const input = validation.sanitized;
+
+    // ── FINANCIAL SHIELD — auth + balance gate BEFORE any paid provider call ──
+    const guard = await guardGeneration(req, SERVICE_GEN_KIND[input.service] ?? 'image');
+    if (!guard.ok) return guard.response;
+
     const model = resolveModel(input.service, input.variant);
     const modelInput = buildModelInput(input);
 
