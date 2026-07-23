@@ -7,11 +7,18 @@ import { i18n } from "@/i18n.config";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { PageTransitionWrapper } from "@/components/layout/PageTransitionWrapper";
 import { AppProviders } from "@/components/providers/AppProviders";
+import HtmlLangSync from "@/components/i18n/HtmlLangSync";
 
 const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// ISR (Iteration 3): the previous `force-dynamic` + `revalidate=0` forced `Cache-Control: no-store` on
+// the ENTIRE locale subtree — even the user-agnostic, build-prerendered marketing/pricing pages — so
+// every international request paid a full origin round-trip (single iad1 region). Removing them lets
+// each page render per its real needs: pages with no dynamic API become ISR (cacheable at the edge,
+// regenerated hourly + stale-while-revalidate); any page that reads cookies/session server-side still
+// auto-opts into dynamic rendering. Auth'd pages are client-hydrated shells (no per-user SSR), so
+// caching their shell is safe. `setRequestLocale` (below) is what enables this static rendering.
+export const revalidate = 3600;
 
 // Localized SEO copy per market. The metadata was previously HARD-CODED Georgian, so /en and /ru
 // pages served Georgian titles/descriptions/OpenGraph — a direct international-SEO loss (Iteration 2).
@@ -134,6 +141,7 @@ export default async function LocaleLayout({
   return (
     <div className="font-sans ag-noise ag-silver-neon-overlay">
       <NextIntlClientProvider locale={safeLocale} messages={messages}>
+        <HtmlLangSync locale={safeLocale} />
         <QueryProvider>
           <AppProviders>
             <PageTransitionWrapper>{children}</PageTransitionWrapper>

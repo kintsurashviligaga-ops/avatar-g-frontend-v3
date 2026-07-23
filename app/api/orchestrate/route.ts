@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { textProviderFactory, type TextProviderId } from '@/lib/providers/text-factory';
 import { toolRegistry, type ToolId } from '@/lib/tools/registry';
 import { reportError } from '@/lib/observability/report-error';
@@ -60,20 +61,13 @@ export async function POST(request: NextRequest) {
     // 4. Estimate credits (basic estimation)
     const creditsRequired = estimateCredits(taskType, input);
 
-    // 5. Check user credits
-    const { data: userCredits } = await supabase
-      .from('credits')
-      .select('balance')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!userCredits || userCredits.balance < creditsRequired) {
+    // 5. Check credits against the CANONICAL balance-of-record (profiles.credits_balance), harmonized
+    //    off the legacy public.credits table (Iteration 3 ledger unification). Fail-open on a read miss
+    //    (the ref-idempotent deduct below is the real backstop and rejects an actual overdraw).
+    const sufficient = await hasSufficientBalance(user.id, creditsRequired).catch(() => true);
+    if (!sufficient) {
       return NextResponse.json(
-        { 
-          error: 'Insufficient credits',
-          required: creditsRequired,
-          available: userCredits?.balance || 0
-        },
+        { error: 'Insufficient credits', required: creditsRequired },
         { status: 402 } // Payment Required
       );
     }
@@ -129,25 +123,24 @@ export async function POST(request: NextRequest) {
 
     const executionTime = Date.now() - startTime;
 
-    // 7. Deduct credits atomically
-    const { data: deductResult, error: deductError } = await supabase
+    // 7. Deduct from the CANONICAL ledger with a per-transaction idempotency ref (Iteration 3 — was the
+    //    legacy public.credits overload). The canonical deduct_credits(uuid,int,text) returns the new
+    //    balance (integer) and RAISES on an insufficient balance (surfaced here as `deductError`).
+    const deductRef = `orchestrate:${agentId}:${crypto.randomUUID()}`;
+    const { data: newBalance, error: deductError } = await supabase
       .rpc('deduct_credits', {
         p_user_id: user.id,
         p_amount: creditsRequired,
-        p_job_id: null,
-        p_agent_id: agentId,
-        p_description: `${taskType} via ${providerId}`,
+        p_ref: deductRef,
       });
 
-    if (deductError || !deductResult?.[0]?.success) {
+    if (deductError) {
       console.error('Credit deduction failed:', deductError);
       return NextResponse.json(
-        { error: 'Credit deduction failed', details: deductResult?.[0]?.error_message },
-        { status: 500 }
+        { error: 'Credit deduction failed', details: deductError.message },
+        { status: 402 }
       );
     }
-
-    const newBalance = deductResult[0].new_balance;
 
     // 8. Log orchestration run
     await supabase.from('orchestration_runs').insert({

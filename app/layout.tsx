@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from 'next/headers';
 import { Inter, Syne, DM_Sans } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
@@ -41,7 +40,6 @@ const metadataBaseUrl =
 	process.env.NEXT_PUBLIC_APP_URL ||
 	"https://myavatar.ge";
 
-const SUPPORTED_LOCALES = new Set(['ka', 'en', 'ru']);
 
 export const viewport: Viewport = {
 	width: 'device-width',
@@ -194,8 +192,11 @@ export default async function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	const localeCookie = cookies().get('NEXT_LOCALE')?.value;
-	const documentLocale = localeCookie && SUPPORTED_LOCALES.has(localeCookie) ? localeCookie : 'ka';
+	// Static <html lang> default. Reading cookies()/headers() here would opt the ENTIRE app into
+	// per-request (no-store) rendering — defeating the ISR caching this iteration enables. The precise
+	// per-locale <lang> is applied client-side by HtmlLangSync in the [locale] layout, and crawlers get
+	// the correct language via og:locale + hreflang (localized generateMetadata, Iteration 2).
+	const documentLocale = 'ka';
 
 	try {
 		logStartupEnvValidation();
