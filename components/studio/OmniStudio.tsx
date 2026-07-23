@@ -1932,6 +1932,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Which storyboard scene is currently re-rolling its single frame (null = none).
   const [regenningOrdinal, setRegenningOrdinal] = useState<number | null>(null);
 
+  // Whether the feed is pinned near the bottom (kept current by the feed's onScroll). A viewport
+  // resize does NOT fire scroll, so this retains its pre-resize value when the keyboard opens — letting
+  // the keyboard effect below decide whether to re-pin without yanking someone reading scrollback.
+  const nearBottomRef = useRef(true);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = feedRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
@@ -1945,6 +1950,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (dist < 160) scrollToBottom();
   }, [messages, busy, scrollToBottom]);
+
+  // TRACK 3 — when the mobile keyboard opens, the shell shrinks (ChatChrome subtracts keyboardOffset)
+  // and the feed's viewport contracts from the bottom, pushing the newest message up behind the
+  // composer. If the user was near the bottom, re-pin to the bottom so the latest message stays in the
+  // visible bounds above the keyboard. Deferred one rAF so it lands AFTER the shrink layout settles
+  // (scrolling to scrollHeight before the final clientHeight would under-scroll); rAF is cancelled on
+  // cleanup so a rapid open/close never leaks a stale scroll.
+  useEffect(() => {
+    if (keyboardOffset <= 0 || !nearBottomRef.current) return;
+    const id = requestAnimationFrame(() => scrollToBottom('auto'));
+    return () => cancelAnimationFrame(id);
+  }, [keyboardOffset, scrollToBottom]);
 
   // Persist the active conversation once a generation settles (never per token).
   // Resumed on next mount; listed/resumable in the history panel.
@@ -5118,7 +5135,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ref={feedRef}
         onScroll={(e) => {
           const el = e.currentTarget;
-          setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 160);
+          const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+          nearBottomRef.current = dist < 160;
+          setShowJump(dist > 160);
         }}
         className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
       >
