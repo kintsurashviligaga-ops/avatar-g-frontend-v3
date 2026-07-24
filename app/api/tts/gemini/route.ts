@@ -82,15 +82,19 @@ export async function POST(req: NextRequest) {
     });
 
   try {
+    // The preview TTS model intermittently slips into answer-mode (HTTP 400) or flakes under load, so a
+    // single retry still dropped ~1 in 5 chunks from the read-aloud in prod. Retry up to 3 times total
+    // with a short backoff → the effective drop rate falls below ~1%, so the whole message is read.
     let res = await callGemini();
-    if (!res.ok) {
+    for (let attempt = 1; attempt < 3 && !res.ok; attempt++) {
       const detail = await res.text().catch(() => '');
-      console.warn('[tts/gemini] upstream error (retrying once)', res.status, detail.slice(0, 160));
-      res = await callGemini(); // one retry — clears the occasional preview-model answer-mode slip
+      console.warn(`[tts/gemini] upstream ${res.status} (attempt ${attempt} — retrying)`, detail.slice(0, 120));
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+      res = await callGemini();
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      console.error('[tts/gemini] upstream error (after retry)', res.status, detail.slice(0, 200));
+      console.error('[tts/gemini] upstream error (after 3 attempts)', res.status, detail.slice(0, 200));
       return NextResponse.json({ error: 'tts_failed', status: res.status }, { status: 502 });
     }
     const data = (await res.json().catch(() => null)) as
