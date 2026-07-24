@@ -12,7 +12,7 @@
  * a paid key + real mic/camera before production use.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Mic, MicOff, PhoneOff } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, PhoneOff, SwitchCamera } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GeminiLiveSession, GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
@@ -43,6 +43,11 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const [err, setErr] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  // Camera direction — defaults to the BACK (environment) camera per mobile convention (show Gemini what
+  // you see); the flip button switches to the front (user/selfie) camera. facingRef mirrors it for the
+  // async getUserMedia constraint. Desktops without a rear camera just get the default device.
+  const [facing, setFacing] = useState<'user' | 'environment'>('environment');
+  const facingRef = useRef<'user' | 'environment'>('environment');
   // Which built-in Google voice speaks. Toggling it re-runs the connect effect → a clean reconnect with
   // the new voice (a fresh session; deliberate voice switches happen at the start, not mid-sentence).
   const [voiceGender, setVoiceGender] = useState<'female' | 'male'>(gender);
@@ -128,28 +133,33 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
   // ── Camera: stream low-fps JPEG frames up while the camera is on. ──
   const startCamera = useCallback(async () => {
+    // Ask for the chosen direction; if the device rejects an exact facingMode (many laptops), retry with
+    // no constraint so the camera still opens instead of silently failing.
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      // Drop this stream if we've torn down during the permission prompt OR a concurrent double-tap
-      // already acquired one (else the earlier stream + its frame interval leak as a hot camera).
-      if (closedRef.current || camStreamRef.current) { stream.getTracks().forEach((tk) => tk.stop()); return; }
-      camStreamRef.current = stream;
-      const video = videoRef.current;
-      if (video) { video.srcObject = stream; await video.play().catch(() => {}); }
-      const canvas = canvasRef.current;
-      frameTimerRef.current = window.setInterval(() => {
-        const v = videoRef.current, c = canvas;
-        if (!v || !c || v.videoWidth === 0) return;
-        c.width = v.videoWidth; c.height = v.videoHeight;
-        const cc = c.getContext('2d');
-        if (!cc) return;
-        cc.drawImage(v, 0, 0, c.width, c.height);
-        const dataUrl = c.toDataURL('image/jpeg', 0.6);
-        const b64 = dataUrl.split(',')[1] || '';
-        if (b64) sessionRef.current?.sendVideoFrame(b64, 'image/jpeg');
-      }, Math.round(1000 / FRAME_FPS));
-      setCamOn(true);
-    } catch { setCamOn(false); }
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingRef.current, width: 640, height: 480 } });
+    } catch {
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); } catch { setCamOn(false); return; }
+    }
+    // Drop this stream if we've torn down during the permission prompt OR a concurrent double-tap
+    // already acquired one (else the earlier stream + its frame interval leak as a hot camera).
+    if (closedRef.current || camStreamRef.current) { stream.getTracks().forEach((tk) => tk.stop()); return; }
+    camStreamRef.current = stream;
+    const video = videoRef.current;
+    if (video) { video.srcObject = stream; await video.play().catch(() => {}); }
+    const canvas = canvasRef.current;
+    frameTimerRef.current = window.setInterval(() => {
+      const v = videoRef.current, c = canvas;
+      if (!v || !c || v.videoWidth === 0) return;
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      const cc = c.getContext('2d');
+      if (!cc) return;
+      cc.drawImage(v, 0, 0, c.width, c.height);
+      const dataUrl = c.toDataURL('image/jpeg', 0.6);
+      const b64 = dataUrl.split(',')[1] || '';
+      if (b64) sessionRef.current?.sendVideoFrame(b64, 'image/jpeg');
+    }, Math.round(1000 / FRAME_FPS));
+    setCamOn(true);
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -161,6 +171,18 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   }, []);
 
   const toggleCamera = useCallback(() => { if (camOn) stopCamera(); else void startCamera(); }, [camOn, startCamera, stopCamera]);
+
+  // Flip between the back (environment) and front (user) camera — stop the current stream, switch the
+  // facing, and re-open. Only meaningful while the camera is on.
+  const flipCamera = useCallback(async () => {
+    if (!camOn) return;
+    const next = facingRef.current === 'environment' ? 'user' : 'environment';
+    facingRef.current = next; setFacing(next);
+    if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
+    camStreamRef.current?.getTracks().forEach((tk) => tk.stop());
+    camStreamRef.current = null;
+    await startCamera();
+  }, [camOn, startCamera]);
 
   const toggleMute = useCallback(() => {
     setMicMuted((m) => { const next = !m; micMutedRef.current = next; return next; });
@@ -298,12 +320,21 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
           className={`flex h-12 w-12 touch-manipulation items-center justify-center rounded-full transition ${camOn ? 'bg-app-accent/20 text-app-accent' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
           {camOn ? <Camera size={20} /> : <CameraOff size={20} />}
         </button>
-        {/* Voice toggle — switch between the Google female (Aoede) and male (Charon) voices. Changing it
-            reconnects the session with the new voice. */}
+        {/* Flip front/back camera — only while the camera is on. */}
+        {camOn && (
+          <button type="button" onClick={() => void flipCamera()}
+            aria-label={locale === 'en' ? 'Flip camera' : locale === 'ru' ? 'Перевернуть камеру' : 'კამერის შებრუნება'}
+            title={facing === 'user' ? (locale === 'en' ? 'Front camera' : locale === 'ru' ? 'Фронтальная' : 'წინა კამერა') : (locale === 'en' ? 'Back camera' : locale === 'ru' ? 'Основная' : 'უკანა კამერა')}
+            className="flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-white/[0.08] text-app-text transition hover:bg-white/[0.14]">
+            <SwitchCamera size={20} />
+          </button>
+        )}
+        {/* Voice toggle — switch between the Google female (Aoede) and male (Charon) voices. The glyph +
+            accent tint change so the active voice is obvious; changing it reconnects with the new voice. */}
         <button type="button" onClick={() => setVoiceGender((g) => (g === 'female' ? 'male' : 'female'))}
-          aria-label={locale === 'en' ? 'Switch voice' : locale === 'ru' ? 'Сменить голос' : 'ხმის შეცვლა'}
+          aria-label={`${locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}: ${voiceGender === 'female' ? (locale === 'en' ? 'female' : locale === 'ru' ? 'женский' : 'ქალის') : (locale === 'en' ? 'male' : locale === 'ru' ? 'мужской' : 'კაცის')}`}
           title={locale === 'en' ? 'Switch voice' : locale === 'ru' ? 'Сменить голос' : 'ხმის შეცვლა'}
-          className="flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-white/[0.08] text-[20px] font-semibold text-app-text transition hover:bg-white/[0.14]">
+          className={`flex h-12 w-12 touch-manipulation items-center justify-center rounded-full text-[22px] font-bold transition ${voiceGender === 'female' ? 'bg-pink-400/20 text-pink-300' : 'bg-sky-400/20 text-sky-300'}`}>
           {voiceGender === 'female' ? '♀' : '♂'}
         </button>
         <button type="button" onClick={endCall} aria-label="end call"
