@@ -847,7 +847,7 @@ interface FilmSnap {
   hasTrainedVoice: boolean;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -3745,6 +3745,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages([...history, { role: 'assistant', text: '' }]);
     setBusy(true);
     let assistantText = ''; // accumulate the streamed reply so we can mirror it to the server on completion
+    // STREAM WATCHDOG — a provider that accepts the connection but never streams a token (or stalls
+    // mid-answer without ever sending [DONE]) would leave reader.read() pending forever, wedging
+    // `busy` = true permanently → the composer bricks and every later send bails at the busy gate
+    // WITHOUT clearing the typed text. That is exactly the "chat died + my message stays in the box"
+    // failure the broken GEMINI_API_KEY produced. An inactivity timer (re-armed on every chunk) aborts
+    // a truly stalled stream so the catch/finally always run and `busy` always resets. 45s of total
+    // silence is far beyond any real first-token latency (even gemini-2.5-pro), so it never trips a
+    // healthy answer — only a genuinely hung one.
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const armWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => { try { ac.abort(); } catch { /* noop */ } }, 45_000);
+    };
     // Build the Gemini payload: text-only → string content; with media → native
     // multimodal parts (image / file) the route forwards as inline_data.
     const payload = history.map((m) => {
@@ -3760,6 +3773,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return { role: m.role, content: m.text };
     });
     try {
+      armWatchdog(); // covers connection setup + first-token latency
       const res = await fetch('/api/chat/gemini', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payload, ...(chatLang !== 'auto' ? { language: chatLang } : {}), ...(chatTier === 'pro' ? { tier: 'pro' } : {}) }), credentials: 'include', signal: ac.signal,
@@ -3772,6 +3786,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (!mine()) { try { await reader.cancel(); } catch { /* noop */ } break; }
         const { value, done } = await reader.read();
         if (done) break;
+        armWatchdog(); // a chunk arrived → the stream is alive; reset the inactivity timer
         buf += dec.decode(value, { stream: true });
         const lines = buf.split('\n\n');
         buf = lines.pop() ?? '';
@@ -3779,7 +3794,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const mm = line.match(/^data:\s*(.+)$/s);
           if (!mm) continue;
           try {
-            const j = JSON.parse(mm[1]!) as { text?: string };
+            const j = JSON.parse(mm[1]!) as { text?: string; meta?: { provider: string; model: string; partial?: boolean } };
+            if (j.meta) {
+              // Stamp which engine actually answered so the bubble can show it (⚠ badge on the
+              // Anthropic fallback — so a silently-degraded Gemini is never mistaken for the real thing).
+              const label = j.meta.provider === 'gemini' ? j.meta.model : `⚠ ${j.meta.model} (fallback)`;
+              setMessages((prev) => {
+                if (!mine()) return prev;
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === 'assistant') next[next.length - 1] = { ...last, chatModel: label };
+                return next;
+              });
+            }
             if (j.text) {
               assistantText += j.text;
               setMessages((prev) => {
@@ -3811,6 +3838,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return next;
       });
     } finally {
+      if (watchdog) clearTimeout(watchdog);
       if (mine()) setBusy(false);
     }
   }, [chatLang, chatTier, persistChatTurn]);
@@ -5170,6 +5198,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
                 : 'min-w-0 flex-1 text-app-text'
             }`}>
+              {m.role === 'assistant' && m.chatModel && (
+                <div className="mb-1 text-[10px] font-medium text-app-muted/55" title="answering engine">{m.chatModel}</div>
+              )}
               {m.medias && m.medias.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
                   {m.medias.map((md, mi) => (

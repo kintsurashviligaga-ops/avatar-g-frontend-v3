@@ -328,6 +328,11 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         const send = (text: string) =>
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+        // Provider/model marker so the client can SHOW which engine actually answered (Gemini vs the
+        // Anthropic fallback). Without this, an invalid GEMINI_API_KEY silently degrades every reply to
+        // Haiku with zero signal — the exact "Gemini isn't being used" symptom.
+        const sendMeta = (meta: { provider: string; model: string; partial?: boolean }) =>
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ meta })}\n\n`));
 
         try {
           // ── Primary: Gemini 2.0 Flash ──────────────────────────────────────
@@ -374,6 +379,7 @@ export async function POST(req: NextRequest) {
                 continue;
               }
               geminiOk = true;
+              sendMeta({ provider: 'gemini', model: modelName });
               break;
             } catch (geminiErr) {
               const kind = classifyError(geminiErr);
@@ -389,6 +395,7 @@ export async function POST(req: NextRequest) {
               if (streamed > 0) {
                 console.warn('[/api/chat/gemini]', modelName, kind, '— erred after partial stream; keeping partial (no rotation)');
                 geminiOk = true;
+                sendMeta({ provider: 'gemini', model: modelName, partial: true });
                 break;
               }
               console.warn('[/api/chat/gemini]', modelName, kind, '— trying next model');
@@ -398,6 +405,7 @@ export async function POST(req: NextRequest) {
           if (!geminiOk) {
             // ── Fallback: Anthropic Claude Haiku ────────────────────────────
             console.error('[/api/chat/gemini] All Gemini models exhausted — falling back to Anthropic');
+            reportError(new Error('All Gemini models exhausted — Anthropic fallback engaged (check GEMINI_API_KEY validity)'), { route: 'chat.gemini', stage: 'gemini-exhausted' });
             try {
               const anthropic = getAnthropicClient();
               const fallback = streamText({
@@ -426,6 +434,8 @@ export async function POST(req: NextRequest) {
               }
               if (streamed === 0) {
                 send(providersDownMsg(respLocale));
+              } else {
+                sendMeta({ provider: 'anthropic', model: 'claude-haiku-4-5' });
               }
             } catch (anthropicErr) {
               console.error('[/api/chat/gemini] Anthropic fallback failed:', anthropicErr);
