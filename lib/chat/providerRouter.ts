@@ -14,6 +14,7 @@ import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
+import { reportError } from '@/lib/observability/report-error';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
 import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
@@ -225,29 +226,37 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
   const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale ?? 'ka'), input.customInstructions);
 
   const startMs = Date.now();
-  const response = await generateWithGemini({
-    prompt: input.message,
-    systemPrompt,
-    tier: 'pro',
-    attachments: usable,
-    history: input.history?.map((h) => ({
-      role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
-      parts: [{ text: h.content }],
-    })),
-  });
+  try {
+    const response = await generateWithGemini({
+      prompt: input.message,
+      systemPrompt,
+      tier: 'pro',
+      attachments: usable,
+      history: input.history?.map((h) => ({
+        role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
+        parts: [{ text: h.content }],
+      })),
+    });
 
-  return {
-    success: true,
-    intent: 'analysis' as IntentCategory,
-    responseType: 'analysis',
-    message: response.text,
-    metadata: {
-      provider: 'gemini',
-      model: response.model,
-      durationMs: Date.now() - startMs,
-      attachment_count: usable.length,
-    },
-  };
+    return {
+      success: true,
+      intent: 'analysis' as IntentCategory,
+      responseType: 'analysis',
+      message: response.text,
+      metadata: {
+        provider: 'gemini',
+        model: response.model,
+        durationMs: Date.now() - startMs,
+        attachment_count: usable.length,
+      },
+    };
+  } catch (err) {
+    // Degrade to normal text routing instead of hard-failing the request: `orchestrate` treats a null
+    // return as "fall through to the standard cascade". Previously a Gemini throw here 500'd the whole
+    // request. Non-blocking telemetry so the multimodal failure is still visible.
+    reportError(err, { route: 'chat.multimodal' });
+    return null;
+  }
 }
 
 // ─── Main orchestrate function ───────────────────────────────────────────────

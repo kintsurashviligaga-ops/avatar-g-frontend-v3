@@ -15,6 +15,7 @@ import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
 import { bogConfig, getBogAccessToken, createBogOrder } from '@/lib/billing/bogClient';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await requireAuthenticatedUser(request);
+
+    // Throttle order creation per requester (20/min — far above any real top-up cadence; fails open
+    // without Upstash). Guards the external BOG order + pending-row insert from spam. No amount change.
+    const limited = await checkRateLimit(request, RATE_LIMITS.WRITE);
+    if (limited) return limited;
 
     const body = (await request.json().catch(() => ({}))) as { amountGel?: number };
     const amountGel = Number(body.amountGel);

@@ -13,6 +13,7 @@
  * (English) ElevenLabs Music path.
  */
 import 'server-only';
+import { reportError } from '@/lib/observability/report-error';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -195,6 +196,7 @@ export async function generateGeorgianSong(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[ka-song] mix failed:', err instanceof Error ? err.message : err);
+    reportError(err, { where: 'georgianSong.mix' });
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});

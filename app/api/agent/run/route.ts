@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { runLiveAgent } from '@/lib/agent/react/bindLiveAgent';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
+import { reportError } from '@/lib/observability/report-error';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -54,6 +55,9 @@ export async function POST(req: NextRequest) {
   // slow LLM/tool step returns a graceful 'max_steps' result instead of a hard 504 with nothing.
   const deadlineMs = Date.now() + 100_000;
   const result = await runLiveAgent(goal, { userId: user.id }, { maxSteps, deadlineMs });
+  if (result.stopReason === 'llm_error') {
+    reportError(new Error('agent run ended in llm_error'), { route: 'agent.run', userId: user.id });
+  }
   const status = result.stopReason === 'llm_error' ? 502 : 200;
   return NextResponse.json(result, { status });
 }

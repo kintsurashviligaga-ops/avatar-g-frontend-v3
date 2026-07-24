@@ -11,6 +11,7 @@
  * without that entry the binary is absent in the Vercel lambda and the route ENOENTs.
  */
 import 'server-only';
+import { reportError } from '@/lib/observability/report-error';
 import { NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('[POST /api/music/video]', e instanceof Error ? e.message : e);
+    reportError(e, { route: 'music.video' });
     return NextResponse.json({ error: 'video render failed' }, { status: 500 });
   }
 }

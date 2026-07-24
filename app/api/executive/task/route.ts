@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServerClient } from '@/lib/supabase/server';
 import { structuredLog } from '@/lib/logger';
 import { runExecutiveTask } from '@/lib/agent/executiveOrchestrator';
+import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,11 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
+
+    // Throttle the autonomous executive path under the dedicated 'agent' namespace (mirrors agent/run);
+    // fail-open without Upstash, and separate from the produce/revenue budget.
+    const rate = await checkProduceRate(user.id, Date.now(), 'agent');
+    if (!rate.ok) return rateLimitedResponse(rate);
 
     const result = await runExecutiveTask({
       userId: user.id,

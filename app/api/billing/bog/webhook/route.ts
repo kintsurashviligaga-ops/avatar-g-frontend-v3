@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { creditWalletGel } from '@/lib/billing/wallet-ledger';
+import { reportError } from '@/lib/observability/report-error';
 import {
   bogConfig,
   parseBogCallback,
@@ -150,8 +151,9 @@ async function lookupOrder(
       const { data } = await svc.from('bog_orders').select('shop_order_id,user_id,amount_gel,status').eq('bog_order_id', bogOrderId).maybeSingle();
       if (data) return data as BogOrderRow;
     }
-  } catch {
+  } catch (e) {
     /* table absent / transient → treat as not found (fail-safe: no credit) */
+    reportError(e, { route: 'bog.webhook', stage: 'lookupOrder' });
   }
   return null;
 }
@@ -164,7 +166,8 @@ async function updateOrderStatus(data: { shopOrderId: string | null; orderId: st
     } else if (data.orderId) {
       await svc.from('bog_orders').update({ status, updated_at: new Date().toISOString() }).eq('bog_order_id', data.orderId);
     }
-  } catch {
+  } catch (e) {
     /* best-effort */
+    reportError(e, { route: 'bog.webhook', stage: 'updateOrderStatus' });
   }
 }
