@@ -11,6 +11,7 @@
  * null and the caller falls back to the full mix — the HeyGen pass still runs.
  */
 import 'server-only';
+import { reportError } from '@/lib/observability/report-error';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /**
@@ -53,6 +54,7 @@ export async function isolateVocal(audioUrl: string, signal?: AbortSignal): Prom
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[isolate] failed (falling back to full mix):', err instanceof Error ? err.message : err);
+    reportError(err, { where: 'audioIsolation' });
     return null;
   }
 }

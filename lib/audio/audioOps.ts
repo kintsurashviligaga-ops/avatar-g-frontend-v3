@@ -7,6 +7,7 @@
  * NOTE (Vercel): the importing route MUST be in next.config.js outputFileTracingIncludes with ffmpeg-static.
  */
 import 'server-only';
+import { reportError } from '@/lib/observability/report-error';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -80,6 +81,7 @@ export async function audioProcess(audioUrl: string, p: AudioProcessParams): Pro
     return (await uploadAndSign('uploads', path, buf.toString('base64'), 'audio/mp4', WEEK_SEC)) ?? null;
   } catch (err) {
     console.warn('[audio/process] failed:', err instanceof Error ? err.message : err);
+    reportError(err, { where: 'audioOps.process' });
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
