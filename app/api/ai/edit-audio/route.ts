@@ -10,6 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -72,6 +73,13 @@ export async function POST(req: NextRequest) {
   const action = String(body?.action || '').trim() as AudioAction;
   if (!['vocal_isolation', 'splitter', 'process'].includes(action)) {
     return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
+  }
+
+  // Throttle ONLY the paid provider actions (Demucs/ElevenLabs) at 5/min; the free deterministic
+  // 'process' action (interactive pitch/speed/trim) stays unthrottled so rapid slider edits never 429.
+  if (action === 'vocal_isolation' || action === 'splitter') {
+    const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+    if (rl) return rl;
   }
 
   // Auth only (401 anon). The real per-action cost is enforced at the deduct below, NOT the guard floor.

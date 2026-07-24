@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { runLiveAgent } from '@/lib/agent/react/bindLiveAgent';
+import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,6 +28,12 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
+
+  // Per-user throttle under the dedicated 'agent' namespace (mirrors agents/execute). The route was
+  // auth-gated but unbounded per-minute, so a multi-tab burst amplified render-job inserts. Fail-open
+  // (ok) when Upstash is unconfigured, and the separate namespace can never 429 the produce/revenue path.
+  const rate = await checkProduceRate(user.id, Date.now(), 'agent');
+  if (!rate.ok) return rateLimitedResponse(rate);
 
   let body: { goal?: unknown; maxSteps?: unknown };
   try {

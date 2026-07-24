@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { runSaga, type SagaStep } from '@/lib/orchestrator/saga';
 import {
   lockTokens, commitTokenLock, releaseTokenLock, type TokenLock,
@@ -203,6 +204,10 @@ export async function POST(req: NextRequest) {
 }
 
 async function assembleImpl(req: NextRequest) {
+  // Throttle the expensive stitch (5/min) — additive, fails open without Upstash, returns before any
+  // billing/idempotency side-effect. Anonymous assemble stays allowed (product decision); only rate is capped.
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
   // v330 — function-entry timestamp so the synchronous audio legs + the dispatch
   // deadline stay collectively under maxDuration (300s). The dispatch timeout below is
   // made RELATIVE to time already consumed so it fires inside the function (→ saga

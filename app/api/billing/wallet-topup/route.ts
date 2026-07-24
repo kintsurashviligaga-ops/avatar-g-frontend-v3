@@ -12,6 +12,7 @@ import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createWalletTopupSession, getOrCreateCustomer } from '@/lib/billing/stripe';
 import { getBillingProvider, BillingProviderUnavailableError } from '@/lib/monetization/provider';
 import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,6 +28,12 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await requireAuthenticatedUser(request);
+
+    // Throttle checkout-session creation per requester (20/min — far above any real top-up cadence;
+    // fails open without Upstash). Guards the Stripe session + customer upsert from spam. No amount change.
+    const limited = await checkRateLimit(request, RATE_LIMITS.WRITE);
+    if (limited) return limited;
+
     const supabase = createRouteHandlerClient();
 
     const body = (await request.json().catch(() => ({}))) as { amountGel?: number };
@@ -42,7 +49,7 @@ export async function POST(request: NextRequest) {
       .from('subscriptions')
       .select('stripe_customer_id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     let customerId = subscription?.stripe_customer_id as string | undefined;
     if (!customerId || customerId.startsWith('temp_')) {
