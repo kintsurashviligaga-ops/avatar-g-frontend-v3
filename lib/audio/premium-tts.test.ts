@@ -13,7 +13,7 @@ const realRevoke = URL.revokeObjectURL;
 function mockFetch(ok: boolean, size = 128) {
   (globalThis as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValue({
     ok,
-    blob: async () => new Blob(['x'.repeat(size)], { type: 'audio/mpeg' }),
+    blob: async () => new Blob(['x'.repeat(size)], { type: 'audio/wav' }),
   });
 }
 
@@ -37,12 +37,12 @@ afterEach(() => {
 });
 
 describe('speakPremium', () => {
-  test('routes to /api/elevenlabs/tts with text+locale and plays — NEVER browser speech', async () => {
+  test('routes to /api/tts/gemini with text+locale and plays — NEVER browser speech', async () => {
     mockFetch(true);
     const audio = await speakPremium('გამარჯობა', 'ka');
     const calls = (globalThis as unknown as { fetch: jest.Mock }).fetch.mock.calls;
     expect(calls).toHaveLength(1);
-    expect(calls[0][0]).toBe('/api/elevenlabs/tts');
+    expect(calls[0][0]).toBe('/api/tts/gemini');
     expect(JSON.parse(calls[0][1].body)).toMatchObject({ text: 'გამარჯობა', locale: 'ka' });
     expect(playMock).toHaveBeenCalledTimes(1);
     expect(audio).not.toBeNull();

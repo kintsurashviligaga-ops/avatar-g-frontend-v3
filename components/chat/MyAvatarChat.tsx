@@ -2473,7 +2473,7 @@ async function runMusic(prompt: string, pendingId: string, setMessages: Setter, 
 
 async function runVoice(text: string, pendingId: string, setMessages: Setter, signal?: AbortSignal, opts?: { localeCode?: Locale }) {
   const locale: Locale = opts?.localeCode ?? 'ka';
-  const res = await fetchWithRetry('/api/elevenlabs/tts', {
+  const res = await fetchWithRetry('/api/tts/gemini', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, locale }),
   }, { signal, timeoutMs: 60_000 });

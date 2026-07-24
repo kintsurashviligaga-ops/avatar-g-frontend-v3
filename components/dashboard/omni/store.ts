@@ -891,7 +891,7 @@ export const useOmniDashboardStore = create<OmniDashboardState>((set, get) => {
       };
 
       const fireTts = (text: string) => {
-        fetch('/api/elevenlabs/tts', {
+        fetch('/api/tts/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: text.slice(0, 1200) }),

@@ -91,11 +91,11 @@ async function dispatchAgent(
   // ── Voice / TTS ──────────────────────────────────────────────────────────────
   if (agent === 'voice' || (agent === 'voice-lab' && action === 'synthesize_voice')) {
     const text = String(input.text ?? goal);
-    const res = await callJson(origin, headers, '/api/elevenlabs/tts', 'POST', {
+    const res = await callJson(origin, headers, '/api/tts/gemini', 'POST', {
       text,
       locale,
     });
-    if (res.ok) return { output: { type: 'audio', source: 'elevenlabs', text, locale } };
+    if (res.ok) return { output: { type: 'audio', source: 'gemini-native', text, locale } };
 
     // Fallback: voice-lab endpoint
     const fallback = await callJson(origin, headers, '/api/voice-lab/jobs', 'POST', {
