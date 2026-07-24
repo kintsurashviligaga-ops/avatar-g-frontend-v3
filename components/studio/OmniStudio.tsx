@@ -1626,6 +1626,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // effect below) so the legacy single-render entry points can reject a second parallel run
   // with a friendly toast, stale-closure-free. (Product ad is queue-governed now, not here.)
   const genActiveRef = useRef(false);
+  // Type-ahead: a plain chat message sent WHILE the previous turn is still streaming is parked here
+  // (not stranded in the composer), then auto-sent the moment the turn finishes — see the flush effect.
+  const pendingChatRef = useRef<string | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
@@ -3843,6 +3846,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [chatLang, chatTier, persistChatTurn]);
 
+  // Flush a queued type-ahead chat message once the current turn finishes (busy → false). Reads the
+  // LATEST messages via messagesRef (not a stale closure), so the follow-up carries the full history.
+  useEffect(() => {
+    if (busy || genActiveRef.current) return;
+    const queued = pendingChatRef.current;
+    if (!queued) return;
+    pendingChatRef.current = null;
+    const userMsg: Msg = { role: 'user', text: queued };
+    persistChatTurn('user', queued);
+    // streamChat renders the user turn from its history arg (setMessages([...history, assistant])), so
+    // no separate setMessages is needed here — that would only double-render the bubble.
+    void streamChat([...messagesRef.current, userMsg]);
+  }, [busy, streamChat, persistChatTurn]);
+
   // Regenerate the LAST assistant reply: re-stream from the conversation up to (and
   // including) the user turn that prompted it — the standard chat "try again" /
   // retry-on-error. Drops the old answer and streams a fresh one in its place.
@@ -4045,7 +4062,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // flight while the user switches to Music and hits send). Don't silently swallow it:
     // tell the user why, then bail. `busy` is kept explicit for this mode; genActiveRef
     // catches the cross-mode cases (storyboard/product/remix).
-    if (busy || genActiveRef.current) { toast(busyToastMessage(locale)); return; }
+    if (busy || genActiveRef.current) {
+      // Type-ahead: don't strand a plain chat message the user fires while the previous reply is still
+      // streaming (the "I quickly send a second one and it stays in the box" complaint). Park it, clear
+      // the composer NOW, and the flush effect auto-sends it when the current turn ends. Generative /
+      // attachment sends keep the explicit busy toast — they can't safely run concurrently.
+      if (mode === 'chat' && text && attachments.length === 0 && !isGenerativeCommand(text)) {
+        pendingChatRef.current = text;
+        setInput(''); stopDictationEcho();
+        return;
+      }
+      toast(busyToastMessage(locale)); return;
+    }
     // MOBILE FIX — collapse the settings panel on generation so the result (video +
     // render progress) isn't buried behind a 58dvh options sheet. The feed (flex-1)
     // then fills the screen; the user re-opens settings to tweak the next run.
@@ -4790,6 +4818,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           fd.append('language', lang);
           const r = await fetch('/api/voice/transcribe', { method: 'POST', body: fd });
           const j = (await r.json().catch(() => ({}))) as { text?: string };
+          // Re-check the discard flag AFTER the await: if a send() fired while this transcription was
+          // in flight, it already cleared the composer — writing the transcript now would RE-FILL the
+          // just-emptied box (the "my dictated text jumps back after I send" bug; iOS uses this recorder
+          // path, and it only bites when you send before transcription resolves). Drop it silently.
+          if (sttDiscardRef.current) { inFlight = false; return; }
           if (j.text && j.text.trim()) setInput(base + j.text.trim());
         } catch { /* fail-soft */ }
         inFlight = false;
