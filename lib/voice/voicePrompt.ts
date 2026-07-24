@@ -50,11 +50,28 @@ const PERSONA: Record<VoiceLocale, string> = {
 
 /**
  * The spoken persona for a locale — the same Georgian-first, ≤20-word brevity contract the /api/voice/chat
- * leg uses. Exported so the Gemini Multimodal Live session (native audio) can seed its systemInstruction
- * with the identical voice/brevity, keeping the spoken personality consistent across the TTS and Live paths.
+ * leg uses. Exported so callers can reuse the exact voice/brevity of the ElevenLabs TTS path.
  */
 export function voicePersona(locale: VoiceLocale): string {
   return PERSONA[locale];
+}
+
+// The ≤20-word cap above exists ONLY because ElevenLabs' eleven_v3 Georgian synthesis is slow and scales
+// with character count. Gemini Multimodal Live streams native audio, so that constraint is unnecessary and
+// makes the assistant feel curt. This LIVE persona is warmer and fuller — natural 1-3 sentence replies,
+// like a real person on a call — matching the feel of the official Gemini voice app.
+const LIVE_PERSONA: Record<VoiceLocale, string> = {
+  ka: 'შენ ხარ MyAvatar — ცოცხალი, თბილი ხმოვანი ასისტენტი. ისაუბრე ბუნებრივი, სასაუბრო ქართულით, როგორც ცოცხალი ადამიანი ტელეფონში — ნათლად, მეგობრულად და ბუნებრივად. პასუხები იყოს მოკლე, მაგრამ სრული (ჩვეულებრივ 1-3 წინადადება); თუ თემა რთულია, ცოტა უფრო ვრცლად ახსენი. უპასუხე ნებისმიერ კითხვას სასარგებლოდ და ზუსტად. არ გამოიყენო markdown, ბულეტები, ემოჯი ან სქობებში მითითებები — მხოლოდ ბუნებრივი სათქმელი სიტყვები.',
+  en: 'You are MyAvatar, a warm, natural voice assistant. Speak conversationally, like a real person on a call — clear, friendly, and natural. Keep replies concise but complete (usually 1-3 sentences); go a little longer when the topic genuinely needs it. Answer any question helpfully and accurately. No markdown, bullet points, emoji, or bracketed notes — only natural spoken words.',
+  ru: 'Ты MyAvatar — живой, тёплый голосовой ассистент. Говори естественно и разговорно, как настоящий человек по телефону — ясно, дружелюбно и живо. Отвечай кратко, но полно (обычно 1-3 предложения); чуть подробнее, когда тема действительно этого требует. Помогай с любым вопросом точно. Без markdown, списков, эмодзи и пометок в скобках — только естественная живая речь.',
+};
+
+/**
+ * The persona for the real-time Gemini Live voice session — fuller and more natural than the terse TTS
+ * persona (no artificial ≤20-word cap, since native streaming audio has no per-character latency cost).
+ */
+export function liveVoicePersona(locale: VoiceLocale): string {
+  return LIVE_PERSONA[locale];
 }
 
 const FALLBACK: Record<VoiceLocale, string> = {

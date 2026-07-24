@@ -12,12 +12,12 @@
  * a paid key + real mic/camera before production use.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Mic, MicOff, Paperclip, PhoneOff } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, PhoneOff } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GeminiLiveSession, GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { encodeMicChunk, decodePlaybackChunk } from '@/lib/voice/pcm';
-import { voicePersona, normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
+import { liveVoicePersona, normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 // Native Gemini Live is the DEFAULT voice now (live-validated) — ON unless NEXT_PUBLIC_GEMINI_LIVE_ENABLED
 // is explicitly set falsy ('0'|'false'|'no'|'off'), which reverts to the ElevenLabs VoiceConversation.
@@ -43,6 +43,9 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const [err, setErr] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  // Which built-in Google voice speaks. Toggling it re-runs the connect effect → a clean reconnect with
+  // the new voice (a fresh session; deliberate voice switches happen at the start, not mid-sentence).
+  const [voiceGender, setVoiceGender] = useState<'female' | 'male'>(gender);
 
   const sessionRef = useRef<GeminiLiveSession | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -221,12 +224,12 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
         // Seed the session with the spoken persona + the REAL current date (evaluated now, at session
         // start, so it is always today) and select the built-in native-audio voice for this gender.
-        const persona = systemInstruction ?? voicePersona(normalizeVoiceLocale(locale));
+        const persona = systemInstruction ?? liveVoicePersona(normalizeVoiceLocale(locale));
         const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         const datedInstruction = `${persona}\nToday's date is ${today}.`;
 
         const session = new GeminiLiveSession(
-          { token: j.token, model: j.model, systemInstruction: datedInstruction, voiceName: GEMINI_LIVE_VOICES[gender], responseModalities: ['AUDIO'] },
+          { token: j.token, model: j.model, systemInstruction: datedInstruction, voiceName: GEMINI_LIVE_VOICES[voiceGender], responseModalities: ['AUDIO'] },
           {
             onSetupComplete: () => { if (!cancelled) setStatus('live'); },
             onAudio: (b64) => enqueueAudio(b64),
@@ -260,7 +263,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     })();
     return () => { cancelled = true; teardown(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, voiceGender]);
 
   const label = status === 'connecting' ? t.connecting : status === 'speaking' ? t.speaking : status === 'closed' ? t.closed : t.live;
 
@@ -291,9 +294,13 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
           className={`flex h-12 w-12 touch-manipulation items-center justify-center rounded-full transition ${camOn ? 'bg-app-accent/20 text-app-accent' : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}>
           {camOn ? <Camera size={20} /> : <CameraOff size={20} />}
         </button>
-        <button type="button" aria-label="attach"
-          className="flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-white/[0.08] text-app-text transition hover:bg-white/[0.14]">
-          <Paperclip size={20} />
+        {/* Voice toggle — switch between the Google female (Aoede) and male (Charon) voices. Changing it
+            reconnects the session with the new voice. */}
+        <button type="button" onClick={() => setVoiceGender((g) => (g === 'female' ? 'male' : 'female'))}
+          aria-label={locale === 'en' ? 'Switch voice' : locale === 'ru' ? 'Сменить голос' : 'ხმის შეცვლა'}
+          title={locale === 'en' ? 'Switch voice' : locale === 'ru' ? 'Сменить голос' : 'ხმის შეცვლა'}
+          className="flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-white/[0.08] text-[20px] font-semibold text-app-text transition hover:bg-white/[0.14]">
+          {voiceGender === 'female' ? '♀' : '♂'}
         </button>
         <button type="button" onClick={endCall} aria-label="end call"
           className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-app-danger text-white shadow-lg transition hover:brightness-110">
