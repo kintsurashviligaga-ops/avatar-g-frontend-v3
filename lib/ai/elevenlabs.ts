@@ -18,7 +18,8 @@ export async function generateVoice(text: string, voiceId: string, emotion: stri
             stability: emotion === "excited" ? 0.55 : 0.75,
             similarity_boost: emotion === "excited" ? 0.95 : 0.85
           }
-        })
+        }),
+        signal: AbortSignal.timeout(60_000)
       });
       if (!response.ok) throw new Error(`Voice generation failed: ${response.status}`);
       return response.arrayBuffer();
@@ -38,7 +39,8 @@ export async function cloneVoice(audioFile: File, name: string) {
     const response = await fetch("https://api.elevenlabs.io/v1/voices/add", {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY! },
-      body: formData
+      body: formData,
+      signal: AbortSignal.timeout(60_000)
     });
     if (!response.ok) throw new Error(`Voice cloning failed: ${response.status}`);
     const data = await response.json();

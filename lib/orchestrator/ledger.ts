@@ -11,6 +11,7 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { reportError } from '@/lib/observability/report-error';
 
 export type LedgerReason = 'insufficient' | 'skipped' | 'error';
 
@@ -105,9 +106,17 @@ export async function refundCredits(userId: string, amount: number, ref: string)
   if (!sb) return { ok: false, reason: 'skipped' };
   try {
     const { data, error } = await sb.rpc('refund_credits', { p_user_id: userId, p_amount: amount, p_ref: ref });
-    if (error) return { ok: false, reason: classifyLedgerError(error.message) };
+    if (error) {
+      const reason = classifyLedgerError(error.message);
+      // Report only a REAL DB/connection failure — a genuine refund miss means the user was charged but
+      // never refunded (silent money loss). 'skipped' (RPC not provisioned) stays quiet, no noise.
+      if (reason === 'error') reportError(error, { fn: 'refundCredits', userId, amount, ref });
+      return { ok: false, reason };
+    }
     return { ok: true, balance: parseBalance(data) };
   } catch (e) {
-    return { ok: false, reason: classifyLedgerError(e instanceof Error ? e.message : '') };
+    const reason = classifyLedgerError(e instanceof Error ? e.message : '');
+    if (reason === 'error') reportError(e, { fn: 'refundCredits', userId, amount, ref });
+    return { ok: false, reason };
   }
 }

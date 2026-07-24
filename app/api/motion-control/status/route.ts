@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     finalUrl = fitted;
   } else {
     try {
-      const res = await fetch(poll.url);
+      const res = await fetch(poll.url, { signal: AbortSignal.timeout(60_000) });
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer());
         const path = `motion-control/${user.id}/${Date.now()}.mp4`;

@@ -238,7 +238,9 @@ async function assembleImpl(req: NextRequest) {
   // assemble (partial salvage). STRICTLY fail-open: keeps clips on 200/timeout/5xx/error
   // and never empties a non-empty list. (Auto-retry can't run here — clips are dispatched
   // async and only have URLs by assemble time; see lib/pipeline/qaAgent.ts.)
-  const segments = await keepLiveClips(dedupedSegments);
+  // Bound the clip count (2× the 12-scene pipeline max = generous headroom, no real film is clamped) so a
+  // pathological payload can't make keepLiveClips HEAD-probe an unbounded list or ffmpeg stitch thousands.
+  const segments = await keepLiveClips(dedupedSegments.slice(0, 24));
   // ≥1 segment. A SINGLE segment (6s film, sceneCount=1) takes the lightweight
   // single-clip path below (mux music, no multi-clip xfade stitch); ≥2 keeps the
   // full filtergraph stitch. Zero segments is still a hard error.

@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isOwnSupabaseUrl } from '@/lib/security/allowlistedAudioFetch';
 import { isolateVocal } from '@/lib/elevenlabs/audioIsolation';
 
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   // Was fully unauthenticated. The sole caller (OmniStudio) sends its session cookie, so require a user;
   // and only isolate audio WE host (own Supabase) so this can't be turned into an arbitrary-URL fetcher.
   try { await requireAuthenticatedUser(req); } catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
 
   let body: { audioUrl?: unknown };
   try {

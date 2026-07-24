@@ -10,6 +10,8 @@
  * feature is safe to ship before the operator has pinned/verified their exact checkpoints.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -106,10 +108,11 @@ async function saveCreation(req: NextRequest, userId: string, url: string, actio
       user_id: userId, kind: 'image', service: 'photo-studio',
       prompt: `photo:${action}`, url, thumbnail_url: url, credits_used: cost,
     });
-  } catch { /* fail-open — the asset is already returned */ }
+  } catch (e) { reportError(e, { route: 'ai.edit-photo', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
   const body = (await req.json().catch(() => null)) as { action?: string; actions?: unknown; mediaUrl?: string; prompt?: string } | null;
   const prompt = typeof body?.prompt === 'string' ? body.prompt : '';
   // A CHAIN of actions ("remove bg AND upscale") OR a single action. De-dupe-preserving order, cap at the 4 real ops.

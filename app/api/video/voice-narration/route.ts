@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -15,6 +16,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 200;
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
   const body = (await req.json().catch(() => ({}))) as { voiceoverUrl?: unknown };
   const voiceoverUrl = typeof body.voiceoverUrl === 'string' ? body.voiceoverUrl.trim() : '';
   if (!/^https?:\/\//i.test(voiceoverUrl)) {

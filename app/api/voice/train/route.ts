@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { prepareDatasetZip, startRvcTraining, pollRvcPrediction, rehostModel, rvcNameFor } from '@/lib/audio/rvc';
@@ -31,6 +32,7 @@ async function hostVoiceData(dataUrl: string): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
   const { user } = await authedClientFromRequest(req);
   // No sign-in required to TEST — fall back to a shared demo identity.
   const userId = user?.id ?? DEMO_VOICE_USER_ID;

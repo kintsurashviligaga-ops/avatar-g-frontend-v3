@@ -12,6 +12,7 @@
  */
 import 'server-only';
 import { reportError } from '@/lib/observability/report-error';
+import { readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 /**
@@ -25,8 +26,10 @@ export async function isolateVocal(audioUrl: string, signal?: AbortSignal): Prom
     // 1. Pull the source song bytes.
     const src = await fetch(audioUrl, { signal });
     if (!src.ok) return null;
-    const buf = Buffer.from(await src.arrayBuffer());
-    if (buf.byteLength < 1_024) return null;
+    // Cap the source download so a huge/gigabyte body can't OOM the function (real vocals are far under
+    // 30MB); over-cap or unreadable → null → the caller already fails open to the full mix.
+    const buf = await readBodyWithCap(src, 30_000_000);
+    if (!buf || buf.byteLength < 1_024) return null;
 
     // 2. Voice Isolator — multipart `audio` upload → isolated voice (mp3).
     const fd = new FormData();

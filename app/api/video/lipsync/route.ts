@@ -15,6 +15,7 @@
  *   { url: string | null }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { lipsyncCreate, filmLipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest, heygenHealthCheck } from '@/lib/ai/lipsync';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -116,6 +117,7 @@ export async function GET(req: NextRequest) {
  * client polls GET ?id=jobId. Synchronous rendering was dropping on mobile (~150s).
  */
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
   if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
 
   // PRE-RENDER balance gate — don't start a paid avatar render (TTS + provider) for a user who

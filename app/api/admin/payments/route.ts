@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const limit = Math.min(Number(searchParams?.get?.('limit') || '50'), 100);
+    const limit = Math.min(Math.max(1, Number(searchParams?.get?.('limit') || '50') || 50), 100);
 
     // Fetch latest Stripe events
     const { data: events, error: eventsError } = await supabase

@@ -121,6 +121,7 @@ export async function transcribeAudioBuffer(input: {
     },
     body: form,
     cache: 'no-store',
+    signal: AbortSignal.timeout(30_000),
   });
 
   const payload = (await response

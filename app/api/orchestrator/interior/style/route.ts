@@ -9,6 +9,7 @@
  * Response: { style: StyleGuide, walkthrough: string[], model: string, degraded: boolean }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import {
@@ -38,6 +39,7 @@ function extractJson(text: string): unknown {
 export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
 
   let body: Body;
   try { body = (await req.json()) as Body; } catch { return NextResponse.json({ error: 'invalid body' }, { status: 400 }); }

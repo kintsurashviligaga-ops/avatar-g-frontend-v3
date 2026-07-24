@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
         'xi-api-key': elevenKey,
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
         text: responseText,
         model_id: 'eleven_turbo_v2_5',

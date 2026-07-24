@@ -9,6 +9,7 @@
  * Outputs are RE-HOSTED into our storage (Replicate URLs expire) and written to the user's library.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
@@ -62,7 +63,7 @@ async function saveCreation(req: NextRequest, userId: string, url: string, actio
       user_id: userId, kind: 'audio', service: 'audio-studio',
       prompt: `audio:${action}`, url, thumbnail_url: url, credits_used: cost,
     });
-  } catch { /* fail-open */ }
+  } catch (e) { reportError(e, { route: 'ai.edit-audio', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {
