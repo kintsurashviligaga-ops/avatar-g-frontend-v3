@@ -13,6 +13,9 @@ export default defineConfig({
   // playwright.smoke.config.ts against the deployed site — never against the local
   // `next dev` server this config boots.
   testIgnore: /smoke-live\.spec\.ts/,
+  // Per-test budget generous enough to absorb a cold `next dev` first-compile of a route on a slow CI
+  // runner (default 30s was shorter than the cold compile → the preview-e2e first navigation flaked).
+  timeout: 60_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -32,5 +35,6 @@ export default defineConfig({
     command: webServerCommand,
     url: `http://localhost:${playwrightDevPort}`,
     reuseExistingServer: forceFreshWebServer ? false : !process.env.CI,
+    timeout: 120_000, // give `next dev` a generous cold-boot window before the first navigation
   },
 });

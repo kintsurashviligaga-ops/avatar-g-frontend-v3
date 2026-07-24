@@ -58,7 +58,7 @@ async function openChat(page: Page): Promise<void> {
   if (await necessary.isVisible().catch(() => false)) {
     await necessary.click();
   }
-  await expect(page.getByTestId('chat-input')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('chat-input')).toBeVisible({ timeout: 45_000 });
 }
 
 async function sendPrompt(page: Page, text: string): Promise<void> {
@@ -73,7 +73,7 @@ async function sendPrompt(page: Page, text: string): Promise<void> {
 test('cookie banner appears, dismisses, and stays dismissed after reload', async ({ page }) => {
   await page.goto(KA_CHAT);
   const accept = page.getByTestId('cookie-accept');
-  await expect(accept).toBeVisible({ timeout: 20_000 });
+  await expect(accept).toBeVisible({ timeout: 45_000 });
   await accept.click();
   await expect(accept).toBeHidden();
 

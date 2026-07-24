@@ -99,7 +99,7 @@ describe('parseImageBlocks', () => {
     const r = parseImageBlocks('[image:' + ' '.repeat(20000));
     const ms = Number(process.hrtime.bigint() - start) / 1e6;
     expect(r.urls).toEqual([]);
-    expect(ms).toBeLessThan(200); // bounded regex → linear, not tens of seconds
+    expect(ms).toBeLessThan(2000); // bounded regex → linear; a ReDoS regression is tens of seconds/hangs. Relaxed from 200ms so a loaded CI runner's jitter can't flake this perf guard.
   });
 
   it('georgian / russian image markers', () => {
