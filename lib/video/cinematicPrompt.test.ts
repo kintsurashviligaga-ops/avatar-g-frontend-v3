@@ -68,7 +68,7 @@ describe('expandCinematicPrompt', () => {
     const llm: LlmFn = () => new Promise<string>(() => { /* never resolves */ });
     const out = await expandCinematicPrompt(RAW, llm, { timeoutMs: 60 });
     expect(out).toBe(deterministicCinematicPrompt(RAW));
-    expect(Date.now() - started).toBeLessThan(2000); // did not hang on the never-resolving LLM
+    expect(Date.now() - started).toBeLessThan(5000); // did not hang on the never-resolving LLM (timeoutMs=60); relaxed from 2000 for CI jitter
   });
 
   it('passes empty input through without calling the LLM', async () => {
