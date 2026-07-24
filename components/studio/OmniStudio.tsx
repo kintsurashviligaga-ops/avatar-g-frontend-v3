@@ -4654,24 +4654,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     void audioEl.play().catch(() => {}); // primes playback permission within the gesture (must NOT be awaited)
 
     setSpeakingIdx(i);
-    setSpeakPhase('loading'); // spinner while eleven_v3 synthesises the cloned voice
+    setSpeakPhase('loading'); // spinner while Gemini synthesises the native voice
 
-    // CHUNKED read-aloud: long replies were getting cut off because a single TTS
-    // request truncates. Split into sentence-sized chunks and synthesise + play
-    // them back-to-back (eleven_v3 cloned Georgian voice each time), so the WHOLE
-    // message is read. The next chunk is pre-fetched while the current one plays.
+    // CHUNKED read-aloud: split into sentence-sized chunks and synthesise + play them back-to-back so
+    // the WHOLE message is read and the FIRST sentence starts fast (the next chunk is pre-fetched while
+    // the current one plays). Now on Gemini NATIVE audio (/api/tts/gemini) — no ElevenLabs, no lag, and
+    // it no longer stops after one word.
     const chunks = chunkForTts(text);
     if (!chunks.length) { setSpeakingIdx(null); setSpeakPhase(null); return; }
 
     const synth = async (chunk: string): Promise<string | null> => {
       try {
-        const res = await fetch('/api/elevenlabs/tts', {
+        const res = await fetch('/api/tts/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: chunk, locale }),
-          // Master Contract V17 — bound the request so a HUNG TTS socket can't keep the read-aloud
-          // spinner up indefinitely; on timeout the fetch aborts → null → the loop clears/continues.
-          signal: AbortSignal.timeout(15_000),
+          // Bound the request so a HUNG TTS call can't keep the read-aloud spinner up indefinitely; on
+          // timeout the fetch aborts → null → the loop clears/continues.
+          signal: AbortSignal.timeout(25_000),
         });
         if (!res.ok) return null;
         return URL.createObjectURL(await res.blob());
