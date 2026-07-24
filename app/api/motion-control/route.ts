@@ -10,7 +10,8 @@
  * which finalizes (re-host + optional music) once Kling succeeds.
  */
 import 'server-only';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import sharp from 'sharp';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
@@ -54,6 +55,7 @@ async function normalizeStartImage(src: string, userId: string): Promise<string>
 export async function POST(req: Request) {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const rl = await checkRateLimit(req as NextRequest, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // paid Kling submit
   if (!klingConfigured()) return NextResponse.json({ error: 'video engine not configured' }, { status: 503 });
 
   const body = (await req.json().catch(() => null)) as {
