@@ -4,8 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { buildAgentGVapiAssistantConfig } from '@/lib/agent-g-voice-config';
+import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
 import { structuredLog } from '@/lib/logger';
-import { createServiceRoleClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
 import { MINIMUM_CREDITS_TO_START_CALL, hasMinimumVoiceCredits } from '@/lib/voice/credits';
 import { isValidGeorgianMobile, normalizePhoneNumber } from '@/lib/voice/phone';
 import { upsertVoiceCallByVapiId } from '@/lib/voice/repository';
@@ -15,7 +16,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const requestSchema = z.object({
-  userId: z.string().min(1),
   phoneNumber: z.string().optional(),
   reason: z.string().max(400).optional(),
   savePhone: z.boolean().optional(),
@@ -54,18 +54,29 @@ function mapCallStatus(status: string): 'initiated' | 'ringing' | 'active' | 'en
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate-limit a cost-bearing action: each call can create a PAID Vapi outbound call and write a
+    // voice_calls row. Mirror the EXPENSIVE cap already on the sibling web-token / voice/live routes.
+    const limited = await checkRateLimit(request, RATE_LIMITS.EXPENSIVE);
+    if (limited) return limited;
+
+    // Authenticate the CALLER via their session — NEVER a `userId` from the request body. The prior
+    // version trusted a body `userId` and only checked that the account EXISTED (admin.getUserById), so
+    // any anonymous caller could dial ANOTHER user's saved phone number, burn their credits, and read
+    // back the victim's balance (leaked in the 402 `current`) — the same IDOR class fixed on web-token.
+    // Deriving the principal from requireUser() closes it; the body no longer carries a userId.
+    let userId: string;
+    try {
+      userId = (await requireUser()).id;
+    } catch {
+      return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+    }
+
     const payload = requestSchema.safeParse(await request.json());
     if (!payload.success) {
       return NextResponse.json({ error: 'invalid_payload' }, { status: 400 });
     }
 
-    const { userId } = payload.data;
     const supabase = createServiceRoleClient();
-
-    const userResult = await supabase.auth.admin.getUserById(userId);
-    if (userResult.error || !userResult.data.user) {
-      return NextResponse.json({ error: 'user_not_found' }, { status: 404 });
-    }
 
     const creditsBalance = await getCreditsBalance(userId);
     if (!hasMinimumVoiceCredits(creditsBalance)) {

@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { generateChannelReply } from '@/lib/ai/channelBridge';
+import { verifyTwilioRequest } from '@/lib/voice/twilio-signature';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,34 @@ function normalize(v: string | null | undefined): string {
   return String(v || '').trim();
 }
 
-function verifyTwilioSignature(req: Request, _body: string): boolean {
+/**
+ * Reconstruct the EXACT public URL Twilio signed. Twilio computes its signature over the webhook URL it
+ * was configured to POST to, but behind the Vercel proxy `req.url` carries an internal deployment host —
+ * so we rebuild from the forwarded public host (what the client actually hit), falling back to an
+ * explicitly configured public origin, then to the raw request URL. Path + query are preserved because
+ * both are part of the signed string.
+ *
+ * Using the forwarded host is safe for verification: a spoofed host can only make a *legitimate* Twilio
+ * request fail to verify — it can never forge a passing signature, since that still requires the auth token.
+ */
+function reconstructPublicUrl(req: Request): string {
+  const requestUrl = new URL(req.url);
+  const forwardedHost = normalize((req.headers.get('x-forwarded-host') || req.headers.get('host') || '').split(',')[0]);
+
+  if (forwardedHost) {
+    const proto = normalize((req.headers.get('x-forwarded-proto') || '').split(',')[0]) || 'https';
+    return `${proto}://${forwardedHost}${requestUrl.pathname}${requestUrl.search}`;
+  }
+
+  const configured = normalize(process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL).replace(/\/$/, '');
+  if (configured) {
+    return `${configured}${requestUrl.pathname}${requestUrl.search}`;
+  }
+
+  return requestUrl.toString();
+}
+
+function verifyTwilioSignature(req: Request, body: string): boolean {
   const authToken = normalize(process.env.TWILIO_AUTH_TOKEN);
   // FAIL CLOSED when unconfigured. This route drives a PAID LLM (generateChannelReply), so an open
   // endpoint is an unauthenticated compute drain: anyone POSTing a `SpeechResult` burns provider tokens.
@@ -22,11 +50,13 @@ function verifyTwilioSignature(req: Request, _body: string): boolean {
   // stays effectively inert until telephony is properly provisioned) — previously this returned `true`,
   // leaving the endpoint open to the public.
   if (!authToken) return false;
+
+  // Full HMAC-SHA1 verification: base64(HMAC-SHA1(authToken, publicUrl + sorted POST params)), compared
+  // constant-time against the x-twilio-signature header. Previously we only checked the header EXISTED,
+  // which any caller could satisfy with an arbitrary string.
   const signature = req.headers.get('x-twilio-signature');
-  if (!signature) return false;
-  // TODO: upgrade to full HMAC-SHA1 verification (URL + sorted params, base64, constant-time compare)
-  // once the request URL behind the Vercel proxy is resolved reliably. Until then we require the header.
-  return Boolean(signature);
+  const params: Array<[string, string]> = [...new URLSearchParams(body).entries()];
+  return verifyTwilioRequest(authToken, signature, reconstructPublicUrl(req), params);
 }
 
 export async function POST(req: Request): Promise<Response> {

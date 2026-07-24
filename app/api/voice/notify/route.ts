@@ -34,6 +34,16 @@ async function getCreditsBalance(userId: string): Promise<number> {
 
 export async function POST(request: NextRequest) {
   try {
+    // Server-to-server only. This route reads a user's saved phone + credits and can place a PAID Vapi
+    // outbound call, all keyed off a body `userId` — with no user session (it is meant to be invoked by a
+    // backend worker on job completion). Gate it with the shared internal worker token, matching the
+    // agent-g/calls/* + growth/* worker sub-routes. FAIL-CLOSED: with WORKER_INTERNAL_TOKEN unset the
+    // route rejects every request — previously it was fully anonymous (unauth PII leak + paid-call trigger).
+    const internalToken = request.headers.get('x-internal-worker-token');
+    if (!process.env.WORKER_INTERNAL_TOKEN || internalToken !== process.env.WORKER_INTERNAL_TOKEN) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
     const payload = requestSchema.safeParse(await request.json());
     if (!payload.success) {
       return NextResponse.json({ error: 'invalid_payload' }, { status: 400 });
