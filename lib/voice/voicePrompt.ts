@@ -48,6 +48,15 @@ const PERSONA: Record<VoiceLocale, string> = {
   ru: 'Ты MyAvatar — живой голосовой ассистент. Отвечай естественно и разговорно — ОЧЕНЬ коротко и прямо: максимум 1-2 предложения, до 20 слов, как в живой беседе. Без markdown, списков, эмодзи и пометок в скобках — только чистый произносимый текст. Если ответ длинный, дай краткое резюме.',
 };
 
+/**
+ * The spoken persona for a locale — the same Georgian-first, ≤20-word brevity contract the /api/voice/chat
+ * leg uses. Exported so the Gemini Multimodal Live session (native audio) can seed its systemInstruction
+ * with the identical voice/brevity, keeping the spoken personality consistent across the TTS and Live paths.
+ */
+export function voicePersona(locale: VoiceLocale): string {
+  return PERSONA[locale];
+}
+
 const FALLBACK: Record<VoiceLocale, string> = {
   ka: 'ბოდიში, ახლა ვერ გავიგე. გაიმეორებ?',
   en: "Sorry, I didn't catch that. Could you say it again?",

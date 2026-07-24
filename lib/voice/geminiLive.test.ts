@@ -1,6 +1,6 @@
 import {
   buildSetupMessage, buildAudioMessage, buildVideoMessage, buildLiveUrl,
-  parseLiveServerEvents, DEFAULT_LIVE_MODEL,
+  parseLiveServerEvents, DEFAULT_LIVE_MODEL, GEMINI_LIVE_VOICES,
 } from './geminiLive';
 
 describe('geminiLive — pure wire-format builders/parser', () => {
@@ -16,6 +16,39 @@ describe('geminiLive — pure wire-format builders/parser', () => {
     expect(m.setup.model).toBe('models/x');
     expect(m.setup.systemInstruction.parts[0]!.text).toBe('Be Maia');
     expect(m.setup.generationConfig.responseModalities).toEqual(['TEXT']);
+  });
+
+  it('DEFAULT_LIVE_MODEL is a native-audio Live model (the retired 2.0-flash-live-001 must not return)', () => {
+    // Guards the "retired model → handshake fails" regression: the model must be a currently-served one.
+    expect(DEFAULT_LIVE_MODEL).toBe('models/gemini-2.5-flash-native-audio-latest');
+    expect(DEFAULT_LIVE_MODEL).not.toBe('models/gemini-2.0-flash-live-001');
+  });
+
+  it('GEMINI_LIVE_VOICES maps female/male to verified prebuilt voices', () => {
+    expect(GEMINI_LIVE_VOICES.female).toBe('Aoede');
+    expect(GEMINI_LIVE_VOICES.male).toBe('Charon');
+  });
+
+  it('buildSetupMessage emits speechConfig with the prebuilt voice when voiceName is set', () => {
+    const m = buildSetupMessage({ voiceName: 'Aoede' }) as { setup: { generationConfig: { speechConfig?: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } }; languageCode?: string } } } };
+    expect(m.setup.generationConfig.speechConfig?.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Aoede');
+    expect(m.setup.generationConfig.speechConfig?.languageCode).toBeUndefined();
+  });
+
+  it('buildSetupMessage adds languageCode to speechConfig only alongside a voiceName', () => {
+    const m = buildSetupMessage({ voiceName: 'Charon', languageCode: 'ka-GE' }) as { setup: { generationConfig: { speechConfig?: { languageCode?: string } } } };
+    expect(m.setup.generationConfig.speechConfig?.languageCode).toBe('ka-GE');
+  });
+
+  it('buildSetupMessage omits speechConfig entirely when no voiceName is given (default-voice path unchanged)', () => {
+    const m = buildSetupMessage({ systemInstruction: 'hi' }) as { setup: { generationConfig: Record<string, unknown> } };
+    expect('speechConfig' in m.setup.generationConfig).toBe(false);
+  });
+
+  it('buildSetupMessage round-trips a dated systemInstruction verbatim (date-injection contract)', () => {
+    const instr = "You are MyAvatar.\nToday's date is Friday, July 24, 2026.";
+    const m = buildSetupMessage({ systemInstruction: instr, voiceName: 'Aoede' }) as { setup: { systemInstruction: { parts: { text: string }[] } } };
+    expect(m.setup.systemInstruction.parts[0]!.text).toBe(instr);
   });
 
   it('buildAudioMessage / buildVideoMessage produce mediaChunks with correct mimeTypes', () => {
