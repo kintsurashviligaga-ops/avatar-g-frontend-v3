@@ -56,27 +56,37 @@ export async function webSearch(
 // Conservative heuristic: only obvious time-sensitive / factual-lookup queries
 // trigger a search, so everyday chat keeps its instant latency and search
 // credits aren't burned needlessly.
+// Only clearly time-sensitive / live-fact lookups trigger a search. Bare "how much" / "რამდენ" were
+// REMOVED: they fire on ordinary math and quantity questions ("2+2 რამდენია?", "how much is a cup") that
+// need NO web — the cost/price words below still catch genuine "how much does X cost" queries.
 const LIVE_INFO_EN =
-  /\b(latest|current(ly)?|today|tonight|now|recent(ly)?|this (week|month|year)|news|headline|price|cost|stock|crypto|rate|weather|forecast|score|results?|standings?|schedule|release date|when (is|does|will)|who (won|is the current)|how much|2024|2025|2026)\b/i;
+  /\b(latest|current(ly)?|today|tonight|recent(ly)?|this (week|month|year)|news|headline|stock price|crypto|exchange rate|weather|forecast|standings?|match (score|result)|release date|when (is|does|will)|who (won|is the current)|2024|2025|2026)\b/i;
 const LIVE_INFO_KA =
-  /(უახლეს|დღეს|ახლა|ამჟამ|ბოლო ამბ|ახალი ამბ|ამბები|ფას(ი|ები)|ღირ|კურსი|ამინდ|პროგნოზ|შედეგ|ანგარიშ|როდის (არის|გამო|იქნებ)|ვინ (მოიგ|არის)|რამდენ)/;
+  /(უახლეს|დღეს|ამჟამ|ბოლო ამბ|ახალი ამბ|ამბები|ფას(ი|ები)|რა ღირს|კურსი|ამინდ|პროგნოზ|(მატჩ|თამაშ|ჩემპიონატ).{0,20}(შედეგ|ანგარიშ)|როდის (არის|გამო|იქნებ)|ვინ (მოიგ|არის მოქმედი))/;
+
+// Pure arithmetic / equations — never a web lookup ("2+2", "15% of 200", "3*4=?").
+const PURE_MATH = /^[\d\s+\-*/=×÷.,()²³%^]+\??$/;
 
 /** True when the query looks like it needs fresh, up-to-date web information. */
 export function likelyNeedsWebSearch(query: string): boolean {
   const q = query.trim();
   if (q.length < 4) return false;
+  if (PURE_MATH.test(q)) return false;
   return LIVE_INFO_EN.test(q) || LIVE_INFO_KA.test(q);
 }
 
-/** Format search results as a system preamble the model can cite from. */
+/** Format search results as a system preamble. The results are BACKGROUND CONTEXT the model reads
+ *  silently — it must answer in clean, natural prose, NOT dump the links. Users kept seeing an ugly
+ *  "Sources: [1] https://…" wall (and even "2+2" got a "[1]"), which reads as nonsense in a chat/voice
+ *  assistant. So the instruction is the opposite of before: use the facts, cite NOTHING. */
 export function buildSearchPreamble(search: WebSearchResponse): string {
   const lines: string[] = [
-    'LIVE WEB SEARCH RESULTS — use these to answer with current, accurate facts.',
-    'Cite every source you rely on inline as a Markdown link, e.g. [1](https://…), and finish with a short "Sources:" list of the links you actually used. If the results do not answer the question, say so plainly.',
+    'BACKGROUND CONTEXT (live web search, for your reference only — the user does NOT see this):',
+    'Use these facts to answer with current, accurate information, in clean natural prose. Do NOT print a "Sources:" list, do NOT paste raw URLs, and do NOT add bracketed citation markers like [1] or [1](https://…). Just answer directly and conversationally, as if you already knew the facts. If the results do not answer the question, answer from your own knowledge without mentioning the search.',
   ];
-  if (search.answer) lines.push(`Quick summary from search: ${search.answer}`);
+  if (search.answer) lines.push(`Summary: ${search.answer}`);
   search.results.forEach((r, i) => {
-    lines.push(`[${i + 1}] ${r.title || r.url}\n${r.url}\n${r.content.slice(0, 600)}`);
+    lines.push(`(${i + 1}) ${r.title || r.url}\n${r.content.slice(0, 600)}`);
   });
   return lines.join('\n\n');
 }

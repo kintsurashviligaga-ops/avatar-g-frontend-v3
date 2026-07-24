@@ -14,12 +14,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Mic, MicOff, Paperclip, PhoneOff } from 'lucide-react';
 
-import { isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 import { GeminiLiveSession, GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { encodeMicChunk, decodePlaybackChunk } from '@/lib/voice/pcm';
 import { voicePersona, normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
-export const geminiLiveEnabled = (): boolean => isTruthyFlag(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
+// Native Gemini Live is the DEFAULT voice now (live-validated) — ON unless NEXT_PUBLIC_GEMINI_LIVE_ENABLED
+// is explicitly set falsy ('0'|'false'|'no'|'off'), which reverts to the ElevenLabs VoiceConversation.
+export const geminiLiveEnabled = (): boolean => isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 
 type Status = 'connecting' | 'live' | 'speaking' | 'error' | 'closed';
 
