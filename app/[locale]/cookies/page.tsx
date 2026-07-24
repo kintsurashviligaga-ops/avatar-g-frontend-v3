@@ -1,4 +1,13 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+import { localeAlternates } from '@/lib/seo/hreflang';
+
+// Iteration 2 — DISTINCT localized title (was inheriting the homepage title) + per-route hreflang/self-canonical.
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  return { title: copy[lang].title, alternates: localeAlternates(locale, '/cookies') };
+}
 
 const copy = {
   ka: {

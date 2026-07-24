@@ -13,7 +13,9 @@ import { publicEnv } from "@/lib/env/public";
  * `/dashboard/billing` route (it 404s), so it is intentionally omitted.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
+  // strip trailing slash(es) so a base like "https://myavatar.ge/" can't double the slash in every entry
+  // (matches lib/seo/site.ts SITE_URL, which hreflang.ts mirrors — the two hreflang sources must agree).
+  const baseUrl = (publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge").replace(/\/+$/, "");
   const now = new Date();
   const locales = ['ka', 'en', 'ru'] as const;
 

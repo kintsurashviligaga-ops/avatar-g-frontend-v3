@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getLocalizedMeta, getAgentIdForService } from '@/lib/services/metadata';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { serviceSchema, breadcrumbSchema } from '@/lib/seo/schema';
+import { localeAlternates } from '@/lib/seo/hreflang';
 import ServicePageClient from './ServicePageClient';
 
 /** Localized "Services" breadcrumb crumb (leaf uses the service's own headline). */
@@ -58,7 +59,9 @@ export async function generateMetadata({ params }: ServiceDetailPageProps): Prom
     title: meta.headline,
     description: meta.description,
     keywords: meta.features,
-    alternates: { canonical },
+    // Iteration 2 — add the hreflang `languages` cluster (was canonical-only → the in-page hreflang fell
+    // back to the [locale] layout's homepage cluster, pointing every leaf at the locale ROOT).
+    alternates: localeAlternates(locale, `/services/${slug}`),
     openGraph: {
       type: 'website',
       title: meta.headline,
