@@ -53,9 +53,19 @@ const VOICE_MAP: Record<string, Record<string, string>> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * All HeyGen provider fetches share a request timeout so one stalled call can't pin the 300s lambda —
+ * the /v2/avatars list is documented (presenter route) as unusably slow (>40s). On timeout the caller's
+ * existing try/catch / !res.ok path fires → the same 502/fallback already produced. Additive.
+ */
+const HEYGEN_TIMEOUT_MS = 30_000;
+async function heygenFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(HEYGEN_TIMEOUT_MS) });
+}
+
 async function getVoiceId(apiKey: string, gender: string, language: string): Promise<string> {
   try {
-    const res = await fetch(`${HEYGEN_BASE}/v2/voices`, {
+    const res = await heygenFetch(`${HEYGEN_BASE}/v2/voices`, {
       headers: { 'X-Api-Key': apiKey },
     });
     if (!res.ok) throw new Error('voices list failed');
@@ -73,7 +83,7 @@ async function getVoiceId(apiKey: string, gender: string, language: string): Pro
 }
 
 async function getFirstStockAvatar(apiKey: string): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v2/avatars`, {
+  const res = await heygenFetch(`${HEYGEN_BASE}/v2/avatars`, {
     headers: { 'X-Api-Key': apiKey },
   });
   if (!res.ok) throw new Error(`HeyGen avatars list failed: ${res.status}`);
@@ -86,6 +96,8 @@ async function getFirstStockAvatar(apiKey: string): Promise<string> {
 async function uploadPhotoAsset(apiKey: string, photoBase64: string, mimeType: string): Promise<string> {
   // Strip data URL prefix if present
   const base64Data = (photoBase64.includes(',') ? photoBase64.split(',')[1] : photoBase64) ?? '';
+  // Cap the decoded upload so a huge payload can't OOM the lambda (real selfies are well under ~9MB).
+  if (base64Data.length > 12_000_000) throw new Error('photo too large (max ~9MB)');
   const binaryData = Buffer.from(base64Data, 'base64');
   const uint8 = new Uint8Array(binaryData.buffer, binaryData.byteOffset, binaryData.byteLength);
   const blob = new Blob([uint8], { type: mimeType || 'image/jpeg' });
@@ -94,7 +106,7 @@ async function uploadPhotoAsset(apiKey: string, photoBase64: string, mimeType: s
   formData.append('file', blob, 'avatar_photo.jpg');
   formData.append('type', 'image');
 
-  const res = await fetch(`${HEYGEN_BASE}/v1/asset`, {
+  const res = await heygenFetch(`${HEYGEN_BASE}/v1/asset`, {
     method: 'POST',
     headers: { 'X-Api-Key': apiKey },
     body: formData,
@@ -112,7 +124,7 @@ async function uploadPhotoAsset(apiKey: string, photoBase64: string, mimeType: s
 }
 
 async function createTalkingPhoto(apiKey: string, assetId: string): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v1/talking_photo`, {
+  const res = await heygenFetch(`${HEYGEN_BASE}/v1/talking_photo`, {
     method: 'POST',
     headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_asset_id: assetId }),
@@ -137,7 +149,7 @@ async function createVideoWithTalkingPhoto(
   dimension: { width: number; height: number },
   talkingPhotoStyle: string,
 ): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+  const res = await heygenFetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST',
     headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -175,7 +187,7 @@ async function createVideoWithStockAvatar(
   dimension: { width: number; height: number },
   avatarStyle: string,
 ): Promise<string> {
-  const res = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+  const res = await heygenFetch(`${HEYGEN_BASE}/v2/video/generate`, {
     method: 'POST',
     headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -288,7 +300,7 @@ export async function GET(req: NextRequest) {
   if (!videoId) return NextResponse.json({ error: 'videoId required' }, { status: 400 });
 
   try {
-    const res = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, {
+    const res = await heygenFetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, {
       headers: { 'X-Api-Key': apiKey },
     });
     if (!res.ok) throw new Error(`HeyGen status ${res.status}`);

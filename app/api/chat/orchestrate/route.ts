@@ -19,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { sanitizePrompt } from '@/lib/security/apiGuard';
+import { reportError } from '@/lib/observability/report-error';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
@@ -54,8 +55,8 @@ const orchestrateSchema = z.object({
   // ── Conversation ──
   history: z.array(z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string(),
-  })).default([]),
+    content: z.string().max(24000),
+  })).max(50).default([]),
 
   // ── Generation options ──
   selectedOptions: z.record(z.string()).optional(),
@@ -289,6 +290,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(response);
   } catch (error) {
     console.error('[Orchestrate Error]', error);
+    // Surface the core chat endpoint's failures to Sentry (was console-only → invisible). Non-blocking:
+    // reportError never throws, so the localized throttle/error responses below are unaffected.
+    reportError(error, { route: 'chat.orchestrate' });
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     // Detect throttle / quota errors

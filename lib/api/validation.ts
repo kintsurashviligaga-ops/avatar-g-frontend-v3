@@ -175,7 +175,7 @@ export const MusicTrackRequestSchema = z.object({
   genre: z.string().max(CONSTRAINTS.PARAM_MAX_LENGTH).optional(),
   mood: z.string().max(CONSTRAINTS.PARAM_MAX_LENGTH).optional(),
   language: z.enum(['ka', 'en', 'ru', 'instrumental']).optional().default('ka'),
-  style_tags: z.array(z.string().max(CONSTRAINTS.PARAM_MAX_LENGTH)).optional().default([]),
+  style_tags: z.array(z.string().max(CONSTRAINTS.PARAM_MAX_LENGTH)).max(20).optional().default([]),
   use_custom_vocals: z.boolean().optional().default(false),
   voice_slots: z.array(z.enum(['A', 'B', 'C'])).optional().default(['A']),
   avatar_id: z.string().uuid().optional(),

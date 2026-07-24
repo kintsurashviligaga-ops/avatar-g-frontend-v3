@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
               model: MODEL, max_tokens: 600,
               system: buildImageDirectorSystemPrompt(),
               messages: [{ role: 'user', content: `Brief: "${prompt}". Return the JSON now.` }],
-            });
+            }, { timeout: 30_000 }); // bound the directive call; catch below keeps the deterministic fallback
             const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
             const parsed = extractJson(text);
             if (parsed) directive = normalizeImageDirective(parsed, prompt);
@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
         const res = await fetch(`${origin}/api/replicate/image`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: directive.prompt, quality: 'standard', ratio: directive.ratio }),
+          signal: AbortSignal.timeout(30_000), // hung worker → outer catch → refund
         });
         if (!res.ok) { emit({ stage: 'failed', error: `worker_${res.status}` }); return; }
         const data = await res.json() as { url?: string; imageUrl?: string; output?: string[]; predictionId?: string; error?: string };
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
           for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 3000));
             emit({ stage: 'dispatching', pct: Math.min(90, 50 + i * 2), ticker: `[Rendering · ${(i + 1) * 3}s]` });
-            const poll = await fetch(`${origin}/api/replicate/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predictionId: data.predictionId }) }).catch(() => null);
+            const poll = await fetch(`${origin}/api/replicate/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predictionId: data.predictionId }), signal: AbortSignal.timeout(20_000) }).catch(() => null);
             if (!poll || !poll.ok) continue;
             const pd = await poll.json().catch(() => ({})) as { url?: string; output?: string[]; status?: string; error?: string };
             const u = pd.url || pd.output?.[0];
