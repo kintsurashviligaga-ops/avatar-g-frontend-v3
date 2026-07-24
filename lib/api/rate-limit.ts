@@ -109,6 +109,9 @@ export const RATE_LIMITS = {
   READ:      { maxRequests: 100, windowMs: 60_000,       keyPrefix: 'rl:read'  } as const,
   WRITE:     { maxRequests: 20,  windowMs: 60_000,       keyPrefix: 'rl:write' } as const,
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
+  // Voice-mode ephemeral-token mint: already gated by requireUser + a >=10-credit check, so a legit user
+  // reconnecting / toggling the voice / re-opening the call must not hit a "Too many requests" wall at 5.
+  VOICE_TOKEN:{ maxRequests: 15,  windowMs: 60_000,       keyPrefix: 'rl:voice' } as const,
   // Storyboard preview = ONE logical generation that fans out into many quick
   // server calls (plan + per-scene frame stream + retries + re-rolls). Treating
   // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This

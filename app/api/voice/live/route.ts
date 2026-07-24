@@ -59,8 +59,9 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
     }
-    // ── Gate 3: rate limit a cost-bearing mint ───────────────────────────────
-    const limited = await checkRateLimit(request, RATE_LIMITS.EXPENSIVE);
+    // ── Gate 3: rate limit a cost-bearing mint (forgiving VOICE_TOKEN limit — reconnects/voice-toggle
+    // must not 429; the auth + credit gates below are the real abuse guards) ──
+    const limited = await checkRateLimit(request, RATE_LIMITS.VOICE_TOKEN);
     if (limited) return limited;
 
     // ── Gate 4: authenticate the CALLER via their session (never a body userId) ──

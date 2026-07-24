@@ -269,17 +269,21 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
-      <span className="mb-6 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.title}</span>
-
-      {/* Camera preview (hidden until on) + frame-capture canvas (never displayed) */}
-      <video ref={videoRef} playsInline muted className={`mb-4 max-h-[38dvh] rounded-2xl ${camOn ? 'block' : 'hidden'}`} />
+      {/* FULL-SCREEN camera (like the Gemini app): when on, the video fills the whole screen behind the
+          floating controls, with a scrim so the label stays readable. Off → hidden, and the waveform
+          takes center stage instead. The frame-capture canvas is never displayed. */}
+      <video ref={videoRef} playsInline muted
+        className={camOn ? 'absolute inset-0 z-0 h-full w-full object-cover' : 'hidden'} />
+      {camOn && <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Frequency waveform */}
-      <canvas ref={vizCanvasRef} width={320} height={120} className="mb-6 w-[min(80vw,320px)]" />
+      <span className="relative z-10 mb-6 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.title}</span>
 
-      <span className="mb-1 text-[14px] font-medium text-app-text">{label}</span>
-      {err && <span className="mb-2 max-w-xs px-6 text-center text-[12px] text-app-danger">{err}</span>}
+      {/* Frequency waveform — hidden while the full-screen camera is showing. */}
+      <canvas ref={vizCanvasRef} width={320} height={120} className={`relative z-10 mb-6 w-[min(80vw,320px)] ${camOn ? 'hidden' : ''}`} />
+
+      <span className="relative z-10 mb-1 text-[14px] font-medium text-app-text">{label}</span>
+      {err && <span className="relative z-10 mb-2 max-w-xs px-6 text-center text-[12px] text-app-danger">{err}</span>}
 
       {/* Sticky premium control bar */}
       <div
