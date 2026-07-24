@@ -62,25 +62,35 @@ export async function POST(req: NextRequest) {
 
   const voiceName = GEMINI_LIVE_VOICES[body.gender === 'male' ? 'male' : 'female'];
 
+  // "Read aloud verbatim:" is a DIRECTIVE (not spoken — verified by byte-for-byte audio-length
+  // comparison) that stops the TTS model from trying to ANSWER question-like text. Without it, input such
+  // as "გამარჯობა, როგორ ხარ?" makes the model attempt a reply and return HTTP 400 ("Model tried to
+  // generate text, but it should only be used for TTS"). Even with it, the preview TTS model very
+  // occasionally still slips into answer-mode, so we retry once.
+  const callGemini = async (): Promise<Response> =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Read aloud verbatim: ${text}` }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+        },
+      }),
+      signal: AbortSignal.timeout(25_000),
+    });
+
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text }] }],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
-          },
-        }),
-        signal: AbortSignal.timeout(25_000),
-      },
-    );
+    let res = await callGemini();
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      console.error('[tts/gemini] upstream error', res.status, detail.slice(0, 200));
+      console.warn('[tts/gemini] upstream error (retrying once)', res.status, detail.slice(0, 160));
+      res = await callGemini(); // one retry — clears the occasional preview-model answer-mode slip
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error('[tts/gemini] upstream error (after retry)', res.status, detail.slice(0, 200));
       return NextResponse.json({ error: 'tts_failed', status: res.status }, { status: 502 });
     }
     const data = (await res.json().catch(() => null)) as
