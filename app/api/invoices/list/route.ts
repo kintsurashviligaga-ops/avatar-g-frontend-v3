@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(Number(searchParams?.get?.('limit') || '50'), 100);
-    const offset = Number(searchParams?.get?.('offset') || '0');
+    const limit = Math.min(Math.max(1, Number(searchParams?.get?.('limit') || '50') || 50), 100);
+    const offset = Math.max(0, Number(searchParams?.get?.('offset') || '0') || 0);
     const storeId = searchParams?.get?.('storeId'); // Optional: filter by store
     const role = searchParams?.get?.('role') || 'buyer'; // 'buyer' or 'seller'
 

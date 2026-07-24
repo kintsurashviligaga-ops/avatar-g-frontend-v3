@@ -68,9 +68,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Query parameters (url already defined above for health check)
-    const limit = Math.min(parseInt(url.searchParams?.get?.('limit') || '100'), 500);
-    const offset = parseInt(url.searchParams?.get?.('offset') || '0');
-    const sortBy = url.searchParams?.get?.('sort') || 'created_at'; // created_at, title, updated_at
+    const limit = Math.min(Math.max(1, parseInt(url.searchParams?.get?.('limit') || '100') || 100), 500);
+    const offset = Math.max(0, parseInt(url.searchParams?.get?.('offset') || '0') || 0);
+    // Allowlist the sort column — it flows straight into .order(); an arbitrary/NaN value would 500 the query.
+    const sortBy = ['created_at', 'title', 'updated_at'].includes(url.searchParams?.get?.('sort') || '') ? url.searchParams.get('sort')! : 'created_at';
     const sortDir = url.searchParams?.get?.('dir') || 'desc'; // asc, desc
 
     // Build query

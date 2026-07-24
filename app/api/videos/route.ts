@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Query parameters (url already defined above for health check)
-    const limit = Math.min(parseInt(url.searchParams?.get?.('limit') || '50'), 500);
-    const offset = parseInt(url.searchParams?.get?.('offset') || '0');
+    const limit = Math.min(Math.max(1, parseInt(url.searchParams?.get?.('limit') || '50') || 50), 500);
+    const offset = Math.max(0, parseInt(url.searchParams?.get?.('offset') || '0') || 0);
     const status = url.searchParams?.get?.('status');
     const favorites = (url.searchParams?.get?.('favorites') ?? '') === 'true';
 

@@ -36,11 +36,11 @@ async function normalizeStartImage(src: string, userId: string): Promise<string>
       const b64 = src.includes(',') ? src.split(',')[1] ?? '' : '';
       if (b64) buf = Buffer.from(b64, 'base64');
     } else if (/^https?:\/\//i.test(src)) {
-      const r = await fetch(src);
+      const r = await fetch(src, { signal: AbortSignal.timeout(20_000) });
       if (r.ok) buf = Buffer.from(await r.arrayBuffer());
     } else {
       const signed = await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', src, 3600);
-      if (signed) { const r = await fetch(signed); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }
+      if (signed) { const r = await fetch(signed, { signal: AbortSignal.timeout(20_000) }); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }
     }
     if (!buf?.byteLength) return src;
     const fixed = await sharp(buf).rotate().jpeg({ quality: 92 }).toBuffer();
