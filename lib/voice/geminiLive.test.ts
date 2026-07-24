@@ -18,6 +18,11 @@ describe('geminiLive — pure wire-format builders/parser', () => {
     expect(m.setup.generationConfig.responseModalities).toEqual(['TEXT']);
   });
 
+  it('buildSetupMessage disables thinking (thinkingBudget 0) for low-latency voice', () => {
+    const m = buildSetupMessage({}) as { setup: { generationConfig: { thinkingConfig?: { thinkingBudget?: number } } } };
+    expect(m.setup.generationConfig.thinkingConfig?.thinkingBudget).toBe(0);
+  });
+
   it('DEFAULT_LIVE_MODEL is a native-audio Live model (the retired 2.0-flash-live-001 must not return)', () => {
     // Guards the "retired model → handshake fails" regression: the model must be a currently-served one.
     expect(DEFAULT_LIVE_MODEL).toBe('models/gemini-2.5-flash-native-audio-latest');

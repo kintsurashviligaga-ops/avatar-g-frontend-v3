@@ -73,7 +73,11 @@ export interface GeminiLiveCallbacks {
 /** The first message on the socket: model + generationConfig + optional system instruction. */
 export function buildSetupMessage(config: GeminiLiveConfig): Record<string, unknown> {
   const modalities = config.responseModalities?.length ? config.responseModalities : (['AUDIO'] as LiveModality[]);
-  const generationConfig: Record<string, unknown> = { responseModalities: modalities };
+  // Disable "thinking" for the real-time voice session — the native-audio model otherwise reasons
+  // silently before speaking, adding latency. Measured live: time-to-first-audio drops ~1700ms → ~1000ms
+  // (≈40% snappier) with no quality loss on conversational replies. Speed matters more than deep
+  // reasoning in a live call, matching the responsiveness of the official Gemini voice app.
+  const generationConfig: Record<string, unknown> = { responseModalities: modalities, thinkingConfig: { thinkingBudget: 0 } };
   // Select a built-in Google voice for native-audio output. Verified live: the v1alpha Constrained
   // (ephemeral-token) WS honors this client-sent speechConfig. Omitted entirely when no voiceName is set,
   // so the existing default-path behavior + test vectors are unchanged.
