@@ -46,6 +46,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // Core app / marketing pages, emitted per-locale at their canonical 200 URL.
   const coreSlugs: { slug: string; priority: number; changeFrequency: 'daily' | 'weekly' }[] = [
     { slug: 'pricing', priority: 0.9, changeFrequency: 'weekly' },
+    // The /services hub: full per-locale metadata + self-canonical + ItemList JSON-LD, internally linked —
+    // was absent while its 14 detail pages were listed. Its own 200 canonical belongs in the index.
+    { slug: 'services', priority: 0.85, changeFrequency: 'weekly' },
     { slug: 'dashboard', priority: 0.8, changeFrequency: 'daily' },
     { slug: 'chat', priority: 0.7, changeFrequency: 'daily' },
     { slug: 'agent', priority: 0.7, changeFrequency: 'weekly' },
@@ -76,8 +79,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }))
   );
 
-  // Legal / support — per locale so the App Store can resolve a localized URL.
-  const legalSlugs = ['terms', 'privacy', 'support', 'refund-policy'];
+  // Legal / support — per locale so the App Store can resolve a localized URL. `refund` (not the legacy
+  // `refund-policy`, which is a pure redirect) is the 200 canonical, per this file's own no-redirect rule.
+  const legalSlugs = ['terms', 'privacy', 'support', 'refund', 'cookies', 'licenses'];
   const legalPages = locales.flatMap(locale =>
     legalSlugs.map(slug => ({
       url: `${baseUrl}/${locale}/${slug}`,

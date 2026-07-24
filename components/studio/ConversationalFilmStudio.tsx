@@ -777,7 +777,13 @@ export function ConversationalFilmStudio({
       const res = await fetch('/api/credits/balance', { cache: 'no-store', credentials: 'include' });
       if (!res.ok) return;
       const json = (await res.json()) as { balance?: number | null };
-      if (typeof json?.balance === 'number') setBalanceGel(json.balance);
+      if (typeof json?.balance === 'number') {
+        setBalanceGel(json.balance);
+        // Broadcast so the OTHER surfaces' balance chips (ChatChrome shell) refresh — the flagship Film
+        // Studio previously updated only its LOCAL chip, so a spend here left the shell chip stale (read as
+        // "credits didn't deduct"). ChatChrome/OmniStudio already emit + listen for this same event.
+        try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* non-DOM env */ }
+      }
     } catch {
       /* fail-safe: leave null → chip shows 0.00 ₾ */
     }

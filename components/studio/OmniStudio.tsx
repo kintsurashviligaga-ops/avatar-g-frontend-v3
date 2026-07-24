@@ -34,7 +34,7 @@ import { MotionControlPanel } from './MotionControlPanel';
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
-import { usdFromGel } from '@/lib/billing/gel';
+import { formatWalletBalance } from '@/lib/billing/gel';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
@@ -7319,9 +7319,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             style={{ bottom: 'max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem))' }}
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
-            <span className="text-app-muted">💳 −{creditToast.credits} {creditsWord} (${usdFromGel(creditsToGel(creditToast.credits))})</span>
+            <span className="text-app-muted">💳 −{creditToast.credits} {creditsWord} ({formatWalletBalance(creditsToGel(creditToast.credits), locale)})</span>
             {creditToast.balanceGel !== null && (
-              <span className="text-app-muted">💰 {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> (${usdFromGel(creditToast.balanceGel)})</span>
+              <span className="text-app-muted">💰 {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> ({formatWalletBalance(creditToast.balanceGel, locale)})</span>
             )}
           </div>
         );

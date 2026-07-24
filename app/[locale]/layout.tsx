@@ -9,7 +9,10 @@ import { PageTransitionWrapper } from "@/components/layout/PageTransitionWrapper
 import { AppProviders } from "@/components/providers/AppProviders";
 import HtmlLangSync from "@/components/i18n/HtmlLangSync";
 
-const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://avatar-g-frontend-v3.vercel.app";
+// Fallback aligned with the ROOT layout + app/sitemap.ts (both resolve to myavatar.ge). The previous
+// vercel.app fallback split the canonical/OG/hreflang domain on exactly the [locale] subtree that emits
+// per-page alternates whenever NEXT_PUBLIC_APP_URL was unset. Fallback only — a no-op when the env is set.
+const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
 
 // ISR (Iteration 3): the previous `force-dynamic` + `revalidate=0` forced `Cache-Control: no-store` on
 // the ENTIRE locale subtree — even the user-agnostic, build-prerendered marketing/pricing pages — so

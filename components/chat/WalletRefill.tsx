@@ -49,6 +49,9 @@ export function WalletRefillModal({
   // secretless /api/checkout/capabilities (true only when BOG creds AND the callback public key are set,
   // so the button never appears unless a payment can actually be credited). Fail-soft → Stripe only.
   const [bogAvailable, setBogAvailable] = useState(false);
+  // Stripe rail — optimistic default true (the historical rail); the probe corrects it. Only when BOTH
+  // rails are confirmed down do we disable the buttons rather than let a click 503.
+  const [stripeAvailable, setStripeAvailable] = useState(true);
   const obsidian = variant === 'obsidian';
 
   useEffect(() => {
@@ -56,10 +59,14 @@ export function WalletRefillModal({
     let alive = true;
     fetch('/api/checkout/capabilities', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { bog?: boolean } | null) => { if (alive && j) setBogAvailable(Boolean(j.bog)); })
-      .catch(() => { /* fail-soft — default to the Stripe rail */ });
+      .then((j: { bog?: boolean; stripe?: boolean } | null) => {
+        if (alive && j) { setBogAvailable(Boolean(j.bog)); setStripeAvailable(Boolean(j.stripe)); }
+      })
+      .catch(() => { /* fail-soft — keep the optimistic Stripe default */ });
     return () => { alive = false; };
   }, [open]);
+
+  const noRail = !bogAvailable && !stripeAvailable;
 
   // Skin map — the 'theme' branch keeps the exact original token classes so the
   // chat surfaces are untouched; 'obsidian' hardcodes the 3-tone studio palette.
@@ -171,7 +178,7 @@ export function WalletRefillModal({
                   key={tier}
                   type="button"
                   onClick={() => void charge(tier)}
-                  disabled={busy !== null}
+                  disabled={busy !== null || noRail}
                   className={isPower ? skin.tierPower : skin.tier}
                 >
                   {busy === tier ? <Loader2 size={18} className="animate-spin" /> : `${tier} ₾`}
@@ -191,10 +198,12 @@ export function WalletRefillModal({
           </div>
 
           {error && <p className={`mt-3 text-[12px] leading-relaxed ${skin.error}`}>{error}</p>}
-          <p className={`mt-3 text-[11px] leading-relaxed ${skin.note}`}>
-            {bogAvailable
-              ? (locale === 'ka' ? 'უსაფრთხო გადახდა ბარათით — Bank of Georgia (₾).' : locale === 'ru' ? 'Безопасная оплата картой — Bank of Georgia (₾).' : 'Secure card payment via Bank of Georgia (₾).')
-              : (locale === 'ka' ? 'გადახდა მუშავდება Stripe-ით (₾ / GEL).' : locale === 'ru' ? 'Оплата через Stripe (₾ / GEL).' : 'Secure checkout via Stripe (₾ / GEL).')}
+          <p className={`mt-3 text-[11px] leading-relaxed ${noRail ? skin.error : skin.note}`}>
+            {noRail
+              ? (locale === 'ka' ? 'გადახდა დროებით მიუწვდომელია. სცადე მოგვიანებით.' : locale === 'ru' ? 'Оплата временно недоступна. Попробуйте позже.' : 'Payment is temporarily unavailable. Please try again later.')
+              : bogAvailable
+                ? (locale === 'ka' ? 'უსაფრთხო გადახდა ბარათით — Bank of Georgia (₾).' : locale === 'ru' ? 'Безопасная оплата картой — Bank of Georgia (₾).' : 'Secure card payment via Bank of Georgia (₾).')
+                : (locale === 'ka' ? 'გადახდა მუშავდება Stripe-ით (₾ / GEL).' : locale === 'ru' ? 'Оплата через Stripe (₾ / GEL).' : 'Secure checkout via Stripe (₾ / GEL).')}
           </p>
         </motion.div>
       </motion.div>

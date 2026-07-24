@@ -298,6 +298,33 @@ export function describeOAuthError(
   }
 }
 
+/**
+ * Localize the common Supabase Auth error strings (they arrive in English) so a ka/ru user sees their own
+ * language on the sign-in / sign-up / reset forms instead of raw "Invalid login credentials". Maps the
+ * known cases specifically; an unrecognized error falls back to a localized generic (never a raw English
+ * string). Mirrors describeOAuthError.
+ */
+export function describeAuthError(rawMessage: string | null | undefined, locale: string = 'en'): string {
+  const raw = (rawMessage || '').toLowerCase();
+  const pick = (ka: string, ru: string, en: string) => (locale === 'ka' ? ka : locale === 'ru' ? ru : en);
+
+  if (raw.includes('invalid login credentials') || raw.includes('invalid credentials'))
+    return pick('ელ. ფოსტა ან პაროლი არასწორია.', 'Неверный email или пароль.', 'Invalid email or password.');
+  if (raw.includes('already registered') || raw.includes('already been registered') || raw.includes('user already exists'))
+    return pick('ეს ელ. ფოსტა უკვე რეგისტრირებულია. გაიარეთ ავტორიზაცია.', 'Этот email уже зарегистрирован. Войдите в аккаунт.', 'This email is already registered. Please sign in.');
+  if (raw.includes('email not confirmed'))
+    return pick('ელ. ფოსტა არ არის დადასტურებული. შეამოწმეთ ინბოქსი.', 'Email не подтверждён. Проверьте почту.', 'Email not confirmed. Please check your inbox.');
+  if (raw.includes('password should be at least') || raw.includes('password is too short') || raw.includes('weak password'))
+    return pick('პაროლი ძალიან მოკლეა (მინ. 6 სიმბოლო).', 'Пароль слишком короткий (мин. 6 символов).', 'Password is too short (min. 6 characters).');
+  if (raw.includes('rate limit') || raw.includes('too many'))
+    return pick('ბევრი მცდელობა. სცადეთ მოგვიანებით.', 'Слишком много попыток. Попробуйте позже.', 'Too many attempts. Please try again later.');
+  if (raw.includes('unable to validate email') || raw.includes('invalid email'))
+    return pick('ელ. ფოსტის მისამართი არასწორია.', 'Неверный адрес электронной почты.', 'Please enter a valid email address.');
+
+  // Unknown → localized generic; never leak the raw English message to the user.
+  return pick('რაღაც ვერ მოხერხდა. სცადეთ თავიდან.', 'Что-то пошло не так. Попробуйте снова.', 'Something went wrong. Please try again.');
+}
+
 // ─── Provider Icons ──────────────────────────────────────────────────────────
 
 function AppleIcon() {
@@ -547,7 +574,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         );
 
         if (error) {
-          setError(error.message);
+          setError(describeAuthError(error.message, locale));
         } else {
           setSuccessKind('signup');
           setSuccess(true);
@@ -562,7 +589,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         );
 
         if (error) {
-          setError(error.message);
+          setError(describeAuthError(error.message, locale));
         } else {
           window.location.href = redirectTo;
           return;

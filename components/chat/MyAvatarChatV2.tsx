@@ -95,7 +95,7 @@ import {
 import Image from 'next/image';
 import { BalanceChip, WalletRefillModal } from '@/components/chat/WalletRefill';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { usdFromGel } from '@/lib/billing/gel';
+import { formatWalletBalance } from '@/lib/billing/gel';
 import { CameraModal } from '@/components/service-chat/CameraModal';
 import AuthModal from '@/components/chat/AuthModal';
 import type { ServiceChatAttachment } from '@/components/service-chat/types';
@@ -2762,7 +2762,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                 >
                   <Wallet size={16} className="text-app-muted" />
                   <span className="flex-1 text-left">{xc.balanceLabel}</span>
-                  <span className="text-[12px] font-semibold text-app-muted">{balanceGel === null ? '—' : `$${usdFromGel(balanceGel)}`}</span>
+                  <span className="text-[12px] font-semibold text-app-muted">{balanceGel === null ? '—' : formatWalletBalance(balanceGel, locale)}</span>
                 </button>
                 <button
                   onClick={() => { setHistoryOpen(false); setSettingsOpen(true); }}
@@ -2843,7 +2843,7 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
                         </span>
                         <div className="flex items-center gap-2.5">
                           <span className="text-[14px] font-semibold tabular-nums text-app-text">
-                            {balanceGel === null ? '—' : `$${usdFromGel(balanceGel)}`}
+                            {balanceGel === null ? '—' : formatWalletBalance(balanceGel, locale)}
                           </span>
                           <button
                             data-iap-external

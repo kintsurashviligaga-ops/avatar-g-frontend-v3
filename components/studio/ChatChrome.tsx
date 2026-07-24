@@ -293,7 +293,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     const tier = params.get('tier');
     const paidOk = topup === 'success' || tier === 'success';
     const paidFail = topup === 'failed';
-    const paidCancel = topup === 'canceled';
+    const paidCancel = topup === 'canceled' || tier === 'canceled';
     if (!paidOk && !paidFail && !paidCancel) return;
 
     let cleanup: (() => void) | undefined;
