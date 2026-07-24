@@ -6,7 +6,6 @@ import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
-import { webSearch, likelyNeedsWebSearch, buildSearchPreamble } from '@/lib/ai/webSearch';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -299,27 +298,16 @@ export async function POST(req: NextRequest) {
       // memory is best-effort — never block the chat
     }
 
-    // Best-effort live web search (#19). Grounds answers in up-to-date results
-    // when the query looks time-sensitive (or the client sets webSearch:true).
-    // Env-driven (TAVILY_API_KEY) — null without a key, so chat is unaffected.
-    let searchPreamble: string | null = null;
-    try {
-      const userText = extractLatestUserText(messages);
-      const wantSearch = body.webSearch === true || (userText ? likelyNeedsWebSearch(userText) : false);
-      if (userText && wantSearch) {
-        const search = await webSearch(userText);
-        if (search) searchPreamble = buildSearchPreamble(search);
-      }
-    } catch {
-      // never block chat on search
-    }
+    // Live web facts now come from OFFICIAL Google Search grounding (the googleSearch tool on the Gemini
+    // streamText call below), which the model invokes in real time — far more accurate than the old
+    // Tavily preamble, which is retired here to avoid a redundant second search + conflicting context.
 
     // Ground the model in the REAL current date/time (Tbilisi, UTC+4). Without this an
     // LLM has no clock and answers "what time is it?" with a "[current time]" placeholder.
     const nowTbilisi = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tbilisi', dateStyle: 'full', timeStyle: 'short' });
     const datePreamble = `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${nowTbilisi}. When the user asks the time, date, or day, answer using THIS exact value — never output a placeholder like "[current time]".`;
 
-    const effectiveSystem = [datePreamble, langDirective, profilePreamble, memoryPreamble, searchPreamble, SYSTEM_PROMPT]
+    const effectiveSystem = [datePreamble, langDirective, profilePreamble, memoryPreamble, SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n');
 
@@ -354,6 +342,14 @@ export async function POST(req: NextRequest) {
                 model: google(modelName),
                 system: effectiveSystem,
                 messages: modelMessages,
+                // OFFICIAL Google Search grounding — the model searches Google in real time when a
+                // question needs current or factual info, so answers about 2026 / live events are
+                // accurate instead of hallucinated from stale training data (matches the official
+                // Gemini app). The model decides when to search, so everyday chat stays instant.
+                // Cast: ai@6 and @ai-sdk/google@3 have a minor Tool inputSchema type skew (<{}> vs
+                // <never>); the provider-defined googleSearch tool is valid at runtime.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                tools: { google_search: google.tools.googleSearch({}) as any },
                 maxOutputTokens: 4096,
                 temperature: 0.7,
                 // Explicit nucleus + top-k sampling: broadens vocabulary and curbs cyclic
