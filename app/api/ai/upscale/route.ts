@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { upscaleImage } from '@/lib/ai/replicate';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -15,6 +16,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // anon-reachable: rate cap is the only abuse gate
   const body = (await req.json().catch(() => ({}))) as { imageUrl?: unknown; scale?: unknown };
   const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
   const scale: 2 | 4 = body.scale === 4 ? 4 : 2;
