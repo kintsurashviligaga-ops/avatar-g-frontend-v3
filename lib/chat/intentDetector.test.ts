@@ -87,4 +87,20 @@ describe('intentDetector — autonomous chat dispatch classification', () => {
       expect(wouldDispatch(q)).toBe(false);
     }
   });
+
+  // A photo-ANALYSIS ask that leads with the GENERIC verb გააკეთ ("do/make") used to match the image bank
+  // (0.82) — the visual_analysis bank missed the bare noun ანალიზი — so an attached photo was fed into a
+  // PAID img2img render instead of a vision description. These lock the classification + no-dispatch fix.
+  it('classifies Georgian photo-analysis as visual_analysis (never a paid image render)', () => {
+    expect(detectIntent('გააკეთე ფოტოს ანალიზი').intent).toBe('visual_analysis');
+    expect(detectIntent('გააკეთე ამ სურათის ანალიზი').intent).toBe('visual_analysis');
+    expect(detectIntent('აღწერე ეს ფოტო').intent).toBe('visual_analysis');
+    for (const q of ['გააკეთე ფოტოს ანალიზი', 'გააკეთე ამ სურათის ანალიზი', 'აღწერე ეს ფოტო']) {
+      expect(wouldDispatch(q)).toBe(false); // must NOT auto-spend a credit
+    }
+    // …while genuine Georgian generate commands are untouched by the analysis guard
+    expect(detectIntent('გამიკეთე სურათი მთის').intent).toBe('image_generation');
+    expect(detectIntent('დახატე ლომი').intent).toBe('image_generation');
+    expect(wouldDispatch('გამიკეთე სურათი მთის')).toBe(true);
+  });
 });

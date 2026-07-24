@@ -69,8 +69,11 @@ const RULES: IntentRule[] = [
       /\b3d\s*render/i,
       /\bგამოსახულება|изображение|плакат|постер/i,
       // Georgian: image/photo/drawing/portrait noun near a generate verb (either order). Catches
-      // "გამიკეთე სურათი", "დახატე კატა", "სურათი შემიქმენი".
-      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ|დაგენერირ|გამოსახ).{0,40}(სურათ|ფოტო|ნახატ|გამოსახ|პორტრეტ|ილუსტრაცი)/,
+      // "გამიკეთე სურათი", "დახატე კატა", "სურათი შემიქმენი". The negative lookahead keeps the GENERIC
+      // verbs (გააკეთ/გამიკეთ = "do/make") from hijacking an ANALYSIS/DESCRIPTION request such as
+      // "გააკეთე ფოტოს ანალიზი" (do an analysis of the photo) into a paid img2img render — those fall
+      // through to visual_analysis (see below) and the vision chat stream instead.
+      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ|დაგენერირ|გამოსახ)(?!.{0,40}(ანალიზ|აღწერ)).{0,40}(სურათ|ფოტო|ნახატ|გამოსახ|პორტრეტ|ილუსტრაცი)/,
       /(სურათ|ფოტო|ნახატ|პორტრეტ|ილუსტრაცი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ)/,
       /დახატ(ე|ავ)/,
     ],
@@ -139,7 +142,10 @@ const RULES: IntentRule[] = [
       /\bvisual\s*(analysis|audit|intel)/i,
       /\bblip\b/i,
       /\bbrand\s*audit\b/i,
-      /\banaliz|описа|აღწერ|გაანალიზ/i,
+      // Include the BARE Georgian nouns ანალიზ ("analysis") + დაათვალიერ ("look over/inspect") — not just
+      // the verb form გაანალიზ — so a photo-analysis ask outranks the image bank (0.83 > 0.82) and is NOT
+      // dispatched to a paid render. `ანალიზ` also subsumes `გაანალიზ`.
+      /\banaliz|описа|აღწერ|ანალიზ|დაათვალიერ|გაანალიზ/i,
     ],
   },
   // ── Workflow help ──────────────────────────────────────────────────
@@ -261,6 +267,11 @@ export function isGenerativeCommand(text: string): boolean {
   // "შემიქმენი ვიდეო", "დააგენერირე …").
   const leadsKa = /^\s*(გთხოვ\s+|თუ\s+შეიძლება\s+){0,2}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|გადამიღ|გადაიღ|შემიდგინ)/.test(s);
   if (!leadsLatin && !leadsKa) return false;
+  // EXCLUDE a Georgian ANALYSIS/DESCRIPTION request that only leads with a GENERIC verb (გააკეთ/გამიკეთ =
+  // "do/make"): "გააკეთე ფოტოს ანალიზი" / "აღწერე ეს ფოტო" must go to the vision chat stream, never a paid
+  // render. A message carrying an analysis noun (ანალიზ/აღწერ) with NO generation-specific verb
+  // (დახატ/დააგენერირ/შემიქმენ/გამოსახ) is not a generate command.
+  if (leadsKa && /(ანალიზ|აღწერ)/.test(s) && !/(დახატ|დამიხატ|დააგენერირ|დაგენერირ|დამიგენერირ|შემიქმენ|შექმენ|გამოსახ|გამომისახ)/.test(s)) return false;
   // EXCLUDE an EDIT of an EXISTING asset ("make MY/THIS song sound better") — a mixing request with no
   // source in chat → falls to chat. A FRESH generate with a quality descriptor ("make A poster that
   // looks better", "…make it look better than the last one") uses an article/pronoun, not a possessive,

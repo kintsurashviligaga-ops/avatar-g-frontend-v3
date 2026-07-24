@@ -109,9 +109,15 @@ export const RATE_LIMITS = {
   READ:      { maxRequests: 100, windowMs: 60_000,       keyPrefix: 'rl:read'  } as const,
   WRITE:     { maxRequests: 20,  windowMs: 60_000,       keyPrefix: 'rl:write' } as const,
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
-  // Voice-mode ephemeral-token mint: already gated by requireUser + a >=10-credit check, so a legit user
-  // reconnecting / toggling the voice / re-opening the call must not hit a "Too many requests" wall at 5.
+  // Voice-mode ephemeral-token mint (IP-keyed burst guard). Voice is intentionally FREE for signed-in
+  // users (no credit gate), so this is deliberately forgiving — a legit user reconnecting / toggling the
+  // ♀/♂ voice (each swap re-mints) / re-opening the call must not hit a "Too many requests" wall at 5.
+  // Per-ACCOUNT cost is bounded separately by VOICE_TOKEN_USER (keyed on userId, defeats IP rotation).
   VOICE_TOKEN:{ maxRequests: 15,  windowMs: 60_000,       keyPrefix: 'rl:voice' } as const,
+  // Per-USER daily ceiling on the cost-bearing Live mint, keyed on the authenticated userId (NOT IP), so
+  // rotating IPs across throwaway auto-confirmed signups can't mint unbounded 30-min native-audio sessions.
+  // Generous (≈ a whole day of heavy real use incl. voice-swaps) — it caps abuse, not legitimate testing.
+  VOICE_TOKEN_USER:{ maxRequests: 200, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:voice:user' } as const,
   // Storyboard preview = ONE logical generation that fans out into many quick
   // server calls (plan + per-scene frame stream + retries + re-rolls). Treating
   // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This
@@ -145,12 +151,8 @@ function getClientKey(req: NextRequest, prefix: string): string {
   return `${prefix}:${ip}`;
 }
 
-export async function checkRateLimit(
-  req: NextRequest,
-  config: RateLimitConfig = RATE_LIMITS.READ
-): Promise<NextResponse | null> {
-  const key = getClientKey(req, config.keyPrefix ?? 'rl');
-
+/** Run the limiter for an already-built key and return a 429 response if the window is exhausted. */
+async function limitByKey(key: string, config: RateLimitConfig): Promise<NextResponse | null> {
   const result =
     (await redisRateLimit(key, config)) ??
     memLimiter.check(key, config);
@@ -177,6 +179,25 @@ export async function checkRateLimit(
       },
     }
   );
+}
+
+export async function checkRateLimit(
+  req: NextRequest,
+  config: RateLimitConfig = RATE_LIMITS.READ
+): Promise<NextResponse | null> {
+  return limitByKey(getClientKey(req, config.keyPrefix ?? 'rl'), config);
+}
+
+/**
+ * Rate-limit by an EXPLICIT identifier (e.g. a resolved userId) rather than the request IP. Use for
+ * per-ACCOUNT caps where IP rotation must not defeat the limit (cost-bearing mints). Call AFTER the
+ * caller is authenticated so `id` is the trusted principal. Returns a 429 NextResponse when exceeded.
+ */
+export async function checkRateLimitByKey(
+  id: string,
+  config: RateLimitConfig
+): Promise<NextResponse | null> {
+  return limitByKey(`${config.keyPrefix ?? 'rl:key'}:${id}`, config);
 }
 
 /** Backward-compatible alias */

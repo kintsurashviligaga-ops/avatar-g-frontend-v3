@@ -189,6 +189,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const lastAvatarUserIdRef = useRef<string | null>(null);
   // DAY-5 — real-time voice node overlay (opt-in from the floating mic button; text chat untouched).
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // Set when the Live token mint reports Live is disabled/unavailable server-side (503) → fall back to the
+  // ElevenLabs voice stack at runtime for this open. Reset on each fresh open so a transient miss retries Live.
+  const [liveUnavailable, setLiveUnavailable] = useState(false);
   // Signed-in user id — needed to mint a Gemini Live ephemeral token (flag-gated live voice only).
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -274,7 +277,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // open the real-time overlay; guest → open the sign-in modal (voice is an authed feature).
   useEffect(() => {
     const openVoice = () => {
-      if (authed) setVoiceOpen(true);
+      if (authed) { setLiveUnavailable(false); setVoiceOpen(true); }
       else { setAuthMode('login'); setAuthOpen(true); }
     };
     window.addEventListener('myavatar:voice-open', openVoice);
@@ -932,8 +935,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           Gemini-style live-voice chip, right of the dictation mic), which dispatches
           'myavatar:voice-open' — handled by the effect above (authed → open; guest → sign-in).
           This de-clutters the workspace (no redundant floating FAB) while keeping one clear CTA. */}
-      {voiceOpen && (GEMINI_LIVE_ENABLED && userId
-        ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} />
+      {voiceOpen && (GEMINI_LIVE_ENABLED && userId && !liveUnavailable
+        ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)} />
         : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />)}
 
       {/* Avatar-upload feedback toast — transient, self-contained (no global toast system here). */}

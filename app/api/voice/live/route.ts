@@ -4,16 +4,19 @@
  * Gemini is opened by the BROWSER (lib/voice/geminiLive.ts) using this token, so the raw GEMINI_API_KEY
  * never reaches the client.
  *
- * INERT BY DEFAULT + fail-closed: returns 503 unless GEMINI_LIVE_ENABLED is truthy ('1'|'true'|'yes'|'on') AND a Gemini key is
- * configured. The principal is the AUTHENTICATED CALLER (requireUser → session cookie), never a userId
- * from the request body — otherwise anyone could mint a cost-bearing token against another funded
- * account (IDOR). Rate-limited (EXPENSIVE) + credit-gated so a flipped flag can't be abused to burn the
- * platform's Gemini quota. Additive: does not touch the existing VAD/realtime voice stack.
+ * ON BY DEFAULT (Gemini Live is the live-validated default voice); a 503 kill-switch returns when
+ * GEMINI_LIVE_ENABLED is set falsy ('0'|'false'|'no'|'off') OR no Gemini key is configured — the client
+ * then falls back to the ElevenLabs voice stack at runtime (GeminiLiveConversation.onUnavailable). The
+ * principal is the AUTHENTICATED CALLER (requireUser → session cookie), never a userId from the request
+ * body — otherwise anyone could mint a cost-bearing token against another account (IDOR). Voice is
+ * intentionally FREE (no credit gate); cost is bounded instead by requireUser + an IP burst limit +
+ * a per-USER daily ceiling (defeats IP rotation across throwaway signups). Additive: does not touch the
+ * existing VAD/realtime voice stack.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
+import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
@@ -31,10 +34,10 @@ const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000; // must OPEN the session within ~2 
 
 export async function POST(request: NextRequest) {
   try {
-    // ── Gate 1: feature flag. Native Gemini Live is now the DEFAULT voice (live-validated), so it is
-    // ON unless GEMINI_LIVE_ENABLED is explicitly set falsy ('0'|'false'|'no'|'off') — the kill-switch
-    // that reverts to the ElevenLabs stack. The remaining gates (key, rate-limit, auth, credits) still
-    // fully protect the cost-bearing mint. ──
+    // ── Gate 1: feature flag. Native Gemini Live is the DEFAULT voice (live-validated), so it is ON unless
+    // GEMINI_LIVE_ENABLED is explicitly set falsy ('0'|'false'|'no'|'off') — the kill-switch. Its 503 makes
+    // the client fall back to the ElevenLabs stack at runtime (GeminiLiveConversation.onUnavailable). The
+    // remaining gates (key, IP rate-limit, auth, per-user cap) fully protect the cost-bearing mint. ──
     if (!isEnabledByDefault(process.env.GEMINI_LIVE_ENABLED)) {
       return NextResponse.json({ error: 'gemini_live_disabled' }, { status: 503 });
     }
@@ -43,8 +46,8 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
     }
-    // ── Gate 3: rate limit a cost-bearing mint (forgiving VOICE_TOKEN limit — reconnects/voice-toggle
-    // must not 429; the auth + credit gates below are the real abuse guards) ──
+    // ── Gate 3: IP burst limit on a cost-bearing mint (forgiving VOICE_TOKEN limit — reconnects/voice-
+    // toggle must not 429; the auth (Gate 4) + per-user daily cap (Gate 5) are the real per-account guards) ──
     const limited = await checkRateLimit(request, RATE_LIMITS.VOICE_TOKEN);
     if (limited) return limited;
 
@@ -59,10 +62,13 @@ export async function POST(request: NextRequest) {
     const payload = requestSchema.safeParse(await request.json().catch(() => ({})));
     const model = (payload.success && payload.data.model) || DEFAULT_LIVE_MODEL;
 
-    // Voice mode is FREE for every signed-in user (no balance required) — the credit gate is removed so
-    // guests/new users can talk to the assistant for testing + use. Abuse is still bounded by requireUser
-    // (Gate 4) + the VOICE_TOKEN rate limit (Gate 3) + the single-use, model-locked, ~30-min token.
-    void userId; // retained: the token is minted for the authenticated caller, never a body userId.
+    // Voice mode is intentionally FREE for every signed-in user (no balance required) so guests/new users
+    // can talk to the assistant. There is NO credit gate. Because signup auto-confirms and the Gate-3 IP
+    // limiter can be sidestepped by rotating IPs, bound COST per ACCOUNT here: a per-user daily ceiling
+    // keyed on the authenticated userId (not IP) caps how many cost-bearing 30-min native-audio sessions a
+    // single account can mint, without blocking a real user's day of heavy use / voice-swaps.
+    const perUser = await checkRateLimitByKey(userId, RATE_LIMITS.VOICE_TOKEN_USER);
+    if (perUser) return perUser;
 
     const now = Date.now();
     const expireTime = new Date(now + SESSION_TTL_MS).toISOString();

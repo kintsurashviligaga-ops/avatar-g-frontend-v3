@@ -1,10 +1,14 @@
 /**
- * Live web search for the chat (#19) — grounds answers in up-to-date results.
+ * Live web search (Tavily) — grounds answers in up-to-date results.
+ *
+ * NOTE: the main product chat (app/api/chat/gemini) NO LONGER uses this — it now grounds via the official
+ * Google Search tool on the Gemini call (google.tools.googleSearch), so TAVILY_API_KEY does NOT affect
+ * chat grounding. The only remaining consumer is the ReAct live-agent (lib/agent/react/bindLiveAgent).
+ * Don't reach for this when debugging chat grounding.
  *
  * Provider: Tavily (https://tavily.com), an LLM-oriented search API.
- * Env-driven: set `TAVILY_API_KEY`. Without a key (or on any failure) every
- * function returns `null`/`false`, so chat is completely unaffected — the
- * feature simply stays dormant until the key is provided.
+ * Env-driven: set `TAVILY_API_KEY`. Without a key (or on any failure) every function returns
+ * `null`/`false`, so the agent is unaffected — the feature simply stays dormant until the key is provided.
  */
 
 export type WebSearchResult = { title: string; url: string; content: string };

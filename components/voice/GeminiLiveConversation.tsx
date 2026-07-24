@@ -20,8 +20,11 @@ import { encodeMicChunk, decodePlaybackChunk } from '@/lib/voice/pcm';
 import { liveVoicePersona, normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 import { platformKnowledge } from '@/lib/chat/platformContext';
 
-// Native Gemini Live is the DEFAULT voice now (live-validated) — ON unless NEXT_PUBLIC_GEMINI_LIVE_ENABLED
-// is explicitly set falsy ('0'|'false'|'no'|'off'), which reverts to the ElevenLabs VoiceConversation.
+// Native Gemini Live is the DEFAULT voice now (live-validated). Two independent kill-switches revert to
+// the ElevenLabs VoiceConversation: the CLIENT build-time flag NEXT_PUBLIC_GEMINI_LIVE_ENABLED (skips
+// mounting this component entirely) and the SERVER flag GEMINI_LIVE_ENABLED (503s the token mint → the
+// onUnavailable prop lets the parent fall back at RUNTIME, no client redeploy needed). Either set falsy
+// ('0'|'false'|'no'|'off') routes voice back to ElevenLabs.
 export const geminiLiveEnabled = (): boolean => isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 
 type Status = 'connecting' | 'live' | 'speaking' | 'error' | 'closed';
@@ -34,12 +37,18 @@ interface Props {
   /** Which built-in Google voice to speak with. Defaults to female (Aoede); male is Charon. */
   gender?: 'female' | 'male';
   onClose: () => void;
+  /**
+   * Called when the Live token mint reports the server has disabled Gemini Live (503) — lets the parent
+   * fall back to the ElevenLabs voice stack at RUNTIME. This is what makes the server GEMINI_LIVE_ENABLED
+   * kill-switch actually revert to ElevenLabs (the client NEXT_PUBLIC_ flag is build-time only).
+   */
+  onUnavailable?: () => void;
 }
 
 const PLAYBACK_RATE = 24000; // Gemini Live output PCM sample rate
 const FRAME_FPS = 1.5;       // camera frames/sec streamed up (bandwidth-friendly)
 
-export default function GeminiLiveConversation({ userId, locale = 'ka', systemInstruction, gender = 'female', onClose }: Props) {
+export default function GeminiLiveConversation({ userId, locale = 'ka', systemInstruction, gender = 'female', onClose, onUnavailable }: Props) {
   const [status, setStatus] = useState<Status>('connecting');
   const [err, setErr] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
@@ -68,6 +77,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const vizCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const closedRef = useRef(false); // set on teardown — guards async getUserMedia continuations
+  const camWantedRef = useRef(false); // user's LAST camera intent — a stop during a flip/open await must win
 
   const t = {
     title: locale === 'en' ? 'Live Conversation' : locale === 'ru' ? 'Живой разговор' : 'ცოცხალი საუბარი',
@@ -134,6 +144,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
   // ── Camera: stream low-fps JPEG frames up while the camera is on. ──
   const startCamera = useCallback(async () => {
+    camWantedRef.current = true; // record intent NOW so a stop during the getUserMedia await can override it
     // Ask for the chosen direction; if the device rejects an exact facingMode (many laptops), retry with
     // no constraint so the camera still opens instead of silently failing.
     let stream: MediaStream | null = null;
@@ -142,9 +153,10 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     } catch {
       try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); } catch { setCamOn(false); return; }
     }
-    // Drop this stream if we've torn down during the permission prompt OR a concurrent double-tap
-    // already acquired one (else the earlier stream + its frame interval leak as a hot camera).
-    if (closedRef.current || camStreamRef.current) { stream.getTracks().forEach((tk) => tk.stop()); return; }
+    // Drop this stream if we've torn down during the permission prompt, a concurrent double-tap already
+    // acquired one, OR the user turned the camera OFF while this getUserMedia was in flight (e.g. tapped
+    // camera-off mid-flip) — otherwise the just-opened stream + its frame interval leak as a hot camera.
+    if (closedRef.current || camStreamRef.current || !camWantedRef.current) { stream.getTracks().forEach((tk) => tk.stop()); return; }
     camStreamRef.current = stream;
     const video = videoRef.current;
     if (video) { video.srcObject = stream; await video.play().catch(() => {}); }
@@ -164,6 +176,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   }, []);
 
   const stopCamera = useCallback(() => {
+    camWantedRef.current = false; // explicit user off — beats any startCamera continuation still awaiting
     if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
     camStreamRef.current?.getTracks().forEach((tk) => tk.stop());
     camStreamRef.current = null;
@@ -199,8 +212,15 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     procRef.current = null;
     micStreamRef.current?.getTracks().forEach((tk) => tk.stop());
     micStreamRef.current = null;
+    // Release the camera AND reset its UI/DOM state (mirror stopCamera) — otherwise a reconnect
+    // (e.g. a voice-gender swap re-runs the connect effect) leaves camOn=true showing a FROZEN last
+    // frame while frameTimerRef is gone and no frames reach Gemini. An honest "camera off" lets the
+    // user re-enable it. setState-on-unmount is a harmless no-op.
+    camWantedRef.current = false;
     camStreamRef.current?.getTracks().forEach((tk) => tk.stop());
     camStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCamOn(false);
     try { sessionRef.current?.close(); } catch { /* noop */ }
     sessionRef.current = null;
     try { void ctxRef.current?.close(); } catch { /* noop */ }
@@ -231,7 +251,15 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
           body: JSON.stringify({ userId }),
         });
         const j = (await res.json().catch(() => ({}))) as { token?: string; model?: string; error?: string };
-        if (!res.ok || !j.token) { releaseMic(); if (!cancelled) { setErr(j.error || `HTTP ${res.status}`); setStatus('error'); } return; }
+        if (!res.ok || !j.token) {
+          releaseMic();
+          // Live is unavailable server-side (503: kill-switch off, key missing, or the mint failed).
+          // Hand back to the ElevenLabs voice stack at RUNTIME instead of dead-ending on an error screen —
+          // this is what makes the server GEMINI_LIVE_ENABLED kill-switch honestly revert to ElevenLabs.
+          if (res.status === 503 && onUnavailable) { if (!cancelled) onUnavailable(); return; }
+          if (!cancelled) { setErr(j.error || `HTTP ${res.status}`); setStatus('error'); }
+          return;
+        }
         if (cancelled) { releaseMic(); return; }
 
         await ctxReady;
@@ -260,10 +288,17 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
             onSetupComplete: () => { if (!cancelled) setStatus('live'); },
             onAudio: (b64) => enqueueAudio(b64),
             onInterrupted: () => flushPlayback(),
-            // A server-initiated close/error must RELEASE the mic/camera/AudioContext, not just flip the
-            // label — otherwise the microphone stays hot after the socket drops. teardown() is idempotent.
-            onError: (m) => { teardown(); if (!cancelled) { setErr(m); setStatus('error'); } },
-            onClose: () => { teardown(); if (!cancelled) setStatus('closed'); },
+            // A server-initiated close/error on the CURRENT session must RELEASE the mic/camera/AudioContext,
+            // not just flip the label — otherwise the microphone stays hot after the socket drops.
+            // But GATE teardown() on `cancelled`: after a voice-gender swap the OLD socket's close event
+            // fires a MACROTASK later, by which point the new effect run has already re-pointed sessionRef/
+            // ctxRef at the NEW session. Running teardown() from that stale closure would close the NEW
+            // AudioContext (→ InvalidStateError on createMediaStreamSource → dead "error" screen) or kill the
+            // fresh mic mid-call. `cancelled` is false only for the live effect run, so a genuine close of the
+            // ACTIVE session still releases everything; a superseded session's delayed close is ignored
+            // (its resources were already freed by that run's cleanup teardown()).
+            onError: (m) => { if (cancelled) return; teardown(); setErr(m); setStatus('error'); },
+            onClose: () => { if (cancelled) return; teardown(); setStatus('closed'); },
           },
         );
         sessionRef.current = session;

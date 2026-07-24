@@ -310,7 +310,15 @@ export async function POST(req: NextRequest) {
     const nowTbilisi = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tbilisi', dateStyle: 'full', timeStyle: 'short' });
     const datePreamble = `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${nowTbilisi}. When the user asks the time, date, or day, answer using THIS exact value — never output a placeholder like "[current time]".`;
 
-    const effectiveSystem = [datePreamble, langDirective, profilePreamble, memoryPreamble, SYSTEM_PROMPT]
+    // Google Search grounding is model-discretionary: without a firm directive Gemini often answers
+    // current-fact questions ("who is the president", prices, scores, "latest …") from STALE training
+    // memory and hallucinates (e.g. a past US president). This forces a real-time search on anything
+    // time-sensitive so the answer reflects 2026, not the training cutoff. Kept tight so it doesn't
+    // trigger a needless search on evergreen/creative turns.
+    const groundingDirective =
+      'You have a real-time Google Search tool. For ANY question whose answer can change over time — current events, news, "who/what is the current …", people currently in office, sports results, prices, exchange rates, weather, "latest/newest", releases, or anything dated after your training — you MUST call Google Search FIRST and base the answer on the results. Never answer such questions from memory; your training data is out of date and will be wrong. Trust fresh search results over anything you recall. (Evergreen facts, math, coding and creative requests need no search.)';
+
+    const effectiveSystem = [datePreamble, groundingDirective, langDirective, profilePreamble, memoryPreamble, SYSTEM_PROMPT]
       .filter(Boolean)
       .join('\n\n');
 
@@ -405,6 +413,10 @@ export async function POST(req: NextRequest) {
             // ── Fallback: Anthropic Claude Haiku ────────────────────────────
             console.error('[/api/chat/gemini] All Gemini models exhausted — falling back to Anthropic');
             reportError(new Error('All Gemini models exhausted — Anthropic fallback engaged (check GEMINI_API_KEY validity)'), { route: 'chat.gemini', stage: 'gemini-exhausted' });
+            // Hoisted so the catch below can tell whether the fallback already committed partial text to the
+            // client — if it did, appending a "providers down" notice would garble the bubble (partial answer
+            // + full error notice). Mirrors the Gemini loop's partial-commit handling above.
+            let streamed = 0;
             try {
               const anthropic = getAnthropicClient();
               const fallback = streamText({
@@ -424,7 +436,6 @@ export async function POST(req: NextRequest) {
                 temperature: 0.7,
                 maxRetries: 1,
               });
-              let streamed = 0;
               for await (const chunk of fallback.textStream) {
                 if (chunk) {
                   send(chunk);
@@ -438,7 +449,9 @@ export async function POST(req: NextRequest) {
               }
             } catch (anthropicErr) {
               console.error('[/api/chat/gemini] Anthropic fallback failed:', anthropicErr);
-              send(providersDownMsg(respLocale));
+              // Only surface the failure notice if NOTHING streamed yet — otherwise it would be appended
+              // on top of a partial answer, producing a garbled bubble.
+              if (streamed === 0) send(providersDownMsg(respLocale));
             }
           }
 

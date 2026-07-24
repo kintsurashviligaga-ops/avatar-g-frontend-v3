@@ -3953,6 +3953,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // auto-play the reply. There is NO auto-send — dictation just fills the box and WAITS for the user to tap
   // Send (product decision; the earlier hands-free auto-submit is intentionally reverted).
   const inputSourceRef = useRef<'text' | 'voice'>('text');
+  // What the Whisper recorder LAST wrote into the composer. The final-pass transcription (rec.onstop) can
+  // resolve a network round-trip AFTER the user has already typed over the transcript; comparing the live
+  // composer value against this ref lets it bail on a user takeover instead of clobbering the edit (and
+  // wrongly re-tagging the message as 'voice' → auto-play). Seeded to `base` at each dictation start.
+  const lastSttWriteRef = useRef('');
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean }) => {
     const text = (opts?.promptOverride ?? input).trim();
@@ -4045,7 +4050,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }
       // MUSIC — text→music using the Music panel defaults (genre/duration/tempo). A non-audio
       // attachment falls through to chat (an audio attachment is a cover/voice source).
-      if (chatIntent.intent === 'music_generation' && !attachments.some((a) => !isAudio(a.mimeType))) {
+      // GUARD !isVideoIntent(text): "make a music video"/"მუსიკალური ვიდეო" matches the music bank at a
+      // higher weight (0.86 > video 0.84) because it contains "music"/"song", so without this it would
+      // fire an AUDIO-ONLY track (+ music charge) and never reach the video route below. isVideoIntent
+      // already recognizes "music video"/"video clip"/"მუსიკალური ვიდეო", so those fall through to the
+      // video/storyboard route at (musicVideo → videoMode='musicvideo'). Bare "make a song"/"make music"
+      // carry no video cue, so they still dispatch here.
+      if (chatIntent.intent === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) {
         setOptionsOpen(false);
         const mAudioRef = attachments.find((a) => isAudio(a.mimeType))?.dataUrl;
         const mAudioMime = attachments.find((a) => isAudio(a.mimeType))?.mimeType;
@@ -4811,6 +4822,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const rec = chosen ? new MediaRecorder(stream, { mimeType: chosen }) : new MediaRecorder(stream);
       const chunks: Blob[] = [];
       const base = input ? `${input.trimEnd()} ` : '';
+      // Seed the "last recorder write" baseline to the pre-dictation text so a short (<1.2s) clip that
+      // reaches only the final pass — with no progressive write — still recognises an untouched composer.
+      lastSttWriteRef.current = base;
       const extFor = (t: string) => /mp4/i.test(t) ? 'mp4' : /aac/i.test(t) ? 'm4a' : /mpeg|mp3/i.test(t) ? 'mp3' : /wav/i.test(t) ? 'wav' : 'webm';
       let inFlight = false;
       let stopped = false;
@@ -4873,7 +4887,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // just-emptied box (the "my dictated text jumps back after I send" bug; iOS uses this recorder
           // path, and it only bites when you send before transcription resolves). Drop it silently.
           if (sttDiscardRef.current) { inFlight = false; return; }
-          if (j.text && j.text.trim()) { inputSourceRef.current = 'voice'; setInput(base + j.text.trim()); }
+          if (j.text && j.text.trim()) {
+            const next = base + j.text.trim();
+            // Functional update so we read the LIVE composer: if the user has typed since the recorder last
+            // wrote (cur is non-empty AND differs from our last write), keep their edit and DON'T re-tag the
+            // message as 'voice' — otherwise a late final-pass would clobber a post-stop keyboard edit and
+            // wrongly auto-play the reply. sttDiscardRef only covers the send() path; this covers plain edits.
+            setInput((cur) => {
+              if (cur !== '' && cur !== lastSttWriteRef.current) return cur;
+              lastSttWriteRef.current = next;
+              inputSourceRef.current = 'voice';
+              return next;
+            });
+          }
         } catch { /* fail-soft */ }
         inFlight = false;
       };
