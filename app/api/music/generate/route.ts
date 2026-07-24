@@ -75,8 +75,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Insufficient credits', required: PRODUCE_COST.music }, { status: 402 });
     }
 
-    // 2. Parse & validate request
-    const body: GenerateTrackRequest = await request.json();
+    // 2. Parse & validate request. Guard the parse so malformed JSON yields a clean 400 via validateInput
+    // instead of throwing into the outer catch → 500 (mirrors edit-audio / music/video).
+    const body: GenerateTrackRequest = await request.json().catch(() => null as unknown as GenerateTrackRequest);
     const validation = validateInput(MusicTrackRequestSchema, body);
 
     if (!validation.success) {

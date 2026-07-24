@@ -54,8 +54,8 @@ const orchestrateSchema = z.object({
   // ── Conversation ──
   history: z.array(z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string(),
-  })).default([]),
+    content: z.string().max(24000),
+  })).max(50).default([]),
 
   // ── Generation options ──
   selectedOptions: z.record(z.string()).optional(),

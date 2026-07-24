@@ -45,8 +45,10 @@ export async function GET(request: Request) {
 
     // Get query params for filtering (searchParams already defined above for health check)
     const status = searchParams?.get?.('status');
-    const limit = parseInt(searchParams?.get?.('limit') || '50');
-    const offset = parseInt(searchParams?.get?.('offset') || '0');
+    // Clamp pagination so a NaN / negative / huge value can't drive an unbounded .range() (the default
+    // 50/0 and any sane page are unchanged).
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams?.get?.('limit') || '50') || 50));
+    const offset = Math.max(0, parseInt(searchParams?.get?.('offset') || '0') || 0);
     const sortBy = searchParams?.get?.('sortBy') || 'created_at';
     const sortOrder = searchParams?.get?.('sortOrder') || 'desc';
 

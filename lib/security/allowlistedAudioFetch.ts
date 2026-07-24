@@ -44,6 +44,34 @@ export function isOwnSupabaseUrl(raw: string, env: NodeJS.ProcessEnv = process.e
 }
 
 /**
+ * SAFE SSRF pre-check for a server-side fetch of a caller-influenced URL. True ONLY for an http(s) URL
+ * whose host is not an obvious internal-network target: localhost, a `.local` mDNS name, an IPv6 literal,
+ * or an IPv4 literal in a loopback / private / link-local / metadata / multicast range. Unlike
+ * isAllowedAudioUrl this does NOT restrict to an allowlist — it only blocks the well-known SSRF targets,
+ * so legitimate PUBLIC external URLs keep working (the conservative subset; a full host allowlist is the
+ * stricter, separate guard). CAVEAT: validates only THIS url — for redirect-following fetches a public
+ * host can still 3xx into a private one, so pair with redirect:'manual' + per-hop re-check when that matters.
+ */
+export function isPublicHttpUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (!host || host === 'localhost' || host.endsWith('.local')) return false;
+  if (host.includes(':')) return false; // IPv6 literal (hostname is unbracketed) → block ::1 / fc00::/7 / fe80::/10
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]); const b = Number(m[2]);
+    if (a === 0 || a === 127 || a === 10) return false;        // this-host / loopback / private
+    if (a === 169 && b === 254) return false;                  // link-local incl. cloud metadata 169.254.169.254
+    if (a === 192 && b === 168) return false;                  // private
+    if (a === 172 && b >= 16 && b <= 31) return false;         // private
+    if (a >= 224) return false;                                // multicast / reserved
+  }
+  return true;
+}
+
+/**
  * Read a fetched Response body into a Buffer with a HARD byte cap enforced DURING the download, not after. An honest
  * Content-Length over the cap short-circuits with no body read; otherwise the body is streamed and the read is
  * aborted the instant the running total exceeds `maxBytes` (this also defeats chunked responses with no

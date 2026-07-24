@@ -22,6 +22,7 @@ import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinema
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
+import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pipeline/audio/audioMix';
@@ -127,9 +128,14 @@ async function download(url: string, dest: string, signal?: AbortSignal): Promis
   }
   const timer = setTimeout(() => { timedOut = true; ac.abort(); }, DOWNLOAD_TIMEOUT_MS);
   try {
+    if (!isPublicHttpUrl(url)) throw new Error('blocked host');
     const r = await fetch(url, { signal: ac.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    await writeFile(dest, Buffer.from(await r.arrayBuffer()));
+    // Cap the body DURING download so one asset can't OOM the function (clips ~10MB, a 60s master is
+    // well under 200MB); over-cap / unreadable → named error → the saga compensate runs.
+    const buf = await readBodyWithCap(r, 200_000_000);
+    if (!buf) throw new Error('exceeded 200MB cap or unreadable body');
+    await writeFile(dest, buf);
     return dest;
   } catch (err) {
     const reason = timedOut

@@ -13,6 +13,7 @@ import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replic
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
 import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
@@ -905,13 +906,22 @@ async function loadImageAsDataUrl(imageUrl: string): Promise<string> {
     throw new Error('Interior generation requires a valid image URL or data URL.');
   }
 
-  const response = await fetch(imageUrl, { cache: 'no-store' });
+  // SSRF + hang + OOM guards on a caller-supplied URL: block internal hosts, cap the wait, cap the body.
+  // The multimodal caller wraps this and degrades to text on throw, so failing closed here is safe.
+  if (!isPublicHttpUrl(imageUrl)) {
+    throw new Error('Reference image must be a public URL.');
+  }
+
+  const response = await fetch(imageUrl, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`Unable to load reference image (${response.status})`);
   }
 
   const contentType = response.headers.get('content-type') || 'image/jpeg';
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const bytes = await readBodyWithCap(response, 10_000_000);
+  if (!bytes) {
+    throw new Error('Reference image too large (max 10MB).');
+  }
   return ensureImageDataUrl(bytes.toString('base64'), contentType);
 }
 

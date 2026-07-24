@@ -10,6 +10,7 @@
  * The extraction (`htmlToReadableText`) is a pure function → unit-testable with no network.
  */
 import { z } from 'zod';
+import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 
 export const scrapeWebpageInput = z.object({
   url: z.string().url(),
@@ -65,6 +66,9 @@ export async function scrapeWebpage(input: ScrapeWebpageInput): Promise<ScrapeRe
   const parsed = scrapeWebpageInput.safeParse(input);
   if (!parsed.success) return { ok: false, url: String((input as { url?: unknown })?.url ?? ''), error: 'invalid url' };
   const { url } = parsed.data;
+  // SSRF: reject internal-network hosts before the fetch. (redirect:'follow' below still trusts resolved
+  // hops — a redirect-safe walk is the stricter GATED fix; this blocks the direct-private/metadata case.)
+  if (!isPublicHttpUrl(url)) return { ok: false, url, error: 'blocked host' };
   const maxChars = parsed.data.maxChars ?? DEFAULT_MAX_CHARS;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
