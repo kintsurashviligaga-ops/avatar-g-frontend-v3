@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Syne, DM_Sans } from "next/font/google";
+import { Inter, Syne, DM_Sans, Noto_Sans_Georgian } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
 import { AppShell } from "@/components/AppShell";
@@ -26,6 +26,18 @@ const dmSans = DM_Sans({
 	variable: "--font-dm",
 	display: "swap",
 	weight: ["300", "400", "500", "600", "700"],
+});
+
+// Iteration 4 — brand Georgian type. 'Noto Sans Georgian' was referenced in the font stacks but never
+// LOADED (no @font-face), so ka glyphs fell back to an OS font. Loading it via next/font gives clean,
+// uniform brand typography for the primary audience. display:'swap' + the metric-compatible fallback that
+// next/font auto-inserts keep layout metrics stable (no CLS / truncation shift). Latin/Cyrillic still
+// render in DM Sans / Inter — the browser only reaches this family for Georgian glyphs (per-char fallthrough).
+const notoGeorgian = Noto_Sans_Georgian({
+	subsets: ["georgian"],
+	variable: "--font-georgian",
+	display: "swap",
+	weight: ["400", "500", "600", "700"],
 });
 
 // "Geist" requested by the user; this Next.js version doesn't expose Geist
@@ -236,7 +248,7 @@ export default async function RootLayout({
 			lang={documentLocale}
 			data-theme="dark"
 			suppressHydrationWarning
-			className={`dark ${inter.variable} ${syne.variable} ${dmSans.variable}`}
+			className={`dark ${inter.variable} ${syne.variable} ${dmSans.variable} ${notoGeorgian.variable}`}
 			style={{ ['--font-geist' as string]: 'var(--font-ui)' }}
 		>
 			<head>

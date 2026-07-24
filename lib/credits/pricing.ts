@@ -12,9 +12,10 @@
  * is a one-file edit, and the same constants drive both the toast and any future
  * pre-flight "this will cost N credits" hint.
  *
- * Pure + dependency-free so it can be imported on the server (cost forecasting)
- * AND in the client (toast / UI) without pulling server-only code.
+ * Near-pure (its only import is the pure ./billing/fx exchange-rate leaf) so it can be imported on the
+ * server (cost forecasting) AND in the client (toast / UI) without pulling server-only code.
  */
+import { GEL_PER_USD } from '@/lib/billing/fx';
 
 /** Approximate wholesale API cost per unit, in USD. Used for margin sanity-checks. */
 export const API_COSTS_USD = {
@@ -41,8 +42,9 @@ export const API_COSTS_USD = {
   },
 } as const;
 
-/** GEL conversion (1 USD ≈ 2.7 GEL approx). */
-export const USD_TO_GEL = 2.7;
+/** GEL conversion (1 USD ≈ 2.7 GEL approx). Iteration 4 — aliased to the single ./billing/fx SSoT so it can
+ *  never drift from pricingConfig's GEL_PER_USD. Local const so the in-module usages (creditsToUsd) resolve. */
+export const USD_TO_GEL = GEL_PER_USD;
 
 /** Credit system: 1 credit = 0.10 GEL ≈ 0.037 USD. */
 export const CREDIT_VALUE_GEL = 0.1;

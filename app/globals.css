@@ -199,7 +199,7 @@ html {
      is the safety net against any rem-driven horizontal overflow. (px-pinned text
      in the studio is enlarged individually.) */
   font-size: 17px;
-  font-family: 'Inter', 'Noto Sans Georgian', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', var(--font-georgian), 'Noto Sans Georgian', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   font-weight: 400;
   -webkit-text-size-adjust: 100%;
@@ -210,7 +210,7 @@ h1,
 h2,
 h3,
 .ag-display {
-  font-family: 'Inter', 'Noto Sans Georgian', -apple-system, sans-serif;
+  font-family: 'Inter', var(--font-georgian), 'Noto Sans Georgian', -apple-system, sans-serif;
   letter-spacing: -0.022em;
 }
 

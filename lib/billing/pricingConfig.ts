@@ -3,6 +3,7 @@
 // UI + API + workers ALL import from here. Never duplicate these values.
 // ADDITIVE — does NOT replace the existing lib/billing/plans.ts (PlanTier system).
 import { CREDIT_COSTS as MEDIA_CREDIT_COSTS } from '@/lib/credits/pricing'
+import { GEL_PER_USD } from './fx'
 
 export type PlanId = 'trial' | 'pro' | 'business' | 'executive'
 export type Priority = 'standard' | 'priority' | 'executive'
@@ -157,9 +158,9 @@ export interface PricingTier {
 }
 
 // PHASE 39 — the product is priced in USD; the wallet/gateway settles in GEL. ONE documented FX constant keeps
-// the charged GEL coherent with the displayed USD. ⚠️ Confirm the rate (and ideally provision native USD Stripe
-// price objects) before public launch — see the Stripe-ID note below; today no env → not purchasable → no charge.
-export const GEL_PER_USD = 2.7 as const
+// the charged GEL coherent with the displayed USD. Iteration 4 — the definition moved to the leaf ./fx SSoT so
+// it can't drift from credits/pricing's USD_TO_GEL; re-exported here so every existing importer is unchanged.
+export { GEL_PER_USD }
 
 /** Σ (ceiling × per-asset media credit cost). Retained: the credit-pool equivalent of the per-asset ceilings. */
 export function tierCreditPool(ceiling: { videos: number; music: number; images: number }): number {
