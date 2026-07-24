@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { reportError } from '@/lib/observability/report-error';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       // FINANCIAL SHIELD — charge exactly ONCE when the async image completes, keyed on the predictionId so
       // repeated polls of a finished render are ref-idempotent no-ops. Never bills a failed/pending poll.
       if (result.status === 'succeeded') {
-        await deductCredits(guard.userId, creditCostFor('image'), `image:${result.id}`).catch(() => {});
+        await deductCredits(guard.userId, creditCostFor('image'), `image:${result.id}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
       }
       return NextResponse.json(normalized);
     }
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
 
         if (result.url) {
           // Post-success debit for the synchronous NanoBanana path (no stable provider id → per-call ref).
-          await deductCredits(guard.userId, creditCostFor('image'), `image:nb:${guard.userId}:${Date.now()}`).catch(() => {});
+          await deductCredits(guard.userId, creditCostFor('image'), `image:nb:${guard.userId}:${Date.now()}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
           return NextResponse.json({
             success: true,
             url: result.url,
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
 
     if (prediction.status === 'succeeded' && prediction.output) {
       // Replicate returned a finished render inline — charge once, keyed on the prediction id (idempotent).
-      await deductCredits(guard.userId, creditCostFor('image'), `image:${prediction.id}`).catch(() => {});
+      await deductCredits(guard.userId, creditCostFor('image'), `image:${prediction.id}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
       return NextResponse.json(
         normalizeOutput('image', model.label, model.outputType, prediction.id, prediction.status, prediction.output, null, prediction.metrics),
       );
@@ -135,6 +136,7 @@ export async function POST(req: NextRequest) {
       provider: 'replicate',
     });
   } catch (err) {
+    reportError(err, { route: 'replicate.image' }); // whole-route failure was invisible to Sentry
     const message = err instanceof Error ? err.message : 'Image generation failed';
     return NextResponse.json(
       { success: false, service: 'image', outputType: 'image', url: null, error: message, metadata: {} },
