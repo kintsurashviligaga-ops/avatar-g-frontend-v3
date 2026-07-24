@@ -1,6 +1,16 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { faqSchema } from '@/lib/seo/schema';
+import { localeAlternates } from '@/lib/seo/hreflang';
+
+// Iteration 2 — was inheriting the homepage title + homepage-level hreflang (locale root). Give it a
+// distinct localized title + a self-canonical /support hreflang cluster.
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  return { title: copy[lang].title, alternates: localeAlternates(locale, '/support') };
+}
 
 type Lang = 'ka' | 'en' | 'ru';
 

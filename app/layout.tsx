@@ -45,12 +45,14 @@ const notoGeorgian = Noto_Sans_Georgian({
 // Inter's geometry) and is already loaded above. We alias it as --font-geist
 // so app code can reference it consistently.
 
-const metadataBaseUrl =
+const metadataBaseUrl = (
 	process.env.NEXT_PUBLIC_BASE_URL ||
 	process.env.BASE_URL ||
 	process.env.NEXT_PUBLIC_SITE_URL ||
 	process.env.NEXT_PUBLIC_APP_URL ||
-	"https://myavatar.ge";
+	"https://myavatar.ge"
+).replace(/\/+$/, ""); // strip trailing slash(es) — MUST stay byte-identical to lib/seo/site.ts SITE_URL so
+// the layout's JSON-LD @ids (#organization/#website/…) match the @id references page schemas emit off SITE_URL.
 
 
 export const viewport: Viewport = {

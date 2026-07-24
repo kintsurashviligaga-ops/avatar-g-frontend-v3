@@ -5,6 +5,7 @@ import type { ComponentType } from 'react';
 import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { serviceItemListSchema } from '@/lib/seo/schema';
+import { localeAlternates } from '@/lib/seo/hreflang';
 import { getLocalizedMeta } from '@/lib/services/metadata';
 
 // The 14 canonical AI service landing pages (matches app/sitemap.ts) — for the ItemList structured data.
@@ -65,7 +66,9 @@ export async function generateMetadata({ params }: ServicesPageProps): Promise<M
   return {
     title: m.title,
     description: m.description,
-    alternates: { canonical },
+    // Iteration 2 — add the hreflang `languages` cluster (was canonical-only, so the in-page hreflang
+    // fell back to the [locale] layout's homepage cluster → pointed at the locale ROOT, not /services).
+    alternates: localeAlternates(locale, '/services'),
     openGraph: {
       type: 'website',
       title: m.title,
