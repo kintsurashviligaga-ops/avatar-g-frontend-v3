@@ -4697,6 +4697,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const el = ttsAudioRef.current;
         if (!el) { URL.revokeObjectURL(url); drainNext(nextUrlPromise); return; }
         el.src = url; // reuse the SAME (already user-activated) element so play() is never blocked
+        try { el.load(); } catch { /* noop */ } // iOS: force the element to (re)load the new WAV fully — without
+        // this a reused element can play only the first moments of a swapped src, the "cuts off after a few words".
         if (live()) setSpeakPhase('playing');
         await new Promise<void>((resolve) => {
           let settled = false;
