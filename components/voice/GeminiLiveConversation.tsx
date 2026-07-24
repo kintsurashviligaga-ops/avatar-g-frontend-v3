@@ -18,6 +18,7 @@ import { isEnabledByDefault } from '@/lib/env/flag';
 import { GeminiLiveSession, GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { encodeMicChunk, decodePlaybackChunk } from '@/lib/voice/pcm';
 import { liveVoicePersona, normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
+import { platformKnowledge } from '@/lib/chat/platformContext';
 
 // Native Gemini Live is the DEFAULT voice now (live-validated) — ON unless NEXT_PUBLIC_GEMINI_LIVE_ENABLED
 // is explicitly set falsy ('0'|'false'|'no'|'off'), which reverts to the ElevenLabs VoiceConversation.
@@ -246,9 +247,12 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
         // Seed the session with the spoken persona + the REAL current date (evaluated now, at session
         // start, so it is always today) and select the built-in native-audio voice for this gender.
-        const persona = systemInstruction ?? liveVoicePersona(normalizeVoiceLocale(locale));
+        const loc = normalizeVoiceLocale(locale);
+        const persona = systemInstruction ?? liveVoicePersona(loc);
         const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        const datedInstruction = `${persona}\nToday's date is ${today}.`;
+        // Give the voice model the platform knowledge (Issue: voice mode was context-blind about myavatar.ge)
+        // so it can answer what the platform is + how generation works + name the right engine.
+        const datedInstruction = `${persona}\n\n${platformKnowledge(loc)}\nToday's date is ${today}.`;
 
         const session = new GeminiLiveSession(
           { token: j.token, model: j.model, systemInstruction: datedInstruction, voiceName: GEMINI_LIVE_VOICES[voiceGender], responseModalities: ['AUDIO'] },

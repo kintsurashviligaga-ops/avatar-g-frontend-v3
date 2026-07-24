@@ -2,6 +2,7 @@ import { streamText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { platformKnowledge } from '@/lib/chat/platformContext';
 import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -41,6 +42,8 @@ CHAT INTERFACE — OPERATING RULES:
   • ვიდეოების სტუდია — ქმნის კინემატოგრაფიულ, უმაღლესი ხარისხის 30/60-წამიან ვიდეოებს, მუსიკალურ კლიპებს, დოკუმენტურ კადრებს და რეალისტურ Avatar Swap-ებს (მთავარი ვიდეო-ძრავა: Runway).
   • მუსიკის სტუდია — ქმნის მუსიკალურ ტრეკებსა და სიმღერებს, სადაც მომხმარებელს შეუძლია ჩაწეროს საკუთარი ხმა და დაადოს იგი პროფესიონალურ ბიტებს.
   • ფასები (USD): Starter — $15/თვე (4 ვიდეო, 10 მუსიკა, 30 სთორიბორდ სურათი, 150 კრედიტი); Pro Creator — $99/თვე (35 ვიდეო, 1200 კრედიტი, სრული Agent G წვდომა); Studio Annual — $299/წელი (120 ვიდეო, 4500 კრედიტი, ულიმიტო სწრაფი რიგი, VIP მხარდაჭერა).
+- FULL SERVICE + PROVIDER MASTERY — you are the platform's expert orchestrator. Know every service and the REAL engine behind it, and when a user asks how you generate something, explain the process accurately and name the right engine:
+${platformKnowledge('en')}
 - You are Agent G, powered by Google Gemini on the MyAvatar.ge platform.`;
 
 // ─── 2. SECURITY GUARD ───────────────────────────────────────────────────────

@@ -17,8 +17,7 @@ import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
-import { MINIMUM_CREDITS_TO_START_CALL, hasMinimumVoiceCredits } from '@/lib/voice/credits';
+import { requireUser } from '@/lib/supabase/server';
 import { DEFAULT_LIVE_MODEL } from '@/lib/voice/geminiLive';
 
 export const dynamic = 'force-dynamic';
@@ -29,21 +28,6 @@ const requestSchema = z.object({ model: z.string().optional() });
 const AUTH_TOKEN_URL = 'https://generativelanguage.googleapis.com/v1alpha/auth_tokens';
 const SESSION_TTL_MS = 30 * 60 * 1000; // token valid ~30 min
 const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000; // must OPEN the session within ~2 min
-
-async function getCreditsBalance(userId: string): Promise<number> {
-  const supabase = createServiceRoleClient();
-  // BALANCE OF RECORD = profiles.credits_balance (the GEL wallet the spend saga draws from and top-ups
-  // credit). The legacy `credits` table now only carries the monthly subscription allowance, so read
-  // profiles FIRST and fall back to credits.balance — mirrors /api/credits/balance + generationGuard.
-  // BUG this fixes: the old code read ONLY the legacy table, so a funded user (e.g. 27 ₾ wallet) with no
-  // `credits` row got a false `insufficient_credits` and could never start a voice call.
-  const [{ data: prof }, { data: credits }] = await Promise.all([
-    supabase.from('profiles').select('credits_balance').eq('id', userId).maybeSingle(),
-    supabase.from('credits').select('balance').eq('user_id', userId).maybeSingle(),
-  ]);
-  if (typeof prof?.credits_balance === 'number') return prof.credits_balance;
-  return Number(credits?.balance || 0);
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,14 +59,10 @@ export async function POST(request: NextRequest) {
     const payload = requestSchema.safeParse(await request.json().catch(() => ({})));
     const model = (payload.success && payload.data.model) || DEFAULT_LIVE_MODEL;
 
-    // ── Gate 5: the authenticated caller must hold call credits ──────────────
-    const creditsBalance = await getCreditsBalance(userId);
-    if (!hasMinimumVoiceCredits(creditsBalance)) {
-      return NextResponse.json(
-        { error: 'insufficient_credits', required: MINIMUM_CREDITS_TO_START_CALL, current: creditsBalance },
-        { status: 402 },
-      );
-    }
+    // Voice mode is FREE for every signed-in user (no balance required) — the credit gate is removed so
+    // guests/new users can talk to the assistant for testing + use. Abuse is still bounded by requireUser
+    // (Gate 4) + the VOICE_TOKEN rate limit (Gate 3) + the single-use, model-locked, ~30-min token.
+    void userId; // retained: the token is minted for the authenticated caller, never a body userId.
 
     const now = Date.now();
     const expireTime = new Date(now + SESSION_TTL_MS).toISOString();
