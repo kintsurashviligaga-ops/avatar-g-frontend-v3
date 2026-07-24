@@ -158,15 +158,28 @@ export async function runReActLoop(opts: ReActLoopOpts): Promise<ReActResult> {
     if (!tool) {
       observation = { error: `unknown tool: ${turn.tool}`, availableTools: [...registry.keys()] };
     } else {
+      // Bound each tool call so ONE hung tool can't stall the whole ReAct loop past the route deadline.
+      // The ceiling is far above every tool's own internal timeout, so legitimate calls are unaffected;
+      // a timeout becomes an error observation, which the model already recovers from.
+      const TOOL_TIMEOUT_MS = 45_000;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        observation = await tool.run(turn.input);
+        observation = await Promise.race([
+          tool.run(turn.input),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('tool timeout')), TOOL_TIMEOUT_MS); }),
+        ]);
       } catch (err) {
         observation = { error: err instanceof Error ? err.message : String(err) };
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     }
     steps.push({ thought: turn.thought, tool: turn.tool, input: turn.input, observation });
     messages.push({ role: 'assistant', content: text });
-    messages.push({ role: 'user', content: `Observation: ${JSON.stringify(observation).slice(0, 4000)}` });
+    // Harden serialization: a circular / throwing observation must not crash the loop out of its try.
+    let obsStr: string;
+    try { obsStr = JSON.stringify(observation); } catch { obsStr = String(observation); }
+    messages.push({ role: 'user', content: `Observation: ${obsStr.slice(0, 4000)}` });
   }
 
   return { answer: null, steps, stopReason: 'max_steps' };
