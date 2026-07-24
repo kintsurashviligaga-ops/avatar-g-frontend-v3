@@ -72,6 +72,9 @@
     "app/api/webhooks/**": {
       "maxDuration": 30
     },
+    "app/api/cron/**": {
+      "maxDuration": 60
+    },
     "app/api/**": {
       "maxDuration": 15
     }
