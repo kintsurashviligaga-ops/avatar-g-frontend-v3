@@ -1,8 +1,8 @@
 /**
  * Bank of Georgia (BOG / iPay) — native GEL e-commerce payment client.
  *
- * A dedicated, fully-typed handler for card + Apple Pay checkout settled strictly in GEL. It
- * mirrors the shape of lib/queue/renderProviders.ts: small pure helpers + an INJECTABLE `fetch`
+ * A dedicated, fully-typed handler for card + Apple Pay checkout settled strictly in GEL. It follows
+ * the same testable-client pattern used across the codebase: small pure helpers + an INJECTABLE `fetch`
  * so the whole submit → callback → verify flow is unit-testable with zero network and zero secrets.
  *
  * ── ENDPOINT / SIGNATURE CAVEAT — READ BEFORE LIVE TRAFFIC ────────────────────────────────────
