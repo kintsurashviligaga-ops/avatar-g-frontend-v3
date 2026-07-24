@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
         newSessionExpireTime,
         liveConnectConstraints: { model },
       }),
+      signal: AbortSignal.timeout(15_000), // a hung mint becomes the already-handled 503 path
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');

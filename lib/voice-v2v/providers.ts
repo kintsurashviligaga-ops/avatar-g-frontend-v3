@@ -107,6 +107,7 @@ async function transcribeWithOpenAI(params: {
     },
     body: form,
     cache: 'no-store',
+    signal: AbortSignal.timeout(15_000), // a stall throws → transcribe route falls through to Gemini/Replicate
   });
 
   const payload = (await response.json().catch(() => null)) as { text?: string } | null;
@@ -161,6 +162,7 @@ async function transcribeWithDeepgram(params: {
     },
     body: arrayBufferFromBase64(params.audioBase64),
     cache: 'no-store',
+    signal: AbortSignal.timeout(15_000), // stall throws → falls through to the next STT provider
   });
 
   const payload = (await response.json().catch(() => null)) as {

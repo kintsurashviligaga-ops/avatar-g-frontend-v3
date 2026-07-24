@@ -160,6 +160,9 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    // Bound the one-shot call so a hung socket can't pin the request up to maxDuration; every caller
+    // (viaGemini / handleGeminiMultimodal) wraps this and falls through on throw. (streamWithGemini untouched.)
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

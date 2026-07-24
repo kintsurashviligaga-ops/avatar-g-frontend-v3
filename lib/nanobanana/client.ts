@@ -339,6 +339,9 @@ async function requestNanoBanana(
     headers,
     body: method === 'POST' ? JSON.stringify(body ?? {}) : undefined,
     cache: 'no-store',
+    // Per-request bound: the poll LOOP owns the waiting, so 60s only kills a hung create-POST/status-GET
+    // socket; body is read via .text() so aborting is clean. Callers already try/catch this.
+    signal: AbortSignal.timeout(60_000),
   });
 
   const rawText = await response.text();
