@@ -1594,6 +1594,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Ref to send() so the voice-stop effect (declared BEFORE send) can auto-send a settled dictation
+  // without a temporal-dead-zone reference. Set in an effect once send is defined.
+  const autoSendRef = useRef<((opts?: { forceMyVoice?: boolean; promptOverride?: string }) => void) | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
   // dictation recorder above so the two never collide.
   const voiceFileRef = useRef<HTMLInputElement | null>(null);
@@ -3941,19 +3944,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // A changed attachment set invalidates any pending voice command — intent must be (re)issued with the asset present.
   // This closes the "dictate without an asset, then attach within the window → stale auto-charge" hole.
   useEffect(() => { voiceStopAtRef.current = 0; }, [attachments]);
-  // Debounced SINGLE-SHOT: ~900ms after the transcript settles post-stop, route it ONCE with the latest text. The
-  // token is consumed inside the timer (not on agentGBusy), so a non-routing agent-g reply can't re-arm a retry loop.
+  // HANDS-FREE AUTO-SEND: once dictation stops and the transcript SETTLES (~700ms with no further change),
+  // send it automatically — the user never has to tap Send. Debounced on `input` (each streamed word resets
+  // the timer), so it fires exactly once on the final text. send() internally runs the Agent-G router first,
+  // so voice commands ("open editor", "make a video") still route correctly; everything else sends as chat.
+  // The staleness guard (8s) tolerates a slow final transcription without ever firing on stale state.
   useEffect(() => {
     if (recording || !voiceStopAtRef.current) return;
-    if (Date.now() - voiceStopAtRef.current > 4000) { voiceStopAtRef.current = 0; return; }
+    // CHAT mode only: auto-sending a dictated image/video/music prompt would silently spend credits, so in
+    // generative modes dictation just fills the composer and the user taps Generate. Chat auto-sends.
+    if (mode !== 'chat') { voiceStopAtRef.current = 0; return; }
+    if (Date.now() - voiceStopAtRef.current > 8000) { voiceStopAtRef.current = 0; return; }
     const id = window.setTimeout(() => {
       if (!voiceStopAtRef.current) return;      // may have been cleared by an attachment change
       voiceStopAtRef.current = 0;               // consume — exactly one attempt per voice stop
       const t = latestInputRef.current.trim();
-      if (t) void tryAgentGRoute(t);
-    }, 900);
+      if (t) autoSendRef.current?.({ promptOverride: t });
+    }, 700);
     return () => window.clearTimeout(id);
-  }, [input, recording, tryAgentGRoute]);
+  }, [input, recording, mode]);
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string }) => {
     const text = (opts?.promptOverride ?? input).trim();
@@ -4406,6 +4415,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     await streamChat([...messages, userMsg]);
   }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
 
+  // Keep the auto-send ref pointed at the latest send() so the hands-free voice-stop effect (declared
+  // above send) can dispatch a settled dictation without a stale closure.
+  useEffect(() => { autoSendRef.current = send; }, [send]);
+
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
     restyle: { ka: 'რესტაილი', en: 'Restyle', ru: 'Рестайл' },
@@ -4802,6 +4815,44 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const extFor = (t: string) => /mp4/i.test(t) ? 'mp4' : /aac/i.test(t) ? 'm4a' : /mpeg|mp3/i.test(t) ? 'mp3' : /wav/i.test(t) ? 'wav' : 'webm';
       let inFlight = false;
       let stopped = false;
+
+      // HANDS-FREE silence auto-stop: watch the live mic level and, once the user has spoken and then goes
+      // quiet for ~1.3s, stop the recorder automatically — no manual Stop tap. The voiceStop effect then
+      // auto-sends the settled transcript. Best-effort: if AudioContext is unavailable the manual Stop
+      // (toggleMic) still works exactly as before.
+      let silenceCtx: AudioContext | null = null;
+      let silenceRaf = 0;
+      const stopSilenceWatch = () => {
+        if (silenceRaf) { cancelAnimationFrame(silenceRaf); silenceRaf = 0; }
+        try { void silenceCtx?.close(); } catch { /* noop */ }
+        silenceCtx = null;
+      };
+      try {
+        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        silenceCtx = new AC();
+        const src = silenceCtx.createMediaStreamSource(stream);
+        const analyser = silenceCtx.createAnalyser();
+        analyser.fftSize = 512;
+        src.connect(analyser);
+        const buf = new Uint8Array(analyser.fftSize);
+        let spoke = false;
+        let quietStart = 0;
+        const tick = () => {
+          if (stopped) { stopSilenceWatch(); return; }
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) { const v = (buf[i]! - 128) / 128; sum += v * v; }
+          const rms = Math.sqrt(sum / buf.length);
+          const now = performance.now();
+          if (rms > 0.035) { spoke = true; quietStart = 0; }       // speaking
+          else if (spoke) {                                          // was speaking, now quiet
+            if (!quietStart) quietStart = now;
+            else if (now - quietStart > 1300) { stopSilenceWatch(); try { rec.stop(); } catch { /* noop */ } return; }
+          }
+          silenceRaf = requestAnimationFrame(tick);
+        };
+        silenceRaf = requestAnimationFrame(tick);
+      } catch { stopSilenceWatch(); }
       // Transcribe the audio captured SO FAR and STREAM the text into the composer —
       // the accumulated blob (chunk[0] carries the container header) is a valid clip,
       // so the text grows live as you speak instead of only appearing when you stop.
@@ -4830,18 +4881,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       rec.ondataavailable = (e) => { if (e.data.size) { chunks.push(e.data); if (!stopped) void transcribeSoFar(); } };
       rec.onstop = async () => {
         stopped = true;
+        stopSilenceWatch();
         setRecording(false);
         streamRef.current?.getTracks().forEach((tr) => tr.stop());
+        // CRITICAL: null the refs so the NEXT dictation isn't blocked. The reentrancy guard above bails
+        // when streamRef.current is set; leaving it set (tracks stopped but ref alive) is exactly why the
+        // 2nd mic tap "froze" — startRecorderFallback returned immediately and nothing recorded.
+        streamRef.current = null;
+        recRef.current = null;
         // Wait out any in-flight request, then do one FINAL pass over the whole clip.
         for (let i = 0; inFlight && i < 25; i++) await new Promise((r) => setTimeout(r, 200));
         inFlight = false;
         await transcribeSoFar();
       };
       recRef.current = rec;
-      rec.start(2500); // emit a chunk every 2.5s → progressive, streaming transcription
+      rec.start(1200); // emit a chunk every 1.2s → snappier progressive transcription (was 2.5s)
       setRecording(true);
     } catch {
       setRecording(false);
+      streamRef.current = null;
+      recRef.current = null;
     }
   }, [input, lang]);
 
@@ -4860,12 +4919,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
         ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
       : undefined) as (new () => SpeechRecognitionLike) | undefined;
-    // Try LIVE Web Speech FIRST on EVERY platform — it streams text as you talk and
-    // works in mobile Safari too (iOS 14.5+); the old code skipped it on iOS, which is
-    // exactly why "text doesn't appear until I stop". A 4s watchdog catches engines
-    // that "start" but never deliver (some in-app webviews) and drops to the
+    // iOS Safari's SpeechRecognition is APPLE's engine, which has NO Georgian ('ka') support — it stalls
+    // (up to the watchdog) before failing, which is a big part of "the mic takes forever" for ka users.
+    // So on iOS + Georgian, skip Web Speech and go STRAIGHT to the Whisper recorder (it transcribes ka
+    // fine). Desktop Chrome / en / ru keep live Web Speech (Google's engine DOES support ka).
+    const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+    // Try LIVE Web Speech FIRST (streams text as you talk); an 8s watchdog drops a silent engine to the
     // record-and-transcribe fallback so the mic always does something.
-    if (SR) {
+    if (SR && !(isIOS && lang.startsWith('ka'))) {
       try {
         const rec = new SR();
         rec.lang = lang;
