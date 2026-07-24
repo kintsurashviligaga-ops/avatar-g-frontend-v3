@@ -3,7 +3,7 @@
  * =====================
  * Atlas Cloud (api.atlascloud.ai) — OpenAI-compatible LLM inference. Verified live:
  * GET /v1/models → 200 (131 LLMs incl. DeepSeek-V3, Qwen3, Kimi-K2); POST
- * /v1/chat/completions with model "deepseek-ai/DeepSeek-V3-0324" → 200. Auth is a
+ * /v1/chat/completions with model "deepseek-ai/DeepSeek-V3.1" → 200. Auth is a
  * single Bearer key (the "apikey-…" value). NOTE: Atlas has NO video/Kling models —
  * this is for LLM text only (Director / storyboard fallback), never video.
  *
@@ -14,8 +14,10 @@
 import 'server-only';
 
 const ATLAS_BASE = (process.env.ATLAS_BASE_URL || 'https://api.atlascloud.ai').replace(/\/$/, '');
-// Exact ids from the live model list — the short "deepseek-v3" 404s ("not found").
-export const ATLAS_DEFAULT_MODEL = process.env.ATLAS_MODEL || 'deepseek-ai/DeepSeek-V3-0324';
+// Exact ids from the live model list — the short "deepseek-v3" 404s ("not found"). NOTE: the previous
+// default "DeepSeek-V3-0324" was RETIRED from Atlas (verified live 2026-07-24 → 400; current ids are
+// DeepSeek-V3.1 / V3.1-Terminus / V3.2 / deepseek-v4-*). V3.1 is the drop-in successor; override via ATLAS_MODEL.
+export const ATLAS_DEFAULT_MODEL = process.env.ATLAS_MODEL || 'deepseek-ai/DeepSeek-V3.1';
 
 function atlasKey(): string {
   return String(process.env.ATLAS_API_KEY || process.env.ATLAS_KLING_API_KEY || '').trim();
