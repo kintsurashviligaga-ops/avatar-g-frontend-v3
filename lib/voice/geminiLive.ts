@@ -14,11 +14,21 @@
  * a paid Live key + real mic/camera before enabling in production.
  */
 
-export const DEFAULT_LIVE_MODEL = 'models/gemini-2.0-flash-live-001';
+// Native-audio Live model: Gemini generates expressive voice audio DIRECTLY over the WS (no external
+// TTS). Verified live (2026-07-24) with the project's key: ephemeral-token mint + v1alpha Constrained
+// handshake + 24 kHz PCM audio out + prebuilt-voice + dated systemInstruction all honored. The earlier
+// 'gemini-2.0-flash-live-001' was RETIRED by Google (absent from the key's model list → handshake would
+// fail), so this native-audio model is the current default.
+export const DEFAULT_LIVE_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
+
+// Built-in Google prebuilt voices for native audio (both verified live on the native-audio model). The
+// female/male split mirrors the app's existing KaGender voice convention; passed via GeminiLiveConfig.voiceName.
+export const GEMINI_LIVE_VOICES: Record<'female' | 'male', string> = { female: 'Aoede', male: 'Charon' };
+
 // The Live WS host; the API VERSION + METHOD are chosen per-credential in buildLiveUrl, because they
 // are NOT interchangeable:
 //   • an EPHEMERAL token is honored ONLY by v1alpha + BidiGenerateContentConstrained (the token carries
-//     the server-locked liveConnectConstraints minted by /api/voice/live), and
+//     the server-locked bidiGenerateContentSetup minted by /api/voice/live), and
 //   • a raw API key uses v1beta + BidiGenerateContent (unconstrained).
 // Putting a token on the v1beta/BidiGenerateContent endpoint fails the handshake (that path is api-key
 // only) — matches Google's official gemini-live-ephemeral-tokens example.
@@ -36,6 +46,11 @@ export interface GeminiLiveConfig {
   model?: string;
   systemInstruction?: string;
   responseModalities?: LiveModality[];
+  /** Prebuilt Google voice for native audio output (e.g. 'Aoede' female / 'Charon' male). Emitted as
+   *  generationConfig.speechConfig; omit to use the model's default voice. See GEMINI_LIVE_VOICES. */
+  voiceName?: string;
+  /** Optional BCP-47 language hint for native audio (e.g. 'ka-GE'); the model auto-detects otherwise. */
+  languageCode?: string;
   /** Override the WS base (tests / future version bumps). */
   wsBase?: string;
 }
@@ -58,9 +73,19 @@ export interface GeminiLiveCallbacks {
 /** The first message on the socket: model + generationConfig + optional system instruction. */
 export function buildSetupMessage(config: GeminiLiveConfig): Record<string, unknown> {
   const modalities = config.responseModalities?.length ? config.responseModalities : (['AUDIO'] as LiveModality[]);
+  const generationConfig: Record<string, unknown> = { responseModalities: modalities };
+  // Select a built-in Google voice for native-audio output. Verified live: the v1alpha Constrained
+  // (ephemeral-token) WS honors this client-sent speechConfig. Omitted entirely when no voiceName is set,
+  // so the existing default-path behavior + test vectors are unchanged.
+  if (config.voiceName) {
+    generationConfig.speechConfig = {
+      voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } },
+      ...(config.languageCode ? { languageCode: config.languageCode } : {}),
+    };
+  }
   const setup: Record<string, unknown> = {
     model: config.model || DEFAULT_LIVE_MODEL,
-    generationConfig: { responseModalities: modalities },
+    generationConfig,
   };
   if (config.systemInstruction && config.systemInstruction.trim()) {
     setup.systemInstruction = { parts: [{ text: config.systemInstruction }] };

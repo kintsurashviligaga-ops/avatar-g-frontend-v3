@@ -76,7 +76,12 @@ export async function POST(request: NextRequest) {
     const newSessionExpireTime = new Date(now + NEW_SESSION_WINDOW_MS).toISOString();
 
     // Mint the ephemeral token server-side (key stays server-side). Constrain it to the Live model so a
-    // leaked token can't be repointed at a different (costlier) model.
+    // leaked token can't be repointed at a different (costlier) model. The constraint field is
+    // `bidiGenerateContentSetup` — verified live: the earlier `liveConnectConstraints` name is rejected
+    // by the current auth_tokens API with HTTP 400 ("Unknown name … Cannot find field"), which would
+    // 503 every mint. `bidiGenerateContentSetup` accepts the same {model} shape and locks the model into
+    // the token; the browser still sends its own setup (voice + dated systemInstruction), which the
+    // v1alpha Constrained WS honors (also verified live).
     const res = await fetch(`${AUTH_TOKEN_URL}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
         uses: 1,
         expireTime,
         newSessionExpireTime,
-        liveConnectConstraints: { model },
+        bidiGenerateContentSetup: { model },
       }),
       signal: AbortSignal.timeout(15_000), // a hung mint becomes the already-handled 503 path
     });

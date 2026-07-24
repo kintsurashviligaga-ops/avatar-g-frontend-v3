@@ -15,8 +15,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Mic, MicOff, Paperclip, PhoneOff } from 'lucide-react';
 
 import { isTruthyFlag } from '@/lib/env/flag';
-import { GeminiLiveSession } from '@/lib/voice/geminiLive';
+import { GeminiLiveSession, GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { encodeMicChunk, decodePlaybackChunk } from '@/lib/voice/pcm';
+import { voicePersona, normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 export const geminiLiveEnabled = (): boolean => isTruthyFlag(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 
@@ -25,14 +26,17 @@ type Status = 'connecting' | 'live' | 'speaking' | 'error' | 'closed';
 interface Props {
   userId: string;
   locale?: 'ka' | 'en' | 'ru';
+  /** Override the spoken persona; defaults to the locale's voicePersona (Georgian-first brevity). */
   systemInstruction?: string;
+  /** Which built-in Google voice to speak with. Defaults to female (Aoede); male is Charon. */
+  gender?: 'female' | 'male';
   onClose: () => void;
 }
 
 const PLAYBACK_RATE = 24000; // Gemini Live output PCM sample rate
 const FRAME_FPS = 1.5;       // camera frames/sec streamed up (bandwidth-friendly)
 
-export default function GeminiLiveConversation({ userId, locale = 'ka', systemInstruction, onClose }: Props) {
+export default function GeminiLiveConversation({ userId, locale = 'ka', systemInstruction, gender = 'female', onClose }: Props) {
   const [status, setStatus] = useState<Status>('connecting');
   const [err, setErr] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
@@ -206,8 +210,14 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
         analyserRef.current = analyser;
         source.connect(analyser);
 
+        // Seed the session with the spoken persona + the REAL current date (evaluated now, at session
+        // start, so it is always today) and select the built-in native-audio voice for this gender.
+        const persona = systemInstruction ?? voicePersona(normalizeVoiceLocale(locale));
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const datedInstruction = `${persona}\nToday's date is ${today}.`;
+
         const session = new GeminiLiveSession(
-          { token: j.token, model: j.model, systemInstruction, responseModalities: ['AUDIO'] },
+          { token: j.token, model: j.model, systemInstruction: datedInstruction, voiceName: GEMINI_LIVE_VOICES[gender], responseModalities: ['AUDIO'] },
           {
             onSetupComplete: () => { if (!cancelled) setStatus('live'); },
             onAudio: (b64) => enqueueAudio(b64),
