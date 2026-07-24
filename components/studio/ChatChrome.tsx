@@ -23,12 +23,13 @@ import dynamic from 'next/dynamic';
 // DAY-5 — the real-time voice node. Lazy-loaded so it (and its media plumbing) never enters the initial
 // chat bundle; opens as a full-screen overlay from a floating mic button. Additive: the text chat is untouched.
 const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversation'), { ssr: false });
-// Gemini Multimodal Live overlay — additive + feature-flagged (NEXT_PUBLIC_GEMINI_LIVE_ENABLED). When
-// the flag is OFF (default) this dynamic chunk is never fetched and the existing VoiceConversation path
-// is byte-identical to before. Requires a signed-in userId to mint an ephemeral Live token.
+// Gemini Multimodal Live overlay — now the DEFAULT voice (live-validated native audio). ON unless
+// NEXT_PUBLIC_GEMINI_LIVE_ENABLED is explicitly set falsy, which reverts to the ElevenLabs
+// VoiceConversation below. Requires a signed-in userId to mint an ephemeral Live token (guests fall
+// back to VoiceConversation regardless).
 const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLiveConversation'), { ssr: false });
-const GEMINI_LIVE_ENABLED = isTruthyFlag(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
-import { isTruthyFlag } from '@/lib/env/flag';
+const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
+import { isEnabledByDefault } from '@/lib/env/flag';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';

@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
-import { isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
@@ -38,8 +38,11 @@ async function getCreditsBalance(userId: string): Promise<number> {
 
 export async function POST(request: NextRequest) {
   try {
-    // ── Gate 1: feature flag (inert by default; accepts '1'|'true'|'yes'|'on') ──
-    if (!isTruthyFlag(process.env.GEMINI_LIVE_ENABLED)) {
+    // ── Gate 1: feature flag. Native Gemini Live is now the DEFAULT voice (live-validated), so it is
+    // ON unless GEMINI_LIVE_ENABLED is explicitly set falsy ('0'|'false'|'no'|'off') — the kill-switch
+    // that reverts to the ElevenLabs stack. The remaining gates (key, rate-limit, auth, credits) still
+    // fully protect the cost-bearing mint. ──
+    if (!isEnabledByDefault(process.env.GEMINI_LIVE_ENABLED)) {
       return NextResponse.json({ error: 'gemini_live_disabled' }, { status: 503 });
     }
     // ── Gate 2: key present (fail-closed, never leaked) ──────────────────────

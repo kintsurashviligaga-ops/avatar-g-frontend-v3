@@ -11,3 +11,13 @@ export function isTruthyFlag(value: string | undefined | null): boolean {
   const v = (value ?? '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 }
+
+/**
+ * Opt-OUT flag: ON unless the env is EXPLICITLY set to a falsy value ('0' | 'false' | 'no' | 'off').
+ * Unset / '' / any other value → true. Use for features that should be live-by-default (already
+ * validated, the desired baseline) yet still need a one-env-var kill-switch to revert instantly.
+ */
+export function isEnabledByDefault(value: string | undefined | null): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  return !(v === '0' || v === 'false' || v === 'no' || v === 'off');
+}
