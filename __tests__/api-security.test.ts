@@ -138,11 +138,16 @@ describe('API security guard — no unauthenticated paid-provider routes', () =>
 });
 
 /**
- * P0 voice / telephony hardening — focused regression guards. Vapi + channelBridge are NOT paid-media
- * providers in the scan above, so these two IDOR/drain fixes have no coverage there. These assert the
+ * Voice / telephony hardening — focused regression guards. Vapi + channelBridge are NOT paid-media
+ * providers in the scan above, so these IDOR/drain fixes have no coverage there. These assert the
  * hardening survives future edits (static source checks — no network, deterministic).
+ *
+ * The whole Vapi web/phone/outbound surface shares ONE trust rule: NEVER derive the principal from a
+ * client-supplied userId. web-token + outbound authenticate via requireUser(); notify is server-to-server
+ * (internal worker token); history returns only the authed caller's rows; inbound + phone verify a
+ * provider signature. New routes in this surface must keep to it.
  */
-describe('P0 voice/telephony hardening (regression guards)', () => {
+describe('voice/telephony hardening (regression guards)', () => {
   const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
   it('the Vapi web-call token route authenticates the caller from the session (no body-userId IDOR)', () => {
@@ -154,10 +159,48 @@ describe('P0 voice/telephony hardening (regression guards)', () => {
     expect(/payload\.data\.userId|body\.userId/.test(src)).toBe(false);
   });
 
+  it('the outbound-call route authenticates the caller from the session (no body-userId IDOR)', () => {
+    const src = read('app/api/voice/outbound/route.ts');
+    // Same IDOR class as web-token: it dials a saved phone + burns credits, so the principal MUST come
+    // from requireUser(), the body must not carry a userId, and it must not re-introduce the old
+    // admin.getUserById existence-check (which authenticated nothing).
+    expect(/requireUser\s*\(/.test(src)).toBe(true);
+    expect(/userId:\s*z\.string/.test(src)).toBe(false);
+    expect(/admin\.getUserById\s*\(/.test(src)).toBe(false);
+  });
+
+  it('the job-notify route is gated by the internal worker token (no anonymous paid-call trigger)', () => {
+    const src = read('app/api/voice/notify/route.ts');
+    // Server-to-server route: must require the shared worker token and fail closed when it is unset.
+    expect(/x-internal-worker-token/.test(src)).toBe(true);
+    expect(/WORKER_INTERNAL_TOKEN/.test(src)).toBe(true);
+  });
+
+  it('the call-history route returns only the authenticated caller (no query-param IDOR)', () => {
+    const src = read('app/api/voice/history/route.ts');
+    // Must scope to the session user, NOT a userId read from the query string.
+    expect(/getAuthenticatedUser\s*\(/.test(src)).toBe(true);
+    expect(/authUser\?\.id\s*\|\|\s*queryUserId/.test(src)).toBe(false);
+    expect(/searchParams\.get\(\s*['"]userId['"]/.test(src)).toBe(false);
+  });
+
+  it('the inbound Vapi webhook verifies the provider signature when a secret is configured', () => {
+    const src = read('app/api/voice/inbound/route.ts');
+    expect(/verifyVapiWebhookSignature\s*\(/.test(src)).toBe(true);
+  });
+
   it('the phone webhook fails CLOSED when TWILIO_AUTH_TOKEN is unset (no open LLM drain)', () => {
     const src = read('app/api/webhooks/phone/route.ts');
     // Regression guard: the unconfigured branch must reject, not `return true` (which left it open).
     expect(/!authToken\s*\)\s*return\s+true/.test(src)).toBe(false);
     expect(/!authToken\s*\)\s*return\s+false/.test(src)).toBe(true);
+  });
+
+  it('the phone webhook performs real HMAC verification, not a header-presence check', () => {
+    const src = read('app/api/webhooks/phone/route.ts');
+    // Must actually verify the signature (full HMAC-SHA1 over URL + params)…
+    expect(/verifyTwilioRequest\s*\(/.test(src)).toBe(true);
+    // …and must NOT fall back to merely asserting the header exists (the previous weak check).
+    expect(/return\s+Boolean\(\s*signature\s*\)/.test(src)).toBe(false);
   });
 });
