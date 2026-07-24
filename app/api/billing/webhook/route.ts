@@ -34,7 +34,7 @@ async function isProcessed(eventId: string): Promise<boolean> {
     .from('billing_webhook_events')
     .select('stripe_event_id')
     .eq('stripe_event_id', eventId)
-    .single();
+    .maybeSingle();
 
   return Boolean(data);
 }
@@ -45,7 +45,7 @@ async function getUserIdByCustomer(customerId: string): Promise<string | null> {
     .from('subscriptions')
     .select('user_id')
     .eq('stripe_customer_id', customerId)
-    .single();
+    .maybeSingle();
 
   return data?.user_id || null;
 }

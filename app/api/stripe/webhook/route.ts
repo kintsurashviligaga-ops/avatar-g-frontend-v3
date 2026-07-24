@@ -121,7 +121,7 @@ async function insertCommissionEvent(params: {
     .from('affiliate_commission_events')
     .select('id')
     .eq('stripe_event_id', params.stripeEventId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     return;
@@ -761,7 +761,7 @@ async function handleAccountUpdated(event: Stripe.Event) {
         .from('seller_profiles')
         .select('user_id')
         .eq('stripe_connected_account_id', account.id)
-        .single();
+        .maybeSingle();
 
       if (!data) {
         console.warn('[Webhook] No user found for account:', account.id);

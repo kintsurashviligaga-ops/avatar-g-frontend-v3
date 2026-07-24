@@ -12,7 +12,8 @@
  */
 import 'server-only';
 import { reportError } from '@/lib/observability/report-error';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { renderPhotoMusicVideo } from '@/lib/pipeline/photoMusicVideo';
@@ -29,6 +30,7 @@ const AUDIO_FETCH_TIMEOUT_MS = 45_000;
 
 export async function POST(req: Request) {
   try {
+    const rl = await checkRateLimit(req as NextRequest, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // heavy photo-music-video render
     const { user } = await authedClientFromRequest(req);
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
