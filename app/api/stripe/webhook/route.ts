@@ -47,7 +47,7 @@ async function isEventProcessed(eventId: string): Promise<boolean> {
     .from('webhook_events')
     .select('id')
     .eq('stripe_event_id', eventId)
-    .single();
+    .maybeSingle();
 
   return data !== null;
 }
@@ -81,7 +81,7 @@ async function getAffiliateForUser(userId: string): Promise<{ affiliateId: strin
     .from('affiliate_referrals')
     .select('affiliate_id')
     .eq('referred_user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!referral) {
     return null;
@@ -91,7 +91,7 @@ async function getAffiliateForUser(userId: string): Promise<{ affiliateId: strin
     .from('affiliates')
     .select('id, commission_percent, is_active')
     .eq('id', referral.affiliate_id)
-    .single();
+    .maybeSingle();
 
   if (!affiliate || !affiliate.is_active) {
     return null;
@@ -600,7 +600,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
           .from('orders')
           .select('*, order_items(product_id, quantity)')
           .eq('id', orderId)
-          .single();
+          .maybeSingle();
         
         if (order && order.order_items) {
           // Trigger fulfillment via API
