@@ -9,7 +9,7 @@
  * English and Russian all work (the routes own the language; VAD is language-agnostic).
  *
  * Pipeline (unchanged REST contract — every leg fail-open + timeout-guarded):
- *   mic → VAD endpoint → /api/voice/transcribe → /api/voice/chat → /api/elevenlabs/tts (chunked).
+ *   mic → VAD endpoint → /api/voice/transcribe → /api/voice/chat → /api/tts/gemini (chunked).
  *
  * The hard-won robustness (why the old shell felt "dead"):
  *  - ONE AudioContext is created AND resumed INSIDE the first tap gesture and reused for the whole
@@ -412,7 +412,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       vadStateRef.current = createVadState(vadStateRef.current.floor); // fresh state for barge detection
       let buf: AudioBuffer | null = null;
       try {
-        const res = await fetch('/api/elevenlabs/tts', {
+        const res = await fetch('/api/tts/gemini', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ text: answer, locale: spokenLocale }), signal: turnSignal(30_000, ttsSig),
         });

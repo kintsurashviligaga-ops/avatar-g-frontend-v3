@@ -189,20 +189,27 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     closedRef.current = false; // re-arm after any prior teardown (a userId-change remount keeps us mounted)
     (async () => {
       try {
+        // LATENCY: open the AudioContext + acquire the mic IMMEDIATELY, in PARALLEL with the token mint —
+        // opening the modal is the user gesture that authorizes both. Startup then costs max(token, mic)
+        // instead of token + mic, so the mic is hot the instant the token lands and first speech isn't lost.
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new AudioCtx();
+        ctxRef.current = ctx;
+        const ctxReady = ctx.resume().catch(() => {});
+        const micReady = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        micReady.catch(() => {}); // pre-attach so an early token failure can't surface an unhandled rejection
+        const releaseMic = () => { void micReady.then((s) => s.getTracks().forEach((tk) => tk.stop())).catch(() => {}); };
+
         const res = await fetch('/api/voice/live', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ userId }),
         });
         const j = (await res.json().catch(() => ({}))) as { token?: string; model?: string; error?: string };
-        if (!res.ok || !j.token) { if (!cancelled) { setErr(j.error || `HTTP ${res.status}`); setStatus('error'); } return; }
-        if (cancelled) return;
+        if (!res.ok || !j.token) { releaseMic(); if (!cancelled) { setErr(j.error || `HTTP ${res.status}`); setStatus('error'); } return; }
+        if (cancelled) { releaseMic(); return; }
 
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const ctx = new AudioCtx();
-        ctxRef.current = ctx;
-        await ctx.resume().catch(() => {});
-
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        await ctxReady;
+        const micStream = await micReady;
         if (cancelled) { micStream.getTracks().forEach((tk) => tk.stop()); return; }
         micStreamRef.current = micStream;
 

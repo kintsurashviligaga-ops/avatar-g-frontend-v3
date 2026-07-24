@@ -1484,10 +1484,10 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
     };
 
     try {
-      // ── Voice (ხმა): pure TTS → ElevenLabs, independent of the text track ──
+      // ── Voice (ხმა): pure TTS → Gemini NATIVE audio (no ElevenLabs), independent of the text track ──
       if (mode === 'voice') {
         setPipeline(null); // not a multi-stage render; show the simple spinner
-        const ttsRes = await fetch('/api/elevenlabs/tts', {
+        const ttsRes = await fetch('/api/tts/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -4335,11 +4335,10 @@ function MessageBubble({
     speakNext();
   }, [lang]);
 
-  // Read-aloud play/pause toggle. PHASE 56 — first tap synthesizes the message
-  // through the premium ElevenLabs voice (/api/elevenlabs/tts: multilingual_v2
-  // for Georgian, Google ka-GE fallback) and plays the returned clip; a second
-  // tap pauses, a third resumes. ElevenLabs is a server call so it works on
-  // every browser — unlike SpeechSynthesis, which can't pronounce Georgian.
+  // Read-aloud play/pause toggle. First tap synthesizes the message through Gemini NATIVE audio
+  // (/api/tts/gemini — no ElevenLabs) and plays the returned clip; a second tap pauses, a third
+  // resumes. It's a server call so it works on every browser; browser SpeechSynthesis stays as the
+  // last-ditch fallback if the Gemini call fails on the first chunk.
   const toggleReadAloud = useCallback(async () => {
     if (!message.text || ttsState === 'loading') return;
 
@@ -4381,7 +4380,7 @@ function MessageBubble({
 
     const synthChunk = async (chunk: string): Promise<string | null> => {
       try {
-        const res = await fetch('/api/elevenlabs/tts', {
+        const res = await fetch('/api/tts/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

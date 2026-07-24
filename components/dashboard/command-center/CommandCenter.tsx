@@ -800,7 +800,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
         void fetch('/api/creations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'video', service: 'video', prompt: text, credits_used: cost }) });
 
       } else if (service === 'voice') {
-        const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode, voiceId: selectedVoiceId }) });
+        const res = await fetch('/api/tts/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode, voiceId: selectedVoiceId }) });
         if (!res.ok) throw new Error(copy.errorGeneric);
         const url = URL.createObjectURL(await res.blob());
         setMessages(m => m.map(msg => msg.id === pendingMsg.id ? { ...msg, pending: false, content: '🔊 Audio ready', media: { kind: 'audio', url } } : msg));
@@ -990,7 +990,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
 
   const speakMessage = useCallback(async (text: string) => {
     try {
-      const res = await fetch('/api/elevenlabs/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode }) });
+      const res = await fetch('/api/tts/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, locale: localeCode }) });
       if (!res.ok) return;
       const url = URL.createObjectURL(await res.blob());
       new Audio(url).play().catch(() => { });
