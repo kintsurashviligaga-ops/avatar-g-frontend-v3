@@ -4675,6 +4675,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const startVoiceRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Reentrancy guard: a concurrent invoke may have acquired+assigned a stream while we awaited getUserMedia.
+      // Without this the loser stream leaks HOT (mic stays live). Stop it and bail — the winner is recording.
+      if (voiceStreamRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
       voiceStreamRef.current = stream;
       const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac'];
       let mime = '';
@@ -4729,6 +4732,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     sttDiscardRef.current = false; // fresh dictation — accept transcription again
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Reentrancy guard (see startVoiceRecording): a concurrent double-invoke would leak the loser stream HOT.
+      if (streamRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
       streamRef.current = stream;
       const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/mpeg'];
       let chosen = '';

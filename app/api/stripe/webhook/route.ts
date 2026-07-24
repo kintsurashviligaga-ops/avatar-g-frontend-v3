@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getStripe } from '@/lib/billing/stripe';
+import { reportError } from '@/lib/observability/report-error';
 import { 
   upsertSubscription, 
   updateSubscriptionStatus,
@@ -52,6 +53,9 @@ async function isEventProcessed(eventId: string): Promise<boolean> {
 }
 
 async function markEventProcessed(eventId: string): Promise<void> {
+  // Bound the in-memory dedupe cache — the DB webhook_events upsert below is the durable idempotency
+  // source, so clearing only drops a fast-path optimization, never correctness.
+  if (processedEvents.size > 5000) processedEvents.clear();
   processedEvents.add(eventId);
 
   // Also store in database for persistence
@@ -277,6 +281,8 @@ export async function POST(request: NextRequest) {
         error: handlerError instanceof Error ? handlerError.message : 'Unknown error',
         stack: handlerError instanceof Error ? handlerError.stack : undefined,
       });
+      // Surface the money-critical "paid-but-handler-failed" case to Sentry — it was console-only.
+      reportError(handlerError, { route: 'stripe.webhook', eventId: event.id, eventType: event.type });
       // Still return 200 - we don't want Stripe to retry
       // Error is logged for manual investigation
     }
@@ -288,6 +294,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
     });
+    reportError(error, { route: 'stripe.webhook' });
     // Return 500 only for unexpected errors - Stripe will retry
     return NextResponse.json(
       { error: 'Webhook processing failed' },
@@ -608,6 +615,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
               storeId: order.store_id || order.seller_user_id,
               items: order.order_items,
             }),
+            signal: AbortSignal.timeout(10_000), // a hung fulfillment call → the already-handled retry catch
           });
           
           if (!fulfillmentResponse.ok) {
