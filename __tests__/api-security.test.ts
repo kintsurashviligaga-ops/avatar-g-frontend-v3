@@ -136,3 +136,28 @@ describe('API security guard — no unauthenticated paid-provider routes', () =>
     expect(stale).toEqual([]);
   });
 });
+
+/**
+ * P0 voice / telephony hardening — focused regression guards. Vapi + channelBridge are NOT paid-media
+ * providers in the scan above, so these two IDOR/drain fixes have no coverage there. These assert the
+ * hardening survives future edits (static source checks — no network, deterministic).
+ */
+describe('P0 voice/telephony hardening (regression guards)', () => {
+  const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+
+  it('the Vapi web-call token route authenticates the caller from the session (no body-userId IDOR)', () => {
+    const src = read('app/api/voice/web-token/route.ts');
+    // Must derive the principal from the authenticated session…
+    expect(/requireUser\s*\(/.test(src)).toBe(true);
+    // …and must NOT trust a userId taken from the request body (the original IDOR vector).
+    expect(/userId:\s*z\.string/.test(src)).toBe(false);
+    expect(/payload\.data\.userId|body\.userId/.test(src)).toBe(false);
+  });
+
+  it('the phone webhook fails CLOSED when TWILIO_AUTH_TOKEN is unset (no open LLM drain)', () => {
+    const src = read('app/api/webhooks/phone/route.ts');
+    // Regression guard: the unconfigured branch must reject, not `return true` (which left it open).
+    expect(/!authToken\s*\)\s*return\s+true/.test(src)).toBe(false);
+    expect(/!authToken\s*\)\s*return\s+false/.test(src)).toBe(true);
+  });
+});

@@ -31,7 +31,12 @@ const SAMPLE_PNG =
 const SAMPLE_MP4 = 'https://e2e.invalid/sample-video.mp4';
 const SAMPLE_AUDIO = 'https://e2e.invalid/sample-audio.mp3';
 
-const KA_DASHBOARD = '/ka/dashboard';
+// MyAvatarChatV2 — the surface these tests assert (the chat-input / preview-workspace testids live in
+// components/chat/MyAvatarChatV2.tsx) — now lives at /[locale]/chat. The /dashboard home was swapped to
+// the Cinematic Film Studio (FilmStudioHome), which carries neither testid, so the tests were pointed at a
+// route that no longer hosts the component under test. Point them at the chat hub's real route (renders
+// MyAvatarChatV2 with a guest fallback → works anonymously, which is what this mocked contract needs).
+const KA_CHAT = '/ka/chat';
 
 /** Mock the one orchestration endpoint with a deterministic terminal result. */
 async function mockOrchestrate(page: Page, body: Record<string, unknown>): Promise<void> {
@@ -46,7 +51,7 @@ async function mockOrchestrate(page: Page, body: Record<string, unknown>): Promi
 
 /** Land on the dashboard, dismiss the cookie banner, reveal the composer. */
 async function openChat(page: Page): Promise<void> {
-  await page.goto(KA_DASHBOARD);
+  await page.goto(KA_CHAT);
   // Cookie consent is a bottom-corner banner (not a wall). "Necessary only" is
   // the privacy-preserving choice and dismisses + persists it.
   const necessary = page.getByTestId('cookie-necessary');
@@ -66,7 +71,7 @@ async function sendPrompt(page: Page, text: string): Promise<void> {
 // ─── Cookie consent (the thing the external scraper mistook for a "wall") ──────
 
 test('cookie banner appears, dismisses, and stays dismissed after reload', async ({ page }) => {
-  await page.goto(KA_DASHBOARD);
+  await page.goto(KA_CHAT);
   const accept = page.getByTestId('cookie-accept');
   await expect(accept).toBeVisible({ timeout: 20_000 });
   await accept.click();

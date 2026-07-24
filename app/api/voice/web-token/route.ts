@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 
 import { buildAgentGVapiAssistantConfig } from '@/lib/agent-g-voice-config';
+import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
 import { structuredLog } from '@/lib/logger';
-import { createServiceRoleClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
 import { MINIMUM_CREDITS_TO_START_CALL, hasMinimumVoiceCredits } from '@/lib/voice/credits';
 import { insertVoiceCall } from '@/lib/voice/repository';
 import { createVapiAssistant, isVapiServerConfigured } from '@/lib/vapi';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const requestSchema = z.object({
-  userId: z.string().min(1),
-});
 
 async function getCreditsBalance(userId: string): Promise<number> {
   const supabase = createServiceRoleClient();
@@ -28,17 +24,21 @@ async function getCreditsBalance(userId: string): Promise<number> {
 
 export async function POST(request: NextRequest) {
   try {
-    const payload = requestSchema.safeParse(await request.json());
-    if (!payload.success) {
-      return NextResponse.json({ error: 'invalid_payload' }, { status: 400 });
-    }
+    // Rate-limit a cost-bearing mint: each call reads a balance, can create a paid Vapi assistant, and
+    // inserts a voice_calls row. Mirror the EXPENSIVE cap used by the sibling app/api/voice/live route.
+    const limited = await checkRateLimit(request, RATE_LIMITS.EXPENSIVE);
+    if (limited) return limited;
 
-    const { userId } = payload.data;
-    const supabase = createServiceRoleClient();
-
-    const userResult = await supabase.auth.admin.getUserById(userId);
-    if (userResult.error || !userResult.data.user) {
-      return NextResponse.json({ error: 'user_not_found' }, { status: 404 });
+    // Authenticate the CALLER via their session — NEVER a `userId` from the request body. The prior
+    // version parsed `{ userId }` from the body and ran it on a service-role (RLS-bypassing) client with
+    // no auth, so any request could read ANOTHER account's balance (leaked in the 402 `current` field),
+    // inject voice_calls rows under a victim's id, and mint a paid Vapi assistant against the platform —
+    // a classic IDOR. Deriving the principal from requireUser() closes it; the body is now ignored.
+    let userId: string;
+    try {
+      userId = (await requireUser()).id;
+    } catch {
+      return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
     }
 
     const creditsBalance = await getCreditsBalance(userId);

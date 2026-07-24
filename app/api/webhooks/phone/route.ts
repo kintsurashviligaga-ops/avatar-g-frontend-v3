@@ -16,11 +16,16 @@ function normalize(v: string | null | undefined): string {
 
 function verifyTwilioSignature(req: Request, _body: string): boolean {
   const authToken = normalize(process.env.TWILIO_AUTH_TOKEN);
-  if (!authToken) return true; // Skip verification if no token configured
+  // FAIL CLOSED when unconfigured. This route drives a PAID LLM (generateChannelReply), so an open
+  // endpoint is an unauthenticated compute drain: anyone POSTing a `SpeechResult` burns provider tokens.
+  // Without TWILIO_AUTH_TOKEN we cannot prove the request came from Twilio, so we reject it (the route
+  // stays effectively inert until telephony is properly provisioned) — previously this returned `true`,
+  // leaving the endpoint open to the public.
+  if (!authToken) return false;
   const signature = req.headers.get('x-twilio-signature');
   if (!signature) return false;
-  // Full Twilio signature verification requires the twilio package
-  // For now, we verify the header exists (package can be added later)
+  // TODO: upgrade to full HMAC-SHA1 verification (URL + sorted params, base64, constant-time compare)
+  // once the request URL behind the Vercel proxy is resolved reliably. Until then we require the header.
   return Boolean(signature);
 }
 

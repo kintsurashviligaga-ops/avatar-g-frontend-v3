@@ -33,10 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      # next build evaluates the Supabase client at build time (lib/supabase/server.ts throws on missing
-      # url/key). Dummy values are enough to compile — no real project is contacted. Mirrors e2e.yml.
+      # next build evaluates the Supabase clients at build time (lib/supabase/server.ts throws on a missing
+      # url / anon key / SERVICE ROLE key). Dummy values are enough to COMPILE — no real project is
+      # contacted: the client only stores url+key, and every API route is force-dynamic so no query runs
+      # during `Collecting page data`. SUPABASE_SERVICE_ROLE_KEY was previously MISSING here, so page-data
+      # collection threw `Missing SUPABASE_SERVICE_ROLE_KEY environment variable` at the first service-role
+      # route (/api/editing/jobs/[id]) — which is why this gate had been RED on every main commit. Mirrors e2e.yml.
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+      SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-ci
       NEXT_TELEMETRY_DISABLED: "1"
       CI: "true"
     steps:
