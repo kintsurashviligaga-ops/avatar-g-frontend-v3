@@ -6,6 +6,8 @@ const createJestConfig = nextJest({
 
 const customJestConfig = {
   testEnvironment: 'jest-environment-jsdom',
+  // Loaded AFTER the test framework so `jest.retryTimes` is available (CI-only flake auto-retry).
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.cjs'],
   testMatch: ['**/?(*.)+(test).[jt]s?(x)'],
   // Never scan build output or the `.claude/worktrees` copies (isolated-agent worktrees are full repo
   // clones — scanning them doubles every suite + trips haste-map duplicate-module collisions).
