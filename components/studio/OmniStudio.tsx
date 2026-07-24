@@ -847,7 +847,7 @@ interface FilmSnap {
   hasTrainedVoice: boolean;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
@@ -1594,9 +1594,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  // Ref to send() so the voice-stop effect (declared BEFORE send) can auto-send a settled dictation
-  // without a temporal-dead-zone reference. Set in an effect once send is defined.
-  const autoSendRef = useRef<((opts?: { forceMyVoice?: boolean; promptOverride?: string }) => void) | null>(null);
+  // AUTO-PLAY TTS: when a chat turn was started by VOICE (mic/dictation), the assistant's finished reply is
+  // auto-spoken via /api/tts/gemini. Set by send() right before streamChat, consumed once at stream end.
+  // A TYPED turn leaves this false, so its reply stays text-only. speakMsgRef bridges to speakMsg (which is
+  // defined AFTER streamChat) without a temporal-dead-zone reference.
+  const autoPlayReplyRef = useRef(false);
+  const speakMsgRef = useRef<((text: string, i: number) => void) | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
   // dictation recorder above so the two never collide.
   const voiceFileRef = useRef<HTMLInputElement | null>(null);
@@ -1630,8 +1633,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // with a friendly toast, stale-closure-free. (Product ad is queue-governed now, not here.)
   const genActiveRef = useRef(false);
   // Type-ahead: a plain chat message sent WHILE the previous turn is still streaming is parked here
-  // (not stranded in the composer), then auto-sent the moment the turn finishes — see the flush effect.
-  const pendingChatRef = useRef<string | null>(null);
+  // (not stranded in the composer), then sent the moment the turn finishes — see the flush effect. Carries
+  // viaVoice so a dictated follow-up still tags inputMethod:'voice' + auto-plays its reply.
+  const pendingChatRef = useRef<{ text: string; viaVoice: boolean } | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
@@ -3748,6 +3752,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const ac = new AbortController();
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
+    // Consume the auto-play flag ONCE at the start (a voice-initiated turn set it just before this call).
+    // Captured locally so a later regenerate/typed turn — which never sets it — can't inherit it.
+    const autoPlayReply = autoPlayReplyRef.current;
+    autoPlayReplyRef.current = false;
     setMessages([...history, { role: 'assistant', text: '' }]);
     setBusy(true);
     let assistantText = ''; // accumulate the streamed reply so we can mirror it to the server on completion
@@ -3834,6 +3842,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const svc = hasServiceBlock(assistantText) ? parseServiceBlock(assistantText) : null;
         const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : assistantText;
         persistChatTurn('assistant', cleaned);
+        // AUTO-PLAY: a VOICE-initiated turn speaks its finished reply aloud (Gemini native TTS). The
+        // assistant bubble is the last message → index history.length (streamChat set [...history, reply]).
+        if (autoPlayReply) speakMsgRef.current?.(cleaned, history.length);
       }
     } catch {
       if (!mine()) return; // stopped / superseded — keep the partial stream as-is
@@ -3856,8 +3867,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const queued = pendingChatRef.current;
     if (!queued) return;
     pendingChatRef.current = null;
-    const userMsg: Msg = { role: 'user', text: queued };
-    persistChatTurn('user', queued);
+    const userMsg: Msg = { role: 'user', text: queued.text, inputMethod: queued.viaVoice ? 'voice' : 'text' };
+    persistChatTurn('user', queued.text);
+    // Preserve the queued turn's voice intent so a dictated follow-up still auto-plays its reply (consumed
+    // at the top of streamChat).
+    autoPlayReplyRef.current = queued.viaVoice;
     // streamChat renders the user turn from its history arg (setMessages([...history, assistant])), so
     // no separate setMessages is needed here — that would only double-render the bubble.
     void streamChat([...messagesRef.current, userMsg]);
@@ -3933,39 +3947,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Voice → Agent G (V2): the dictated transcript settles into `input`; when recording stops, route it the same way
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
-  const latestInputRef = useRef(input);
-  useEffect(() => { latestInputRef.current = input; }, [input]);
-  const voiceStopAtRef = useRef(0);
-  const prevRecordingRef = useRef(false);
-  useEffect(() => {
-    if (prevRecordingRef.current && !recording) voiceStopAtRef.current = Date.now();
-    prevRecordingRef.current = recording;
-  }, [recording]);
-  // A changed attachment set invalidates any pending voice command — intent must be (re)issued with the asset present.
-  // This closes the "dictate without an asset, then attach within the window → stale auto-charge" hole.
-  useEffect(() => { voiceStopAtRef.current = 0; }, [attachments]);
-  // HANDS-FREE AUTO-SEND: once dictation stops and the transcript SETTLES (~700ms with no further change),
-  // send it automatically — the user never has to tap Send. Debounced on `input` (each streamed word resets
-  // the timer), so it fires exactly once on the final text. send() internally runs the Agent-G router first,
-  // so voice commands ("open editor", "make a video") still route correctly; everything else sends as chat.
-  // The staleness guard (8s) tolerates a slow final transcription without ever firing on stale state.
-  useEffect(() => {
-    if (recording || !voiceStopAtRef.current) return;
-    // CHAT mode only: auto-sending a dictated image/video/music prompt would silently spend credits, so in
-    // generative modes dictation just fills the composer and the user taps Generate. Chat auto-sends.
-    if (mode !== 'chat') { voiceStopAtRef.current = 0; return; }
-    if (Date.now() - voiceStopAtRef.current > 8000) { voiceStopAtRef.current = 0; return; }
-    const id = window.setTimeout(() => {
-      if (!voiceStopAtRef.current) return;      // may have been cleared by an attachment change
-      voiceStopAtRef.current = 0;               // consume — exactly one attempt per voice stop
-      const t = latestInputRef.current.trim();
-      if (t) autoSendRef.current?.({ promptOverride: t });
-    }, 700);
-    return () => window.clearTimeout(id);
-  }, [input, recording, mode]);
+  // Tracks whether the CURRENT composer text came from dictation ('voice') or the keyboard ('text'). The
+  // STT handlers flip it to 'voice' as they stream the transcript; the textarea onChange flips it to 'text'
+  // on any real keystroke. send() reads it to (a) tag the message inputMethod and (b) decide whether to
+  // auto-play the reply. There is NO auto-send — dictation just fills the box and WAITS for the user to tap
+  // Send (product decision; the earlier hands-free auto-submit is intentionally reverted).
+  const inputSourceRef = useRef<'text' | 'voice'>('text');
 
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean }) => {
     const text = (opts?.promptOverride ?? input).trim();
+    // Was this send's text dictated (mic) or typed? Drives inputMethod + whether the reply auto-plays.
+    // The mic sets inputSourceRef to 'voice' while transcribing; the keyboard onChange resets it to 'text'.
+    const viaVoice = opts?.viaVoice ?? (inputSourceRef.current === 'voice');
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
     // attachment — otherwise this guard silently blocked a script-only run from starting.
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
@@ -4077,8 +4070,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // the composer NOW, and the flush effect auto-sends it when the current turn ends. Generative /
       // attachment sends keep the explicit busy toast — they can't safely run concurrently.
       if (mode === 'chat' && text && attachments.length === 0 && !isGenerativeCommand(text)) {
-        pendingChatRef.current = text;
-        setInput(''); stopDictationEcho();
+        pendingChatRef.current = { text, viaVoice };
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
         return;
       }
       toast(busyToastMessage(locale)); return;
@@ -4409,15 +4402,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
-    const userMsg: Msg = { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) };
+    const userMsg: Msg = { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text', ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
+    inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
     persistChatTurn('user', text); // mirror the user turn to the server (fail-soft; anonymous → no-op)
+    // Arm auto-play ONLY for a voice-initiated turn — its reply will be spoken aloud at stream end; a typed
+    // turn stays text-only. Consumed at the top of streamChat.
+    autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
   }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
-
-  // Keep the auto-send ref pointed at the latest send() so the hands-free voice-stop effect (declared
-  // above send) can dispatch a settled dictation without a stale closure.
-  useEffect(() => { autoSendRef.current = send; }, [send]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -4722,6 +4715,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [speakingIdx, locale]);
 
+  // Keep speakMsgRef pointed at the latest speakMsg so streamChat (defined earlier) can auto-play a
+  // voice-initiated reply without a temporal-dead-zone reference.
+  useEffect(() => { speakMsgRef.current = speakMsg; }, [speakMsg]);
+
   // Stop any in-flight read-aloud when the studio unmounts (pause + unblock/revoke the current chunk).
   useEffect(() => () => { try { ttsAudioRef.current?.pause(); ttsResolveRef.current?.(); } catch { /* noop */ } }, []);
 
@@ -4874,7 +4871,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // just-emptied box (the "my dictated text jumps back after I send" bug; iOS uses this recorder
           // path, and it only bites when you send before transcription resolves). Drop it silently.
           if (sttDiscardRef.current) { inFlight = false; return; }
-          if (j.text && j.text.trim()) setInput(base + j.text.trim());
+          if (j.text && j.text.trim()) { inputSourceRef.current = 'voice'; setInput(base + j.text.trim()); }
         } catch { /* fail-soft */ }
         inFlight = false;
       };
@@ -4959,6 +4956,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             if (res.isFinal) sttFinalRef.current += txt;
             else interim += txt;
           }
+          inputSourceRef.current = 'voice';
           setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
         };
         rec.onend = () => { clearTimeout(watchdog); recognitionRef.current = null; if (!fellBack) setRecording(false); };
@@ -7304,7 +7302,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <textarea
             ref={taRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { inputSourceRef.current = 'text'; setInput(e.target.value); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
             rows={1}
