@@ -68,6 +68,11 @@ const RULES: IntentRule[] = [
       /\bphoto[ -]?real/i,
       /\b3d\s*render/i,
       /\bგამოსახულება|изображение|плакат|постер/i,
+      // Georgian: image/photo/drawing/portrait noun near a generate verb (either order). Catches
+      // "გამიკეთე სურათი", "დახატე კატა", "სურათი შემიქმენი".
+      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ|დაგენერირ|გამოსახ).{0,40}(სურათ|ფოტო|ნახატ|გამოსახ|პორტრეტ|ილუსტრაცი)/,
+      /(სურათ|ფოტო|ნახატ|პორტრეტ|ილუსტრაცი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ)/,
+      /დახატ(ე|ავ)/,
     ],
   },
   // ── Photo edit / enhancement ───────────────────────────────────────
@@ -101,7 +106,9 @@ const RULES: IntentRule[] = [
       /\bimg[- ]?to[- ]?vid/i,
       /\banimate\b/i,
       /\b9\s*:\s*16\b.*\b(video|promo|reel)/i,
-      /\bვიდეო|видео|ролик/i,
+      /ვიდეო|видео|ролик/i,
+      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დააგენერირ|დაგენერირ|გადამიღ|გადაიღ).{0,40}(ვიდეო|რგოლ|კლიპ|ფილმ)/,
+      /(ვიდეო|რგოლ|კლიპ|ფილმ).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დააგენერირ)/,
     ],
   },
   // ── Music generation ───────────────────────────────────────────────
@@ -115,7 +122,9 @@ const RULES: IntentRule[] = [
       /\b(music|beat|song|track|soundtrack)\b.*\b(generat|creat|compos)/i,
       /\bmusicgen\b/i,
       /\b(ambient|cinematic|trap|house|orchestral)\b.*\b(track|beat|music)/i,
-      /\bмუსიკა|მელოდია|музыка|трек|бит/i,
+      /მუსიკა|მელოდია|სიმღერა|музыка|трек|бит/i,
+      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დააგენერირ|დაგენერირ|დამიწერ|დაწერ).{0,40}(მუსიკა|სიმღერ|მელოდი|ბიტ|ტრეკ)/,
+      /(მუსიკა|სიმღერ|მელოდი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დააგენერირ)/,
     ],
   },
   // ── Visual analysis ────────────────────────────────────────────────
@@ -245,8 +254,13 @@ export function isGenerativeCommand(text: string): boolean {
   // Must LEAD with a generate verb, allowing a short chain of polite lead-ins first ("please generate
   // …", "can you make …", "could you please generate …"). The polite set is specific, so a question
   // that starts with how/what/is/should/which (not in the set) can't reach the verb → it isn't a command.
-  const leads = /^\s*((please|can|could|would|will|you|u|kindly)\s+){0,3}(make|create|generate|render|compose|design|draw|produce|animate|paint|write\s+me)\b/i.test(s);
-  if (!leads) return false;
+  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста)\s+){0,3}(make|create|generate|render|compose|design|draw|produce|animate|paint|write\s+me|сделай|создай|сгенерируй|нарисуй|сочини|придумай)\b/i.test(s);
+  // Georgian imperative generate verbs (stems, so conjugations like -ე/-ავ/-ე match), optionally after a
+  // polite "გთხოვ" / "თუ შეიძლება". Georgian script isn't \w, so this leads at ^ without \b. Covers the
+  // common phrasings that were silently falling through to plain chat ("გამიკეთე სურათი", "დახატე …",
+  // "შემიქმენი ვიდეო", "დააგენერირე …").
+  const leadsKa = /^\s*(გთხოვ\s+|თუ\s+შეიძლება\s+){0,2}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|გადამიღ|გადაიღ|შემიდგინ)/.test(s);
+  if (!leadsLatin && !leadsKa) return false;
   // EXCLUDE an EDIT of an EXISTING asset ("make MY/THIS song sound better") — a mixing request with no
   // source in chat → falls to chat. A FRESH generate with a quality descriptor ("make A poster that
   // looks better", "…make it look better than the last one") uses an article/pronoun, not a possessive,

@@ -68,4 +68,23 @@ describe('intentDetector — autonomous chat dispatch classification', () => {
     expect(detectIntent('').intent).toBe('text_chat');
     expect(wouldDispatch('   ')).toBe(false);
   });
+
+  // Georgian generative commands used to silently fall through to plain chat (no Georgian verbs in
+  // isGenerativeCommand + \b-prefixed media nouns that don't match Georgian script), producing a dry
+  // "sending to the agent" reply and NO generation. These lock the fix in.
+  it('DISPATCHES Georgian generate commands to the right modality', () => {
+    expect(detectIntent('გამიკეთე სურათი ცხენი ანიმეს სტილში').intent).toBe('image_generation');
+    expect(detectIntent('დახატე კატა').intent).toBe('image_generation');
+    expect(detectIntent('შემიქმენი ვიდეო ზღვაზე').intent).toBe('video_generation');
+    expect(detectIntent('დააგენერირე მუსიკა ჯაზი').intent).toBe('music_generation');
+    for (const m of ['გამიკეთე სურათი მთის', 'დახატე ლომი', 'შემიქმენი ვიდეო ცხენზე', 'დააგენერირე სიმღერა']) {
+      expect(wouldDispatch(m)).toBe(true);
+    }
+  });
+
+  it('does NOT dispatch a Georgian QUESTION about media (no false-positive charge)', () => {
+    for (const q of ['რა არის საუკეთესო სურათი?', 'როგორ გავაკეთო ვიდეო?', 'რომელი მუსიკაა კარგი?']) {
+      expect(wouldDispatch(q)).toBe(false);
+    }
+  });
 });
