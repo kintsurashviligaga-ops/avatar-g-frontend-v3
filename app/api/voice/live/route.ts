@@ -32,8 +32,17 @@ const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000; // must OPEN the session within ~2 
 
 async function getCreditsBalance(userId: string): Promise<number> {
   const supabase = createServiceRoleClient();
-  const { data } = await supabase.from('credits').select('balance').eq('user_id', userId).maybeSingle();
-  return Number(data?.balance || 0);
+  // BALANCE OF RECORD = profiles.credits_balance (the GEL wallet the spend saga draws from and top-ups
+  // credit). The legacy `credits` table now only carries the monthly subscription allowance, so read
+  // profiles FIRST and fall back to credits.balance — mirrors /api/credits/balance + generationGuard.
+  // BUG this fixes: the old code read ONLY the legacy table, so a funded user (e.g. 27 ₾ wallet) with no
+  // `credits` row got a false `insufficient_credits` and could never start a voice call.
+  const [{ data: prof }, { data: credits }] = await Promise.all([
+    supabase.from('profiles').select('credits_balance').eq('id', userId).maybeSingle(),
+    supabase.from('credits').select('balance').eq('user_id', userId).maybeSingle(),
+  ]);
+  if (typeof prof?.credits_balance === 'number') return prof.credits_balance;
+  return Number(credits?.balance || 0);
 }
 
 export async function POST(request: NextRequest) {
