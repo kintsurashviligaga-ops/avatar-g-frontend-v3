@@ -17,6 +17,7 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { reportError } from '@/lib/observability/report-error';
 import { createNotification, type NotificationType } from '@/lib/notifications/store';
 import type { ProduceKind } from './rate-limit';
 
@@ -118,8 +119,9 @@ export async function recordJobReservation(id: string, reserve: { ref: string; c
       .from(TABLE)
       .update({ params: { ...prev, _reserve: { ref: reserve.ref, credits: Math.round(reserve.credits) } } })
       .eq('id', id);
-  } catch {
+  } catch (e) {
     /* fail-open — no stamp just forgoes the drainer's auto-refund for this one job */
+    reportError(e, { fn: 'recordJobReservation', id, ref: reserve.ref, credits: reserve.credits });
   }
 }
 
@@ -224,7 +226,8 @@ export async function recordCompletedFilm(input: {
     }
     if (!error) await fireCompletionNotification(sb, input.userId, 'film', 'film-studio');
     return !error;
-  } catch {
+  } catch (e) {
+    reportError(e, { fn: 'recordCompletedFilm', userId: input.userId });
     return false;
   }
 }
@@ -265,7 +268,8 @@ export async function recordCompletedAsset(input: {
     );
     if (!error) await fireCompletionNotification(sb, input.userId, input.serviceType, input.source);
     return !error;
-  } catch {
+  } catch (e) {
+    reportError(e, { fn: 'recordCompletedAsset', userId: input.userId });
     return false;
   }
 }

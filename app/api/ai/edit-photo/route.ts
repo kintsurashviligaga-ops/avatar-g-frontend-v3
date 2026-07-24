@@ -10,6 +10,7 @@
  * feature is safe to ship before the operator has pinned/verified their exact checkpoints.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -106,7 +107,7 @@ async function saveCreation(req: NextRequest, userId: string, url: string, actio
       user_id: userId, kind: 'image', service: 'photo-studio',
       prompt: `photo:${action}`, url, thumbnail_url: url, credits_used: cost,
     });
-  } catch { /* fail-open — the asset is already returned */ }
+  } catch (e) { reportError(e, { route: 'ai.edit-photo', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {

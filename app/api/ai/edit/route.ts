@@ -18,6 +18,7 @@
  * Every op is FAIL-OPEN: a miss returns { url: null, error } (never a 500 dead-end).
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
@@ -83,7 +84,7 @@ async function saveCreation(req: NextRequest, userId: string, url: string, actio
       thumbnail_url: url,
       credits_used: DETERMINISTIC.has(action) ? 0 : creditCostFor('image'),
     });
-  } catch { /* fail-open — the asset is already returned to the client */ }
+  } catch (e) { reportError(e, { route: 'ai.edit', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {
