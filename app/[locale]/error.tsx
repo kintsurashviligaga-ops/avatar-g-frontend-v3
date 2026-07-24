@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react';
+import { reportError } from '@/lib/observability/report-error';
 
 const messages: Record<string, { title: string; subtitle: string; retry: string; home: string; details: string }> = {
   en: { title: 'Something went wrong',     subtitle: 'An unexpected error happened. We were notified automatically.', retry: 'Try again',     home: 'Back home',  details: 'Error details' },
@@ -27,9 +28,12 @@ export default function LocaleError({
   const t = messages[locale] ?? messages['ka'];
 
   useEffect(() => {
-    // Surfaced to Sentry by global error handler in production.
-    console.error('[Locale Error Boundary]', error);
-  }, [error]);
+    // Report to the unified reporter (structured log + Sentry captureException) so a [locale]-page render
+    // crash is actually captured — the localized copy promises "we were notified automatically", and this
+    // boundary STOPS the error at the segment (it never bubbles to app/error.tsx's /api/log-error), so
+    // without this it was console-only. reportError never throws, so it is safe inside the boundary.
+    reportError(error, { surface: 'LocaleErrorBoundary', locale, digest: error.digest });
+  }, [error, locale]);
 
   if (!t) return null;
 
