@@ -728,14 +728,47 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       predictionId = dispatch.predictionId;
       matrix = dispatch.metadata?.film ?? null;
 
-      if (!predictionId || !matrix) {
-        // No film job dispatched — surface the honest server reason (insufficient
+      if (!predictionId) {
+        // Nothing was dispatched at all — surface the honest server reason (insufficient
         // credits, provider not configured, auth) instead of a silent spinner.
         return fail(
           (typeof dispatch.message === 'string' && dispatch.message.trim() ? dispatch.message : asErrorText(dispatch.error)) ||
             'The film service could not start this render.',
           matrix,
         );
+      }
+
+      if (!matrix) {
+        // SINGLE-CLIP RENDER (no multi-scene film composite). The server returned a VALID one-shot video job
+        // instead of the film matrix — e.g. anonymous/preview renders (the durable film queue is skipped for
+        // unauthenticated users → a single LTX/Veo clip) or any single-scene fallback. This is NOT a failure:
+        // poll that one prediction to completion and treat its clip as the master, so the user actually gets
+        // their video instead of a false "generation failed" the instant the dispatch returns (the exact bug
+        // where a success:true "processing" render was shown as failed because no film matrix came back).
+        if (TERMINAL_FAIL.has(String(dispatch.predictionStatus || ''))) {
+          return fail(asErrorText(dispatch.error) || (typeof dispatch.message === 'string' ? dispatch.message : '') || 'The video render failed to start.', null);
+        }
+        // Already resolved at dispatch (a fast provider) → deliver immediately.
+        if (typeof dispatch.assetUrl === 'string' && dispatch.assetUrl) {
+          emit('assembled', null, dispatch.assetUrl);
+          return { ok: true, phase: 'assembled', masterUrl: dispatch.assetUrl, previewUrl: dispatch.assetUrl, matrix: null };
+        }
+        opts.onDispatched?.({ predictionId, sessionId });
+        emit('rendering', null, null);
+        const singleDeadline = Date.now() + maxPollMs;
+        while (Date.now() < singleDeadline) {
+          await sleep(pollIntervalMs, signal);
+          const p = await postOrchestrate({ predictionId, sessionId }, signal);
+          if (typeof p.assetUrl === 'string' && p.assetUrl) {
+            emit('assembled', null, p.assetUrl);
+            return { ok: true, phase: 'assembled', masterUrl: p.assetUrl, previewUrl: p.assetUrl, matrix: null };
+          }
+          if (TERMINAL_FAIL.has(String(p.predictionStatus || ''))) {
+            return fail(asErrorText(p.error) || (typeof p.message === 'string' ? p.message : '') || 'The video render failed.', null);
+          }
+          emit('rendering', null, null);
+        }
+        return fail('The video render is taking longer than expected — please try again.', null);
       }
     }
 
