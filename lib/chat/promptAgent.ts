@@ -138,14 +138,21 @@ CRITICAL RULES:
 2. VISUAL LOCK: Define ONE color grade, lighting style, and camera aesthetic.
    Apply to ALL scenes.
 
-3. IMAGE PROMPTS: Each scene.imagePrompt must be production-ready and include:
-   - [EVERY CHARACTER ON SCREEN] — copy-paste each present person's locked description
+3. IMAGE PROMPTS: Each scene.imagePrompt is ONE flowing cinematic sentence (natural prose, NOT a
+   comma-separated keyword list) and MUST be written in this ORDER — the order is load-bearing:
+   - [SCENE ACTION + LOCATION] FIRST, ALWAYS. Open with what actually HAPPENS in this shot and
+     where. This is the sentence a human reads to understand the scene, it is what the renderer
+     weights most heavily, and it is what survives if the prompt is ever clamped. NEVER open with
+     an appearance list, a colour-grade phrase or quality tags — a scene that begins
+     "ultra-realistic texture, professional color grading, ARRI Alexa…" or "short salt-and-pepper
+     hair, average build…" is WRONG and reads as keyword soup with no story.
+   - THEN [EVERY CHARACTER ON SCREEN] — copy-paste each present person's locked description
      VERBATIM (same clothing colours every time). A two-person scene names BOTH people
      with their exact wardrobe.
-   - [SCENE ACTION + LOCATION]
-   - [VISUAL STYLE: color grade, lighting]
-   - [CAMERA: shot type + angle]
-   - "photorealistic, 8k resolution, crisp details, ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white balance, sharp focus"
+   - THEN [VISUAL STYLE: color grade, lighting] and [CAMERA: shot type + angle], woven into the
+     prose rather than bolted on as tags.
+   - Close with at most a SHORT quality tail: "photorealistic, cinematic, sharp focus".
+     Do NOT stack long tag chains — they crowd out the story and make every scene look identical.
    - NEVER write a "Negative:" list inside imagePrompt. What to AVOID belongs ONLY in
      visualStyle.negativePrompt — the renderer passes that to the provider's dedicated negative
      field. A "Negative: blur, cartoon, …" tail inside imagePrompt is read as a POSITIVE
@@ -225,11 +232,16 @@ SFX CUES (every scene):
    - ATMOSPHERE: add motivated practical lights (neon signs, lanterns, headlights, candles)
      and a touch of atmosphere (haze, mist, dust motes, rain, soft bokeh) so every frame
      has depth and mood — never a flat, empty background.
-   - QUALITY TAGS: end each imagePrompt with "photorealistic, 8K resolution, crisp details,
-     ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white
-     balance, cinematic color grade, volumetric lighting, film grain, sharp focus, professional
-     cinematography". NEVER a yellow, sepia, amber or muddy over-warm cast — keep whites clean and
-     neutral even in warm scenes (warmth belongs in motivated practical lights, never a global filter).
+   - COLOUR SCIENCE belongs in visualStyle.colorGrade — write it ONCE there, e.g. "professional
+     colour grading, ARRI Alexa color science, neutral white balance, clean neutral whites".
+     NEVER a yellow, sepia, amber or muddy over-warm cast — keep whites clean and neutral even in
+     warm scenes (warmth belongs in motivated practical lights, never a global filter).
+   - QUALITY TAGS: end each imagePrompt with AT MOST "photorealistic, cinematic, sharp focus".
+     Do NOT repeat the long grading chain per scene. A scene whose text is mostly tags
+     ("ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white
+     balance, cinematic color grade, volumetric lighting, film grain…") has NO story in it: the
+     renderer weights that soup over the action and every scene comes out generic and identical.
+     The scene's own ACTION must dominate the sentence.
 
 Return ONLY valid JSON. No markdown. No explanation.
 
