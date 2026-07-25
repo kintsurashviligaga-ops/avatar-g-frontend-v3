@@ -31,10 +31,9 @@ export interface ScriptSegment {
 }
 
 /**
- * 30s → N shots. Clamped to [1, MAX_SEGMENTS]; non-finite/≤0 → 1.
- * `segmentSec` defaults to the global 6s shot length but is overridable so a
- * caller (the 30-second film, which runs at 5s × 6 scenes) can request a
- * different cadence WITHOUT shifting the generic video path's 6s default.
+ * totalSec → N shots. Clamped to [1, MAX_SEGMENTS]; non-finite/≤0 → 1.
+ * `segmentSec` defaults to the global 8s shot length (an 8s Veo clip) but is overridable so a caller can
+ * request a different cadence. The 8s grid gives 8s→1 scene · 24s→3 · 48s→6.
  */
 export function planSegmentCount(totalSec: number, segmentSec: number = SEGMENT_DURATION_SEC): number {
   if (!Number.isFinite(totalSec) || totalSec <= 0) return 1;

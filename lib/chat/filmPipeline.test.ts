@@ -17,8 +17,8 @@ import {
 
 describe('film constants', () => {
   it('derives 6 scenes from a 30-second runtime at the 5s film cadence', () => {
-    expect(FILM_TOTAL_SEC).toBe(30);
-    expect(FILM_SCENE_COUNT).toBe(6); // 30s / 5s = 6 sequential beats
+    expect(FILM_TOTAL_SEC).toBe(24);
+    expect(FILM_SCENE_COUNT).toBe(3); // 24s / 8s = 3 sequential beats (8s Veo scenes)
   });
 });
 
@@ -85,11 +85,11 @@ describe('buildCharacterAnchor', () => {
 describe('planFilmScenes — continuity-locked production plan', () => {
   it('produces exactly 6 sequential 5-second scenes for a 30s film', () => {
     const plan = planFilmScenes('a hero walks through a neon market');
-    expect(plan.scenes).toHaveLength(6);
-    expect(plan.shared.sceneCount).toBe(6);
-    expect(plan.shared.totalSec).toBe(30);
+    expect(plan.scenes).toHaveLength(3);
+    expect(plan.shared.sceneCount).toBe(3);
+    expect(plan.shared.totalSec).toBe(24);
     plan.scenes.forEach((s, i) => {
-      expect(s.durationSec).toBe(5);
+      expect(s.durationSec).toBe(8);
       expect(s.index).toBe(i);
       expect(s.ordinal).toBe(i + 1);
     });
@@ -298,7 +298,7 @@ describe('buildFilmClipRequest — LTX request shaping', () => {
     const req = buildFilmClipRequest(plan.scenes[0]!, plan.shared);
     expect(req.selectedOptions.seed).toBe(String(plan.shared.seed));
     expect(req.selectedOptions.generate_audio).toBe('false');
-    expect(req.selectedOptions.duration).toBe('5'); // 5s film cadence
+    expect(req.selectedOptions.duration).toBe('8'); // 8s film cadence (Veo scene)
     expect(req.userPrompt).toBe(plan.scenes[0]!.prompt);
   });
 
@@ -359,7 +359,7 @@ describe('filmProgressStages — progressive agentic transparency', () => {
 
   it('falls back to the default scene count for bad input', () => {
     // bad input → FILM_SCENE_COUNT (6): 1 storyboard + 6 clips + stitch/audio/finalize = 10
-    expect(filmProgressStages(0)).toHaveLength(10);
-    expect(filmProgressStages(Number.NaN)).toHaveLength(10);
+    expect(filmProgressStages(0)).toHaveLength(7);
+    expect(filmProgressStages(Number.NaN)).toHaveLength(7);
   });
 });

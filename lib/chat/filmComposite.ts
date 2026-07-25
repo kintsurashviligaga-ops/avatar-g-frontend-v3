@@ -949,7 +949,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   const renderedCount = clips.filter((c) => c.status === 'queued').length;
   const summary = [
-    '🎬 30-Second Film pipeline started',
+    `🎬 Film pipeline started (${sceneCount} × 8s Veo scenes)`,
     `📝 Storyboard: ${sceneCount} scenes planned`,
     `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
     '✂️ Editor will stitch the final cut',

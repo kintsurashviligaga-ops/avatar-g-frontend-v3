@@ -235,10 +235,10 @@ export async function POST(req: NextRequest) {
   const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' ? 'vertical' : 'landscape';
   const style = typeof body.style === 'string' && body.style.trim() ? body.style.trim() : null;
   const locale = typeof body.locale === 'string' ? body.locale : 'ka';
-  // Scene count = film length: the user picks 6s (1 scene) · 30s (6) · 60s (12). The scene count is driven by
-  // totalSec (count × clip seconds) — planFilmScenes splits the runtime into FILM_CLIP_SEC beats.
-  // FLOOR is 1, NOT 2 — the 6-second package is a SINGLE scene. A `Math.max(2, …)` floor here was silently bumping a
-  // sceneCount:1 request up to 2, so the 6s tier produced 2 clips (~10s) with two different characters. [1, 12].
+  // Scene count = film length on the 8s Veo grid: the user picks 8s (1 scene) · 24s (3) · 48s (6). The scene
+  // count is driven by totalSec (count × FILM_CLIP_SEC=8) — planFilmScenes splits the runtime into 8s beats.
+  // FLOOR is 1, NOT 2 — the 8-second package is a SINGLE scene. A `Math.max(2, …)` floor here was silently bumping a
+  // sceneCount:1 request up to 2, so the shortest tier produced 2 clips with two different characters. [1, 12].
   const sceneCount = Math.max(1, Math.min(12, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
   const sceneTotalSec = sceneCount * FILM_CLIP_SEC;
 
