@@ -3,7 +3,7 @@ import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
 import { generateUdioTrack } from '@/lib/udio/client';
-import { hasLyriaProvider, generateLyriaTrack, lyriaModel } from '@/lib/ai/lyriaMusic';
+import { hasLyriaProvider, generateLyriaTrack } from '@/lib/ai/lyriaMusic';
 import { hasUdioApiKey } from '@/lib/chat/mediaKeys';
 import { trimAudioToDuration } from '@/lib/audio/trimAudio';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
@@ -150,15 +150,17 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
     if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen' };
     throw new Error('MusicGen did not complete in time');
   };
-  // Google LYRIA — opt-in PRIMARY for INSTRUMENTAL tracks (instrumental-only engine). Returns base64 audio
-  // → hosted to our bucket like the others. On any miss the failover moves to Udio/ElevenLabs/MusicGen.
+  // Google LYRIA 3 — opt-in PRIMARY music engine for BOTH instrumental tracks AND vocal songs (Lyria 3 sings
+  // custom lyrics). The prompt already carries the lyrics (baked by the caller); we pass the instrumental
+  // flag so Lyria steers vocals on/off. Returns base64 audio → hosted like the others. On any miss the
+  // failover moves to Udio/ElevenLabs/MusicGen.
   const lyriaRun = async (): Promise<Track> => {
-    const t = await generateLyriaTrack({ prompt: style ? `${prompt}. Style: ${style}.` : prompt, durationSec: secs === 0 ? 90 : secs });
+    const t = await generateLyriaTrack({ prompt: style ? `${prompt}. Style: ${style}.` : prompt, instrumental });
     if (!t) throw new Error('Lyria did not return audio');
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800);
-    if (url) return { url, engine: `Lyria (${lyriaModel()})` };
+    if (url) return { url, engine: 'Lyria' };
     throw new Error('Lyria host failed');
   };
 
@@ -167,9 +169,9 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
   const providers: ProviderAttempt<Track>[] = [];
-  // LYRIA FIRST — opt-in Google music engine, PRIMARY for instrumental (Lyria has no vocals, so a vocal
-  // request keeps ElevenLabs Music which sings). On any miss the chain below serves the track unchanged.
-  if (hasLyriaProvider() && instrumental) {
+  // LYRIA 3 FIRST — opt-in Google music engine, PRIMARY for ALL requests (it generates full songs with
+  // vocals + lyrics, not just instrumental). Any miss (no access/quota/timeout) falls to the chain below.
+  if (hasLyriaProvider()) {
     providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
   }
   if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {

@@ -21,9 +21,10 @@ import { isTruthyFlag } from '@/lib/env/flag';
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const CREATE_TIMEOUT_MS = 20_000;
 
-/** Default Veo model — fast tier (cheaper, still audio-enabled). Env-overridable per deploy. */
+/** Default Veo model — the fast tier available on this key (verified live: veo-3.1-*-generate-preview exist;
+ *  the older veo-3.0-*-001 IDs 404). Env-overridable per deploy (GEMINI_VEO_MODEL). */
 export function geminiVeoModel(): string {
-  return (process.env.GEMINI_VEO_MODEL || 'veo-3.0-fast-generate-001').trim();
+  return (process.env.GEMINI_VEO_MODEL || 'veo-3.1-fast-generate-preview').trim();
 }
 
 /** True iff Veo is opt-in ENABLED and a Gemini key is present. Off by default → cascade unchanged. */
