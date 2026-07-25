@@ -73,6 +73,9 @@ export interface OrchestratorInput {
 // unit-tested in isolation (providerRouter itself pulls in heavy provider SDKs).
 export { prefersClaudeSpecialist } from './specialistRouting';
 import { prefersClaudeSpecialist } from './specialistRouting';
+// Film-render routing predicate — dependency-free module so the contract is unit-testable.
+export { hasFilmDispatchSignal } from './filmDispatchSignal';
+import { hasFilmDispatchSignal } from './filmDispatchSignal';
 
 /** Append the user's custom instructions to a base system prompt (if any). */
 function withCustomInstructions(base: string, customInstructions?: string): string {
@@ -334,11 +337,21 @@ export async function orchestrate(
     return handleFilmComposite(input);
   }
 
-  // PHASE 42 §1 — The flagship "30-Second Film" pipeline is the most specific
-  // composite, so it is checked FIRST. `isThirtySecondFilm` is deliberately
-  // conservative (explicit "30-second film / short film / mini-movie" phrasing),
-  // so a plain "music video" request still falls through to the music-video
-  // composite below. See lib/chat/filmComposite.ts.
+  // EXPLICIT FILM DISPATCH — a render started from the Video Studio storyboard carries STRUCTURAL film
+  // signals (approved per-scene frames / per-scene scripts / a pinned scene count). Those only ever come from
+  // driveFilmStudio, so they are an unambiguous "this is a film render" — honour them REGARDLESS of how the
+  // user worded the brief. Without this, a perfectly normal brief like "Create a cinematic video of an ocean
+  // wave" failed the conservative isThirtySecondFilm() keyword gate below (it wants "30-second film / short
+  // film / mini-movie"), fell through to a generic SINGLE-CLIP LTX render, and silently DISCARDED the whole
+  // approved storyboard — the user watched 3 scenes get built, then got a one-shot render that failed.
+  // LIVE-VERIFIED: the dispatch reported engine 'ltx' with no film matrix for exactly this phrasing.
+  if (hasFilmDispatchSignal(input.metadata)) {
+    return handleFilmComposite(input);
+  }
+
+  // PHASE 42 §1 — The flagship film pipeline for a FREE-TEXT chat brief. `isThirtySecondFilm` is deliberately
+  // conservative (explicit "30-second film / short film / mini-movie" phrasing), so a plain "music video"
+  // request still falls through to the music-video composite below. See lib/chat/filmComposite.ts.
   if (isThirtySecondFilm(input.message)) {
     return handleFilmComposite(input);
   }
