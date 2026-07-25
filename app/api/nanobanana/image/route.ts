@@ -221,7 +221,11 @@ export async function POST(req: NextRequest) {
     // BACKUP LEG — breaker OPEN or the primary returned no image → route to the Grok backup (the
     // designed image fallback). Returns null when XAI_API_KEY isn't set (leg simply unavailable →
     // the 502 below fires exactly as before, no regression).
-    if (!providerUrl) {
+    // GUARD !referenceImageUrl: Grok/FLUX are PROMPT-ONLY (no image input), so for an EDIT request (a
+    // reference image is set, e.g. "edit this photo") they'd ignore the source and return an UNRELATED
+    // new image — which we'd deliver as success and still charge. When only NanoBanana can honor the
+    // reference and it missed, skip these legs so the 502-refund path below fires instead.
+    if (!providerUrl && !referenceImageUrl) {
       try {
         const grok = await generateGrokImage(finalPrompt);
         if (grok?.url) { providerUrl = grok.url; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
@@ -236,7 +240,9 @@ export async function POST(req: NextRequest) {
     // FINAL LEG — FLUX 1.1 Pro (owner-chosen image fallback quality, 2026-07-11). Only fires when
     // BOTH NanoBanana AND Grok missed, so it rarely runs (minimal added cost) but keeps a high-quality
     // image coming through instead of a 502. Fail-open: null → the 502 below fires as before.
-    if (!providerUrl && !backupB64) {
+    // Same edit-guard as the Grok leg: FLUX 1.1 Pro is prompt-only, so it must not substitute an unrelated
+    // image for an edit request — skip it when a reference image is set so the 502-refund path fires.
+    if (!providerUrl && !backupB64 && !referenceImageUrl) {
       try {
         const flux = await generateFluxProImage(finalPrompt, body.aspectRatio ?? '1:1');
         if (flux) { providerUrl = flux; model = 'FLUX 1.1 Pro'; await recordProviderResult('flux-pro', true).catch(() => {}); }

@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
+import { isAdmin } from '@/lib/auth/adminGuard';
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 min timeout for video gen
 
 /**
  * POST /api/video/generate-promo
- * Generates a promotional ad video for MyAvatar.ge using image-to-video.
+ * Generates a promotional ad video for MyAvatar.ge (marketing material) using image-to-video.
+ *
+ * ADMIN-ONLY: this fires a PAID Replicate i2v (minimax/video-01-live, up to 5 min) with NO per-user
+ * billing, so it must never be open. It is an internal marketing tool (no product callers), gated to
+ * the admin allowlist so it can't be abused anonymously to drain the platform's Replicate quota.
  *
  * Body:
  *   imageUrl  — URL of the website screenshot to animate
@@ -14,6 +20,10 @@ export const maxDuration = 300; // 5 min timeout for video gen
  *   prompt    — optional custom prompt override
  */
 export async function POST(req: NextRequest) {
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) {
     return NextResponse.json({ error: 'REPLICATE_API_TOKEN not configured' }, { status: 500 });

@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
+import { isAdmin } from '@/lib/auth/adminGuard';
+
 /**
  * POST /api/video/generate-hero
- * Triggers the hero video generation via Replicate.
- * Protected: requires REPLICATE_API_TOKEN env var.
+ * Triggers the hero (marketing) video generation via Replicate.
+ *
+ * ADMIN-ONLY: fires a PAID Replicate render with NO per-user billing and has no product callers, so it
+ * must never be open — gated to the admin allowlist so it can't be used anonymously to drain quota.
  */
 
 const PROMPT = `Create a 30-second cinematic commercial for an AI platform called "MyAvatar". Style: photorealistic, cinematic, futuristic AI technology commercial. Visual tone: dark modern UI, deep black background, soft blue and violet glow, futuristic digital environment, premium SaaS interface. Scenes: Logo intro with glow reveal, platform interface with AI chat, user typing prompt, multi-agent AI network (Avatar, Video, Music, Subtitle agents), avatar builder generating photorealistic avatar, video creation with music and subtitles, full platform ecosystem zoom-out, Agent G automation, final montage with logo. Camera: smooth cinematic zooms, clean UI transitions. Lighting: soft futuristic blue highlights. Quality: ultra realistic premium technology commercial.`;
 
 export async function POST(_req: NextRequest) {
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) {
     return NextResponse.json({ error: 'REPLICATE_API_TOKEN not configured' }, { status: 500 });

@@ -134,15 +134,24 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         }),
       });
       const sub = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string };
+      // A paid render now reserves credits at submit — surface a clean "top up" message on 402 instead of
+      // a raw error code, and don't leave the user thinking it silently failed.
+      if (res.status === 402) {
+        throw new Error(lang === 'en' ? 'Not enough credits — top up to generate.' : lang === 'ru' ? 'Недостаточно кредитов — пополните баланс.' : 'არასაკმარისი კრედიტი — შეავსე ბალანსი.');
+      }
       if (!res.ok || !sub.jobId) throw new Error(sub.error || `HTTP ${res.status}`);
 
       // 2) POLL SEQUENTIALLY until done. Each request is short (never times out); the
       //    single "succeeded" poll re-hosts + muxes music server-side, so it can take
       //    ~1 min — fine under the gateway limit. Sequential (await each) so that
       //    finalizing poll never overlaps another (no duplicate re-host / music gen).
+      //    Budget MUST outlast the render or the client aborts a job the user already PAID for while it
+      //    is still rendering (the reserve isn't refunded — the render didn't fail). Quality mode uses
+      //    Kling v2.1-master (~12 min); fast uses v1.6-pro (~3 min), so size the poll window per mode.
       const qs = new URLSearchParams({ id: sub.jobId, aspect: aspectRatio, music: wantMusic ? '1' : '0', mood: musicMood, duration: '5' });
+      const maxPolls = qualityMode === 'quality' ? 135 : 70; // ~15.75 min (quality) / ~8 min (fast) @ 7s
       let url: string | null = null;
-      for (let i = 0; i < 70; i++) { // ~70 × 7s ≈ 8 min headroom
+      for (let i = 0; i < maxPolls; i++) {
         await new Promise((r) => setTimeout(r, 7000));
         const pr = await fetch(`/api/motion-control/status?${qs.toString()}`, { credentials: 'include' });
         const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; videoUrl?: string; error?: string };
@@ -153,6 +162,8 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         }
       }
       if (!url) throw new Error(lang === 'en' ? 'Timed out — please try again.' : lang === 'ru' ? 'Время вышло — попробуйте снова.' : 'დრო ამოიწურა — სცადე თავიდან.');
+      // Charged on submit → nudge the header balance pill to refresh (ChatChrome listens for this).
+      try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
 
       // 3) Lip-sync post-step (unchanged — already async/poll-based).
       if (wantLipsync) { setStage('lipsync'); url = await applyLipsync(url); }

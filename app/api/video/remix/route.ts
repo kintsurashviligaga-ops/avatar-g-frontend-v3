@@ -368,7 +368,10 @@ export async function POST(req: NextRequest) {
         });
       } catch { /* Library filing is best-effort — never blocks the paid response */ }
     }
-    return ok(mediaUrl, extra);
+    // Tell the client whether a credit was ACTUALLY charged. FREE ops (trim/captions/color_grade/speed/
+    // stabilize) return via ok() directly (no `charged`), so the client no longer fires a phantom
+    // "−15 credits" toast for them; only genuinely-charged paid ops surface the deduction.
+    return ok(mediaUrl, { ...extra, charged });
   };
 
   try {

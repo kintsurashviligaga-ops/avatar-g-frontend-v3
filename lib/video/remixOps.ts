@@ -494,15 +494,19 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
       negative_prompt: I2V_NEGATIVE,
       duration: 5,
     };
-    // Character-swap: kling-v1.6 accepts reference_images as an IDENTITY anchor — pass the
-    // new-character photo so the re-animated clip carries that person's face/identity.
+    // Character-swap: kling-v1.6-pro is the ONLY Kling model that accepts reference_images as an IDENTITY
+    // anchor. Sending reference_images to the v2.1-master default (I2V_MODEL) 422s — it's not in that
+    // schema — so the create failed and the swap SILENTLY dropped to a Ken Burns still (no swap ever
+    // happened). So switch to v1.6-pro whenever a swap reference is present; keep the v2.1 default (best
+    // quality) for plain i2v with no reference.
     const refs = (referenceImages ?? []).filter((u) => typeof u === 'string' && /^https?:\/\//.test(u));
+    const model = refs.length ? 'kwaivgi/kling-v1.6-pro' : I2V_MODEL;
     if (refs.length) input.reference_images = refs;
-    if (/v1\.6|v1-6|kling-v1/.test(I2V_MODEL.toLowerCase())) { input.aspect_ratio = aspect; input.cfg_scale = 0.5; }
+    if (/v1\.6|v1-6|kling-v1/.test(model.toLowerCase())) { input.aspect_ratio = aspect; input.cfg_scale = 0.5; }
     // One quick retry on a transient 5xx/network blip; a real timeout bails fast.
     const create = await withRetry(
       async () => {
-        const r = await fetch(`https://api.replicate.com/v1/models/${I2V_MODEL}/predictions`, {
+        const r = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           cache: 'no-store',

@@ -17,6 +17,14 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { createJob } from '@/lib/orchestrator/jobs';
+import { hasSufficientBalance, deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
+
+// A Motion Control render is a single short (5-10s) Kling i2v clip — priced as one paid video op, the
+// same tier as a remix. Flat so the async /status refund can reverse the exact amount without re-deriving
+// the quality mode (which /status doesn't receive). The reserve ref `motion:charge:<jobId>` is derivable
+// from the prediction id in /status, which refunds `${ref}:refund` on a failed render.
+const MOTION_COST = creditCostFor('remix');
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,6 +75,13 @@ export async function POST(req: Request) {
   if (!characterImageUrl || !motionPrompt) {
     return NextResponse.json({ error: 'characterImageUrl + motionPrompt required' }, { status: 400 });
   }
+  // Billing gate — Motion Control was a REVENUE LEAK: it fired a paid Kling render with no charge. Gate
+  // on balance up front (fail-open on read miss; the post-submit deduct is the real backstop) so a broke
+  // user can't submit a paid render for free, then reserve the credits once the job is accepted below.
+  if (!(await hasSufficientBalance(user.id, MOTION_COST))) {
+    return NextResponse.json({ error: 'insufficient_credits', needed: MOTION_COST }, { status: 402 });
+  }
+
   const duration: 5 | 10 = body?.duration === 10 ? 10 : 5;
   const aspectRatio = (['9:16', '16:9', '1:1'].includes(String(body?.aspectRatio)) ? body!.aspectRatio : '9:16') as '9:16' | '16:9' | '1:1';
   const referenceVideoUrl = body?.referenceVideoUrl?.trim();
@@ -99,6 +114,10 @@ export async function POST(req: Request) {
       modelName,
       ...(referenceVideoUrl ? { videoUrl: referenceVideoUrl } : {}),
     });
+    // Reserve the credits now that the paid render is accepted — idempotent by ref, so a client retry of
+    // an already-submitted jobId can't double-charge. /status refunds `motion:charge:<jobId>:refund` if the
+    // render fails. Fail-open on a reserve miss (rare balance race past the gate) → the render still runs.
+    await deductCredits(user.id, MOTION_COST, `motion:charge:${jobId}`).catch(() => {});
     // TRACK 1 — motion was invisible to telemetry (wrote no generation_jobs row). File a `pending` row
     // (service_type stays a CHECK-allowed 'film'; the real label rides in params.subtype) so the render is
     // measured, the reliability dashboard shows a "motion" service, and the drainer can reap it if abandoned.

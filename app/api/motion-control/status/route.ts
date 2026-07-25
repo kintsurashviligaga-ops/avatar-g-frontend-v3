@@ -21,6 +21,8 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingPoll } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { failJob, recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { refundCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 import { generateMusic } from '@/lib/ai/replicate';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 
@@ -50,6 +52,10 @@ export async function GET(req: Request) {
   if (poll.status === 'failed' || !poll.url) {
     // TRACK 1 — close the motion telemetry lifecycle (the pending row from POST) as failed. Fail-open.
     void failJob(`motion:${id}`, poll.error || 'motion generation failed');
+    // Refund the credits reserved at submit — the paid render produced no deliverable. Idempotent by the
+    // `:refund` ref (the RPC dedupes), so repeated polls of a failed job can't double-refund. Must match
+    // the POST reserve ref `motion:charge:<jobId>` and its flat MOTION_COST (creditCostFor('remix')).
+    void refundCredits(user.id, creditCostFor('remix'), `motion:charge:${id}:refund`).catch(() => {});
     return NextResponse.json({ done: true, error: poll.error || 'motion generation failed' });
   }
 

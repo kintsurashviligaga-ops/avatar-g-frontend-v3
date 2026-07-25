@@ -24,9 +24,12 @@ function keywordIntent(message: string): { op: Op; params: Record<string, unknow
   const grade: 'vintage' | 'cinematic' | 'neon' =
     /vintage|ვინტაჟ|ретро|винтаж/.test(m) ? 'vintage' : /neon|ნეონ|неон/.test(m) ? 'neon' : 'cinematic';
   if (/სუბტიტრ|subtitle|субтитр/.test(m)) return { op: 'add_subtitles', params: {} };
+  // Music BEFORE background: "add background music" / "ფონური მუსიკა" contains "background", so the
+  // background_remove check below would otherwise hijack an add-music request into a PAID rembg on the
+  // wrong op. A genuine background-removal ask carries no music word, so it still reaches rembg below.
+  if (/მუსიკ|music|музык|track|ბიტ|beat/.test(m)) return { op: 'add_music', params: {} };
   if (/ფონ|background|бэкграунд|фон|rembg|remove\s*bg/.test(m)) return { op: 'background_remove', params: {} };
   if (/პერსონაჟ|character|face\s*swap|swap|лицо|персонаж/.test(m)) return { op: 'face_swap', params: {} };
-  if (/მუსიკ|music|музык|track|ბიტ|beat/.test(m)) return { op: 'add_music', params: {} };
   if (/ფერ|color|grade|vintage|cinematic|neon|цвет|грейд/.test(m)) return { op: 'color_grade', params: { grade } };
   // Stabilization + speed-ramp checked BEFORE the generic speed cue so a "ramp" / "shaky"
   // request isn't swallowed by plain speed_change.

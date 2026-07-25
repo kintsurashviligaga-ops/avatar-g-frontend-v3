@@ -283,7 +283,12 @@ export async function POST(req: NextRequest) {
     const { user: rUser } = await authedClientFromRequest(req);
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
     idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0 })}`;
-    if (!(await claimIdempotencyKey(idemOwner, idemKey, 90))) {
+    // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
+    // lapses mid-render and a byte-identical resubmit past the window mints a FRESH reserveRef → a second
+    // deductCredits → DOUBLE-CHARGE. The key hashes the full brief, so only an identical duplicate submit
+    // inside the window is blocked (a changed brief is a new key); success releases it via refundReserve's
+    // sibling on the happy path, so an intentional re-roll isn't stuck for the full window.
+    if (!(await claimIdempotencyKey(idemOwner, idemKey, 300))) {
       idemKey = ''; // the winning request holds it
       return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This track is already being generated.' }, { status: 409 });
     }
@@ -374,6 +379,12 @@ export async function POST(req: NextRequest) {
       const composed = await composeTrackUrl(lyrics ? `${composeBrief}. Lyrics: ${lyrics}` : composeBrief, style, makeInstrumental, durationSec);
       providerAudioUrl = composed.url;
       engine = composed.engine;
+      // MusicGen (meta/musicgen) is INSTRUMENTAL-ONLY. If the vocal-capable engines (Udio, ElevenLabs
+      // Music) both missed and a VOCAL song fell through to MusicGen, the lyrics + vocal gender were
+      // silently dropped — so badge the engine honestly rather than implying a sung track was delivered.
+      if (engine === 'MusicGen' && !makeInstrumental && (lyrics || voiceType)) {
+        engine = 'MusicGen (instrumental — vocals unavailable)';
+      }
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.

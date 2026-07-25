@@ -2816,7 +2816,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // instead of freezing the whole multi-clip Promise.all. `onClipSettle` feeds the batch
     // StallDetector below so a slow provider is surfaced mid-render. Never re-submits → the clip
     // just drops; no double-charge.
-    const CLIP_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_TIMEOUT_MS) || 45_000;
+    // Must exceed the SERVER Kling budget (REMIX_KLING_BUDGET_MS=240s) — the product-ad render takes the
+    // credit UP FRONT and the render can't be stopped by a client abort, so a 45s client ceiling abandoned
+    // a job the user already PAID for while it was still rendering. Wait past the real render (250s).
+    const CLIP_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_TIMEOUT_MS) || 250_000;
     let onClipSettle: (ok: boolean) => void = () => {};
     const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
       // Job already cancelled → don't fire a LATER pool wave's paid Kling call. (A concurrency-
@@ -3299,12 +3302,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         signal: ac.signal,
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
+      const ok = !!(j.success && j.url);
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
-          next[next.length - 1] = j.success && j.url
+          next[next.length - 1] = ok
             ? (spec.kind === 'image'
                 ? { role: 'assistant', text: '', imageUrl: j.url, regen: spec }
                 : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: spec })
@@ -3312,6 +3316,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }
         return next;
       });
+      // Regenerate charges server-side exactly like the primary path — surface the deduction + refresh the
+      // balance pill (runImageJob/runMusicJob do this; regenerate silently debited the wallet before).
+      if (ok && mine()) notifyCredit(spec.kind === 'image' ? 'image' : 'music');
     } catch {
       if (!mine()) return;
       setMessages((prev) => {
@@ -3323,7 +3330,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [busy, t.imageFailed, t.musicFailed]);
+  }, [busy, t.imageFailed, t.musicFailed, notifyCredit]);
 
   // Edit a generated/attached image with img2img: load it as the source + switch to
   // Image mode; the next prompt transforms it. https URLs feed NanoBanana directly,
@@ -3562,7 +3569,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: m.prompt, genre: m.genre, instrumental: m.instrumental, ...(!m.instrumental && m.lyrics ? { lyrics: m.lyrics } : {}) } });
-          notifyCredit('music', { seconds: m.duration === 0 ? 90 : m.duration });
+          // A COVER (audioReference: an uploaded track, not a trained/cloned voice) is billed a FLAT 30s
+          // server-side regardless of the duration picker, so the toast must show the 30s tier — otherwise a
+          // 90s/Full cover shows "−12 credits" while the wallet is only debited the 30s tier (−5). Mirror
+          // the server's `audioReference ? 30 : …` rule so the deduction shown matches the deduction made.
+          const coverBilledFlat30 = !!uploadedAudioUrl && !m.useTrained && !isVoiceClone;
+          notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
           return j.url;
         }
         updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.musicFailed}` });
@@ -4123,14 +4135,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType || 'video/mp4');
         if (!videoUrl) throw new Error('upload failed');
         const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op: intent.op || 'color_grade', videoUrl, text, ...(intent.params || {}) }) });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev]; const last = next[next.length - 1];
           if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: '', videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
           return next;
         });
-        if (mine() && j.url) { notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
+        if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
       } catch {
         if (!mine()) return;
         setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
@@ -4455,7 +4467,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
         body: JSON.stringify(payload),
       });
-      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
@@ -4465,7 +4477,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
         return next;
       });
-      if (mine() && j.url) { notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
+      if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
     } catch {
       if (!mine()) return;
       setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
@@ -4513,10 +4525,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // jobId → the remix route's refund-compensation log carries the tray transaction id.
           body: JSON.stringify({ op: 'character', videoUrl: source, characterRef: photoRef, aspect, jobId }),
         });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string };
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
         if (j.url) {
           updateBubble(bubbleId, { text: '', videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : orient === 'square' ? 'square' : 'vertical' });
-          notifyCredit('remix');
+          if (j.charged) notifyCredit('remix');
           autoSaveToLibrary(j.url, 'film');
           return j.url;
         }
@@ -5788,7 +5800,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
               )}
               {/* Retry — the last reply errored; re-run the same turn cleanly. */}
-              {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && (
+              {/* Chat-only retry: a failed IMAGE/MUSIC/VIDEO bubble keeps its genKind (video also sets
+                  retryVideo + its own retry), so exclude those — regenerateChat() streams a TEXT reply and
+                  would NOT re-run the generation, silently turning a failed image job into a chat answer. */}
+              {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && !m.genKind && !m.retryVideo && (
                 <button
                   type="button"
                   onClick={() => regenerateChat()}
@@ -6579,7 +6594,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {productImage && (
                   <div>
                     <span className="mb-1.5 block text-[11px] text-app-muted">
-                      📸 {locale === 'en' ? `Shots ${1 + productImages.length}/6 — more angles (30/60s)` : locale === 'ru' ? `Кадры ${1 + productImages.length}/6 — больше ракурсов` : `კადრები ${1 + productImages.length}/6 — მეტი რაკურსი (30/60წმ)`}
+                      📸 {locale === 'en' ? `Shots ${1 + productImages.length}/${MAX_AD_IMAGES} — more angles (30/60s)` : locale === 'ru' ? `Кадры ${1 + productImages.length}/${MAX_AD_IMAGES} — больше ракурсов` : `კადრები ${1 + productImages.length}/${MAX_AD_IMAGES} — მეტი რაკურსი (30/60წმ)`}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -6592,7 +6607,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                             className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-md bg-black/70 text-[9px] text-white">✕</button>
                         </div>
                       ))}
-                      {productImages.length < 5 && (
+                      {productImages.length < MAX_AD_IMAGES - 1 && (
                         <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-app-border/30 bg-app-bg/40 text-app-muted transition hover:border-app-accent/40 hover:text-app-accent">
                           <Plus size={16} />
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) addProductShot(f); e.target.value = ''; }} />
