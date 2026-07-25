@@ -21,6 +21,48 @@ export const LIVE_AVATAR_BUCKET = 'avatars';
 export function liveAvatarPath(userId: string): string {
   return `live-avatars/${userId}/poster.jpg`;
 }
+/** Deterministic per-user voice-sample object, stored ALONGSIDE the poster in the same live-avatar folder. */
+export function liveAvatarVoicePath(userId: string, ext: string): string {
+  return `live-avatars/${userId}/voice.${ext}`;
+}
+
+const VOICE_MIMES = new Set(['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/x-m4a']);
+const MAX_VOICE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Store the enrollment VOICE SAMPLE next to the poster in the public `avatars` bucket. This is deliberately
+ * STORAGE-ONLY: enrollment must NOT kick off any background voice-clone TRAINING / render (that surfaced as a
+ * "training" job in the corner and is not what the Save button is for). The sample is simply persisted so it
+ * can be used later on an explicit action. Best-effort: any miss returns { ok:false } and NEVER throws, so it
+ * can never fail the selfie enrollment.
+ */
+export async function storeLiveAvatarVoice(userId: string, voiceDataUrl: string): Promise<{ ok: boolean; url?: string }> {
+  try {
+    // Tolerant of a codec-parameterized media type — MediaRecorder on Chrome/Edge/Android/Firefox emits
+    // e.g. `data:audio/webm;codecs=opus;base64,…`, so capture the whole type up to `;base64,` (it may itself
+    // contain `;codecs=…`) and gate the allowlist/ext on the BASE type only (`audio/webm`). A `[^;]+` capture
+    // here would drop the majority of real recordings (Safari's bare audio/mp4 was the only one that stored).
+    const m = typeof voiceDataUrl === 'string' ? voiceDataUrl.match(/^data:([^,]+);base64,(.+)$/) : null;
+    const rawType = m?.[1]?.toLowerCase();
+    const b64 = m?.[2];
+    const mime = rawType?.split(';')[0]?.trim();
+    if (!mime || !b64 || !VOICE_MIMES.has(mime)) return { ok: false };
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.byteLength < 256 || buf.byteLength > MAX_VOICE_BYTES) return { ok: false };
+    const ext = /mp4|m4a/i.test(mime) ? 'm4a' : /mpeg|mp3/i.test(mime) ? 'mp3' : /ogg/i.test(mime) ? 'ogg' : /wav/i.test(mime) ? 'wav' : 'webm';
+    const svc = createServiceRoleClient();
+    const path = liveAvatarVoicePath(userId, ext);
+    const { error } = await svc.storage.from(LIVE_AVATAR_BUCKET).upload(path, buf, { contentType: mime, upsert: true });
+    if (error) {
+      console.warn('[avatar/enroll] voice storage upload skipped:', error.message);
+      return { ok: false };
+    }
+    return { ok: true, url: svc.storage.from(LIVE_AVATAR_BUCKET).getPublicUrl(path).data.publicUrl };
+  } catch (e) {
+    console.warn('[avatar/enroll] voice storage skipped:', e instanceof Error ? e.message : e);
+    return { ok: false };
+  }
+}
 
 export type EnrollResult =
   | { ok: true; url: string; avatarAssetId: string | null }

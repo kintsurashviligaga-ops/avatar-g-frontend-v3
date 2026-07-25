@@ -4,11 +4,11 @@
  * LiveAvatarEnroll — the "Avatar & Voice Profile" enrollment for Live Avatar Voice Mode.
  *
  * Captures a SELFIE (live camera with front/back flip, or a photo upload) and an OPTIONAL ~15s voice
- * sample, then:
- *   • POST /api/avatar/enroll  → stores the selfie as the user's core avatar poster (shown, audio-reactive,
- *     during the Gemini Live session and usable as the LiveAvatar photo when that tier is keyed).
- *   • POST /api/voice/train    → kicks off the personal voice clone (RVC) in the background (used for
- *     read-aloud + the LiveAvatar voice tier; Gemini Live itself uses a built-in Google voice).
+ * sample, then does exactly ONE thing on Save:
+ *   • POST /api/avatar/enroll  → STORES the selfie (core avatar poster, shown + audio-reactive during the
+ *     Gemini Live session) AND, when recorded, the voice sample — both to the user's public live-avatar
+ *     storage (avatars/live-avatars/<uid>/…). It deliberately does NOT kick off any background voice-clone
+ *     TRAINING or render, so nothing is queued in the corner; the Save button only enrolls.
  *
  * The camera stream is acquired ONCE and reused across flips/captures (permission isn't re-prompted), and
  * fully released on close. Front camera is mirrored for a natural selfie. Fail-open throughout.
@@ -184,20 +184,16 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
         setPhoneDone(true); setSaving(false);
         return;
       }
+      // ONE call does the whole job: store the selfie AND (if recorded) the voice sample in the user's public
+      // live-avatar storage, and register the avatar. It deliberately does NOT kick off any background
+      // voice-clone training / render — the Save button only enrolls; nothing appears in the corner tray.
       const r = await fetch('/api/avatar/enroll', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ dataUrl: selfie }),
+        body: JSON.stringify({ dataUrl: selfie, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }),
         signal: AbortSignal.timeout(45_000), // never leave the button stuck on "saving…"
       });
       const j = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!r.ok || !j.url) throw new Error(j.error || `save failed (HTTP ${r.status})`);
-      // Fire-and-forget the voice clone (10-20 min, finishes in background) if a sample was recorded.
-      if (voiceSample) {
-        void fetch('/api/voice/train', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ voiceReference: voiceSample }),
-        }).catch(() => {});
-      }
       onEnrolled?.(j.url);
       onClose(); // success → close the sheet; NEVER leave "saving…" hanging
     } catch (e) {
