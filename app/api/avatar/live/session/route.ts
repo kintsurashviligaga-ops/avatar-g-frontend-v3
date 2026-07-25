@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -12,9 +15,10 @@ export const maxDuration = 30;
  *   1. POST https://api.liveavatar.com/v1/sessions/token  (X-API-KEY)  → session_token
  *   2. POST https://api.liveavatar.com/v1/sessions/start  (Bearer token) → livekit creds
  *
- * GATED: requires LIVEAVATAR_API_KEY (a SEPARATE account from HeyGen — sign up at
- * liveavatar.com). Until that env var is set this returns 503 with clear guidance,
- * so the app degrades gracefully to the rendered avatar greeting.
+ * GATED: (1) an AUTHENTICATED caller + an IP burst limit + a tight per-USER daily cap — a real-time
+ * avatar session is expensive, so this must never be an open drain; (2) LIVEAVATAR_API_KEY (a SEPARATE
+ * account from HeyGen — sign up at liveavatar.com). Until that env var is set AND funded this returns a
+ * non-200, so the client degrades gracefully to the audio-reactive selfie avatar.
  *
  * Config (env, with Eka Georgian defaults):
  *   LIVEAVATAR_API_KEY      – required
@@ -31,6 +35,17 @@ interface TokenResp { code?: number; message?: string; data?: { session_id?: str
 interface StartResp { session_id?: string; livekit_url?: string; livekit_client_token?: string; max_session_duration?: number }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // COST GUARDS — a LiveAvatar session is EXPENSIVE (real-time avatar streaming). Without these, once
+  // LIVEAVATAR_API_KEY is funded this route would be an unauthenticated paid drain (anyone could start
+  // sessions). Require a signed-in caller + an IP burst limit + a tight per-USER daily cap (keyed on the
+  // userId, so IP rotation across throwaway accounts can't multiply sessions). All fail-closed.
+  const { user } = await authedClientFromRequest(req);
+  if (!user) return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 });
+  const ipLimited = await checkRateLimit(req, RATE_LIMITS.VOICE_TOKEN);
+  if (ipLimited) return ipLimited;
+  const perUser = await checkRateLimitByKey(user.id, RATE_LIMITS.LIVEAVATAR_SESSION);
+  if (perUser) return perUser;
+
   const apiKey = norm(process.env.LIVEAVATAR_API_KEY);
   if (!apiKey) {
     return NextResponse.json({

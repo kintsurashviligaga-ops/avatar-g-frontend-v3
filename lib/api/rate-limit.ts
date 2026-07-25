@@ -118,6 +118,10 @@ export const RATE_LIMITS = {
   // rotating IPs across throwaway auto-confirmed signups can't mint unbounded 30-min native-audio sessions.
   // Generous (≈ a whole day of heavy real use incl. voice-swaps) — it caps abuse, not legitimate testing.
   VOICE_TOKEN_USER:{ maxRequests: 200, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:voice:user' } as const,
+  // Per-USER daily ceiling on the EXPENSIVE real-time LiveAvatar (LiveKit) session mint — each session is a
+  // costly streaming avatar, so this is much tighter than the Gemini token cap. Bounds a single account
+  // from starting hundreds of paid sessions; the owner can raise it as the plan matures.
+  LIVEAVATAR_SESSION:{ maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:liveavatar:user' } as const,
   // Storyboard preview = ONE logical generation that fans out into many quick
   // server calls (plan + per-scene frame stream + retries + re-rolls). Treating
   // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This
