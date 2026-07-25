@@ -61,6 +61,10 @@ export interface VeoCreateArgs {
   aspect?: string;
   durationSec?: number;
   negativePrompt?: string;
+  /** Continuity seed. Veo accepts it as a real sampler parameter (verified live: 200), which is what actually
+   *  holds look/character continuity across the film's scenes. It used to be written into the PROSE as
+   *  "(consistency seed 588875549)" — meaningless to a video model and a waste of prompt budget. */
+  seed?: number;
 }
 
 /** Fetch an image URL/data-URL → { base64, mimeType } for Veo's i2v `image` field. Null-safe. */
@@ -107,6 +111,8 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
   // mid-token and the anti-collage / "different face" half never reached the primary engine. Cut on a comma
   // boundary so a truncated fragment is never submitted.
   if (args.negativePrompt?.trim()) parameters.negativePrompt = args.negativePrompt.trim().slice(0, 600).replace(/,[^,]*$/, '');
+  // Real continuity lock — the same seed across a film's scenes keeps the look/character stable.
+  if (Number.isFinite(args.seed) && (args.seed as number) >= 0) parameters.seed = Math.floor(args.seed as number);
   if (Number.isFinite(args.durationSec)) parameters.durationSeconds = Math.min(8, Math.max(4, Math.round(args.durationSec as number)));
 
   try {

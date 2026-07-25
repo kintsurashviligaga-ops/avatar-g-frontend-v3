@@ -698,9 +698,14 @@ export class ServiceManager {
     const veoPrompt = withColorScience(prompt || request.userPrompt, 2000);
     // eslint-disable-next-line no-console
     console.log(`[veo] promptText(${veoPrompt.length}): ${veoPrompt.slice(0, 300)}`);
+    // The film's shared continuity seed → a REAL Veo parameter (verified live), which is what actually holds
+    // the look/character stable across scenes. It used to only appear as "(consistency seed N)" prose.
+    const seedRawVeo = this.getOption(request.selectedOptions || {}, ['seed', 'consistencySeed']);
+    const seedVeo = seedRawVeo != null ? Number.parseInt(seedRawVeo, 10) : NaN;
     const created = await createGeminiVeoClip({
       promptText: veoPrompt,
       promptImage: startImage, // i2v anchor frame (Veo animates from it, keeping the locked character)
+      ...(Number.isFinite(seedVeo) && seedVeo >= 0 ? { seed: seedVeo } : {}),
       aspect,
       durationSec: 8,
       ...(negativePrompt ? { negativePrompt } : {}),
