@@ -2066,15 +2066,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     };
   }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations]);
 
+  // A generation is in flight via the Cap-3 QUEUE (image/music/product) when any job is rendering/queued.
+  // The queue path never sets `busy`, so without this the inline loading card's clock/bar sat frozen and
+  // progress only showed in the floating corner tray. Reactive subscription → drives the elapsed clock.
+  const queueActiveNow = useJobQueue((s) => s.jobs.some((j) => j.status === 'rendering' || j.status === 'queued'));
+
   // Tick the elapsed clock while a generation OR the storyboard build is in flight
   // (so the storyboard overlay can show a live % too, not just a spinner).
   useEffect(() => {
-    if (!busy && !storyboardBusy) { setElapsed(0); return; }
+    if (!busy && !storyboardBusy && !queueActiveNow) { setElapsed(0); return; }
     genStartRef.current = Date.now();
     setElapsed(0);
     const id = setInterval(() => setElapsed(Math.max(0, Math.round((Date.now() - genStartRef.current) / 1000))), 500);
     return () => clearInterval(id);
-  }, [busy, storyboardBusy]);
+  }, [busy, storyboardBusy, queueActiveNow]);
 
   // Auto-grow the composer textarea with its content (capped), like a modern chat.
   useEffect(() => {
@@ -2799,7 +2804,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const scorePrompt = `${preset} product commercial, premium, uplifting`;
     // Open the result in the chat (like image/music/swap): close the panel + drop a progress bubble.
     setOptionsOpen(false);
-    setMessages((prev) => [...prev, { role: 'user', text: `🛍 ${productBrand.trim() || jobLabel}` }, { role: 'assistant', text: t.remixRunning, id: bubbleId }]);
+    setMessages((prev) => [...prev, { role: 'user', text: `🛍 ${productBrand.trim() || jobLabel}` }, { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
     submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
     trackJobUpdate(jobId, jobLabel, 10);
@@ -5565,16 +5570,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 // it shows from the moment the film bubble is pushed and survives parallel jobs (not
                 // just the last message). Excludes done (videoUrl) and failed (⚠️) bubbles.
                 const isInflightVideo = m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.batch && !m.text?.startsWith('⚠️') && (typeof m.videoProgress === 'number' || !!m.filmRoster || i === messages.length - 1);
+                // IMAGE / MUSIC / LIPSYNC dispatch through the Cap-3 QUEUE and never set `busy`, so the
+                // inline loading card was missing and progress only showed in the floating corner tray — the
+                // "loading card hanging in the bottom-right" complaint. Key off the bubble's OWN genKind (per-
+                // message, queue-safe) so the card sits INLINE in the message flow. Excludes done/failed/batch.
+                const isInflightGen = m.role === 'assistant' && !!m.genKind && m.genKind !== 'video'
+                  && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch && !m.text?.startsWith('⚠️');
+                // A remix/product-ad bubble in flight — product-ad runs through the QUEUE (no `busy`), so it
+                // gets its inline staged console here too instead of only the floating tray.
+                const isInflightRemix = m.role === 'assistant' && !!m.remixOpKind && !m.videoUrl && !m.audioUrl && !m.text?.startsWith('⚠️');
                 // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
                 // staged-timer console. Checked first so it wins in chat mode too.
-                if (pending && m.remixOpKind) {
+                if ((pending || isInflightRemix) && m.remixOpKind) {
                   return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
                 }
                 // Generative modes get the live staged progress card (bar + clock +
                 // narrated steps) — the real "loading process". Chat gets typing dots.
                 // isInflightVideo also opens the second (mode/storyboard) gate so a queued film
                 // bubble in chat mode without a storyboard still shows the console.
-                if ((pending || isInflightVideo) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo)) {
+                if ((pending || isInflightVideo || isInflightGen) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo || isInflightGen)) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
                   const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;

@@ -3,7 +3,7 @@ import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
 import { generateUdioTrack } from '@/lib/udio/client';
-import { hasLyriaProvider, generateLyriaTrack, lyriaModel } from '@/lib/ai/lyriaMusic';
+import { hasLyriaProvider, generateLyriaTrack } from '@/lib/ai/lyriaMusic';
 import { hasUdioApiKey } from '@/lib/chat/mediaKeys';
 import { trimAudioToDuration } from '@/lib/audio/trimAudio';
 import { transcodeVoiceToMp3 } from '@/lib/audio/transcode';
@@ -29,11 +29,13 @@ import { creditCostFor } from '@/lib/credits/pricing';
  * (CSP media-src allows *.supabase.co) so the <audio> element plays + the track
  * persists past the provider's short-lived CDN URL.
  *
- * Provider chain (composeTrackUrl): Udio (DEFAULT primary when UDIO_API_KEY is set —
- * the founder's funded song engine) → ElevenLabs Music (sung when not instrumental) →
- * Replicate MusicGen (instrumental last resort). Set MUSIC_PROVIDER=elevenlabs to skip
- * Udio. Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id;
- * cloned voice IDs apply to TTS/narration, not music generation).
+ * Provider chain (composeTrackUrl) — ONE uniform chain for BOTH vocal songs and instrumentals (Lyria 3
+ * generates full songs with vocals + lyrics, so there's no vocal/instrumental switching):
+ *   Google Lyria 3 (Gemini music, PRIMARY) → Udio → ElevenLabs Music → Replicate MusicGen.
+ * Lyria is live-by-default when a Gemini key is present (kill-switch LYRIA_ENABLED=0); the rest are pure
+ * safety fallbacks for the rare Lyria miss (503/quota/timeout). Set MUSIC_PROVIDER=elevenlabs to drop Udio.
+ * Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id; cloned voice IDs apply to
+ * TTS/narration, not music generation).
  *
  * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
  * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
@@ -150,15 +152,17 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
     if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen' };
     throw new Error('MusicGen did not complete in time');
   };
-  // Google LYRIA — opt-in PRIMARY for INSTRUMENTAL tracks (instrumental-only engine). Returns base64 audio
-  // → hosted to our bucket like the others. On any miss the failover moves to Udio/ElevenLabs/MusicGen.
+  // Google LYRIA 3 — opt-in PRIMARY music engine for BOTH instrumental tracks AND vocal songs (Lyria 3 sings
+  // custom lyrics). The prompt already carries the lyrics (baked by the caller); we pass the instrumental
+  // flag so Lyria steers vocals on/off. Returns base64 audio → hosted like the others. On any miss the
+  // failover moves to Udio/ElevenLabs/MusicGen.
   const lyriaRun = async (): Promise<Track> => {
-    const t = await generateLyriaTrack({ prompt: style ? `${prompt}. Style: ${style}.` : prompt, durationSec: secs === 0 ? 90 : secs });
+    const t = await generateLyriaTrack({ prompt: style ? `${prompt}. Style: ${style}.` : prompt, instrumental });
     if (!t) throw new Error('Lyria did not return audio');
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800);
-    if (url) return { url, engine: `Lyria (${lyriaModel()})` };
+    if (url) return { url, engine: 'Lyria' };
     throw new Error('Lyria host failed');
   };
 
@@ -167,16 +171,22 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
   const providers: ProviderAttempt<Track>[] = [];
-  // LYRIA FIRST — opt-in Google music engine, PRIMARY for instrumental (Lyria has no vocals, so a vocal
-  // request keeps ElevenLabs Music which sings). On any miss the chain below serves the track unchanged.
-  if (hasLyriaProvider() && instrumental) {
-    providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
-  }
-  if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
-    providers.push({ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun });
-  }
-  if (hasElevenLabsMusicKey()) {
-    providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
+  // ENGINE ROUTING (product decision):
+  //  • INSTRUMENTAL → Google LYRIA 3 is the PRIMARY engine (Gemini music, billed to the Gemini account),
+  //    with Udio → ElevenLabs → MusicGen as graceful fallbacks. A Lyria miss (503/quota/timeout) reroutes
+  //    to the next provider, so the track always lands.
+  //  • VOCAL SONG → ElevenLabs Music is PRIMARY (it sings the lyrics with the best voice quality), Udio +
+  //    MusicGen fall back. Lyria is intentionally SKIPPED for vocals (sung tracks route to ElevenLabs).
+  // The engine badge on the result card reflects whichever provider actually produced the track.
+  const udioP = () => hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs'
+    ? [{ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun }] : [];
+  const elP = () => hasElevenLabsMusicKey()
+    ? [{ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun }] : [];
+  if (instrumental) {
+    if (hasLyriaProvider()) providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
+    providers.push(...udioP(), ...elP());
+  } else {
+    providers.push(...elP(), ...udioP());
   }
   providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
 

@@ -168,7 +168,13 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => () => { for (const tmr of timersRef.current.values()) clearTimeout(tmr); timersRef.current.clear(); }, []);
 
   const visible = jobs.filter((j) => !dismissed.has(j.id));
-  if (!visible.length) return null;
+  // The loading card lives INLINE in the message stream (centred, in the chat flow) — NOT this floating
+  // corner card, which read as "hanging in the bottom-right". So the tray stays hidden whenever at most ONE
+  // render is ACTIVE (rendering/queued): the common single-generation case shows only the in-stream card.
+  // Counting ACTIVE jobs (not lingering "done"/"failed" rows) means a just-finished job can't resurrect the
+  // corner card while a NEW single generation is running. The tray returns ONLY as a 2+-parallel overview.
+  const activeVisible = visible.filter((j) => j.status === 'rendering' || j.status === 'queued');
+  if (activeVisible.length <= 1) return null;
 
   const anyFinished = visible.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
   const activeCount = visible.filter((j) => j.status === 'rendering').length;
