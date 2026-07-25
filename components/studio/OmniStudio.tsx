@@ -886,6 +886,22 @@ function isVideoIntent(s: string): boolean {
   if (/музыкальн\w*\s*клип|видеоклип|сними[\s\S]{0,30}видео|сделай[\s\S]{0,30}видео/.test(b)) return true;
   return false;
 }
+/**
+ * Does the text NAME a video deliverable (any of the 3 locales)? Deliberately a plain noun check with no
+ * imperative-verb requirement — it is only ever used TOGETHER with an attached photo, and "here's my photo +
+ * … film trailer …" is unambiguous intent even when the sentence doesn't lead with "create".
+ *
+ * THE BUG: the chat→Video route required isGenerativeCommand(), which demands the message LEAD with a
+ * generate verb. A descriptive brief ("photo attached — a 24-second blockbuster-style trailer where…") fails
+ * that gate, fell through to plain chat, and the model just TALKED about handing off to the Video Studio
+ * ("I'll start generating now") while nothing actually ran.
+ */
+function mentionsVideoDeliverable(s: string): boolean {
+  const b = (s || '').toLowerCase();
+  return /\b(video|film|movie|clip|trailer|reel|footage)\b/.test(b)
+    || /ვიდეო|ფილმ|კლიპ|ტრეილერ|რგოლ|მოკლემეტრაჟ/.test(s || '')
+    || /видео|фильм|клип|трейлер|ролик/.test(b);
+}
 function isMusicVideoIntent(s: string): boolean {
   const b = (s || '').toLowerCase();
   return /\bmusic\s*video\b|\br&b\b|\brnb\b|\bsong\b|\bsinger\b|\bvocal|\blyric/.test(b)
@@ -3953,7 +3969,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // before anything happened. Bail here and let the chat→Video-Studio route (which already threads the
     // attached images through as character refs) handle it. Video ATTACHMENTS still fall through to the
     // editor/remix path below — only a still image + a video-generation brief is redirected.
-    if (gKind === 'image' && isVideoIntent(text) && isGenerativeCommand(text)) return false;
+    if (gKind === 'image' && mentionsVideoDeliverable(text)) return false;
     if (!isImperativeCommand(text) || classifyIntent(text, gKind).route === 'CLARIFY') return false;
     setAgentGPhase(0); setAgentGBusy(true);
     const phaseTimer = window.setInterval(() => setAgentGPhase((p) => (p < 3 ? p + 1 : p)), 500);
@@ -4433,7 +4449,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // clear note, and fire the proven storyboard→render flow (createStoryboard) —
     // the same path the Video tab uses. Anything that is NOT a clear video brief
     // falls through to the normal multimodal chat below, unchanged.
-    if (mode === 'chat' && text && isGenerativeCommand(text) && (isVideoIntent(text) || (chatIntent?.intent === 'video_generation' && chatIntent.confidence >= 0.7))) {
+    // A PHOTO + a named video deliverable is unambiguous: the photo is the character reference and the text
+    // is the brief. That case skips the strict isGenerativeCommand() lead-verb gate, which a descriptive
+    // brief fails — the exact reason a photo + film brief used to fall through to plain chat and get a
+    // "I'll hand this to the Video Studio…" REPLY instead of an actual render.
+    const chatPhotoVideoBrief = attachments.some((a) => isImage(a.mimeType)) && mentionsVideoDeliverable(text);
+    if (mode === 'chat' && text && (chatPhotoVideoBrief || (isGenerativeCommand(text) && (isVideoIntent(text) || (chatIntent?.intent === 'video_generation' && chatIntent.confidence >= 0.7))))) {
       const musicVideo = isMusicVideoIntent(text);
       setMode('video');
       setVideoMode(musicVideo ? 'musicvideo' : 'documentary');
