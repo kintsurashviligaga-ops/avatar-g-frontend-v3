@@ -707,14 +707,22 @@ async function pollFilmClip(clip: FilmTaskRef['clips'][number], sessionId?: stri
     if (sm.predictionStatus === 'succeeded') {
       return { ordinal: clip.ordinal, status: 'succeeded', url: sm.assetUrl ?? null, attempts: clip.attempts, providerStatus, videoProvider };
     }
-    if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'error' || sm.predictionStatus === 'canceled') {
+    // Only a DEFINITIVE provider verdict is terminal. 'error' is NOT terminal — ServiceManager returns it for
+    // a session mismatch (reload / second device polls the persisted token with a fresh sessionId), so mapping
+    // it to 'failed' would declare the whole film failed on a routing blip. Treat it as 'pending' (keep
+    // polling) so the film self-heals; genuine failures still arrive as a clean 'failed'/'canceled'.
+    if (sm.predictionStatus === 'failed' || sm.predictionStatus === 'canceled') {
       return { ordinal: clip.ordinal, status: 'failed', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
     }
     return { ordinal: clip.ordinal, status: 'pending', url: null, attempts: clip.attempts, providerStatus, note, videoProvider };
   } catch (err) {
+    // A THROW here is a transport/decode anomaly (the inner pollers already fail-open to 'processing' on a
+    // transient 429/timeout), NOT a provider verdict — so keep polling ('pending') instead of wrongly killing
+    // the clip. The client's poll loop is bounded, so this can't spin forever; the next tick reaches the real
+    // terminal state.
     return {
       ordinal: clip.ordinal,
-      status: 'failed',
+      status: 'pending',
       url: null,
       attempts: clip.attempts,
       providerStatus: 'threw',
