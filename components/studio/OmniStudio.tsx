@@ -21,7 +21,7 @@ import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
 import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
-import { FILM_CLIP_SEC, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
+import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
 // initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
 // out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
@@ -162,8 +162,8 @@ const COPY: Record<Lang, {
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
-    modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე 30-წამიანი ვიდეო (ფოტო — პერსონაჟისთვის)…',
-    generatingVideo: 'ვიდეო იქმნება… 6 სცენა + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
+    modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე ვიდეო (ატვირთე ფოტო პერსონაჟისთვის)…',
+    generatingVideo: 'ვიდეო იქმნება… სცენები + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
     modeSurgical: 'მონტაჟი',
@@ -171,7 +171,7 @@ const COPY: Record<Lang, {
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
-    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე 6 სცენას — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და 6 კადრი იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
+    sbTitle: 'სტორიბორდი', sbReview: 'გადახედე სცენებს — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და კადრები იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
     charPhoto: 'პერსონაჟის ფოტო', charPhotoOn: 'პერსონაჟი ✓',
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
@@ -184,8 +184,8 @@ const COPY: Record<Lang, {
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
-    modeVideo: 'Video', videoPlaceholder: 'Describe a 30-second video (attach a photo for the character)…',
-    generatingVideo: 'Producing video… 6 scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
+    modeVideo: 'Video', videoPlaceholder: 'Describe your video (attach a photo for the character)…',
+    generatingVideo: 'Producing video… scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
     modeSurgical: 'Editor',
@@ -193,7 +193,7 @@ const COPY: Record<Lang, {
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
-    sbTitle: 'Storyboard', sbReview: 'Review the 6 scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & 6 frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
+    sbTitle: 'Storyboard', sbReview: 'Review the scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
     charPhoto: 'Character photo', charPhotoOn: 'Character ✓',
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
@@ -206,8 +206,8 @@ const COPY: Record<Lang, {
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
-    modeVideo: 'Видео', videoPlaceholder: 'Опишите 30-секундное видео (фото — для персонажа)…',
-    generatingVideo: 'Создаю видео… 6 сцен + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
+    modeVideo: 'Видео', videoPlaceholder: 'Опишите видео (прикрепите фото для персонажа)…',
+    generatingVideo: 'Создаю видео… сцены + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
     modeSurgical: 'Монтаж',
@@ -215,7 +215,7 @@ const COPY: Record<Lang, {
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
-    sbTitle: 'Раскадровка', sbReview: 'Просмотрите 6 сцен — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и 6 кадров…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
+    sbTitle: 'Раскадровка', sbReview: 'Просмотрите сцены — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и кадры…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
     charPhoto: 'Фото персонажа', charPhotoOn: 'Персонаж ✓',
     historyTitle: 'История', historyEmpty: 'Пока нет чатов', historyNew: 'Новый чат', deleteLabel: 'Удалить',
   },
@@ -1766,7 +1766,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // the default chip is labelled "✨ Veo"; its routing value stays 'runway' (the auto cascade whose primary
   // is now Veo). Choosing "🎬 Kling" opts OUT of Veo/Runway and renders Kling-first. Hailuo stays a valid
   // routing value but is retired from the toggle.
-  const [videoModel, setVideoModel] = useState<'runway' | 'kling' | 'hailuo'>('runway');
+  // Engine is fixed to the Veo-first auto cascade ('runway' routing value = Veo primary → Runway/Kling/LTX
+  // fallbacks). No user picker anymore, so it's a constant (the setter was only the removed Kling chip).
+  const [videoModel] = useState<'runway' | 'kling' | 'hailuo'>('runway');
   // PHASE 2 L1 — Product-Ad mode: one product photo (hosted URL) + a commercial preset.
   const [productImage, setProductImage] = useState<string | null>(null);
   const [productPreset, setProductPreset] = useState<'splash' | 'epic' | 'luxury' | 'nature'>('luxury');
@@ -2430,7 +2432,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // plus clear staged labels — so the ~5-7 min wait shows movement, not a wall.
           const cs = p.matrix?.clips ?? [];
           const ready = cs.filter((c) => c.status === 'succeeded').length;
-          const total = p.matrix?.sceneCount || cs.length || 6;
+          const total = p.matrix?.sceneCount || cs.length || FILM_SCENE_COUNT;
           const pct = p.phase === 'assembled' ? 100
             : p.phase === 'stitching' ? 90
             : p.phase === 'rendering' ? Math.min(85, 25 + Math.round((ready / Math.max(1, total)) * 55))
@@ -6555,10 +6557,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
                   <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
                 </div>
+                {/* ENGINE — Google Veo is THE engine (primary, always on). Runway/Kling are automatic backend
+                    fallbacks only (the ServiceManager cascade), so they're no longer competing UI choices. */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Engine:' : locale === 'ru' ? 'Движок:' : 'ძრავა:'}</span>
-                  <Chip active={videoModel === 'runway'} onClick={() => setVideoModel('runway')}>✨ Veo</Chip>
-                  <Chip active={videoModel === 'kling'} onClick={() => setVideoModel('kling')}>🎬 Kling</Chip>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-app-accent/15 px-2.5 py-1 text-[12px] font-semibold text-app-accent ring-1 ring-app-accent/30">✨ Google Veo</span>
+                  <span className="text-[10.5px] text-app-muted">{locale === 'en' ? 'auto-fallback if busy' : locale === 'ru' ? 'авто-резерв при загрузке' : 'ავტო-სარეზერვო დატვირთვისას'}</span>
                 </div>
               </div>
             </Section>

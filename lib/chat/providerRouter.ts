@@ -556,6 +556,11 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
   const clipStates = await Promise.all(
     ref.clips.map(async (clip) => pollFilmClip(clip, effectiveSession)),
   );
+  // NOTE: refund-on-async-failure is NOT done here yet. A token-driven refund is unsafe (the film token is
+  // unsigned/forgeable AND the clip 'failed' verdict comes from polling a client-supplied taskRef — a mapped
+  // transient 429 also reads as 'failed'), so it would be a credit-farming exploit + an over-refund on
+  // recovery. The correct fix needs an HMAC-signed token + a server-authoritative per-dispatch render record
+  // gating the refund on a TERMINAL provider failure. Tracked as a dedicated secure task.
 
   // ── Poll the audio leg (Udio) ───────────────────────────────────────────────
   let audioStatus: FilmLegPollStatus = ref.musicWorkId ? 'pending' : 'skipped';
