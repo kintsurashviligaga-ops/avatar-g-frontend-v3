@@ -128,15 +128,16 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     };
   }, []);
 
-  // Average 0..1 magnitude across an analyser's frequency bins (reused for the bars + the avatar drive).
-  const analyserLevel = useCallback((analyser: AnalyserNode | null): number => {
+  // 0..1 loudness via TIME-DOMAIN RMS — far more responsive to speech than a frequency-bin average (which is
+  // diluted by the many empty high-frequency bins), so the avatar reacts crisply to each syllable.
+  const timeDomainRms = useCallback((analyser: AnalyserNode | null): number => {
     if (!analyser) return 0;
-    const n = analyser.frequencyBinCount;
+    const n = analyser.fftSize;
     const data = new Uint8Array(n);
-    analyser.getByteFrequencyData(data as Uint8Array<ArrayBuffer>);
+    analyser.getByteTimeDomainData(data as Uint8Array<ArrayBuffer>);
     let sum = 0;
-    for (let i = 0; i < n; i++) sum += data[i] ?? 0;
-    return n ? sum / n / 255 : 0;
+    for (let i = 0; i < n; i++) { const v = ((data[i] ?? 128) - 128) / 128; sum += v * v; }
+    return Math.sqrt(sum / n);
   }, []);
 
   // ── Frequency-bar visualiser + AUDIO-REACTIVE avatar drive (single rAF loop, runs the whole session). ──
@@ -164,33 +165,34 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
       }
     }
 
-    // 2) Audio-reactive avatar: drive the portrait's transform from the REAL amplitude of the avatar's
-    //    spoken audio (primary) plus the user's mic (secondary), so the face visibly moves/breathes to the
-    //    voice. A subtle vertical squash-stretch reads as a jaw/mouth "talking" cue (a lip-sync feel on a
-    //    still photo). Reduced-motion users get a still portrait.
+    // 2) Audio-reactive avatar — the portrait must VISIBLY move & "talk" whenever the AI speaks. Movement is
+    //    the whole point of a live avatar, so (unlike decorative effects) it runs even under
+    //    prefers-reduced-motion — only the sonar rings honour that. `activeSourcesRef` is the ground truth
+    //    that audio is PLAYING (the avatar is talking); a rhythmic mouth-flap FLOOR guarantees clearly visible
+    //    talking even if the analyser momentarily reads low, with the real RMS amplitude riding on top.
     const wrap = avatarWrapRef.current;
     if (wrap) {
-      const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      if (reduce) {
-        wrap.style.transform = '';
-      } else {
-        // Raw target: the avatar's own voice dominates; the mic adds a little so the face also stirs while the
-        // user speaks. Gamma-curve for punch, then ease toward it so motion is smooth (no per-frame jitter).
-        const raw = Math.min(1, Math.max(analyserLevel(playbackAnalyserRef.current) * 1.6, analyserLevel(analyserRef.current) * 0.6));
-        const target = Math.pow(raw, 0.7);
-        const eased = avatarAmpRef.current + (target - avatarAmpRef.current) * 0.28;
-        avatarAmpRef.current = eased;
-        // Idle "breathing" baseline (time-based sine) so the portrait is alive even in silence; amplitude
-        // adds the talking motion on top. translateZ(0) keeps it on its own compositor layer.
-        const breathe = Math.sin((ts ?? 0) / 1500) * 0.01;
-        const sx = 1 + breathe + eased * 0.05;
-        const sy = 1 + breathe + eased * 0.10; // more vertical → jaw-drop / mouth-open illusion
-        const bob = -eased * 5;
-        wrap.style.transform = `translateZ(0) translateY(${bob.toFixed(2)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
-      }
+      const t = ts ?? 0;
+      const speaking = activeSourcesRef.current.length > 0; // audio queued/playing → the avatar is talking NOW
+      const rms = timeDomainRms(playbackAnalyserRef.current);       // the avatar's own voice (primary)
+      const micRms = timeDomainRms(analyserRef.current);            // the user's voice (secondary stir)
+      const amp = Math.min(1, Math.max(rms * 3.4, micRms * 1.2));
+      // While talking, a ~2 Hz mouth open/close is GUARANTEED (0.3..0.9) even if the analyser reads low, with
+      // the real amplitude riding on top so louder syllables open wider. Silent → settle toward 0 (idle only).
+      const flap = 0.5 + 0.5 * Math.sin(t / 95);                    // 0..1 at ~2 Hz
+      const talk = speaking ? 0.3 + 0.6 * flap : 0;                 // guaranteed strong talking oscillation
+      const level = Math.max(amp, talk);
+      const eased = avatarAmpRef.current + (level - avatarAmpRef.current) * 0.35;
+      avatarAmpRef.current = eased;
+      const breathe = Math.sin(t / 1400) * 0.012;                   // gentle idle life so it never looks frozen
+      const sx = 1 + breathe + eased * 0.07;
+      const sy = 1 + breathe + eased * 0.15;                        // taller scale → clear jaw-drop / mouth-open (transform-origin 50% 34%)
+      const nod = speaking ? Math.sin(t / 260) * 3 : 0;             // subtle head-nod while talking
+      const bob = -eased * 7 + nod;
+      wrap.style.transform = `translateZ(0) translateY(${bob.toFixed(2)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
     }
     vizRafRef.current = requestAnimationFrame(drawViz);
-  }, [analyserLevel]);
+  }, [timeDomainRms]);
 
   // ── Camera: stream low-fps JPEG frames up while the camera is on. ──
   const startCamera = useCallback(async () => {
@@ -466,7 +468,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
       {/* Sticky premium control bar */}
       <div
-        className="fixed bottom-0 left-0 right-0 flex items-center justify-center gap-4 border-t border-white/10 bg-black/40 px-6 py-4 backdrop-blur-xl"
+        className="fixed bottom-0 left-0 right-0 flex items-center justify-center gap-3 border-t border-white/10 bg-black/40 px-5 py-4 backdrop-blur-xl"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
         <button type="button" onClick={toggleMute} aria-label="mute"
@@ -486,14 +488,22 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
             <SwitchCamera size={20} />
           </button>
         )}
-        {/* Voice toggle — switch between the Google female (Aoede) and male (Charon) voices. The glyph +
-            accent tint change so the active voice is obvious; changing it reconnects with the new voice. */}
-        <button type="button" onClick={() => setVoiceGender((g) => (g === 'female' ? 'male' : 'female'))}
-          aria-label={`${locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}: ${voiceGender === 'female' ? (locale === 'en' ? 'female' : locale === 'ru' ? 'женский' : 'ქალის') : (locale === 'en' ? 'male' : locale === 'ru' ? 'мужской' : 'კაცის')}`}
-          title={locale === 'en' ? 'Switch voice' : locale === 'ru' ? 'Сменить голос' : 'ხმის შეცვლა'}
-          className={`flex h-12 w-12 touch-manipulation items-center justify-center rounded-full text-[22px] font-bold transition ${voiceGender === 'female' ? 'bg-pink-400/20 text-pink-300' : 'bg-sky-400/20 text-sky-300'}`}>
-          {voiceGender === 'female' ? '♀' : '♂'}
-        </button>
+        {/* Voice selector — a clear segmented ♀ | ♂ toggle (Google Aoede vs Charon). Tapping the OTHER gender
+            switches + reconnects with that voice; tapping the current one is a no-op (setState bails → no
+            needless reconnect). Both options are always visible so it's obvious which voice is active. */}
+        <div role="group" aria-label={locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}
+          className="flex h-12 items-center gap-0.5 rounded-full bg-white/[0.08] p-1">
+          <button type="button" aria-pressed={voiceGender === 'female'} onClick={() => setVoiceGender('female')}
+            aria-label={locale === 'en' ? 'Female voice' : locale === 'ru' ? 'Женский голос' : 'ქალის ხმა'}
+            className={`flex h-9 w-9 touch-manipulation items-center justify-center rounded-full text-[19px] font-bold transition ${voiceGender === 'female' ? 'bg-pink-400/25 text-pink-200 shadow-[0_0_0_1px_rgba(244,114,182,0.45)]' : 'text-app-muted hover:text-app-text'}`}>
+            ♀
+          </button>
+          <button type="button" aria-pressed={voiceGender === 'male'} onClick={() => setVoiceGender('male')}
+            aria-label={locale === 'en' ? 'Male voice' : locale === 'ru' ? 'Мужской голос' : 'კაცის ხმა'}
+            className={`flex h-9 w-9 touch-manipulation items-center justify-center rounded-full text-[19px] font-bold transition ${voiceGender === 'male' ? 'bg-sky-400/25 text-sky-200 shadow-[0_0_0_1px_rgba(56,189,248,0.45)]' : 'text-app-muted hover:text-app-text'}`}>
+            ♂
+          </button>
+        </div>
         <button type="button" onClick={endCall} aria-label="end call"
           className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-app-danger text-white shadow-lg transition hover:brightness-110">
           <PhoneOff size={22} />
