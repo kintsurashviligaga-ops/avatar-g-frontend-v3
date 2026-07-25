@@ -53,6 +53,11 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const [err, setErr] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  // The user's enrolled LIVE-AVATAR poster (avatar/enroll → profiles.core_avatar_id). When present it fills
+  // the session backdrop instead of the bare waveform and animates with the conversation (idle "breathing",
+  // an active "speaking" pulse while status==='speaking'), so the Live screen is the USER's avatar — not an
+  // empty space. The live camera still overrides it when the user turns the camera on.
+  const [avatarPoster, setAvatarPoster] = useState<string | null>(null);
   // Camera direction — defaults to the BACK (environment) camera per mobile convention (show Gemini what
   // you see); the flip button switches to the front (user/selfie) camera. facingRef mirrors it for the
   // async getUserMedia constraint. Desktops without a rear camera just get the default device.
@@ -326,7 +331,25 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, voiceGender]);
 
+  // Load the enrolled avatar poster so the Live screen shows the USER (not a blank orb). Best-effort:
+  // any miss (no enrolled avatar, guest, network) falls back to the waveform. Independent of the socket
+  // lifecycle, so a voice-swap reconnect never re-fetches or flickers the avatar.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/avatar/core', { credentials: 'include' });
+        if (!r.ok) return;
+        const j = (await r.json().catch(() => ({}))) as { data?: { poster_url?: string | null; status?: string } };
+        if (alive && j?.data?.poster_url && j.data.status === 'ready') setAvatarPoster(j.data.poster_url);
+      } catch { /* fail-open — waveform fallback */ }
+    })();
+    return () => { alive = false; };
+  }, [userId]);
+
   const label = status === 'connecting' ? t.connecting : status === 'speaking' ? t.speaking : status === 'closed' ? t.closed : t.live;
+  const speaking = status === 'speaking';
+  const showAvatar = !!avatarPoster && !camOn;
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
@@ -338,10 +361,37 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
       {camOn && <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
       <canvas ref={canvasRef} className="hidden" />
 
+      {/* Audio-reactive avatar animations — idle "breathing", a lively "talking" bounce while the assistant
+          speaks, and a pulsing glow ring. Reduced-motion users get a still portrait. */}
+      <style>{`
+        @keyframes ag-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+        @keyframes ag-talk { 0%,100% { transform: scale(1); } 25% { transform: scale(1.045); } 50% { transform: scale(1.01); } 75% { transform: scale(1.055); } }
+        @keyframes ag-glow { 0%,100% { opacity: 0.35; } 50% { opacity: 0.85; } }
+        .ag-avatar-idle { animation: ag-breathe 4s ease-in-out infinite; }
+        .ag-avatar-speaking { animation: ag-talk 0.7s ease-in-out infinite; }
+        .ag-avatar-glow { animation: ag-glow 0.7s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .ag-avatar-idle, .ag-avatar-speaking, .ag-avatar-glow { animation: none !important; } }
+      `}</style>
+
+      {/* FULL-SCREEN enrolled avatar (when the camera is off) — the user's own face fills the session,
+          softly blurred as an ambient backdrop with the portrait centered and audio-reactive. */}
+      {showAvatar && (
+        <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={avatarPoster!} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/25 to-black/85" />
+          <div className={`relative ${speaking ? 'ag-avatar-speaking' : 'ag-avatar-idle'}`}>
+            <div className={`absolute -inset-5 rounded-full bg-app-accent/40 blur-2xl transition-opacity duration-300 ${speaking ? 'ag-avatar-glow opacity-100' : 'opacity-0'}`} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={avatarPoster!} alt="" className="relative h-[min(62vw,264px)] w-[min(62vw,264px)] rounded-full object-cover shadow-2xl ring-2 ring-white/25" />
+          </div>
+        </div>
+      )}
+
       <span className="relative z-10 mb-6 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.title}</span>
 
-      {/* Frequency waveform — hidden while the full-screen camera is showing. */}
-      <canvas ref={vizCanvasRef} width={320} height={120} className={`relative z-10 mb-6 w-[min(80vw,320px)] ${camOn ? 'hidden' : ''}`} />
+      {/* Frequency waveform — hidden while the full-screen camera OR the enrolled avatar is showing. */}
+      <canvas ref={vizCanvasRef} width={320} height={120} className={`relative z-10 mb-6 w-[min(80vw,320px)] ${camOn || showAvatar ? 'hidden' : ''}`} />
 
       <span className="relative z-10 mb-1 text-[14px] font-medium text-app-text">{label}</span>
       {err && <span className="relative z-10 mb-2 max-w-xs px-6 text-center text-[12px] text-app-danger">{err}</span>}

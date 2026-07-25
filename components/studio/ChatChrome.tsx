@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -28,6 +28,8 @@ const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversa
 // VoiceConversation below. Requires a signed-in userId to mint an ephemeral Live token (guests fall
 // back to VoiceConversation regardless).
 const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLiveConversation'), { ssr: false });
+// Live Avatar enrollment (selfie + optional voice) → sets the user's core avatar shown in voice mode.
+const LiveAvatarEnroll = dynamic(() => import('@/components/voice/LiveAvatarEnroll'), { ssr: false });
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -189,6 +191,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const lastAvatarUserIdRef = useRef<string | null>(null);
   // DAY-5 — real-time voice node overlay (opt-in from the floating mic button; text chat untouched).
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // Live Avatar enrollment modal (selfie + voice) — opened from the profile menu or the myavatar:avatar-enroll event.
+  const [avatarEnrollOpen, setAvatarEnrollOpen] = useState(false);
   // Set when the Live token mint reports Live is disabled/unavailable server-side (503) → fall back to the
   // ElevenLabs voice stack at runtime for this open. Reset on each fresh open so a transient miss retries Live.
   const [liveUnavailable, setLiveUnavailable] = useState(false);
@@ -282,6 +286,17 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     };
     window.addEventListener('myavatar:voice-open', openVoice);
     return () => window.removeEventListener('myavatar:voice-open', openVoice);
+  }, [authed]);
+
+  // Live Avatar enrollment bridge — any surface can dispatch `myavatar:avatar-enroll`. Authed → open the
+  // enrollment sheet; guest → sign-in first (enrollment writes to the user's profile).
+  useEffect(() => {
+    const openEnroll = () => {
+      if (authed) setAvatarEnrollOpen(true);
+      else { setAuthMode('login'); setAuthOpen(true); }
+    };
+    window.addEventListener('myavatar:avatar-enroll', openEnroll);
+    return () => window.removeEventListener('myavatar:avatar-enroll', openEnroll);
   }, [authed]);
 
   // Checkout return handler (Iteration 4). Every rail lands back on /dashboard with a status param:
@@ -815,6 +830,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (
@@ -938,6 +954,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {voiceOpen && (GEMINI_LIVE_ENABLED && userId && !liveUnavailable
         ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)} />
         : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />)}
+
+      {/* Live Avatar enrollment — selfie + optional voice → the user's core avatar for voice mode. */}
+      {avatarEnrollOpen && <LiveAvatarEnroll locale={lang} onClose={() => setAvatarEnrollOpen(false)} />}
 
       {/* Avatar-upload feedback toast — transient, self-contained (no global toast system here). */}
       {avatarError && (
