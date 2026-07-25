@@ -1170,17 +1170,26 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
           </div>
         )}
 
-        {/* INTERACTIVE HOVER / MID-GENERATION INTERCEPT — only over a placeholder. */}
-        {!s.frameUrl && !regenning && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/media:opacity-100 focus-within:opacity-100">
-            <button type="button" onClick={focusPrompt} disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/92 px-3 py-1.5 text-[11px] font-semibold text-black shadow transition-transform active:scale-95 disabled:opacity-50">
-              <Pencil size={12} /> {t.sbEditPromptAction}
+        {/* MISSING-FRAME ACTIONS — ALWAYS VISIBLE (never hover-gated). A frame that failed to render used to
+            offer its fixes only on :hover, which does not exist on a phone: the user was left staring at an
+            empty tile with no way to retry it. The primary action is "generate this frame" so one dropped
+            tile is one tap from fixed. While a frame is still generating the spinner stays unobstructed. */}
+        {!s.frameUrl && !regenning && !pending && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-black/55 backdrop-blur-[1px]">
+            <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[11.5px] font-semibold text-app-bg shadow-lg transition-transform active:scale-95 disabled:opacity-50">
+              <RotateCcw size={12} /> {t.sbReroll}
             </button>
-            <button type="button" onClick={pickBase} disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[11px] font-semibold text-app-bg shadow transition-transform active:scale-95 disabled:opacity-50">
-              <Upload size={12} /> {t.sbChangeBaseAction}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={focusPrompt} disabled={busy}
+                className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[10.5px] font-semibold text-black shadow transition-transform active:scale-95 disabled:opacity-50">
+                <Pencil size={11} /> {t.sbEditPromptAction}
+              </button>
+              <button type="button" onClick={pickBase} disabled={busy}
+                className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10.5px] font-semibold text-white ring-1 ring-white/25 transition-transform active:scale-95 disabled:opacity-50">
+                <Upload size={11} /> {t.sbChangeBaseAction}
+              </button>
+            </div>
           </div>
         )}
 
