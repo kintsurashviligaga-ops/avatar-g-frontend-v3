@@ -189,7 +189,7 @@ async function genFrameViaFluxSchnell(framePrompt: string, aspect: string): Prom
       const j = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
       // Same fix as the nano-banana leg: poll instead of discarding a still-running prediction.
       return await awaitReplicateOutput(token, j, 60_000);
-    }, { maxAttempts: 2, baseDelayMs: 1500, label: 'flux-schnell-frame' });
+    }, { maxAttempts: 3, baseDelayMs: 6000, label: 'flux-schnell-frame' });
   } catch {
     return null;
   }
@@ -264,7 +264,7 @@ async function genFrameViaNanoBananaRef(framePrompt: string, aspect: string, ref
       // POLL when `Prefer: wait` returned before the model finished — otherwise a slow (but successful)
       // render was discarded and that scene's tile stayed permanently empty.
       return await awaitReplicateOutput(token, j, 90_000);
-    }, { maxAttempts: 2, baseDelayMs: 1500, label: 'nano-banana-frame' });
+    }, { maxAttempts: 3, baseDelayMs: 6000, label: 'nano-banana-frame' });
   } catch {
     return null;
   }
@@ -374,21 +374,12 @@ export async function POST(req: NextRequest) {
       // miss/429 it returns null and we fall through to the NanoBanana primary below.
       // NOTE: skipped when a selfie exists — flux-schnell is text-only, so it would silently break identity.
       if (!raw && FAST_IMAGE_MODEL && !selfie) { raw = await genFrameViaFluxSchnell(framePrompt, aspect); if (raw) source = 'fluxSchnell'; }
-      if (!raw) {
-        try {
-          const r = await serviceManager.execute({
-            sessionId,
-            serviceContext: 'image',
-            intent: 'image_generation',
-            userPrompt: framePrompt,
-            ...(selfie ? { imageUrl: selfie } : {}),
-            selectedOptions: { aspect, aspectRatio: aspect, endpoint: 'v2-1k', negativePrompt: STORYBOARD_FRAME_NEGATIVE },
-            locale,
-          });
-          raw = typeof r.assetUrl === 'string' && /^https?:\/\//i.test(r.assetUrl) ? r.assetUrl : null;
-          if (raw) source = 'nanobanana';
-        } catch { raw = null; }
-      }
+      // NOTE — a serviceManager.execute() leg used to sit here. It was DEAD WEIGHT that actively broke the
+      // board: Replicate creates are async (`Prefer: respond-async`), so it returned a predictionId and NO
+      // assetUrl, `raw` stayed null, the running prediction was orphaned, and we immediately created a SECOND
+      // prediction below. That doubled the Replicate create rate (2 per frame + the anchor), which is what
+      // pushed a 3-scene board over the 6-creates/min throttle and left one tile permanently empty — while
+      // also double-billing FLUX (~$0.04 each). The chain below is nano-banana → FLUX, one create per frame.
       let resolved = raw;
       if (!resolved) { resolved = await genFrameViaReplicate(framePrompt, aspect, selfie); if (resolved) source = 'replicateFlux'; }
       if (source) frameSourceTally[source] += 1;
