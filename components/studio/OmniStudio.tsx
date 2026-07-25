@@ -3946,7 +3946,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (mode !== 'chat' || attachments.length !== 1) return false;
     const a0 = attachments[0];
     const gKind = a0 ? (isImage(a0.mimeType) ? 'image' : isVideo(a0.mimeType) ? 'video' : isAudio(a0.mimeType) ? 'audio' : null) : null;
-    if (!a0 || !gKind || !isImperativeCommand(text) || classifyIntent(text, gKind).route === 'CLARIFY') return false;
+    if (!a0 || !gKind) return false;
+    // MAKE-A-VIDEO WINS OVER EDIT-THIS-ASSET. "Make a video of this photo" + an attached IMAGE is a request to
+    // GENERATE a film using that photo as the character reference — not to open the photo editor. Agent G used
+    // to swallow it and route to the Surgical Editor, so the user had to manually switch to the Video service
+    // before anything happened. Bail here and let the chat→Video-Studio route (which already threads the
+    // attached images through as character refs) handle it. Video ATTACHMENTS still fall through to the
+    // editor/remix path below — only a still image + a video-generation brief is redirected.
+    if (gKind === 'image' && isVideoIntent(text) && isGenerativeCommand(text)) return false;
+    if (!isImperativeCommand(text) || classifyIntent(text, gKind).route === 'CLARIFY') return false;
     setAgentGPhase(0); setAgentGBusy(true);
     const phaseTimer = window.setInterval(() => setAgentGPhase((p) => (p < 3 ? p + 1 : p)), 500);
     try {

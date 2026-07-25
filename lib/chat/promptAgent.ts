@@ -20,6 +20,7 @@
 import 'server-only';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
+import { stripNegativeTail } from './filmPipeline';
 
 export interface MasterFilmCharacter {
   /** Stable role id when a brief has several people ("mother" | "father" | "child"). */
@@ -145,7 +146,14 @@ CRITICAL RULES:
    - [VISUAL STYLE: color grade, lighting]
    - [CAMERA: shot type + angle]
    - "photorealistic, 8k resolution, crisp details, ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white balance, sharp focus"
-   - "Negative: blur, distortion, low quality, different face, inconsistent appearance, yellow tint, sepia, oversaturated, muddy colours, amber cast"
+   - NEVER write a "Negative:" list inside imagePrompt. What to AVOID belongs ONLY in
+     visualStyle.negativePrompt — the renderer passes that to the provider's dedicated negative
+     field. A "Negative: blur, cartoon, …" tail inside imagePrompt is read as a POSITIVE
+     instruction (the model sees "cartoon, illustration, blur" and draws them) AND is shown to
+     the user as the scene's description.
+   - visualStyle.negativePrompt MUST carry the suppression tokens instead, including:
+     "blur, distortion, low quality, different face, inconsistent appearance, yellow tint, sepia,
+     oversaturated, muddy colours, amber cast".
 
 SCENE SPECIFICITY RULES (every scene.imagePrompt MUST obey):
    - NEVER write vague actions like "standing", "walking", "doing something".
@@ -299,12 +307,13 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
   const str = (v: unknown, fb = ''): string => (typeof v === 'string' ? v.trim() : fb);
 
   const fragment = str(ch.imagePromptFragment) || str(ch.description);
+
   // A brief is only useful if it produced a character anchor AND at least one scene
   // with a usable image prompt — otherwise the deterministic fallback is better.
   const scenes: MasterFilmScene[] = scenesRaw
     .map((s, i) => {
       const sc = (s ?? {}) as Record<string, unknown>;
-      const imagePrompt = str(sc.imagePrompt) || str(sc.action);
+      const imagePrompt = stripNegativeTail(str(sc.imagePrompt) || str(sc.action));
       if (!imagePrompt) return null;
       const sfxPrompt = str(sc.sfxPrompt);
       return {

@@ -28,6 +28,24 @@ import {
 import { SEGMENT_DURATION_SEC } from '@/lib/orchestrator/types';
 import { extractPromptTraits, enrichVideoPrompt } from './promptTraits';
 
+/**
+ * Strip a trailing `Negative: …` list from a scene description.
+ *
+ * The Prompt Agent used to be INSTRUCTED to append one INSIDE its imagePrompt, which broke two things:
+ *  • the renderer submits that text as the POSITIVE prompt, so "Negative: blur, cartoon, illustration,
+ *    painting, CGI, bokeh, lens blur, motion blur" literally asked the model for a blurry cartoon;
+ *  • the storyboard card shows the same text as the scene's description, so the user read that keyword
+ *    soup instead of "what happens in this shot".
+ * What to AVOID belongs solely in the provider's dedicated negative field (visualStyle.negativePrompt →
+ * FILM_DRIFT_NEGATIVE). Pure + exported so both the agent parser and the render boundary can apply it.
+ */
+export function stripNegativeTail(s: string): string {
+  return s
+    .replace(/[\s,;.—-]*\bnegative\s*(?:prompt)?\s*:[\s\S]*$/i, '')
+    .replace(/[\s,;]+$/, '')
+    .trim();
+}
+
 /** The flagship runtime: a 24-second film — 3 Veo scenes at the 8s scene cadence. */
 export const FILM_TOTAL_SEC = 24;
 /** Every scene is an 8-SECOND Veo clip — Veo's native maximum (verified live: durationSeconds is capped at
@@ -610,7 +628,10 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // Prefer the LLM Script Agent's brief-specific scene (a real story beat with
     // its own camera + shot-size direction). Fall back to the deterministic
     // camera-beat framing when no script was supplied.
-    const llmScene = opts.sceneScripts?.[seg.index]?.trim();
+    // Defensive strip at the render boundary: a `Negative: …` tail inside a scene script would be submitted
+    // as POSITIVE conditioning (asking the model for "blur, cartoon, illustration"). Cleaned at the source in
+    // promptAgent too; this covers user-edited scenes and any other supplier of sceneScripts.
+    const llmScene = stripNegativeTail(opts.sceneScripts?.[seg.index]?.trim() ?? '');
     // V1 — the screenwriter's exact shot direction for THIS scene (if the brief carried one).
     const sceneCam = opts.sceneMeta?.[seg.index]?.cameraShot;
     // Music-Video INTRO: force the first one/two scenes to a cinematic drone/venue
