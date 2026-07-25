@@ -376,7 +376,7 @@ export default function FilmDirectorConsole({
             type="button"
             onClick={onCancel}
             aria-label={stopLabel || 'Stop'}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/20 active:scale-[0.98] touch-manipulation"
+            className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/20 active:scale-[0.98] touch-manipulation"
           >
             <Square size={10} className="fill-current" /> {stopLabel || 'Stop'}
           </button>

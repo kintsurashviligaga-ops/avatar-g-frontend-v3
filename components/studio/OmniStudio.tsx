@@ -163,7 +163,7 @@ const COPY: Record<Lang, {
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე ვიდეო (ატვირთე ფოტო პერსონაჟისთვის)…',
-    generatingVideo: 'ვიდეო იქმნება… სცენები + მონტაჟი (~5–7 წუთი, დაელოდე)', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
+    generatingVideo: 'ვიდეო იქმნება… სცენარი, სცენები და საბოლოო მონტაჟი', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
     modeSurgical: 'მონტაჟი',
@@ -185,7 +185,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: 'Describe your video (attach a photo for the character)…',
-    generatingVideo: 'Producing video… scenes + montage (~5–7 min, please wait)', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
+    generatingVideo: 'Producing video… storyboard, scenes, then final montage', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
     modeSurgical: 'Editor',
@@ -207,7 +207,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: 'Опишите видео (прикрепите фото для персонажа)…',
-    generatingVideo: 'Создаю видео… сцены + монтаж (~5–7 мин, подождите)', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
+    generatingVideo: 'Создаю видео… раскадровка, сцены и монтаж', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
     modeSurgical: 'Монтаж',
@@ -5325,7 +5325,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
             <div className="space-y-1.5">
               <h2 className="text-[28px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
-              <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
+              <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-app-muted">{mode === 'video' ? (locale === 'en' ? 'Attach a photo, describe your video, and pick a length — then tap Create. I’ll storyboard it and render the film with Veo.' : locale === 'ru' ? 'Прикрепите фото, опишите видео и выберите длину — затем нажмите «Создать». Я сделаю раскадровку и соберу фильм на Veo.' : 'ატვირთე ფოტო, აღწერე ვიდეო და აირჩიე ხანგრძლივობა — შემდეგ დააჭირე „შექმნას". სცენარსაც და ფილმის აწყობასაც Veo-თი მე გავაკეთებ.') : t.empty}</p>
             </div>
             {/* No hardcoded template suggestions here — the 4 ghost service pills above
                 the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
@@ -5500,13 +5500,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => void dl(m.videoUrl!, 'myavatar-video.mp4')}
+                      onClick={() => void dl(m.videoUrl!, `myavatar-video-${Date.now()}.mp4`)}
                       title={t.imgDownload} aria-label={t.imgDownload}
                       className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
                     >
                       <Download size={16} />
                     </button>
-                    <button type="button" onClick={() => void share(m.videoUrl!, 'myavatar-video.mp4')} title={t.share} aria-label={t.share}
+                    <button type="button" onClick={() => void share(m.videoUrl!, `myavatar-video-${Date.now()}.mp4`)} title={t.share} aria-label={t.share}
                       className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
                       <Share2 size={16} />
                     </button>
@@ -5620,7 +5620,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {kind === 'video' ? (
                         // The Master-Prompt Director's Console — the 9-agent crew,
                         // live, driven by the real film-pipeline matrix.
-                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
+                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
                       ) : (
                         <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
                       )}
@@ -6159,8 +6159,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {([
-                  ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'song leads · no narrator' : locale === 'ru' ? 'песня ведёт · без диктора' : 'სიმღერა წამყვანი · დიქტორის გარეშე'],
-                  ['documentary', Mic, locale === 'en' ? 'Documentary' : locale === 'ru' ? 'Документальный' : 'დოკუმენტური', locale === 'en' ? 'narrator leads · music ducked' : locale === 'ru' ? 'диктор ведёт · музыка тише' : 'დიქტორი წამყვანი · მუსიკა ჩაწეული'],
+                  ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'A sung music clip' : locale === 'ru' ? 'Клип с песней' : 'მუსიკალური კლიპი'],
+                  ['documentary', Mic, locale === 'en' ? 'Documentary' : locale === 'ru' ? 'Документальный' : 'დოკუმენტური', locale === 'en' ? 'A narrated film' : locale === 'ru' ? 'Фильм с диктором' : 'ნაწერიანი ფილმი'],
                 ] as const).map(([id, Icon, label, sub]) => {
                   const on = videoMode === id;
                   return (
@@ -6179,7 +6179,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 in the job metadata for multi-angle character lock. */}
             <div id="character-ref-zone" className="space-y-1.5">
               <span className="inline-flex flex-wrap items-center gap-1.5 px-0.5 text-[12.5px] font-semibold text-app-text">
-                🎬 {locale === 'en' ? 'Scene frames' : locale === 'ru' ? 'Кадры сцен' : 'სცენის ფრეიმები'}
+                📸 {locale === 'en' ? 'Your photo' : locale === 'ru' ? 'Ваше фото' : 'თქვენი ფოტო'}
                 <span className="text-[10px] font-normal text-app-muted">
                   {videoCharacterRefs.length}/{sceneFrameCount}
                   {videoCharacterRefs.length < sceneFrameCount && videoCharacterRefs.length > 0 && (
@@ -6592,6 +6592,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </label>
               </div>
             </Section>
+            {/* HAPPY-PATH FINISH — a prominent full-width Generate button (the Cinema tab previously had no
+                obvious "go", forcing users to hunt for the tiny composer send arrow). Reuses send() + the
+                existing videoReadyToSend gate; additive, no pipeline change. */}
+            <button type="button" disabled={!videoReadyToSend} onClick={() => void send()}
+              className={`mt-1 flex w-full items-center justify-center gap-2 rounded-xl p-3.5 text-[14px] font-semibold transition active:scale-[0.99] ${!videoReadyToSend ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)] hover:brightness-110'}`}>
+              🎬 {locale === 'en' ? 'Generate video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს გენერაცია'}
+            </button>
+            {!videoReadyToSend && <p className="text-center text-[11.5px] text-app-muted">{locale === 'en' ? 'Add a photo above to start' : locale === 'ru' ? 'Добавьте фото выше, чтобы начать' : 'დაამატე ფოტო ზემოთ დასაწყებად'}</p>}
             </>)}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
@@ -7479,7 +7487,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </button>
                 )}
                 {canSend && (
-                  <button type="button" onClick={() => void send()} aria-label="send"
+                  <button type="button" onClick={() => void send()}
+                    aria-label={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : mode === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა') : mode === 'music' ? (locale === 'en' ? 'Create music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
+                    title={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-all duration-300 ease-out hover:scale-105 hover:opacity-95 active:scale-95">
                     <Send size={17} />
                   </button>

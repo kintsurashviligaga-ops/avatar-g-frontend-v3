@@ -343,7 +343,11 @@ async function renderClip(
           costWholesaleGel: forecastClipWholesale,
           costRetailGel: forecastClipRetail,
           metadata: { composite: true, leg: 'film-clip', ordinal: scene.ordinal, seed: scene.seed, attempt },
-          deduct: true,
+          // Honor the waiver: `billable` (realUser && retail>0 && !waiveClipBilling) is the SSoT for "should
+          // this leg charge". `deduct: true` unconditionally charged FREE/founder/promo films per clip and
+          // left `debited` false so the rollback never refunded them; deduct: billable keeps paying users
+          // byte-identical and correctly stops charging a waived film.
+          deduct: billable,
           deductRef: `${compositeId}:clip:${scene.ordinal}`,
         },
         () =>
@@ -953,7 +957,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     `📝 Storyboard: ${sceneCount} scenes planned`,
     `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
     '✂️ Editor will stitch the final cut',
-    musicWorkId ? '🎵 Score generation started' : '⚠️ Score skipped',
+    // musicWorkId is always null (Udio retired) — the score is generated at the ASSEMBLE step (ElevenLabs
+    // Music / MusicGen) or the user's custom soundtrack is used. So don't tell every user "Score skipped".
+    (hasCustomSoundtrack || hasElevenLabsMusicKey()) ? '🎵 Score added at final assembly' : '⚠️ No score',
   ].join('\n');
 
   timer.mark('dispatch-complete');
