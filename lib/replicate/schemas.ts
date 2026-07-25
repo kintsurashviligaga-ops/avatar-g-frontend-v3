@@ -105,14 +105,31 @@ export function buildModelInput(input: GenerateInput): Record<string, unknown> {
           guidance_scale: 7.5,
         };
       }
-      // FLUX model (Schnell or 1.1 Pro) — uses aspect_ratio, not width/height
-      return {
-        prompt: enriched,
-        aspect_ratio: (input.aspectRatio ?? '1:1'),
-        output_format: 'webp',
-        output_quality: input.quality === 'ultra' ? 95 : input.quality === 'high' ? 85 : 80,
-        go_fast: true,
-      };
+      // FLUX model — uses aspect_ratio, not width/height. The param set differs per model (both schemas
+      // verified live against the Replicate model API), so keep them strictly separate: Replicate rejects
+      // unknown inputs on official models.
+      //   flux-schnell  : seed, prompt, go_fast, megapixels, num_outputs, aspect_ratio, output_format,
+      //                   output_quality, num_inference_steps, disable_safety_checker   (NO image input)
+      //   flux-1.1-pro  : seed, width, height, prompt, aspect_ratio, image_prompt, output_format,
+      //                   output_quality, safety_tolerance, prompt_upsampling            (NO go_fast)
+      // `image_prompt` is the REFERENCE image: it was never sent, so the caller's imageUrl was silently
+      // dropped and a prompt saying "the same person as the reference" had no reference at all — the model
+      // invented a new face every render (the storyboard identity-drift bug).
+      // jpg@90+ instead of webp@80: these frames become the i2v START IMAGE for the Veo clip, so a lossy
+      // re-encode of the face propagates into 8s of 1080p video.
+      {
+        const isSchnell = input.variant === 'fast';
+        const ref = input.imageUrl && /^https?:\/\//i.test(input.imageUrl) ? input.imageUrl : null;
+        return {
+          prompt: enriched,
+          aspect_ratio: (input.aspectRatio ?? '1:1'),
+          output_format: 'jpg',
+          output_quality: input.quality === 'ultra' ? 96 : input.quality === 'high' ? 93 : 90,
+          ...(isSchnell
+            ? { go_fast: true }
+            : { prompt_upsampling: true, safety_tolerance: 2, ...(ref ? { image_prompt: ref } : {}) }),
+        };
+      }
     }
 
     case 'photo':

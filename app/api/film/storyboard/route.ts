@@ -139,9 +139,14 @@ async function hostRef(ref: string, i: number): Promise<string> {
  * Polled to completion server-side so the storyboard still returns a real URL.
  * Fail-open: any miss returns null and the slot degrades gracefully.
  */
-async function genFrameViaReplicate(framePrompt: string, aspect: string): Promise<string | null> {
+async function genFrameViaReplicate(framePrompt: string, aspect: string, refUrl?: string | null): Promise<string | null> {
   try {
-    const validation = validateInput({ service: 'image', prompt: framePrompt, quality: 'standard', aspectRatio: aspect });
+    // quality 'high' (not 'standard'): the frame becomes the i2v START IMAGE for the Veo clip, so its
+    // fidelity propagates into the whole 8s shot. refUrl → flux-1.1-pro's `image_prompt` (identity anchor).
+    const validation = validateInput({
+      service: 'image', prompt: framePrompt, quality: 'high', aspectRatio: aspect,
+      ...(refUrl && /^https?:\/\//i.test(refUrl) ? { imageUrl: refUrl } : {}),
+    });
     if (!validation.valid || !validation.sanitized) return null;
     const model = resolveModel('image', validation.sanitized.variant);
     const modelInput = buildModelInput(validation.sanitized);
@@ -186,6 +191,44 @@ async function genFrameViaFluxSchnell(framePrompt: string, aspect: string): Prom
         typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
       return j.status === 'succeeded' ? pick(j.output) : null;
     }, { maxAttempts: 2, baseDelayMs: 1500, label: 'flux-schnell-frame' });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * IDENTITY-CONDITIONED frame — Google **nano-banana** (Gemini 2.5 Flash Image) on Replicate. This is the ONE
+ * frame provider that actually accepts the user's reference photo: its live schema takes
+ * `image_input: string[]` (verified against the Replicate model API), so the uploaded selfie CONDITIONS the
+ * render instead of being described in words and ignored.
+ *
+ * THE BUG THIS FIXES: every previous frame provider was text-only — flux-schnell has no image input, and the
+ * FLUX 1.1 Pro path dropped `imageUrl` in buildModelInput. So scenes 2..N were told "the EXACT same person as
+ * the reference image" while the model never received that image, and it invented a new person every time
+ * (the man's selfie → a young woman in scene 2). Scene 1 only looked right because it IS the uploaded file.
+ *
+ * Fail-open: any miss returns null and genFrame falls through to the existing chain.
+ */
+async function genFrameViaNanoBananaRef(framePrompt: string, aspect: string, refUrl: string): Promise<string | null> {
+  const token = (process.env.REPLICATE_API_TOKEN || '').trim();
+  if (!token || !/^https?:\/\//i.test(refUrl)) return null;
+  const aspect_ratio = aspect === '9:16' ? '9:16' : aspect === '1:1' ? '1:1' : '16:9';
+  try {
+    return await withRetry(async () => {
+      const res = await fetch('https://api.replicate.com/v1/models/google/nano-banana/predictions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'wait' },
+        cache: 'no-store',
+        body: JSON.stringify({ input: { prompt: framePrompt.slice(0, 2_000), image_input: [refUrl], aspect_ratio, output_format: 'jpg' } }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (res.status === 429 || res.status >= 500) throw new Error(`nano-banana ${res.status}`);
+      if (!res.ok) return null;
+      const j = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown };
+      const pick = (o: unknown): string | null =>
+        typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
+      return j.status === 'succeeded' ? pick(j.output) : null;
+    }, { maxAttempts: 2, baseDelayMs: 1500, label: 'nano-banana-frame' });
   } catch {
     return null;
   }
@@ -287,9 +330,14 @@ export async function POST(req: NextRequest) {
       // FLUX backs the film clips too, so its key is present wherever clips render.
       let raw: string | null = null;
       let source: 'fluxSchnell' | 'nanobanana' | 'replicateFlux' | null = null;
+      // IDENTITY FIRST — when the user attached a photo, render the frame with nano-banana (Gemini image),
+      // the only provider that actually CONSUMES the reference (image_input). This is what keeps the same
+      // person in every scene; the text-only providers below can only ever invent a new face.
+      if (selfie) { raw = await genFrameViaNanoBananaRef(framePrompt, aspect, selfie); if (raw) source = 'nanobanana'; }
       // FAST path (gated by FAST_IMAGE_MODEL): flux-schnell renders in ~3.65s; on any
       // miss/429 it returns null and we fall through to the NanoBanana primary below.
-      if (FAST_IMAGE_MODEL) { raw = await genFrameViaFluxSchnell(framePrompt, aspect); if (raw) source = 'fluxSchnell'; }
+      // NOTE: skipped when a selfie exists — flux-schnell is text-only, so it would silently break identity.
+      if (!raw && FAST_IMAGE_MODEL && !selfie) { raw = await genFrameViaFluxSchnell(framePrompt, aspect); if (raw) source = 'fluxSchnell'; }
       if (!raw) {
         try {
           const r = await serviceManager.execute({
@@ -306,7 +354,7 @@ export async function POST(req: NextRequest) {
         } catch { raw = null; }
       }
       let resolved = raw;
-      if (!resolved) { resolved = await genFrameViaReplicate(framePrompt, aspect); if (resolved) source = 'replicateFlux'; }
+      if (!resolved) { resolved = await genFrameViaReplicate(framePrompt, aspect, selfie); if (resolved) source = 'replicateFlux'; }
       if (source) frameSourceTally[source] += 1;
       // Re-host to a CSP-allowed Supabase URL (a raw provider temp URL is blocked by
       // img-src AND expires, which would break the render anchor too).

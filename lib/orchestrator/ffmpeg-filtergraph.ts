@@ -67,6 +67,16 @@ export interface FilterGraphOpts {
   /** Ducking depth in dB for smart ducking (e.g. −12). Negative; −6..−18 typical.
    *  Translated to a sidechain ratio. When unset, derived from duckPct. */
   duckDb?: number;
+
+  // ── NATIVE CLIP AUDIO (Veo diegetic sound) ─────────────────────────────────
+  /** Per-clip flag: does clip input `i` carry an AUDIO stream? Veo renders every scene WITH its own diegetic
+   *  soundtrack baked in (waves, footsteps, room tone, spoken dialogue), but the stitch used to discard it
+   *  entirely — a Veo ocean film came back with NO wave sound ("not natural"). When supplied and any entry is
+   *  true, that native audio is preserved and mixed into the master. Clips whose entry is false contribute
+   *  silence, so the timeline stays aligned. OMITTED → byte-identical to the previous graph (opt-in). */
+  nativeAudio?: boolean[];
+  /** Gain for the native diegetic lane (0–1.5). Default 0.9 — present and natural without burying narration. */
+  nativeAudioVolume?: number;
 }
 
 const XFADE: Record<string, string> = {
@@ -374,6 +384,53 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       apre = '[apre]';
     } else {
       apre = `[${bg[0]}:a]`;
+    }
+  }
+
+  // ── NATIVE CLIP AUDIO (Veo diegetic sound) ────────────────────────────────
+  // Veo bakes a real soundtrack into every scene (waves, footsteps, room tone, dialogue). The stitch used to
+  // throw it away — the clips enter the graph as `[i:v]` only and the hard-cut concat is `a=0` — so a Veo film
+  // arrived with nothing but the separately-generated music bed ("no wave sound, not natural"). Rebuild that
+  // diegetic lane and fold it into the master. Opt-in via `nativeAudio` so callers that don't pass it keep the
+  // byte-identical graph; clips with no audio stream contribute silence to hold the timeline.
+  const nativeFlags = opts.nativeAudio;
+  let natLabel: string | null = null;
+  if (Array.isArray(nativeFlags) && nativeFlags.some(Boolean)) {
+    const AFMT = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
+    for (let i = 0; i < nClips; i++) {
+      // Trim each lane to exactly clipSec (mirrors the per-clip video trim) so an off-spec generative clip
+      // can't stretch the audio timeline.
+      const src = nativeFlags[i] ? `[${i}:a]` : 'anullsrc=r=48000:cl=stereo,';
+      parts.push(`${src}atrim=0:${clipSec},asetpts=PTS-STARTPTS,${AFMT}[na${i}]`);
+    }
+    if (nClips === 1) {
+      natLabel = '[na0]';
+    } else if (isCut) {
+      const labels = Array.from({ length: nClips }, (_, i) => `[na${i}]`).join('');
+      parts.push(`${labels}concat=n=${nClips}:v=0:a=1[natcat]`);
+      natLabel = '[natcat]';
+    } else {
+      // Mirror the video xfade: acrossfade by TRANSITION_SEC at every join, so the diegetic sound stays
+      // frame-aligned with the picture. (A plain concat would run (N−1)s long and drift progressively.)
+      let prevA = 'na0';
+      for (let i = 1; i < nClips; i++) {
+        const out = `nax${i}`;
+        parts.push(`[${prevA}][na${i}]acrossfade=d=${TRANSITION_SEC}:c1=tri:c2=tri[${out}]`);
+        prevA = out;
+      }
+      natLabel = `[${prevA}]`;
+    }
+    const natVol = Math.max(0, Math.min(1.5, opts.nativeAudioVolume ?? 0.9));
+    if (natVol !== 1) {
+      parts.push(`${natLabel}volume=${natVol}[natv]`);
+      natLabel = '[natv]';
+    }
+    // Fold the diegetic lane into whatever the music/voice/sfx branches produced.
+    if (apre === null) {
+      apre = natLabel;
+    } else {
+      parts.push(`${apre}${natLabel}amix=inputs=2:normalize=0[amixnat]`);
+      apre = '[amixnat]';
     }
   }
 
