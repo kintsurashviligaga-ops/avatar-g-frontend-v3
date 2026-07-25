@@ -692,8 +692,14 @@ export class ServiceManager {
    */
   private async tryGeminiVeoClip(request: ServiceManagerRequest, startImage: string, aspect: '9:16' | '16:9' | '1:1', prompt: string): Promise<ServiceManagerResponse | null> {
     const negativePrompt = this.getOption(request.selectedOptions || {}, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
+    // 2000 (was 1000): the tighter cap clipped the character-lock + consistency-seed tail off every Veo
+    // prompt, so the "same protagonist in every shot" instruction never arrived — the identity-drift bug.
+    // withColorScience now trims from the MIDDLE, so the identity tail survives any clamp.
+    const veoPrompt = withColorScience(prompt || request.userPrompt, 2000);
+    // eslint-disable-next-line no-console
+    console.log(`[veo] promptText(${veoPrompt.length}): ${veoPrompt.slice(0, 300)}`);
     const created = await createGeminiVeoClip({
-      promptText: withColorScience(prompt || request.userPrompt, 1000),
+      promptText: veoPrompt,
       promptImage: startImage, // i2v anchor frame (Veo animates from it, keeping the locked character)
       aspect,
       durationSec: 8,

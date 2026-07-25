@@ -40,6 +40,22 @@ const exec = promisify(execFile);
  * the full stream header to stderr and exits non-zero — we parse that. Any
  * failure degrades gracefully to nulls (QA then grades on file size alone).
  */
+/**
+ * Does this clip carry an AUDIO stream? Same `ffmpeg -i` stderr-header trick as probeMaster. Veo bakes a real
+ * diegetic soundtrack into every scene, so the stitch preserves it — but the filtergraph may only reference
+ * `[i:a]` for inputs that ACTUALLY have audio (referencing a missing stream aborts the whole encode), and a
+ * silent fallback clip (Runway/Kling/LTX) must contribute silence instead. Any failure → false (safe: silent).
+ */
+async function probeHasAudio(bin: string, file: string): Promise<boolean> {
+  try {
+    await exec(bin, ['-i', file], { maxBuffer: 1 << 22 });
+    return false;
+  } catch (e: unknown) {
+    const log = String((e as { stderr?: string } | null)?.stderr ?? '');
+    return /Stream #\d+:\d+[^\n]*:\s*Audio:/.test(log);
+  }
+}
+
 async function probeMaster(
   bin: string,
   file: string,
@@ -386,9 +402,19 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       effectiveDuckDb = DEFAULT_DUCK_DB;
     }
 
+    // NATIVE DIEGETIC AUDIO — Veo renders every scene WITH its soundtrack baked in (waves, footsteps, room
+    // tone, dialogue). Probe which clips actually carry an audio stream so the filtergraph can preserve that
+    // sound (and so a silent fallback clip contributes silence instead of aborting the encode). Header-only
+    // reads, run in parallel; a probe failure degrades to "silent" for that clip.
+    const nativeAudio = await Promise.all(inputs.map((p) => probeHasAudio(bin, p)));
+    // eslint-disable-next-line no-console
+    console.log(`[assemble] native clip audio: ${nativeAudio.filter(Boolean).length}/${nativeAudio.length} clips carry sound`);
+
     const { filter, vmap, amap } = buildFilterComplex({
       orientation,
       nClips: inputs.length,
+      // Preserve the clips' own sound whenever ANY clip has it (opt-in: omitted → previous graph unchanged).
+      ...(nativeAudio.some(Boolean) ? { nativeAudio } : {}),
       hasVoice: Boolean(voicePath),
       hasMusic: Boolean(music),
       hasSfx: Boolean(sfx),

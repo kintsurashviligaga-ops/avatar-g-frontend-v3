@@ -28,10 +28,18 @@ import { isEnabledByDefault } from '@/lib/env/flag';
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const CREATE_TIMEOUT_MS = 20_000;
 
-/** Default Veo model — the fast tier available on this key (verified live: veo-3.1-*-generate-preview exist;
- *  the older veo-3.0-*-001 IDs 404). Env-overridable per deploy (GEMINI_VEO_MODEL). */
+/** Default Veo model — the QUALITY tier. `veo-3.1-generate-preview` is the full-quality model (verified live:
+ *  200 + operation on this key); `-fast-` trades visual fidelity for speed and was the old default, which the
+ *  owner flagged as "quality isn't good enough". Env-overridable (GEMINI_VEO_MODEL=veo-3.1-fast-generate-preview
+ *  reverts to fast). */
 export function geminiVeoModel(): string {
-  return (process.env.GEMINI_VEO_MODEL || 'veo-3.1-fast-generate-preview').trim();
+  return (process.env.GEMINI_VEO_MODEL || 'veo-3.1-generate-preview').trim();
+}
+
+/** Output resolution. Veo accepts '1080p' (verified live: 200) — the old code sent none and got the default
+ *  720p. Env-overridable (GEMINI_VEO_RESOLUTION=720p). */
+function veoResolution(): string {
+  return (process.env.GEMINI_VEO_RESOLUTION || '1080p').trim();
 }
 
 /** True iff a Gemini key is present AND Veo isn't explicitly killed (GEMINI_VEO_ENABLED=0/false/no/off).
@@ -81,7 +89,10 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
   const key = resolveGeminiKey();
   if (!key || !args.promptText?.trim()) return null;
 
-  const instance: Record<string, unknown> = { prompt: args.promptText.trim().slice(0, 1000) };
+  // 2000, not the old self-imposed 1000: at 1000 the character-lock clause + consistency seed (which
+  // planFilmScenes appends at the END of the scene prompt) were silently cut off, so Veo never received the
+  // "same protagonist" instruction — the identity-drift bug. Veo accepts far longer prompts.
+  const instance: Record<string, unknown> = { prompt: args.promptText.trim().slice(0, 2000) };
   if (args.promptImage) {
     const inline = await imageToInline(args.promptImage);
     if (inline) instance.image = { imageBytes: inline.bytes, mimeType: inline.mime };
@@ -89,8 +100,13 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
   const parameters: Record<string, unknown> = {
     aspectRatio: mapVeoAspect(args.aspect),
     personGeneration: 'allow_all', // verified live: 'allow_adult'/'dont_allow' 400; 'allow_all' is the only accepted value
+    // MAX QUALITY — Veo accepts '1080p' (verified live); sending nothing yielded the 720p default.
+    resolution: veoResolution(),
   };
-  if (args.negativePrompt?.trim()) parameters.negativePrompt = args.negativePrompt.trim().slice(0, 300);
+  // 600 matches the negative the pipeline actually builds (FILM_DRIFT_NEGATIVE). At 300 the cut landed
+  // mid-token and the anti-collage / "different face" half never reached the primary engine. Cut on a comma
+  // boundary so a truncated fragment is never submitted.
+  if (args.negativePrompt?.trim()) parameters.negativePrompt = args.negativePrompt.trim().slice(0, 600).replace(/,[^,]*$/, '');
   if (Number.isFinite(args.durationSec)) parameters.durationSeconds = Math.min(8, Math.max(4, Math.round(args.durationSec as number)));
 
   try {
