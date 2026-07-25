@@ -99,7 +99,14 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
   const instance: Record<string, unknown> = { prompt: args.promptText.trim().slice(0, 2000) };
   if (args.promptImage) {
     const inline = await imageToInline(args.promptImage);
-    if (inline) instance.image = { imageBytes: inline.bytes, mimeType: inline.mime };
+    // ⚠️ The field is `bytesBase64Encoded` — NOT `imageBytes`. VERIFIED LIVE against veo-3.1:
+    //   { image: { imageBytes } }          → 400 "`imageBytes` isn't supported by this model"
+    //   { image: { inlineData: {…} } }     → 400
+    //   { image: { bytesBase64Encoded } }  → 200 + operation  ✅
+    // The old `imageBytes` spelling meant EVERY image-to-video call 400'd. Since every film scene renders
+    // from an anchor frame, that was 100% of Veo film clips failing — the "video generation failed" the
+    // owner kept hitting, and the reason text-to-video probes looked healthy while real renders died.
+    if (inline) instance.image = { bytesBase64Encoded: inline.bytes, mimeType: inline.mime };
   }
   const parameters: Record<string, unknown> = {
     aspectRatio: mapVeoAspect(args.aspect),
