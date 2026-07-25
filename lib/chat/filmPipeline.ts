@@ -135,13 +135,16 @@ export function buildStyleGuide(shared: FilmShared): string {
     : shared.avatarReference
       ? "the user's custom avatar (same face, hair, wardrobe)"
       : 'the same character design (same face, hair, wardrobe)';
+  // VEO-NATIVE: short, AFFIRMATIVE prose. Veo (like Gemini's own app, which sends one clean sentence) reads
+  // natural language — it does not parse stacked directive blocks, and it CANNOT parse negations: "NO neon",
+  // "NO yellow, sepia" tokenise as {no, neon} / {no, yellow, sepia} and INJECT what they meant to forbid.
+  // Every suppression term now lives in FILM_DRIFT_NEGATIVE, which is passed to the provider's dedicated
+  // negativePrompt field where it is actually honoured. Keeping this block tight also stops it from
+  // out-weighing the story: the whole prompt used to be 1700 chars of which the scene was ~75.
   return (
-    `Rigid visual style guide — identical in every shot: ${aesthetic}; one consistent color palette; `
-    + `consistent key and rim lighting; the same lens, depth of field and film grain; unchanged props and set dressing; `
-    + `${identity}. The SAME single protagonist appears in every shot — never swap the person, face, age or wardrobe between shots. `
-    + `Use only lighting and elements that belong to the world of the brief: NO neon, glowing light-streaks, lens flares, HUD overlays or sci-fi effects unless the brief explicitly asks for them. `
-    // VECTOR 3 — immutable color science on every clip so the model stops emitting a muddy yellow/sepia cast.
-    + `COLOR SCIENCE: professional grade, ARRI Alexa color science, neutral white balance, crisp 8K, sharp focus — NO yellow, sepia, amber or muddy over-warm tint.`
+    `Consistent across every shot: ${aesthetic}, one color palette, consistent key and rim lighting, `
+    + `the same lens and depth of field, ${identity}, the SAME person throughout. `
+    + `Professional color grading, ARRI Alexa color science, neutral white balance, clean neutral whites, crisp 8K, sharp focus.`
   );
 }
 
@@ -657,9 +660,13 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       ? ` Character consistency: whenever the film's protagonist appears, they are ${lockText}; keep any recurring person's face, hair and wardrobe consistent across shots — but only feature the people this scene actually describes.`
       : '';
     // …while the seed + style/world guide hold the world CONSTANT.
+    // NOTE: the numeric seed is deliberately NOT written into the prose. "(consistency seed 588875549)" is
+    // meaningless to a video model — it is a sampler concept, not language — and it burned prompt budget in
+    // the highest-value tail position. The seed still travels as a real provider PARAMETER (shared.seed →
+    // selectedOptions.seed), which is where it actually locks continuity.
     const continuity = scriptDriven
-      ? `${buildWorldStyleGuide(shared)}${conditionalCharacter} (consistency seed ${seed}).`
-      : `${styleGuide} Continuity: ${characterAnchor}; match every other shot exactly (consistency seed ${seed}).`;
+      ? `${buildWorldStyleGuide(shared)}${conditionalCharacter}`
+      : `${styleGuide} Continuity — the protagonist is ${characterAnchor}.`;
     // Inject the explicit camera move + subject energy + a clean-frame guard (no
     // AI-burned text/titles), so the model actually MOVES and doesn't paint captions.
     // Music-Video INTRO scenes are a PURE establishing location (drone over the city,
@@ -668,7 +675,10 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     // person on a street. Everything else keeps the performer + continuity contract.
     const enriched = mvIntro
       ? enrichVideoPrompt(
-          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. NO people, NO performer, NO singer anywhere in frame — a pure establishing location shot only. No on-screen text, titles, captions, subtitles, watermarks or logos. ${styleGuide} (consistency seed ${seed}).`,
+          // "NO people, NO performer" must STAY here: this is a positive instruction the model needs (an
+          // empty establishing shot), and the generic negative field can't express "empty of people" for
+          // this scene alone. Everything else that was a negation moved to FILM_DRIFT_NEGATIVE.
+          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. An empty establishing location shot — no people, no performer anywhere in frame. ${styleGuide}`,
           traits, 1700,
         )
       : scriptDriven
@@ -676,7 +686,10 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
         // with energy" (that forced a singer into every frame) — the action comes from
         // the scene text itself; only the camera + clean-frame + world-continuity ride along.
         ? enrichVideoPrompt(
-            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene, never a static frozen frame. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
+            // "never a static frozen frame" / "no on-screen text" removed — both are negations the model
+            // can't parse; the affirmative "continuous cinematic camera movement" carries the intent and
+            // the text/watermark terms live in FILM_DRIFT_NEGATIVE.
+            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene. ${continuity}`,
             traits, 1700,
           )
         // PHASE 28 (VECTOR 1) — HARD IDENTITY CLAUSE. On the character-brief (non-script) path the
@@ -686,8 +699,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
         // into an African-American/blue-dress one between scenes). The full appearance anchor stays in
         // the continuity clause (well within the 1700-char clamp on this path, so it is never truncated).
         : enrichVideoPrompt(
-            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement, never a static frozen frame. The subject moves and performs with genuine, believable emotion, expressive but natural acting, lifelike facial expression, gaze and body language true to the moment, and is the SAME person in every scene — identical face, skin tone, gender, hair, build and wardrobe, never a different-looking person. No on-screen text, titles, captions, subtitles, watermarks or logos. ${continuity}`,
-            traits, 1700, // raised from 1200 so the camera+clean-frame directives don't truncate the continuity seed
+            // Condensed: the identity assertion was stated three separate times (here, in styleGuide and in
+            // the continuity clause) and padded with negations. One affirmative sentence + the continuity
+            // clause is stronger conditioning AND leaves the scene's own action dominant.
+            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement. The subject performs with believable, natural emotion — lifelike expression, gaze and body language true to the moment. ${continuity}`,
+            traits, 1700,
           );
     return {
       index: seg.index,

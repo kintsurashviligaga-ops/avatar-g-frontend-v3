@@ -102,11 +102,15 @@ describe('planFilmScenes — continuity-locked production plan', () => {
     expect(plan.scenes[0]!.seed).toBe(plan.shared.seed);
   });
 
-  it('folds the continuity anchor + seed into every clip prompt', () => {
+  it('folds the continuity anchor into every clip prompt (seed rides as a PARAMETER, not prose)', () => {
     const plan = planFilmScenes('a knight crosses a frozen lake');
     for (const scene of plan.scenes) {
       expect(scene.prompt).toContain('Continuity');
-      expect(scene.prompt).toContain(String(plan.shared.seed));
+      expect(scene.prompt).toContain(plan.shared.characterAnchor);
+      // The numeric seed is deliberately NOT written into the prose — "(consistency seed 588875549)" is
+      // meaningless to a video model and burned prompt budget. It travels as a real provider parameter
+      // (selectedOptions.seed → Veo `seed`, verified live), which is what actually locks continuity.
+      expect(scene.prompt).not.toContain(String(plan.shared.seed));
     }
   });
 
@@ -141,17 +145,33 @@ describe('planFilmScenes — continuity-locked production plan', () => {
 
   it('asserts the SAME person (no gender/ethnicity/wardrobe drift) in every non-script scene (Phase 28)', () => {
     const plan = planFilmScenes('a detective investigates a case at night');
+    // Stated ONCE, affirmatively. It used to be asserted three separate times per prompt (plus negations
+    // like "never a different-looking person"), which bloated the prompt to 1700 chars and buried the
+    // scene's own action — Veo reads natural prose, not stacked repetition.
     for (const scene of plan.scenes) {
       expect(scene.prompt).toMatch(/SAME person/);
-      expect(scene.prompt).toMatch(/identical face, skin tone, gender, hair, build and wardrobe/);
+      expect(scene.prompt).toMatch(/identical face/i);
     }
   });
 
-  it('stamps the rigid visual style guide on EVERY scene (locked world)', () => {
+  it('stamps the visual style guide on EVERY scene (locked world)', () => {
     const plan = planFilmScenes('a knight crosses a frozen lake', { style: 'epic' });
     for (const scene of plan.scenes) {
-      expect(scene.prompt).toContain('Rigid visual style guide');
-      expect(scene.prompt).toMatch(/consistent color palette/i);
+      expect(scene.prompt).toMatch(/Consistent across every shot/i);
+      expect(scene.prompt).toMatch(/one color palette/i);
+    }
+  });
+
+  it('keeps the prompt Veo-native: no negations in the positive text, story leads, bounded length', () => {
+    const plan = planFilmScenes('a detective investigates a case at night', { style: 'noir' });
+    for (const scene of plan.scenes) {
+      // Negations are unparseable by video models ("NO yellow" → {no, yellow}) and INJECT what they forbid.
+      // Every suppression term belongs in the negative field instead.
+      expect(scene.prompt).not.toMatch(/\bNO yellow\b|\bNO neon\b|never a static frozen frame|No on-screen text/i);
+      // The user's brief occupies the highest-weighted opening position.
+      expect(scene.prompt.slice(0, 60)).toMatch(/detective/i);
+      // Bounded: the old build was ~1700 chars of directives around a ~75-char story.
+      expect(scene.prompt.length).toBeLessThan(1300);
     }
   });
 
