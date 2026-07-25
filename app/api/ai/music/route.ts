@@ -171,22 +171,19 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
   const providers: ProviderAttempt<Track>[] = [];
-  // ENGINE ROUTING (product decision):
-  //  • INSTRUMENTAL → Google LYRIA 3 is the PRIMARY engine (Gemini music, billed to the Gemini account),
-  //    with Udio → ElevenLabs → MusicGen as graceful fallbacks. A Lyria miss (503/quota/timeout) reroutes
-  //    to the next provider, so the track always lands.
-  //  • VOCAL SONG → ElevenLabs Music is PRIMARY (it sings the lyrics with the best voice quality), Udio +
-  //    MusicGen fall back. Lyria is intentionally SKIPPED for vocals (sung tracks route to ElevenLabs).
-  // The engine badge on the result card reflects whichever provider actually produced the track.
-  const udioP = () => hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs'
-    ? [{ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun }] : [];
-  const elP = () => hasElevenLabsMusicKey()
-    ? [{ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun }] : [];
-  if (instrumental) {
-    if (hasLyriaProvider()) providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
-    providers.push(...udioP(), ...elP());
-  } else {
-    providers.push(...elP(), ...udioP());
+  // LYRIA 3 is the PRIMARY engine for ALL music — vocal songs AND instrumentals alike. Lyria 3 generates
+  // full songs (vocals + timed [Verse]/[Chorus] lyrics + arrangement), so there is NO vocal/instrumental
+  // switching: the same request goes straight to Lyria first. Udio → ElevenLabs → MusicGen remain ONLY as
+  // graceful safety fallbacks for the rare Lyria miss (503/quota/timeout) so a track always lands. The
+  // engine badge on the result card reflects whichever provider actually produced the track.
+  if (hasLyriaProvider()) {
+    providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
+  }
+  if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
+    providers.push({ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun });
+  }
+  if (hasElevenLabsMusicKey()) {
+    providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
   }
   providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
 
