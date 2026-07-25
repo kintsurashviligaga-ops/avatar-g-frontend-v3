@@ -177,6 +177,7 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
         const r = await fetch('/api/avatar/handoff/complete', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: handoffToken, dataUrl: selfie, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }),
+          signal: AbortSignal.timeout(45_000), // never leave the button stuck on "saving…"
         });
         const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
         if (!r.ok || !j.ok) throw new Error(j.error || 'failed');
@@ -186,9 +187,10 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
       const r = await fetch('/api/avatar/enroll', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ dataUrl: selfie }),
+        signal: AbortSignal.timeout(45_000), // never leave the button stuck on "saving…"
       });
       const j = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
-      if (!r.ok || !j.url) throw new Error(j.error || 'save failed');
+      if (!r.ok || !j.url) throw new Error(j.error || `save failed (HTTP ${r.status})`);
       // Fire-and-forget the voice clone (10-20 min, finishes in background) if a sample was recorded.
       if (voiceSample) {
         void fetch('/api/voice/train', {
@@ -197,9 +199,15 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, h
         }).catch(() => {});
       }
       onEnrolled?.(j.url);
-      onClose();
-    } catch {
-      setErr(t.saveErr ?? 'Could not save — try again.'); setSaving(false);
+      onClose(); // success → close the sheet; NEVER leave "saving…" hanging
+    } catch (e) {
+      // Surface the ACTUAL error (server detail or a timeout) to the user + console — not just a generic string.
+      const msg = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error('[LiveAvatarEnroll] save failed:', msg);
+      const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
+      setErr(timedOut ? (t.saveErr ?? 'Timed out — try again.') : (msg && msg !== 'Failed to fetch' ? msg : (t.saveErr ?? 'Could not save — try again.')));
+      setSaving(false);
     }
   }, [selfie, saving, voiceSample, handoffToken, onEnrolled, onClose, t.saveErr]);
 

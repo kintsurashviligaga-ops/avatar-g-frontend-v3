@@ -28,9 +28,15 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => null)) as { dataUrl?: string } | null;
     const result = await enrollSelfieAvatar(user.id, body?.dataUrl ?? '');
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.error(`[avatar/enroll] FAILED for user ${user.id}: ${result.error} (${result.status})`);
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
     return NextResponse.json({ url: result.url, avatarAssetId: result.avatarAssetId });
-  } catch {
-    return NextResponse.json({ error: 'failed' }, { status: 500 });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[avatar/enroll] unhandled exception:', e instanceof Error ? e.stack || e.message : e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 500 });
   }
 }
