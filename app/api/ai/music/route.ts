@@ -29,11 +29,13 @@ import { creditCostFor } from '@/lib/credits/pricing';
  * (CSP media-src allows *.supabase.co) so the <audio> element plays + the track
  * persists past the provider's short-lived CDN URL.
  *
- * Provider chain (composeTrackUrl): Udio (DEFAULT primary when UDIO_API_KEY is set —
- * the founder's funded song engine) → ElevenLabs Music (sung when not instrumental) →
- * Replicate MusicGen (instrumental last resort). Set MUSIC_PROVIDER=elevenlabs to skip
- * Udio. Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id;
- * cloned voice IDs apply to TTS/narration, not music generation).
+ * Provider chain (composeTrackUrl) — ONE uniform chain for BOTH vocal songs and instrumentals (Lyria 3
+ * generates full songs with vocals + lyrics, so there's no vocal/instrumental switching):
+ *   Google Lyria 3 (Gemini music, PRIMARY) → Udio → ElevenLabs Music → Replicate MusicGen.
+ * Lyria is live-by-default when a Gemini key is present (kill-switch LYRIA_ENABLED=0); the rest are pure
+ * safety fallbacks for the rare Lyria miss (503/quota/timeout). Set MUSIC_PROVIDER=elevenlabs to drop Udio.
+ * Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id; cloned voice IDs apply to
+ * TTS/narration, not music generation).
  *
  * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
  * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
@@ -169,16 +171,22 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
   const providers: ProviderAttempt<Track>[] = [];
-  // LYRIA 3 FIRST — opt-in Google music engine, PRIMARY for ALL requests (it generates full songs with
-  // vocals + lyrics, not just instrumental). Any miss (no access/quota/timeout) falls to the chain below.
-  if (hasLyriaProvider()) {
-    providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
-  }
-  if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
-    providers.push({ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun });
-  }
-  if (hasElevenLabsMusicKey()) {
-    providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
+  // ENGINE ROUTING (product decision):
+  //  • INSTRUMENTAL → Google LYRIA 3 is the PRIMARY engine (Gemini music, billed to the Gemini account),
+  //    with Udio → ElevenLabs → MusicGen as graceful fallbacks. A Lyria miss (503/quota/timeout) reroutes
+  //    to the next provider, so the track always lands.
+  //  • VOCAL SONG → ElevenLabs Music is PRIMARY (it sings the lyrics with the best voice quality), Udio +
+  //    MusicGen fall back. Lyria is intentionally SKIPPED for vocals (sung tracks route to ElevenLabs).
+  // The engine badge on the result card reflects whichever provider actually produced the track.
+  const udioP = () => hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs'
+    ? [{ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun }] : [];
+  const elP = () => hasElevenLabsMusicKey()
+    ? [{ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun }] : [];
+  if (instrumental) {
+    if (hasLyriaProvider()) providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
+    providers.push(...udioP(), ...elP());
+  } else {
+    providers.push(...elP(), ...udioP());
   }
   providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
 
