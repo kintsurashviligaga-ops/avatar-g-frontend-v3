@@ -36,7 +36,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { formatGEL } from '@/lib/billing/gel';
-import { FILM_SCENE_COUNT } from '@/lib/chat/filmPipeline';
+import { FILM_SCENE_COUNT, FILM_CLIP_SEC, FILM_TOTAL_SEC } from '@/lib/chat/filmPipeline';
 import {
   driveFilmStudio,
   estimateFilmCostGel,
@@ -293,7 +293,7 @@ export function CinematicFilmStudio({
           <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
           <div className="min-w-0">
             <h3 className="text-sm sm:text-base font-medium tracking-wide text-white truncate">
-              30-Second Cinematic Film Studio
+              Cinematic Film Studio
             </h3>
             <p className="text-[11px] text-neutral-500 mt-0.5 truncate">
               Identity stitching · AI generation · beat-sync editing
@@ -381,8 +381,8 @@ export function CinematicFilmStudio({
             Stage 03 · Predictive Valuation &amp; Resource Ledger
           </label>
           <div className="grid grid-cols-3 gap-px bg-neutral-900/70 border border-neutral-900 rounded-2xl overflow-hidden">
-            <LedgerCard icon={<Cpu className="w-3.5 h-3.5" />} label="Scenes" value={`${FILM_SCENE_COUNT}`} unit="× 6s" />
-            <LedgerCard icon={<Clock className="w-3.5 h-3.5" />} label="Runtime" value="30" unit="sec" />
+            <LedgerCard icon={<Cpu className="w-3.5 h-3.5" />} label="Scenes" value={`${FILM_SCENE_COUNT}`} unit={`× ${FILM_CLIP_SEC}s`} />
+            <LedgerCard icon={<Clock className="w-3.5 h-3.5" />} label="Runtime" value={`${FILM_TOTAL_SEC}`} unit="sec" />
             <LedgerCard
               icon={<span className="w-3.5 h-3.5 rounded-full bg-neutral-800 text-neutral-300 text-[10px] flex items-center justify-center font-bold">₾</span>}
               label="Est. cost"
@@ -456,7 +456,7 @@ export function CinematicFilmStudio({
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Master ready · 30-second film</span>
+              <span>Master ready · film</span>
             </div>
             <div className="relative aspect-video w-full rounded-2xl bg-black overflow-hidden border border-neutral-900">
               <video src={masterUrl} controls playsInline className="w-full h-full object-contain bg-black" />
@@ -486,7 +486,7 @@ export function CinematicFilmStudio({
         {preview && previewDone && (
           <div className="rounded-2xl border border-neutral-900 bg-neutral-950 p-5 text-center space-y-3">
             <p className="text-sm text-neutral-200 font-medium">
-              This is a live preview of the pipeline. Open the Studio to generate your real 30-second film.
+              This is a live preview of the pipeline. Open the Studio to generate your real film.
             </p>
             <Link
               href={studioHref}
@@ -514,7 +514,7 @@ export function CinematicFilmStudio({
               ? preview
                 ? 'Running preview…'
                 : 'Producing film…'
-              : 'Run automated 30-second production'}
+              : 'Run automated production'}
           </button>
           {driving && (
             <button
