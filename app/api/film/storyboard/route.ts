@@ -186,14 +186,50 @@ async function genFrameViaFluxSchnell(framePrompt: string, aspect: string): Prom
       });
       if (res.status === 429 || res.status >= 500) throw new Error(`flux-schnell ${res.status}`);
       if (!res.ok) return null;
-      const j = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown };
-      const pick = (o: unknown): string | null =>
-        typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
-      return j.status === 'succeeded' ? pick(j.output) : null;
+      const j = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
+      // Same fix as the nano-banana leg: poll instead of discarding a still-running prediction.
+      return await awaitReplicateOutput(token, j, 60_000);
     }, { maxAttempts: 2, baseDelayMs: 1500, label: 'flux-schnell-frame' });
   } catch {
     return null;
   }
+}
+
+/** Pull the last https URL out of a Replicate `output` (string | string[] | nested). */
+function pickOutputUrl(o: unknown): string | null {
+  return typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pickOutputUrl(o[o.length - 1]) : null;
+}
+
+/**
+ * Resolve a Replicate prediction to its output URL, POLLING when needed.
+ *
+ * `Prefer: wait` blocks for at most ~60s and then returns the prediction as-is — often still `processing`.
+ * The old code treated anything that wasn't already `succeeded` as a MISS and threw the (already paid-for,
+ * still-running) prediction away, which is exactly why a storyboard came back "2/3 ready" with one tile
+ * permanently empty: the frame WAS being generated, we just stopped listening. Now a slow model simply takes
+ * longer instead of losing the frame. Terminal failure / deadline → null (caller falls through its chain).
+ */
+async function awaitReplicateOutput(
+  token: string,
+  created: { id?: string; status?: string; output?: unknown; urls?: { get?: string } },
+  deadlineMs: number,
+): Promise<string | null> {
+  if (created?.status === 'succeeded') return pickOutputUrl(created.output);
+  if (created?.status === 'failed' || created?.status === 'canceled') return null;
+  const url = created?.urls?.get || (created?.id ? `https://api.replicate.com/v1/predictions/${created.id}` : null);
+  if (!url) return null;
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2500));
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) continue;
+      const j = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown };
+      if (j.status === 'succeeded') return pickOutputUrl(j.output);
+      if (j.status === 'failed' || j.status === 'canceled') return null;
+    } catch { /* transient — keep polling until the deadline */ }
+  }
+  return null;
 }
 
 /**
@@ -224,10 +260,10 @@ async function genFrameViaNanoBananaRef(framePrompt: string, aspect: string, ref
       });
       if (res.status === 429 || res.status >= 500) throw new Error(`nano-banana ${res.status}`);
       if (!res.ok) return null;
-      const j = (await res.json().catch(() => ({}))) as { status?: string; output?: unknown };
-      const pick = (o: unknown): string | null =>
-        typeof o === 'string' && /^https?:\/\//.test(o) ? o : Array.isArray(o) ? pick(o[o.length - 1]) : null;
-      return j.status === 'succeeded' ? pick(j.output) : null;
+      const j = (await res.json().catch(() => ({}))) as { id?: string; status?: string; output?: unknown; urls?: { get?: string } };
+      // POLL when `Prefer: wait` returned before the model finished — otherwise a slow (but successful)
+      // render was discarded and that scene's tile stayed permanently empty.
+      return await awaitReplicateOutput(token, j, 90_000);
     }, { maxAttempts: 2, baseDelayMs: 1500, label: 'nano-banana-frame' });
   } catch {
     return null;
