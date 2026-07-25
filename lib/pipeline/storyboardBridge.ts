@@ -57,18 +57,19 @@ export interface VideoScenePayload {
   characterLock?: string;
   characterPortrait?: string;
   musicVideoMode?: boolean;
-  /** 6 | 30 | 60 — maps to the existing videoDuration control. */
+  /** 8 | 24 | 48 — maps to the existing videoDuration control (8s Veo scene grid). */
   duration: number;
   /** The authored numbered-scene script → videoMasterScript (the video mode folds it into its SCRIPT
    *  block so the render follows the storyboard). Empty when the cells carry no text. */
   masterScript: string;
 }
 
-/** Derive the runtime seconds from a scene count, matching the pipeline's sceneFrameCount formula. */
+/** Derive the runtime seconds from a scene count on the 8s Veo grid (8s→1 · 24s→3 · 48s→6), matching the
+ *  pipeline's sceneFrameCount formula (round(sec/8)). Clamped to the 6-scene (48s) maximum. */
 export function durationForSceneCount(n: number): number {
-  if (n <= 1) return 6;
-  if (n <= 6) return 30;
-  return 60;
+  if (n <= 1) return 8;
+  if (n <= 3) return 24;
+  return 48;
 }
 
 /**

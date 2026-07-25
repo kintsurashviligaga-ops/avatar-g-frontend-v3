@@ -95,7 +95,7 @@ describe('script-faithful trailer prompts', () => {
     style: 'Cinematic',
     characterLock: CHARACTER,
     sceneScripts,
-    totalSec: sceneScripts.length * 5,
+    totalSec: sceneScripts.length * 8, // 8s Veo cadence (matches production's sceneScripts.length * FILM_CLIP_SEC)
   });
 
   it('emits one scene per supplied script line, each faithful to its own text', () => {

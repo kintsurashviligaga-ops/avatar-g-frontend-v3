@@ -384,12 +384,12 @@ export class ServiceManager {
     const m = model.toLowerCase();
     if (/kling/.test(m)) {
       // kling-v2.1 has no aspect_ratio (it's inferred from start_image); v1.6 does.
-      const base: Record<string, unknown> = { start_image: startImage, prompt: fullPrompt, negative_prompt: neg, duration: 5 };
+      const base: Record<string, unknown> = { start_image: startImage, prompt: fullPrompt, negative_prompt: neg, duration: 10 }; // 8s grid: Kling's 10s option → assembler trims to the 8s slot (5s would freeze-pad)
       if (/v1\.6|v1-6|kling-v1/.test(m)) { base.aspect_ratio = aspect; base.cfg_scale = 0.5; }
       return base;
     }
     if (/seedance/.test(m)) {
-      return { image: startImage, prompt: fullPrompt, aspect_ratio: aspect, duration: 5, resolution: '1080p', fps: 24 };
+      return { image: startImage, prompt: fullPrompt, aspect_ratio: aspect, duration: 10, resolution: '1080p', fps: 24 };
     }
     if (/wan-?2|wan2|wan-video/.test(m)) {
       return { image: startImage, prompt: fullPrompt, negative_prompt: neg, aspect_ratio: aspect };
@@ -565,6 +565,7 @@ export class ServiceManager {
         imageUrl: startImage,
         aspectRatio: (aspect as Aspect) || '9:16',
         negativePrompt: 'blur, distortion, low quality, watermark, extra people, deformed face',
+        durationSec: 10, // 8s grid: request the 10s option so the film assembler trims to the 8s slot (5s default would freeze-pad)
       };
       const { provider, taskId } = await submitVideoWithFallback(input);
       const composite = `${provider}::${taskId}`;
@@ -633,7 +634,7 @@ export class ServiceManager {
       promptImage: startImage,
       promptText: withColorScience(prompt || request.userPrompt, 512),
       aspect,
-      durationSec: 5,
+      durationSec: 8, // 8s grid: mapRunwayDuration(8)=10 → a 10s clip the film assembler trims to the 8s slot (no freeze-pad vs a 5s clip)
       ...(Number.isFinite(seedParsed) && seedParsed >= 0 ? { seed: seedParsed } : {}),
     });
     if (!created?.id) return null; // → Replicate/LTX cascade
@@ -2506,7 +2507,7 @@ export class ServiceManager {
 
       if (
         parsed.v !== TASK_REF_VERSION
-        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway')
+        || (parsed.provider !== 'replicate' && parsed.provider !== 'ltx' && parsed.provider !== 'heygen' && parsed.provider !== 'video-cascade' && parsed.provider !== 'runway' && parsed.provider !== 'gemini-veo')
         || typeof parsed.providerTaskId !== 'string'
         || typeof parsed.sessionId !== 'string'
         || typeof parsed.serviceContext !== 'string'

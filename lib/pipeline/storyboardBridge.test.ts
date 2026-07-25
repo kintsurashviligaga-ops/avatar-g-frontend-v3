@@ -15,11 +15,11 @@ const base = (over: Partial<StoryboardMatrix> = {}): StoryboardMatrix => ({
 });
 
 describe('durationForSceneCount', () => {
-  test('1→6s, 6→30s, 12→60s (matches the pipeline sceneFrameCount mapping)', () => {
-    expect(durationForSceneCount(1)).toBe(6);
-    expect(durationForSceneCount(6)).toBe(30);
-    expect(durationForSceneCount(12)).toBe(60);
-    expect(durationForSceneCount(0)).toBe(6);
+  test('1→8s, 3→24s, 6→48s (8s Veo grid — matches the pipeline sceneFrameCount mapping)', () => {
+    expect(durationForSceneCount(1)).toBe(8);
+    expect(durationForSceneCount(3)).toBe(24);
+    expect(durationForSceneCount(6)).toBe(48);
+    expect(durationForSceneCount(0)).toBe(8);
   });
 });
 
@@ -75,8 +75,8 @@ describe('serializeStoryboardMatrix — Phase 29 V2 bridge protocol', () => {
   test('orientation defaults to vertical; duration falls back to the scene count', () => {
     expect(serializeStoryboardMatrix(base()).orientation).toBe('vertical');
     expect(serializeStoryboardMatrix(base({ orientation: 'landscape' })).orientation).toBe('landscape');
-    expect(serializeStoryboardMatrix(base()).duration).toBe(30); // 6 scenes → 30s
-    expect(serializeStoryboardMatrix(base({ cells: Array.from({ length: 12 }, (_, i) => cell(i + 1)) })).duration).toBe(60);
+    expect(serializeStoryboardMatrix(base()).duration).toBe(48); // 6 scenes → 48s (8s grid, capped at 6 scenes)
+    expect(serializeStoryboardMatrix(base({ cells: Array.from({ length: 12 }, (_, i) => cell(i + 1)) })).duration).toBe(48);
     expect(serializeStoryboardMatrix(base({ duration: 45 })).duration).toBe(45); // explicit wins
   });
 

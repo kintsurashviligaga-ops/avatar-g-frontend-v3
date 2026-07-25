@@ -252,9 +252,9 @@ export function buildFilmPrompt(prompt: string): string {
   // pasted brief was 400'ing the ENTIRE render as "Invalid request" before the
   // pipeline ever started. 3900 leaves room for the suffix appended below.
   const trimmed = String(prompt || '').trim().slice(0, 3900);
-  if (!trimmed) return 'a 30-second cinematic film';
+  if (!trimmed) return 'a cinematic film';
   if (isThirtySecondFilm(trimmed)) return trimmed;
-  return `${trimmed} — a 30-second cinematic film`;
+  return `${trimmed} — a cinematic film`;
 }
 
 /**
@@ -390,24 +390,24 @@ const PROGRESS_COPY: Record<'ka' | 'en' | 'ru', {
   rendering: string;
 }> = {
   ka: {
-    dispatching: 'წარმოება იწყება — სცენარი + 5 სცენის რენდერი…',
-    assembled: 'მონტაჟი დასრულდა — თქვენი 30-წამიანი ფილმი მზად არის.',
+    dispatching: 'წარმოება იწყება — სცენარი + სცენების რენდერი…',
+    assembled: 'მონტაჟი დასრულდა — თქვენი ფილმი მზად არის.',
     failed: 'რენდერი ვერ დასრულდა.',
     working: 'მუშავდება…',
     stitching: 'რედაქტორი კრებს საბოლოო ვერსიას — {done}/{total} სცენა დარენდერდა.',
     rendering: 'სცენების რენდერი — {done}/{total} მზად · საუნდტრეკი {audio}.',
   },
   en: {
-    dispatching: 'Dispatching the production — storyboard + 5 scene renders…',
-    assembled: 'Compilation complete — your 30-second film is ready.',
+    dispatching: 'Dispatching the production — storyboard + scene renders…',
+    assembled: 'Compilation complete — your film is ready.',
     failed: 'The render could not be completed.',
     working: 'Working…',
     stitching: 'Editor stitching the final cut — {done}/{total} scenes rendered.',
     rendering: 'Rendering scenes — {done}/{total} ready · score {audio}.',
   },
   ru: {
-    dispatching: 'Запуск производства — раскадровка + рендер 5 сцен…',
-    assembled: 'Монтаж завершён — ваш 30-секундный фильм готов.',
+    dispatching: 'Запуск производства — раскадровка + рендер сцен…',
+    assembled: 'Монтаж завершён — ваш фильм готов.',
     failed: 'Рендер не удалось завершить.',
     working: 'Обработка…',
     stitching: 'Редактор собирает финальную версию — отрендерено {done}/{total} сцен.',

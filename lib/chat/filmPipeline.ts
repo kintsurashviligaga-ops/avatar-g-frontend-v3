@@ -28,13 +28,13 @@ import {
 import { SEGMENT_DURATION_SEC } from '@/lib/orchestrator/types';
 import { extractPromptTraits, enrichVideoPrompt } from './promptTraits';
 
-/** The flagship runtime: a full 30-second film. */
-export const FILM_TOTAL_SEC = 30;
-/** The film runs at a 5-second scene cadence (vs. the generic video 6s default),
- *  so 30s decomposes into SIX sequential beats. With the hard-cut stitch this also
- *  lands the master at EXACTLY 30s (6 × 5 − 0 overlap) — no pad-freeze. */
-export const FILM_CLIP_SEC = 5;
-/** 30s / 5s = 6 sequential scenes. Derived (not hardcoded) so it stays honest. */
+/** The flagship runtime: a 24-second film — 3 Veo scenes at the 8s scene cadence. */
+export const FILM_TOTAL_SEC = 24;
+/** Every scene is an 8-SECOND Veo clip — Veo's native maximum (verified live: durationSeconds is capped at
+ *  8; 10s is rejected). The whole grid is 8s-based: 8s→1 scene · 24s→3 · 48s→6. With the hard-cut stitch a
+ *  24s master lands at EXACTLY 24s (3 × 8 − 0 overlap) — no pad-freeze. */
+export const FILM_CLIP_SEC = 8;
+/** 24s / 8s = 3 sequential scenes. Derived (not hardcoded) so it stays honest. */
 export const FILM_SCENE_COUNT = planSegmentCount(FILM_TOTAL_SEC, FILM_CLIP_SEC);
 
 // ─── Intent detection ────────────────────────────────────────────────────────

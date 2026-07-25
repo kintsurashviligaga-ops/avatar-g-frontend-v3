@@ -35,11 +35,11 @@ describe('buildFilmPrompt — guarantees film routing', () => {
 
   it('appends a canonical trigger when the brief lacks one', () => {
     const out = buildFilmPrompt('A dark sci-fi corridor with neon reflections');
-    expect(out).toMatch(/30-second cinematic film$/i);
+    expect(out).toMatch(/cinematic film$/i); // the appended "film" trigger still routes to the film pipeline
   });
 
   it('falls back to a default brief for empty input', () => {
-    expect(buildFilmPrompt('   ')).toBe('a 30-second cinematic film');
+    expect(buildFilmPrompt('   ')).toBe('a cinematic film');
   });
 });
 

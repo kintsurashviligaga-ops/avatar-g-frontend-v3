@@ -6,17 +6,24 @@
  * Cost is billed to the Gemini API account tied to the key (not the myavatar credit ledger — the user is
  * still charged credits by the existing billing).
  *
- * GATED opt-in via GEMINI_VEO_ENABLED (default OFF) so the working Runway→Kling→LTX cascade is byte-identical
- * until an operator confirms the key has Veo access + funding and flips it on. EVERY function is null/failure
- * safe: on no key, no access, timeout, quota, or a contract drift it returns null/failed so the caller
- * (ServiceManager) falls straight through to Runway — the generation NEVER errors out.
+ * Veo is the PRIMARY clip engine, LIVE-BY-DEFAULT when a Gemini key is present (verified live: the key has
+ * Veo access — veo-3.1-{,fast-,lite-}generate-preview visible — and a create returns 200 + an operation).
+ * A single kill-switch GEMINI_VEO_ENABLED=0 reverts to the Runway→Kling→LTX cascade. EVERY function is
+ * null/failure safe: on no key, no access, timeout, quota, or a contract drift it returns null/failed so the
+ * caller (ServiceManager) falls straight through to Runway — the generation NEVER errors out.
+ *
+ * VERIFIED-LIVE CONTRACT (probed against this project's key, 2026-07-25):
+ *   • personGeneration MUST be 'allow_all' — 'allow_adult' AND 'dont_allow' both 400 ("not supported"), which
+ *     silently failed EVERY Veo call before this fix (→ 100% Runway fallback, the "Veo never ran" bug).
+ *   • durationSeconds is bounded to [4, 8] — Veo's hard max is 8s (NOT 10s); 10 → 400 "out of bound".
+ *   • 16:9 and 9:16 both accepted; a create returns { name: "models/…/operations/…" }.
  *
  * Submit → operation name (non-blocking); poll separately (preserves the submit→poll pattern that fixed the
  * 504s). The video download URI needs the API key, so it is fetched SERVER-SIDE here (fetchVeoVideoBuffer)
  * and never leaks the key to the client.
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const CREATE_TIMEOUT_MS = 20_000;
@@ -27,9 +34,11 @@ export function geminiVeoModel(): string {
   return (process.env.GEMINI_VEO_MODEL || 'veo-3.1-fast-generate-preview').trim();
 }
 
-/** True iff Veo is opt-in ENABLED and a Gemini key is present. Off by default → cascade unchanged. */
+/** True iff a Gemini key is present AND Veo isn't explicitly killed (GEMINI_VEO_ENABLED=0/false/no/off).
+ *  LIVE-BY-DEFAULT: the key's Veo access + the create contract are verified working, so Veo is the primary
+ *  clip engine by default; the flag exists only as an instant revert to the Runway cascade. */
 export function hasGeminiVeoProvider(): boolean {
-  return isTruthyFlag(process.env.GEMINI_VEO_ENABLED) && !!resolveGeminiKey();
+  return isEnabledByDefault(process.env.GEMINI_VEO_ENABLED) && !!resolveGeminiKey();
 }
 
 // Veo accepts 16:9 and 9:16; there is no 1:1, so square requests fall to landscape.
@@ -79,7 +88,7 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
   }
   const parameters: Record<string, unknown> = {
     aspectRatio: mapVeoAspect(args.aspect),
-    personGeneration: 'allow_adult',
+    personGeneration: 'allow_all', // verified live: 'allow_adult'/'dont_allow' 400; 'allow_all' is the only accepted value
   };
   if (args.negativePrompt?.trim()) parameters.negativePrompt = args.negativePrompt.trim().slice(0, 300);
   if (Number.isFinite(args.durationSec)) parameters.durationSeconds = Math.min(8, Math.max(4, Math.round(args.durationSec as number)));

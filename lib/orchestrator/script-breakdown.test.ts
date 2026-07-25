@@ -10,9 +10,9 @@ import {
 } from './script-breakdown';
 
 describe('planSegmentCount', () => {
-  test('30s → 5 shots', () => expect(planSegmentCount(30)).toBe(5));
-  test('6s → 1 shot', () => expect(planSegmentCount(6)).toBe(1));
-  test('rounds to nearest 6s', () => expect(planSegmentCount(20)).toBe(3));
+  test('30s → 4 shots', () => expect(planSegmentCount(30)).toBe(4)); // round(30/8)
+  test('8s → 1 shot', () => expect(planSegmentCount(8)).toBe(1));
+  test('rounds to nearest 8s', () => expect(planSegmentCount(20)).toBe(3)); // round(20/8)=round(2.5)=3
   test('caps at MAX_SEGMENTS', () => expect(planSegmentCount(600)).toBe(MAX_SEGMENTS));
   test('non-finite / ≤0 → 1', () => {
     expect(planSegmentCount(0)).toBe(1);
@@ -22,11 +22,11 @@ describe('planSegmentCount', () => {
 });
 
 describe('deterministicBreakdown', () => {
-  test('produces the planned count with 6s each', () => {
+  test('produces the planned count with 8s each', () => {
     const segs = deterministicBreakdown('a calm ocean', 30);
-    expect(segs).toHaveLength(5);
-    expect(segs.every(s => s.durationSec === 6)).toBe(true);
-    expect(segs.map(s => s.index)).toEqual([0, 1, 2, 3, 4]);
+    expect(segs).toHaveLength(4);
+    expect(segs.every(s => s.durationSec === 8)).toBe(true);
+    expect(segs.map(s => s.index)).toEqual([0, 1, 2, 3]);
   });
   test('cycles through valid camera motions', () => {
     const segs = deterministicBreakdown('x', 30);
@@ -65,7 +65,7 @@ describe('normalizeBreakdown', () => {
     expect(out[0]!.prompt).toBe('keep');
   });
   test('garbage / empty → deterministic fallback', () => {
-    expect(normalizeBreakdown(null, 'base brief', 30)).toHaveLength(5);
+    expect(normalizeBreakdown(null, 'base brief', 30)).toHaveLength(4);
     expect(normalizeBreakdown({ nope: true }, 'base brief', 12)).toHaveLength(2);
   });
   test('honors MAX_SEGMENTS cap', () => {
@@ -92,7 +92,7 @@ describe('extractJson', () => {
 
 describe('buildScriptUserPrompt', () => {
   test('embeds the exact shot count for the duration', () => {
-    expect(buildScriptUserPrompt('a dog', 30)).toContain('EXACTLY 5');
-    expect(buildScriptUserPrompt('a dog', 6)).toContain('EXACTLY 1');
+    expect(buildScriptUserPrompt('a dog', 30)).toContain('EXACTLY 4');
+    expect(buildScriptUserPrompt('a dog', 8)).toContain('EXACTLY 1');
   });
 });

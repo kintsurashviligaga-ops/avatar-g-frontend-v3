@@ -97,9 +97,10 @@ export interface AssetRef {
   createdAt: number;
 }
 
-// ─── Temporal segmentation — 6s clips → final video ──────────────────────────
-
-export const SEGMENT_DURATION_SEC = 6;
+// ─── Temporal segmentation — 8s clips → final video ──────────────────────────
+// Every clip is an 8-second Veo scene (Veo's native max; verified live). The whole video grid is 8s-based:
+// 8s→1 scene · 24s→3 · 48s→6. Veo is the primary engine; Runway (which the fallback uses) also honours ≤8s.
+export const SEGMENT_DURATION_SEC = 8;
 
 export interface VideoSegment {
   id: string;
