@@ -361,16 +361,20 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
       {camOn && <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Audio-reactive avatar animations — idle "breathing", a lively "talking" bounce while the assistant
-          speaks, and a pulsing glow ring. Reduced-motion users get a still portrait. */}
+      {/* Audio-reactive avatar animations — butter-smooth: every keyframe is a 2-stop SYMMETRIC transform so
+          the loop closes seamlessly (no per-cycle jump/stutter), and only GPU-composited properties
+          (transform + opacity, with translateZ + will-change to force a compositor layer) animate. Idle
+          "breathing", a gentle "talking" pulse while speaking, and expanding sonar rings as the speak cue.
+          Reduced-motion users get a still portrait. */}
       <style>{`
-        @keyframes ag-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
-        @keyframes ag-talk { 0%,100% { transform: scale(1); } 25% { transform: scale(1.045); } 50% { transform: scale(1.01); } 75% { transform: scale(1.055); } }
-        @keyframes ag-glow { 0%,100% { opacity: 0.35; } 50% { opacity: 0.85; } }
-        .ag-avatar-idle { animation: ag-breathe 4s ease-in-out infinite; }
-        .ag-avatar-speaking { animation: ag-talk 0.7s ease-in-out infinite; }
-        .ag-avatar-glow { animation: ag-glow 0.7s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .ag-avatar-idle, .ag-avatar-speaking, .ag-avatar-glow { animation: none !important; } }
+        @keyframes ag-breathe { 0%,100% { transform: scale(1) translateZ(0); } 50% { transform: scale(1.02) translateZ(0); } }
+        @keyframes ag-talk { 0%,100% { transform: scale(1) translateZ(0); } 50% { transform: scale(1.035) translateZ(0); } }
+        @keyframes ag-ping { 0% { transform: scale(0.96) translateZ(0); opacity: 0.5; } 80% { opacity: 0; } 100% { transform: scale(1.42) translateZ(0); opacity: 0; } }
+        .ag-avatar-idle { animation: ag-breathe 4.2s ease-in-out infinite; will-change: transform; }
+        .ag-avatar-speaking { animation: ag-talk 0.9s ease-in-out infinite; will-change: transform; }
+        .ag-ping { animation: ag-ping 1.6s cubic-bezier(0.2,0.6,0.35,1) infinite; will-change: transform, opacity; }
+        .ag-ping-2 { animation-delay: 0.8s; }
+        @media (prefers-reduced-motion: reduce) { .ag-avatar-idle, .ag-avatar-speaking, .ag-ping { animation: none !important; } }
       `}</style>
 
       {/* FULL-SCREEN enrolled avatar (when the camera is off) — the user's own face fills the session,
@@ -381,9 +385,17 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
           <img src={avatarPoster!} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl" />
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/25 to-black/85" />
           <div className={`relative ${speaking ? 'ag-avatar-speaking' : 'ag-avatar-idle'}`}>
-            <div className={`absolute -inset-5 rounded-full bg-app-accent/40 blur-2xl transition-opacity duration-300 ${speaking ? 'ag-avatar-glow opacity-100' : 'opacity-0'}`} />
+            {/* soft static halo (warmth) — brighter while speaking; opacity transition is cheap (no layout). */}
+            <div className={`absolute -inset-4 rounded-full bg-app-accent/25 blur-2xl transition-opacity duration-500 ${speaking ? 'opacity-100' : 'opacity-40'}`} />
+            {/* sonar speaking rings — expand + fade behind the portrait, staggered. GPU transform+opacity only. */}
+            {speaking && (
+              <>
+                <div className="ag-ping pointer-events-none absolute inset-0 rounded-full border-2 border-app-accent/50" />
+                <div className="ag-ping ag-ping-2 pointer-events-none absolute inset-0 rounded-full border-2 border-app-accent/40" />
+              </>
+            )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={avatarPoster!} alt="" className="relative h-[min(62vw,264px)] w-[min(62vw,264px)] rounded-full object-cover shadow-2xl ring-2 ring-white/25" />
+            <img src={avatarPoster!} alt="" className="relative z-10 h-[min(62vw,264px)] w-[min(62vw,264px)] rounded-full object-cover shadow-2xl ring-2 ring-white/25" />
           </div>
         </div>
       )}

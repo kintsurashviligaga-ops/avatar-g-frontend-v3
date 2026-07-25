@@ -13,7 +13,7 @@
  * The camera stream is acquired ONCE and reused across flips/captures (permission isn't re-prompted), and
  * fully released on close. Front camera is mirrored for a natural selfie. Fail-open throughout.
  */
-import { Camera, Check, Loader2, Mic, RotateCcw, SwitchCamera, Upload, X } from 'lucide-react';
+import { Camera, Check, Loader2, Mic, RotateCcw, Smartphone, SwitchCamera, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Locale = 'ka' | 'en' | 'ru';
@@ -22,6 +22,12 @@ interface Props {
   locale?: Locale;
   onClose: () => void;
   onEnrolled?: (posterUrl: string) => void;
+  /**
+   * When set, this instance is the PHONE side of a desktop→phone handoff: it captures the selfie/voice and
+   * posts to /api/avatar/handoff/complete with this token (no session needed) instead of /api/avatar/enroll.
+   * When unset (desktop), a "Continue on phone" affordance is shown that mints a token + QR.
+   */
+  handoffToken?: string;
 }
 
 const T: Record<Locale, Record<string, string>> = {
@@ -32,6 +38,8 @@ const T: Record<Locale, Record<string, string>> = {
     save: 'შენახვა და გააქტიურება', saving: 'ინახება…', done: 'ავატარი მზადაა!',
     camErr: 'კამერა ვერ ჩაირთო — ატვირთე ფოტო.', saveErr: 'ვერ შეინახა — სცადე თავიდან.',
     hint: 'ეს გამოჩნდება ხმოვან რეჟიმში და ილაპარაკებს შენს ნაცვლად.',
+    onPhone: 'გააგრძელე ტელეფონით', scanQr: 'დაასკანერე ტელეფონის კამერით', waitingPhone: 'ველოდები ტელეფონს…',
+    phoneDoneMsg: 'მზადაა! დაბრუნდი კომპიუტერთან.', back: 'უკან',
   },
   en: {
     title: 'Your Live Avatar', selfie: 'Take a selfie', capture: 'Capture', retake: 'Retake',
@@ -40,6 +48,8 @@ const T: Record<Locale, Record<string, string>> = {
     save: 'Save & activate', saving: 'Saving…', done: 'Avatar ready!',
     camErr: 'Camera unavailable — upload a photo instead.', saveErr: 'Could not save — try again.',
     hint: 'This appears in voice mode and speaks for you.',
+    onPhone: 'Continue on phone', scanQr: 'Scan with your phone camera', waitingPhone: 'Waiting for your phone…',
+    phoneDoneMsg: 'Done! Return to your computer.', back: 'Back',
   },
   ru: {
     title: 'Ваш живой аватар', selfie: 'Сделайте селфи', capture: 'Снять', retake: 'Заново',
@@ -48,12 +58,17 @@ const T: Record<Locale, Record<string, string>> = {
     save: 'Сохранить и включить', saving: 'Сохранение…', done: 'Аватар готов!',
     camErr: 'Камера недоступна — загрузите фото.', saveErr: 'Не удалось сохранить — попробуйте снова.',
     hint: 'Появится в голосовом режиме и будет говорить за вас.',
+    onPhone: 'Продолжить на телефоне', scanQr: 'Отсканируйте камерой телефона', waitingPhone: 'Ожидание телефона…',
+    phoneDoneMsg: 'Готово! Вернитесь к компьютеру.', back: 'Назад',
   },
 };
 
-export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled }: Props) {
+export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled, handoffToken }: Props) {
   const t = T[locale] ?? T.ka;
   const [selfie, setSelfie] = useState<string | null>(null); // captured data-url
+  const [qr, setQr] = useState<{ dataUrl: string; url: string } | null>(null); // desktop → phone QR
+  const [waiting, setWaiting] = useState(false); // desktop: polling for the phone to finish
+  const [phoneDone, setPhoneDone] = useState(false); // phone side: enrolled successfully
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
   const [camReady, setCamReady] = useState(false);
   const [camErr, setCamErr] = useState(false);
@@ -157,6 +172,17 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled }:
     if (!selfie || saving) return;
     setSaving(true); setErr(null);
     try {
+      if (handoffToken) {
+        // PHONE side of a handoff — one token-authorized call carries the selfie + optional voice.
+        const r = await fetch('/api/avatar/handoff/complete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: handoffToken, dataUrl: selfie, ...(voiceSample ? { voiceDataUrl: voiceSample } : {}) }),
+        });
+        const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!r.ok || !j.ok) throw new Error(j.error || 'failed');
+        setPhoneDone(true); setSaving(false);
+        return;
+      }
       const r = await fetch('/api/avatar/enroll', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ dataUrl: selfie }),
@@ -175,16 +201,74 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled }:
     } catch {
       setErr(t.saveErr ?? 'Could not save — try again.'); setSaving(false);
     }
-  }, [selfie, saving, voiceSample, onEnrolled, onClose, t.saveErr]);
+  }, [selfie, saving, voiceSample, handoffToken, onEnrolled, onClose, t.saveErr]);
+
+  // ── Desktop → phone handoff ──────────────────────────────────────────────────
+  const baselineRef = useRef<string | null>(null); // avatar_updated_at captured when the QR opens
+  const startPhoneHandoff = useCallback(async () => {
+    setErr(null);
+    try {
+      // Snapshot the current avatar state so polling can detect the NEW enrollment (updated_at changes).
+      const cur = await fetch('/api/avatar/core', { credentials: 'include' }).then((r) => r.json()).catch(() => ({}));
+      baselineRef.current = cur?.data?.updated_at ?? null;
+      const r = await fetch('/api/avatar/handoff/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ locale }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { url?: string; qrDataUrl?: string; error?: string };
+      if (!r.ok || !j.qrDataUrl || !j.url) throw new Error(j.error || 'failed');
+      stopCamera(); setCamReady(false);
+      setQr({ dataUrl: j.qrDataUrl, url: j.url }); setWaiting(true);
+    } catch {
+      setErr(t.saveErr ?? 'Could not start — try again.');
+    }
+  }, [locale, stopCamera, t.saveErr]);
+
+  // While the QR is showing, poll the user's OWN core avatar; the phone finishing changes updated_at.
+  useEffect(() => {
+    if (!qr || !waiting) return;
+    let alive = true;
+    const id = setInterval(async () => {
+      try {
+        const j = await fetch('/api/avatar/core', { credentials: 'include' }).then((r) => r.json()).catch(() => ({}));
+        const poster = j?.data?.poster_url;
+        const updated = j?.data?.updated_at ?? null;
+        if (alive && poster && j.data?.status === 'ready' && updated !== baselineRef.current) {
+          clearInterval(id); setWaiting(false);
+          onEnrolled?.(poster); onClose();
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, [qr, waiting, onEnrolled, onClose]);
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-app-bg/97 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
+    <div className="fixed inset-0 z-[300] flex flex-col bg-app-bg/97 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
       <div className="flex items-center justify-between px-5 pt-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}>
         <span className="text-[15px] font-semibold text-app-text">{t.title}</span>
         <button type="button" onClick={onClose} aria-label="close" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-app-text hover:bg-white/[0.14]"><X size={18} /></button>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6">
+        {phoneDone && (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400"><Check size={40} /></div>
+            <span className="text-[16px] font-semibold text-app-text">{t.done}</span>
+            <span className="max-w-xs text-[13px] text-app-muted">{t.phoneDoneMsg}</span>
+          </div>
+        )}
+        {qr && !phoneDone && (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="rounded-3xl bg-white p-4 shadow-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr.dataUrl} alt="QR" className="h-[min(62vw,240px)] w-[min(62vw,240px)]" />
+            </div>
+            <span className="flex items-center gap-2 text-[14px] font-medium text-app-text"><Smartphone size={18} /> {t.scanQr}</span>
+            <span className="flex items-center gap-2 text-[12.5px] text-app-muted"><Loader2 className="animate-spin" size={14} /> {t.waitingPhone}</span>
+            <button type="button" onClick={() => { setQr(null); setWaiting(false); void startCamera(); }} className="mt-1 flex h-10 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] text-app-text hover:bg-white/[0.14]"><RotateCcw size={15} /> {t.back}</button>
+          </div>
+        )}
+        {!phoneDone && !qr && (<>
         {/* Selfie stage — live camera or captured preview */}
         <div className="relative aspect-square w-[min(72vw,320px)] overflow-hidden rounded-3xl border border-white/12 bg-black/40">
           {selfie ? (
@@ -226,16 +310,24 @@ export default function LiveAvatarEnroll({ locale = 'ka', onClose, onEnrolled }:
           )}
         </div>
 
+        {/* Continue on phone — desktop only (the phone side already IS on a phone). */}
+        {!handoffToken && !selfie && (
+          <button type="button" onClick={() => void startPhoneHandoff()} className="flex h-10 items-center gap-2 rounded-full bg-white/[0.06] px-4 text-[12.5px] text-app-muted transition hover:bg-white/[0.12] hover:text-app-text"><Smartphone size={15} /> {t.onPhone}</button>
+        )}
+
         {err && <span className="text-[12.5px] text-app-danger">{err}</span>}
+        </>)}
       </div>
 
-      {/* Save bar */}
-      <div className="border-t border-white/10 bg-black/40 px-6 py-4 backdrop-blur-xl" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
-        <button type="button" onClick={() => void save()} disabled={!selfie || saving}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-app-accent text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-40">
-          {saving ? <><Loader2 className="animate-spin" size={18} /> {t.saving}</> : <>{t.save}</>}
-        </button>
-      </div>
+      {/* Save bar — only in the capture flow (not on the QR-wait or done screens). */}
+      {!phoneDone && !qr && (
+        <div className="border-t border-white/10 bg-black/40 px-6 py-4 backdrop-blur-xl" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
+          <button type="button" onClick={() => void save()} disabled={!selfie || saving}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-app-accent text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-40">
+            {saving ? <><Loader2 className="animate-spin" size={18} /> {t.saving}</> : <>{t.save}</>}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

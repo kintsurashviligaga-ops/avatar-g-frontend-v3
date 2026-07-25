@@ -136,7 +136,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // (navbar, sidebar, bottom nav, floating chat, cookie banner). Consumer chrome has no place here.
   const isAdmin = !!pathname && /\/admin(\/|$)/.test(pathname);
 
-  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isAdmin || isEmbed;
+  // The phone-handoff avatar enrollment (/{locale}/avatar/enroll) is a focused full-screen capture flow —
+  // the marketing nav (fixed z-200 top + bottom) would sit over its own overlay and hide the Save bar.
+  const isAvatarEnroll = !!pathname && /\/avatar\/enroll\/?$/.test(pathname);
+
+  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed;
 
   return (
     <div
@@ -179,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           cyan chat button bottom-right). They floated at z-[9999] over the production dashboard; the red one
           was the reported "red phone button". No external redirect existed (it opened an in-app CallScreen);
           Agent G is still reachable at /services/agent-g. */}
-      {!isEmbed && !isAdmin && <CookieConsent />}
+      {!isEmbed && !isAdmin && !isAvatarEnroll && <CookieConsent />}
     </div>
   );
 }
