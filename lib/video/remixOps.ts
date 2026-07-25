@@ -280,6 +280,39 @@ export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1
  * setpts; audio via atempo (chained so factors outside the 0.5–2.0 atempo window
  * still work). Clamped to a sane 0.25×–4× range.
  */
+export async function stripBottomWatermark(videoUrl: string, aspect: '9:16' | '16:9' | '1:1' = '16:9', pct?: number): Promise<string | null> {
+  if (!BIN || !videoUrl) return null;
+  const rawPct = Number.isFinite(pct) ? (pct as number) : Number(process.env.VEO_WATERMARK_CROP_PCT || 8);
+  const p = Math.min(20, Math.max(0, rawPct)) / 100; // clamp 0–20%; 0 → nothing to strip
+  if (p <= 0) return videoUrl;
+  const [w, h] = ASPECT_DIMS[aspect] ?? ASPECT_DIMS['16:9']!;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'veo-wm-'));
+    const out = join(dir, 'out.mp4');
+    // Simple -vf graph (keeps ffmpeg's autorotation): crop off the bottom band (rounded to an even height),
+    // then cover-fit back to the aspect's WxH so the output size/aspect is unchanged. Audio copied through so
+    // a Veo clip's native speech/effects survive. Removes only a VISIBLE bottom mark — the invisible SynthID
+    // is forensic and deliberately untouched.
+    const vf =
+      `crop=iw:floor(ih*${(1 - p).toFixed(4)}/2)*2:0:0,` +
+      `scale=${w}:${h}:force_original_aspect_ratio=increase,` +
+      `crop=${w}:${h},format=yuv420p`;
+    await exec(BIN, [
+      '-y', '-i', videoUrl, '-vf', vf,
+      ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    const buf = await readFile(out);
+    return await hostMp4(buf, 'veo-clean');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.watermark] strip failed → keeping original:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 export async function changeSpeed(videoUrl: string, factor: number): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
   const f = Math.max(0.25, Math.min(4, Number(factor) || 1));

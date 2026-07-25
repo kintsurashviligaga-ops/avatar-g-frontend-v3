@@ -20,6 +20,9 @@ import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
+import { hasGeminiVeoProvider, geminiVeoModel, createGeminiVeoClip, pollGeminiVeoTask, fetchVeoVideoBuffer } from '@/lib/ai/geminiVeo';
+import { stripBottomWatermark } from '@/lib/video/remixOps';
+import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withColorScience } from '@/lib/video/colorScience';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
@@ -28,7 +31,7 @@ export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 // PHASE 24 — 'runway' is an async provider tier (Runway Gen-3 Alpha primary i2v). It surfaces on the
 // wire as provider:'replicate' (DeterministicProvider has no 'runway'); the real engine lives in
 // metadata.videoProvider — same pattern as 'video-cascade'.
-type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade' | 'runway';
+type AsyncProvider = 'replicate' | 'ltx' | 'heygen' | 'video-cascade' | 'runway' | 'gemini-veo';
 type ResponseType = 'text' | 'image' | 'video' | 'audio' | 'analysis' | 'action_suggestions';
 
 const LTX_BASE_URL = 'https://api.ltx.video';
@@ -244,9 +247,9 @@ export class ServiceManager {
     }
 
     if (!sessionId || decoded.sessionId !== sessionId) {
-      // 'video-cascade' and 'runway' are async tiers with no DeterministicProvider surface → 'replicate'.
+      // 'video-cascade' / 'runway' / 'gemini-veo' are async tiers with no DeterministicProvider surface → 'replicate'.
       const surfaceProvider: DeterministicProvider =
-        decoded.provider === 'video-cascade' || decoded.provider === 'runway' ? 'replicate' : decoded.provider;
+        decoded.provider === 'video-cascade' || decoded.provider === 'runway' || decoded.provider === 'gemini-veo' ? 'replicate' : decoded.provider;
       return {
         success: false,
         provider: surfaceProvider,
@@ -280,6 +283,10 @@ export class ServiceManager {
 
     if (decoded.provider === 'runway') {
       return this.pollRunwayTaskRef(decoded, taskRefOrPredictionId);
+    }
+
+    if (decoded.provider === 'gemini-veo') {
+      return this.pollGeminiVeoTaskRef(decoded, taskRefOrPredictionId);
     }
 
     return this.pollLtxTask(decoded, taskRefOrPredictionId);
@@ -434,6 +441,15 @@ export class ServiceManager {
     // Inert + byte-identical in prod until RUNWAY_API_KEY (or RUNWAYML_API_SECRET) is set + verified.
     // Master Contract V3 — the Cinema-panel engine toggle is now authoritative: selecting Kling opts OUT
     // of the Runway attempt (Kling-first); 'runway'/unset keeps the Runway-first cascade (the default).
+    // GEMINI VEO — the OPT-IN PRIMARY video engine (Veo, native audio baked in). Tried BEFORE Runway; on
+    // no access / quota / timeout / any miss it returns null and the proven Runway→Kling→LTX cascade runs
+    // BYTE-IDENTICAL (zero regression). Off unless GEMINI_VEO_ENABLED is set. Respects the same Cinema-panel
+    // engine opt-out as Runway (explicit Kling/Hailuo selection skips both premium tiers).
+    if (request.videoModel !== 'kling' && request.videoModel !== 'hailuo' && hasGeminiVeoProvider()) {
+      const veo = await this.tryGeminiVeoClip(request, startImage, aspect, enrichedPrompt);
+      if (veo) return veo;
+    }
+
     if (request.videoModel !== 'kling' && request.videoModel !== 'hailuo') {
       const runway = await this.tryRunwayClip(request, startImage, aspect, enrichedPrompt);
       if (runway) return runway;
@@ -653,6 +669,87 @@ export class ServiceManager {
         success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
         message: `${engine} rendered the scene.`, assetUrl: r.url, assetType: decoded.responseType,
         predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
+      };
+    }
+    if (r.status === 'failed') {
+      return {
+        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+        message: `${engine} generation failed.`, predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
+      };
+    }
+    return {
+      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+      message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
+    };
+  }
+
+  /**
+   * GEMINI VEO — submit a Veo clip (native audio) and return a 'gemini-veo' task-ref the async poll resolves
+   * via pollGeminiVeoTaskRef. Gated on GEMINI_VEO_ENABLED + a Gemini key (checked by the caller). Returns null
+   * on ANY create miss → the caller falls through to Runway. The requested aspect is packed into the task-ref
+   * (operation::aspect) so the poll can crop the watermark to the right dimensions. NEVER throws.
+   */
+  private async tryGeminiVeoClip(request: ServiceManagerRequest, startImage: string, aspect: '9:16' | '16:9' | '1:1', prompt: string): Promise<ServiceManagerResponse | null> {
+    const negativePrompt = this.getOption(request.selectedOptions || {}, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
+    const created = await createGeminiVeoClip({
+      promptText: withColorScience(prompt || request.userPrompt, 1000),
+      promptImage: startImage, // i2v anchor frame (Veo animates from it, keeping the locked character)
+      aspect,
+      durationSec: 8,
+      ...(negativePrompt ? { negativePrompt } : {}),
+    });
+    if (!created?.operation) return null; // → Runway → Kling → LTX cascade
+    const promptHash = this.hashPrompt(request.userPrompt);
+    const model = geminiVeoModel();
+    const providerTaskId = `${created.operation}::${aspect}`;
+    const taskRef = this.encodeTaskRef({
+      provider: 'gemini-veo', providerTaskId, sessionId: request.sessionId,
+      serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
+      responseType: 'video', promptHash, createdAt: Date.now(),
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[veo] ${model} accepted clip (${created.operation})`);
+    return {
+      success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+      message: `Gemini Veo (${model}) accepted the request. Polling for completion.`,
+      predictionId: taskRef, predictionStatus: 'processing',
+      metadata: { provider: 'replicate' as const, videoProvider: 'gemini-veo', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId, promptHash },
+    };
+  }
+
+  /** Resolve a 'gemini-veo' task-ref: poll the Veo operation; on success download it SERVER-SIDE (key never
+   *  leaves), re-host to durable storage, then strip the bottom watermark (audio preserved) — the clip
+   *  reaches the user with its NATIVE audio and no visible Google mark. Fail-open: any transient outcome
+   *  keeps polling. */
+  private async pollGeminiVeoTaskRef(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
+    const sep = decoded.providerTaskId.indexOf('::');
+    const operation = sep > 0 ? decoded.providerTaskId.slice(0, sep) : decoded.providerTaskId;
+    const aspect = (sep > 0 ? decoded.providerTaskId.slice(sep + 2) : '16:9') as '9:16' | '16:9' | '1:1';
+    const engine = `Gemini Veo (${geminiVeoModel()})`;
+    const baseMeta = {
+      provider: 'replicate' as const, videoProvider: 'gemini-veo', operation: decoded.operation,
+      sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
+    };
+    const r = await pollGeminiVeoTask(operation);
+    if (r.status === 'succeeded' && r.uri) {
+      let finalUrl: string | null = null;
+      const buf = await fetchVeoVideoBuffer(r.uri);
+      if (buf) {
+        const hosted = await uploadBufferAndSign('renders', `veo/${decoded.sessionId}/${Date.now()}.mp4`, buf, 'video/mp4', 604_800);
+        if (hosted) finalUrl = (await stripBottomWatermark(hosted, aspect).catch(() => null)) || hosted; // crop miss → keep hosted
+      }
+      if (finalUrl) {
+        return {
+          success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+          message: `${engine} rendered the scene.`, assetUrl: finalUrl, assetType: decoded.responseType,
+          predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
+        };
+      }
+      // Generated but couldn't be delivered (download/host miss) → treat as failed so the pipeline re-tries
+      // (or falls to LTX). Rare; the raw Veo URI needs the key so it can't be handed to the client directly.
+      return {
+        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+        message: `${engine} post-processing failed.`, predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
       };
     }
     if (r.status === 'failed') {
