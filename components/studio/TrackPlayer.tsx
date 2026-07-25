@@ -19,6 +19,8 @@ export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, eng
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
+  const vizRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   const toggle = useCallback(() => {
     const a = ref.current;
@@ -70,6 +72,48 @@ export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, eng
     return () => { a.removeEventListener('play', onPlay); a.removeEventListener('pause', onPause); };
   }, []);
 
+  // Premium animated equalizer — a procedural multi-harmonic wave that flows while the track PLAYS and
+  // gently settles when paused. Procedural (not Web-Audio analysis) on purpose: it needs no crossOrigin on
+  // the <audio> (which would risk breaking playback of a non-CORS source) and always looks alive. Cyan/blue
+  // gradient bars on the app's palette — our own branding, no Google mark anywhere.
+  useEffect(() => {
+    const canvas = vizRef.current;
+    if (!canvas) return;
+    const cctx = canvas.getContext('2d');
+    if (!cctx) return;
+    const BARS = 40;
+    let settle = playing ? 1 : 0; // 0 = flat (paused), 1 = full motion (playing)
+    const start = performance.now();
+
+    const draw = (now: number) => {
+      const w = canvas.width, h = canvas.height;
+      // Ease the amplitude toward the target so play/pause transitions are smooth, never a hard cut.
+      settle += ((playing ? 1 : 0) - settle) * 0.08;
+      cctx.clearRect(0, 0, w, h);
+      const t = (now - start) / 1000;
+      const bw = w / BARS;
+      for (let i = 0; i < BARS; i++) {
+        // Two layered sines + a per-bar phase → an organic, non-repeating equalizer motion.
+        const wave = 0.5 + 0.5 * Math.sin(t * 3.1 + i * 0.5) * Math.sin(t * 1.7 + i * 0.23);
+        const bh = Math.max(2, (0.12 + wave * 0.88 * settle) * h);
+        const x = i * bw;
+        const grad = cctx.createLinearGradient(0, h, 0, h - bh);
+        grad.addColorStop(0, 'rgba(34,211,238,0.35)');   // cyan-400
+        grad.addColorStop(1, 'rgba(96,165,250,0.95)');   // blue-400
+        cctx.fillStyle = grad;
+        const bar = Math.max(1.5, bw - 2);
+        cctx.beginPath();
+        // Rounded-top bars for a premium feel.
+        const r = Math.min(bar / 2, 2);
+        cctx.roundRect(x + 1, h - bh, bar, bh, [r, r, 0, 0]);
+        cctx.fill();
+      }
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    rafRef.current = requestAnimationFrame(draw);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = null; };
+  }, [playing]);
+
   const pct = dur ? (cur / dur) * 100 : 0;
 
   return (
@@ -98,8 +142,11 @@ export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, eng
         </button>
       </div>
 
+      {/* Animated equalizer visualizer — flows while playing, settles when paused. */}
+      <canvas ref={vizRef} width={320} height={40} className="mt-2 h-9 w-full" aria-hidden />
+
       {/* Scrubber + time */}
-      <div className="mt-2.5 space-y-1">
+      <div className="mt-1.5 space-y-1">
         {/* -my-2.5 + py-2.5 gives a ~28px touch zone around the 8px visual track
             (WCAG 2.5.5) without changing layout. touch-pan-y (not touch-none) lets a
             vertical swipe still scroll the page/feed while horizontal drags are
