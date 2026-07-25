@@ -125,9 +125,13 @@ describe('planFilmScenes — continuity-locked production plan', () => {
   // PHASE 44 §2 — the real defect the live-fire exposed: a monotone film.
   it('gives every scene a DISTINCT cinematic composition (no monotone loop)', () => {
     const plan = planFilmScenes('a cyberpunk samurai walks through neon Tokyo');
-    const heads = plan.scenes.map((s) => s.prompt.split(' — ')[0]);
-    // All five framings differ — the film is an arc, not one beat ×5.
-    expect(new Set(heads).size).toBe(plan.scenes.length);
+    // The USER'S BRIEF now leads every scene (it is the highest-weighted position and what the storyboard
+    // card shows); the distinct camera framing follows it after the em-dash. Assert on the framing segment.
+    const framings = plan.scenes.map((s) => s.prompt.split(' — ').slice(1).join(' — '));
+    // All framings differ — the film is an arc, not one beat ×N.
+    expect(new Set(framings).size).toBe(plan.scenes.length);
+    // …and the brief itself is what the scene opens with.
+    expect(plan.scenes.every((s) => /cyberpunk samurai/i.test(s.prompt.split(' — ')[0] ?? ''))).toBe(true);
     // The arc opens on an establishing shot and closes on a resolving pull-back.
     expect(plan.scenes[0]!.prompt).toMatch(/establishing/i);
     expect(plan.scenes[plan.scenes.length - 1]!.prompt).toMatch(/pull-back|resol/i);

@@ -643,7 +643,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       ? (seg.index === 0
           ? `Cinematic aerial drone shot at night flying high over ${placeHint}, glowing streets, rooftops and warm windows, slowly descending toward a lively music venue — atmospheric wide establishing shot, NO people in frame, neon and golden light, photorealistic${styled}`
           : `Cinematic camera move arriving INTO a warm, lively bar at night — golden string lights, exposed brick, a small crowd with drinks, a stage with a vintage microphone, anticipation just before the performance${styled}`)
-      : (llmScene && llmScene.length > 0 ? llmScene : `${beat.framing} — ${subject}${styled}`);
+      // The user's BRIEF leads, the camera grammar qualifies it. Opening with `beat.framing` put ~200 chars
+      // of fixed, film-identical cinematography boilerplate in the highest-weighted position (and at the top
+      // of the storyboard card), pushing the actual subject toward the clamp edge — every scene then read as
+      // generic camera-speak instead of the story.
+      : (llmScene && llmScene.length > 0 ? llmScene : `${subject}${styled} — ${beat.framing}`);
     // SCRIPT-DRIVEN scene: a real per-scene script decides who/what is in frame. Lock
     // only the WORLD and keep the protagonist consistent CONDITIONALLY (wherever the
     // script places them) — never force the "same protagonist in every shot" clause,
