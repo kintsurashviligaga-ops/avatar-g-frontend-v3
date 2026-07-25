@@ -95,4 +95,12 @@ describe('SYSTEM_PROMPT — color science (VECTOR 3)', () => {
     expect(SYSTEM_PROMPT).toMatch(/yellow tint/i);
     expect(SYSTEM_PROMPT).toMatch(/sepia/i);
   });
+
+  it('routes the suppression tokens to negativePrompt, NOT into imagePrompt', () => {
+    // A "Negative: …" tail inside imagePrompt is submitted as POSITIVE conditioning (so the model draws the
+    // cartoon/blur it was meant to avoid) AND is rendered to the user as the scene's description — the
+    // storyboard card showed "cartoon, illustration, painting, CGI, bokeh, lens blur" as the scene text.
+    expect(SYSTEM_PROMPT).toMatch(/NEVER write a "Negative:" list inside imagePrompt/i);
+    expect(SYSTEM_PROMPT).toMatch(/visualStyle\.negativePrompt MUST carry the suppression tokens/i);
+  });
 });
