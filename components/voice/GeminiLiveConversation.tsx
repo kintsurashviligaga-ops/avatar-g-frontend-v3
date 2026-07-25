@@ -73,6 +73,11 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const camStreamRef = useRef<MediaStream | null>(null);
   const procRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  // Analyser on the PLAYBACK path — gives the real-time amplitude of the AVATAR's spoken audio, which drives
+  // the portrait's audio-reactive movement (so the face visibly talks/moves to the voice, not a fixed pulse).
+  const playbackAnalyserRef = useRef<AnalyserNode | null>(null);
+  const avatarWrapRef = useRef<HTMLDivElement | null>(null); // the portrait element the rAF loop transforms
+  const avatarAmpRef = useRef(0); // smoothed 0..1 amplitude, eased frame-to-frame to avoid jitter
   const micMutedRef = useRef(false);
   const playCursorRef = useRef(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
@@ -109,7 +114,9 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(ctx.destination);
+    // Route through the playback analyser (→ destination) so the avatar can react to the spoken amplitude;
+    // fall back to a direct connect if the analyser isn't up yet (audio must always play).
+    src.connect(playbackAnalyserRef.current ?? ctx.destination);
     const startAt = Math.max(ctx.currentTime, playCursorRef.current || ctx.currentTime);
     try { src.start(startAt); } catch { return; }
     playCursorRef.current = startAt + buffer.duration;
@@ -121,8 +128,20 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
     };
   }, []);
 
-  // ── Frequency-bar visualiser (Web Audio). ──
-  const drawViz = useCallback(() => {
+  // Average 0..1 magnitude across an analyser's frequency bins (reused for the bars + the avatar drive).
+  const analyserLevel = useCallback((analyser: AnalyserNode | null): number => {
+    if (!analyser) return 0;
+    const n = analyser.frequencyBinCount;
+    const data = new Uint8Array(n);
+    analyser.getByteFrequencyData(data as Uint8Array<ArrayBuffer>);
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += data[i] ?? 0;
+    return n ? sum / n / 255 : 0;
+  }, []);
+
+  // ── Frequency-bar visualiser + AUDIO-REACTIVE avatar drive (single rAF loop, runs the whole session). ──
+  const drawViz = useCallback((ts?: number) => {
+    // 1) Frequency bars (mic) — the fallback visual when no avatar/camera is shown.
     const canvas = vizCanvasRef.current;
     const analyser = analyserRef.current;
     if (canvas && analyser) {
@@ -144,8 +163,34 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
         }
       }
     }
+
+    // 2) Audio-reactive avatar: drive the portrait's transform from the REAL amplitude of the avatar's
+    //    spoken audio (primary) plus the user's mic (secondary), so the face visibly moves/breathes to the
+    //    voice. A subtle vertical squash-stretch reads as a jaw/mouth "talking" cue (a lip-sync feel on a
+    //    still photo). Reduced-motion users get a still portrait.
+    const wrap = avatarWrapRef.current;
+    if (wrap) {
+      const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) {
+        wrap.style.transform = '';
+      } else {
+        // Raw target: the avatar's own voice dominates; the mic adds a little so the face also stirs while the
+        // user speaks. Gamma-curve for punch, then ease toward it so motion is smooth (no per-frame jitter).
+        const raw = Math.min(1, Math.max(analyserLevel(playbackAnalyserRef.current) * 1.6, analyserLevel(analyserRef.current) * 0.6));
+        const target = Math.pow(raw, 0.7);
+        const eased = avatarAmpRef.current + (target - avatarAmpRef.current) * 0.28;
+        avatarAmpRef.current = eased;
+        // Idle "breathing" baseline (time-based sine) so the portrait is alive even in silence; amplitude
+        // adds the talking motion on top. translateZ(0) keeps it on its own compositor layer.
+        const breathe = Math.sin((ts ?? 0) / 1500) * 0.01;
+        const sx = 1 + breathe + eased * 0.05;
+        const sy = 1 + breathe + eased * 0.10; // more vertical → jaw-drop / mouth-open illusion
+        const bob = -eased * 5;
+        wrap.style.transform = `translateZ(0) translateY(${bob.toFixed(2)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+      }
+    }
     vizRafRef.current = requestAnimationFrame(drawViz);
-  }, []);
+  }, [analyserLevel]);
 
   // ── Camera: stream low-fps JPEG frames up while the camera is on. ──
   const startCamera = useCallback(async () => {
@@ -246,6 +291,18 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AudioCtx();
         ctxRef.current = ctx;
+        // Playback analyser: created up front and wired straight to the speakers, so enqueueAudio can route the
+        // avatar's spoken audio THROUGH it and the rAF loop can read its amplitude to move the portrait.
+        const playbackAnalyser = ctx.createAnalyser();
+        playbackAnalyser.fftSize = 256;
+        playbackAnalyser.smoothingTimeConstant = 0.8;
+        playbackAnalyser.connect(ctx.destination);
+        playbackAnalyserRef.current = playbackAnalyser;
+        // Start the avatar/viz rAF loop NOW (not after the token round-trip) so the portrait keeps breathing
+        // during connecting and, on a voice-swap remount, resumes almost instantly instead of freezing for the
+        // ~1-3s mint. The loop no-ops safely while the mic analyser / avatar element don't exist yet.
+        if (vizRafRef.current) cancelAnimationFrame(vizRafRef.current);
+        vizRafRef.current = requestAnimationFrame(drawViz);
         const ctxReady = ctx.resume().catch(() => {});
         const micReady = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
         micReady.catch(() => {}); // pre-attach so an early token failure can't surface an unhandled rejection
@@ -321,8 +378,7 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
         };
         source.connect(proc);
         proc.connect(ctx.destination); // required for onaudioprocess to fire in some browsers
-
-        vizRafRef.current = requestAnimationFrame(drawViz);
+        // (the viz/avatar rAF loop was already started right after the AudioContext opened, above)
       } catch (e) {
         if (!cancelled) { setErr(e instanceof Error ? e.message : 'init failed'); setStatus('error'); }
       }
@@ -361,20 +417,15 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
       {camOn && <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Audio-reactive avatar animations — butter-smooth: every keyframe is a 2-stop SYMMETRIC transform so
-          the loop closes seamlessly (no per-cycle jump/stutter), and only GPU-composited properties
-          (transform + opacity, with translateZ + will-change to force a compositor layer) animate. Idle
-          "breathing", a gentle "talking" pulse while speaking, and expanding sonar rings as the speak cue.
-          Reduced-motion users get a still portrait. */}
+      {/* Audio-reactive avatar: the portrait's scale/bob/jaw-cue are driven every frame by the REAL voice
+          amplitude in the rAF loop (drawViz) — genuine reactivity, not a fixed keyframe. Only the expanding
+          sonar "speak" rings stay pure CSS (GPU transform + opacity). Reduced-motion → still portrait (the
+          rAF loop leaves the transform at identity) and no rings. */}
       <style>{`
-        @keyframes ag-breathe { 0%,100% { transform: scale(1) translateZ(0); } 50% { transform: scale(1.02) translateZ(0); } }
-        @keyframes ag-talk { 0%,100% { transform: scale(1) translateZ(0); } 50% { transform: scale(1.035) translateZ(0); } }
         @keyframes ag-ping { 0% { transform: scale(0.96) translateZ(0); opacity: 0.5; } 80% { opacity: 0; } 100% { transform: scale(1.42) translateZ(0); opacity: 0; } }
-        .ag-avatar-idle { animation: ag-breathe 4.2s ease-in-out infinite; will-change: transform; }
-        .ag-avatar-speaking { animation: ag-talk 0.9s ease-in-out infinite; will-change: transform; }
         .ag-ping { animation: ag-ping 1.6s cubic-bezier(0.2,0.6,0.35,1) infinite; will-change: transform, opacity; }
         .ag-ping-2 { animation-delay: 0.8s; }
-        @media (prefers-reduced-motion: reduce) { .ag-avatar-idle, .ag-avatar-speaking, .ag-ping { animation: none !important; } }
+        @media (prefers-reduced-motion: reduce) { .ag-ping { animation: none !important; } }
       `}</style>
 
       {/* FULL-SCREEN enrolled avatar (when the camera is off) — the user's own face fills the session,
@@ -384,14 +435,19 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={avatarPoster!} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl" />
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/25 to-black/85" />
-          <div className={`relative ${speaking ? 'ag-avatar-speaking' : 'ag-avatar-idle'}`}>
+          {/* The portrait is transformed every frame by the rAF loop (drawViz) from the REAL voice amplitude —
+              so its scale/bob/jaw-cue track the spoken audio. No CSS keyframes here (a CSS `animation` would
+              override the inline transform); the loop supplies both the idle breathing and the talking motion. */}
+          <div ref={avatarWrapRef} className="relative" style={{ transformOrigin: '50% 34%', willChange: 'transform' }}>
             {/* soft static halo (warmth) — brighter while speaking; opacity transition is cheap (no layout). */}
             <div className={`absolute -inset-4 rounded-full bg-app-accent/25 blur-2xl transition-opacity duration-500 ${speaking ? 'opacity-100' : 'opacity-40'}`} />
             {/* sonar speaking rings — expand + fade behind the portrait, staggered. GPU transform+opacity only. */}
             {speaking && (
               <>
-                <div className="ag-ping pointer-events-none absolute inset-0 rounded-full border-2 border-app-accent/50" />
-                <div className="ag-ping ag-ping-2 pointer-events-none absolute inset-0 rounded-full border-2 border-app-accent/40" />
+                {/* opacity-0 base so that under prefers-reduced-motion (animation disabled) the rings are
+                    invisible instead of hard, solid circles; the ag-ping keyframe drives opacity when it runs. */}
+                <div className="ag-ping pointer-events-none absolute inset-0 rounded-full border-2 border-app-accent/50 opacity-0" />
+                <div className="ag-ping ag-ping-2 pointer-events-none absolute inset-0 rounded-full border-2 border-app-accent/40 opacity-0" />
               </>
             )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
