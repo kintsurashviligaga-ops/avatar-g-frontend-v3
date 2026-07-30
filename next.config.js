@@ -52,6 +52,18 @@ const nextConfig = {
     minimumCacheTTL: 86400, // 24h
   },
   experimental: {
+    // BUILD MEMORY (second lever against the SIGKILL). Next forks one worker per CPU to render the 380
+    // static pages, and the container's memory limit counts EVERY worker — so peak scales with core count,
+    // not with any single process. Vercel's default builder is 4 vCPU / 8 GB; capping the pool at 2 halves
+    // that concurrent-heap footprint.
+    //
+    // HONEST LIMIT OF THE LOCAL EVIDENCE: this cap's benefit cannot be shown on macOS, where `time -l`
+    // reports only the PARENT's RSS. Measured here it even reads slightly HIGHER (4.02 → 4.28 GB) because
+    // fewer workers means more work in the parent, while the sum across the tree — the number the Linux
+    // container actually enforces — goes down. Build wall-clock was unchanged locally (72s → 74s). This is
+    // the standard documented mitigation for `next build` being SIGKILLed; revert `cpus` first if Vercel
+    // build times regress noticeably.
+    cpus: 2,
     optimizePackageImports: [
       'lucide-react',
       'framer-motion',
@@ -255,13 +267,31 @@ const nextConfig = {
   },
 };
 
+// BUILD MEMORY (fixes `next build` exiting with SIGKILL on Vercel).
+//
+// SIGKILL is the container OOM killer, not a compile error — which is why the build was green locally and
+// on `npm run vercel-build`, and why tsc/eslint/jest all passed. MEASURED on Node 20 with the same command:
+//   Sentry plugin inactive (no SENTRY_* env, i.e. every local build) → 3.45 GB peak RSS
+//   Sentry plugin active    (a DSN present, i.e. Vercel)             → 4.95 GB peak RSS  (+1.5 GB, +43%)
+// The app had been sitting just under the ceiling; a couple of added routes tipped it over.
+//
+// The waste is specific: `sentryEnabled` turns on when a DSN alone is set, but UPLOADING maps needs
+// SENTRY_AUTH_TOKEN. With a DSN and no token the plugin generated ~1.5 GB of source maps and then threw
+// them away. So source-map work is now gated on the token actually being present — error capture (which
+// needs only the DSN) is completely unaffected.
+const sentryHasToken = Boolean(process.env.SENTRY_AUTH_TOKEN);
+
 const sentryConfig = {
   // Upload source maps only when SENTRY_AUTH_TOKEN is set
   silent: true,
   org: process.env.SENTRY_ORG || 'myavatar-ge',
   project: process.env.SENTRY_PROJECT || 'avatar-g-frontend',
   authToken: process.env.SENTRY_AUTH_TOKEN,
-  widenClientFileUpload: true,
+  // No token → no upload is possible → don't spend the memory generating maps at all.
+  sourcemaps: { disable: !sentryHasToken },
+  // `widenClientFileUpload` broadens map generation to additional client chunks. Worth it only when the
+  // maps can actually be uploaded; otherwise it is pure peak-memory cost.
+  widenClientFileUpload: sentryHasToken,
   hideSourceMaps: true,
   // Moved under `webpack` per @sentry/nextjs 10.x deprecation (disableLogger →
   // webpack.treeshake.removeDebugLogging; automaticVercelMonitors → webpack.automaticVercelMonitors).
