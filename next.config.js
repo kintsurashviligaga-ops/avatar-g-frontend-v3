@@ -89,6 +89,9 @@ const nextConfig = {
       // extraction off the source, the timed dub mix, then the mux back onto the picture. Without this entry
       // the whole service ENOENTs on leg 1 in production while working perfectly on a dev machine.
       '/api/v2/dubbing/start': ['./node_modules/ffmpeg-static/**'],
+      // Montage: conform pass per source + the N-input stitch + the music mux, all ffmpeg-static. Captions
+      // rasterise through @resvg (drawtext is unavailable on Vercel — no libfreetype), so both binaries ride.
+      '/api/v2/montage/render': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],

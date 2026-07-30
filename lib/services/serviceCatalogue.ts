@@ -74,7 +74,11 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     tagline: { ka: 'აუდიო, სურათი, ვიდეო', en: 'Audio, image, video', ru: 'Аудио, фото, видео' },
   },
   {
-    id: 'montage', icon: '✂️', live: true, target: { kind: 'hash', hash: 'film' },
+    // A REAL PATH, not a hash. ServiceHub switches surface only on `hashchange`, and the sidebar
+    // navigates via router.push — which fires neither hashchange nor popstate for a same-path hash — so
+    // the old `hash: 'film'` target could not switch surface without a manual reload, AND landed on the
+    // Film Studio rather than anything that edits. The tile advertised a service that did not exist.
+    id: 'montage', icon: '✂️', live: true, target: { kind: 'path', path: '/montage' },
     name: { ka: 'მონტაჟი', en: 'Montage', ru: 'Монтаж' },
     tagline: { ka: 'ავტომატური მონტაჟი', en: 'Automatic editing', ru: 'Автомонтаж' },
   },

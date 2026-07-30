@@ -9,6 +9,12 @@
     "iad1"
   ],
   "functions": {
+    "app/api/v2/montage/render/route.ts": {
+      "maxDuration": 600
+    },
+    "app/api/v2/dubbing/start/route.ts": {
+      "maxDuration": 600
+    },
     "app/api/video/assemble/route.ts": {
       "maxDuration": 600
     },

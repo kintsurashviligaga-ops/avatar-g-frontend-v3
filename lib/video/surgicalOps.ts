@@ -37,6 +37,34 @@ async function host(buf: Buffer, tag: string, ext: 'mp4' | 'm4a', contentType: s
 const VIDEO_TAIL = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 
 /**
+ * VIDEO_TAIL, optionally VBV-capped.
+ *
+ * WHY: 'ultrafast' is bitrate-INEFFICIENT. Uncapped CRF20 output balloons far past the ~50MB Supabase
+ * project upload limit on anything long — the exact break already fixed for film masters in
+ * lib/orchestrator/ffmpeg-assembly.ts (MASTER_TARGET_MB = 42). Single-clip edits are short enough that it
+ * never bit them, but a montage stitches many clips into one long master and lands squarely on it.
+ *
+ * A cap only trims bitrate SPIKES — CRF quality is untouched wherever it already fits — and costs no extra
+ * memory. Passing null reproduces the previous arguments exactly.
+ */
+function videoTail(maxrateKbps?: number | null): string[] {
+  if (!maxrateKbps || !Number.isFinite(maxrateKbps) || maxrateKbps <= 0) return VIDEO_TAIL;
+  const k = Math.max(2_000, Math.round(maxrateKbps));
+  return [...VIDEO_TAIL, '-maxrate', `${k}k`, '-bufsize', `${k * 2}k`];
+}
+
+interface SequenceOpts {
+  scaleW?: number;
+  scaleH?: number;
+  /** VBV cap in kbps. Omit for the historical uncapped behaviour. */
+  maxrateKbps?: number | null;
+  /** Override the 300s exec timeout for callers with a longer route budget. */
+  timeoutMs?: number;
+  /** Host the finished master. Omit to use the shared base64 `host()` helper. */
+  sink?: (buf: Buffer) => Promise<string | null>;
+}
+
+/**
  * CROP to an exact pixel rectangle. Coordinates are clamped to even integers (yuv420p needs even
  * dimensions). Only the selected pixels survive — zero generative fill.
  */
@@ -334,7 +362,7 @@ interface SeqEntry { src: number; start: number; end: number; muted: boolean; tr
  * left-to-right: a 'none' boundary is a hard concat; 'crossfade'/'fade' is an `xfade` (+ `acrossfade`) — mixing
  * transition types in one graph. Finally crop → grade → fade. `scaleW/H` letterboxes mixed resolutions (multi-clip).
  */
-async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDraft, opts: { scaleW?: number; scaleH?: number }, tag: string): Promise<string | null> {
+async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDraft, opts: SequenceOpts, tag: string): Promise<string | null> {
   const b = bin();
   if (!b) return null;
   const entries = rawEntries.filter((e) => Number.isInteger(e.src) && e.src >= 0 && e.src < inputs.length && e.end > e.start);
@@ -442,12 +470,15 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   const args: string[] = ['-y'];
   inputs.forEach((u) => args.push('-i', u));
   overlayPaths.forEach((p) => args.push('-loop', '1', '-i', p)); // still overlay layers — loop so they persist over the segment
-  args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...VIDEO_TAIL);
+  args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...videoTail(opts.maxrateKbps));
 
   try {
     const out = join(dir, `${tag}.mp4`);
-    await exec(b, [...args, out], { maxBuffer: 1 << 26, timeout: 300_000 });
-    return await host(await readFile(out), tag, 'mp4', 'video/mp4');
+    await exec(b, [...args, out], { maxBuffer: 1 << 26, timeout: opts.timeoutMs ?? 300_000 });
+    const buf = await readFile(out);
+    // Default sink = the shared base64 host(), so every existing caller is byte-identical. A caller that
+    // expects a LARGE master passes its own sink to avoid the base64 inflation (see MONTAGE note below).
+    return opts.sink ? await opts.sink(buf) : await host(buf, tag, 'mp4', 'video/mp4');
   } catch (err) {
     console.warn(`[surgical/${tag}] failed:`, err instanceof Error ? err.message : err);
     return null;
@@ -469,9 +500,23 @@ export interface ConcatEntry { src: number; start: number; end: number; muted: b
  * letterbox-padded to a UNIFORM target resolution, with silent-clip audio fallback and per-boundary transitions
  * (hard cut / crossfade / fade-through-black). One ffmpeg pass, N inputs. (Crop is skipped for the multi path.)
  */
-export async function renderConcat(sources: string[], seq: ConcatEntry[], d: RenderDraft, targetW: number, targetH: number): Promise<string | null> {
+export async function renderConcat(
+  sources: string[],
+  seq: ConcatEntry[],
+  d: RenderDraft,
+  targetW: number,
+  targetH: number,
+  /** MONTAGE: pass a VBV cap, a longer timeout and a non-base64 sink for long masters. See SequenceOpts. */
+  encode?: Pick<SequenceOpts, 'maxrateKbps' | 'timeoutMs' | 'sink'>,
+): Promise<string | null> {
   const srcs = sources.filter((s) => typeof s === 'string' && s.length > 0);
-  return runSequence(srcs, seq, { ...d, crop: null }, { scaleW: targetW > 0 ? targetW : 1280, scaleH: targetH > 0 ? targetH : 720 }, 'concat');
+  return runSequence(
+    srcs,
+    seq,
+    { ...d, crop: null },
+    { scaleW: targetW > 0 ? targetW : 1280, scaleH: targetH > 0 ? targetH : 720, ...(encode ?? {}) },
+    'concat',
+  );
 }
 
 /** Render a photo draft in one pass: crop → grade → single output frame (PNG). */
