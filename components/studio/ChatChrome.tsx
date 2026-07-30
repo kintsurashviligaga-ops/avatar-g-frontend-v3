@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, LayoutGrid, Star, Sparkles, CreditCard,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -41,6 +41,8 @@ let liveAvatarCooldownUntil = 0;
 const LIVEAVATAR_COOLDOWN_MS = 5 * 60 * 1000;
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 import { isEnabledByDefault } from '@/lib/env/flag';
+import PersonaPicker, { loadSelectedPersonaId } from './PersonaPicker';
+import { SERVICE_CATALOGUE, serviceHref, serviceName } from '@/lib/services/serviceCatalogue';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
@@ -61,21 +63,25 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY: Record<Lang, {
   menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
+  favorites: string; persona: string; billing: string; soon: string;
   account: string; accountGuest: string; library: string; login: string; signup: string;
   signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string; deleteAccount: string;
 }> = {
   ka: {
     menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები', language: 'ენა',
+    favorites: 'რჩეულები', persona: 'პერსონა', billing: 'ბილინგი', soon: 'მალე',
     account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია',
     signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება', deleteAccount: 'ანგარიშის წაშლა',
   },
   en: {
     menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services', language: 'Language',
+    favorites: 'Favorites', persona: 'Persona', billing: 'Billing', soon: 'Soon',
     account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Sign in', signup: 'Sign up',
     signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support', deleteAccount: 'Delete account',
   },
   ru: {
     menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы', language: 'Язык',
+    favorites: 'Избранное', persona: 'Персона', billing: 'Биллинг', soon: 'Скоро',
     account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация',
     signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка', deleteAccount: 'Удалить аккаунт',
   },
@@ -372,6 +378,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
   const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Service hub is collapsed by default: chat history stays the sidebar's centre of gravity.
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const [personaOpen, setPersonaOpen] = useState(false);
+  // Only used for the "a persona is active" dot — read once on mount (localStorage is not reactive).
+  const [activePersonaId, setActivePersonaId] = useState('');
+  useEffect(() => { setActivePersonaId(loadSelectedPersonaId()); }, []);
   // Desktop/iPad (>=md) COLLAPSE. On mobile the drawer is toggled by `sidebarOpen`; at >=md the sidebar was
   // permanently pinned with no way to hide it. This lets desktop/iPad users collapse it (persisted) — when
   // collapsed the aside is md:hidden and the top bar shows a re-open control + the brand so nothing is lost.
@@ -705,16 +717,60 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           )}
         </div>
 
-        {/* Bottom — Library + Settings */}
+        {/* Bottom — Services · Library · Favorites · Persona · Billing · Settings */}
         <div className="space-y-0.5 border-t border-app-border/10 px-2 py-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
+          {/* SERVICE HUB — the ten official services from the single catalogue. Collapsed by default so the
+              chat history stays the sidebar's centre of gravity, as it is in the app this mirrors. */}
+          <button type="button" onClick={() => setServicesOpen((v) => !v)} className={sideRow} aria-expanded={servicesOpen}>
+            <LayoutGrid className="h-[17px] w-[17px] text-app-muted" /> {t.services}
+            <ChevronDown className={`ml-auto h-[15px] w-[15px] text-app-muted transition-transform ${servicesOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {servicesOpen && (
+            <div className="mb-1 space-y-0.5 pl-2">
+              {SERVICE_CATALOGUE.map((svc) => (
+                <button
+                  key={svc.id}
+                  type="button"
+                  disabled={!svc.live}
+                  onClick={() => { setSidebarOpen(false); router.push(serviceHref(svc, locale)); }}
+                  className={`${sideRow} ${svc.live ? '' : 'cursor-not-allowed opacity-45'}`}
+                  title={svc.live ? undefined : t.soon}
+                >
+                  <span className="w-[17px] shrink-0 text-center text-[14px] leading-none">{svc.icon}</span>
+                  <span className="truncate">{serviceName(svc, locale)}</span>
+                  {/* An unbuilt service says so rather than linking to a dead surface. */}
+                  {!svc.live && <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wider text-app-muted">{t.soon}</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
+          </button>
+          {/* Favorites already exist as a TAB inside the library; this deep-links straight to it rather
+              than duplicating the starred-items logic in a second place. */}
+          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library?tab=favorites`); }} className={sideRow}>
+            <Star className="h-[17px] w-[17px] text-app-muted" /> {t.favorites}
+          </button>
+          <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
+            <Sparkles className="h-[17px] w-[17px] text-app-muted" /> {t.persona}
+            {activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
+          </button>
+          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/account/billing`); }} className={sideRow}>
+            <CreditCard className="h-[17px] w-[17px] text-app-muted" /> {t.billing}
           </button>
           <button type="button" onClick={() => { setMenuOpen((v) => !v); setSidebarOpen(false); }} className={sideRow}>
             <Settings className="h-[17px] w-[17px] text-app-muted" /> {t.settings}
           </button>
         </div>
       </aside>
+
+      <PersonaPicker
+        locale={locale}
+        open={personaOpen}
+        onClose={() => setPersonaOpen(false)}
+        onSelect={(p) => setActivePersonaId(p?.id ?? '')}
+      />
 
       {/* ── Main column (header + chat) ──────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">

@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Film, ImageIcon, Music2, Star, Download, Trash2, Play, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -99,6 +100,15 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const t = COPY[lang];
 
   const [tab, setTab] = useState<Tab>('video');
+  // The sidebar's Favorites row deep-links here with ?tab=favorites. Read once on mount: without this the
+  // row would land on the Videos tab and quietly do nothing, which is worse than not offering the row.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const requested = searchParams?.get('tab');
+    if (requested === 'favorites' || requested === 'video' || requested === 'image' || requested === 'music') {
+      setTab(requested);
+    }
+  }, [searchParams]);
   const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
