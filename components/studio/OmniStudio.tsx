@@ -54,6 +54,7 @@ import { createSession, saveMessage, getMessages, getConversations } from '@/lib
 import { computeCloudAdditions } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
+import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 import { toast } from 'sonner';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -3861,9 +3862,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     });
     try {
       armWatchdog(); // covers connection setup + first-token latency
+      // PERSONA — read at send time, not render time, so a change in the picker applies to the very next
+      // turn without this component re-rendering. A BUILT-IN travels as an id the server already knows;
+      // a CUSTOM one lives only in this browser's localStorage, so the whole object has to travel and the
+      // server re-validates it (the injection sanitizer is a security boundary, not a formality).
+      const personaId = loadSelectedPersonaId();
+      const customPersona = personaId.startsWith('custom:')
+        ? loadCustomPersonas().find((p) => p.id === personaId)
+        : undefined;
       const res = await fetch('/api/chat/gemini', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload, ...(chatLang !== 'auto' ? { language: chatLang } : {}), ...(chatTier === 'pro' ? { tier: 'pro' } : {}) }), credentials: 'include', signal: ac.signal,
+        body: JSON.stringify({
+          messages: payload,
+          ...(chatLang !== 'auto' ? { language: chatLang } : {}),
+          ...(chatTier === 'pro' ? { tier: 'pro' } : {}),
+          ...(personaId ? { personaId } : {}),
+          ...(customPersona ? { customPersona } : {}),
+        }), credentials: 'include', signal: ac.signal,
       });
       if (!res.ok || !res.body) throw new Error('stream failed');
       const reader = res.body.getReader();
