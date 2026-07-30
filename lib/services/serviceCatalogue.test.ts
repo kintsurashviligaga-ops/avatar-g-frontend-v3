@@ -32,12 +32,12 @@ describe('the ten official services', () => {
     }
   });
 
-  it('marks the three unbuilt services as not-live rather than linking to a dead surface', () => {
-    // Honesty in the UI: dubbing's route answers 501, and 3D/slides do not exist at all. A tile that
-    // silently links there is worse than one that says "coming soon".
+  it('marks the two unbuilt services as not-live rather than linking to a dead surface', () => {
+    // Honesty in the UI: 3D and slides have no surface at all. A tile that silently links there is worse
+    // than one that says "coming soon". Dubbing left this list when /dubbing and its seven legs landed.
     const notLive = SERVICE_CATALOGUE.filter((s) => !s.live).map((s) => s.id).sort();
-    expect(notLive).toEqual(['dubbing', 'model3d', 'presentation']);
-    expect(liveServices()).toHaveLength(7);
+    expect(notLive).toEqual(['model3d', 'presentation']);
+    expect(liveServices()).toHaveLength(8);
   });
 });
 

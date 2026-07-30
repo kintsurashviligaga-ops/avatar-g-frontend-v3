@@ -85,6 +85,10 @@ const nextConfig = {
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // AI Audio Studio: pitch/speed/trim/fade run through ffmpeg-static (lib/audio/audioOps).
       '/api/ai/edit-audio': ['./node_modules/ffmpeg-static/**'],
+      // Dubbing Studio: THREE ffmpeg passes in ONE request (lib/services/dubbing/dubbingFfmpeg) — audio
+      // extraction off the source, the timed dub mix, then the mux back onto the picture. Without this entry
+      // the whole service ENOENTs on leg 1 in production while working perfectly on a dev machine.
+      '/api/v2/dubbing/start': ['./node_modules/ffmpeg-static/**'],
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],

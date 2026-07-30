@@ -79,9 +79,10 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     tagline: { ka: 'ავტომატური მონტაჟი', en: 'Automatic editing', ru: 'Автомонтаж' },
   },
   {
-    // Backend landed (validation + pricing + budget gate); the provider legs are not wired, so the tile is
-    // shown as not-yet-live rather than linking to a 501.
-    id: 'dubbing', icon: '🎙', live: false, target: { kind: 'path', path: '/dubbing' },
+    // Live: all six voicing legs are wired (ffmpeg extract → Scribe → Gemini translate → TTS → fit → mix)
+    // behind /dubbing. Lip-sync (leg 7) is still skipped — the route reports that per job, it does not
+    // silently claim to have run.
+    id: 'dubbing', icon: '🎙', live: true, target: { kind: 'path', path: '/dubbing' },
     name: { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' },
     tagline: { ka: 'ხმის კლონი და თარგმანი', en: 'Voice clone and translation', ru: 'Клон голоса и перевод' },
   },
