@@ -9,6 +9,7 @@ import { execute } from '@/lib/ai/chatEngine';
 import { getAllAgents } from '@/lib/agents/agentRegistry';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -192,6 +193,14 @@ export async function POST(req: NextRequest) {
       { role: 'user' as const, content: sanitizedMessage },
     ];
 
+    // BUDGET GATE (§2.1.1). This is the main chat surface; `execute()` fans out to the provider chain, so
+    // the guard sits in front of it. A refusal is a normal 200 response — the shell renders it as an
+    // assistant turn rather than an error state.
+    const budgetText = messageHistory.map((m: { content?: unknown }) => (typeof m.content === 'string' ? m.content : '')).join(' ');
+    if (!(await chatBudgetAllows(budgetText))) {
+      return apiSuccess({ response: BUDGET_EXHAUSTED_MESSAGE, provider: 'budget', model: 'none', agentId: resolvedAgentId });
+    }
+
     // Execute through central chatEngine
     const result = await execute({
       agentId: resolvedAgentId,
@@ -205,6 +214,8 @@ export async function POST(req: NextRequest) {
         content: file.content || '',
       })),
     });
+
+    void bookChatUsage(budgetText, (result.text || '').length, result.model || 'chat');
 
     const artifacts = buildDemoArtifacts(context, sanitizedMessage);
 

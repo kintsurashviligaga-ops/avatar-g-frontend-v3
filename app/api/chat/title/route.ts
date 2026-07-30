@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { generateWithGemini } from '@/lib/gemini/client';
+import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +62,10 @@ export async function POST(req: NextRequest) {
     if (!process.env.GEMINI_API_KEY) return empty;
 
     const { prompt, locale } = parsed.data;
+    // BUDGET GATE (§2.1.1). Titles are tiny but run on EVERY conversation, so they are metered too.
+    if (!(await chatBudgetAllows(JSON.stringify(body ?? {})))) {
+      return NextResponse.json({ title: null, reason: 'budget_exhausted' }, { status: 200 });
+    }
     const gemini = await generateWithGemini({
       prompt: prompt.slice(0, 2000),
       systemPrompt: buildSystemPrompt(locale),

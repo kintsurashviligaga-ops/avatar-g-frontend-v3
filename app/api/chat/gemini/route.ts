@@ -11,52 +11,7 @@ import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUse
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { detectReplyLocale } from '@/lib/chat/replyLocale';
-
-/** Localized refusal shown in-stream when the platform's API budget is exhausted. */
-const BUDGET_EXHAUSTED_MESSAGE =
-  'ბოდიში — პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადეთ ცოტა ხანში.\n\n' +
-  "Sorry — the platform's AI budget for this period is exhausted. Please try again later.";
-
-/**
- * Budget pre-flight for one chat turn (Master Task §2.1.1). Chat is token-metered, so the estimate is built
- * from the OUTBOUND message size plus a typical reply allowance; `recordUsage` books it after the turn.
- * Fails OPEN — a guard fault must never make chat unavailable.
- */
-async function chatWithinBudget(messages: { content?: unknown }[]): Promise<{ allowed: boolean }> {
-  try {
-    const { canProceed } = await import('@/lib/services/billing/BillingGuard');
-    const { estimateCost, approximateTokens } = await import('@/lib/services/billing/costModel');
-    const text = messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' ');
-    const inputTokens = approximateTokens(text);
-    const decision = await canProceed(
-      estimateCost({ service: 'chat', model: 'gemini-2.5-flash', inputTokens, outputTokens: 800 }),
-    );
-    return { allowed: decision.allowed };
-  } catch {
-    return { allowed: true };
-  }
-}
-
-/**
- * Book a completed chat turn. Best-effort — the reply has already been streamed.
- * `outputChars` is the streamed CHARACTER count (the stream loop counts chars, it does not retain the
- * text); tokens are derived from it with the same ~4 chars/token rule the estimator uses.
- */
-async function recordChatUsage(inputText: string, outputChars: number): Promise<void> {
-  try {
-    const { recordUsage } = await import('@/lib/services/billing/BillingGuard');
-    const { estimateCost, approximateTokens } = await import('@/lib/services/billing/costModel');
-    const outputTokens = Math.ceil(Math.max(0, Number(outputChars) || 0) / 4);
-    await recordUsage(estimateCost({
-      service: 'chat',
-      model: 'gemini-2.5-flash',
-      inputTokens: approximateTokens(inputText),
-      outputTokens,
-    }));
-  } catch {
-    /* bookkeeping only */
-  }
-}
+import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 
 
 export const dynamic = 'force-dynamic';
@@ -386,8 +341,8 @@ export async function POST(req: NextRequest) {
           // $45 chat slice of the budget), so it passes the same guard as image/video/music. The check
           // runs INSIDE the stream so a refusal is delivered as a normal assistant message rather than
           // an HTTP error the chat shell would render as a dead turn. Fails OPEN on a guard fault.
-          const chatBudget = await chatWithinBudget(modelMessages);
-          if (!chatBudget.allowed) {
+          const budgetText = modelMessages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' ');
+          if (!(await chatBudgetAllows(budgetText))) {
             sendMeta({ provider: 'budget', model: 'none' });
             send(BUDGET_EXHAUSTED_MESSAGE);
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -448,10 +403,7 @@ export async function POST(req: NextRequest) {
               }
               geminiOk = true;
               // Book the turn against the platform budget (best-effort, after the reply is delivered).
-              void recordChatUsage(
-                modelMessages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' '),
-                streamed,
-              );
+              void bookChatUsage(budgetText, streamed, modelName);
               sendMeta({ provider: 'gemini', model: modelName });
               break;
             } catch (geminiErr) {

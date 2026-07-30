@@ -14,6 +14,7 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { reportError } from '@/lib/observability/report-error';
 import { runWithReflection, type Critique } from '@/lib/orchestrator/reflection';
+import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -78,6 +79,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // BUDGET GATE (§2.1.1). This route answers with an HTML document, so a refusal is rendered in the same
+    // shape as its existing "service unavailable" page — throwing here would hit the outer catch and answer
+    // 400 "Invalid request", which tells the user nothing true.
+    if (!(await chatBudgetAllows(`${SYSTEM_PROMPT} ${prompt}`, 'claude-haiku-4-5'))) {
+      const page = `<!doctype html><html><body style="background:#000;color:#fff;font:14px system-ui;padding:24px"><h2>⚠️ ${BUDGET_EXHAUSTED_MESSAGE.split('\n')[0]}</h2></body></html>`;
+      return new Response(page, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+
     const anthropic = new Anthropic({ apiKey });
     const encoder = new TextEncoder();
 
@@ -96,6 +105,7 @@ export async function POST(req: NextRequest) {
         system,
         messages: [{ role: 'user', content: prompt }],
       });
+      void bookChatUsage(`${system} ${prompt}`, msg.usage ? msg.usage.output_tokens * 4 : 0, 'claude-haiku-4-5');
       const raw = msg.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)

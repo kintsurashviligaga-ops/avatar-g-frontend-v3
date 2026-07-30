@@ -20,6 +20,7 @@ import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
 import { deepseekChat, deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { reportReliability } from '@/lib/observability/reliability';
+import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 
 export interface LlmTextOpts {
   user: string;
@@ -76,12 +77,24 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
   const chain: Array<[string, (opts: LlmTextOpts) => Promise<string | null>]> = o.geminiFirst
     ? [['gemini', viaGemini], ['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['anthropic', viaAnthropic]]
     : [['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['gemini', viaGemini], ['anthropic', viaAnthropic]];
+  // BUDGET GATE (Master Task §2.1.1). This helper is the shared brain behind 14 internal call sites
+  // (storyboard, prompt agent, scene writer, …), so guarding it here covers all of them at once instead
+  // of each remembering. Refusal returns null — the SAME shape every provider miss already returns — so
+  // every caller's existing deterministic fallback handles it with no new error path.
+  const inputForEstimate = `${o.system ?? ''} ${o.user ?? ''}`;
+  if (!(await chatBudgetAllows(inputForEstimate))) {
+    // eslint-disable-next-line no-console
+    console.warn('[llmText] refused by the platform budget guard → caller falls back');
+    return null;
+  }
+
   for (let i = 0; i < chain.length; i++) {
     const entry = chain[i];
     if (!entry) continue;
     const [label, provider] = entry;
     const t = await provider(o);
     if (t) {
+      void bookChatUsage(inputForEstimate, t.length, label);
       // WS4 reliability: which brain served + how deep the failover went (0 = primary). degraded when a
       // non-primary provider had to cover for an outage/rate-limit on the leads.
       reportReliability({ surface: 'llm.text', providerServed: label, fallbackDepth: i, degraded: i > 0 });

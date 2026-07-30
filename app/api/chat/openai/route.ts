@@ -3,6 +3,7 @@ import { streamText } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { NextRequest } from 'next/server';
+import { chatBudgetAllows, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -64,6 +65,16 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as { messages: IncomingMessage[] };
     const { messages = [] } = body;
     const openaiMessages = toOpenAIMessages(messages);
+
+    // BUDGET GATE (§2.1.1). A refusal is returned as a normal 200 text stream, not an HTTP error, so the
+    // chat shell renders it as an assistant turn instead of a dead request.
+    const budgetText = messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' ');
+    if (!(await chatBudgetAllows(budgetText, 'gpt'))) {
+      return new Response(BUDGET_EXHAUSTED_MESSAGE, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
 
     const client = new OpenAI({ apiKey, timeout: 30000 });
 

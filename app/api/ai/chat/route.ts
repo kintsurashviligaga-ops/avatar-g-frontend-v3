@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { compose } from '@/lib/api/compose';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { chatBudgetAllows, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 
 /**
  * POST /api/ai/chat
@@ -23,6 +24,10 @@ export const POST = compose()
       return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
     }
 
+    // BUDGET GATE (§2.1.1) — this route calls OpenAI directly, bypassing every other guard.
+    if (!(await chatBudgetAllows(JSON.stringify(body ?? {}), 'gpt'))) {
+      return NextResponse.json({ error: BUDGET_EXHAUSTED_MESSAGE }, { status: 200 });
+    }
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {

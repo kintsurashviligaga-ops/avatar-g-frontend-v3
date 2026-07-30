@@ -16,6 +16,7 @@ import { detectIntent } from '@/lib/chat/intentDetector';
 import { orchestrate, pollOrchestrationTask } from '@/lib/chat/providerRouter';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { chatBudgetAllows, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 
 // Same rotation as /api/chat (verified via /v1beta/models). 1.5 family is no
 // longer exposed on this API key; lite variants tried first for higher quota.
@@ -87,6 +88,15 @@ export async function POST(req: NextRequest) {
       const agentId = parsedData.agentId;
       const sessionId = parsedData.sessionId;
       const messages = parsedData.messages;
+
+      // BUDGET GATE (§2.1.1) — refuse before any provider is touched.
+      const budgetText = messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' ');
+      if (!(await chatBudgetAllows(budgetText))) {
+        return new Response(BUDGET_EXHAUSTED_MESSAGE, {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
 
       // Sanitize last user message
       const sanitizedMessages = messages.map((m, i) =>
