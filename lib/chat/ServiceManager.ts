@@ -1,4 +1,7 @@
 import { createHash } from 'crypto';
+import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
+import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 import { z } from 'zod';
 
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
@@ -230,13 +233,59 @@ const TERMINAL_LTX_STATUS = new Set(['completed', 'succeeded', 'success', 'faile
 const FAILED_LTX_STATUS = new Set(['failed', 'error', 'canceled']);
 
 export class ServiceManager {
+  /**
+   * Master Task §2.1.1 — EVERY provider call goes through the budget guard, and this is the chokepoint for
+   * image, video and avatar (all three resolve here). Guarding at the entry point rather than at each of the
+   * ~8 provider methods below is deliberate: a new engine added to the cascade tomorrow is guarded by
+   * construction instead of by remembering.
+   *
+   * A refusal surfaces as a normal failed response, not a throw — the callers here are render pipelines that
+   * already know how to report "this leg didn't run", and a raised exception would read to them as a crash
+   * and trigger the retry/failover machinery against a budget that will refuse the retry too.
+   */
   async execute(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const operation = this.resolveOperation(request);
-    if (operation === 'text-to-image') {
-      return this.runTextToImage(request);
-    }
+    const service: BillingServiceType = operation === 'text-to-image' ? 'image'
+      : request.intent === 'avatar_generation' ? 'avatar'
+      : 'video';
+    // Seconds for video (the guard prices video per second), one artefact otherwise.
+    const units = service === 'video'
+      ? Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec'])) || 8
+      : 1;
 
-    return this.runVideoAvatar(request);
+    try {
+      return await guardedCall(
+        {
+          service,
+          model: request.videoModel || (service === 'image' ? 'imagen-4' : 'veo-3.1'),
+          units,
+          promptSummary: request.userPrompt,
+        },
+        async () => (operation === 'text-to-image' ? this.runTextToImage(request) : this.runVideoAvatar(request)),
+      );
+    } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        // eslint-disable-next-line no-console
+        console.warn(`[ServiceManager] ${service} refused by the budget guard (${err.reason})`);
+        return {
+          success: false,
+          provider: 'replicate',
+          operation,
+          responseType: operation === 'text-to-image' ? 'image' : 'video',
+          message: 'The platform API budget for this period is exhausted. Please try again later.',
+          predictionStatus: 'failed',
+          metadata: {
+            provider: 'replicate' as const,
+            operation,
+            sessionId: request.sessionId,
+            promptHash: this.hashPrompt(request.userPrompt),
+            budgetExceeded: true,
+            budgetReason: err.reason,
+          },
+        };
+      }
+      throw err;
+    }
   }
 
   async poll(taskRefOrPredictionId: string, sessionId?: string): Promise<ServiceManagerResponse> {
@@ -293,6 +342,12 @@ export class ServiceManager {
   }
 
   private async runTextToImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+    // IMAGEN 4 — the Master Task's specified image engine (§1.6.2), tried FIRST. On any miss (no key, no
+    // access, quota, timeout) it returns null and the proven FLUX → NanoBanana cascade below runs
+    // byte-identical, so adding a primary engine cannot break image generation.
+    const imagen = await this.tryImagenImage(request);
+    if (imagen) return imagen;
+
     const provider = this.resolveImageProvider(request.selectedOptions);
     if (provider === 'replicate') {
       // P90 — FLUX 1.1 Pro primary, NanoBanana fail-open: a FLUX outage/quota still yields a real
@@ -308,6 +363,74 @@ export class ServiceManager {
     }
 
     return this.runNanoBananaImage(request);
+  }
+
+  /**
+   * IMAGEN 4 (§1.6.2 / §3.2.2). Imagen returns base64 bytes inline — no operation to poll — so the image is
+   * hosted here and the caller receives a normal signed https URL, identical in shape to the other engines.
+   * Returns null on ANY miss so `runTextToImage` falls through to FLUX → NanoBanana. NEVER throws.
+   */
+  private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
+    if (!hasGeminiImagenProvider()) return null;
+    const opts = request.selectedOptions || {};
+    // An explicit engine pick opts OUT of Imagen, mirroring the Kling/Hailuo opt-out on the video side.
+    const picked = (this.getOption(opts, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();
+    if (picked === 'nanobanana' || picked === 'replicate' || picked === 'flux') return null;
+
+    const count = Number(this.getOption(opts, ['numberOfImages', 'imageCount', 'n'])) || 1;
+    const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
+    const aspect = this.normalizeAspectRatio(this.getOption(opts, ['aspect', 'aspectRatio', 'ratio'])) || undefined;
+
+    try {
+      const images = await generateImagenImages({
+        prompt: request.userPrompt,
+        ...(aspect ? { aspectRatio: aspect } : {}),
+        numberOfImages: count,
+        ...(negativePrompt ? { negativePrompt } : {}),
+      });
+      if (!images?.length) return null;
+
+      const stamp = Date.now();
+      const hosted = await Promise.all(
+        images.map((img, i) => {
+          const ext = img.mimeType.includes('jpeg') || img.mimeType.includes('jpg') ? 'jpg' : 'png';
+          return uploadBufferAndSign('renders', `imagen/${request.sessionId}/${stamp}-${i}.${ext}`, img.buffer, img.mimeType, 604_800)
+            .catch(() => null);
+        }),
+      );
+      const urls = hosted.filter((u): u is string => typeof u === 'string' && !!u);
+      // Generated but undeliverable (storage miss) → fall through rather than return a broken success.
+      if (!urls.length) return null;
+
+      const model = geminiImagenModel();
+      // eslint-disable-next-line no-console
+      console.log(`[imagen] ${model} produced ${urls.length}/${images.length} hosted image(s)`);
+      return {
+        success: true,
+        provider: 'nanobanana', // surface provider union has no 'gemini' member; the real engine is in metadata
+        operation: 'text-to-image',
+        responseType: 'image',
+        message: 'Image generation completed successfully.',
+        assetUrl: urls[0] as string,
+        assetType: 'image',
+        predictionStatus: 'succeeded',
+        metadata: {
+          provider: 'nanobanana' as const,
+          imageProvider: 'gemini-imagen',
+          model,
+          operation: 'text-to-image',
+          outputType: 'image',
+          sessionId: request.sessionId,
+          promptHash: this.hashPrompt(request.userPrompt),
+          confidence: request.confidence,
+          images: urls,
+        },
+      };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[imagen] threw → falling through to FLUX/NanoBanana:', err instanceof Error ? err.message : err);
+      return null;
+    }
   }
 
   private async runVideoAvatar(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {

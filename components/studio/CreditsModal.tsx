@@ -83,26 +83,36 @@ const COPY: Record<Lang, {
 // PHASE 39 (Master Contract V1/V2) — localized tier NAMES + the exact premium USD feature bullets per tier.
 // The Georgian copy is authoritative (the directive's launch spec); en/ru are faithful translations.
 const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
-  starter: { ka: 'სტარტერი', en: 'Starter', ru: 'Стартер' },
-  pro_creator: { ka: 'პრო კრეატორი', en: 'Pro Creator', ru: 'Про-креатор' },
-  studio_annual: { ka: 'სტუდიური წლიური', en: 'Studio Annual', ru: 'Студийный годовой' },
+  free: { ka: 'უფასო', en: 'Free', ru: 'Бесплатно' },
+  basic: { ka: 'საბაზისო', en: 'Basic', ru: 'Базовый' },
+  pro: { ka: 'პრო', en: 'Pro', ru: 'Про' },
+  business: { ka: 'ბიზნესი', en: 'Business', ru: 'Бизнес' },
 };
 
+// Bullets deliberately carry NO credit total: `creditsIncluded` is derived from the ceilings in
+// pricingConfig, so a hardcoded "150 credits" here would silently drift the moment a media cost changes.
+// Engine names are Gemini-era — the old copy advertised "Runway Gen-4" to users long after Veo became the
+// primary video engine.
 const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
-  starter: {
-    ka: ['4 უმაღლესი ხარისხის ვიდეო კლიპი (Runway Gen-4)', '30 კინემატოგრაფიული სთორიბორდ სურათი', '10 მუსიკალური ტრეკი / ხმის სინთეზი', '150 კრედიტი ბალანსზე'],
-    en: ['4 premium video clips (Runway Gen-4)', '30 cinematic storyboard images', '10 music tracks / voice synthesis', '150 credits on balance'],
-    ru: ['4 видеоклипа высшего качества (Runway Gen-4)', '30 кинематографичных storyboard-изображений', '10 музыкальных треков / синтез голоса', '150 кредитов на баланс'],
+  free: {
+    ka: ['6 სურათი თვეში (Imagen 4)', 'AI ჩატი (Gemini)', 'ვიდეო და მუსიკა — ფასიან გეგმებზე'],
+    en: ['6 images a month (Imagen 4)', 'AI chat (Gemini)', 'Video & music on paid plans'],
+    ru: ['6 изображений в месяц (Imagen 4)', 'AI-чат (Gemini)', 'Видео и музыка — на платных планах'],
   },
-  pro_creator: {
-    ka: ['35 პროფესიონალური ვიდეო კლიპი', '200 უზადო სთორიბორდ სურათი', '80 მუსიკალური ტრეკი / ხმის სინთეზი', '1200 კრედიტი ბალანსზე', 'სრული ავტონომიური წვდომა Agent G-ზე'],
-    en: ['35 professional video clips', '200 flawless storyboard images', '80 music tracks / voice synthesis', '1200 credits on balance', 'Full autonomous access to Agent G'],
-    ru: ['35 профессиональных видеоклипов', '200 безупречных storyboard-изображений', '80 музыкальных треков / синтез голоса', '1200 кредитов на баланс', 'Полный автономный доступ к Agent G'],
+  basic: {
+    ka: ['4 ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)', '40 კინემატოგრაფიული სურათი (Imagen 4)', '10 მუსიკალური ტრეკი (Lyria 3)', 'ხმის სინთეზი ქართულად'],
+    en: ['4 video clips up to 8s (Veo 3.1, native audio)', '40 cinematic images (Imagen 4)', '10 music tracks (Lyria 3)', 'Georgian voice synthesis'],
+    ru: ['4 видеоклипа до 8с (Veo 3.1, нативное аудио)', '40 кинематографичных изображений (Imagen 4)', '10 музыкальных треков (Lyria 3)', 'Синтез голоса на грузинском'],
   },
-  studio_annual: {
-    ka: ['120 ულტრა-პრემიუმ ვიდეო კლიპი', '800 დეტალური სთორიბორდ სურათი', '300 მუსიკალური ტრეკი / ხმის სინთეზი', '4500 კრედიტი ბალანსზე', 'ულიმიტო სწრაფი რიგი (Priority Render)', 'VIP მხარდაჭერა და ადრეული ფუნქციები'],
-    en: ['120 ultra-premium video clips', '800 detailed storyboard images', '300 music tracks / voice synthesis', '4500 credits on balance', 'Unlimited priority render queue', 'VIP support & early features'],
-    ru: ['120 ультра-премиум видеоклипов', '800 детальных storyboard-изображений', '300 музыкальных треков / синтез голоса', '4500 кредитов на баланс', 'Безлимитная приоритетная очередь', 'VIP-поддержка и ранние функции'],
+  pro: {
+    ka: ['8 ვიდეო კლიპი (Veo 3.1)', '100 უზადო სურათი (Imagen 4)', '25 მუსიკალური ტრეკი (Lyria 3)', 'დუბლაჟი და ავატარები', 'სრული წვდომა Agent G-ზე'],
+    en: ['8 video clips (Veo 3.1)', '100 flawless images (Imagen 4)', '25 music tracks (Lyria 3)', 'Dubbing & avatars', 'Full access to Agent G'],
+    ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений (Imagen 4)', '25 музыкальных треков (Lyria 3)', 'Дубляж и аватары', 'Полный доступ к Agent G'],
+  },
+  business: {
+    ka: ['16 ვიდეო კლიპი (Veo 3.1)', '200 დეტალური სურათი (Imagen 4)', '50 მუსიკალური ტრეკი (Lyria 3)', 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
+    en: ['16 video clips (Veo 3.1)', '200 detailed images (Imagen 4)', '50 music tracks (Lyria 3)', 'Shared team libraries', 'Priority render queue', 'VIP support'],
+    ru: ['16 видеоклипов (Veo 3.1)', '200 детальных изображений (Imagen 4)', '50 музыкальных треков (Lyria 3)', 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
   },
 };
 
@@ -233,7 +243,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                 plans →" redirect (deleted), no external testing-domain leak. The Pro tier is elevated. */}
             <div className="mt-4 space-y-3">
               {PACKAGES.map((p) => {
-                const highlight = p.id === 'pro_creator';
+                const highlight = p.id === 'pro';
                 const period = p.billing === 'annual'
                   ? (lang === 'en' ? '/ yr' : lang === 'ru' ? '/ год' : '/ წელიწადში')
                   : (lang === 'en' ? '/ mo' : lang === 'ru' ? '/ мес' : '/ თვეში');

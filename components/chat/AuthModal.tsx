@@ -45,6 +45,10 @@ type Strings = {
   errInvalidEmail: string; errInvalidCredentials: string; errEmailInUse: string;
   errRateLimited: string; errWeakPassword: string; errEmailNotConfirmed: string;
   errNetwork: string; errGeneric: string;
+  // Email OTP verification (standard sign-up must be verified before access is granted).
+  otpTitle: string; otpSubtitle: string; otpPlaceholder: string; otpVerifyCta: string;
+  otpResend: string; otpResent: string; otpChangeEmail: string;
+  errOtpInvalid: string; errOtpExpired: string; errOtpRequired: string;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -76,6 +80,8 @@ function humanizeAuthError(err: unknown, t: Strings): string {
   if (/rate limit|too many|429|over_email_send_rate/.test(m)) return t.errRateLimited;
   if (/password.*(short|at least|weak|6|minimum)|weak password/.test(m)) return t.errWeakPassword;
   if (/email not confirmed|confirm your email|not confirmed/.test(m)) return t.errEmailNotConfirmed;
+  if (/token has expired|otp.*expired|expired.*otp|code.*expired/.test(m)) return t.errOtpExpired;
+  if (/invalid.*(otp|token|code)|(otp|token|code).*invalid|incorrect.*code/.test(m)) return t.errOtpInvalid;
   if (/network|failed to fetch|fetch failed|timeout|offline/.test(m)) return t.errNetwork;
   // Short, human-readable provider messages are safe to pass through.
   return raw.length <= 120 ? raw : t.errGeneric;
@@ -100,6 +106,16 @@ const COPY: Record<Lang, Strings> = {
     errEmailNotConfirmed: 'ჯერ დაადასტურე ელ.ფოსტა მიღებული ბმულით.',
     errNetwork: 'ქსელის შეცდომა. შეამოწმე კავშირი და სცადე ხელახლა.',
     errGeneric: 'ვერ მოხერხდა ავტორიზაცია. სცადე ხელახლა.',
+    otpTitle: 'დაადასტურე ელ.ფოსტა',
+    otpSubtitle: 'გამოგზავნილია 6-ნიშნა კოდი მისამართზე',
+    otpPlaceholder: '6-ნიშნა კოდი',
+    otpVerifyCta: 'დადასტურება',
+    otpResend: 'კოდის ხელახლა გაგზავნა',
+    otpResent: 'ახალი კოდი გამოგზავნილია.',
+    otpChangeEmail: 'სხვა ელ.ფოსტის გამოყენება',
+    errOtpInvalid: 'კოდი არასწორია. შეამოწმე და სცადე ხელახლა.',
+    errOtpExpired: 'კოდს ვადა გაუვიდა. გამოითხოვე ახალი.',
+    errOtpRequired: 'შეიყვანე 6-ნიშნა კოდი.',
   },
   en: {
     login: 'Sign in', register: 'Create account', reset: 'Reset password', magic: 'Magic link',
@@ -119,6 +135,16 @@ const COPY: Record<Lang, Strings> = {
     errEmailNotConfirmed: 'Please confirm your email via the link we sent.',
     errNetwork: 'Network error. Check your connection and try again.',
     errGeneric: "Couldn't sign you in. Please try again.",
+    otpTitle: 'Verify your email',
+    otpSubtitle: 'We sent a 6-digit code to',
+    otpPlaceholder: '6-digit code',
+    otpVerifyCta: 'Verify',
+    otpResend: 'Resend code',
+    otpResent: 'A new code is on its way.',
+    otpChangeEmail: 'Use a different email',
+    errOtpInvalid: 'That code is not correct. Check it and try again.',
+    errOtpExpired: 'That code has expired. Request a new one.',
+    errOtpRequired: 'Enter the 6-digit code.',
   },
   ru: {
     login: 'Вход', register: 'Регистрация', reset: 'Сброс пароля', magic: 'Магическая ссылка',
@@ -138,6 +164,16 @@ const COPY: Record<Lang, Strings> = {
     errEmailNotConfirmed: 'Сначала подтвердите почту по ссылке из письма.',
     errNetwork: 'Ошибка сети. Проверьте подключение и повторите.',
     errGeneric: 'Не удалось войти. Попробуйте снова.',
+    otpTitle: 'Подтвердите e-mail',
+    otpSubtitle: 'Мы отправили 6-значный код на',
+    otpPlaceholder: '6-значный код',
+    otpVerifyCta: 'Подтвердить',
+    otpResend: 'Отправить код заново',
+    otpResent: 'Новый код отправлен.',
+    otpChangeEmail: 'Использовать другой e-mail',
+    errOtpInvalid: 'Неверный код. Проверьте и попробуйте снова.',
+    errOtpExpired: 'Срок действия кода истёк. Запросите новый.',
+    errOtpRequired: 'Введите 6-значный код.',
   },
 };
 
@@ -154,6 +190,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   // Portal readiness — the modal mounts into document.body so its z-index wins over
   // root-level chrome (the cookie banner) instead of being trapped inside the chat
   // shell's lower stacking context.
+  // Email-OTP verification step (standard sign-up). `otpStage` swaps the form for the code entry.
+  const [otpStage, setOtpStage] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -191,6 +232,52 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   }, [open, initialMode]);
 
   const reset = useCallback(() => { setError(null); setNotice(null); }, []);
+
+  /**
+   * Verify the emailed 6-digit code. This is the ONLY thing that turns a pending sign-up into a session:
+   * type 'signup' consumes the confirmation token Supabase mailed, marks the address confirmed and returns
+   * the session. An unverified sign-up simply never gets one.
+   */
+  const verifyOtp = useCallback(async () => {
+    setError(null); setNotice(null);
+    const code = otpCode.replace(/\D/g, '');
+    if (code.length !== 6) { setError(t.errOtpRequired); return; }
+    const supabase = createBrowserClient();
+    if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
+    setOtpBusy(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: 'signup' });
+      if (error) throw error;
+      if (!data.session) { setError(t.errOtpInvalid); return; }
+      track('user_signup', { method: 'email', verified: true });
+      await redeemRef(); // apply an inbound referral now that there is a session
+      onAuthed?.(); onClose();
+      // Mirror the sign-in path: let the session cookie land before the server tree re-renders.
+      await supabase.auth.getSession();
+      router.refresh();
+    } catch (err) {
+      setError(humanizeAuthError(err, t));
+    } finally {
+      setOtpBusy(false);
+    }
+  }, [otpCode, email, t, onAuthed, onClose, router]);
+
+  /** Re-send the sign-up confirmation code (Supabase rate-limits this server-side). */
+  const resendOtp = useCallback(async () => {
+    setError(null); setNotice(null);
+    const supabase = createBrowserClient();
+    if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
+    setOtpBusy(true);
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+      if (error) throw error;
+      setNotice(t.otpResent);
+    } catch (err) {
+      setError(humanizeAuthError(err, t));
+    } finally {
+      setOtpBusy(false);
+    }
+  }, [email, t]);
 
   // OAuth (Google): only render the button when the Supabase project ACTUALLY has the
   // provider enabled (asked from GoTrue's public /settings), so we never show a dead
@@ -252,64 +339,31 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         await supabase.auth.getSession();
         router.refresh();
       } else if (mode === 'register') {
-        // PRIMARY PATH — server-side admin registration that confirms the email
-        // immediately. The project requires email confirmation but its mailer
-        // can't reliably deliver, so the plain signUp() below left every new user
-        // stuck on a "check your email" dead end. /api/auth/register creates a
-        // confirmed account with the service-role key; we then sign the user
-        // straight in. No email round-trip.
-        let registered = false;
-        try {
-          const res = await fetch('/api/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email.trim(), password, name: name.trim() || undefined }),
-          });
-          const j = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string };
-          if (res.ok && j.ok) {
-            registered = true;
-            track('user_signup', { method: 'email' }); // PHASE 4 Task 1
-          } else if (j.code === 'exists') {
-            setError(t.errEmailInUse);
-            return;
-          } else if (res.status === 429) {
-            setError(t.errRateLimited);
-            return;
-          }
-          // Any other code (unavailable/error) → fall through to the client signUp.
-        } catch {
-          // Network/route failure → fall through to the client signUp path.
-        }
-
-        if (registered) {
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-          await redeemRef(); // PHASE 4 Task 3 — apply an inbound referral code now that there's a session
+        // EMAIL OTP GATE — sign-up NO LONGER grants access on submit.
+        //
+        // What this replaces: /api/auth/register used the service-role key to createUser({
+        // email_confirm: true }) and then signed the user straight in, so an address was never proved to
+        // belong to the person typing it. That route now refuses (410) and this is the only sign-up path.
+        //
+        // signUp() creates the account UNCONFIRMED and Supabase mails the 6-digit token; access is granted
+        // only by verifyOtp() below. If the project has email confirmation switched OFF, Supabase returns a
+        // live session here — we honour it rather than locking the user out of a project configured that
+        // way, but that is a project setting, not a code path we choose.
+        const { data, error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
+        });
+        if (error) throw error;
+        if (data.session) {
+          track('user_signup', { method: 'email', verified: false });
+          await redeemRef();
           onAuthed?.(); onClose();
-        // ISSUE 3 — the @supabase/ssr browser client writes the session cookie during
-        // sign-in; awaiting getSession() guarantees it is persisted BEFORE router.refresh()
-        // re-renders the server tree (and middleware re-reads auth), so the refreshed page
-        // sees the logged-in user instead of racing the cookie write and rendering as guest.
-        await supabase.auth.getSession();
-        router.refresh();
+          await supabase.auth.getSession();
+          router.refresh();
         } else {
-          // FALLBACK — classic client signUp. If the project ever returns a live
-          // session (confirmation OFF) we log straight in; otherwise show a clear,
-          // register-specific confirm-email notice instead of leaving the user
-          // wondering whether anything happened.
-          const { data, error } = await supabase.auth.signUp({
-            email, password,
-            options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
-          });
-          if (error) throw error;
-          if (data.session) { track('user_signup', { method: 'email' }); await redeemRef(); onAuthed?.(); onClose();
-        // ISSUE 3 — the @supabase/ssr browser client writes the session cookie during
-        // sign-in; awaiting getSession() guarantees it is persisted BEFORE router.refresh()
-        // re-renders the server tree (and middleware re-reads auth), so the refreshed page
-        // sees the logged-in user instead of racing the cookie write and rendering as guest.
-        await supabase.auth.getSession();
-        router.refresh(); }
-          else { track('user_signup', { method: 'email', pending_confirm: true }); setNotice(t.registerCheckEmail); }
+          // The expected path: no session until the emailed code is verified.
+          track('user_signup', { method: 'email', pending_confirm: true });
+          setOtpStage(true);
         }
       } else if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
@@ -364,7 +418,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                     <Sparkles size={15} className="text-white" />
                   </span>
                 )}
-                <h2 className="text-[17px] font-bold text-app-text tracking-tight">{title}</h2>
+                <h2 className="text-[17px] font-bold text-app-text tracking-tight">{otpStage ? t.otpTitle : title}</h2>
               </div>
               <button type="button" onClick={onClose} aria-label="Close"
                 className="h-8 w-8 rounded-full hover:bg-app-border/10 flex items-center justify-center text-app-muted">
@@ -375,6 +429,53 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             {/* OAuth removed — the Supabase project has no social providers enabled
                 (Google/Apple/GitHub returned "provider is not enabled"). Email + password
                 is the only path; a "coming soon" note sits under the form. */}
+            {otpStage ? (
+              /* EMAIL OTP STEP — the account exists but is UNCONFIRMED and has no session. Nothing here
+                 grants access except a correct code: verifyOtp() is the only path to a session. */
+              <div className="space-y-3">
+                <p className="text-[13px] text-app-muted px-1">
+                  {t.otpSubtitle} <span className="text-app-text font-medium break-all">{email.trim()}</span>
+                </p>
+                <input
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void verifyOtp(); } }}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={6}
+                  placeholder={t.otpPlaceholder}
+                  aria-label={t.otpPlaceholder}
+                  className="w-full bg-app-elevated border border-app-border/15 rounded-xl px-3 py-3 text-center text-[22px] font-semibold tracking-[0.5em] text-app-text placeholder:text-app-muted placeholder:tracking-normal placeholder:text-[14px] outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
+                />
+
+                {error && <p className="text-[12px] text-rose-600 dark:text-rose-300 px-1">{error}</p>}
+                {notice && <p className="text-[12px] text-emerald-600 dark:text-emerald-300 px-1">{notice}</p>}
+
+                <motion.button
+                  type="button"
+                  onClick={() => void verifyOtp()}
+                  disabled={otpBusy || otpCode.length !== 6}
+                  whileHover={{ scale: otpBusy ? 1 : 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full h-11 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-600 text-white text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-all"
+                >
+                  {otpBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+                  {t.otpVerifyCta}
+                </motion.button>
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button type="button" onClick={() => void resendOtp()} disabled={otpBusy}
+                    className="text-[12px] text-app-muted hover:text-app-text transition-colors disabled:opacity-50 min-h-[44px] px-1">
+                    {t.otpResend}
+                  </button>
+                  <button type="button" onClick={() => { setOtpStage(false); setOtpCode(''); reset(); }}
+                    className="text-[12px] text-app-muted hover:text-app-text transition-colors min-h-[44px] px-1">
+                    {t.otpChangeEmail}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={submit} className="space-y-3">
               {mode === 'register' && (
                 <div className="relative">
@@ -407,10 +508,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                 {cta}
               </motion.button>
             </form>
+            )}
 
             {/* ── ან ── divider + full-width secondary toggle (register ⇄ login).
                 Replaces the old OAuth + text-link cluster: one clean alternate action. */}
-            {(mode === 'login' || mode === 'register') && (
+            {!otpStage && (mode === 'login' || mode === 'register') && (
               <>
                 <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-app-muted">
                   <span className="h-px flex-1 bg-app-border/15" />

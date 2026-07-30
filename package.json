@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
     "test": "jest --passWithNoTests",
+    "test:all": "npm run typecheck && npm run lint && jest --passWithNoTests",
     "test:watch": "jest --watch --passWithNoTests",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

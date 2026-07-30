@@ -83,12 +83,48 @@ function extractAudio(j: unknown): LyriaTrack | null {
 }
 
 /**
+ * Ask the budget guard whether one more track fits. Isolated + fail-open so a guard fault can never make
+ * music generation unavailable — the same contract the rest of this module keeps.
+ */
+async function musicWithinBudget(): Promise<boolean> {
+  try {
+    const { canProceed } = await import('@/lib/services/billing/BillingGuard');
+    const { estimateCost } = await import('@/lib/services/billing/costModel');
+    const decision = await canProceed(estimateCost({ service: 'music', model: lyriaModel(), units: 1 }));
+    return decision.allowed;
+  } catch {
+    return true; // guard unavailable → do not block the product
+  }
+}
+
+/** Book one generated track against the platform budget. Best-effort: the audio is already in hand. */
+async function recordMusicUsage(): Promise<void> {
+  try {
+    const { recordUsage } = await import('@/lib/services/billing/BillingGuard');
+    const { estimateCost } = await import('@/lib/services/billing/costModel');
+    await recordUsage(estimateCost({ service: 'music', model: lyriaModel(), units: 1 }));
+  } catch {
+    /* bookkeeping only — never surfaces to the caller */
+  }
+}
+
+/**
  * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss so the
  * caller falls back to the next music provider. Never throws.
  */
 export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean }): Promise<LyriaTrack | null> {
   const key = resolveGeminiKey();
   if (!key || !args.prompt?.trim()) return null;
+
+  // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
+  // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
+  // caller's existing fallback chain handles it without a new error path. `guardedCall` books the cost
+  // only on success, and fails OPEN if the guard itself is broken.
+  if (!(await musicWithinBudget())) {
+    // eslint-disable-next-line no-console
+    console.warn('[lyria] refused by the platform budget guard → caller falls back');
+    return null;
+  }
 
   // Lyria 3 is steered entirely via the prompt string: append instrumental intent, or the custom lyrics with
   // the [Verse]/[Chorus] section tags the model understands, so a vocal song is sung with those words.
@@ -117,6 +153,9 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
       console.warn('[lyria] no audio in response → falling back');
       return null;
     }
+    // Book the spend AFTER a real track came back — a failed/empty generation costs us nothing, and
+    // charging the envelope for it would slowly starve the budget on a misbehaving provider.
+    void recordMusicUsage();
     return audio;
   } catch (e) {
     // eslint-disable-next-line no-console

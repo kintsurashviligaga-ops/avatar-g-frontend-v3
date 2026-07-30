@@ -5,14 +5,14 @@
 
 import Stripe from 'stripe';
 import { getServerEnv } from '@/lib/env/server';
-import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
+import { USD_TIER_PRICES } from '@/lib/billing/pricingConfig';
 
 // Initialize Stripe (lazy singleton)
 let stripeInstance: Stripe | null = null;
 
 // ── PHASE 39.5 (Master Contract V3) — LAUNCH PAYMENT-ENV PREPARATION ──────────────────────────────────
 // The payment router owns ALL Stripe env access and the currency binding. Today's live flow settles in GEL
-// (createWalletTopupSession, unchanged); these helpers PREP the layer for the Phase-39 USD ($15/$99/$299)
+// (createWalletTopupSession, unchanged); these helpers PREP the layer for the USD ($19.99/$39.99/$79.99)
 // launch without touching that working path — the USD session is inert until a route calls it.
 
 /** Currency binding for launch. Defaults to the current GEL wallet flow; set BILLING_CURRENCY=usd to move
@@ -27,9 +27,8 @@ export function getStripePublishableKey(): string | null {
   return typeof k === 'string' && k.trim() ? k.trim() : null;
 }
 
-/** The exact Phase-39 USD tier bounds — single source (PRICING_TIERS) → [15, 99, 299]. A USD session amount
- *  is VALIDATED against this list so a wrong amount can never reach Stripe. */
-export const USD_TIER_PRICES: readonly number[] = PRICING_TIERS.map((t) => t.priceUsd);
+/** Re-exported from the leaf pricing config (where it is unit-testable — see the note there). */
+export { USD_TIER_PRICES };
 
 export function getStripe(): Stripe {
   if (!stripeInstance) {
@@ -147,7 +146,7 @@ export async function createWalletTopupSession(params: {
 /**
  * PHASE 39.5 (Master Contract V3) — a USD-denominated tier Checkout Session (mode: payment), ready for the
  * public launch. The currency is HARD-BOUND to 'usd' and the amount is VALIDATED against the exact
- * $15/$99/$299 tier bounds, so a wrong amount can never reach Stripe. Inert until a checkout route calls it;
+ * $19.99/$39.99/$79.99 tier bounds, so a wrong amount can never reach Stripe. Inert until a checkout route calls it;
  * the live GEL wallet path (createWalletTopupSession) is unchanged. Requires native USD prices on the Stripe
  * account (and the credit-grant webhook must map the tier) before going live — see lib/billing/pricingConfig.
  */

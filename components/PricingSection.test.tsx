@@ -1,8 +1,8 @@
 /**
  * PricingSection — SSoT pin (Stage-2 V3-F2).
  *
- * Locks the live pricing page to the single source of truth (PRICING_TIERS, Master
- * Contract V1/V2 USD launch pricing: Starter $15 / Pro Creator $99 / Studio Annual $299)
+ * Locks the live pricing page to the single source of truth (PRICING_TIERS: the 4-tier
+ * ladder — Free $0 / Basic $19.99 / Pro $39.99 / Business $79.99)
  * with the exact marketing quotas, and proves NO per-item "tetri" cost labels leak into the DOM.
  * If anyone edits the tiers or reintroduces a per-item cost grid, this goes red.
  *
@@ -38,14 +38,14 @@ import { PricingSection } from './PricingSection';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 
 describe('PricingSection — SSoT pin', () => {
-  it('renders the $15/$99/$299 USD tiers with their exact marketing quotas', () => {
+  it('renders the four USD tiers with their exact marketing quotas', () => {
     const { container } = render(<PricingSection />);
     const text = container.textContent || '';
     for (const expected of [
-      '$15', '$99', '$299',
-      '4 ვიდეო', '10 მუსიკის ტრეკი', '30 სთორიბორდ სურათი',
-      '35 ვიდეო', '80 მუსიკის ტრეკი', '200 სთორიბორდ სურათი',
-      '120 ვიდეო', '300 მუსიკის ტრეკი', '800 სთორიბორდ სურათი',
+      '$0', '$19.99', '$39.99', '$79.99',
+      '4 ვიდეო', '10 მუსიკის ტრეკი', '40 სთორიბორდ სურათი',
+      '8 ვიდეო', '25 მუსიკის ტრეკი', '100 სთორიბორდ სურათი',
+      '16 ვიდეო', '50 მუსიკის ტრეკი', '200 სთორიბორდ სურათი',
     ]) {
       expect(text).toContain(expected);
     }
@@ -57,11 +57,12 @@ describe('PricingSection — SSoT pin', () => {
   });
 
   it('is bound to the PRICING_TIERS source of truth', () => {
-    expect(PRICING_TIERS.map((t) => t.priceUsd)).toEqual([15, 99, 299]);
+    expect(PRICING_TIERS.map((t) => t.priceUsd)).toEqual([0, 19.99, 39.99, 79.99]);
     expect(PRICING_TIERS.map((t) => t.creditCeiling)).toEqual([
-      { videos: 4, music: 10, images: 30 },
-      { videos: 35, music: 80, images: 200 },
-      { videos: 120, music: 300, images: 800 },
+      { videos: 0, music: 0, images: 6 },
+      { videos: 4, music: 10, images: 40 },
+      { videos: 8, music: 25, images: 100 },
+      { videos: 16, music: 50, images: 200 },
     ]);
   });
 });

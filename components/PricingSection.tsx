@@ -32,15 +32,17 @@ const LABELS: Record<Lang, {
 // PHASE 37.1 — localized tier NAMES (pricingConfig keeps the English canonical; the visible name is
 // localized here so the Georgian locale reads natively premium: სტარტერი · პრო კრეატორი · სტუდიური წლიური).
 const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
-  starter: { en: 'Starter', ka: 'სტარტერი', ru: 'Стартер' },
-  pro_creator: { en: 'Pro Creator', ka: 'პრო კრეატორი', ru: 'Про-креатор' },
-  studio_annual: { en: 'Studio Annual', ka: 'სტუდიური წლიური', ru: 'Студийный годовой' },
+  free: { en: 'Free', ka: 'უფასო', ru: 'Бесплатно' },
+  basic: { en: 'Basic', ka: 'საბაზისო', ru: 'Базовый' },
+  pro: { en: 'Pro', ka: 'პრო', ru: 'Про' },
+  business: { en: 'Business', ka: 'ბიზნესი', ru: 'Бизнес' },
 }
 // A one-line premium sub-label per tier (who it's for).
 const TIER_TAGLINE: Record<PricingTierId, Record<Lang, string>> = {
-  starter: { en: 'For getting started', ka: 'პირველი ნაბიჯებისთვის', ru: 'Для старта' },
-  pro_creator: { en: 'For working creators', ka: 'პროფესიონალი კრეატორებისთვის', ru: 'Для профи' },
-  studio_annual: { en: 'For studios & teams', ka: 'სტუდიებისა და გუნდებისთვის', ru: 'Для студий и команд' },
+  free: { en: 'To try it out', ka: 'გასაცნობად', ru: 'Чтобы попробовать' },
+  basic: { en: 'For getting started', ka: 'პირველი ნაბიჯებისთვის', ru: 'Для старта' },
+  pro: { en: 'For working creators', ka: 'პროფესიონალი კრეატორებისთვის', ru: 'Для профи' },
+  business: { en: 'For studios & teams', ka: 'სტუდიებისა და გუნდებისთვის', ru: 'Для студий и команд' },
 }
 
 export function PricingSection() {
@@ -65,9 +67,9 @@ export function PricingSection() {
             a true cyan→frost gradient border-ring + a physical lift/scale + a cyan badge + the cyan price/CTA.
             Georgian-first names read as real titles (Mkhedruli is unicase → hierarchy via size/weight, not caps).
             All alpha is inline rgba — Tailwind /8·/12 slash-opacity silently doesn't compile here. */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 md:items-center md:gap-8 pt-4">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4 md:items-stretch md:gap-6 pt-4">
           {PRICING_TIERS.map((tier, index) => {
-            const isPopular = tier.id === 'pro_creator'
+            const isPopular = tier.id === 'pro'
             const period = tier.billing === 'annual' ? labels.year : labels.month
             const name = TIER_NAME[tier.id][locale]
             const tagline = TIER_TAGLINE[tier.id][locale]
