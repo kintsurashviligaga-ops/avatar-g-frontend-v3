@@ -91,7 +91,9 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     tagline: { ka: 'ხმის კლონი და თარგმანი', en: 'Voice clone and translation', ru: 'Клон голоса и перевод' },
   },
   {
-    id: 'model3d', icon: '🧊', live: false, target: { kind: 'path', path: '/3d' },
+    // Live: backed by Replicate (TRELLIS), not Meshy — Meshy had no API key on any environment, so it
+    // could never run. Text mode goes Imagen 4 → reference image → reconstruction.
+    id: 'model3d', icon: '🧊', live: true, target: { kind: 'path', path: '/3d' },
     name: { ka: '3D მოდელი', en: '3D Model', ru: '3D-модель' },
     tagline: { ka: 'ტექსტიდან GLB-მდე', en: 'Text to GLB', ru: 'Из текста в GLB' },
   },

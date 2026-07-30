@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, LayoutGrid, Star, Sparkles, CreditCard,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -42,7 +42,6 @@ const LIVEAVATAR_COOLDOWN_MS = 5 * 60 * 1000;
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 import { isEnabledByDefault } from '@/lib/env/flag';
 import PersonaPicker, { loadSelectedPersonaId } from './PersonaPicker';
-import { SERVICE_CATALOGUE, serviceHref, serviceName } from '@/lib/services/serviceCatalogue';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
@@ -379,7 +378,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Service hub is collapsed by default: chat history stays the sidebar's centre of gravity.
-  const [servicesOpen, setServicesOpen] = useState(false);
   const [personaOpen, setPersonaOpen] = useState(false);
   // Only used for the "a persona is active" dot — read once on mount (localStorage is not reactive).
   const [activePersonaId, setActivePersonaId] = useState('');
@@ -717,46 +715,26 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           )}
         </div>
 
-        {/* Bottom — Services · Library · Favorites · Persona · Billing · Settings */}
+        {/* Bottom — Library · Persona · Billing · Settings.
+            STATIC BY CONSTRUCTION: a fixed list of four rows, identical on every route. No collapsibles,
+            no route-dependent items, no rows that appear or disappear with click state. The two things
+            that used to break that rule are gone:
+              · the Services list — service selection now lives in ONE place, the picker in the chat input
+                box. Two entry points meant two lists to keep in sync and two places to forget a service.
+              · Favorites — it pointed at `/library?tab=favorites`, the same view Library already opens,
+                so it was a second door to one room. */}
         <div className="space-y-0.5 border-t border-app-border/10 px-2 py-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
-          {/* SERVICE HUB — the ten official services from the single catalogue. Collapsed by default so the
-              chat history stays the sidebar's centre of gravity, as it is in the app this mirrors. */}
-          <button type="button" onClick={() => setServicesOpen((v) => !v)} className={sideRow} aria-expanded={servicesOpen}>
-            <LayoutGrid className="h-[17px] w-[17px] text-app-muted" /> {t.services}
-            <ChevronDown className={`ml-auto h-[15px] w-[15px] text-app-muted transition-transform ${servicesOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {servicesOpen && (
-            <div className="mb-1 space-y-0.5 pl-2">
-              {SERVICE_CATALOGUE.map((svc) => (
-                <button
-                  key={svc.id}
-                  type="button"
-                  disabled={!svc.live}
-                  onClick={() => { setSidebarOpen(false); router.push(serviceHref(svc, locale)); }}
-                  className={`${sideRow} ${svc.live ? '' : 'cursor-not-allowed opacity-45'}`}
-                  title={svc.live ? undefined : t.soon}
-                >
-                  <span className="w-[17px] shrink-0 text-center text-[14px] leading-none">{svc.icon}</span>
-                  <span className="truncate">{serviceName(svc, locale)}</span>
-                  {/* An unbuilt service says so rather than linking to a dead surface. */}
-                  {!svc.live && <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wider text-app-muted">{t.soon}</span>}
-                </button>
-              ))}
-            </div>
-          )}
           <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
-          </button>
-          {/* Favorites already exist as a TAB inside the library; this deep-links straight to it rather
-              than duplicating the starred-items logic in a second place. */}
-          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library?tab=favorites`); }} className={sideRow}>
-            <Star className="h-[17px] w-[17px] text-app-muted" /> {t.favorites}
           </button>
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" /> {t.persona}
             {activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
           </button>
-          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/account/billing`); }} className={sideRow}>
+          {/* BILLING — opens the SAME CreditsModal as the top-bar wallet button. It used to navigate to
+              /account/billing instead, so the two billing entry points led to different places and only
+              the header's worked. One destination now, reached from both. */}
+          <button type="button" onClick={() => { setSidebarOpen(false); setCreditsOpen(true); }} className={sideRow}>
             <CreditCard className="h-[17px] w-[17px] text-app-muted" /> {t.billing}
           </button>
           <button type="button" onClick={() => { setMenuOpen((v) => !v); setSidebarOpen(false); }} className={sideRow}>

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { pollMeshyTask, fetchGlbBuffer, hasMeshyProvider } from '@/lib/services/model3d/meshyClient';
-import { isTerminal } from '@/lib/services/model3d/meshyPlan';
+import { pollReconstruction, fetchGlbBuffer, hasReplicate3dProvider } from '@/lib/services/model3d/replicate3dClient';
+import { isTerminal } from '@/lib/services/model3d/model3dPlan';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { completeJob, failJob } from '@/lib/orchestrator/jobs';
 
@@ -14,16 +14,18 @@ export const maxDuration = 180;
 const WEEK_SEC = 604_800;
 
 /**
- * GET /api/v2/model3d/status?taskId=…&mode=text|image&jobId=…
+ * GET /api/v2/model3d/status?predictionId=…&jobId=…
  *
  * One poll tick. On success the GLB is downloaded and RE-HOSTED on our own storage before the URL is
- * returned — the app's CSP has no Meshy host in `connect-src`, so handing the browser a Meshy CDN URL
- * produces a viewer that works in local dev and is silently blocked in production.
+ * returned — the app's CSP has no replicate.delivery in `connect-src`, so handing the browser a Replicate
+ * CDN URL yields a viewer that works in local dev and is silently blocked in production.
  *
- * AI rate limit, not EXPENSIVE: this is called repeatedly by the poll loop by design, and a 5/min cap
- * would 429 the client's own progress checks.
+ * The poll URL is REBUILT from the prediction id rather than accepted from the client: taking a
+ * caller-supplied URL and fetching it with our API token attached would be a server-side request forgery
+ * with credentials.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  // AI limit, not EXPENSIVE: this is called repeatedly by the poll loop by design.
   const limited = await checkRateLimit(req, RATE_LIMITS.AI);
   if (limited) return limited;
 
@@ -31,30 +33,28 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  if (!hasMeshyProvider()) {
+  if (!hasReplicate3dProvider()) {
     return NextResponse.json({ error: 'provider_not_configured' }, { status: 503 });
   }
 
-  const taskId = (req.nextUrl.searchParams.get('taskId') || '').trim();
+  const predictionId = (req.nextUrl.searchParams.get('predictionId') || '').trim();
   const jobId = (req.nextUrl.searchParams.get('jobId') || '').trim();
-  const mode = req.nextUrl.searchParams.get('mode') === 'image' ? 'image' : 'text';
-  // Meshy ids are opaque; bound them so a hostile value cannot be pasted into the upstream URL path.
-  if (!taskId || taskId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(taskId)) {
-    return NextResponse.json({ error: 'invalid_request', message: 'taskId is required' }, { status: 400 });
+  // Replicate ids are opaque alphanumerics; bound and charset-check so nothing hostile reaches the path.
+  if (!predictionId || predictionId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(predictionId)) {
+    return NextResponse.json({ error: 'invalid_request', message: 'predictionId is required' }, { status: 400 });
   }
 
-  const poll = await pollMeshyTask(taskId, mode);
+  const poll = await pollReconstruction(`https://api.replicate.com/v1/predictions/${predictionId}`);
 
   if (poll.status === 'failed') {
-    if (jobId) await failJob(jobId, poll.error || 'meshy reported failure').catch(() => {});
+    if (jobId) await failJob(jobId, poll.error || 'replicate reported failure').catch(() => {});
     return NextResponse.json({ status: 'failed', message: poll.error || 'generation failed' });
   }
 
   if (!isTerminal(poll.status) || !poll.glbUrl) {
-    return NextResponse.json({ status: poll.status, progress: poll.progress });
+    return NextResponse.json({ status: poll.status });
   }
 
-  // Succeeded — re-host before handing anything to the browser.
   const buf = await fetchGlbBuffer(poll.glbUrl);
   if (!buf) {
     if (jobId) await failJob(jobId, 'could not download the generated model').catch(() => {});
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const hosted = await uploadBufferAndSign(
     'renders',
-    `models3d/${taskId}-${Date.now()}.glb`,
+    `models3d/${predictionId}-${Date.now()}.glb`,
     buf,
     'model/gltf-binary',
     WEEK_SEC,
@@ -76,15 +76,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (jobId) {
     await completeJob(jobId, {
       signedUrl: hosted,
-      result: { subtype: 'model3d', glbUrl: hosted, thumbnailUrl: poll.thumbnailUrl },
+      result: { subtype: 'model3d', glbUrl: hosted },
     }).catch(() => {});
   }
 
-  return NextResponse.json({
-    status: 'succeeded',
-    progress: 100,
-    glbUrl: hosted,
-    thumbnailUrl: poll.thumbnailUrl,
-    bytes: buf.byteLength,
-  });
+  return NextResponse.json({ status: 'succeeded', glbUrl: hosted, bytes: buf.byteLength });
 }

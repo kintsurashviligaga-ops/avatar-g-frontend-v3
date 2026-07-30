@@ -32,13 +32,12 @@ describe('the ten official services', () => {
     }
   });
 
-  it('marks only the credential-blocked service as not-live', () => {
-    // Honesty in the UI: a tile that links to something that cannot work is worse than one that says
-    // "coming soon". Only model3d remains — Meshy has no API key anywhere in this project, so the
-    // surface exists but cannot produce a model, and the tile must not claim otherwise.
-    const notLive = SERVICE_CATALOGUE.filter((s) => !s.live).map((s) => s.id).sort();
-    expect(notLive).toEqual(['model3d']);
-    expect(liveServices()).toHaveLength(9);
+  it('has all ten services live, each on a provider that is actually configured', () => {
+    // model3d was the last holdout: it was specified on Meshy, which had no API key on any environment.
+    // Moving it to Replicate — already configured and already driving four other pipelines — is what
+    // made it real. A tile is only allowed to be live when its provider can genuinely run.
+    expect(SERVICE_CATALOGUE.filter((s) => !s.live)).toEqual([]);
+    expect(liveServices()).toHaveLength(10);
   });
 
   it('sends every live service to a surface that exists', () => {

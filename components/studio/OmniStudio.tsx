@@ -11,7 +11,7 @@
  * #00D2FF. Fail-soft throughout.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
@@ -55,9 +55,22 @@ import { computeCloudAdditions } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
+// THE service picker lives in this composer menu and nowhere else — the sidebar's duplicate list was
+// removed. Anything with a `path` target is a full studio on its own route; the `hash` ones are the
+// in-chat MODES below. Reading the catalogue means a new service appears here automatically.
+import { SERVICE_CATALOGUE, serviceHref, serviceName } from '@/lib/services/serviceCatalogue';
+import { ServiceParamsPanel, type PanelService } from './ServiceParamsPanel';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 type Lang = 'ka' | 'en' | 'ru';
+
+/** "Soon" badge for a service that has no working backend yet. Kept as a local three-key map rather than
+ *  widening this file's 100-key COPY interface for a single word. */
+const SOON_LABEL: Record<Lang, string> = { ka: 'მალე', en: 'Soon', ru: 'Скоро' };
+
+/** Services whose parameter controls open INSIDE the chat box rather than on their own route. */
+const PANEL_SERVICES = ['montage', 'dubbing', 'presentation', 'model3d'] as const;
 
 /**
  * The platform serializes generation to ONE render at a time. When a user tries to
@@ -1447,6 +1460,12 @@ function Portal({ children }: { children: React.ReactNode }) {
 
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
+  const router = useRouter();
+  // Full studios reachable from the composer's service picker. Derived from the catalogue, so a service
+  // added there shows up here without touching this file.
+  const studioServices = useMemo(() => SERVICE_CATALOGUE.filter((s) => s.target.kind === 'path'), []);
+  // Which service's parameter panel is open in the composer (null = none).
+  const [panelService, setPanelService] = useState<PanelService | null>(null);
   // The active conversation id + its messages (resumed from the saved history).
   const [conversationId, setConversationId] = useState<string>(currentConversationId);
   const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
@@ -7447,6 +7466,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         }} />
         {/* One clean rounded pill — min-height 52px, padding 12px 16px; the prompt sits on
             its own line so a long brief is never squeezed, and ALL controls live inside. */}
+        {/* SERVICE PARAMETERS — opens in place when a full studio is picked from the service menu, so
+            Montage/Dubbing/Presentation/3D are driven without leaving the conversation. */}
+        {panelService && (
+          <ServiceParamsPanel service={panelService} locale={locale} onClose={() => setPanelService(null)} />
+        )}
+
         <div className="rounded-[24px] border border-app-border/15 bg-app-elevated px-4 py-3 min-h-[52px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
@@ -7516,6 +7541,39 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
                       </button>
                     ))}
+
+                    {/* FULL STUDIOS — services that live on their own route rather than as a chat mode.
+                        They sit in this same menu because this is now the ONLY service picker in the app;
+                        the sidebar's duplicate list was removed. Selecting one navigates. */}
+                    {studioServices.length > 0 && (
+                      <div className="my-1 border-t border-app-border/10" role="separator" />
+                    )}
+                    {studioServices.map((svc) => {
+                      // These open their own parameter controls IN the chat box. The standalone routes
+                      // still exist and call the same APIs; selecting here just saves leaving the
+                      // conversation to run one.
+                      const inline = (PANEL_SERVICES as readonly string[]).includes(svc.id);
+                      return (
+                        <button
+                          key={svc.id}
+                          type="button"
+                          role="menuitem"
+                          disabled={!svc.live}
+                          onClick={() => {
+                            setModeMenuOpen(false);
+                            if (inline) setPanelService(svc.id as PanelService);
+                            else router.push(serviceHref(svc, locale));
+                          }}
+                          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
+                          title={svc.live ? undefined : SOON_LABEL[locale]}
+                        >
+                          <span className="w-[15px] shrink-0 text-center text-[13px] leading-none">{svc.icon}</span>
+                          <span className="flex-1 truncate text-left">{serviceName(svc, locale)}</span>
+                          {!svc.live && <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wider">{SOON_LABEL[locale]}</span>}
+                          {svc.live && panelService === svc.id && <Check size={14} />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}

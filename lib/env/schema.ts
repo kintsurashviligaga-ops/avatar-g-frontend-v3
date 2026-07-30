@@ -48,10 +48,10 @@ export const env = createEnv({
     // Replicate
     REPLICATE_API_TOKEN: z.string().optional(),
 
-    // Meshy (3D Studio). NOT CONFIGURED on any environment today — declared so the gap is visible here
-    // rather than being folklore. /api/v2/model3d/* answers 503 provider_not_configured without it, and
-    // the catalogue tile stays "coming soon". Set it and flip `live` in lib/services/serviceCatalogue.ts
-    // only after a real generation returns a GLB.
+    // Meshy — RETIRED before it ever ran. The 3D Studio was specified on Meshy, but no MESHY_API_KEY was
+    // ever configured on any environment, so the service could not work. 3D now runs on Replicate
+    // (REPLICATE_API_TOKEN above), which is already configured. Kept declared, and optional, only so a
+    // stale value in someone's env file cannot fail validation.
     MESHY_API_KEY: z.string().optional(),
 
     // Twilio

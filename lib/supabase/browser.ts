@@ -30,9 +30,58 @@ let browserClient: BrowserClient | null = null;
  *      session refresh and server reads actually observe the logged-in user.
  *   3. OAuth and email magic-link both return a ?code= the server can exchange.
  */
+/**
+ * NO-OP client used when Supabase is not configured.
+ *
+ * WHY THIS EXISTS: this function used to `return null as unknown as BrowserClient` — a lie to the type
+ * system that every caller then dereferenced. `ChatChrome` calls `supabase.auth.getUser()` on mount, so a
+ * missing NEXT_PUBLIC_SUPABASE_URL threw a TypeError during render and dropped the ENTIRE `/[locale]`
+ * segment into the error boundary. The whole app went blank — sidebar, personas, everything — over an
+ * absent env var. That made local UI inspection impossible and would do the same in production if the
+ * Preview environment were ever missing the vars.
+ *
+ * Degrading to "permanently signed out" is the correct behaviour: the UI renders, auth-gated actions do
+ * nothing, and nothing crashes. Every method resolves to the shape its caller destructures.
+ */
+function makeUnconfiguredClient(): BrowserClient {
+  const noSession = { data: { session: null }, error: null };
+  const noUser = { data: { user: null }, error: null };
+  const auth = {
+    getUser: async () => noUser,
+    getSession: async () => noSession,
+    // Callers destructure `data.subscription.unsubscribe()` in a cleanup — it must exist.
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    signOut: async () => ({ error: null }),
+    signUp: async () => noUser,
+    signInWithPassword: async () => noUser,
+    signInWithOtp: async () => ({ data: { user: null, session: null }, error: null }),
+    signInWithOAuth: async () => ({ data: { provider: null, url: null }, error: null }),
+    verifyOtp: async () => noUser,
+    resend: async () => ({ data: {}, error: null }),
+    resetPasswordForEmail: async () => ({ data: {}, error: null }),
+    updateUser: async () => noUser,
+  };
+  // A chainable query stub: every builder method returns itself, and awaiting yields an empty result.
+  const query: Record<string, unknown> = {};
+  const chain = new Proxy(query, {
+    get: (_t, prop) => {
+      if (prop === 'then') return (resolve: (v: unknown) => unknown) => resolve({ data: [], error: null });
+      return () => chain;
+    },
+  });
+  return {
+    auth,
+    from: () => chain,
+    channel: () => ({ on: () => chain, subscribe: () => chain, unsubscribe: () => {} }),
+    removeChannel: () => {},
+  } as unknown as BrowserClient;
+}
+
 function getOrCreateBrowserClient(): BrowserClient {
   if (!isConfigured) {
-    return null as unknown as BrowserClient;
+    // Cached so repeated calls do not allocate a new proxy on every render.
+    browserClient = browserClient ?? makeUnconfiguredClient();
+    return browserClient;
   }
 
   if (browserClient) {

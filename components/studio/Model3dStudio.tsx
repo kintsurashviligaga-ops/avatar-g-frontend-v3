@@ -7,21 +7,18 @@
  * lifecycle — the same pattern the film studio uses for Veo. The poll backs off (3s → 15s) and gives up
  * after a bounded number of attempts rather than spinning forever on a wedged job.
  *
- * ⚠️ This deployment has NO MESHY_API_KEY. The API answers 503 `provider_not_configured` and the UI says
- * so plainly instead of failing with a generic error. The catalogue tile stays "coming soon" until a key
- * exists and returns a real GLB.
+ * BACKEND: Replicate (TRELLIS image-to-3D), not Meshy — Meshy has no API key on any environment, so it
+ * could never run. Text mode goes Imagen 4 → reference image → reconstruction, which is why the reference
+ * is shown: the user can see what the mesh is actually being built from.
  */
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   pollDelayMs,
   MAX_POLL_ATTEMPTS,
-  MAX_POLYCOUNT,
-  MIN_POLYCOUNT,
-  DEFAULT_POLYCOUNT,
-  type MeshyMode,
-  type MeshyQuality,
-} from '@/lib/services/model3d/meshyPlan';
+  type Model3dMode,
+  type Model3dQuality,
+} from '@/lib/services/model3d/model3dPlan';
 
 // three touches `window` on import — it cannot be server-rendered.
 const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false });
@@ -40,13 +37,13 @@ const COPY = {
     quality: 'ხარისხი',
     draft: 'სწრაფი',
     standard: 'სტანდარტული',
-    polycount: 'პოლიგონები',
+    removeBg: 'ფონის მოცილება',
     submit: '3D მოდელის შექმნა',
     working: 'იქმნება…',
     warn: 'რამდენიმე წუთი სჭირდება. არ დახუროთ ეს გვერდი.',
     download: 'GLB ჩამოტვირთვა',
     failed: 'მოდელი ვერ შეიქმნა',
-    notConfigured: '3D გენერაცია ჯერ არ არის ხელმისაწვდომი — Meshy-ის API გასაღები არ არის დაყენებული.',
+    notConfigured: '3D გენერაცია ამ დეპლოიმენტზე არ არის ხელმისაწვდომი — API გასაღები არ არის დაყენებული.',
     timeout: 'დიდი დრო დასჭირდა — სცადეთ თავიდან.',
   },
   en: {
@@ -60,13 +57,13 @@ const COPY = {
     quality: 'Quality',
     draft: 'Draft',
     standard: 'Standard',
-    polycount: 'Polygons',
+    removeBg: 'Remove background',
     submit: 'Generate 3D model',
     working: 'Generating…',
     warn: 'This takes a few minutes. Keep this tab open.',
     download: 'Download GLB',
     failed: 'The model could not be generated',
-    notConfigured: '3D generation is not available yet — the Meshy API key is not configured.',
+    notConfigured: '3D generation is unavailable on this deployment — the API key is not configured.',
     timeout: 'This took too long — please try again.',
   },
   ru: {
@@ -80,13 +77,13 @@ const COPY = {
     quality: 'Качество',
     draft: 'Черновик',
     standard: 'Стандарт',
-    polycount: 'Полигоны',
+    removeBg: 'Удалить фон',
     submit: 'Создать 3D-модель',
     working: 'Создаём…',
     warn: 'Это займёт несколько минут. Не закрывайте вкладку.',
     download: 'Скачать GLB',
     failed: 'Не удалось создать модель',
-    notConfigured: '3D-генерация пока недоступна — не настроен API-ключ Meshy.',
+    notConfigured: '3D-генерация недоступна на этом деплое — не настроен API-ключ.',
     timeout: 'Слишком долго — попробуйте снова.',
   },
 } satisfies Record<Lang, Record<string, string>>;
@@ -95,11 +92,11 @@ export function Model3dStudio({ locale }: { locale: string }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
-  const [mode, setMode] = useState<MeshyMode>('text');
+  const [mode, setMode] = useState<Model3dMode>('text');
   const [prompt, setPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [quality, setQuality] = useState<MeshyQuality>('draft');
-  const [targetPolycount, setPolycount] = useState(DEFAULT_POLYCOUNT);
+  const [quality, setQuality] = useState<Model3dQuality>('draft');
+  const [removeBackground, setRemoveBackground] = useState(true);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -109,14 +106,14 @@ export function Model3dStudio({ locale }: { locale: string }) {
   const cancelled = useRef(false);
   useEffect(() => () => { cancelled.current = true; }, []);
 
-  const poll = useCallback(async (taskId: string, jobId: string) => {
+  const poll = useCallback(async (predictionId: string, jobId: string) => {
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
       if (cancelled.current) return;
       await new Promise((r) => setTimeout(r, pollDelayMs(attempt)));
       if (cancelled.current) return;
 
       const res = await fetch(
-        `/api/v2/model3d/status?taskId=${encodeURIComponent(taskId)}&mode=${mode}&jobId=${encodeURIComponent(jobId)}`,
+        `/api/v2/model3d/status?predictionId=${encodeURIComponent(predictionId)}&jobId=${encodeURIComponent(jobId)}`,
       ).catch(() => null);
       const j = await res?.json().catch(() => null);
       if (!j) continue;
@@ -132,7 +129,7 @@ export function Model3dStudio({ locale }: { locale: string }) {
       }
     }
     setError(t.timeout);
-  }, [mode, t]);
+  }, [t]);
 
   async function submit() {
     if (busy) return;
@@ -145,7 +142,7 @@ export function Model3dStudio({ locale }: { locale: string }) {
       const res = await fetch('/api/v2/model3d/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, prompt: prompt.trim(), imageUrl: imageUrl.trim(), quality, targetPolycount }),
+        body: JSON.stringify({ mode, prompt: prompt.trim(), imageUrl: imageUrl.trim(), quality, removeBackground }),
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) {
@@ -153,7 +150,7 @@ export function Model3dStudio({ locale }: { locale: string }) {
         setError(j?.error === 'provider_not_configured' ? t.notConfigured : [t.failed, j?.message].filter(Boolean).join(' · '));
         return;
       }
-      await poll(j.taskId, j.jobId);
+      await poll(j.predictionId, j.jobId);
     } catch {
       setError(t.failed);
     } finally {
@@ -198,18 +195,14 @@ export function Model3dStudio({ locale }: { locale: string }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.quality}</span>
-              <select value={quality} onChange={(e) => setQuality(e.target.value as MeshyQuality)} className={field}>
+              <select value={quality} onChange={(e) => setQuality(e.target.value as Model3dQuality)} className={field}>
                 <option value="draft">{t.draft}</option>
                 <option value="standard">{t.standard}</option>
               </select>
             </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.polycount}</span>
-              <input
-                type="number" min={MIN_POLYCOUNT} max={MAX_POLYCOUNT} step={1000} value={targetPolycount}
-                onChange={(e) => setPolycount(Math.max(MIN_POLYCOUNT, Math.min(MAX_POLYCOUNT, Number(e.target.value) || DEFAULT_POLYCOUNT)))}
-                className={field}
-              />
+            <label className="flex items-end gap-2 pb-2.5 text-sm text-app-text">
+              <input type="checkbox" checked={removeBackground} onChange={(e) => setRemoveBackground(e.target.checked)} />
+              {t.removeBg}
             </label>
           </div>
 

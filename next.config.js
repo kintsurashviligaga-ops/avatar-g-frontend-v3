@@ -63,7 +63,19 @@ const nextConfig = {
     // container actually enforces — goes down. Build wall-clock was unchanged locally (72s → 74s). This is
     // the standard documented mitigation for `next build` being SIGKILLed; revert `cpus` first if Vercel
     // build times regress noticeably.
-    cpus: 2,
+    // UPDATE (second SIGKILL): 2 was not enough. Dropped to 1 — one render worker plus the parent is the
+    // floor for this lever. Local peak RSS barely moves (macOS `time -l` sees only the parent), but the
+    // number the Linux container enforces is the SUM across the tree, and this halves the worker half of
+    // it. Costs build wall-clock; a slow build that finishes beats a fast one that is killed.
+    //
+    // Ruled out along the way, so nobody re-tests it: Sentry source maps are NOT the driver. Building with
+    // SENTRY_AUTH_TOKEN set (reproducing Vercel, where the gate below is ON) measured 3.91 GB peak versus
+    // 4.11 GB with it unset — lower, just slower (99s vs 80s).
+    // MEASURED PROPERLY (third SIGKILL): sampling the SUM of RSS across the whole node process tree —
+    // which is what a Linux cgroup enforces, and what macOS `time -l` cannot show — gives
+    // cpus:1 = 4903 MB peak vs cpus:2 = 5172 MB. Real, but only 269 MB; see the Sentry gate below for
+    // the larger lever.
+    cpus: 1,
     optimizePackageImports: [
       'lucide-react',
       'framer-motion',
@@ -291,7 +303,20 @@ const nextConfig = {
 // SENTRY_AUTH_TOKEN. With a DSN and no token the plugin generated ~1.5 GB of source maps and then threw
 // them away. So source-map work is now gated on the token actually being present — error capture (which
 // needs only the DSN) is completely unaffected.
-const sentryHasToken = Boolean(process.env.SENTRY_AUTH_TOKEN);
+// THIRD SIGKILL — source maps are now OPT-IN, not token-derived.
+//
+// The previous gate assumed "token present ⇒ upload is worth the memory". On Vercel the token IS present,
+// so every production build generated source maps for ~380 pages AND uploaded them. Local testing could
+// not reproduce the expensive half: with a dummy token the upload fails immediately, which is why
+// measuring with SENTRY_AUTH_TOKEN=dummy showed no spike (3.91 GB) and looked like an exoneration. It
+// only exonerated map GENERATION, never the upload.
+//
+// Error capture needs the DSN alone and is completely unaffected by this. The cost is minified stack
+// traces in Sentry until someone sets SENTRY_UPLOAD_SOURCEMAPS=1 — a trade worth making against a build
+// that does not deploy at all. Turn it back on once the build has headroom (bigger builder, fewer
+// prerendered routes) and confirm the build still finishes.
+const sentryUploadMaps = process.env.SENTRY_UPLOAD_SOURCEMAPS === '1' && Boolean(process.env.SENTRY_AUTH_TOKEN);
+const sentryHasToken = sentryUploadMaps;
 
 const sentryConfig = {
   // Upload source maps only when SENTRY_AUTH_TOKEN is set
