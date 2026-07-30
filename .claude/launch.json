@@ -2,20 +2,20 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "avatar-g-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
-      "port": 3000
-    },
-    {
       "name": "avatar-g-ui",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "run",
         "dev:ui"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "avatar-g-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
       ],
       "port": 3000
     }

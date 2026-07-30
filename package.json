@@ -8,7 +8,7 @@
   "scripts": {
     "check:cwd": "echo \"ok\"",
     "dev": "next dev -p 3000",
-    "dev:ui": "NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=local-ui-inspection-anon-key SUPABASE_SERVICE_ROLE_KEY=local-ui-inspection-service-key next dev -p 3000",
+    "dev:ui": "NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=local-ui-inspection-anon-key SUPABASE_SERVICE_ROLE_KEY=local-ui-inspection-service-key next dev -p 3100",
     "dev:3003": "next dev -p 3003",
     "clean": "rm -rf .next",
     "build": "next build",
