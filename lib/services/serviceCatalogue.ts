@@ -96,7 +96,10 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
     tagline: { ka: 'ტექსტიდან GLB-მდე', en: 'Text to GLB', ru: 'Из текста в GLB' },
   },
   {
-    id: 'presentation', icon: '📊', live: false, target: { kind: 'path', path: '/slides' },
+    // Live: outline (Gemini) → optional Imagen visuals → resvg-rasterised PNG slides, with browser print
+    // for PDF and a jszip bundle. Degrades to a text-only deck without an image key, and to a
+    // deterministic skeleton without an LLM — neither is an error state.
+    id: 'presentation', icon: '📊', live: true, target: { kind: 'path', path: '/slides' },
     name: { ka: 'პრეზენტაცია', en: 'Presentation', ru: 'Презентация' },
     tagline: { ka: 'სლაიდები და PDF', en: 'Slides and PDF', ru: 'Слайды и PDF' },
   },

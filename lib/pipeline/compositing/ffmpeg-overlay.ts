@@ -31,8 +31,15 @@ const FONT_TITLE = 'FiraGO Medium'; // headings / lower-third title / chips
 const FONT_BODY = 'FiraGO';         // sub-lines / spec bullets
 
 let cachedFontFiles: string[] | null = null;
-/** Materialize the embedded fonts to /tmp once → return their paths for resvg's fontFiles. */
-function overlayFontFiles(): string[] {
+/**
+ * Materialize the embedded fonts to /tmp once → return their paths for resvg's fontFiles.
+ *
+ * EXPORTED because it is the ONLY thing that makes Georgian render server-side: Vercel's container ships
+ * no system fonts, and resvg is configured with `loadSystemFonts: false`, so any surface that rasterises
+ * text (overlays, subtitles, presentation slides) must pass these paths or render tofu. One materializer,
+ * one cache — do not duplicate this.
+ */
+export function overlayFontFiles(): string[] {
   if (cachedFontFiles && cachedFontFiles.every((p) => existsSync(p))) return cachedFontFiles;
   cachedFontFiles = FONTS.map(({ file, b64 }) => {
     const p = join(tmpdir(), file);

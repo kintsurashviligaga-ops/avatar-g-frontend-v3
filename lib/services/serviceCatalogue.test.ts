@@ -32,12 +32,23 @@ describe('the ten official services', () => {
     }
   });
 
-  it('marks the two unbuilt services as not-live rather than linking to a dead surface', () => {
-    // Honesty in the UI: 3D and slides have no surface at all. A tile that silently links there is worse
-    // than one that says "coming soon". Dubbing left this list when /dubbing and its seven legs landed.
+  it('marks only the credential-blocked service as not-live', () => {
+    // Honesty in the UI: a tile that links to something that cannot work is worse than one that says
+    // "coming soon". Only model3d remains — Meshy has no API key anywhere in this project, so the
+    // surface exists but cannot produce a model, and the tile must not claim otherwise.
     const notLive = SERVICE_CATALOGUE.filter((s) => !s.live).map((s) => s.id).sort();
-    expect(notLive).toEqual(['model3d', 'presentation']);
-    expect(liveServices()).toHaveLength(8);
+    expect(notLive).toEqual(['model3d']);
+    expect(liveServices()).toHaveLength(9);
+  });
+
+  it('sends every live service to a surface that exists', () => {
+    // Guards the class of bug the montage tile shipped with: live:true pointing at a hash that renders a
+    // different service entirely. Hash targets must be one ServiceHub actually understands.
+    const KNOWN_HASHES = ['', 'film', 'omni', 'lipsync', 'hub', 'agent'];
+    for (const s of liveServices()) {
+      if (s.target.kind === 'hash') expect(KNOWN_HASHES).toContain(s.target.hash);
+      else expect(s.target.path.startsWith('/')).toBe(true);
+    }
   });
 });
 

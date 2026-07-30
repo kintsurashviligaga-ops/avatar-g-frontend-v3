@@ -92,6 +92,11 @@ const nextConfig = {
       // Montage: conform pass per source + the N-input stitch + the music mux, all ffmpeg-static. Captions
       // rasterise through @resvg (drawtext is unavailable on Vercel — no libfreetype), so both binaries ride.
       '/api/v2/montage/render': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // Presentation: every slide is rasterised SVG→PNG through @resvg. No ffmpeg. Without this entry the
+      // deck builds and then renders nothing — Vercel's container has no system fonts, so resvg is the
+      // only thing that draws text at all (verified: Georgian renders 12.5k ink pixels with the bundled
+      // FiraGO and exactly 0 without it).
+      '/api/v2/presentation/build': ['./node_modules/@resvg/**'],
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],

@@ -1,0 +1,141 @@
+/**
+ * lib/services/presentation/slideSvg.ts — slide → SVG markup.
+ *
+ * PURE + TOTAL: string in, string out. No resvg, no fonts, no I/O — those live in the pipeline, so the
+ * layout arithmetic stays unit-testable.
+ *
+ * Two things this must get right:
+ *  1. WRAPPING. resvg performs no text layout; a `<text>` element renders on one line and runs off the
+ *     canvas. Every line is positioned explicitly here via `wrapText`.
+ *  2. ESCAPING. Slide text is model output derived from user input and goes straight into markup. An
+ *     unescaped `&` produces an SVG that resvg refuses to parse — the slide silently fails to render.
+ */
+import { SLIDE_W, SLIDE_H, wrapText, measureText, type Slide, type DeckTheme } from './deckPlan';
+
+interface Palette {
+  bg: string;
+  title: string;
+  body: string;
+  accent: string;
+  muted: string;
+}
+
+export const PALETTES: Record<DeckTheme, Palette> = {
+  dark: { bg: '#0B0B0F', title: '#FFFFFF', body: '#D6D6DE', accent: '#7C5CFF', muted: '#6B6B78' },
+  light: { bg: '#FFFFFF', title: '#0B0B0F', body: '#2A2A33', accent: '#5B3DF5', muted: '#8A8A96' },
+};
+
+const PAD_X = 96;
+const PAD_TOP = 96;
+const TITLE_SIZE = 62;
+const BULLET_SIZE = 34;
+const BULLET_GAP = 18;
+const LINE_GAP = 1.34;
+
+/** XML-escape. `&` MUST be replaced first or the other replacements double-escape their own ampersands. */
+export function escapeXml(s: string): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Font stack. FiraGO is the bundled Georgian face and is the only one that renders Mkhedruli server-side;
+ * the pipeline passes it to resvg explicitly with `loadSystemFonts: false`, because Vercel's container has
+ * no system fonts at all and would otherwise render tofu.
+ */
+export const SLIDE_FONT_FAMILY = 'FiraGO, Noto Sans Georgian, DejaVu Sans, sans-serif';
+
+export interface SlideSvgOptions {
+  theme?: DeckTheme;
+  /** 1-based, drawn bottom-right. Omit to hide numbering (e.g. on the cover). */
+  pageNumber?: number;
+  totalPages?: number;
+  /** Reserve the right half for the slide's visual and lay text out in the left column. */
+  hasImage?: boolean;
+}
+
+/**
+ * Render one slide to SVG. The image itself is NOT embedded — compositing a hosted PNG belongs to the
+ * pipeline; this only reserves the space so the text column is measured against the right width.
+ */
+export function buildSlideSvg(slide: Slide, opts: SlideSvgOptions = {}): string {
+  const p = PALETTES[opts.theme === 'light' ? 'light' : 'dark'];
+  const colW = opts.hasImage ? Math.round(SLIDE_W * 0.52) - PAD_X : SLIDE_W - PAD_X * 2;
+
+  const parts: string[] = [];
+  parts.push(`<rect width="${SLIDE_W}" height="${SLIDE_H}" fill="${p.bg}"/>`);
+  // Accent rule under the title — the one piece of visual identity a text slide gets.
+  parts.push(`<rect x="${PAD_X}" y="${PAD_TOP - 34}" width="72" height="6" rx="3" fill="${p.accent}"/>`);
+
+  let y = PAD_TOP + TITLE_SIZE;
+  for (const line of wrapText(slide.title, TITLE_SIZE, colW, 3)) {
+    parts.push(
+      `<text x="${PAD_X}" y="${Math.round(y)}" font-family="${SLIDE_FONT_FAMILY}" font-size="${TITLE_SIZE}" font-weight="700" fill="${p.title}">${escapeXml(line)}</text>`,
+    );
+    y += TITLE_SIZE * LINE_GAP;
+  }
+
+  y += 40;
+  const bulletIndent = 38;
+  for (const bullet of slide.bullets) {
+    const lines = wrapText(bullet, BULLET_SIZE, colW - bulletIndent, 3);
+    if (!lines.length) continue;
+    // Stop before running off the canvas rather than drawing text nobody will see.
+    if (y + lines.length * BULLET_SIZE * LINE_GAP > SLIDE_H - PAD_TOP / 2) break;
+
+    parts.push(`<circle cx="${PAD_X + 8}" cy="${Math.round(y - BULLET_SIZE * 0.32)}" r="6" fill="${p.accent}"/>`);
+    for (const line of lines) {
+      parts.push(
+        `<text x="${PAD_X + bulletIndent}" y="${Math.round(y)}" font-family="${SLIDE_FONT_FAMILY}" font-size="${BULLET_SIZE}" fill="${p.body}">${escapeXml(line)}</text>`,
+      );
+      y += BULLET_SIZE * LINE_GAP;
+    }
+    y += BULLET_GAP;
+  }
+
+  if (opts.pageNumber && opts.totalPages) {
+    const label = `${opts.pageNumber} / ${opts.totalPages}`;
+    parts.push(
+      `<text x="${SLIDE_W - PAD_X - Math.round(measureText(label, 24))}" y="${SLIDE_H - 52}" font-family="${SLIDE_FONT_FAMILY}" font-size="24" fill="${p.muted}">${escapeXml(label)}</text>`,
+    );
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SLIDE_W}" height="${SLIDE_H}" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}">${parts.join('')}</svg>`;
+}
+
+/** Cover slide — bigger type, centred, no bullets. */
+export function buildCoverSvg(title: string, subtitle: string, theme: DeckTheme = 'dark'): string {
+  const p = PALETTES[theme];
+  const colW = SLIDE_W - PAD_X * 2;
+  const titleSize = 84;
+  const subSize = 34;
+
+  const titleLines = wrapText(title, titleSize, colW, 3);
+  const subLines = wrapText(subtitle, subSize, colW, 2);
+  const blockH = titleLines.length * titleSize * LINE_GAP + (subLines.length ? 28 + subLines.length * subSize * LINE_GAP : 0);
+  let y = Math.round((SLIDE_H - blockH) / 2) + titleSize;
+
+  const parts: string[] = [`<rect width="${SLIDE_W}" height="${SLIDE_H}" fill="${p.bg}"/>`];
+  for (const line of titleLines) {
+    parts.push(
+      `<text x="${SLIDE_W / 2}" y="${Math.round(y)}" text-anchor="middle" font-family="${SLIDE_FONT_FAMILY}" font-size="${titleSize}" font-weight="700" fill="${p.title}">${escapeXml(line)}</text>`,
+    );
+    y += titleSize * LINE_GAP;
+  }
+  if (subLines.length) {
+    y += 28;
+    for (const line of subLines) {
+      parts.push(
+        `<text x="${SLIDE_W / 2}" y="${Math.round(y)}" text-anchor="middle" font-family="${SLIDE_FONT_FAMILY}" font-size="${subSize}" fill="${p.muted}">${escapeXml(line)}</text>`,
+      );
+      y += subSize * LINE_GAP;
+    }
+  }
+  parts.push(`<rect x="${SLIDE_W / 2 - 36}" y="${SLIDE_H - 140}" width="72" height="6" rx="3" fill="${p.accent}"/>`);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SLIDE_W}" height="${SLIDE_H}" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}">${parts.join('')}</svg>`;
+}
