@@ -12,6 +12,7 @@ import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { detectReplyLocale } from '@/lib/chat/replyLocale';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
+import { resolvePersona, applySystemPersona, type CustomPersonaInput } from '@/lib/services/personas/personas';
 
 
 export const dynamic = 'force-dynamic';
@@ -260,7 +261,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = (await req.json()) as { messages: IncomingMessage[]; webSearch?: boolean; language?: string; tier?: string };
+    const body = (await req.json()) as { messages: IncomingMessage[]; webSearch?: boolean; language?: string; tier?: string; personaId?: string; customPersona?: CustomPersonaInput };
     const { messages = [] } = body;
     // P5 / P83 — response language. An explicit UI selection wins; otherwise (auto mode) DETERMINISTICALLY lock the
     // reply to the latest message's dominant script (localeFromMessages, prose-only) so a Russian or short Georgian
@@ -320,9 +321,16 @@ export async function POST(req: NextRequest) {
     const groundingDirective =
       'You have a real-time Google Search tool. For ANY question whose answer can change over time — current events, news, "who/what is the current …", people currently in office, sports results, prices, exchange rates, weather, "latest/newest", releases, or anything dated after your training — you MUST call Google Search FIRST and base the answer on the results. Never answer such questions from memory; your training data is out of date and will be wrong. Trust fresh search results over anything you recall. (Evergreen facts, math, coding and creative requests need no search.)';
 
-    const effectiveSystem = [datePreamble, groundingDirective, langDirective, profilePreamble, memoryPreamble, SYSTEM_PROMPT]
-      .filter(Boolean)
-      .join('\n\n');
+    // CUSTOM PERSONAS — a selected specialist (or a user-authored one) reshapes tone, emphasis and which
+    // studio the Master Agent reaches for. `applySystemPersona` APPENDS it, so the platform rules assembled
+    // above keep precedence over what is, for a custom persona, untrusted user text.
+    const activePersona = resolvePersona(body.personaId ?? null, body.customPersona ?? null);
+    const effectiveSystem = applySystemPersona(
+      [datePreamble, groundingDirective, langDirective, profilePreamble, memoryPreamble, SYSTEM_PROMPT]
+        .filter(Boolean)
+        .join('\n\n'),
+      activePersona,
+    );
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
