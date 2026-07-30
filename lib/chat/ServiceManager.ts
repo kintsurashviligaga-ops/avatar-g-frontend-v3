@@ -1,4 +1,6 @@
 import { createHash } from 'crypto';
+import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 import { z } from 'zod';
 
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
@@ -230,13 +232,59 @@ const TERMINAL_LTX_STATUS = new Set(['completed', 'succeeded', 'success', 'faile
 const FAILED_LTX_STATUS = new Set(['failed', 'error', 'canceled']);
 
 export class ServiceManager {
+  /**
+   * Master Task §2.1.1 — EVERY provider call goes through the budget guard, and this is the chokepoint for
+   * image, video and avatar (all three resolve here). Guarding at the entry point rather than at each of the
+   * ~8 provider methods below is deliberate: a new engine added to the cascade tomorrow is guarded by
+   * construction instead of by remembering.
+   *
+   * A refusal surfaces as a normal failed response, not a throw — the callers here are render pipelines that
+   * already know how to report "this leg didn't run", and a raised exception would read to them as a crash
+   * and trigger the retry/failover machinery against a budget that will refuse the retry too.
+   */
   async execute(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const operation = this.resolveOperation(request);
-    if (operation === 'text-to-image') {
-      return this.runTextToImage(request);
-    }
+    const service: BillingServiceType = operation === 'text-to-image' ? 'image'
+      : request.intent === 'avatar_generation' ? 'avatar'
+      : 'video';
+    // Seconds for video (the guard prices video per second), one artefact otherwise.
+    const units = service === 'video'
+      ? Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec'])) || 8
+      : 1;
 
-    return this.runVideoAvatar(request);
+    try {
+      return await guardedCall(
+        {
+          service,
+          model: request.videoModel || (service === 'image' ? 'imagen-4' : 'veo-3.1'),
+          units,
+          promptSummary: request.userPrompt,
+        },
+        async () => (operation === 'text-to-image' ? this.runTextToImage(request) : this.runVideoAvatar(request)),
+      );
+    } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        // eslint-disable-next-line no-console
+        console.warn(`[ServiceManager] ${service} refused by the budget guard (${err.reason})`);
+        return {
+          success: false,
+          provider: 'replicate',
+          operation,
+          responseType: operation === 'text-to-image' ? 'image' : 'video',
+          message: 'The platform API budget for this period is exhausted. Please try again later.',
+          predictionStatus: 'failed',
+          metadata: {
+            provider: 'replicate' as const,
+            operation,
+            sessionId: request.sessionId,
+            promptHash: this.hashPrompt(request.userPrompt),
+            budgetExceeded: true,
+            budgetReason: err.reason,
+          },
+        };
+      }
+      throw err;
+    }
   }
 
   async poll(taskRefOrPredictionId: string, sessionId?: string): Promise<ServiceManagerResponse> {
