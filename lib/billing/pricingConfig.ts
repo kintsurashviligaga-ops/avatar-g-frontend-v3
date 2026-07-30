@@ -140,7 +140,7 @@ export function getSoftCap(planId: PlanId): number | null {
 // billed is the Stripe price object, NOT priceGel here. Flipping the displayed price without a matching Stripe
 // (or dynamic BOG) price object would charge the WRONG amount. Going live needs those price objects + wiring.
 
-export type PricingTierId = 'starter' | 'pro_creator' | 'studio_annual'
+export type PricingTierId = 'free' | 'basic' | 'pro' | 'business'
 
 export interface PricingTier {
   id: PricingTierId
@@ -175,26 +175,54 @@ function makeTier(id: PricingTierId, name: string, priceUsd: number, billing: 'm
   return { id, name, priceUsd, priceGel: Math.round(priceUsd * GEL_PER_USD), billing, creditCeiling, creditsIncluded }
 }
 
-// Master Contract V1/V2 — the launch USD tier list + marketing ceilings + fixed credit grants.
+/**
+ * The 4-tier subscription ladder. Ceilings are sized so the PROVIDER cost of a fully-consumed tier lands
+ * near ⅓ of its price — the 200%-margin structure — using the Master Task §1.8 unit costs
+ * ($0.12/video-second → $0.96 per 8s clip · $0.10/track · $0.03/image):
+ *
+ *   Basic     4×8s video $3.84 + 10 music $1.00 + 40 images $1.20  = $6.04   of $19.99  (≈3.3×)
+ *   Pro       8×8s video $7.68 + 25 music $2.50 + 100 images $3.00 = $13.18  of $39.99  (≈3.0×)
+ *   Business 16×8s video $15.36 + 50 music $5.00 + 200 images $6.00 = $26.36 of $79.99  (≈3.0×)
+ *
+ * Free grants images + chat only — no video/music — matching the §2.5.1 free-tier rate limits.
+ * `creditsIncluded` is DERIVED from the ceilings (tierCreditPool) so a media-cost change flows through
+ * instead of silently drifting from a hardcoded total.
+ */
 export const PRICING_TIERS: PricingTier[] = [
-  makeTier('starter', 'Starter', 15, 'monthly', { videos: 4, music: 10, images: 30 }, 150),
-  makeTier('pro_creator', 'Pro Creator', 99, 'monthly', { videos: 35, music: 80, images: 200 }, 1200),
-  makeTier('studio_annual', 'Studio Annual', 299, 'annual', { videos: 120, music: 300, images: 800 }, 4500),
+  makeTier('free', 'Free', 0, 'monthly', { videos: 0, music: 0, images: 6 }, tierCreditPool({ videos: 0, music: 0, images: 6 })),
+  makeTier('basic', 'Basic', 19.99, 'monthly', { videos: 4, music: 10, images: 40 }, tierCreditPool({ videos: 4, music: 10, images: 40 })),
+  makeTier('pro', 'Pro', 39.99, 'monthly', { videos: 8, music: 25, images: 100 }, tierCreditPool({ videos: 8, music: 25, images: 100 })),
+  makeTier('business', 'Business', 79.99, 'monthly', { videos: 16, music: 50, images: 200 }, tierCreditPool({ videos: 16, music: 50, images: 200 })),
 ]
+
+/**
+ * The USD amounts a checkout session may legitimately carry — a session amount is VALIDATED against this
+ * list so a wrong amount can never reach Stripe.
+ *
+ * Lives HERE, not in stripe.ts, for two reasons: it is pricing data (stripe.ts is the client), and stripe.ts
+ * transitively imports an ESM-only env package that jest cannot parse — so an allowlist defined there is
+ * untestable. The FREE tier is filtered out deliberately: it is granted, never checked out, and $0 in this
+ * list would make a $0 checkout session for a PAID tier validate successfully.
+ */
+export const USD_TIER_PRICES: readonly number[] = PRICING_TIERS.filter((t) => t.priceUsd > 0).map((t) => t.priceUsd)
 
 // ─── Live Stripe Price ID resolution (env placeholders — you insert the real IDs in Vercel) ─────────────────
 // The code NEVER hardcodes a price ID. Each tier's live Stripe Price ID lives in an env var; until it's set,
 // the tier is NOT purchasable — and that is the SAFETY property: no env → no charge → a wrong-amount charge is
 // impossible. When you add the IDs, checkout + the webhook credit-grant can be wired to these resolvers.
 export const TIER_STRIPE_PRICE_ENV: Record<PricingTierId, string> = {
-  starter: 'STRIPE_PRICE_STARTER',
-  pro_creator: 'STRIPE_PRICE_PRO_CREATOR',
-  studio_annual: 'STRIPE_PRICE_STUDIO_ANNUAL',
+  // The free tier has no Stripe price object by definition — it is granted, never checked out.
+  free: '',
+  basic: 'STRIPE_PRICE_BASIC',
+  pro: 'STRIPE_PRICE_PRO',
+  business: 'STRIPE_PRICE_BUSINESS',
 }
 
 /** Resolve a tier's live Stripe Price ID from env; null when unset (tier not yet purchasable). */
 export function stripePriceIdForTier(id: PricingTierId): string | null {
-  const v = process.env[TIER_STRIPE_PRICE_ENV[id]]
+  const key = TIER_STRIPE_PRICE_ENV[id]
+  if (!key) return null // free tier — never purchasable
+  const v = process.env[key]
   return typeof v === 'string' && v.trim() ? v.trim() : null
 }
 
