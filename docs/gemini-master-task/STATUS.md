@@ -36,7 +36,7 @@ This file is the PDF's mandated §4.3 status report, kept in-repo and updated at
 | `npm run test:all` (PDF deploy flow calls it) | **does not exist** | `package.json` scripts |
 
 **Service routes that exist today:** chat 13 · image 3 · video 17 · music 5 · avatar 19 · remix 3 ·
-**montage 0 · dubbing 0 · 3d 0 · presentation 0**.
+**montage 0 · dubbing 1 · 3d 0 · presentation 0**.
 
 **Cost substrate already present:** `agent_evolution_traces` records `cost_wholesale_gel` (platform
 provider cost) + `worker_kind` + `metadata` per call, written by `withTrace()`
@@ -102,7 +102,7 @@ Legend: ✅ DONE · ⚠️ PARTIAL · ⬜ TODO · ❓ UNVERIFIED (audit interrup
 | 8 | Music Service (Lyria 3) | ⚠️ | Lyria live + budget-gated; 15-genre grid + 5 Georgian genres still not to §3.2.4 spec |
 | 9 | Avatar Service | ⚠️ | 19 routes incl. live/enroll/handoff; not audited against the §3.2.5 control spec |
 | 10 | Avatar Lip Sync | ⚠️ | exists in the film pipeline |
-| 11 | Dubbing Service | ⬜ | **0 routes** |
+| 11 | Dubbing Service | ✅ | 6 of 7 legs wired: `/api/v2/dubbing/start` + `/[locale]/dubbing`. Lip-sync (leg 7) skipped by design and reported per job. Bed is the ducked original, not a stem. Scribe/TTS legs unverified against live credentials; ffmpeg legs verified locally |
 | 12 | ElevenLabs Integration | ✅ | 137 files (TTS/voice clone) |
 | 13 | Remix Service | ⚠️ | 3 routes |
 | 14 | Montage Service | ⬜ | **0 routes** (stitch exists inside the film pipeline only) |
