@@ -18,6 +18,12 @@
     "app/api/v2/presentation/build/route.ts": {
       "maxDuration": 300
     },
+    "app/api/v2/model3d/status/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/v2/model3d/create/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/video/assemble/route.ts": {
       "maxDuration": 600
     },

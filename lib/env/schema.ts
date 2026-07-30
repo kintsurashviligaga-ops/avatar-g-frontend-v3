@@ -48,6 +48,12 @@ export const env = createEnv({
     // Replicate
     REPLICATE_API_TOKEN: z.string().optional(),
 
+    // Meshy (3D Studio). NOT CONFIGURED on any environment today — declared so the gap is visible here
+    // rather than being folklore. /api/v2/model3d/* answers 503 provider_not_configured without it, and
+    // the catalogue tile stays "coming soon". Set it and flip `live` in lib/services/serviceCatalogue.ts
+    // only after a real generation returns a GLB.
+    MESHY_API_KEY: z.string().optional(),
+
     // Twilio
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
@@ -117,6 +123,7 @@ export const env = createEnv({
     VAPI_PHONE_NUMBER_ID: process.env.VAPI_PHONE_NUMBER_ID,
     VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET,
     REPLICATE_API_TOKEN: process.env.REPLICATE_API_TOKEN,
+    MESHY_API_KEY: process.env.MESHY_API_KEY,
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
     TWILIO_VERIFY_SERVICE_SID: process.env.TWILIO_VERIFY_SERVICE_SID,
