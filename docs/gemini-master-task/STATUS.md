@@ -86,7 +86,7 @@ Legend: ✅ DONE · ⚠️ PARTIAL · ⬜ TODO · ❓ UNVERIFIED (audit interrup
 
 | # | Component | Status | Note |
 |---|---|---|---|
-| 1 | BillingGuard | ⬜ | absent; design settled (D2) |
+| 1 | BillingGuard | ✅ | `lib/services/billing/*` — §2.1.1 contract + §1.8 ladder + §2.5.3 ModelSelector, 18 tests |
 | 2 | GeminiClient wrapper | ⬜ | Gemini is called directly from several modules, no unified client |
 | 3 | Chat Service | ❓ | exists (13 routes); Gemini-primary + auto-escalation unverified |
 | 4 | Image Service | ⚠️ | exists, but **Imagen 4 absent** (0 files) — today FLUX/NanoBanana |
@@ -110,12 +110,13 @@ Legend: ✅ DONE · ⚠️ PARTIAL · ⬜ TODO · ❓ UNVERIFIED (audit interrup
 | 33–34 | Capacitor iOS/Android | ⚠️ | `ios/` present |
 | 35 | Rate Limiting | ⚠️ | `lib/api/rate-limit` exists; per-tier table from PDF absent |
 | 36 | Caching (Redis) | ❓ | Upstash referenced |
-| 37 | Cost Monitoring Dashboard | ⚠️ | `/api/admin/financials` exists; no `/api/v2/usage/*` |
+| 37 | Cost Monitoring Dashboard | ⚠️ | `GET /api/v2/usage/{daily,monthly}` shipped (admin-gated); UI panel still TODO |
 | 38 | i18n (KA/EN/RU) | ✅ | `i18n/`, `messages/` |
 | 39 | Lighthouse > 90 | ❓ | |
 | 40 | Production Deploy | ✅ | Vercel auto-deploy on main |
 
-**Totals (provisional):** ✅ 5 · ⚠️ 11 · ⬜ 7 · ❓ 17 — the 17 unknowns need the audit re-run.
+**Totals (provisional):** ✅ 6 · ⚠️ 11 · ⬜ 6 · ❓ 17 — the 17 unknowns need the audit re-run
+(the 8-slice audit workflow died on a session usage limit before reporting; re-run it first next session).
 
 Additional (from the prompt, not the PDF's 40):
 | Email OTP sign-up gate | ⬜ | register auto-confirms today — must be replaced |
@@ -126,8 +127,10 @@ Additional (from the prompt, not the PDF's 40):
 
 ## 3. Execution order (respects the PDF's "no Sprint N+1 before Sprint N is green")
 
-1. **S1 Foundation** — BillingGuard (wrapping `agent_evolution_traces`) + GeminiClient + cost
-   estimation + `/api/v2/usage/{daily,monthly}` + `npm run test:all`. Everything else gates on this.
+1. **S1 Foundation** — ✅ BillingGuard + cost estimation + `/api/v2/usage/{daily,monthly}` +
+   `npm run test:all` landed on `feature/gemini-integration` (PR pending). ⬜ Remaining: the GeminiClient
+   wrapper, and threading `canProceed()` into the live chat/image/video/music call sites (the guard exists
+   but nothing calls it yet — that wiring is the rest of Sprint 1).
 2. **S1b User-visible quick wins** (explicitly requested, self-contained): Email OTP sign-up gate;
    pricing tiers.
 3. **S2** Video SSE progress + Music genre grid/Georgian genres + Imagen 4 for Image.
