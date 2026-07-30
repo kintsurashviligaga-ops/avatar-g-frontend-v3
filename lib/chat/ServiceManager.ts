@@ -420,7 +420,17 @@ export class ServiceManager {
     // honours the character/image anchor + the in-prompt drift clause, so identity continuity holds.
     if (this.getOption(request.selectedOptions || {}, ['skipI2v', 'forceLtx', 'skip_i2v'])) return null;
     const startImage = this.resolveClipImage(request);
-    if (!startImage) return null; // i2v needs an anchor frame; without one, keep LTX
+    // Veo is the one engine here that also does TEXT-to-video (`image` is optional on its create), and
+    // it is the only engine that can SPEAK a scene's dialogue in-clip. Gating the whole block on an anchor
+    // frame meant a text-only FILM silently skipped Veo and landed on LTX — no native audio, no spoken
+    // line. So with no start image we still try Veo *when the caller opted in* (buildFilmClipRequest sets
+    // veoTextToVideo for film clips), then bail — Runway/Kling/LTX all require the frame, exactly as
+    // before. The opt-in keeps plain chat video ("make me a video of a cat", no image) on its existing
+    // cheaper engine instead of moving the whole text-to-video population onto Veo.
+    const veoEngineOk = request.videoModel !== 'kling' && request.videoModel !== 'hailuo' && hasGeminiVeoProvider();
+    const veoTextToVideoOk = !!this.getOption(request.selectedOptions || {}, ['veoTextToVideo', 'allowVeoT2v']);
+    const veoEligible = veoEngineOk && (!!startImage || veoTextToVideoOk);
+    if (!startImage && !veoEligible) return null; // i2v needs an anchor frame; without one, keep LTX
 
     const aspect = this.toI2vAspect(
       this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio'])) || undefined,
@@ -445,10 +455,12 @@ export class ServiceManager {
     // no access / quota / timeout / any miss it returns null and the proven Runway→Kling→LTX cascade runs
     // BYTE-IDENTICAL (zero regression). Off unless GEMINI_VEO_ENABLED is set. Respects the same Cinema-panel
     // engine opt-out as Runway (explicit Kling/Hailuo selection skips both premium tiers).
-    if (request.videoModel !== 'kling' && request.videoModel !== 'hailuo' && hasGeminiVeoProvider()) {
+    if (veoEligible) {
       const veo = await this.tryGeminiVeoClip(request, startImage, aspect, enrichedPrompt);
       if (veo) return veo;
     }
+    // Every remaining premium engine is image-to-video only.
+    if (!startImage) return null;
 
     if (request.videoModel !== 'kling' && request.videoModel !== 'hailuo') {
       const runway = await this.tryRunwayClip(request, startImage, aspect, enrichedPrompt);
@@ -690,7 +702,7 @@ export class ServiceManager {
    * on ANY create miss → the caller falls through to Runway. The requested aspect is packed into the task-ref
    * (operation::aspect) so the poll can crop the watermark to the right dimensions. NEVER throws.
    */
-  private async tryGeminiVeoClip(request: ServiceManagerRequest, startImage: string, aspect: '9:16' | '16:9' | '1:1', prompt: string): Promise<ServiceManagerResponse | null> {
+  private async tryGeminiVeoClip(request: ServiceManagerRequest, startImage: string | undefined, aspect: '9:16' | '16:9' | '1:1', prompt: string): Promise<ServiceManagerResponse | null> {
     const negativePrompt = this.getOption(request.selectedOptions || {}, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
     // 2000 (was 1000): the tighter cap clipped the character-lock + consistency-seed tail off every Veo
     // prompt, so the "same protagonist in every shot" instruction never arrived — the identity-drift bug.
@@ -702,12 +714,19 @@ export class ServiceManager {
     // the look/character stable across scenes. It used to only appear as "(consistency seed N)" prose.
     const seedRawVeo = this.getOption(request.selectedOptions || {}, ['seed', 'consistencySeed']);
     const seedVeo = seedRawVeo != null ? Number.parseInt(seedRawVeo, 10) : NaN;
+    // The SCENE's own length, not a pinned 8. Veo accepts 4–8s (verified live), and the film grid now
+    // follows the script's cadence — a 4 × 6s script was otherwise stretched to 4 × 8s clips whose action
+    // no longer matched the storyboard's timecodes. Absent/out-of-range → the 8s default, as before.
+    const durRaw = Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec', 'duration_seconds']));
+    const durationSec = Number.isFinite(durRaw) && durRaw > 0 ? Math.min(8, Math.max(4, Math.round(durRaw))) : 8;
     const created = await createGeminiVeoClip({
       promptText: veoPrompt,
-      promptImage: startImage, // i2v anchor frame (Veo animates from it, keeping the locked character)
+      // i2v anchor frame (Veo animates from it, keeping the locked character). Optional: with no frame
+      // Veo renders text-to-video, which is still far better than dropping to LTX.
+      ...(startImage ? { promptImage: startImage } : {}),
       ...(Number.isFinite(seedVeo) && seedVeo >= 0 ? { seed: seedVeo } : {}),
       aspect,
-      durationSec: 8,
+      durationSec,
       ...(negativePrompt ? { negativePrompt } : {}),
     });
     if (!created?.operation) return null; // → Runway → Kling → LTX cascade

@@ -27,6 +27,7 @@ import {
 } from '@/lib/orchestrator/script-breakdown';
 import { SEGMENT_DURATION_SEC } from '@/lib/orchestrator/types';
 import { extractPromptTraits, enrichVideoPrompt } from './promptTraits';
+import { extractSceneDialogue, MAX_SPOKEN_LINE_CHARS, MAX_LINES_PER_SCENE, type SceneSpokenLine } from './sceneDialogue';
 
 /**
  * Strip a trailing `Negative: …` list from a scene description.
@@ -48,12 +49,188 @@ export function stripNegativeTail(s: string): string {
 
 /** The flagship runtime: a 24-second film — 3 Veo scenes at the 8s scene cadence. */
 export const FILM_TOTAL_SEC = 24;
-/** Every scene is an 8-SECOND Veo clip — Veo's native maximum (verified live: durationSeconds is capped at
- *  8; 10s is rejected). The whole grid is 8s-based: 8s→1 scene · 24s→3 · 48s→6. With the hard-cut stitch a
- *  24s master lands at EXACTLY 24s (3 × 8 − 0 overlap) — no pad-freeze. */
+/** DEFAULT scene length — an 8-SECOND Veo clip, Veo's native maximum (verified live: durationSeconds is
+ *  capped at 8; 10s is rejected). The default grid is 8s-based: 8s→1 scene · 24s→3 · 48s→6, and with the
+ *  hard-cut stitch a 24s master lands at EXACTLY 24s (3 × 8 − 0 overlap) — no pad-freeze. A script that
+ *  states its own cadence overrides this via `planFilmGrid` (clamped to [4, 8]). */
 export const FILM_CLIP_SEC = 8;
+/** Veo's accepted `durationSeconds` range (verified live: 4 ≤ n ≤ 8; 10 → 400 "out of bound"). The film
+ *  grid is no longer PINNED to 8s — a script written as 4 scenes × 6s renders as 4 × 6s. */
+export const FILM_CLIP_SEC_MIN = 4;
+export const FILM_CLIP_SEC_MAX = 8;
 /** 24s / 8s = 3 sequential scenes. Derived (not hardcoded) so it stays honest. */
 export const FILM_SCENE_COUNT = planSegmentCount(FILM_TOTAL_SEC, FILM_CLIP_SEC);
+
+/** Clamp any requested per-scene length into Veo's accepted [4, 8] window (rounded). Non-finite → fallback. */
+export function clampClipSec(value: unknown, fallback: number = FILM_CLIP_SEC): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(FILM_CLIP_SEC_MAX, Math.max(FILM_CLIP_SEC_MIN, Math.round(n)));
+}
+
+/** A scene's timecode window as the script wrote it (either bound may be unknown). */
+export interface FilmSceneWindow {
+  startSec?: number | null;
+  endSec?: number | null;
+}
+
+export interface FilmGrid {
+  sceneCount: number;
+  clipSec: number;
+  totalSec: number;
+}
+
+/**
+ * Resolve the film's SCENE GRID from what the script actually says, instead of pinning every film to the
+ * 8s cadence. The owner's scripts are routinely written as 4 scenes × 6s = 24s; forcing 3 × 8s dropped a
+ * scene and slid every dialogue cue off its beat. Veo accepts 4–8s, so the script's own cadence is
+ * renderable verbatim.
+ *
+ * Precedence: the scenes' own timecode windows (median duration) → an explicit clipSec → totalSec ÷
+ * sceneCount → FILM_CLIP_SEC. Everything is clamped to [4, 8] and the count to [1, 12].
+ *
+ * `totalSec` is the RUNTIME CONTRACT, not just a fallback: when the caller passes one, the scene COUNT is
+ * re-derived from it so the film still runs that long at the script's cadence. Without that, a user who
+ * picked the 24s package and pasted a 4 × 6s script got 3 × 6s = an 18-second film — the cadence was
+ * honoured by silently dropping a scene and six seconds of runtime. Pure.
+ */
+export function planFilmGrid(opts: {
+  sceneCount?: number | null;
+  totalSec?: number | null;
+  clipSec?: number | null;
+  windows?: (FilmSceneWindow | null | undefined)[];
+} = {}): FilmGrid {
+  const rawCount = Number(opts.sceneCount);
+  const windows = opts.windows ?? [];
+  const sceneCount = Number.isFinite(rawCount) && rawCount >= 1
+    ? Math.min(12, Math.round(rawCount))
+    : (windows.length >= 1 ? Math.min(12, windows.length) : FILM_SCENE_COUNT);
+  const wantedTotal = Number(opts.totalSec);
+  /** Keep the requested runtime when one was given: N scenes of `sec` ≈ wantedTotal. */
+  const countFor = (sec: number): number =>
+    (Number.isFinite(wantedTotal) && wantedTotal > 0
+      ? Math.max(1, Math.min(12, Math.round(wantedTotal / sec)))
+      : sceneCount);
+
+  // 1) The script's own per-scene windows — the most faithful signal (median resists one odd sheet).
+  const spans = windows
+    .map((w) => (typeof w?.startSec === 'number' && typeof w?.endSec === 'number' ? w.endSec - w.startSec : NaN))
+    .filter((d) => Number.isFinite(d) && d > 0)
+    .sort((a, b) => a - b);
+  if (spans.length > 0) {
+    const median = spans[Math.floor(spans.length / 2)]!;
+    const clipSec = clampClipSec(median);
+    const count = countFor(clipSec);
+    return { sceneCount: count, clipSec, totalSec: count * clipSec };
+  }
+  // 2) An explicit per-scene length — again keeping the requested runtime if one was given.
+  if (opts.clipSec != null && Number.isFinite(Number(opts.clipSec))) {
+    const clipSec = clampClipSec(opts.clipSec);
+    const count = countFor(clipSec);
+    return { sceneCount: count, clipSec, totalSec: count * clipSec };
+  }
+  // 3) A total runtime divided by the scene count (a 24s/4-scene brief → 6s scenes).
+  const total = Number(opts.totalSec);
+  if (Number.isFinite(total) && total > 0 && sceneCount > 0) {
+    const clipSec = clampClipSec(total / sceneCount);
+    return { sceneCount, clipSec, totalSec: sceneCount * clipSec };
+  }
+  return { sceneCount, clipSec: FILM_CLIP_SEC, totalSec: sceneCount * FILM_CLIP_SEC };
+}
+
+// ─── Veo-native spoken dialogue ──────────────────────────────────────────────
+//
+// Veo renders speech IN-CLIP: name the line in the prompt and the character in frame says it, with
+// matching lip movement and an audible voice, as part of the generated clip. That is the same mechanism
+// Gemini's own app uses (photo + prompt → a character actually speaking) and it beats the ElevenLabs VO
+// + lip-sync post-pass on quality while removing a whole processing hop.
+//
+// Two rules make it work:
+//   • Keep the SPOKEN TEXT VERBATIM, in its own language. Georgian must stay Georgian — translating it
+//     (or transliterating it) is exactly how the line stops being the user's line.
+//   • Keep the DIRECTION natural prose. Veo reads language, not directives, and cannot parse negations
+//     — so "no subtitles" would inject subtitles. Suppression stays in FILM_DRIFT_NEGATIVE, which
+//     already carries `text, subtitles`.
+
+/** Longest spoken line we will hand a single clip — the SAME bound the dialogue resolver enforces, so a
+ *  line that survives resolution is never silently truncated here. Re-exported for callers. */
+export { MAX_SPOKEN_LINE_CHARS };
+
+/** Room the scene prose may occupy before enrichVideoPrompt's 1700-char clamp, leaving headroom for the
+ *  trait clauses it appends. A speaking scene trims its (script-supplied, unbounded) head to fit inside
+ *  this, so the spoken line can never be the thing that falls off the end. */
+const SCENE_PROMPT_BUDGET = 1500;
+
+/**
+ * Name the language a line is written in, so Veo speaks it in that language instead of defaulting to
+ * English-accented phonetics. Script-based (not a translation) — the text itself is never altered.
+ */
+export function detectSpokenLanguage(text: string): string | null {
+  const s = String(text || '');
+  if (/[Ⴀ-ჿ]/.test(s)) return 'Georgian';
+  if (/[Ѐ-ӿ]/.test(s)) return 'Russian';
+  if (/[԰-֏]/.test(s)) return 'Armenian';
+  if (/[؀-ۿ]/.test(s)) return 'Arabic';
+  // Kana / Hangul are checked BEFORE Han: Japanese and Korean text also contains Han characters, so a
+  // Han-first test would label a Japanese line "Chinese" and Veo would speak it in the wrong language.
+  if (/[぀-ヿ]/.test(s)) return 'Japanese';
+  if (/[가-힯]/.test(s)) return 'Korean';
+  if (/[一-鿿]/.test(s)) return 'Chinese';
+  if (/[A-Za-z]/.test(s)) return 'English';
+  return null;
+}
+
+/** A speaker cue is only useful if it reads as a person; a bare number/label would confuse the shot. */
+function speakerLabel(speaker: string | null | undefined): string | null {
+  const s = String(speaker || '').trim();
+  if (!s || s.length > 24) return null;
+  if (/^(?:narrator|voice|vo\d*|speaker|character)$/i.test(s)) return null;
+  if (!/[A-Za-zႠ-ჿЀ-ӿ]/.test(s)) return null;
+  return s;
+}
+
+/** Normalise one accepted spoken-line shape into `{ text, speaker }`, or null when there is nothing to say. */
+function normalizeSpokenLine(line: SceneSpokenLine | string | null | undefined): SceneSpokenLine | null {
+  if (!line) return null;
+  const raw = typeof line === 'string' ? { text: line, speaker: null } : line;
+  const text = String(raw.text || '').trim().replace(/\s+/g, ' ').slice(0, MAX_SPOKEN_LINE_CHARS);
+  return text ? { text, speaker: raw.speaker ?? null } : null;
+}
+
+/**
+ * Build the in-clip speech direction for one scene: natural, affirmative prose that puts the line(s) in
+ * the character's mouth and keeps the language explicit.
+ *
+ *   → `The man looks at the camera and says, in Georgian: "ჩვენ დრო აღარ გვაქვს." …`
+ *
+ * A scene may carry a two-line EXCHANGE (a 4–8s shot comfortably holds "— We're out of time." / "— I
+ * know."), rendered as a reply so Veo gives the second line to the other character instead of stacking
+ * both on one mouth. Returns '' when there is nothing to say, so the caller drops the clause entirely.
+ */
+export function buildSpeechDirection(
+  line: SceneSpokenLine | string | readonly (SceneSpokenLine | string | null | undefined)[] | null | undefined,
+  opts: { speaker?: string | null } = {},
+): string {
+  const list = (Array.isArray(line) ? line : [line])
+    .map((l) => normalizeSpokenLine(l as SceneSpokenLine | string | null | undefined))
+    .filter((l): l is SceneSpokenLine => !!l);
+  const first = list[0];
+  if (!first) return '';
+  const lang = detectSpokenLanguage(list.map((l) => l.text).join(' '));
+  const inLang = lang ? `, in ${lang},` : ',';
+  const stopFor = (t: string) => (/[.!?…]$/.test(t) ? '' : '.');
+  // `opts.speaker` is the legacy single-line override; a line's own speaker wins.
+  const subject = speakerLabel(first.speaker ?? opts.speaker) ?? 'The character on screen';
+  // The closing clause is what tells Veo this is DIEGETIC performance (lips + voice in the shot) rather
+  // than a caption. Affirmative only — the anti-subtitle term lives in the negative field.
+  let out = `${subject} speaks aloud${inLang} lips moving in sync with the words: "${first.text}"${stopFor(first.text)}`;
+  for (const reply of list.slice(1)) {
+    const who = speakerLabel(reply.speaker) ?? 'the other character';
+    out += ` Then ${who} answers: "${reply.text}"${stopFor(reply.text)}`;
+  }
+  out += list.length > 1 ? ' Both voices are heard clearly in the shot.' : ' The voice is heard clearly in the shot.';
+  return out;
+}
 
 // ─── Intent detection ────────────────────────────────────────────────────────
 // Deliberately conservative: matches explicit "30-second film / short film /
@@ -160,10 +337,16 @@ export function buildStyleGuide(shared: FilmShared): string {
 export function buildWorldStyleGuide(shared: FilmShared): string {
   const aesthetic = shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
   return (
+    // VEO-NATIVE: affirmative prose only. This clause used to end in "NO neon, glowing light-streaks,
+    // lens flares, HUD overlays or sci-fi effects" — negations a video model cannot parse, which
+    // tokenise as {no, neon} and INJECT the very look they meant to forbid. This is the guide the
+    // SCRIPT-DRIVEN path uses, i.e. exactly the path a pasted screenplay takes, so it was the last place
+    // the "why isn't the quality like Gemini's" keyword soup survived. Every suppression term now lives
+    // in FILM_DRIFT_NEGATIVE, where the provider actually honours it.
     `Rigid visual world — identical across every shot: ${aesthetic}; one consistent colour palette and grade; `
     + `consistent lighting; the same lens family, depth of field and film grain; period-accurate props and set dressing. `
-    + `Render EXACTLY the subject and action THIS scene describes — do not add a person, performer or singer the scene does not call for. `
-    + `Use only lighting and elements that belong to the world of the brief: NO neon, glowing light-streaks, lens flares, HUD overlays or sci-fi effects unless the brief explicitly asks for them.`
+    + `In frame: exactly the subject and action THIS scene describes, and only the people it names. `
+    + `Every light source belongs to this world — practical lamps, daylight, firelight and natural ambience.`
   );
 }
 
@@ -206,7 +389,10 @@ interface CinematicBeat {
 const CINEMATIC_BEATS: readonly CinematicBeat[] = [
   { name: 'Establishing', framing: 'Epic wide establishing shot on an anamorphic lens, a slow cinematic dolly push-in that reveals the location and the protagonist within it — deep focus, motivated natural key light, gentle atmospheric depth', cameraMotion: 'zoom_in' },
   { name: 'Medium Tracking', framing: 'Eye-level medium shot tracking smoothly alongside the protagonist on a gimbal — 35mm lens, shallow depth of field, soft rim light separating subject from background, grounded naturalistic tone', cameraMotion: 'dolly' },
-  { name: 'Arc Reveal', framing: 'A controlled camera arc moving around the protagonist to reveal the space and depth — 28mm lens, deliberate parallax, motivated PRACTICAL lighting only, absolutely no neon and no artificial light-streaks', cameraMotion: 'pan_right' },
+  // Affirmative only — the old "absolutely no neon and no artificial light-streaks" tail was a negation
+  // the model reads as a request for neon (same class of bug as buildWorldStyleGuide's). Those terms
+  // now live in FILM_DRIFT_NEGATIVE.
+  { name: 'Arc Reveal', framing: 'A controlled camera arc moving around the protagonist to reveal the space and depth — 28mm lens, deliberate parallax, lit entirely by motivated practical sources in the room', cameraMotion: 'pan_right' },
   { name: 'Close-Up', framing: 'Intimate close-up on an 85mm portrait lens, a slow controlled push on the protagonist’s face capturing a real, present emotional beat — creamy bokeh, soft Rembrandt lighting', cameraMotion: 'pan_left' },
   { name: 'Wide Reveal', framing: 'A sweeping high aerial wide shot rising and pulling away over the scene — expansive composition, volumetric natural light, the protagonist small against an epic backdrop', cameraMotion: 'zoom_out' },
   { name: 'Resolution', framing: 'A crane pull-back rising as the protagonist and the scene resolve — expansive composition, warm cinematic colour grade, a confident, conclusive final beat', cameraMotion: 'zoom_out' },
@@ -279,24 +465,55 @@ function cleanSceneBlock(block: string): string {
   return b.replace(/\s+/g, ' ').trim();
 }
 
+/** Read the scene's own timecode window ("(0:06–0:12)" / "0:06 – 0:12") out of its block. */
+function sceneBlockWindow(block: string): FilmSceneWindow | null {
+  const m = block.slice(0, 400).match(/(\d{1,2}):(\d{2})\s*[–—-]\s*(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const start = Number(m[1]) * 60 + Number(m[2]);
+  const end = Number(m[3]) * 60 + Number(m[4]);
+  return Number.isFinite(start) && Number.isFinite(end) && end > start ? { startSec: start, endSec: end } : null;
+}
+
 /**
- * Split a structured script into up to `maxScenes` per-scene visual prompts.
- * Returns null when the text has no explicit multi-scene structure (so the caller
- * falls back to the LLM scene-writer / deterministic beats).
+ * ONE scene of a pasted structured script: its visual prompt, the line the character SPEAKS in it, and
+ * the timecode window the script gave it. The dialogue + window used to be thrown away by
+ * `cleanSceneBlock` (which cuts at the `დიალოგი`/SFX metadata boundary), so the render never learned
+ * what anyone says — the whole reason a Veo film came back silent.
  */
-export function splitStructuredScript(text: string, maxScenes: number): string[] | null {
+export interface StructuredScene {
+  prompt: string;
+  dialogue: SceneSpokenLine | null;
+  window: FilmSceneWindow | null;
+}
+
+/**
+ * Split a structured script into up to `maxScenes` scene sheets (visual prompt + spoken line + window).
+ * Returns null when the text has no explicit multi-scene structure (so the caller falls back to the LLM
+ * scene-writer / deterministic beats).
+ */
+export function splitStructuredScriptScenes(text: string, maxScenes: number): StructuredScene[] | null {
   if (!text || maxScenes < 2) return null;
   const markerRx = /(?:🎬|🎥|🎞️?)?\s*(?:სცენა|сцена|scene|shot|кадр)\s*#?\s*\d+\b/gi;
   const idxs: number[] = [];
   for (const m of text.matchAll(markerRx)) if (typeof m.index === 'number') idxs.push(m.index);
   if (idxs.length < 2) return null; // not a structured multi-scene script
   idxs.push(text.length);
-  const scenes: string[] = [];
+  const scenes: StructuredScene[] = [];
   for (let i = 0; i < idxs.length - 1 && scenes.length < maxScenes; i++) {
-    const block = cleanSceneBlock(text.slice(idxs[i]!, idxs[i + 1]!)).slice(0, 1200);
-    if (block.length >= 20) scenes.push(block);
+    const raw = text.slice(idxs[i]!, idxs[i + 1]!);
+    const prompt = cleanSceneBlock(raw).slice(0, 1200);
+    if (prompt.length < 20) continue;
+    scenes.push({ prompt, dialogue: extractSceneDialogue(raw), window: sceneBlockWindow(raw) });
   }
   return scenes.length >= 2 ? scenes : null;
+}
+
+/**
+ * Back-compat view of `splitStructuredScriptScenes` — the per-scene VISUAL prompts only.
+ */
+export function splitStructuredScript(text: string, maxScenes: number): string[] | null {
+  const scenes = splitStructuredScriptScenes(text, maxScenes);
+  return scenes ? scenes.map((s) => s.prompt) : null;
 }
 
 // ─── Storyboard caption enrichment ───────────────────────────────────────────
@@ -395,6 +612,18 @@ export interface FilmPlanOptions {
   characterLock?: string | null;
   /** Override total runtime; defaults to FILM_TOTAL_SEC (30s). */
   totalSec?: number;
+  /** Per-scene clip length, clamped to Veo's [4, 8] window. Absent → FILM_CLIP_SEC (8). Lets a script
+   *  written as 4 × 6s render at 4 × 6s instead of being forced onto the 8s grid. */
+  clipSec?: number;
+  /**
+   * VEO-NATIVE SPEECH — the line(s) each scene's character SPEAKS, index-aligned with `sceneScripts`.
+   * A scene may carry a short two-line exchange. Only honoured when `nativeSpeech` is true (i.e. Veo is
+   * the engine); the fallback engines (Runway/Kling/LTX) generate no speech, so for them the line stays
+   * out of the prompt and the ElevenLabs VO path renders it exactly as before.
+   */
+  sceneDialogue?: (SceneSpokenLine | string | readonly (SceneSpokenLine | string)[] | null | undefined)[];
+  /** True when the render engine generates speech in-clip (Veo). Gates `sceneDialogue`. */
+  nativeSpeech?: boolean;
   /** Frame orientation — drives the per-clip aspect ratio. Default landscape. */
   orientation?: 'landscape' | 'vertical';
   /**
@@ -468,7 +697,11 @@ export const FILM_DRIFT_NEGATIVE =
   // flux-schnell takes no negative).
   'collage, split screen, split-screen, diptych, triptych, grid, multiple panels, side by side, ' +
   'comic panels, comic book style, comic templates, multiple angles, borders, dividers, picture-in-picture, ' +
-  'floating objects, ungrounded physics';
+  'floating objects, ungrounded physics, ' +
+  // Moved here out of buildWorldStyleGuide's positive text, where they were written as "NO neon, glowing
+  // light-streaks…" — a negation the model reads as a REQUEST for neon. On the negative field they are
+  // actually suppressed.
+  'neon glow, glowing light streaks, lens flare, HUD overlay, sci-fi effects, extra background performers';
 
 /**
  * PHASE 47 §3 — Nano Banano's visual contingency plan for a single scene.
@@ -508,6 +741,13 @@ export interface FilmScene {
   beat: string;
   /** Fully enriched, continuity-anchored prompt for this clip. */
   prompt: string;
+  /**
+   * The line(s) this scene's character SPEAKS inside the clip (Veo renders them natively, with synced
+   * lips). EMPTY when the scene is silent OR the engine can't generate speech — in which case the
+   * ElevenLabs VO path still owns the dialogue. Load-bearing downstream: a non-empty value is the signal
+   * NOT to lay a second (ElevenLabs) voice over this scene.
+   */
+  spokenLines: string[];
   /** SAME across all scenes (continuity). */
   seed: number;
   /** PHASE 47 §3 — the visual fallback plan that keeps a dropped clip on-model. */
@@ -548,8 +788,10 @@ export interface FilmPlan {
  */
 export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): FilmPlan {
   const totalSec = opts.totalSec && opts.totalSec > 0 ? opts.totalSec : FILM_TOTAL_SEC;
-  // The film runs at a 5-second scene cadence → six beats over the 30s runtime.
-  const segments = deterministicBreakdown(prompt, totalSec, FILM_CLIP_SEC);
+  // The scene cadence follows the SCRIPT (4–8s, Veo's accepted range) instead of a pinned 8s grid, so a
+  // 24s script written as 4 × 6s renders as 4 × 6s. Absent → FILM_CLIP_SEC, byte-identical to before.
+  const clipSec = clampClipSec(opts.clipSec, FILM_CLIP_SEC);
+  const segments = deterministicBreakdown(prompt, totalSec, clipSec);
   const seed = buildConsistencySeed(prompt);
   // PHASE 45 §2 — fold uploaded reference images into the identity lock. The
   // explicit avatarReference wins; otherwise the FIRST reference image becomes
@@ -571,8 +813,11 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // PHASE 22 (VECTOR 1) — merge the always-on drift baseline with the Director's scene-tailored
   // negative (deduped-ish by simple concat; the provider tolerates overlap). Cap so a runaway brief
   // negative can't blow the provider's field bound.
+  // Cap 800 (was 600): the baseline itself grew to ~590 when the light-streak/extra-performer terms moved
+  // off the positive text, which left the Director's own negative with nothing but the cut. 800 is still
+  // far inside every provider's field bound (Veo trims to the same number on the wire).
   const briefNegative = typeof opts.negativePrompt === 'string' ? opts.negativePrompt.trim() : '';
-  const negativePrompt = (briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE).slice(0, 600);
+  const negativePrompt = (briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE).slice(0, 800);
 
   const shared: FilmShared = {
     seed,
@@ -624,6 +869,20 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     if (sceneCam && sceneCam.trim()) return `Camera: ${sceneCam.trim()}`;
     return cameraDirectiveFor(beatMotion);
   };
+  // VEO-NATIVE SPEECH — resolve THIS scene's spoken line. Gated on `nativeSpeech` because only Veo
+  // renders speech in-clip; for Runway/Kling/LTX the line must stay OUT of the prompt (they would render
+  // the words as burned-in text at best) and the ElevenLabs VO path keeps owning it, unchanged.
+  const spokenFor = (index: number): SceneSpokenLine[] => {
+    if (!opts.nativeSpeech) return [];
+    const raw = opts.sceneDialogue?.[index];
+    if (!raw) return [];
+    const list = Array.isArray(raw) ? raw : [raw];
+    return list
+      .map((l) => normalizeSpokenLine(l as SceneSpokenLine | string | null | undefined))
+      .filter((l): l is SceneSpokenLine => !!l)
+      .slice(0, MAX_LINES_PER_SCENE); // a 4–8s shot holds a two-line exchange at most
+  };
+
   const scenes: FilmScene[] = segments.map((seg) => {
     // §2 — vary the COMPOSITION per scene (real storyboard arc)…
     const beat = sceneBeat(seg.index, segments.length);
@@ -667,6 +926,28 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     const continuity = scriptDriven
       ? `${buildWorldStyleGuide(shared)}${conditionalCharacter}`
       : `${styleGuide} Continuity — the protagonist is ${characterAnchor}.`;
+    // The SPOKEN LINE rides immediately after the scene's action — the highest-weighted position after
+    // the story itself, and (deliberately) before the camera/continuity boilerplate, so it survives every
+    // downstream clamp (enrichVideoPrompt's tail cut and withColorScience's middle trim both preserve the
+    // head). A Music-Video INTRO scene is an empty establishing location, so it never speaks.
+    const spoken = mvIntro ? [] : spokenFor(seg.index);
+    const speechDirection = spoken.length ? ` ${buildSpeechDirection(spoken)}` : '';
+    // A script's scene line usually already ends in a full stop, so the fixed "." below produced
+    // "…მტვრიანი სხივები.. The character…". Cosmetic, but it is the first thing Veo reads.
+    const headStop = /[.!?…]$/.test(head.trim()) ? '' : '.';
+    // RESERVE ROOM FOR THE SPOKEN LINE. `head` is a script-supplied scene description with no bound of its
+    // own (a Master-Script action or an approved storyboard scene may run to 2000 chars), while
+    // enrichVideoPrompt clamps the finished prompt with a plain tail slice. A long head therefore cut the
+    // speech clause off the end — and the composite, which drops the ElevenLabs leg because "Veo is saying
+    // it", would then have delegated a line that reached no prompt at all. So when a scene speaks, the head
+    // yields exactly as much as the clause needs. Silent scenes are untouched (byte-identical).
+    const fitHead = (tail: string): string => {
+      if (!speechDirection) return head;
+      const total = head.length + headStop.length + speechDirection.length + tail.length;
+      if (total <= SCENE_PROMPT_BUDGET) return head;
+      const keep = Math.max(160, head.length - (total - SCENE_PROMPT_BUDGET));
+      return head.slice(0, keep).trimEnd();
+    };
     // Inject the explicit camera move + subject energy + a clean-frame guard (no
     // AI-burned text/titles), so the model actually MOVES and doesn't paint captions.
     // Music-Video INTRO scenes are a PURE establishing location (drone over the city,
@@ -689,7 +970,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
             // "never a static frozen frame" / "no on-screen text" removed — both are negations the model
             // can't parse; the affirmative "continuous cinematic camera movement" carries the intent and
             // the text/watermark terms live in FILM_DRIFT_NEGATIVE.
-            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene. ${continuity}`,
+            ((tail) => `${fitHead(tail)}${headStop}${speechDirection}${tail}`)(
+              ` ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene. ${continuity}`,
+            ),
             traits, 1700,
           )
         // PHASE 28 (VECTOR 1) — HARD IDENTITY CLAUSE. On the character-brief (non-script) path the
@@ -702,7 +985,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
             // Condensed: the identity assertion was stated three separate times (here, in styleGuide and in
             // the continuity clause) and padded with negations. One affirmative sentence + the continuity
             // clause is stronger conditioning AND leaves the scene's own action dominant.
-            `${head}. ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement. The subject performs with believable, natural emotion — lifelike expression, gaze and body language true to the moment. ${continuity}`,
+            ((tail) => `${fitHead(tail)}${headStop}${speechDirection}${tail}`)(
+              ` ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement. The subject performs with believable, natural emotion — lifelike expression, gaze and body language true to the moment. ${continuity}`,
+            ),
             traits, 1700,
           );
     return {
@@ -712,6 +997,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       cameraMotion: beat.cameraMotion,
       beat: beat.name,
       prompt: enriched,
+      // The line(s) Veo will actually speak in this clip (empty = silent scene, or a non-Veo engine). The
+      // composite reads them to decide whether an ElevenLabs VO would DOUBLE the voice.
+      spokenLines: spoken.map((l) => l.text),
       seed,
       // PHASE 47 §3 — Nano Banano stamps each scene with its on-model fallback.
       contingency: buildSceneContingency(seg.index, segments.length, shared),
@@ -743,8 +1031,19 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
     // which fought a landscape stitch and made the format "change mid-video".)
     aspectRatio: shared.orientation === 'vertical' ? '9:16' : '16:9',
     seed: String(scene.seed),
+    // Per-clip audio generation stays OFF for the engines that expose the switch (LTX): the Audio/Foley
+    // agent binds one cohesive track across the stitched timeline. Veo has no such parameter — its audio
+    // is always on — which is exactly what makes the in-clip spoken line work.
     generate_audio: 'false',
   };
+  // VEO-NATIVE SPEECH — the line(s) this clip speaks. Carried so the render boundary (and any downstream
+  // audio stage) can see that this scene already has a voice and must not have a second one laid over it.
+  if (scene.spokenLines.length) selectedOptions.spokenLine = scene.spokenLines.join(' ');
+  // A FILM clip opts in to Veo TEXT-to-video: with no anchor frame the premium engines are all
+  // image-to-video, so a text-only film used to drop to LTX — no native audio and no in-clip speech, the
+  // two things this pipeline now depends on. Scoped to the film request on purpose: a plain chat "make me
+  // a video of a cat" keeps its existing (cheaper) engine choice rather than silently moving to Veo.
+  selectedOptions.veoTextToVideo = '1';
   // PHASE 45 §2 — map the 1–3 reference images into the LTX character-reference /
   // IP-Adapter array. The primary ref stays in `characterReference` for the
   // single-image path; the full set rides in `characterReferences` (JSON) so the

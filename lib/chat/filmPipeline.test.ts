@@ -8,8 +8,15 @@ import {
   buildFilmClipRequest,
   filmProgressStages,
   normalizeReferenceImages,
+  buildSpeechDirection,
+  detectSpokenLanguage,
+  clampClipSec,
+  planFilmGrid,
   FILM_TOTAL_SEC,
   FILM_SCENE_COUNT,
+  FILM_CLIP_SEC,
+  FILM_CLIP_SEC_MIN,
+  FILM_CLIP_SEC_MAX,
   FILM_MAX_REFERENCE_IMAGES,
   FILM_DRIFT_NEGATIVE,
   type FilmShared,
@@ -184,6 +191,216 @@ describe('planFilmScenes — continuity-locked production plan', () => {
   });
 });
 
+// ─── VEO-NATIVE SPOKEN DIALOGUE ──────────────────────────────────────────────
+// Veo generates its clip audio natively, speech included: put the line in the prompt as natural
+// direction and the character in frame actually says it, with synced lips, in-clip. Before this the
+// per-scene dialogue only ever travelled as a TIMECODE WINDOW for the downstream duck/lip-sync stage, so
+// the prompt that reached Veo was visuals-only and nobody in the film ever spoke.
+
+describe('detectSpokenLanguage — name the language, never translate it', () => {
+  it('identifies the scripts we actually ship', () => {
+    expect(detectSpokenLanguage('ჩვენ დრო აღარ გვაქვს.')).toBe('Georgian');
+    expect(detectSpokenLanguage('Времени больше нет.')).toBe('Russian');
+    expect(detectSpokenLanguage('We are out of time.')).toBe('English');
+  });
+  it('returns null when there is no letter to speak', () => {
+    expect(detectSpokenLanguage('!!! 123')).toBeNull();
+  });
+});
+
+describe('buildSpeechDirection — Veo-native, verbatim, no negations', () => {
+  it('puts the line in the character\'s mouth with the language named', () => {
+    const d = buildSpeechDirection('ჩვენ დრო აღარ გვაქვს.');
+    expect(d).toContain('"ჩვენ დრო აღარ გვაქვს."'); // VERBATIM, still Georgian
+    expect(d).toMatch(/in Georgian/);
+    expect(d).toMatch(/speaks aloud/);
+    expect(d).toMatch(/lips moving in sync/);
+    // Negations are unparseable by video models — the anti-subtitle terms live in the negative field.
+    expect(d).not.toMatch(/\bno\b|\bnever\b|\bavoid\b|without/i);
+  });
+  it('names the speaker when the script gave one', () => {
+    expect(buildSpeechDirection('I know.', { speaker: 'ANNA' })).toMatch(/^ANNA speaks aloud/);
+  });
+  it('falls back to a generic subject for a placeholder speaker', () => {
+    expect(buildSpeechDirection('I know.', { speaker: 'NARRATOR' })).toMatch(/^The character on screen/);
+  });
+  it('bounds a runaway line (an 8s shot cannot deliver a monologue)', () => {
+    // MAX_SPOKEN_LINE_CHARS (200) + the fixed direction — never the caller's 5000.
+    expect(buildSpeechDirection('x'.repeat(5000)).length).toBeLessThan(340);
+  });
+  it('returns nothing for a silent scene', () => {
+    expect(buildSpeechDirection(null)).toBe('');
+    expect(buildSpeechDirection('   ')).toBe('');
+  });
+});
+
+describe('planFilmScenes — dialogue reaches the Veo prompt', () => {
+  // The owner's "დროის წნეხი" grid: 4 × 6s, three spoken beats + one deliberate pause.
+  const SCENES = [
+    'ფართო კადრი, ინდუსტრიული საწყობი, კაცი შეკრული ზის ხის ყუთზე',
+    'ახლო კადრი ქალზე, თვალებში ცრემლი და შიში',
+    'დეტალური კადრი შეკრულ ხელებზე, თითები იჭიმება',
+    'კაცი დგება, წყვეტს თოკებს და მიდის ქალისკენ',
+  ];
+  const DIALOGUE = [
+    { text: 'ჩვენ დრო აღარ გვაქვს.', speaker: null },
+    { text: 'მე ვიცი.', speaker: null },
+    null,
+    { text: 'სხვა გზა არ არის.', speaker: null },
+  ];
+  const plan = planFilmScenes('დროის წნეხი', {
+    sceneScripts: SCENES, sceneDialogue: DIALOGUE, nativeSpeech: true, clipSec: 6, totalSec: 24,
+  });
+
+  it('renders the script as 4 × 6s (the script\'s own cadence, not the pinned 8s grid)', () => {
+    expect(plan.scenes).toHaveLength(4);
+    expect(plan.scenes.every((s) => s.durationSec === 6)).toBe(true);
+  });
+
+  it('puts each scene\'s spoken line INTO that scene\'s prompt, verbatim', () => {
+    expect(plan.scenes[0]!.prompt).toContain('"ჩვენ დრო აღარ გვაქვს."');
+    expect(plan.scenes[1]!.prompt).toContain('"მე ვიცი."');
+    expect(plan.scenes[3]!.prompt).toContain('"სხვა გზა არ არის."');
+  });
+
+  it('PRESERVES the spoken language — Georgian is never translated or transliterated', () => {
+    expect(plan.scenes[0]!.prompt).toMatch(/in Georgian/);
+    // Not a translation of the line, and no Latin transliteration of it either.
+    expect(plan.scenes[0]!.prompt).not.toMatch(/we (?:have )?(?:no|are out of) time/i);
+    expect(plan.scenes[0]!.prompt).not.toMatch(/chven dro/i);
+  });
+
+  it('leaves a SILENT scene silent (a scripted pause stays a pause)', () => {
+    expect(plan.scenes[2]!.spokenLines).toEqual([]);
+    expect(plan.scenes[2]!.prompt).not.toMatch(/speaks aloud/);
+  });
+
+  it('exposes the delegated line on the scene so the composite can drop the duplicate VO', () => {
+    expect(plan.scenes.map((s) => s.spokenLines)).toEqual([
+      ['ჩვენ დრო აღარ გვაქვს.'], ['მე ვიცი.'], [], ['სხვა გზა არ არის.'],
+    ]);
+  });
+
+  it('speaks a two-line EXCHANGE in one scene as a reply (both lines reach Veo, neither is lost)', () => {
+    // Two turns landing in the same 6s window must BOTH be in that clip's prompt — dropping one and
+    // still suppressing the ElevenLabs leg would leave those words spoken by nobody.
+    const duo = planFilmScenes('დროის წნეხი', {
+      sceneScripts: SCENES, clipSec: 6, totalSec: 24, nativeSpeech: true,
+      sceneDialogue: [[{ text: 'ჩვენ დრო აღარ გვაქვს.', speaker: 'კაცი' }, { text: 'მე ვიცი.', speaker: 'ქალი' }]],
+    });
+    expect(duo.scenes[0]!.spokenLines).toEqual(['ჩვენ დრო აღარ გვაქვს.', 'მე ვიცი.']);
+    expect(duo.scenes[0]!.prompt).toContain('"ჩვენ დრო აღარ გვაქვს."');
+    expect(duo.scenes[0]!.prompt).toContain('"მე ვიცი."');
+    expect(duo.scenes[0]!.prompt).toMatch(/კაცი speaks aloud/);
+    expect(duo.scenes[0]!.prompt).toMatch(/Then ქალი answers/);
+    expect(duo.scenes[0]!.prompt.length).toBeLessThan(1300);
+  });
+
+  it('leads with the STORY, then the line — never camera boilerplate first', () => {
+    const head = plan.scenes[0]!.prompt.slice(0, 90);
+    expect(head).toMatch(/ინდუსტრიული საწყობი/);
+    // The line lands early enough to survive every downstream clamp (tail cut + middle trim).
+    expect(plan.scenes[0]!.prompt.indexOf('ჩვენ დრო აღარ გვაქვს')).toBeLessThan(400);
+  });
+
+  it('keeps the prompt Veo-native WITH dialogue: no negations, bounded length', () => {
+    for (const scene of plan.scenes) {
+      expect(scene.prompt).not.toMatch(/\bNO yellow\b|\bNO neon\b|never a static frozen frame|No on-screen text/i);
+      expect(scene.prompt.length).toBeLessThan(1300);
+    }
+  });
+
+  it('NON-VEO engines keep the ElevenLabs path: no line in the prompt without nativeSpeech', () => {
+    // Runway/Kling/LTX generate no speech — a line in their prompt is at best burned-in text, so the
+    // dialogue must stay out and the existing VO leg must keep owning it.
+    const fallback = planFilmScenes('დროის წნეხი', { sceneScripts: SCENES, sceneDialogue: DIALOGUE, clipSec: 6, totalSec: 24 });
+    expect(fallback.scenes.every((s) => s.spokenLines.length === 0)).toBe(true);
+    expect(fallback.scenes.every((s) => !/speaks aloud/.test(s.prompt))).toBe(true);
+    // …and the visual prompt is otherwise unchanged by the dialogue plumbing.
+    const noDialogue = planFilmScenes('დროის წნეხი', { sceneScripts: SCENES, clipSec: 6, totalSec: 24 });
+    expect(fallback.scenes.map((s) => s.prompt)).toEqual(noDialogue.scenes.map((s) => s.prompt));
+  });
+
+  it('RESERVES room for the spoken line — a long scene description can never cut it off', () => {
+    // `head` is script-supplied and unbounded (a Master-Script action or an approved storyboard scene runs
+    // to 2000 chars) while the prompt is clamped by a tail slice, so the speech clause used to fall off the
+    // end — and the composite would then have dropped the ElevenLabs leg for a line no prompt contained.
+    for (const headLen of [400, 900, 1400, 1900, 2000]) {
+      const long = `a bound man on a crate in an industrial warehouse, ${'dust motes drifting through hard light, '.repeat(60)}`.slice(0, headLen);
+      const p = planFilmScenes('დროის წნეხი', {
+        sceneScripts: [long], totalSec: 8, clipSec: 8, nativeSpeech: true,
+        sceneDialogue: [{ text: 'ჩვენ დრო აღარ გვაქვს.', speaker: null }],
+      });
+      const scene = p.scenes[0]!;
+      expect(scene.spokenLines).toEqual(['ჩვენ დრო აღარ გვაქვს.']);
+      // The line is VERBATIM in the emitted prompt at every head length.
+      expect(scene.prompt).toContain('"ჩვენ დრო აღარ გვაქვს."');
+      expect(scene.prompt).toMatch(/The voice is heard clearly in the shot/);
+    }
+  });
+
+  it('carries the spoken line into the clip request for the render boundary', () => {
+    const req = buildFilmClipRequest(plan.scenes[0]!, plan.shared);
+    expect(req.selectedOptions.spokenLine).toBe('ჩვენ დრო აღარ გვაქვს.');
+    // A FILM clip opts in to Veo text-to-video (plain chat video deliberately does not).
+    expect(req.selectedOptions.veoTextToVideo).toBe('1');
+    expect(req.selectedOptions.duration).toBe('6'); // the scene's real length reaches Veo's durationSeconds
+    // A silent scene carries no line at all.
+    expect(buildFilmClipRequest(plan.scenes[2]!, plan.shared).selectedOptions.spokenLine).toBeUndefined();
+  });
+});
+
+describe('film grid — 4×6s as well as 3×8s (Veo accepts 4–8s)', () => {
+  it('clamps any requested length into Veo\'s accepted window', () => {
+    expect(FILM_CLIP_SEC_MIN).toBe(4);
+    expect(FILM_CLIP_SEC_MAX).toBe(8);
+    expect(clampClipSec(6)).toBe(6);
+    expect(clampClipSec(10)).toBe(8); // 10 → Veo 400 "out of bound"
+    expect(clampClipSec(1)).toBe(4);
+    expect(clampClipSec('nonsense')).toBe(FILM_CLIP_SEC);
+    expect(clampClipSec(null, 5)).toBe(5);
+  });
+
+  it('derives the grid from the script\'s own timecode windows', () => {
+    const windows = [
+      { startSec: 0, endSec: 6 }, { startSec: 6, endSec: 12 },
+      { startSec: 12, endSec: 18 }, { startSec: 18, endSec: 24 },
+    ];
+    expect(planFilmGrid({ sceneCount: 4, windows })).toEqual({ sceneCount: 4, clipSec: 6, totalSec: 24 });
+  });
+
+  it('falls back to totalSec ÷ sceneCount, then to the 8s default', () => {
+    expect(planFilmGrid({ sceneCount: 4, totalSec: 24 })).toEqual({ sceneCount: 4, clipSec: 6, totalSec: 24 });
+    expect(planFilmGrid({ sceneCount: 3 })).toEqual({ sceneCount: 3, clipSec: 8, totalSec: 24 });
+    expect(planFilmGrid()).toEqual({ sceneCount: FILM_SCENE_COUNT, clipSec: 8, totalSec: 24 });
+  });
+
+  it('an out-of-range script cadence is clamped, never rejected', () => {
+    // A 12s-per-scene script still renders — at Veo's 8s maximum.
+    expect(planFilmGrid({ sceneCount: 2, windows: [{ startSec: 0, endSec: 12 }, { startSec: 12, endSec: 24 }] }))
+      .toEqual({ sceneCount: 2, clipSec: 8, totalSec: 16 });
+  });
+
+  it('KEEPS the requested runtime when the script sets a different cadence', () => {
+    // The 24s package + a 4x6s script must be 4 x 6s = 24s. Deriving only the cadence gave 3 x 6s = an
+    // 18-second film: the user silently lost a scene and six seconds of the runtime they paid for.
+    const windows = [
+      { startSec: 0, endSec: 6 }, { startSec: 6, endSec: 12 },
+      { startSec: 12, endSec: 18 }, { startSec: 18, endSec: 24 },
+    ];
+    expect(planFilmGrid({ sceneCount: 3, totalSec: 24, windows })).toEqual({ sceneCount: 4, clipSec: 6, totalSec: 24 });
+    // The 48s package likewise: 6 x 8s → 8 x 6s.
+    expect(planFilmGrid({ sceneCount: 6, totalSec: 48, windows })).toEqual({ sceneCount: 8, clipSec: 6, totalSec: 48 });
+    // Without a runtime contract the caller's count is authoritative (explicit per-scene scripts).
+    expect(planFilmGrid({ sceneCount: 3, windows })).toEqual({ sceneCount: 3, clipSec: 6, totalSec: 18 });
+  });
+
+  it('omitting clipSec leaves planFilmScenes byte-identical to the 8s grid', () => {
+    expect(planFilmScenes('a hero in a storm', { clipSec: 8 }).scenes.map((s) => s.prompt))
+      .toEqual(planFilmScenes('a hero in a storm').scenes.map((s) => s.prompt));
+  });
+});
+
 describe('planFilmScenes — Phase 22 VECTOR 1: provider negative threading', () => {
   it('always stamps the drift-suppression baseline on shared + every clip request', () => {
     const plan = planFilmScenes('a hero walks through a neon market');
@@ -202,8 +419,25 @@ describe('planFilmScenes — Phase 22 VECTOR 1: provider negative threading', ()
   });
 
   it('caps a runaway brief negative so it can never blow the provider field bound', () => {
+    // 800, raised from 600 when the light-streak / extra-performer terms moved OFF the positive text
+    // (where they were negations Veo cannot parse) onto this field — at 600 the ~590-char baseline left
+    // the Director's own negative with nothing but the cut. geminiVeo trims to the same 800 on the wire.
     const plan = planFilmScenes('a hero in a storm', { negativePrompt: 'x'.repeat(5000) });
-    expect(plan.shared.negativePrompt.length).toBeLessThanOrEqual(600);
+    expect(plan.shared.negativePrompt.length).toBeLessThanOrEqual(800);
+  });
+
+  it('suppresses the light-streak / sci-fi look on the NEGATIVE field, not as in-prompt negations', () => {
+    // "NO neon, glowing light-streaks, lens flares" inside the positive world guide tokenised as
+    // {no, neon} and injected the very look it meant to forbid — the last keyword-soup survivor on the
+    // SCRIPT-DRIVEN path (exactly the path a pasted screenplay takes).
+    const plan = planFilmScenes('a hero in a storm', { sceneScripts: ['a lantern-lit barn at dusk', 'a rope snaps'], totalSec: 16 });
+    expect(plan.shared.negativePrompt).toContain('glowing light streaks');
+    expect(plan.shared.negativePrompt).toContain('lens flare');
+    for (const scene of plan.scenes) {
+      expect(scene.prompt).toMatch(/Rigid visual world/); // the world lock still rides on every scene
+      expect(scene.prompt).not.toMatch(/\bNO neon\b/i);
+      expect(scene.prompt).not.toMatch(/do not add a person/i);
+    }
   });
 });
 

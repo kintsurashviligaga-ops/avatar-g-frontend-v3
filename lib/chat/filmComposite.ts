@@ -48,13 +48,17 @@ import {
   planFilmScenes,
   buildFilmClipRequest,
   normalizeReferenceImages,
-  splitStructuredScript,
+  splitStructuredScriptScenes,
+  planFilmGrid,
   FILM_SCENE_COUNT,
   FILM_CLIP_SEC,
   type FilmScene,
   type FilmShared,
+  type FilmSceneWindow,
   type SceneScreenwriterMeta,
 } from './filmPipeline';
+import { planSceneDialogue, type SceneSpokenLine } from './sceneDialogue';
+import { hasGeminiVeoProvider } from '@/lib/ai/geminiVeo';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
@@ -95,6 +99,12 @@ interface FilmClipResult {
   debited: boolean;
   /** Last upstream failure reason (e.g. the Replicate create status) when failed. */
   error?: string;
+  /**
+   * The engine that ACCEPTED this clip ('gemini-veo' | 'runway' | 'replicate' | …). Load-bearing for the
+   * double-voice guard: only a Veo clip speaks its dialogue in-clip, so only a Veo clip may have its
+   * ElevenLabs VO suppressed. Null when the dispatch produced no provider job.
+   */
+  engine?: string | null;
 }
 
 interface FilmPlanSummary {
@@ -333,7 +343,7 @@ async function renderClip(
     // + drift clause). Sticky by design — once we down-shift a scene, later retries stay on LTX.
     if (shouldDownshiftToLtx(attempt)) clipReq.selectedOptions.skipI2v = '1';
     try {
-      const taskRef = await withTrace(
+      const dispatched = await withTrace(
         {
           userId: input.userId || null,
           agentId: 'video-agent',
@@ -363,13 +373,18 @@ async function renderClip(
             ...(clipModel ? { videoModel: clipModel } : {}),
           }),
         (r) => r.predictionId || r.assetUrl || null,
-      ).then((r) => r.predictionId || r.assetUrl || null);
+      );
+      const taskRef = dispatched.predictionId || dispatched.assetUrl || null;
+      // WHICH engine took the job. Only 'gemini-veo' speaks the scene's dialogue in-clip, so this is what
+      // the double-voice guard checks before dropping an ElevenLabs leg (a Veo outage falls back to a
+      // MUTE engine, and suppressing the VO on that would leave the film silent where it should talk).
+      const engine = typeof dispatched.metadata?.videoProvider === 'string' ? dispatched.metadata.videoProvider : null;
       // The inner call resolved, so withTrace has issued the (idempotent) debit
       // for this leg — flag it even when no taskRef came back, so a downstream
       // total-failure rollback refunds exactly what was billed.
       if (billable) debited = true;
       if (taskRef) {
-        return { ordinal: scene.ordinal, taskRef, status: 'queued', attempts: attempt, debited };
+        return { ordinal: scene.ordinal, taskRef, status: 'queued', attempts: attempt, debited, engine };
       }
       // No provider job materialised — treat as a soft failure and retry.
       lastErr = new Error('dispatch returned no task reference');
@@ -462,13 +477,30 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // V1 — the screenwriter's per-scene metadata (cameraShot/mood/location), populated ONLY from the
   // Prompt-Agent brief path below (plain string sceneScripts from other sources carry no shot data).
   let sceneMeta: SceneScreenwriterMeta[] | undefined;
+
+  // ── SPOKEN DIALOGUE + SCENE TIMING SOURCES ─────────────────────────────────
+  // Parsed ONCE, up front, because three separate decisions depend on them: the scene GRID (a 4 × 6s
+  // script must not be forced onto the 8s cadence), the per-scene SPOKEN LINE handed to Veo, and whether
+  // the ElevenLabs dialogue leg would now be a SECOND voice over the same words.
+  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown; masterScript?: unknown; voiceLanguage?: unknown; voicePersona?: unknown; voiceTone?: unknown } | undefined;
+  // FILM-COMPILER PHASE 1 (audio fidelity) — a pasted Master Production Script parsed (pure/fail-open)
+  // into the STRUCTURED render inputs: scene sheets, the VO spine, and per-SPEAKER dialogue turns.
+  const parsedMaster = (() => {
+    const v = voiceMeta?.masterScript;
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const p = parseMasterScript(v);
+    return p.ok ? p : null;
+  })();
+  // A structured script pasted straight into the CHAT MESSAGE ("🎬 სცენა 1 (0:00–0:06) … დიალოგი: „…"").
+  // Its per-scene dialogue + timecodes used to be discarded by the visual-only cleaner.
+  const structuredScenes = splitStructuredScriptScenes(input.message, 12);
+
   // DAY-6 — a pasted TIMECODED Master Production Script drives the STORYBOARD: its parsed SCENE sheets
   // (action lines, in order) become the per-scene prompts, so the film follows the script VISUALLY — not just
   // its audio (the narration + multi-voice dialogue legs already read metadata.masterScript below). Additive +
   // fail-open: only when the UI supplied no explicit sceneScripts AND the script parses to ≥2 scenes.
-  if ((!sceneScripts || sceneScripts.length === 0) && typeof input.metadata?.masterScript === 'string' && input.metadata.masterScript.trim()) {
-    const pm = parseMasterScript(input.metadata.masterScript);
-    const fromMaster = pm.ok ? pm.scenes.map((s) => s.action.trim()).filter(Boolean).map((a) => a.slice(0, 2000)) : [];
+  if ((!sceneScripts || sceneScripts.length === 0) && parsedMaster) {
+    const fromMaster = parsedMaster.scenes.map((s) => s.action.trim()).filter(Boolean).map((a) => a.slice(0, 2000));
     if (fromMaster.length >= 2) {
       sceneScripts = fromMaster.slice(0, 12); // bound to the pipeline's max segment count
       // eslint-disable-next-line no-console
@@ -498,11 +530,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // multi-scene script (an attached screenplay/shot-list), split it deterministically
     // — the render then follows the script exactly instead of losing it to a flaky/
     // timed-out LLM scene-writer (which fell back to the generic music-video orbit).
-    const fromScript = splitStructuredScript(input.message, 12);
-    if (fromScript && fromScript.length >= 2) {
-      sceneScripts = fromScript;
+    if (structuredScenes && structuredScenes.length >= 2) {
+      sceneScripts = structuredScenes.map((s) => s.prompt);
       // eslint-disable-next-line no-console
-      console.log(`[filmComposite] used ${fromScript.length} scenes from the attached structured script (no LLM)`);
+      console.log(`[filmComposite] used ${structuredScenes.length} scenes from the attached structured script (no LLM)`);
     } else {
       // A reference image (bridged photo / uploaded selfie) present → the agent must NOT invent a persona.
       const refImgs = input.metadata?.referenceImages as unknown;
@@ -573,8 +604,135 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // eslint-disable-next-line no-console
   console.log('[filmComposite] reference images', { received: refList.length, hostedHttps: hostedCount });
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * FILM_CLIP_SEC } : (pinnedSceneCount ? { totalSec: pinnedSceneCount * FILM_CLIP_SEC } : {})), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegative ? { negativePrompt: filmNegative } : {}) });
+  // ── SCENE GRID — follow the script's own cadence (Veo accepts 4–8s) ─────────
+  // Timecode windows, in source priority: the Master Script's scene sheets, then a structured script
+  // pasted into the message. A 24s film written as 4 × 6s now renders as 4 × 6s instead of being forced
+  // onto 3 × 8s (which dropped a scene and slid every dialogue cue off its beat).
+  const sceneWindows: (FilmSceneWindow | null)[] =
+    (parsedMaster?.scenes.length ? parsedMaster.scenes.map((s) => ({ startSec: s.startSec, endSec: s.endSec })) : null)
+    ?? (structuredScenes?.length ? structuredScenes.map((s) => s.window) : null)
+    ?? [];
+  // When explicit sceneScripts exist their COUNT is fixed (each one is a planned shot), so no runtime
+  // contract is passed. Otherwise the user's package length IS the contract: a 24s package with a 6s
+  // script must render 4 × 6s, not 3 × 6s = 18s (the cadence must not cost the user runtime).
+  const grid = planFilmGrid({
+    sceneCount: sceneScripts?.length ?? pinnedSceneCount ?? null,
+    ...(sceneScripts?.length ? {} : { totalSec: (pinnedSceneCount ?? FILM_SCENE_COUNT) * FILM_CLIP_SEC }),
+    ...(Number.isFinite(Number(input.metadata?.clipSec)) ? { clipSec: Number(input.metadata?.clipSec) } : {}),
+    windows: sceneWindows,
+  });
+  if (grid.clipSec !== FILM_CLIP_SEC) {
+    // eslint-disable-next-line no-console
+    console.log(`[filmComposite] scene grid from the script: ${grid.sceneCount} × ${grid.clipSec}s = ${grid.totalSec}s (default is ${FILM_CLIP_SEC}s)`);
+  }
+
+  // ── VEO-NATIVE SPEECH — does the engine that will render these clips SPEAK? ─
+  // Only Veo generates in-clip speech. The decision must be made HERE (dispatch time) because it also
+  // decides whether the ElevenLabs dialogue leg runs — and that leg is minted before any clip lands.
+  // Mirror ServiceManager's engine gate exactly: an explicit Kling/Hailuo pick opts out of Veo, and
+  // selectClipVideoModel is what actually resolves the request's model (an anon/preview render has its
+  // premium pick stripped, which only makes Veo MORE likely).
+  const effectiveVideoModel = selectClipVideoModel({
+    requested: typeof input.metadata?.videoModel === 'string' ? input.metadata.videoModel : null,
+    isSignedIn: Boolean(input.userId && input.userId !== 'anonymous'),
+    preview: input.metadata?.quality === 'preview',
+  });
+  const nativeSpeech = hasGeminiVeoProvider() && effectiveVideoModel !== 'kling' && effectiveVideoModel !== 'hailuo';
+
+  // Per-scene spoken lines, index-aligned with the scenes. Sources, best first: the line written inside
+  // each scene's own sheet → the Master Script's timecoded dialogue turns → the dialogue textarea → a
+  // typed narration script that is really character speech. We track WHICH source won, because that is
+  // exactly the leg that must not also be voiced by ElevenLabs (see the audio legs below).
+  const dialogueScriptRaw = (() => {
+    const v = voiceMeta?.dialogueScript;
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  })();
+  // `narrationScript` is overloaded: it is the VO spine when the brief asks for a narrator/commentator,
+  // but it is ALSO where a user types the verbatim lines their characters speak. Treat it as speech only
+  // in the latter case — a real narrator has no mouth in frame, and making a character lip-sync a
+  // disembodied VO is worse than the ElevenLabs track it would replace.
+  const narrationAsDialogue = (() => {
+    const v = voiceMeta?.narrationScript;
+    const s = typeof v === 'string' && v.trim() ? v.trim() : null;
+    return s && !wantsCommentary(input.message) ? s : null;
+  })();
+  type DialogueSourceKind = 'master-script' | 'script-scenes' | 'dialogueScript' | 'narrationScript';
+  const { sceneDialogue, dialogueSource, dialogueComplete, dialoguePlacedCount } = ((): {
+    sceneDialogue: SceneSpokenLine[][]; dialogueSource: DialogueSourceKind | null; dialogueComplete: boolean; dialoguePlacedCount: number;
+  } => {
+    const base = { sceneCount: grid.sceneCount, clipSec: grid.clipSec };
+    // The MASTER SCRIPT's timecoded turns come first when present, because they are ALSO what the
+    // ElevenLabs dialogue leg would have voiced — so delegation and suppression describe the same set of
+    // lines. Its per-scene windows are only trustworthy when they describe the same number of scenes the
+    // film will actually render (a sheet with no action line gets filtered out upstream, which shifts
+    // every later window); when they don't, the uniform clipSec grid is the honest fallback.
+    if (parsedMaster?.dialogue?.length) {
+      const turns = parsedMaster.dialogue.map((d) => ({ speaker: d.speaker, text: d.text, startSec: d.startSec }));
+      const windowsAligned = sceneWindows.length === grid.sceneCount;
+      const p = planSceneDialogue({ ...base, ...(windowsAligned ? { windows: sceneWindows } : {}), turns });
+      return { sceneDialogue: p.scenes, dialogueSource: 'master-script', dialogueComplete: p.complete, dialoguePlacedCount: p.placed };
+    }
+    // Then the composer's dialogue textarea, then a typed "narration" that is really character speech.
+    // These come BEFORE the message's scene sheets on purpose: each of them drives a REAL ElevenLabs leg,
+    // so they are the set that delegation has to match. Delegating the sheets while suppressing a
+    // dialogueScript leg would drop words nobody ever spoke.
+    for (const [kind, text] of [['dialogueScript', dialogueScriptRaw], ['narrationScript', narrationAsDialogue]] as const) {
+      if (!text) continue;
+      const p = planSceneDialogue({ ...base, script: text });
+      if (p.total > 0) return { sceneDialogue: p.scenes, dialogueSource: kind, dialogueComplete: p.complete, dialoguePlacedCount: p.placed };
+    }
+    // Finally the lines written inside the scene sheets the user pasted into the message. Positional, so
+    // only when the sheet count matches the render's scene count — otherwise scene 4's line would land in
+    // scene 3's mouth. Nothing else voices these (they feed no ElevenLabs leg), so delegating them adds
+    // speech that simply did not exist before.
+    // The sheets are positional against the MESSAGE's order, while sceneScripts may have been REORDERED by
+    // the user on the storyboard board (drag / chevrons permute sceneScripts and keep the count), which
+    // would put scene 4's line in scene 3's mouth. Both come from the same cleaner, so equality of the
+    // visual text per index is a cheap, exact proof that the order still matches.
+    const sheetsInScriptOrder = !sceneScripts?.length
+      || (structuredScenes?.length === sceneScripts.length
+          && structuredScenes.every((sc, i) => sc.prompt === sceneScripts![i]));
+    if (structuredScenes?.length === grid.sceneCount && sheetsInScriptOrder) {
+      const p = planSceneDialogue({ ...base, windows: sceneWindows, sheets: structuredScenes.map((s) => s.dialogue) });
+      if (p.total > 0) return { sceneDialogue: p.scenes, dialogueSource: 'script-scenes', dialogueComplete: p.complete, dialoguePlacedCount: p.placed };
+    }
+    if (structuredScenes?.length && !sheetsInScriptOrder) {
+      // eslint-disable-next-line no-console
+      console.log('[filmComposite] scene sheets no longer match the approved scene order (reordered/edited) → dialogue not delegated');
+    }
+    return { sceneDialogue: [], dialogueSource: null, dialogueComplete: false, dialoguePlacedCount: 0 };
+  })();
+  const spokenSceneCount = sceneDialogue.filter((l) => l.length > 0).length;
+  // ALL-OR-NOTHING. The ElevenLabs dialogue leg is ONE track for the whole film, so it can only be
+  // dropped wholesale — which means a line we failed to place in some scene's prompt would end up spoken
+  // by nobody. `complete` is false whenever anything could not be placed (a third line inside one 6s
+  // window, more lines than scenes, a line with no speakable words), and then we delegate NOTHING: the
+  // prompts and the ElevenLabs path stay byte-identical to before.
+  const delegateSpeech = nativeSpeech && dialogueComplete && spokenSceneCount > 0;
+  if (spokenSceneCount > 0 && !delegateSpeech) {
+    // eslint-disable-next-line no-console
+    console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}) → ElevenLabs keeps every line`);
+  }
+
+  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegative ? { negativePrompt: filmNegative } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}) });
+  // `grid.totalSec` (not a bare pinnedSceneCount × clipSec) is what the plan splits, so plan.sceneCount
+  // and grid.sceneCount can never disagree — a mismatch would slide every dialogue line one scene off.
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
+  // Scenes whose prompt carries a line for Veo to speak. Whether the ElevenLabs leg is actually
+  // suppressed is decided AFTER dispatch, once the real engine per clip is known (see below).
+  const spokenOrdinals = plan.scenes.filter((s) => s.spokenLines.length > 0).map((s) => s.ordinal);
+  const delegatedLineCount = plan.scenes.reduce((n, s) => n + s.spokenLines.length, 0);
+  // FINAL PROOF before any leg may be dropped: every delegated line is present, verbatim, in the prompt
+  // that will actually be submitted. `spokenLines` is derived from the plan INPUT, so on its own it only
+  // says what we ASKED for; this checks what came out (the prompt passes through a length clamp). Also
+  // requires the emitted count to equal what the resolver placed, so a scene the planner blanked (a
+  // music-video intro shot) can never leave a line unspoken while its leg is dropped.
+  const speechInPrompts = delegatedLineCount === dialoguePlacedCount
+    && plan.scenes.every((s) => s.spokenLines.every((l) => s.prompt.includes(l)));
+  if (spokenOrdinals.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[filmComposite] dialogue from ${dialogueSource}: ${delegatedLineCount}/${dialoguePlacedCount} line(s) verbatim in ${spokenOrdinals.length} Veo scene prompt(s)${speechInPrompts ? '' : ' — MISMATCH, ElevenLabs will keep the dialogue'}`);
+  }
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');
 
@@ -744,6 +902,36 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     return connectionFailed(reason);
   }
 
+  // ── DOUBLE-VOICE GUARD ──────────────────────────────────────────────────────
+  // The stitch PRESERVES each clip's native audio (nativeAudio[] → the filtergraph's diegetic lane), so a
+  // Veo clip arrives already speaking its line. Laying the same words down again as an ElevenLabs track
+  // would be audibly doubled and out of sync.
+  //
+  // The decision is made HERE, not at plan time, because it must be keyed on the engine that ACTUALLY
+  // took each clip — not on the engine we hoped for. Veo falling back to Runway/Kling/LTX yields a MUTE
+  // clip, and suppressing the VO for that would leave the film silent exactly where it should talk. So we
+  // only drop a leg when EVERY scene carrying a line went to Veo; a partial or total fallback keeps the
+  // ElevenLabs path byte-identical to before.
+  const veoOrdinals = new Set(clips.filter((c) => c.engine === 'gemini-veo').map((c) => c.ordinal));
+  const allSpokenOnVeo = spokenOrdinals.length > 0 && speechInPrompts && spokenOrdinals.every((o) => veoOrdinals.has(o));
+  // 'script-scenes' is deliberately absent: those lines live only in the pasted message and feed no
+  // ElevenLabs leg, so there is nothing to suppress (and suppressing would be a lie about what was voiced).
+  const suppressDialogueLeg = allSpokenOnVeo && (dialogueSource === 'master-script' || dialogueSource === 'dialogueScript');
+  // The off-camera VO NARRATOR spine of a Master Script. masterDialogueTurns FOLDS it into the dialogue leg
+  // we are about to drop, and a narrator has no mouth in frame so it was never delegated to Veo — it has to
+  // keep its ElevenLabs voice. Only ever this: never the dialogue textarea, never a brief-derived commentary.
+  const delegatedNarrationSpine = suppressDialogueLeg && dialogueSource === 'master-script'
+    ? (parsedMaster?.narrationScript?.trim() || null)
+    : null;
+  const suppressNarrationLeg = allSpokenOnVeo && dialogueSource === 'narrationScript';
+  if (spokenOrdinals.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[film] in-clip speech: ${spokenOrdinals.filter((o) => veoOrdinals.has(o)).length}/${spokenOrdinals.length} spoken scene(s) accepted by Veo → ElevenLabs ${
+        suppressDialogueLeg || suppressNarrationLeg ? `${dialogueSource} leg SUPPRESSED (no double voice)` : 'leg kept (fallback engine is mute)'}`,
+    );
+  }
+
   // ── Leg 4: bind one cohesive audio track across the timeline (Udio) ────────
   // (Past the 38% guard above, at least one clip is guaranteed queued.)
   // v330 — read the explicit Music Video signals the composer threads through
@@ -773,20 +961,15 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // instead of back-to-back — the audio legs finish in max(voice, sfx) rather than
   // their sum. Voice-over only fires when the brief asks for a commentator/narrator
   // OR the user typed verbatim dialogue (narrationScript); SFX runs for every film.
-  const voiceMeta = input.metadata as { narrationScript?: unknown; narratorGender?: unknown; dialogueScript?: unknown; masterScript?: unknown; voiceLanguage?: unknown; voicePersona?: unknown; voiceTone?: unknown } | undefined;
-  // FILM-COMPILER PHASE 1 (audio fidelity) — when the user pastes a full Master Production Script,
-  // parse it (pure/fail-open) into the STRUCTURED voice inputs the pipeline already consumes:
+  // (voiceMeta + parsedMaster are resolved up-front, before the plan — the scene grid and the per-scene
+  // spoken lines both derive from the same parse.)
   //   narration  → generateFilmVoiceover.narrationScript  (the sanitized VO spine, verbatim)
   //   dialogue   → generateDialogueVoiceover.turns         (per-SPEAKER N-character casting)
-  // Inert unless metadata.masterScript is a non-empty string; a parse that finds no sheets is ignored.
-  const parsedMaster = (() => {
-    const v = voiceMeta?.masterScript;
-    if (typeof v !== 'string' || !v.trim()) return null;
-    const p = parseMasterScript(v);
-    return p.ok ? p : null;
-  })();
   const masterNarration = parsedMaster && parsedMaster.narrationScript.trim() ? parsedMaster.narrationScript.trim() : null;
   const customNarration = (() => {
+    // Veo is already speaking these exact words inside the clips → voicing them again here is the double
+    // voice. (Only fires when narrationScript was the delegated source; a real VO spine is untouched.)
+    if (suppressNarrationLeg) return null;
     const v = voiceMeta?.narrationScript;
     const explicit = typeof v === 'string' && v.trim() ? v.trim() : null;
     // The parsed Master-Script VO spine feeds the SAME verbatim narrationScript slot when no explicit one is set.
@@ -801,6 +984,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // placement at each timecode is the Phase-2 assemble refinement; here they play in script order.
   const masterTurns = (() => {
     if (!parsedMaster) return null;
+    // Veo speaks the ON-CAMERA dialogue in-clip → this leg would double it. The VO NARRATOR spine is NOT
+    // delegated (a narrator has no mouth in frame), so it routes through the single-voice narration leg
+    // below via `masterNarration` instead of being dropped.
+    if (suppressDialogueLeg) return null;
     const t = masterDialogueTurns(parsedMaster, narratorGender);
     return t.length ? t : null;
   })();
@@ -811,10 +998,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const voiceTone = (voiceMeta?.voiceTone === 'epic' || voiceMeta?.voiceTone === 'emotional' || voiceMeta?.voiceTone === 'energetic') ? voiceMeta.voiceTone : null;
   // Multi-character dialogue script (video panel toggle) — split per speaker, each
   // line voiced in its gendered voice and mixed into one track. Wins over single narration.
-  const dialogueScript = (() => {
-    const v = voiceMeta?.dialogueScript;
-    return typeof v === 'string' && v.trim() ? v.trim() : null;
-  })();
+  // Suppressed when Veo already speaks these lines in-clip (see the double-voice guard above).
+  const dialogueScript = suppressDialogueLeg ? null : dialogueScriptRaw;
   // PHASE 25 (VECTOR 2) — QA DIRECTOR AGENT pre-assembly gate. Pure, deterministic, fail-open. It
   // grades the collective PLANNING output (character lock, scene count, empty/monotone scenes,
   // orientation) and applies the ONE provably-safe single-pass correction — filling any missing
@@ -834,7 +1019,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     });
     qaVerdict = { grade: qa.grade, pass: qa.pass, issues: qa.issues };
     // Bounded auto-fix: adopt the QA-completed per-scene SFX cues (gaps filled) for the SFX brief below.
-    sfxCues = qa.correctedSfxCues.map((c) => ({ sceneNumber: c.sceneNumber, sfxPrompt: c.sfxPrompt, duration: FILM_CLIP_SEC }));
+    sfxCues = qa.correctedSfxCues.map((c) => ({ sceneNumber: c.sceneNumber, sfxPrompt: c.sfxPrompt, duration: grid.clipSec }));
     // eslint-disable-next-line no-console
     console.info(`[film][qa] grade=${qa.grade} pass=${qa.pass} issues=${qa.issues.map((i) => i.code).join(',') || 'none'}`);
   } catch (err) {
@@ -864,6 +1049,30 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // ENTIRELY (no VO mixed over the vocal → zero sync drift). Documentary is byte-identical to before.
       const single = input.metadata?.musicVideoMode
         ? null
+        // SUPPRESSION MUST NOT PROMOTE A DIFFERENT VOICE. Nulling `dialogueScript`/`masterTurns` does not
+        // end this ternary chain — it ADVANCES it, so a film whose dialogue Veo now speaks would fall
+        // through to generateFilmVoiceover and get a narrator track laid over clips that already talk
+        // (either the same words again from the "what the character says" box, or a brand-new brief-derived
+        // commentary). The ONLY voice that legitimately survives delegation is a VO NARRATOR SPINE that was
+        // already part of the suppressed leg — i.e. a Master Script's own VO sheet, which is off-camera and
+        // was never delegated. Everything else: no voice track.
+        : suppressDialogueLeg
+        ? (delegatedNarrationSpine
+            ? await generateFilmVoiceover({
+                brief: input.message,
+                totalSec: plan.shared.totalSec,
+                compositeId,
+                narrationScript: delegatedNarrationSpine,
+                narratorGender,
+                voiceLanguage,
+                voicePersona,
+                voiceTone,
+              }).catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn('[film] narrator-spine leg failed:', err instanceof Error ? err.message : err);
+                return null;
+              })
+            : null)
         : (masterTurns || dialogueScript)
         ? await generateDialogueVoiceover(
             // Structured Master-Script turns → N-character casting; else the legacy gender-tagged script.
@@ -923,6 +1132,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     createdAt: Date.now(),
     seed: plan.shared.seed,
     sceneCount,
+    // The real per-scene length (4–8s) — the assembler derives the master timeline from it, so a 6s grid
+    // must not be stitched as 8s.
+    clipSec: grid.clipSec,
     clips: clips.map((c) => ({ ordinal: c.ordinal, taskRef: c.taskRef, status: clipDispatchStatus(c.status), attempts: c.attempts })),
     musicWorkId,
     voiceUrl,
@@ -953,7 +1165,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
 
   const renderedCount = clips.filter((c) => c.status === 'queued').length;
   const summary = [
-    `🎬 Film pipeline started (${sceneCount} × 8s Veo scenes)`,
+    `🎬 Film pipeline started (${sceneCount} × ${grid.clipSec}s Veo scenes)`,
     `📝 Storyboard: ${sceneCount} scenes planned`,
     `🎥 Clips dispatched: ${renderedCount}/${sceneCount} (shared seed ${plan.shared.seed})`,
     '✂️ Editor will stitch the final cut',

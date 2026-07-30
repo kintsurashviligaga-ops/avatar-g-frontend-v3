@@ -468,6 +468,10 @@ async function compositeMusicVideo(
   filmTokenId: string | null,
 ): Promise<string | null> {
   try {
+    // The film's REAL per-scene length (4–8s). A hardcoded 8 here made the re-stitch declare 8s segments
+    // for a film rendered on a 6s grid, and the assembler then pad-froze 2s of every clip (tpad clone) —
+    // 8s of frozen frames in a 24s film. Older tokens carry no clipSec → the 8s default, as before.
+    const clipSec = matrix.clipSec ?? FILM_CLIP_SEC;
     const ltxByOrd = new Map<number, string>();
     for (const c of matrix.clips) if (c.status === 'succeeded' && typeof c.url === 'string' && c.url) ltxByOrd.set(c.ordinal, c.url);
     const beatByOrd = new Map<number, string>();
@@ -486,13 +490,13 @@ async function compositeMusicVideo(
         try {
           const r = await fetch('/api/video/trim', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-            body: JSON.stringify({ videoUrl: heygenUrl, startSec: (ord - 1) * FILM_CLIP_SEC, durationSec: FILM_CLIP_SEC }),
+            body: JSON.stringify({ videoUrl: heygenUrl, startSec: (ord - 1) * clipSec, durationSec: clipSec }),
           });
           const seg = ((await r.json().catch(() => ({}))) as { url?: string | null }).url ?? null;
           if (seg) url = seg; // else keep the LTX clip for this scene
         } catch { /* keep LTX */ }
       }
-      segs.push({ url, durationSec: FILM_CLIP_SEC });
+      segs.push({ url, durationSec: clipSec });
     }
     if (segs.length < 2 || !mine()) return null;
     const r = await fetch('/api/video/assemble', {
@@ -589,9 +593,10 @@ async function compositeDocumentary(
       (ordinals.includes(3) ? 3 : ordinals[Math.min(2, ordinals.length - 1)]);
 
     // Swap the close-up scene's cinematic clip for the talking head; keep every other scene.
+    // durationSec must be the film's REAL grid (4–8s) or the assembler pad-freezes every clip up to 8s.
     const segs: { url: string; durationSec: number }[] = ordinals.map((ord) => ({
       url: ord === closeUpOrd ? talkingHead : (ltxByOrd.get(ord) as string),
-      durationSec: FILM_CLIP_SEC,
+      durationSec: matrix.clipSec ?? FILM_CLIP_SEC,
     }));
     if (segs.length < 2 || !mine()) return null;
 
@@ -845,12 +850,15 @@ interface FilmSnap {
   videoMotionIntensity: number;
   videoModel: 'runway' | 'kling' | 'hailuo';
   hasTrainedVoice: boolean;
+  /** Per-scene length (4-8s) the storyboard derived from the script's own timecodes; undefined = the
+   *  default 8s grid. Rides in the snapshot so a QUEUED film keeps the grid it was planned on. */
+  clipSec?: number;
 }
 
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
-  filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string;
+  filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait' }
 
@@ -1031,6 +1039,9 @@ interface StoryboardState {
   /** Prompt-Agent locked character fragment (from /api/film/storyboard scriptsOnly) —
    *  threaded to the render so the protagonist is identical across every clip. */
   character?: string | null;
+  /** Per-scene length (4-8s) the route derived from the script's own timecodes; threaded to the render
+   *  so the board's card durations and the rendered clips are the same length. */
+  clipSec?: number;
 }
 
 /** Read a picked File into a data: URL (for the per-scene "Change Base Image"). */
@@ -2314,7 +2325,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
-      voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice,
+      voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice, clipSec,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -2450,6 +2461,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // 30s/6-scene fallback (which also discards a single approved selfie frame). Prefer the approved storyboard /
         // script count; else derive from the chosen duration (8s→1 · 24s→3 · 48s→6) captured in the submit snapshot.
         sceneCount: storyboardScenes?.length || sceneScripts?.length || (snap.videoDuration <= 8 ? 1 : Math.max(2, Math.min(6, Math.round(snap.videoDuration / 8)))),
+        // PIN the per-scene length too when the storyboard derived one from the script's timecodes
+        // (4-8s). filmComposite honours metadata.clipSec, so the render grid matches the board exactly.
+        ...(clipSec ? { clipSec } : {}),
         locale,
         signal,
         onProgress: (p) => {
@@ -2507,7 +2521,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const landed = (res.matrix?.clips ?? [])
         .filter((c) => c.status === 'succeeded' && typeof c.url === 'string' && c.url)
         .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
-      const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt } : {};
+      const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt, ...(res.matrix?.clipSec ? { filmClipSec: res.matrix.clipSec } : {}) } : {};
 
       // MUSIC VIDEO — the cinematic LTX montage is the PRIMARY result. We no longer relip the
       // whole master (sync/lipsync-2 warped the wide/aerial shots — "terrible"). Show the
@@ -2703,6 +2717,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     storyboardScenes?: { ordinal: number; beat?: string; frameUrl: string | null }[],
     characterLock?: string,
     characterPortrait?: string,
+    /** The film's per-scene length (4-8s) as the storyboard resolved it from the script's own timecodes.
+     *  Threaded into the render metadata so the board and the film agree on the grid - without it a
+     *  music-video paste (whose masterScript is deliberately NOT sent to the render) showed 4x6s cards
+     *  and then rendered 3x8s. */
+    clipSec?: number,
   ): Promise<string | void> => {
     // SNAPSHOT-AT-SUBMIT (Step 2): capture the WHOLE video panel NOW (the submit millisecond) into one
     // immutable object; renderFilm renders from this exact snapshot, so a queued film never inherits a
@@ -2712,6 +2731,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice,
+      ...(clipSec ? { clipSec } : {}),
     };
     if (!ENABLE_PARALLEL_CINEMA) {
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
@@ -2990,10 +3010,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setRemixDrafts((d) => ({ ...d, [i]: '' }));
     const clips = src.filmClips;
     const prompt = src.filmPrompt;
+    // The film's real per-scene length (4-8s). Without it the remix re-plans on the 8s default and
+    // re-stitches a 6s film as 8s per clip (2s of pad-freeze per scene).
+    const clipSec = src.filmClipSec;
     try {
       const r = await fetch('/api/pipeline/remix', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips }),
+        body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips, ...(clipSec ? { clipSec } : {}) }),
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string };
       const url = j.success ? (j.masterUrl || j.url || null) : null;
@@ -3002,7 +3025,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') {
           next[next.length - 1] = url
-            ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt }
+            ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt, ...(clipSec ? { filmClipSec: clipSec } : {}) }
             : { role: 'assistant', text: `⚠️ ${j.message || t.videoFailed}` };
         }
         return next;
@@ -3046,7 +3069,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // at the RENDER path above — a music video's audio is the song, not TTS dialogue.)
         body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; clipSec?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
         await startFilmRender(filmPrompt, refs, orientation, undefined); // plan miss → direct render (or queue when flag ON)
         return;
@@ -3075,6 +3098,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         filmPrompt, refs, orientation,
         seed: j.seed ?? 0,
         scenes,
+        // The grid the route derived from the script's timecodes (4-8s) - forwarded to the render.
+        ...(typeof j.clipSec === 'number' && j.clipSec > 0 ? { clipSec: j.clipSec } : {}),
         sceneScripts: Array.isArray(j.sceneScripts) ? j.sceneScripts : null,
         framePrompts,
         pending: ordinals,
@@ -7709,7 +7734,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0]);
+            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }

@@ -17,7 +17,7 @@
  * scene plan still returns so the user always sees the storyboard.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
+import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, splitStructuredScriptScenes, planFilmGrid, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { parseMasterScript } from '@/lib/pipeline/script/masterScript';
 import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { describeCharacterFromImage } from '@/lib/gemini/image-analysis';
@@ -318,8 +318,28 @@ export async function POST(req: NextRequest) {
   // count is driven by totalSec (count × FILM_CLIP_SEC=8) — planFilmScenes splits the runtime into 8s beats.
   // FLOOR is 1, NOT 2 — the 8-second package is a SINGLE scene. A `Math.max(2, …)` floor here was silently bumping a
   // sceneCount:1 request up to 2, so the shortest tier produced 2 clips with two different characters. [1, 12].
-  const sceneCount = Math.max(1, Math.min(12, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
-  const sceneTotalSec = sceneCount * FILM_CLIP_SEC;
+  const requestedCount = Math.max(1, Math.min(12, Math.round(typeof body.sceneCount === 'number' ? body.sceneCount : FILM_SCENE_COUNT)));
+  // …unless the SCRIPT states its own cadence. A script written as 4 scenes × 6s renders as 4 × 6s (Veo
+  // accepts 4–8s), and the board has to agree with the render or every card shows the wrong length.
+  const scriptWindows = (() => {
+    if (typeof body.masterScript === 'string' && body.masterScript.trim()) {
+      const pm = parseMasterScript(body.masterScript);
+      if (pm.ok && pm.scenes.length) return pm.scenes.map((s) => ({ startSec: s.startSec, endSec: s.endSec }));
+    }
+    const inline = splitStructuredScriptScenes(prompt, 12);
+    return inline?.length ? inline.map((s) => s.window) : [];
+  })();
+  // The RUNTIME the user paid for is `requestedCount × 8s` (the 8s/24s/48s chips). Passing it as totalSec
+  // makes the scene COUNT follow the script's cadence too: a 24s package + a 6s-per-scene script becomes
+  // 4 × 6s = 24s, not 3 × 6s = an 18-second film with a scene quietly dropped.
+  const grid = planFilmGrid({ sceneCount: requestedCount, totalSec: requestedCount * FILM_CLIP_SEC, windows: scriptWindows });
+  const sceneCount = grid.sceneCount;
+  const clipSec = grid.clipSec;
+  const sceneTotalSec = grid.totalSec;
+  if (sceneCount !== requestedCount) {
+    // eslint-disable-next-line no-console
+    console.log(`[storyboard] script cadence ${clipSec}s → ${sceneCount} scenes (the ${requestedCount * FILM_CLIP_SEC}s runtime is preserved)`);
+  }
 
   // Host any uploaded reference photos so the storyboard frames can lock the
   // protagonist's identity (and so the SAME selfie anchors the final render).
@@ -341,7 +361,7 @@ export async function POST(req: NextRequest) {
     const scenes = pm.scenes.map((s) => s.action.trim()).filter(Boolean).map((a) => a.slice(0, 2000)).slice(0, sceneCount);
     return scenes.length >= 2 ? scenes : null;
   })();
-  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, totalSec: sceneTotalSec, musicVideo, ...(masterSceneScripts ? { sceneScripts: masterSceneScripts } : {}) });
+  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, clipSec, totalSec: sceneTotalSec, musicVideo, ...(masterSceneScripts ? { sceneScripts: masterSceneScripts } : {}) });
   const aspect = orientation === 'vertical' ? '9:16' : '16:9';
   const sessionId = `storyboard_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -485,6 +505,8 @@ export async function POST(req: NextRequest) {
       sessionId,
       seed: plan.shared.seed,
       orientation,
+      // The film's per-scene length (4–8s) — the board and the render agree on the grid.
+      clipSec,
       planOnly: true,
       anchorMode,
       scenes: plan.scenes.map((s, i) => {
@@ -499,7 +521,7 @@ export async function POST(req: NextRequest) {
           // stay null here and get an identity-locked frame from the per-scene generation pass.
           frameUrl: uploadedAnchor ? hostedRefs[i]! : (scene1Locked ? selfie : null),
           anchored: uploadedAnchor || scene1Locked, // V3 — drives the "Source Reference Locked" badge
-          durationSec: FILM_CLIP_SEC,
+          durationSec: clipSec,
         };
       }),
       sceneScripts: null,
@@ -524,7 +546,7 @@ export async function POST(req: NextRequest) {
     : ((await generateSceneScripts(prompt, sceneCount)) ?? null);
   const characterLock = masterBrief?.character.imagePromptFragment ?? null;
   const storyPlan = sceneScripts
-    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, clipSec, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
     : plan;
 
   // Frame dispatch concurrency = 3. NOTE (benchmarked): on a Replicate token with the
@@ -568,7 +590,7 @@ export async function POST(req: NextRequest) {
       // V1/V3 — true when this frame IS the user's uploaded image (Scene 1 lock, or a per-scene upload anchor), so
       // the UI can show a "Source Reference Locked" badge and the render trusts it as a hard identity anchor.
       anchored: uploadedAnchor || (i === 0 && lockScene1),
-      durationSec: FILM_CLIP_SEC,
+      durationSec: clipSec,
     };
   });
 
@@ -577,6 +599,7 @@ export async function POST(req: NextRequest) {
     sessionId,
     seed: storyPlan.shared.seed,
     orientation,
+    clipSec,
     scenes,
     // The LLM scene scripts (one per scene) — the client threads these back to the
     // render so the clips are generated from the same story, not the deterministic beats.

@@ -44,6 +44,13 @@ export interface FilmTaskRef {
   /** Shared seed locking character continuity across all clips. */
   seed: number;
   sceneCount: number;
+  /**
+   * Per-scene clip length in seconds (Veo's accepted 4–8). The grid is no longer pinned to 8s — a script
+   * written as 4 × 6s renders as 4 × 6s — and the ASSEMBLER derives the master timeline from the segment
+   * durations, so the real length has to travel with the token. Optional + backward-compatible: an older
+   * token without it falls back to FILM_CLIP_SEC, exactly as before.
+   */
+  clipSec?: number;
   clips: FilmClipRef[];
   /** Udio workId for the cohesive score (NOT prefixed with `udio:` — bare). */
   musicWorkId: string | null;

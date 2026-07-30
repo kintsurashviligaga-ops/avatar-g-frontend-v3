@@ -78,6 +78,9 @@ const orchestrateSchema = z.object({
   // The user's chosen clip count (6s→1 · 30s→6 · 60s→12) → PINS the render's scene count so a scriptless/raced
   // dispatch can't default to the 30s/6-scene fallback (and discard a single approved selfie frame).
   sceneCount: z.number().int().min(1).max(MAX_SEGMENTS).optional(),
+  // Per-scene length (4–8s, Veo's accepted range) the storyboard derived from the script's own timecodes →
+  // PINS the render's grid so a 4 × 6s script is not forced onto the 8s cadence.
+  clipSec: z.number().int().min(4).max(8).optional(),
   // Verbatim dialogue the user typed in the video panel → spoken as the film's voice.
   narrationScript: z.string().max(2000).optional(),
   // Explicit narrator gender (video panel 👩/👨) → selects the cloned female/male voice.
@@ -254,7 +257,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -262,6 +265,7 @@ export async function POST(req: NextRequest) {
             ...(data.sceneFrames?.length ? { sceneFrames: data.sceneFrames } : {}),
             ...(data.sceneScripts?.length ? { sceneScripts: data.sceneScripts } : {}),
             ...(data.sceneCount ? { sceneCount: data.sceneCount } : {}),
+            ...(data.clipSec ? { clipSec: data.clipSec } : {}),
             ...(data.narrationScript ? { narrationScript: data.narrationScript } : {}),
             ...(data.narratorGender ? { narratorGender: data.narratorGender } : {}),
             // PHASE 2 L1 — Character Voice selector → filmComposite → filmVoiceover (VOICE_MAP).
