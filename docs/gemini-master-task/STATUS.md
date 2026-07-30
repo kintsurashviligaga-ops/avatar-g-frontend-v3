@@ -93,13 +93,13 @@ Legend: ✅ DONE · ⚠️ PARTIAL · ⬜ TODO · ❓ UNVERIFIED (audit interrup
 | # | Component | Status | Note |
 |---|---|---|---|
 | 1 | BillingGuard | ✅ | `lib/services/billing/*` — §2.1.1 contract + §1.8 ladder + §2.5.3 ModelSelector, 18 tests |
-| 2 | GeminiClient wrapper | ⚠️ | `guardedCall()` is the shared budget-gated entry point; a unified Gemini client is still TODO |
-| 3 | Chat Service | ⚠️ | 13 routes, streaming ✓, but MULTI-provider (gemini/claude/openai), not Gemini-primary; no Flash-Lite→Flash escalation |
-| 4 | Image Service | ⚠️ | budget-gated via ServiceManager; engine is still **NanoBanana/Replicate — Imagen 4 not wired** |
+| 2 | GeminiClient wrapper | ⚠️ | `guardedCall()` is the shared budget-gated entry point; Veo/Imagen/Lyria each have their own client. A single unified wrapper is still TODO |
+| 3 | Chat Service | ⚠️ | streaming ✓, budget-gated ✓; still MULTI-provider (gemini/claude/openai), no Flash-Lite→Flash escalation |
+| 4 | Image Service | ✅ | **Imagen 4 primary** (`lib/ai/geminiImagen.ts`), FLUX→NanoBanana fallback, budget-gated |
 | 5 | Video Service (Veo 3.1) | ✅ | live, native audio, in-clip speech (`e515da7`) |
 | 6 | Video Multi-Scene Pipeline | ✅ | 4–8s script cadence + stitch |
 | 7 | Video SSE Progress | ⚠️ | union-token **polling**, not SSE |
-| 8 | Music Service (Lyria 3) | ⚠️ | Lyria live; 15-genre grid + 5 Georgian genres unverified |
+| 8 | Music Service (Lyria 3) | ⚠️ | Lyria live + budget-gated; 15-genre grid + 5 Georgian genres still not to §3.2.4 spec |
 | 9 | Avatar Service | ⚠️ | 19 routes incl. live/enroll/handoff; not audited against the §3.2.5 control spec |
 | 10 | Avatar Lip Sync | ⚠️ | exists in the film pipeline |
 | 11 | Dubbing Service | ⬜ | **0 routes** |
@@ -122,7 +122,7 @@ Legend: ✅ DONE · ⚠️ PARTIAL · ⬜ TODO · ❓ UNVERIFIED (audit interrup
 | 39 | Lighthouse > 90 | ❓ | not measured |
 | 40 | Production Deploy | ✅ | Vercel auto-deploy on main |
 
-**Totals:** ✅ 6 · ⚠️ 21 · ⬜ 12 · ❓ 1 (Lighthouse, unmeasured).
+**Totals:** ✅ 7 · ⚠️ 21 · ⬜ 11 · ❓ 1 (Lighthouse, unmeasured). Merged to `main` @ `d0802a5`.
 The 17 previously-unknown rows were resolved by direct code inspection; ⚠️ means "exists but does not meet
 the PDF spec", which is the honest state of most of this codebase's surface.
 
@@ -141,7 +141,8 @@ Additional (from the prompt, not the PDF's 40):
    GeminiClient wrapper.
 2. **S1b User-visible** — ✅ Email OTP sign-up gate; ✅ pricing ladder. ⬜ `AuthScreen.tsx` still uses the
    email-LINK variant (safe — no auto-confirm — but inconsistent with the OTP modal).
-3. **S2** Video SSE progress + Music genre grid/Georgian genres + **Imagen 4 for Image (not started)**.
+3. **S2** — ✅ Imagen 4 wired; ✅ chat + music budget-gated. ⬜ Remaining: video SSE progress, the
+   15-genre music grid.
 4. **S3** Dubbing (7-step) + Avatar hardening.
 5. **S4** Montage + 3D (Meshy) + Presentation — the three genuinely new services.
 6. **S5** Legacy cleanup per D1 + rate-limit tiers + caching + UI/manual-controls sweep + deploy.
