@@ -59,13 +59,20 @@ async function hostMp4(buf: Buffer, tag: string): Promise<string | null> {
  *  • mode 'mix'     → keep the original ambience ducked `duckDb` under the new
  *                     track (voice-over feel). Falls back to 'replace' when the
  *                     source has no audio stream (amix would otherwise error).
+ *  • mode 'under'   → the INVERSE of 'mix': the clip's OWN audio leads and the new
+ *                     track sits `duckDb` under it. This is the mode for laying a
+ *                     music bed under a clip that already carries sound — a Veo clip
+ *                     speaks its dialogue in-clip, and 'replace' would delete it
+ *                     (the multi-clip stitch preserves that audio via its diegetic
+ *                     lane, so the single-clip path has to as well). Same fallback:
+ *                     a silent source errors out and lands on a clean 'replace'.
  * `-shortest` keeps the output to the shorter of the two so a long VO never tails
  * past the picture.
  */
 export async function muxAudioOntoVideo(
   videoUrl: string,
   audioUrl: string,
-  mode: 'replace' | 'mix' = 'replace',
+  mode: 'replace' | 'mix' | 'under' = 'replace',
   duckDb = 10,
 ): Promise<string | null> {
   if (!BIN || !videoUrl || !audioUrl) return null;
@@ -78,17 +85,23 @@ export async function muxAudioOntoVideo(
       '-map', '0:v:0', '-map', '1:a:0',
       ...X264, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
     ];
-    if (mode === 'mix') {
+    if (mode === 'mix' || mode === 'under') {
+      const db = Math.max(0, duckDb);
+      // 'mix' ducks the SOURCE under the incoming track; 'under' ducks the INCOMING track under the
+      // source. Both keep the two lanes; only which one leads differs.
+      const graph = mode === 'mix'
+        ? `[0:a]volume=-${db}dB[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]`
+        : `[1:a]volume=-${db}dB[a1];[0:a][a1]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
       const mixArgs = [
         '-y', '-i', videoUrl, '-i', audioUrl,
-        '-filter_complex', `[0:a]volume=-${Math.max(0, duckDb)}dB[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]`,
+        '-filter_complex', graph,
         '-map', '0:v:0', '-map', '[aout]',
         ...X264, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
       ];
       try {
         await exec(BIN, mixArgs, { maxBuffer: 1 << 26, timeout: 180_000 });
         const buf = await readFile(out);
-        return await hostMp4(buf, 'mix');
+        return await hostMp4(buf, mode);
       } catch {
         // Source likely has no audio track → fall through to a clean replace.
       }

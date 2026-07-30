@@ -652,6 +652,9 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
       composite: true,
       film: {
         sceneCount: ref.sceneCount,
+        // The film's real per-scene length (4–8s). The client forwards it as each segment's durationSec
+        // so the assembler's timeline matches the clips it actually received.
+        ...(typeof ref.clipSec === 'number' && ref.clipSec > 0 ? { clipSec: ref.clipSec } : {}),
         seed: ref.seed,
         storyboard: 'succeeded',
         clips: orderedClips.map((c) => ({

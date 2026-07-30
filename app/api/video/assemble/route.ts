@@ -480,7 +480,13 @@ async function assembleImpl(req: NextRequest) {
       const { url: musicUrl, fallback } = await resolveMusicBed();
       let master = clipUrl;
       if (musicUrl) {
-        const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'replace').catch(() => null);
+        // 'under', NOT 'replace': a Veo clip carries its own audio — ambience AND, when the scene had a
+        // line, the character actually SPEAKING it. 'replace' (-map 0:v -map 1:a) deleted that, so a
+        // 1-scene film came back with music over a silent performance while the ElevenLabs leg had
+        // already been dropped as redundant — the dialogue existed nowhere. The multi-clip stitch keeps
+        // that audio in its diegetic lane; this path now matches. A silent clip still lands on 'replace'
+        // (muxAudioOntoVideo falls back when the source has no audio stream), so nothing regresses.
+        const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'under', 12).catch(() => null);
         if (muxed) master = muxed;
       }
       // PRODUCT-AD (6s) — a spoken voiceover (a ready URL, or a SCRIPT we TTS on the
@@ -493,7 +499,10 @@ async function assembleImpl(req: NextRequest) {
             ? await textToHostedSpeech(sanitizeSpokenText(body.voiceoverScript).slice(0, 800)).catch(() => null)
             : null);
       if (voUrl) {
-        const dubbed = await muxAudioOntoVideo(master, voUrl, master === clipUrl ? 'replace' : 'mix', 12).catch(() => null);
+        // Always 'mix' now: the spoken VO leads and whatever the master already carries (a music bed,
+        // and/or the clip's own diegetic sound) is ducked 12 dB under it. 'mix' auto-falls back to
+        // 'replace' when the master has no audio at all, which is the old behaviour for a silent clip.
+        const dubbed = await muxAudioOntoVideo(master, voUrl, 'mix', 12).catch(() => null);
         if (dubbed) master = dubbed;
       }
       // PRODUCT-AD overlays — price chip + CTA pill + brand lower-third burned onto the

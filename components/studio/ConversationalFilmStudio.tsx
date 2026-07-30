@@ -1048,7 +1048,14 @@ export function ConversationalFilmStudio({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ originalPrompt: filmBriefRef.current, editRequest, landedClips: clips }),
+          // clipSec: the film's real per-scene length (4–8s). Without it the remix re-plans on the 8s
+          // default and re-stitches a 6s film as 8s per clip (2s of pad-freeze per scene).
+          body: JSON.stringify({
+            originalPrompt: filmBriefRef.current,
+            editRequest,
+            landedClips: clips,
+            ...(progress?.matrix?.clipSec ? { clipSec: progress.matrix.clipSec } : {}),
+          }),
         });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string | null; restitch?: string; message?: string };
         if (j?.success && typeof j.masterUrl === 'string' && j.masterUrl) {

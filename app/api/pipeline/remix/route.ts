@@ -22,7 +22,7 @@
  * not modify the create-film flow.
  */
 import { NextRequest } from 'next/server';
-import { planFilmScenes, buildFilmClipRequest, type FilmScene, type FilmShared } from '@/lib/chat/filmPipeline';
+import { planFilmScenes, buildFilmClipRequest, clampClipSec, FILM_CLIP_SEC, type FilmScene, type FilmShared } from '@/lib/chat/filmPipeline';
 import { planRemixFromText } from '@/lib/chat/remixPlanner';
 import { assembleContinuityCut, summarizeContinuity, type SceneClipRef } from '@/lib/chat/remixContinuity';
 import { ServiceManager } from '@/lib/chat/ServiceManager';
@@ -43,6 +43,8 @@ interface RemixBody {
   /** Optional continuity context, matching the original render for prompt fidelity. */
   avatarReference?: string | null;
   style?: string | null;
+  /** The original film's per-scene length (4–8s). Absent → the 8s default grid. */
+  clipSec?: number;
   sessionId?: string;
 }
 
@@ -119,9 +121,17 @@ export async function POST(req: NextRequest): Promise<Response> {
     : [];
 
   // 1. Re-derive the EXACT original scene plan (deterministic → same seed + prompts).
+  // The GRID has to be re-derived too, from the clips that actually landed: a film is no longer always
+  // 3 × 8s (a script written as 4 × 6s renders as 4 × 6s). Re-planning at the default grid gave a
+  // 3-scene plan for a 4-scene film, so ordinal 4 had no scene and was silently dropped from the
+  // re-stitch. Fail-safe: with fewer than 2 landed clips there is nothing to infer, so the default holds.
+  const landedCount = landedClips.length >= 2 ? Math.max(...landedClips.map((c) => c.ordinal)) : 0;
+  const gridClipSec = clampClipSec(body.clipSec, FILM_CLIP_SEC);
   const plan = planFilmScenes(originalPrompt, {
     avatarReference: body.avatarReference ?? undefined,
     style: body.style ?? undefined,
+    clipSec: gridClipSec,
+    ...(landedCount >= 2 ? { totalSec: landedCount * gridClipSec } : {}),
   });
   const sceneCount = plan.scenes.length;
 
@@ -167,7 +177,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const segments: { ordinal: number; url: string; durationSec: number }[] = [];
   for (let ordinal = 1; ordinal <= sceneCount; ordinal += 1) {
     const url = rerendered.get(ordinal) ?? landedByOrdinal.get(ordinal);
-    if (url) segments.push({ ordinal, url, durationSec: durByOrdinal.get(ordinal) ?? 5 });
+    if (url) segments.push({ ordinal, url, durationSec: durByOrdinal.get(ordinal) ?? gridClipSec });
   }
 
   if (segments.length < 2) {

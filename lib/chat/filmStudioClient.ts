@@ -53,6 +53,8 @@ export interface FilmClipState {
 /** Mirrors the server `metadata.film` matrix (providerRouter) the client reads. */
 export interface FilmStudioMatrix {
   sceneCount: number;
+  /** Per-scene clip length in seconds (4–8). Absent on older tokens → FILM_CLIP_SEC. */
+  clipSec?: number;
   seed: number;
   storyboard: FilmLegClientStatus;
   clips: FilmClipState[];
@@ -210,6 +212,9 @@ export interface DriveFilmOptions {
   /** The user's chosen scene count (6s→1 · 30s→6 · 60s→12). PINS the render's clip count so a scriptless / raced
    *  render can never default to the 30s/6-scene fallback — the exact "6s selection → 30s film" bug. [1,12]. */
   sceneCount?: number;
+  /** Per-scene length (4–8s) the storyboard derived from the script's own timecodes. PINS the render's grid
+   *  so the board's card durations and the rendered clips match; absent → the render re-derives it. */
+  clipSec?: number;
   /** The Video-panel effect (Cinematic / Vintage / Neon …). Threaded to the render so
    *  the CLIP prompts' style guide matches the chosen look (was only on the frames). */
   style?: string;
@@ -515,6 +520,8 @@ async function assembleMaster(
   vocalGender?: 'male' | 'female' | 'duet',
   audioMix?: AudioMixOptions,
   dialogueStems?: { url: string; speaker: string; startSec: number }[] | null,
+  /** The film's real per-scene length (4–8s). Absent → the 8s default grid. */
+  clipSec?: number | null,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -545,7 +552,9 @@ async function assembleMaster(
     credentials: 'include',
     signal,
     body: JSON.stringify({
-      segments: clipUrls.map((url) => ({ url, durationSec: FILM_CLIP_SEC })),
+      // The assembler derives the master timeline (and every per-clip trim) from these durations, so a
+      // film rendered on a 6s grid must report 6s — a hardcoded 8 pad-froze the tail of every clip.
+      segments: clipUrls.map((url) => ({ url, durationSec: Number.isFinite(Number(clipSec)) && Number(clipSec) > 0 ? Number(clipSec) : FILM_CLIP_SEC })),
       ...(musicUrl ? { musicUrl } : {}),
       // Music OFF → tell the route to skip score generation (no musicUrl + this flag).
       ...(noMusic ? { noMusic: true } : {}),
@@ -695,6 +704,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // PIN the clip count to the user's package (6s→1 · 30s→6 · 60s→12) so a scriptless/raced render can't
           // fall back to the 30s/6-scene default (which also discards a single approved selfie frame).
           ...(Number.isFinite(opts.sceneCount) && (opts.sceneCount as number) >= 1 ? { sceneCount: Math.round(opts.sceneCount as number) } : {}),
+          // PIN the per-scene length too, when the storyboard derived one from the script's timecodes, so
+          // the render's grid is the one the user reviewed on the board (filmComposite reads metadata.clipSec).
+          ...(Number.isFinite(opts.clipSec) && (opts.clipSec as number) > 0 ? { clipSec: Math.round(opts.clipSec as number) } : {}),
           // Verbatim dialogue the user typed → spoken as the film's voice-over.
           ...(opts.narrationScript?.trim() ? { narrationScript: opts.narrationScript.trim() } : {}),
           // Narrator gender + multi-character dialogue (video panel voice selection).
@@ -892,7 +904,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
