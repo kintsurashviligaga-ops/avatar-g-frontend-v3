@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { generateImagenImages, hasGeminiImagenProvider, geminiImagenModel } from '@/lib/ai/geminiImagen';
 import type { ServiceType as BillingServiceType } from '@/lib/services/billing/costModel';
 import { z } from 'zod';
 
@@ -341,6 +342,12 @@ export class ServiceManager {
   }
 
   private async runTextToImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+    // IMAGEN 4 — the Master Task's specified image engine (§1.6.2), tried FIRST. On any miss (no key, no
+    // access, quota, timeout) it returns null and the proven FLUX → NanoBanana cascade below runs
+    // byte-identical, so adding a primary engine cannot break image generation.
+    const imagen = await this.tryImagenImage(request);
+    if (imagen) return imagen;
+
     const provider = this.resolveImageProvider(request.selectedOptions);
     if (provider === 'replicate') {
       // P90 — FLUX 1.1 Pro primary, NanoBanana fail-open: a FLUX outage/quota still yields a real
@@ -356,6 +363,74 @@ export class ServiceManager {
     }
 
     return this.runNanoBananaImage(request);
+  }
+
+  /**
+   * IMAGEN 4 (§1.6.2 / §3.2.2). Imagen returns base64 bytes inline — no operation to poll — so the image is
+   * hosted here and the caller receives a normal signed https URL, identical in shape to the other engines.
+   * Returns null on ANY miss so `runTextToImage` falls through to FLUX → NanoBanana. NEVER throws.
+   */
+  private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
+    if (!hasGeminiImagenProvider()) return null;
+    const opts = request.selectedOptions || {};
+    // An explicit engine pick opts OUT of Imagen, mirroring the Kling/Hailuo opt-out on the video side.
+    const picked = (this.getOption(opts, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();
+    if (picked === 'nanobanana' || picked === 'replicate' || picked === 'flux') return null;
+
+    const count = Number(this.getOption(opts, ['numberOfImages', 'imageCount', 'n'])) || 1;
+    const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
+    const aspect = this.normalizeAspectRatio(this.getOption(opts, ['aspect', 'aspectRatio', 'ratio'])) || undefined;
+
+    try {
+      const images = await generateImagenImages({
+        prompt: request.userPrompt,
+        ...(aspect ? { aspectRatio: aspect } : {}),
+        numberOfImages: count,
+        ...(negativePrompt ? { negativePrompt } : {}),
+      });
+      if (!images?.length) return null;
+
+      const stamp = Date.now();
+      const hosted = await Promise.all(
+        images.map((img, i) => {
+          const ext = img.mimeType.includes('jpeg') || img.mimeType.includes('jpg') ? 'jpg' : 'png';
+          return uploadBufferAndSign('renders', `imagen/${request.sessionId}/${stamp}-${i}.${ext}`, img.buffer, img.mimeType, 604_800)
+            .catch(() => null);
+        }),
+      );
+      const urls = hosted.filter((u): u is string => typeof u === 'string' && !!u);
+      // Generated but undeliverable (storage miss) → fall through rather than return a broken success.
+      if (!urls.length) return null;
+
+      const model = geminiImagenModel();
+      // eslint-disable-next-line no-console
+      console.log(`[imagen] ${model} produced ${urls.length}/${images.length} hosted image(s)`);
+      return {
+        success: true,
+        provider: 'nanobanana', // surface provider union has no 'gemini' member; the real engine is in metadata
+        operation: 'text-to-image',
+        responseType: 'image',
+        message: 'Image generation completed successfully.',
+        assetUrl: urls[0] as string,
+        assetType: 'image',
+        predictionStatus: 'succeeded',
+        metadata: {
+          provider: 'nanobanana' as const,
+          imageProvider: 'gemini-imagen',
+          model,
+          operation: 'text-to-image',
+          outputType: 'image',
+          sessionId: request.sessionId,
+          promptHash: this.hashPrompt(request.userPrompt),
+          confidence: request.confidence,
+          images: urls,
+        },
+      };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[imagen] threw → falling through to FLUX/NanoBanana:', err instanceof Error ? err.message : err);
+      return null;
+    }
   }
 
   private async runVideoAvatar(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
