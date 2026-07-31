@@ -740,7 +740,10 @@ type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrument
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
 // fills in independently as its own parallel generation lands.
-interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string; jobId?: string }
+// `error` exists so a failed tile can say WHY. It used to render a bare X glyph: the route's reason was
+// received, rethrown and then dropped, and the floating tray that would have shown it unmounts once the
+// batch stops being active — i.e. exactly when the failure becomes visible.
+interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string; jobId?: string; error?: string }
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 // TASK 4 — Cinema-video parallelism gate. When ON, the flagship `renderFilm` dispatches
 // through the Cap-3 queue (per-job signal + durable row + tray progress) so multiple films
@@ -3401,16 +3404,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           signal,
           body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           updateBubble(bubbleId, { text: '', imageUrl: j.url, regen: spec });
           notifyCredit('image');
           return j.url;
         }
-        // Show the raw server error ONLY for the insufficient-credits case (a bilingual top-up
-        // prompt); for provider errors (English "…timed out") show the localized generic instead.
-        updateBubble(bubbleId, { text: `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.imageFailed}` });
+        // The route's LOCALIZED `message` is shown when it sends one; only a raw English provider
+        // string falls back to the generic.
+        //
+        // ⚠️ THIS USED TO SHOW THE GENERIC FOR EVERYTHING except insufficient credits — including the
+        // 409 duplicate_request, whose message is "This image is already being generated." Telling that
+        // user "Image generation failed. Try again." is not merely vague, it is the OPPOSITE of the
+        // truth, and it invites exactly the retry that will 409 again. Every sibling flow in this file
+        // (video, remix, lipsync, upscale, and image's own regenerate) already surfaces the reason.
+        const reason = j.code === 'insufficient_credits' ? (j.message || j.error) : j.message;
+        updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}` });
         throw new Error(j.error || 'image failed');
       },
     });
@@ -3429,7 +3439,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages((prev) => [
       ...prev,
       { role: 'user', text: spec.prompt },
-      { role: 'assistant', text: '', id: batchId, batch: { spec, tiles: Array.from({ length: count }, () => ({ status: 'pending' as const })) } },
+      // genKind is what lets the shared progress card recognise this bubble; without it a batch was
+      // invisible to every inflight gate in the stream.
+      { role: 'assistant', text: '', id: batchId, genKind: 'image' as const, batch: { spec, tiles: Array.from({ length: count }, () => ({ status: 'pending' as const })) } },
     ]);
     // Update tile k of THIS batch bubble (by stable id — parallel tile jobs never clobber).
     const updateTile = (k: number, tile: BatchTile) => {
@@ -3456,17 +3468,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               signal,
               body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
             });
-            const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
+            const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
             onProgress({ pct: 100 });
             if (j.success && j.url) {
               updateTile(tileIdx, { status: 'done', url: j.url, jobId });
               notifyCredit('image');
               return j.url;
             }
-            updateTile(tileIdx, { status: 'failed', jobId });
+            // Keep the reason ON THE TILE. It was received here, rethrown, and then dropped — and the
+            // floating tray that would have shown it unmounts once the batch stops being active, which
+            // is exactly when the failure becomes visible. Net result was a bare X and no explanation.
+            updateTile(tileIdx, { status: 'failed', jobId, error: j.message || j.error });
             throw new Error(j.error || 'image failed');
           } catch (e) {
-            updateTile(tileIdx, { status: 'failed', jobId });
+            updateTile(tileIdx, { status: 'failed', jobId, error: e instanceof Error ? e.message : undefined });
             throw e;
           }
         },
@@ -3717,9 +3732,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               if (t.status !== 'pending' || !t.jobId) return t;
               changed = true;
               const row = byId.get(t.jobId);
-              return row?.status === 'completed' && row.signed_url
-                ? { status: 'done', url: row.signed_url, jobId: t.jobId }
-                : { status: 'failed', jobId: t.jobId };
+              // ⚠️ A NON-TERMINAL ROW IS NOT A FAILURE. This used to be a two-way branch — completed, or
+              // failed — so a tile whose row was still 'processing' or 'queued' (the NORMAL state for a
+              // render that is still going) was painted as a red X the moment the page reloaded. The
+              // render carried on, the credit stayed spent, and the user was looking at a dead tile for
+              // work that was about to succeed. Only a genuinely terminal row can fail a tile; anything
+              // still in flight stays pending so the poll can finish it.
+              if (row?.status === 'completed' && row.signed_url) return { status: 'done', url: row.signed_url, jobId: t.jobId };
+              if (!row || row.status === 'failed' || row.status === 'canceled') return { status: 'failed', jobId: t.jobId };
+              return t;
             });
             return changed ? { ...m, batch: { ...m.batch, tiles } } : m;
           }));
@@ -5289,7 +5310,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setMessages((prev) => [...prev, { role: 'assistant', text: t.upscaling }]);
     try {
       const r = await fetch('/api/ai/upscale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageUrl: url, scale: 2 }), credentials: 'include' });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string };
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -5531,7 +5552,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                               className="absolute right-1.5 top-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-app-bg/70 text-[13px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation">🎬</button>
                           </>
                         ) : tile.status === 'failed' ? (
-                          <div className="flex h-full w-full items-center justify-center text-app-danger/70"><X size={18} /></div>
+                          // A reason and a way out, instead of a bare glyph. Retrying ONE tile also
+                          // stops the user re-billing the variations they were happy with, which is
+                          // what the regenerate-all button below forces them to do.
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1.5 text-center">
+                            <X size={16} className="text-app-danger/70" />
+                            {tile.error && <span className="line-clamp-2 text-[9px] leading-tight text-app-muted">{tile.error}</span>}
+                            <button type="button" disabled={busy}
+                              onClick={() => void runImageBatch(m.batch!.spec, 1)}
+                              className="rounded-full bg-app-elevated px-2 py-0.5 text-[9.5px] font-semibold text-app-accent ring-1 ring-app-border/15 disabled:opacity-40">
+                              {t.regenerate}
+                            </button>
+                          </div>
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-app-muted/50"><Loader2 size={18} className="animate-spin" /></div>
                         )}
@@ -5675,8 +5707,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 // inline loading card was missing and progress only showed in the floating corner tray — the
                 // "loading card hanging in the bottom-right" complaint. Key off the bubble's OWN genKind (per-
                 // message, queue-safe) so the card sits INLINE in the message flow. Excludes done/failed/batch.
+                // `!m.batch` used to be part of this gate, which meant a ×2/×4 batch could NEVER show the
+                // progress card — the user got N grey tiles with bare spinners, no percentage, no stage
+                // and no estimate, and the only live numbers were in the floating corner tray. That is
+                // exactly the regression the inline card was built to end, reintroduced for the one case
+                // that waits longest. A batch now reports aggregate progress (see batchPct below).
                 const isInflightGen = m.role === 'assistant' && !!m.genKind && m.genKind !== 'video'
-                  && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch && !m.text?.startsWith('⚠️');
+                  && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.text?.startsWith('⚠️')
+                  && (!m.batch || m.batch.tiles.some((t) => t.status === 'pending'));
                 // A remix/product-ad bubble in flight — product-ad runs through the QUEUE (no `busy`), so it
                 // gets its inline staged console here too instead of only the floating tray.
                 const isInflightRemix = m.role === 'assistant' && !!m.remixOpKind && !m.videoUrl && !m.audioUrl && !m.text?.startsWith('⚠️');
@@ -5692,7 +5730,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 if ((pending || isInflightVideo || isInflightGen) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo || isInflightGen)) {
                   // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
                   // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
-                  const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 170 : 215;
+                  //
+                  // ⚠️ THE 2K FIGURE WAS FIVE TIMES TOO LONG. 170s came from the original per-tier
+                  // measurement, but 'high' later became the DEFAULT tier and the newer live timing
+                  // recorded in this same file is ~33s. At target=170 a 2K image that lands in 33s
+                  // showed "37% · remaining ~2:17" and then simply appeared — the estimate was
+                  // decoration, and a number that is wrong by 5x on the default path is worse than no
+                  // number at all, because it is what teaches users to ignore every figure we show.
+                  const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 40 : 215;
                   // Prefer the kind stamped on the message at render-start (intrinsic),
                   // so a mid-render mode switch can't swap the wrong progress UI in.
                   const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
@@ -5717,7 +5762,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         // live, driven by the real film-pipeline matrix.
                         <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
                       ) : (
-                        <GenerationProgress kind={kind} elapsed={elapsed} status={m.text} locale={locale} targetSec={kind === 'image' ? imgTarget : undefined} />
+                        <GenerationProgress
+                          kind={kind}
+                          elapsed={elapsed}
+                          status={m.text}
+                          locale={locale}
+                          targetSec={kind === 'image' ? imgTarget : undefined}
+                          // A BATCH knows its real completion — tiles done over tiles total — so it
+                          // reports that instead of an interpolated guess. Capped below 100 by the card
+                          // itself, since the last tile is not finished until its bubble swaps.
+                          {...(m.batch && m.batch.tiles.length
+                            ? { pct: Math.round((m.batch.tiles.filter((t) => t.status !== 'pending').length / m.batch.tiles.length) * 100) }
+                            : {})}
+                        />
                       )}
                     </div>
                   );

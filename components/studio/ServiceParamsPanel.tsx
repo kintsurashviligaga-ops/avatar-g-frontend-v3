@@ -26,6 +26,7 @@ import {
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
 import { GenerationProgress } from './ui/GenerationProgress';
+import { ResultActions } from './ui/ResultActions';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 
@@ -202,6 +203,8 @@ export function ServiceParamsPanel({
    * these panels never tracked one, so they could not show elapsed time or a remaining figure at all.
    */
   const [elapsed, setElapsed] = useState(0);
+  /** Short confirmation from a result action ("Saved", "Link copied"), cleared on the next run. */
+  const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
     if (!busy) { setElapsed(0); return; }
     const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -282,6 +285,7 @@ export function ServiceParamsPanel({
     setError(null);
     setResult(null);
     setStage(null);
+    setNote(null);
     // Name the job so the poller below can follow it while the synchronous request is still open.
     const clientJobId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '';
     const stop = { done: false };
@@ -519,6 +523,7 @@ export function ServiceParamsPanel({
       )}
 
       {error && <div className="mt-2"><Note tone="error">{error}</Note></div>}
+      {note && <div className="mt-2"><Note tone="success">{note}</Note></div>}
 
       {result && (
         <div className="mt-2.5 space-y-2">
@@ -526,8 +531,13 @@ export function ServiceParamsPanel({
             <>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video src={result.videoUrl} controls playsInline className="w-full rounded-xl" />
+              {/* Real actions, not a bare link. `<a download>` is IGNORED cross-origin — and every one
+                  of these is a signed storage URL — so the old link navigated away from the app to the
+                  raw file instead of saving it. ResultActions fetches the bytes and downloads those,
+                  offers the share sheet (the only route to Photos on iOS), and files the result in the
+                  Library, which nothing on this path did. */}
               <Row>
-                <a href={result.videoUrl} download className={DOWNLOAD_LINK}>⬇ {t.download}</a>
+                <ResultActions url={result.videoUrl} kind="film" locale={lang} onNote={setNote} />
                 {result.subtitlesUrl && <a href={result.subtitlesUrl} download className={DOWNLOAD_LINK}>⬇ SRT</a>}
               </Row>
             </>
@@ -553,7 +563,7 @@ export function ServiceParamsPanel({
           {result.glbUrl && (
             <>
               <GlbViewer url={result.glbUrl} />
-              <a href={result.glbUrl} download className={DOWNLOAD_LINK}>⬇ GLB</a>
+              <ResultActions url={result.glbUrl} kind="model3d" locale={lang} onNote={setNote} />
             </>
           )}
         </div>
