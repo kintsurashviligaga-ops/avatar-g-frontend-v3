@@ -221,7 +221,10 @@ export function ServiceParamsPanel({
   const miniBtn = 'shrink-0 rounded-lg border border-app-border/15 px-1.5 py-1 text-[11px] text-app-muted hover:text-app-text disabled:opacity-25';
 
   return (
-    <div className="mb-2 rounded-2xl border border-app-border/15 bg-app-surface/70 p-3">
+    // HEIGHT IS CAPPED, and the panel scrolls inside itself. A twelve-shot timeline is taller than the
+    // viewport, and letting it grow pushed the message input off screen — the one control that must
+    // never leave, since this panel sits INSIDE the chat rather than on a page of its own.
+    <div className="mb-2 max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl border border-app-border/15 bg-app-surface/70 p-3">
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-[12.5px] font-semibold text-app-text">{t[service]}</span>
         <button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-[11px] text-app-muted hover:text-app-text">
