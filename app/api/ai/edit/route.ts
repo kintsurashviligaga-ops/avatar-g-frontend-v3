@@ -23,10 +23,11 @@ import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generatio
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '@/lib/orchestrator/storage-adapter';
+import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
+import { maxrateForTarget } from '@/lib/services/montage/montagePlan';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
@@ -166,12 +167,37 @@ export async function POST(req: NextRequest) {
       .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length)
       .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition, textOverlay: e.textOverlay }));
     if (!seq.length) return NextResponse.json({ url: null, error: 'empty sequence' }, { status: 400 });
+    // ── ENCODE BUDGET ───────────────────────────────────────────────────────────────────────────────
+    //
+    // ⚠️ THIS CALL USED TO PASS NOTHING, and the two guards that exist for exactly this failure — the
+    // VBV cap in videoTail() and the buffer sink — were therefore only ever used by Montage.
+    //
+    // 'ultrafast' is bitrate-INEFFICIENT, so an uncapped CRF20 stitch of twelve clips balloons past the
+    // Supabase upload limit, and host() then base64s that whole master (a 1.33× string on top of the
+    // buffer, ~2.3× peak) before uploading — the precise OOM shape uploadBufferAndSign was written to
+    // avoid. Long exports died as an unexplained "concat render failed" or a killed lambda.
+    //
+    // The cap only trims bitrate SPIKES; CRF quality is untouched wherever it already fits. The timeout
+    // is set BELOW maxDuration=300 on purpose: ffmpeg must lose first, so the route can answer with a
+    // real reason instead of the platform returning a gateway timeout with an unparseable body.
+    const totalOutSec = seq.reduce((a, e) => a + Math.max(0, (Number(e.end) || 0) - (Number(e.start) || 0)), 0);
     try {
       let dropped: Array<{ index: number; reason: string }> = [];
       const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720, {
+        maxrateKbps: maxrateForTarget(totalOutSec), // the SAME formula Montage uses — one bitrate policy, not two
+        timeoutMs: 240_000,
+        // Stream the finished master straight to storage as BYTES — no base64 inflation, and
+        // uploadBufferAndSign self-heals a size rejection where uploadAndSign silently returns null.
+        sink: (buf) => uploadBufferAndSign(
+          UPLOAD_BUCKET,
+          `edits/concat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`,
+          buf,
+          'video/mp4',
+          604_800,
+        ),
         onDrop: (d) => { dropped = d.map((x) => ({ index: x.index, reason: x.reason })); },
       });
-      if (url) await saveCreation(req, guard.userId, url, 'render');
+      if (url) await saveCreation(req, guard.userId, url, 'render', 'video');
       return NextResponse.json({
         url,
         error: url ? undefined : 'concat render failed',

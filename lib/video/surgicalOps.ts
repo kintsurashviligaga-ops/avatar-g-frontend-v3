@@ -18,7 +18,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   resolveSegmentWindows,
   sourcesNeedingDuration,
@@ -33,10 +33,19 @@ function bin(): string | null {
   return (ffmpegStatic as unknown as string | null) ?? null;
 }
 
+/**
+ * Host a finished render.
+ *
+ * ⚠️ USES uploadBufferAndSign, NOT uploadAndSign, and that is the whole point. The old version did
+ * `buf.toString('base64')` — a 1.33× string held alongside the buffer it was built from, so a 40MB
+ * master peaked around 2.3× its own size in a memory-bounded lambda, which is how long exports died
+ * with no error at all. The buffer path uploads the bytes directly and, unlike uploadAndSign, retries
+ * against a size rejection instead of quietly returning null.
+ */
 async function host(buf: Buffer, tag: string, ext: 'mp4' | 'm4a', contentType: string): Promise<string | null> {
   if (buf.byteLength < 512) return null;
   const path = `edits/${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  return (await uploadAndSign('uploads', path, buf.toString('base64'), contentType, WEEK_SEC)) ?? null;
+  return (await uploadBufferAndSign('uploads', path, buf, contentType, WEEK_SEC)) ?? null;
 }
 
 /** Common libx264 encode tail — uniform, faststart, frame-precise (re-encode, not stream-copy). */
@@ -57,6 +66,16 @@ function videoTail(maxrateKbps?: number | null): string[] {
   if (!maxrateKbps || !Number.isFinite(maxrateKbps) || maxrateKbps <= 0) return VIDEO_TAIL;
   const k = Math.max(2_000, Math.round(maxrateKbps));
   return [...VIDEO_TAIL, '-maxrate', `${k}k`, '-bufsize', `${k * 2}k`];
+}
+
+/**
+ * Bitrate ceiling for a target file size, in kbps. Mirrors maxrateForTarget in the montage plan — the
+ * same 42MB master target the film assembler already uses — so every render in the product lands under
+ * one storage budget rather than each path inventing its own.
+ */
+function maxrateForDuration(durationSec: number, targetMb = 42): number {
+  const d = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 1;
+  return Math.max(2_000, Math.round((targetMb * 8192) / d) - 192 /* audio tail */);
 }
 
 interface SequenceOpts {
@@ -338,8 +357,11 @@ export async function renderVideoDraft(videoUrl: string, d: RenderDraft): Promis
     const args = ['-y', '-i', videoUrl];
     if (vf.length) args.push('-vf', vf.join(','));
     if (af.length) args.push('-af', af.join(','));
-    args.push(...VIDEO_TAIL, out);
-    await exec(b, args, { maxBuffer: 1 << 26, timeout: 180_000 });
+    // The SINGLE-clip path was the last uncapped encode. A 4-minute source at 'ultrafast' CRF20 is as
+    // capable of blowing the storage limit as a stitch is; `total` is the real output length, so the
+    // same size target applies. 150s keeps ffmpeg strictly inside the route's 300s budget.
+    args.push(...videoTail(maxrateForDuration(total)), out);
+    await exec(b, args, { maxBuffer: 1 << 26, timeout: 150_000 });
     return await host(await readFile(out), 'render', 'mp4', 'video/mp4');
   } catch (err) {
     console.warn('[surgical/renderVideo] failed:', err instanceof Error ? err.message : err);

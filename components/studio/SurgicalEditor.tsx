@@ -50,6 +50,7 @@ interface Copy {
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   fullClip: string; someDropped: string; uploadFailed: string; play: string; pause: string;
+  signInToUpload: string; tooFast: string;
   transition: string; tCut: string; tCross: string; tFade: string;
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
   aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
@@ -73,6 +74,7 @@ const T: Record<Lang, Copy> = {
     maxReached: `მაქსიმუმ ${MAX_CLIPS} ფაილი`, max5: `მაქსიმუმ ${MAX_SEQ_CLIPS} კლიპი თანმიმდევრობაში`, cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
     fullClip: 'სრული', someDropped: 'ვერ წაიკითხა კლიპი', uploadFailed: 'ფაილი ვერ აიტვირთა',
     play: 'დაკვრა', pause: 'პაუზა',
+    signInToUpload: 'ატვირთვამდე გაიარე ავტორიზაცია.', tooFast: 'ძალიან ბევრი ატვირთვა — დაელოდე წამებს და სცადე თავიდან.',
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
     aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო ჯერ არ არის კონფიგურირებული',
@@ -97,6 +99,7 @@ const T: Record<Lang, Copy> = {
     maxReached: `Maximum ${MAX_CLIPS} files`, max5: `Up to ${MAX_SEQ_CLIPS} clips in a sequence`, cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
     fullClip: 'full', someDropped: 'clip could not be read', uploadFailed: 'File could not be uploaded',
     play: 'Play', pause: 'Pause',
+    signInToUpload: 'Sign in before uploading.', tooFast: 'Too many uploads — wait a few seconds and try again.',
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
     aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is not configured yet',
@@ -121,6 +124,7 @@ const T: Record<Lang, Copy> = {
     maxReached: `Максимум ${MAX_CLIPS} файлов`, max5: `До ${MAX_SEQ_CLIPS} клипов в последовательности`, cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
     fullClip: 'весь', someDropped: 'клип не удалось прочитать', uploadFailed: 'Файл не загрузился',
     play: 'Воспроизвести', pause: 'Пауза',
+    signInToUpload: 'Войдите, чтобы загружать файлы.', tooFast: 'Слишком много загрузок — подождите несколько секунд.',
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
     aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент ещё не настроен',
@@ -231,19 +235,34 @@ async function decodeAudioPeaks(file: File, buckets = 72): Promise<number[]> {
   } catch { return []; }
 }
 
-async function uploadClip(file: File): Promise<string | null> {
+/**
+ * Upload one clip and return its storage path.
+ *
+ * Returns a DISCRIMINATED result rather than `string | null`, because the two ways this fails need two
+ * different sentences. /api/upload/sign now requires a session, so a signed-out user gets 401 here —
+ * and reporting that as "File could not be uploaded: beach.mov" sends them off to re-encode a video
+ * that was never the problem. 429 is the same story: the fix is to wait, not to change the file.
+ */
+type UploadResult = { path: string } | { error: 'auth' | 'rate' | 'fail' };
+
+async function uploadClip(file: File): Promise<UploadResult> {
   try {
     // Both legs are bounded so a stalled upload can never strand the caller's loader: the sign call goes through
     // postJson (aborts on hang), and the supabase PUT is raced against a timeout (it's a supabase-js call, not fetch).
     const signed = await postJson('/api/upload/sign', { contentType: file.type || 'application/octet-stream' }, 60_000);
+    if (signed.status === 401) return { error: 'auth' };
+    if (signed.status === 429) return { error: 'rate' };
     const sign = signed.body as { bucket?: string; path?: string; token?: string } | null;
-    if (!signed.ok || !sign?.path || !sign?.token) return null;
+    if (!signed.ok || !sign?.path || !sign?.token) return { error: 'fail' };
     const sb = createBrowserClient();
     const put = sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, file, { contentType: file.type || 'application/octet-stream' });
     const { error } = await withTimeout(put, 300_000, { error: { message: 'upload timeout' } } as Awaited<typeof put>);
-    return error ? null : (sign.path ?? null);
-  } catch { return null; }
+    return error ? { error: 'fail' } : { path: sign.path };
+  } catch { return { error: 'fail' }; }
 }
+
+/** The path, or null — for the call sites that only need "did it land". */
+const pathOf = (r: UploadResult): string | null => ('path' in r ? r.path : null);
 
 function fmt(sec: number): string {
   if (!isFinite(sec) || sec < 0) return '0:00';
@@ -658,6 +677,19 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   // the control vanished the moment you added a second clip. (The `cropAllowed` flag that used to gate it
   // was left behind as a dead `= true` after the gate was removed.)
 
+  /**
+   * Turn an upload failure into a sentence the user can act on.
+   *
+   * "auth" and "rate" are not file problems, and saying "File could not be uploaded: beach.mov" for
+   * either sends the user off to re-encode a video that was never at fault. Since /api/upload/sign
+   * started requiring a session, being signed out became the commonest cause of all.
+   */
+  const uploadReason = useCallback((why: 'auth' | 'rate' | 'fail', name?: string): string => (
+    why === 'auth' ? t.signInToUpload
+      : why === 'rate' ? t.tooFast
+      : `${t.uploadFailed}${name ? `: ${name}` : ''}`
+  ), [t.signInToUpload, t.tooFast, t.uploadFailed]);
+
   // ── Export ──
   /** What /api/ai/edit answers with. `droppedClips` is present only when ffmpeg could not read a source. */
   type ExportResponse = { url?: string | null; error?: string; droppedClips?: Array<{ index: number; reason: string }>; renderedClips?: number };
@@ -670,26 +702,33 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     try {
       const byId = new Map(clips.map((c) => [c.id, c]));
       if (isPhoto) {
-        const path = await uploadClip(clip.file);
-        if (!path) { flash(t.failed); return; }
+        const up = await uploadClip(clip.file);
+        if (!('path' in up)) { flash(uploadReason(up.error, clip.name)); return; }
+        const path = up.path;
         const res = await postEdit({ action: 'render', mediaUrl: path, kind: 'photo', draft: { grade: isNeutral(grade) ? undefined : grade, crop: aspectCrop ?? sourceCrop() } });
         finishExport(res, 'image');
       } else if (distinctClipIds.length > 1) {
         // MULTI-CLIP concat — upload each distinct source (aligned to sequence src indices).
-        const uploads = await Promise.all(distinctClipIds.map((id) => { const c = byId.get(id); return c ? uploadClip(c.file) : Promise.resolve(null); }));
-        // NAME the file that failed. `sources` is index-aligned with the sequence, so one missing upload
-        // has to abort the whole export — but the user was told only "failed", with nothing to act on.
-        const badIdx = uploads.findIndex((u) => !u);
+        const uploads = await Promise.all(distinctClipIds.map(async (id): Promise<UploadResult> => {
+          const c = byId.get(id);
+          return c ? uploadClip(c.file) : { error: 'fail' };
+        }));
+        // NAME the file AND the reason. `sources` is index-aligned with the sequence, so one missing
+        // upload has to abort the whole export — the user was told only "failed", with nothing to act on,
+        // and after the upload route started requiring a session the commonest cause became "signed out",
+        // which is not something re-encoding the clip will ever fix.
+        const badIdx = uploads.findIndex((u) => !('path' in u));
         if (badIdx >= 0) {
           const bad = byId.get(distinctClipIds[badIdx] ?? '');
-          flash(`${t.uploadFailed}: ${bad?.name ?? `#${badIdx + 1}`}`);
+          const why = uploads[badIdx] as { error: 'auth' | 'rate' | 'fail' };
+          flash(uploadReason(why.error, bad?.name));
           return;
         }
         const srcIndex = new Map(distinctClipIds.map((id, i) => [id, i]));
         const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted || detached, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const first = byId.get(distinctClipIds[0] ?? '');
         const res = await postEdit({
-          action: 'render', kind: 'video', sources: uploads as string[], sequence,
+          action: 'render', kind: 'video', sources: uploads.map((u) => ('path' in u ? u.path : '')), sequence,
           targetW: first?.w || 1280, targetH: first?.h || 720,
           draft: {
             grade: isNeutral(grade) ? undefined : grade,
@@ -704,8 +743,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         // SINGLE clip — the legacy path keeps precise source-px crop.
         const onlyId = distinctClipIds[0] ?? clip.id;
         const only = byId.get(onlyId) ?? clip;
-        const path = await uploadClip(only.file);
-        if (!path) { flash(t.failed); return; }
+        const up = await uploadClip(only.file);
+        if (!('path' in up)) { flash(uploadReason(up.error, only.name)); return; }
+        const path = up.path;
         const segs = segments.filter((s) => s.clipId === onlyId).map((s) => ({ start: s.start, end: s.end, muted: s.muted || detached, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const res = await postEdit({
           action: 'render', mediaUrl: path, kind: 'video', durationSec: only.dur || duration,
@@ -733,7 +773,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       // render still ships (the other clips are fine) but the user is told how many are missing.
       flash(j.droppedClips?.length ? `${t.done} · ${j.droppedClips.length} ${t.someDropped}` : t.done);
     }
-  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, videoSpeed, detached, aspectCrop, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done, t.timedOut, t.uploadFailed, t.someDropped]);
+  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, videoSpeed, detached, aspectCrop, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done, t.timedOut, t.someDropped, uploadReason]);
 
   // ── AI object removal (photo) ──
   const runInpaint = useCallback(async () => {
@@ -746,7 +786,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 16)) : p)), 600);
     try {
       const maskUrl = c.toDataURL('image/png');
-      const path = await uploadClip(clip.file);
+      const path = pathOf(await uploadClip(clip.file));
       if (!path) { flash(t.failed); return; }
       const { status, ok, body } = await postJson('/api/ai/edit', { action: 'inpaint', mediaUrl: path, maskUrl, prompt: prompt.trim() });
       const j = body as { url?: string | null } | null;
@@ -767,7 +807,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       // CHAIN: run on the last AI result if present, else the cached original (upload once, then reuse).
       let src = chainPath;
       if (!src) {
-        src = originalPath ?? await uploadClip(clip.file);
+        src = originalPath ?? pathOf(await uploadClip(clip.file));
         if (src && !originalPath) setOriginalPath(src);
       }
       if (!src) { flash(t.failed); return; }
@@ -795,7 +835,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 18)) : p)), 600);
     try {
       let src = chainPath;
-      if (!src) { src = originalPath ?? await uploadClip(clip.file); if (src && !originalPath) setOriginalPath(src); }
+      if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
       if (!src) { flash(t.failed); return; }
       const { status, ok, body } = await postJson('/api/ai/edit-photo', { actions, mediaUrl: src });
       const j = body as { url?: string | null; path?: string | null } | null;
@@ -824,7 +864,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   // Resolve the source once (upload original → cache), reusing the last AI result when chaining.
   const audioSource = useCallback(async (): Promise<string | null> => {
     if (chainPath) return chainPath;
-    const src = originalPath ?? (clip ? await uploadClip(clip.file) : null);
+    const src = originalPath ?? (clip ? pathOf(await uploadClip(clip.file)) : null);
     if (src && !originalPath) setOriginalPath(src);
     return src;
   }, [chainPath, originalPath, clip]);
@@ -930,7 +970,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     const tick = window.setInterval(() => setExportPct((prev) => (prev < 90 ? prev + Math.max(1, Math.round((90 - prev) / 16)) : prev)), 600);
     try {
       let src = chainPath;
-      if (!src) { src = originalPath ?? await uploadClip(clip.file); if (src && !originalPath) setOriginalPath(src); }
+      if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
       if (!src) { flash(t.failed); return; }
       const { status, ok, body } = await postJson('/api/ai/edit-photo', { action: 'background_replace', mediaUrl: src, prompt: p });
       const j = body as { url?: string | null; path?: string | null } | null;

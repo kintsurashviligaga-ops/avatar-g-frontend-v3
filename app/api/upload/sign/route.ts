@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceRoleClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 /**
  * POST /api/upload/sign — issue a signed UPLOAD URL so the browser can PUT a large
@@ -10,6 +11,8 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
  * (Replicate MusicGen melody, etc.) can fetch.
  *
  * Tiny request/response — no file bytes pass through this function.
+ *
+ * AUTH REQUIRED. See the note in POST: this used to be open, and it mints a service-role write token.
  */
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +37,24 @@ function extFor(ct: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  // ⚠️ THIS ROUTE HAD NO AUTH AND NO RATE LIMIT, and what it hands out is a SERVICE-ROLE signed
+  // upload URL.
+  //
+  // Anyone on the internet could POST here and get a token that writes arbitrary bytes into the
+  // `uploads` bucket — unlimited, unattributed, at the operator's storage cost. It is also the door
+  // every editor and studio goes through, so the hole sat on the hottest path in the product rather
+  // than in a forgotten corner. The sibling /api/upload has required auth all along; this one, added
+  // later to bypass the 4.5MB body limit, never got the same gate.
+  //
+  // Two of them now. Auth first, so every object written is attributable to a real account. Then a
+  // rate limit, because a signed-in user can still loop: WRITE (20/min) is ample for a twelve-clip
+  // montage and useless for filling a bucket.
+  const rl = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (rl) return rl;
+
+  const { user } = await authedClientFromRequest(req);
+  if (!user) return NextResponse.json({ error: 'auth required' }, { status: 401 });
+
   let contentType = 'application/octet-stream';
   try {
     const body = (await req.json().catch(() => ({}))) as { contentType?: unknown };
@@ -49,7 +70,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'storage not configured' }, { status: 502 });
   }
 
-  const path = `omni-uploads/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extFor(contentType)}`;
+  // OWNER-SCOPED PATH, matching /api/upload. An object now says who wrote it, so abuse is traceable
+  // and a per-user cleanup is possible; the random suffix keeps concurrent uploads from colliding.
+  const path = `omni-uploads/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extFor(contentType)}`;
   const { data: up, error: upErr } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
   if (upErr || !up) {
     return NextResponse.json({ error: upErr?.message || 'could not create upload url' }, { status: 502 });

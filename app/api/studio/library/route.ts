@@ -17,6 +17,7 @@ import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase
 import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { JOB_COLUMNS, recordCompletedAsset, type GenerationJobRow } from '@/lib/orchestrator/jobs';
 import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
+import { parseSupabaseObjectUrl, createSignedAssetUrls } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error || !Array.isArray(data)) return NextResponse.json({ items: [] });
 
-    const items: LibraryItem[] = (data as GenerationJobRow[])
+    const rows: LibraryItem[] = (data as GenerationJobRow[])
       .map((row): LibraryItem | null => {
         const url = pickUrl(row);
         if (!url) return null; // a completed row with no media is not a Library item
@@ -86,8 +87,48 @@ export async function GET(req: NextRequest) {
       })
       .filter((x): x is LibraryItem => x !== null);
 
-    // PHASE 4 Task 5D — short private browser cache: the library changes rarely, so a
-    // 30s cache cuts refetches on tab-switches. Per-user → private (no shared CDN cache).
+    // ── RE-SIGN ON READ ─────────────────────────────────────────────────────────────────────────────
+    //
+    // ⚠️ THE LIBRARY DECAYED. Every producer stores a SIGNED url in `signed_url` — surgicalOps signs for
+    // WEEK_SEC, the music and image routes for 604800s — and this route used to hand that exact string
+    // back forever. The ROW is permanent, so a card kept rendering; the URL behind it expired after
+    // seven days and returned 400. A user's whole back catalogue silently rotted, oldest first, and the
+    // failure looked like broken thumbnails rather than an expiry.
+    //
+    // The stored string still carries everything needed to fix it: parseSupabaseObjectUrl recovers the
+    // bucket and path from a signed URL, so a fresh token can be minted per request without any schema
+    // change or backfill — this repairs rows written months ago, not just new ones.
+    //
+    // Done in ONE batched call per bucket rather than N sequential ones: a 40-item page would otherwise
+    // be 40 round trips to Supabase inside a request the browser is waiting on.
+    const byBucket = new Map<string, Map<string, number[]>>(); // bucket → path → indices into `rows`
+    rows.forEach((item, i) => {
+      const ref = parseSupabaseObjectUrl(item.url);
+      if (!ref) return; // an external provider URL is time-limited by its issuer; leave it alone
+      const paths = byBucket.get(ref.bucket) ?? new Map<string, number[]>();
+      paths.set(ref.path, [...(paths.get(ref.path) ?? []), i]);
+      byBucket.set(ref.bucket, paths);
+    });
+
+    await Promise.all([...byBucket.entries()].map(async ([bucket, paths]) => {
+      const list = [...paths.keys()];
+      // 24h: comfortably longer than any session, short enough that a leaked URL is not permanent.
+      const signed = await createSignedAssetUrls(bucket, list, 86_400).catch(() => list.map(() => null));
+      list.forEach((path, k) => {
+        const fresh = signed[k];
+        if (!fresh) return; // signing failed (deleted object?) — keep the stored URL rather than blanking the card
+        for (const i of paths.get(path) ?? []) {
+          const row = rows[i];
+          if (row) row.url = fresh;
+        }
+      });
+    }));
+
+    const items = rows;
+
+    // Short PRIVATE browser cache: the library changes rarely, so this cuts refetches on tab-switches.
+    // It must stay well under the 24h signing TTL above — a cached page holding stale tokens past their
+    // expiry would reintroduce exactly the 400s this route now prevents. 30s against 24h is safe.
     return NextResponse.json({ items }, { headers: { 'Cache-Control': 'private, max-age=30' } });
   } catch {
     return NextResponse.json({ items: [] });
