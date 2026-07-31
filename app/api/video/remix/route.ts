@@ -306,8 +306,14 @@ export async function POST(req: NextRequest) {
       }
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
-      const url = (await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP)) || (await kenBurnsClip(startImg, 5, aspectP));
+      // ⚠️ THE REPORTED ENGINE WAS THE STRING 'Kling AI' ON EVERY PATH, INCLUDING THE ONE WHERE KLING
+      // DID NOT RUN. When klingI2v misses, kenBurnsClip produces a slow pan over the product STILL —
+      // not a generated video at all — and the response still claimed Kling rendered it. Same defect
+      // class as the remix engine-downgrade notice: name what actually ran.
+      const animated = await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP);
+      const url = animated || (await kenBurnsClip(startImg, 5, aspectP));
       if (!url) return failRefund('Product ad generation failed.', 'render-null');
+      const adEngine = animated ? 'Kling AI' : 'Ken Burns (still pan — video engine unavailable)';
       // The ad is now paid for (primary clip, full video tier above). Stamp the client jobId
       // as an already-billed token so the downstream /api/video/assemble (which the client calls
       // with `billingToken: jobId`) waives ITS charge — one video credit per ad, not remix+assemble.
@@ -325,12 +331,22 @@ export async function POST(req: NextRequest) {
       if (sceneIdx < 0 && body.noMusic !== true) {
         const music = await presetAdMusicUrl(presetKey, 8);
         if (music) {
-          const scored = await muxAudioOntoVideo(url, music, 'replace', 12);
-          if (scored) return ok(scored, { engine: 'Kling AI', music: true });
+          // ⚠️ WAS 'replace' (-map 0:v -map 1:a), WHICH DELETES THE SOURCE'S OWN AUDIO. Harmless while
+          // this surface renders on Kling — those clips come back silent, so there is nothing to delete
+          // — but it is the precondition for Veo here: a Veo clip carries native audio (ambience, and a
+          // character actually SPEAKING any line), and 'replace' would throw all of it away and leave a
+          // music bed over a mute performance. /api/video/assemble hit exactly that and was corrected to
+          // 'under'; this was the remaining site on the same collision course.
+          //
+          // Safe to change TODAY, verified in muxAudioOntoVideo: 'under' builds an amix graph over
+          // [0:a], and on a source with no audio track the exec throws and it falls through to the same
+          // clean replace. So a silent Kling clip produces byte-identical output to before.
+          const scored = await muxAudioOntoVideo(url, music, 'under', 12);
+          if (scored) return ok(scored, { engine: adEngine, music: true });
         }
-        return ok(url, { engine: 'Kling AI', music: false });
+        return ok(url, { engine: adEngine, music: false });
       }
-      return ok(url, { engine: 'Kling AI' });
+      return ok(url, { engine: adEngine });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[video/remix] productad', err instanceof Error ? err.message : err);
