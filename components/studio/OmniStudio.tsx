@@ -400,6 +400,10 @@ const TypingDots = memo(function TypingDots() {
 
 // The five generative modes — declared once, rendered as a clean borderless chip
 // row (no bordered container, no dividers — minimalist, Grok-style).
+/**
+ * MODES — every in-chat mode. `surgical` (the full-screen clip editor) stays here so `activeMode`
+ * lookup and the programmatic `setMode('surgical')` call sites keep working.
+ */
 const MODES = [
   { id: 'chat', Icon: MessageSquare, key: 'modeChat' },
   { id: 'image', Icon: ImageIcon, key: 'modeImage' },
@@ -409,6 +413,13 @@ const MODES = [
   { id: 'remix', Icon: Wand2, key: 'modeRemix' },
   { id: 'surgical', Icon: Scissors, key: 'modeSurgical' },
 ] as const;
+
+/**
+ * What the composer's service menu SHOWS. `surgical` is deliberately absent: the Montage entry below
+ * opens the editing tools, and offers a button into this same full-screen editor. Listing both put two
+ * editors in one menu — the duplicate this removes.
+ */
+const MENU_MODES = MODES.filter((m) => m.id !== 'surgical');
 
 // P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
 // with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
@@ -7469,7 +7480,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* SERVICE PARAMETERS — opens in place when a full studio is picked from the service menu, so
             Montage/Dubbing/Presentation/3D are driven without leaving the conversation. */}
         {panelService && (
-          <ServiceParamsPanel service={panelService} locale={locale} onClose={() => setPanelService(null)} />
+          <ServiceParamsPanel
+            service={panelService}
+            locale={locale}
+            onClose={() => setPanelService(null)}
+            // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
+            // separately — one entry, both depths of editing.
+            onOpenFullEditor={() => { setPanelService(null); setMode('surgical'); }}
+          />
         )}
 
         <div className="rounded-[24px] border border-app-border/15 bg-app-elevated px-4 py-3 min-h-[52px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40">
@@ -7529,7 +7547,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
                   <div role="menu" className="absolute bottom-full right-0 z-20 mb-2 w-48 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
-                    {MODES.map(({ id, Icon, key: lk }) => (
+                    {MENU_MODES.map(({ id, Icon, key: lk }) => (
                       <button
                         key={id}
                         type="button"
