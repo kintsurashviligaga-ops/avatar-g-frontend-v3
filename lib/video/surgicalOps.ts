@@ -19,6 +19,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import {
+  resolveSegmentWindows,
+  sourcesNeedingDuration,
+  parseFfmpegDuration,
+  type DroppedWindow,
+} from '@/lib/video/sequenceWindows';
 
 const exec = promisify(execFile);
 const WEEK_SEC = 604_800;
@@ -64,6 +70,11 @@ interface SequenceOpts {
   sink?: (buf: Buffer) => Promise<string | null>;
   /** Internal: set by the one retry that keeps audio only where the probe was CONCLUSIVE. */
   audioOverride?: boolean[];
+  /**
+   * Called once with every clip that could not be rendered. The caller is expected to TELL THE USER.
+   * A dropped clip used to leave no trace anywhere — the export just came back short.
+   */
+  onDrop?: (dropped: DroppedWindow[]) => void;
 }
 
 /**
@@ -384,6 +395,26 @@ async function probeHasAudio(url: string, timeoutMs = 45_000): Promise<AudioProb
   return 'unknown';
 }
 
+/**
+ * Real length of an input, in seconds — the authority the browser is not.
+ *
+ * A `<video>` element can only measure what it can DECODE, so an iPhone HEVC .mov, a 10-bit clip or any
+ * codec the browser lacks reports a duration of 0. ffmpeg decodes all of them, so when the client sends an
+ * open window (see lib/video/sequenceWindows) this is what fills it in. Returns 0 only when even ffmpeg
+ * could not read the container — a genuinely unusable upload.
+ */
+async function probeDurationSec(url: string, timeoutMs = 45_000): Promise<number> {
+  const b = bin();
+  if (!b) return 0;
+  try {
+    // `-i` with no output prints the container banner to stderr, then exits non-zero → the catch has it.
+    await exec(b, ['-hide_banner', '-i', url], { maxBuffer: 1 << 22, timeout: timeoutMs });
+    return 0;
+  } catch (e) {
+    return parseFfmpegDuration(String((e as { stderr?: string }).stderr ?? (e as Error).message ?? ''));
+  }
+}
+
 /** Probe an input's video WxH (same ffmpeg-static stderr trick) — used to size overlay layers on the native frame. */
 async function probeDimensions(url: string): Promise<{ w: number; h: number }> {
   const b = bin();
@@ -410,8 +441,38 @@ interface SeqEntry { src: number; start: number; end: number; muted: boolean; tr
 async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDraft, opts: SequenceOpts, tag: string): Promise<string | null> {
   const b = bin();
   if (!b) return null;
-  const entries = rawEntries.filter((e) => Number.isInteger(e.src) && e.src >= 0 && e.src < inputs.length && e.end > e.start);
-  if (!inputs.length || !entries.length) return null;
+  if (!inputs.length) return null;
+
+  // ── TRIM WINDOWS — resolve BEFORE anything else, because this decides which clips exist at all. ─────
+  //
+  // An `end <= start` window is not an empty clip, it is an UNMEASURED one: the browser could not decode
+  // the container well enough to read its duration (HEVC .mov off an iPhone is the everyday case). The old
+  // code filtered exactly those out, so a clip the user picked, saw in the timeline and waited to upload
+  // was silently absent from the export. Now ffmpeg — which decodes what the browser cannot — measures it,
+  // and only a source ffmpeg ALSO cannot read is dropped, with a reason the caller reports.
+  const needDuration = sourcesNeedingDuration(rawEntries, inputs.length);
+  const durations = new Array<number>(inputs.length).fill(0);
+  if (needDuration.length) {
+    let dnext = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(3, needDuration.length) }, async () => {
+        for (;;) {
+          const k = dnext++;
+          if (k >= needDuration.length) return;
+          const si = needDuration[k];
+          const u = si === undefined ? undefined : inputs[si];
+          if (si === undefined || u === undefined) continue;
+          durations[si] = await probeDurationSec(u);
+        }
+      }),
+    );
+  }
+  const { kept: entries, dropped } = resolveSegmentWindows(rawEntries, durations, inputs.length);
+  if (dropped.length) {
+    console.warn(`[surgical/${tag}] ${dropped.length} clip(s) could not be rendered:`, dropped);
+    opts.onDrop?.(dropped);
+  }
+  if (!entries.length) return null;
   const first = entries[0];
   if (!first) return null;
 
@@ -554,7 +615,9 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     const noAudioStream = /matches no streams|Stream specifier/i.test(msg);
     if (noAudioStream && !opts.audioOverride) {
       console.warn(`[surgical/${tag}] an assumed-audio input has none — retrying with confirmed audio only`);
-      return runSequence(inputs, rawEntries, d, { ...opts, audioOverride: probes.map((p) => p === 'yes') }, tag);
+      // Retry on the ALREADY-RESOLVED entries, not the raw ones: every window is closed by now, so the
+      // duration probes do not run a second time and `onDrop` cannot report the same clip twice.
+      return runSequence(inputs, entries, d, { ...opts, audioOverride: probes.map((p) => p === 'yes'), onDrop: undefined }, tag);
     }
     console.warn(`[surgical/${tag}] failed:`, msg);
     return null;
@@ -583,7 +646,7 @@ export async function renderConcat(
   targetW: number,
   targetH: number,
   /** MONTAGE: pass a VBV cap, a longer timeout and a non-base64 sink for long masters. See SequenceOpts. */
-  encode?: Pick<SequenceOpts, 'maxrateKbps' | 'timeoutMs' | 'sink'>,
+  encode?: Pick<SequenceOpts, 'maxrateKbps' | 'timeoutMs' | 'sink' | 'onDrop'>,
 ): Promise<string | null> {
   const srcs = sources.filter((s) => typeof s === 'string' && s.length > 0);
   return runSequence(

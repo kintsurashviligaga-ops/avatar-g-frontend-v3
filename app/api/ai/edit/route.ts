@@ -146,14 +146,29 @@ export async function POST(req: NextRequest) {
     // sequence was accepted by the UI and then dropped on the way to ffmpeg. Forwarding it makes the
     // control real for sequences too, instead of only for a single clip.
     const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec, speed: d.speed, crop: d.crop ?? null };
+    // NOTE the ABSENT `e.end > e.start` filter. That filter was the silent clip-dropper: a clip whose
+    // duration the BROWSER could not measure (an iPhone HEVC .mov, 10-bit footage, any codec it lacks)
+    // arrives with end === 0, and discarding it here meant the export came back one clip short with no
+    // error anywhere. Such windows now pass through as OPEN and are resolved inside renderConcat by
+    // ffmpeg, which decodes what the browser cannot. Only a source ffmpeg ALSO cannot read is dropped —
+    // and it is reported below rather than vanishing.
     const seq = body.sequence
-      .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length && e.end > e.start)
+      .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length)
       .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition, textOverlay: e.textOverlay }));
     if (!seq.length) return NextResponse.json({ url: null, error: 'empty sequence' }, { status: 400 });
     try {
-      const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720);
+      let dropped: Array<{ index: number; reason: string }> = [];
+      const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720, {
+        onDrop: (d) => { dropped = d.map((x) => ({ index: x.index, reason: x.reason })); },
+      });
       if (url) await saveCreation(req, guard.userId, url, 'render');
-      return NextResponse.json({ url, error: url ? undefined : 'concat render failed' });
+      return NextResponse.json({
+        url,
+        error: url ? undefined : 'concat render failed',
+        // Stated, not hidden: the editor shows "N clips could not be read" beside the result instead of
+        // passing a short export off as a complete one.
+        ...(dropped.length ? { droppedClips: dropped, renderedClips: seq.length - dropped.length } : {}),
+      });
     } catch (e) {
       return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'concat failed' }, { status: 502 });
     }

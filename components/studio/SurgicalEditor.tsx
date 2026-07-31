@@ -48,6 +48,7 @@ interface Copy {
   tabClips: string; tabRetouch: string; tabTrim: string; tabAi: string; cropWholeSeq: string; clipsUsed: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
+  fullClip: string; someDropped: string; uploadFailed: string;
   transition: string; tCut: string; tCross: string; tFade: string;
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
   aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
@@ -68,7 +69,8 @@ const T: Record<Lang, Copy> = {
     drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 ფაილი', dropHintAudio: 'MP3 · WAV · M4A', pick: 'ფაილის არჩევა',
     crop: 'ჩამოჭრა', color: 'ფერის გრადაცია', fade: 'მილევა', split: 'გაჭრა', mute: 'დადუმება', unmute: 'ხმის ჩართვა', reset: 'გადატვირთვა',
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
-    maxReached: 'მაქსიმუმ 35 ფაილი', max5: 'მაქსიმუმ 5 კლიპი თანმიმდევრობაში', cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
+    maxReached: `მაქსიმუმ ${MAX_CLIPS} ფაილი`, max5: `მაქსიმუმ ${MAX_SEQ_CLIPS} კლიპი თანმიმდევრობაში`, cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
+    fullClip: 'სრული', someDropped: 'ვერ წაიკითხა კლიპი', uploadFailed: 'ფაილი ვერ აიტვირთა',
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
     aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო ჯერ არ არის კონფიგურირებული',
@@ -90,7 +92,8 @@ const T: Record<Lang, Copy> = {
     drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 files', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Choose file',
     crop: 'Crop', color: 'Color grade', fade: 'Fade', split: 'Split', mute: 'Mute', unmute: 'Unmute', reset: 'Reset',
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
-    maxReached: 'Maximum 35 files', max5: 'Up to 5 clips in a sequence', cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
+    maxReached: `Maximum ${MAX_CLIPS} files`, max5: `Up to ${MAX_SEQ_CLIPS} clips in a sequence`, cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
+    fullClip: 'full', someDropped: 'clip could not be read', uploadFailed: 'File could not be uploaded',
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
     aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is not configured yet',
@@ -112,7 +115,8 @@ const T: Record<Lang, Copy> = {
     drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 файлов', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Выбрать файл',
     crop: 'Обрезка', color: 'Цветокоррекция', fade: 'Затухание', split: 'Разрез', mute: 'Заглушить', unmute: 'Включить звук', reset: 'Сброс',
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
-    maxReached: 'Максимум 35 файлов', max5: 'До 5 клипов в последовательности', cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
+    maxReached: `Максимум ${MAX_CLIPS} файлов`, max5: `До ${MAX_SEQ_CLIPS} клипов в последовательности`, cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
+    fullClip: 'весь', someDropped: 'клип не удалось прочитать', uploadFailed: 'Файл не загрузился',
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
     aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент ещё не настроен',
@@ -171,12 +175,33 @@ function gradeFilter(g: Grade): string {
 }
 
 /** Read a video's duration + dimensions client-side (a throwaway <video>), so the sequence knows each clip. */
-function probeVideo(url: string): Promise<{ dur: number; w: number; h: number }> {
+/**
+ * Read a clip's duration + pixel size in the browser.
+ *
+ * A `<video>` element only measures what it can DECODE. An iPhone HEVC .mov on desktop Chrome, 10-bit
+ * footage, an exotic container — all of these fire `onerror` (or nothing at all) and yield dur 0. That is
+ * NOT an error here: the server re-measures with ffmpeg, which decodes them, so a 0 is passed downstream
+ * as "open window, ask ffmpeg" rather than being treated as an empty clip. See lib/video/sequenceWindows.
+ *
+ * The timeout is load-bearing. `loadedmetadata` and `error` both failing to fire is a real browser state
+ * (a codec the platform half-recognises), and this promise used to hang forever there — the clip never
+ * got a duration, never became a segment, and no error was ever shown.
+ */
+function probeVideo(url: string, timeoutMs = 12_000): Promise<{ dur: number; w: number; h: number }> {
   return new Promise((resolve) => {
     const v = document.createElement('video');
+    let settled = false;
+    const done = (r: { dur: number; w: number; h: number }) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      v.removeAttribute('src'); v.load(); // release the decoder before the element is collected
+      resolve(r);
+    };
+    const timer = window.setTimeout(() => done({ dur: 0, w: 0, h: 0 }), timeoutMs);
     v.preload = 'metadata'; v.muted = true;
-    v.onloadedmetadata = () => resolve({ dur: v.duration || 0, w: v.videoWidth || 0, h: v.videoHeight || 0 });
-    v.onerror = () => resolve({ dur: 0, w: 0, h: 0 });
+    v.onloadedmetadata = () => done({ dur: Number.isFinite(v.duration) ? v.duration : 0, w: v.videoWidth || 0, h: v.videoHeight || 0 });
+    v.onerror = () => done({ dur: 0, w: 0, h: 0 });
     v.src = url;
   });
 }
@@ -411,7 +436,16 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     setVideoSpeed(1); setDetached(false); setAspectCrop(null); setAudioVol(1); setBgPrompt('');
   }, [active]);
 
-  const addFiles = useCallback((files: FileList | null, only?: 'video' | 'image' | 'audio') => {
+  /**
+   * Attach picked/dropped files.
+   *
+   * ⚠️ CALLERS MUST SNAPSHOT `input.files` INTO AN ARRAY BEFORE RESETTING THE INPUT. `input.files` is a
+   * LIVE FileList: setting `input.value = ''` (which every picker here does, so re-picking the same file
+   * fires `change` again) empties the very list just handed over. Passing the FileList through meant this
+   * function received zero files and returned silently — the picker opened, the user chose their clips,
+   * and nothing appeared. That is the "file upload does nothing on mobile" bug.
+   */
+  const addFiles = useCallback((files: FileList | File[] | null, only?: 'video' | 'image' | 'audio') => {
     if (!files) return;
     const incoming: Clip[] = [];
     for (const f of Array.from(files)) {
@@ -600,16 +634,30 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   }, []);
 
   const seqDuration = useMemo(() => segments.reduce((a, s) => a + Math.max(0, s.end - s.start), 0), [segments]);
-  const hasMutations = useMemo(() => (
-    !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1 || segments.some((s) => s.muted || !!s.textOverlay?.text.trim())
-    || Math.abs(videoSpeed - 1) > 0.01 || detached || !!aspectCrop
-  ), [grade, fade, crop, segments, videoSpeed, detached, aspectCrop]);
-  // Crop now works for a SEQUENCE too: the route forwards draft.crop and runSequence applies it
-  // post-fold, so one rectangle frames the whole concatenated master. It used to be single-source only,
-  // which is why the control vanished the moment you added a second clip.
-  const cropAllowed = true;
+  const hasMutations = useMemo(() => {
+    // A TRIM counts as an edit. It did not: with one clip on the timeline `segments.length > 1` is false
+    // and nothing else here looks at start/end, so dragging the trim handles left Export disabled — the
+    // single most ordinary edit in the whole editor was the one it refused to perform.
+    const trimmed = segments.some((s) => {
+      if (s.start > 0.05) return true;
+      const src = clips.find((c) => c.id === s.clipId)?.dur ?? 0;
+      return src > 0 && s.end > 0 && s.end < src - 0.05;
+    });
+    return (
+      !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1
+      || segments.some((s) => s.muted || !!s.textOverlay?.text.trim()) || trimmed
+      || Math.abs(videoSpeed - 1) > 0.01 || detached || !!aspectCrop
+    );
+  }, [grade, fade, crop, segments, clips, videoSpeed, detached, aspectCrop]);
+  // Crop works for a SEQUENCE too: the route forwards draft.crop and runSequence applies it post-fold,
+  // so one rectangle frames the whole concatenated master. It used to be single-source only, which is why
+  // the control vanished the moment you added a second clip. (The `cropAllowed` flag that used to gate it
+  // was left behind as a dead `= true` after the gate was removed.)
 
   // ── Export ──
+  /** What /api/ai/edit answers with. `droppedClips` is present only when ffmpeg could not read a source. */
+  type ExportResponse = { url?: string | null; error?: string; droppedClips?: Array<{ index: number; reason: string }>; renderedClips?: number };
+
   const doExport = useCallback(async () => {
     if (!clip) { flash(t.needClip); return; }
     if (!hasMutations || exporting) return;
@@ -625,7 +673,14 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       } else if (distinctClipIds.length > 1) {
         // MULTI-CLIP concat — upload each distinct source (aligned to sequence src indices).
         const uploads = await Promise.all(distinctClipIds.map((id) => { const c = byId.get(id); return c ? uploadClip(c.file) : Promise.resolve(null); }));
-        if (uploads.some((u) => !u)) { flash(t.failed); return; }
+        // NAME the file that failed. `sources` is index-aligned with the sequence, so one missing upload
+        // has to abort the whole export — but the user was told only "failed", with nothing to act on.
+        const badIdx = uploads.findIndex((u) => !u);
+        if (badIdx >= 0) {
+          const bad = byId.get(distinctClipIds[badIdx] ?? '');
+          flash(`${t.uploadFailed}: ${bad?.name ?? `#${badIdx + 1}`}`);
+          return;
+        }
         const srcIndex = new Map(distinctClipIds.map((id, i) => [id, i]));
         const sequence = segments.map((s) => ({ src: srcIndex.get(s.clipId) ?? 0, start: s.start, end: s.end, muted: s.muted || detached, transition: s.transition ?? 'none', textOverlay: s.textOverlay?.text.trim() ? s.textOverlay : undefined }));
         const first = byId.get(distinctClipIds[0] ?? '');
@@ -659,12 +714,22 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
 
     async function postEdit(payload: Record<string, unknown>) {
       const { body } = await postJson('/api/ai/edit', payload);
-      return body as { url?: string | null } | null;
+      return body as ExportResponse | null;
     }
-    function finishExport(j: { url?: string | null } | null, kind: 'video' | 'image') {
-      if (j?.url) { setExportPct(100); onAssetReady(j.url, kind); flash(t.done); } else flash(t.failed);
+    function finishExport(j: ExportResponse | null, kind: 'video' | 'image') {
+      if (!j?.url) {
+        // The route always says WHY ('could not resolve all clip sources', 'empty sequence',
+        // 'concat render failed'). Every one of those used to collapse into the same one-word toast.
+        flash(j?.error ? `${t.failed} — ${j.error}` : t.failed);
+        return;
+      }
+      setExportPct(100);
+      onAssetReady(j.url, kind);
+      // A short export is never passed off as a complete one: if ffmpeg could not read a source, the
+      // render still ships (the other clips are fine) but the user is told how many are missing.
+      flash(j.droppedClips?.length ? `${t.done} · ${j.droppedClips.length} ${t.someDropped}` : t.done);
     }
-  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, videoSpeed, detached, aspectCrop, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done]);
+  }, [clip, hasMutations, exporting, clips, isPhoto, distinctClipIds, segments, grade, fade, videoSpeed, detached, aspectCrop, sourceCrop, duration, flash, onAssetReady, t.needClip, t.failed, t.done, t.timedOut, t.uploadFailed, t.someDropped]);
 
   // ── AI object removal (photo) ──
   const runInpaint = useCallback(async () => {
@@ -977,7 +1042,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <input ref={emptyPickRef} type="file"
                 accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'}
                 multiple className="hidden"
-                onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; addFiles(f, laneKind); }} />
+                onChange={(e) => { const picked = Array.from(e.target.files ?? []); e.currentTarget.value = ''; addFiles(picked, laneKind); }} />
             </div>
               );
             })()
@@ -1006,8 +1071,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 {/* The sequence budget, VISIBLE. It used to be discoverable only by adding one clip too
                     many and getting a toast — the limit existed but nothing showed it. */}
                 {!isPhoto && !isAudio && <span className="text-[9px] font-bold tabular-nums leading-none">{distinctClipIds.length}/{MAX_SEQ_CLIPS}</span>}
+                {/* Array.from BEFORE the reset — see the note on addFiles. `e.target.files` is LIVE, and
+                    `value = ''` empties it, so reading it afterwards yields nothing. */}
                 <input type="file" accept="video/*,image/*,audio/*" multiple className="hidden"
-                  onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; addFiles(f); }} />
+                  onChange={(e) => { const picked = Array.from(e.target.files ?? []); e.currentTarget.value = ''; addFiles(picked); }} />
               </label>
             </div>
 
@@ -1154,7 +1221,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                             {s.transition && s.transition !== 'none' && i > 0 && <span className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l bg-cyan-400/80" title={transLabel(s.transition)} />}
                             <button type="button" onClick={() => selectSeg(i)} className="flex h-full w-full flex-col items-center justify-center leading-none">
                               <span className="flex items-center gap-0.5">{s.muted ? <VolumeX size={10} className="text-amber-400" /> : null}<span className="opacity-60">#{clipNo}</span></span>
-                              <span className="truncate tabular-nums">{fmt(s.end - s.start)}</span>
+                              {/* An UNMEASURED clip (a codec this browser cannot decode) is labelled as
+                                  running full length, not as "0:00" — the server measures it with ffmpeg
+                                  and renders all of it. Showing a zero read as "this clip is empty". */}
+                              <span className="truncate tabular-nums">{s.end > s.start ? fmt(s.end - s.start) : t.fullClip}</span>
                             </button>
                             {segments.length > 1 && (
                               <button type="button" onClick={(e) => { e.stopPropagation(); deleteSeg(i); }} aria-label={t.del}

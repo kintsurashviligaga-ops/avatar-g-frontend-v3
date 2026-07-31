@@ -7,6 +7,7 @@ import { runMontage } from '@/lib/services/montage/montagePipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
+import { createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,36 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => null);
-  const parsed = validateMontageRequest(body);
+
+  // ── STORAGE PATHS → SIGNED URLS ─────────────────────────────────────────────────────────────────
+  // The editor uploads clips browser-direct to Supabase (bypassing the ~4.5MB serverless body limit,
+  // which is why a real video could never be attached before), and a freshly uploaded object cannot be
+  // signed for READING until its bytes have landed. So the client sends the object PATH and this signs
+  // it here, at the moment the pipeline is about to fetch it. Anything already http(s) is left alone and
+  // still faces the SSRF check below — a path is not a way to reach an arbitrary host, since it can only
+  // ever name an object inside our own upload bucket.
+  const bucket = process.env.UPLOAD_BUCKET || 'uploads';
+  // Only a BARE path is resolved; `data:`/`file:`/any other scheme is left untouched and rejected
+  // downstream by the validator for not being an http(s) url.
+  const signIfPath = async (v: unknown): Promise<unknown> => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    if (!s || /^[a-z][a-z0-9+.-]*:/i.test(s)) return v;
+    return (await createSignedAssetUrl(bucket, s, 3600).catch(() => null)) ?? v;
+  };
+  const resolvedBody = await (async () => {
+    if (!body || typeof body !== 'object') return body;
+    const b = body as Record<string, unknown>;
+    const shots = Array.isArray(b.shots)
+      ? await Promise.all(b.shots.map(async (raw) => {
+          if (!raw || typeof raw !== 'object') return raw;
+          const shot = raw as Record<string, unknown>;
+          return { ...shot, url: await signIfPath(shot.url) };
+        }))
+      : b.shots;
+    return { ...b, shots, musicUrl: await signIfPath(b.musicUrl) };
+  })();
+
+  const parsed = validateMontageRequest(resolvedBody);
   if (!parsed.ok || !parsed.request) {
     return NextResponse.json({ error: 'invalid_request', message: parsed.error }, { status: 400 });
   }
