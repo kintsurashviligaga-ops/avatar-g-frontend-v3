@@ -4,11 +4,26 @@
  * It protects the 2.6 ⛔ paid gate: a generation whose estimate exceeds the session cap (or
  * whose single scene alone exceeds it) returns a "top-up needed" verdict and never spends.
  *
- * Pure + framework-free → unit-testable. Costs are ESTIMATES; the per-scene Kling price MUST
- * be re-confirmed against live Replicate pricing before enabling any real render (2.6).
+ * Pure + framework-free → unit-testable. Costs are ESTIMATES; the per-scene price MUST be re-confirmed
+ * against LIVE VEO pricing (Veo is now the primary ad engine) before the cap is treated as trustworthy.
  */
 
-/** Estimated wholesale USD per 6s Kling v2.1 i2v clip on Replicate. CONFIRM before 2.6. */
+/**
+ * Estimated wholesale USD per ad scene.
+ *
+ * ⚠️ THE PRIMARY ENGINE ON THIS SURFACE IS NOW GEMINI VEO, NOT KLING. This figure was measured for a
+ * ~6s Kling v2.1 i2v clip on Replicate and is left UNCHANGED on purpose: Veo's per-clip wholesale price
+ * is not something this codebase knows, and substituting a guessed number into a spend gate is worse
+ * than an openly stale one — an invented figure looks authoritative and silently mis-gates real money
+ * in whichever direction it is wrong.
+ *
+ * The risk direction is worth stating plainly: if a Veo clip costs MORE than $0.35, this guard
+ * UNDER-estimates and lets spend through that it was written to stop. Confirm against live Veo pricing
+ * and update this constant before treating the cap as trustworthy.
+ *
+ * The name is kept so every existing import keeps working; the meaning is "per scene, whichever engine
+ * the cascade lands on".
+ */
 export const KLING_USD_PER_SCENE = 0.35;
 /** ElevenLabs with-timestamps TTS for a short ad narration (whole ad, not per scene). */
 export const TTS_USD_PER_AD = 0.1;

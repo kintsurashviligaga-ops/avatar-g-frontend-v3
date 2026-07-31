@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
 import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, fitAspect, type GradeStyle } from '@/lib/video/remixOps';
+import { renderVeoClipSync } from '@/lib/ai/veoClipSync';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
@@ -306,14 +307,30 @@ export async function POST(req: NextRequest) {
       }
       const motion = sceneIdx >= 0 ? `${scenes[sceneIdx % scenes.length]}, ${style}` : `the product as the hero, ${style}`;
       // Premium i2v if a Replicate token is set, else a guaranteed Ken-Burns fallback.
-      // ⚠️ THE REPORTED ENGINE WAS THE STRING 'Kling AI' ON EVERY PATH, INCLUDING THE ONE WHERE KLING
-      // DID NOT RUN. When klingI2v misses, kenBurnsClip produces a slow pan over the product STILL —
-      // not a generated video at all — and the response still claimed Kling rendered it. Same defect
-      // class as the remix engine-downgrade notice: name what actually ran.
-      const animated = await klingI2v(startImg, `${motion}, the product stays sharp and centered, photorealistic, 4k`, aspectP);
+      const adPrompt = `${motion}, the product stays sharp and centered, photorealistic, 4k`;
+      // ⚠️ VEO IS NOW THE PRIMARY ENGINE ON THIS SURFACE. It was never a capability gap — Veo does i2v
+      // at 4–8s, which covers an ad clip — it was a WIRING gap: Veo was reachable only from
+      // ServiceManager, which this route never touches. lib/ai/veoClipSync closes that, with the same
+      // image+prompt+aspect → URL|null contract as klingI2v so it drops straight into the chain.
+      //
+      // Kling is KEPT BELOW IT, for two concrete reasons rather than caution:
+      //   · Veo has NO 1:1, and this route honours a square ad (body.aspect === '1:1'). veoCanRender
+      //     refuses square, so square keeps an engine that can actually produce it instead of being
+      //     silently handed a landscape video for a square placement.
+      //   · A Veo miss (quota, transient 5xx, undeliverable download) would otherwise drop straight to
+      //     kenBurnsClip — a slow pan over the product still, for the full price of a video ad.
+      const veoAd = await renderVeoClipSync({
+        startImage: startImg, promptText: adPrompt, aspect: aspectP,
+        durationSec: 8, folder: `product-ad/${remixUid ?? 'anon'}`, budgetMs: 240_000,
+      });
+      const animated = veoAd?.url || (await klingI2v(startImg, adPrompt, aspectP));
       const url = animated || (await kenBurnsClip(startImg, 5, aspectP));
       if (!url) return failRefund('Product ad generation failed.', 'render-null');
-      const adEngine = animated ? 'Kling AI' : 'Ken Burns (still pan — video engine unavailable)';
+      // ⚠️ THE REPORTED ENGINE WAS THE STRING 'Kling AI' ON EVERY PATH, INCLUDING THE ONE WHERE KLING
+      // DID NOT RUN. When the generative legs miss, kenBurnsClip produces a slow pan over the product
+      // STILL — not a generated video at all — and the response still claimed Kling rendered it.
+      const adEngine = veoAd?.engine
+        ?? (animated ? 'Kling AI' : 'Ken Burns (still pan — video engine unavailable)');
       // The ad is now paid for (primary clip, full video tier above). Stamp the client jobId
       // as an already-billed token so the downstream /api/video/assemble (which the client calls
       // with `billingToken: jobId`) waives ITS charge — one video credit per ad, not remix+assemble.
