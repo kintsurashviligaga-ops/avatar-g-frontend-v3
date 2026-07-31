@@ -473,15 +473,26 @@ export async function POST(req: NextRequest) {
         // Premium i2v if a token is set, else a guaranteed Ken-Burns animation so the
         // user ALWAYS gets a moving, restyled clip. The swap photo (if any) rides along as
         // the kling identity reference.
-        const url = (await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined)) || (await kenBurnsClip(startImage, 5, aspect));
+        // ⚠️ THESE TWO OUTCOMES ARE NOT THE SAME PRODUCT, AND BOTH USED TO REPORT PLAIN SUCCESS.
+        // klingI2v re-animates; kenBurnsClip is a slow pan over a STILL. A user who asked to restyle
+        // their video and receives a 5-second pan over one frame has not received a lesser version of
+        // what they asked for — they have received a different thing entirely, and nothing said so.
+        // Likewise for `character`: the roop path above swaps the face THROUGHOUT the original video
+        // with its motion intact, while this path generates a fresh ~5s clip from a single frame,
+        // because Kling is i2v-only. The engine that actually ran is now named in the response.
+        const animated = await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined);
+        const url = animated || (await kenBurnsClip(startImage, 5, aspect));
         if (!url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
+        const method = animated ? 'reanimated' : 'stillPan';
         // Kling v2.1 (the locked default) infers the output ratio from the START IMAGE and IGNORES
         // aspect_ratio (remixOps only sets it for v1.6). So a requested aspect that differs from the
         // source frame is silently dropped — worst on the raw-frame fallback (NanoBanana miss →
         // startImage = the source-aspect frame). Post-fit to the requested aspect, mirroring the
         // Motion Control path. Fail-open: keep the raw clip if the fit itself misses.
         const fitted = await fitAspect(url, aspect).catch(() => null);
-        return await finishOk(fitted || url, { still: styled?.url ?? null });
+        // Fail-open keeps the clip — correct — but the requested aspect was then silently dropped and
+        // the card went on displaying it as though it had been honoured. Report what shipped.
+        return await finishOk(fitted || url, { still: styled?.url ?? null, method, aspectApplied: Boolean(fitted) });
       }
 
       default:

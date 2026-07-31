@@ -29,8 +29,20 @@ type OpPlan = { targetSec: number; title: Record<Loc, string>; stages: Stage[] }
 const PREP: Stage = { icon: Upload, weight: 0.15, label: { en: 'Preparing clip', ru: 'Подготовка', ka: 'მომზადება' } };
 const ENCODE: Stage = { icon: Film, weight: 0.2, label: { en: 'Encoding', ru: 'Кодирование', ka: 'კოდირება' } };
 
-// Per-op estimate (s) + weighted stages. Estimates match the FIX 6 spec; ops not
-// listed fall back to a generic 45s plan so every remix shows a real timeline.
+// Per-op estimate (s) + weighted stages; ops not listed fall back to a generic 45s plan so every remix
+// shows a real timeline.
+//
+// ⚠️ THE PROVIDER-BACKED ESTIMATES WERE 3–9× SHORT. The corrected numbers come from the code's own
+// budgets rather than from a guess:
+//   · redub     → runLipsync polls for 240s, and the engine is the one LipsyncStudio measured in
+//                 production at ~6 min. 90s was not an estimate of that, it was a wish.
+//   · character → roopFaceSwapVideo carries a 540_000ms (nine-minute) budget, and on a miss the fallback
+//                 runs an image model plus Kling i2v (KLING_BUDGET_MS = 240_000). 60s covered neither leg.
+//   · restyle   → image model + Kling i2v, the same 240s budget.
+// Erring long is safe and erring short is not: the bar eases toward 95% and never completes early, so an
+// over-estimate merely arrives sooner than promised, while an under-estimate parks the user in front of a
+// full bar and a zeroed countdown — which is precisely what "it's frozen, I'll reload" is made of.
+// The ffmpeg-only ops (trim / speed / color_grade / music / stabilize) run locally and were already right.
 const OP_PLANS: Record<string, OpPlan> = {
   color_grade: { targetSec: 45, title: { en: 'Color grade', ru: 'Цветокоррекция', ka: 'ფერის გრადაცია' }, stages: [PREP, { icon: Paintbrush, weight: 0.65, label: { en: 'Applying color grade', ru: 'Цветокоррекция', ka: 'ფერის გრადაცია' } }, ENCODE] },
   captions: { targetSec: 60, title: { en: 'Subtitles', ru: 'Субтитры', ka: 'სუბტიტრები' }, stages: [PREP, { icon: Type, weight: 0.4, label: { en: 'Rendering captions', ru: 'Рендер субтитров', ka: 'სუბტიტრების რენდერი' } }, { icon: Film, weight: 0.45, label: { en: 'Burning in', ru: 'Впекание', ka: 'ჩაწვა + კოდირება' } }] },
@@ -38,9 +50,9 @@ const OP_PLANS: Record<string, OpPlan> = {
   speed_change: { targetSec: 20, title: { en: 'Speed change', ru: 'Изменение скорости', ka: 'სიჩქარის ცვლა' }, stages: [PREP, { icon: Gauge, weight: 0.6, label: { en: 'Retiming', ru: 'Перерасчёт', ka: 'დროის გადათვლა' } }, ENCODE] },
   trim: { targetSec: 15, title: { en: 'Trim', ru: 'Обрезка', ka: 'მოჭრა' }, stages: [PREP, { icon: Scissors, weight: 0.6, label: { en: 'Cutting', ru: 'Обрезка', ka: 'ჭრა' } }, ENCODE] },
   voiceover: { targetSec: 40, title: { en: 'Voiceover', ru: 'Озвучка', ka: 'ვოისოვერი' }, stages: [PREP, { icon: Mic, weight: 0.5, label: { en: 'Synthesizing voice', ru: 'Синтез голоса', ka: 'ხმის სინთეზი' } }, { icon: Music, weight: 0.35, label: { en: 'Mixing + encoding', ru: 'Сведение', ka: 'მიქსი + კოდირება' } }] },
-  redub: { targetSec: 90, title: { en: 'Redub (lip-sync)', ru: 'Переозвучка', ka: 'ხელახალი გახმოვანება' }, stages: [PREP, { icon: Mic, weight: 0.3, label: { en: 'Synthesizing voice', ru: 'Синтез голоса', ka: 'ხმის სინთეზი' } }, { icon: Waves, weight: 0.45, label: { en: 'Lip-syncing', ru: 'Синхрон губ', ka: 'ლიპსინკი' } }, ENCODE] },
-  restyle: { targetSec: 60, title: { en: 'Restyle', ru: 'Рестайл', ka: 'რესტაილი' }, stages: [PREP, { icon: Paintbrush, weight: 0.4, label: { en: 'Restyling keyframe', ru: 'Рестайл кадра', ka: 'კადრის რესტაილი' } }, { icon: Film, weight: 0.45, label: { en: 'Re-animating', ru: 'Анимация', ka: 'ანიმაცია' } }] },
-  character: { targetSec: 60, title: { en: 'Change character', ru: 'Смена персонажа', ka: 'პერსონაჟის შეცვლა' }, stages: [PREP, { icon: UserCog, weight: 0.4, label: { en: 'Swapping character', ru: 'Замена персонажа', ka: 'პერსონაჟის ცვლა' } }, { icon: Film, weight: 0.45, label: { en: 'Re-animating', ru: 'Анимация', ka: 'ანიმაცია' } }] },
+  redub: { targetSec: 300, title: { en: 'Redub (lip-sync)', ru: 'Переозвучка', ka: 'ხელახალი გახმოვანება' }, stages: [PREP, { icon: Mic, weight: 0.3, label: { en: 'Synthesizing voice', ru: 'Синтез голоса', ka: 'ხმის სინთეზი' } }, { icon: Waves, weight: 0.45, label: { en: 'Lip-syncing', ru: 'Синхрон губ', ka: 'ლიპსინკი' } }, ENCODE] },
+  restyle: { targetSec: 200, title: { en: 'Restyle', ru: 'Рестайл', ka: 'რესტაილი' }, stages: [PREP, { icon: Paintbrush, weight: 0.4, label: { en: 'Restyling keyframe', ru: 'Рестайл кадра', ka: 'კადრის რესტაილი' } }, { icon: Film, weight: 0.45, label: { en: 'Re-animating', ru: 'Анимация', ka: 'ანიმაცია' } }] },
+  character: { targetSec: 260, title: { en: 'Change character', ru: 'Смена персонажа', ka: 'პერსონაჟის შეცვლა' }, stages: [PREP, { icon: UserCog, weight: 0.4, label: { en: 'Swapping character', ru: 'Замена персонажа', ka: 'პერსონაჟის ცვლა' } }, { icon: Film, weight: 0.45, label: { en: 'Re-animating', ru: 'Анимация', ka: 'ანიმაცია' } }] },
 };
 // Chat-intent aliases → the same plans.
 const OP_ALIASES: Record<string, string> = { add_music: 'music', add_subtitles: 'captions', add_text_overlay: 'captions', face_swap: 'character' };

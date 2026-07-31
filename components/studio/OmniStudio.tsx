@@ -16,6 +16,7 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
 import { GenerationProgress, PROGRESS_TARGET, fmtClock } from '@/components/studio/ui/GenerationProgress';
+import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -4257,11 +4258,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType || 'audio/mpeg') : null;
         if (audioAtt && !audioUrl) throw new Error('upload failed');
         const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op, videoUrl, text: caption ?? text, ...(audioUrl ? { audioUrl } : {}), ...(intent.params || {}) }) });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean; method?: string; aspectApplied?: boolean };
         setMessages((prev) => {
           if (!mine()) return prev;
           const next = [...prev]; const last = next[next.length - 1];
-          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: '', videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
+          // A silent engine downgrade is stated instead of being passed off as a clean result — a
+          // Ken-Burns pan over one still is not the restyled video that was asked for.
+          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
           return next;
         });
         if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -4594,13 +4597,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
         body: JSON.stringify(payload),
       });
-      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
+      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean; method?: string; aspectApplied?: boolean };
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') next[next.length - 1] = j.url
-          ? { role: 'assistant', text: '', videoUrl: j.url, orientation: remixAspect === '16:9' ? 'landscape' : 'vertical' }
+          ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: remixAspect === '16:9' ? 'landscape' : 'vertical' }
           : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
         return next;
       });
@@ -4652,9 +4655,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // jobId → the remix route's refund-compensation log carries the tray transaction id.
           body: JSON.stringify({ op: 'character', videoUrl: source, characterRef: photoRef, aspect, jobId }),
         });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
+        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean; method?: string; aspectApplied?: boolean };
         if (j.url) {
-          updateBubble(bubbleId, { text: '', videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : orient === 'square' ? 'square' : 'vertical' });
+          // The roop path swaps the face through the ORIGINAL footage; the fallback regenerates a fresh
+          // ~5s clip from one frame. Delivering the second while the card shows the first is the single
+          // most misleading outcome in the remix surface.
+          updateBubble(bubbleId, { text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : orient === 'square' ? 'square' : 'vertical' });
           if (j.charged) notifyCredit('remix');
           autoSaveToLibrary(j.url, 'film');
           return j.url;
