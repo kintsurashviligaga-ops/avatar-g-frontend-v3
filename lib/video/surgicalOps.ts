@@ -437,8 +437,9 @@ async function probeDurationSec(url: string, timeoutMs = 45_000): Promise<number
   }
 }
 
-/** Probe an input's video WxH (same ffmpeg-static stderr trick) — used to size overlay layers on the native frame. */
-async function probeDimensions(url: string): Promise<{ w: number; h: number }> {
+/** Probe an input's video WxH (same ffmpeg-static stderr trick) — used to size overlay layers on the
+ *  native frame, and by the assembler to tell whether a single clip already has the requested shape. */
+export async function probeDimensions(url: string): Promise<{ w: number; h: number }> {
   const b = bin();
   if (!b) return { w: 0, h: 0 };
   try {

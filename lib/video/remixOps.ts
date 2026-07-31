@@ -148,6 +148,9 @@ const ASPECT_DIMS: Record<string, [number, number]> = {
   '9:16': [1080, 1920],
   '16:9': [1920, 1080],
   '1:1': [1080, 1080],
+  // 4:5 was missing, so the composer's 4:5 option had no target to be fitted to at all. Same canvas the
+  // multi-clip filtergraph uses (ffmpeg-filtergraph.ts CANVAS.portrait), so both paths agree.
+  '4:5': [1080, 1350],
 };
 
 /**
@@ -250,14 +253,14 @@ export async function colorGrade(videoUrl: string, style: GradeStyle): Promise<s
 }
 
 /**
- * Normalize a clip to an EXACT target aspect (9:16 / 16:9 / 1:1) at standard dims.
+ * Normalize a clip to an EXACT target aspect (9:16 / 16:9 / 1:1 / 4:5) at standard dims.
  * Kling i2v IGNORES aspect_ratio when a start_image is given (its output ratio = the
  * source photo's — verified in the Replicate schema), so Motion Control post-fits here.
  * Center-crop (fill): the clip is scaled up to COVER the target ratio and the overflow
  * is cropped, so the frame is fully filled with no bars (edges may be trimmed). Keeps
  * audio if present. Fail-open → null.
  */
-export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string | null> {
+export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1' | '4:5'): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
   const [w, h] = ASPECT_DIMS[aspect] ?? ASPECT_DIMS['9:16']!;
   let dir: string | null = null;

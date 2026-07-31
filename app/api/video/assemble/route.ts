@@ -28,7 +28,9 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { muxAudioOntoVideo } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
+import { probeDimensions } from '@/lib/video/surgicalOps';
+import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
@@ -479,6 +481,31 @@ async function assembleImpl(req: NextRequest) {
       const clipUrl = await reSignIfInternal(segments[0]!.url);
       const { url: musicUrl, fallback } = await resolveMusicBed();
       let master = clipUrl;
+
+      // ⚠️ THE REQUESTED SHAPE WAS NEVER APPLIED ON THIS PATH. `resolvedOrientation` is worked out
+      // carefully above — aliases and all, because those were once dropped and a vertical request
+      // rendered 16:9 — and then only the ≥2-segment stitch consumed it, since the canvas lives in
+      // buildFilterComplex. A single-clip film came back in whatever shape the provider returned.
+      //
+      // That is not a corner case: 8s is one of the three lengths offered and the ONLY one that yields
+      // a single clip, 'vertical' is the composer's default, Veo emits nothing but 16:9 and 9:16 (so
+      // 1:1 and 4:5 can never arrive native), and Kling ignores aspect_ratio whenever a start image is
+      // supplied. Conform only when the probe says the shape is actually wrong — an unconditional
+      // re-encode would cost a generation of quality to correct nothing.
+      let conformed = false;
+      const wantOrientation = (['vertical', 'square', 'portrait', 'landscape'] as const)
+        .includes(resolvedOrientation as Orientation) ? (resolvedOrientation as Orientation) : null;
+      if (wantOrientation) {
+        const dims = await probeDimensions(clipUrl).catch(() => null);
+        if (needsAspectConform(dims, wantOrientation)) {
+          const fitted = await fitAspect(clipUrl, ORIENTATION_ASPECT[wantOrientation]).catch(() => null);
+          // Fail-open, like every other conform in the product: a clip in the wrong shape still beats
+          // no clip. The multi-clip path makes the same trade.
+          if (fitted) { master = fitted; conformed = true; }
+          // eslint-disable-next-line no-console
+          else console.warn('[assemble] single-clip aspect conform missed →', wantOrientation);
+        }
+      }
       if (musicUrl) {
         // 'under', NOT 'replace': a Veo clip carries its own audio — ambience AND, when the scene had a
         // line, the character actually SPEAKING it. 'replace' (-map 0:v -map 1:a) deleted that, so a
@@ -486,7 +513,7 @@ async function assembleImpl(req: NextRequest) {
         // already been dropped as redundant — the dialogue existed nowhere. The multi-clip stitch keeps
         // that audio in its diegetic lane; this path now matches. A silent clip still lands on 'replace'
         // (muxAudioOntoVideo falls back when the source has no audio stream), so nothing regresses.
-        const muxed = await muxAudioOntoVideo(clipUrl, musicUrl, 'under', 12).catch(() => null);
+        const muxed = await muxAudioOntoVideo(master, musicUrl, 'under', 12).catch(() => null);
         if (muxed) master = muxed;
       }
       // PRODUCT-AD (6s) — a spoken voiceover (a ready URL, or a SCRIPT we TTS on the
@@ -527,7 +554,7 @@ async function assembleImpl(req: NextRequest) {
       // Master produced → COMMIT the credit reservation (the charge is now earned).
       if (scLock) await commitTokenLock(scLock).catch(() => {});
       // eslint-disable-next-line no-console
-      console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl, billed: !scSkipBilling && !scFreeFilm }));
+      console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: !scSkipBilling && !scFreeFilm }));
       if (filmTokenId) await recordFilmMaster(filmTokenId, master, null, uid).catch(() => {});
       return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm, single: true });
     } catch (err) {
