@@ -23,6 +23,7 @@ import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
+import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { TAP_MIN_PX } from './ui/tokens';
 import { PresetRow } from './ui/controls';
@@ -3951,14 +3952,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     };
     // Build the Gemini payload: text-only → string content; with media → native
     // multimodal parts (image / file) the route forwards as inline_data.
-    const payload = history.map((m) => {
+    // ⚠️ THIS RE-UPLOADED EVERY IMAGE EVER ATTACHED, ON EVERY TURN. `history` is the full message array
+    // and each turn's `medias` are base64 data URLs, so a photo attached five messages ago was
+    // re-serialised, re-sent over the wire and re-ingested by Gemini for every later text-only message.
+    // The route's MAX_BODY_BYTES = 16_000_000 shows the scale it was built to survive. On a phone uplink
+    // that is seconds of upload before the server starts any work, and it grows for the life of the
+    // thread — the one latency source here that gets WORSE the more the chat is used.
+    //
+    // Only the most recent media-bearing turns send real bytes (see lib/chat/mediaWindow for why a
+    // window rather than a strip: "make it warmer" must still be able to see the photo). Older turns
+    // keep their text and get a placeholder, so the model is told an attachment existed instead of
+    // silently seeing a gap and contradicting the user about it.
+    const mediaCarrying = mediaCarryingIndices(history);
+    const payload = history.map((m, i) => {
       if (m.medias && m.medias.length) {
-        const mediaParts = m.medias.map((md) => isImage(md.mimeType)
-          ? { type: 'image', image: md.dataUrl }
-          : { type: 'file', data: md.dataUrl, mimeType: md.mimeType });
+        const parts = shouldSendMedia(i, mediaCarrying)
+          ? m.medias.map((md) => isImage(md.mimeType)
+            ? { type: 'image', image: md.dataUrl }
+            : { type: 'file', data: md.dataUrl, mimeType: md.mimeType })
+          : [{ type: 'text', text: m.medias.map((md) => mediaPlaceholder(md.mimeType)).join(' ') }];
         return { role: m.role, content: [
           ...(m.text ? [{ type: 'text', text: m.text }] : []),
-          ...mediaParts,
+          ...parts,
         ] };
       }
       return { role: m.role, content: m.text };
@@ -4119,7 +4134,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     try {
       const gRes = await fetch('/api/ai/agent-g', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ text, mediaKind: gKind }), signal: AbortSignal.timeout(20000),
+        // ⚠️ WAS 20 SECONDS, AND IT SITS IN FRONT OF THE CHAT REQUEST. This classifier runs BEFORE any
+        // chat call whenever exactly one editable attachment is present and the text reads as an edit
+        // command. When it recognises the request that wait is useful — but when it does NOT, the
+        // function returns false and the turn proceeds to ordinary chat having already spent up to
+        // twenty seconds producing nothing. The fail-open path already exists and is instant; the only
+        // thing the long timeout bought was a longer stall before reaching it. 3s is well past a
+        // healthy classify and short enough that a hung one is barely noticed.
+        body: JSON.stringify({ text, mediaKind: gKind }), signal: AbortSignal.timeout(3000),
       });
       const gj = (await gRes.json().catch(() => null)) as { route?: string; action?: string | null; actions?: string[] } | null;
       window.clearInterval(phaseTimer);
