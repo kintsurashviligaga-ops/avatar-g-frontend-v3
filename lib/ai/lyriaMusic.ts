@@ -20,6 +20,7 @@
  * failover serves the track. (Lyria 3 is a PREVIEW model — transient 503s simply fall back and retry.)
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isEnabledByDefault } from '@/lib/env/flag';
 
 const INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
@@ -142,15 +143,13 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      // eslint-disable-next-line no-console
-      console.warn(`[lyria] interactions http_${res.status} (model=${lyriaModel()}) → falling back. body: ${body.slice(0, 300)}`);
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', status: res.status, detail: body, model: lyriaModel() });
       return null;
     }
     const j = await res.json().catch(() => null);
     const audio = extractAudio(j);
     if (!audio) {
-      // eslint-disable-next-line no-console
-      console.warn('[lyria] no audio in response → falling back');
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', detail: 'response carried no audio', model: lyriaModel() });
       return null;
     }
     // Book the spend AFTER a real track came back — a failed/empty generation costs us nothing, and
@@ -158,8 +157,7 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
     void recordMusicUsage();
     return audio;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[lyria] interactions threw → falling back:', e instanceof Error ? e.message : e);
+    reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', detail: e instanceof Error ? e.message : String(e), model: lyriaModel() });
     return null;
   }
 }

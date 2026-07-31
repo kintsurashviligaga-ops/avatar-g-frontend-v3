@@ -369,6 +369,10 @@ export async function POST(req: NextRequest) {
             : ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 
           let geminiOk = false;
+
+          /** The last model's real error text — see the exhaustion report below. */
+
+          let lastGeminiFailure = '';
           for (const modelName of GEMINI_MODELS) {
             let streamed = 0; // hoisted so the catch can tell if the turn already partly committed
             try {
@@ -432,13 +436,24 @@ export async function POST(req: NextRequest) {
                 break;
               }
               console.warn('[/api/chat/gemini]', modelName, kind, '— trying next model');
+              // Keep the reason. Without it the exhaustion report below could only say THAT every model
+              // failed, never WHY — and "why" is the entire diagnosis: an invalid key, a quota, a
+              // region restriction and a model the project cannot see all look identical from outside.
+              lastGeminiFailure = `${modelName}: ${kind} — ${geminiErr instanceof Error ? geminiErr.message.slice(0, 200) : String(geminiErr).slice(0, 200)}`;
             }
           }
 
           if (!geminiOk) {
             // ── Fallback: Anthropic Claude Haiku ────────────────────────────
             console.error('[/api/chat/gemini] All Gemini models exhausted — falling back to Anthropic');
-            reportError(new Error('All Gemini models exhausted — Anthropic fallback engaged (check GEMINI_API_KEY validity)'), { route: 'chat.gemini', stage: 'gemini-exhausted' });
+            // The message carries the LAST model's actual error, so one Sentry event is enough to tell
+            // an invalid key from a quota from a missing model grant. Production ran on this fallback
+            // for every request while every dashboard reported healthy; the report is what makes the
+            // next occurrence diagnosable instead of merely visible.
+            reportError(
+              new Error(`All Gemini models exhausted — Anthropic fallback engaged. Last failure: ${lastGeminiFailure || 'no error captured'}`),
+              { route: 'chat.gemini', stage: 'gemini-exhausted', lastFailure: lastGeminiFailure },
+            );
             // Hoisted so the catch below can tell whether the fallback already committed partial text to the
             // client — if it did, appending a "providers down" notice would garble the bubble (partial answer
             // + full error notice). Mirrors the Gemini loop's partial-commit handling above.

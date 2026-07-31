@@ -15,6 +15,7 @@
  * result is hosted here and the caller gets a normal https asset URL.
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isEnabledByDefault } from '@/lib/env/flag';
 
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -88,8 +89,7 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      // eslint-disable-next-line no-console
-      console.warn(`[imagen] http_${res.status} → falling back to FLUX/NanoBanana. body: ${body.slice(0, 240)}`);
+      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body, model: geminiImagenModel() });
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as {
@@ -106,8 +106,7 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
     }
     return out.length ? out : null;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[imagen] threw → falling back to FLUX/NanoBanana:', e instanceof Error ? e.message : e);
+    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', detail: e instanceof Error ? e.message : String(e), model: geminiImagenModel() });
     return null;
   }
 }

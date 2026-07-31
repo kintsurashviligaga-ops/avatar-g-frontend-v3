@@ -23,6 +23,7 @@
  * and never leaks the key to the client.
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isEnabledByDefault } from '@/lib/env/flag';
 
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -132,15 +133,13 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      // eslint-disable-next-line no-console
-      console.warn(`[veo] create http_${res.status} → falling back to Runway. body: ${body.slice(0, 300)}`);
+      reportGeminiFallback({ leg: 'veo', fallbackTo: 'Runway/Kling', status: res.status, detail: body, model: geminiVeoModel() });
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as { name?: unknown };
     return typeof j.name === 'string' && j.name ? { operation: j.name } : null;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[veo] create threw → falling back to Runway:', e instanceof Error ? e.message : e);
+    reportGeminiFallback({ leg: 'veo', fallbackTo: 'Runway/Kling', detail: e instanceof Error ? e.message : String(e), model: geminiVeoModel() });
     return null;
   }
 }
