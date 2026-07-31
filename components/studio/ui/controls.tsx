@@ -17,7 +17,7 @@
  * and for the reasoning behind each canonical value.
  */
 
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import {
   PANEL, GROUP, ROW, LABEL, SECTION_TITLE, HINT,
@@ -112,9 +112,48 @@ export const Field = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
   },
 );
 
-export const TextArea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function TextArea({ className, rows = 3, ...rest }, ref) {
-    return <textarea ref={ref} rows={rows} className={cx(TEXTAREA, className)} {...rest} />;
+/**
+ * A textarea that GROWS to fit what is in it, up to a cap.
+ *
+ * ⚠️ A FIXED `rows` CANNOT BE CORRECT HERE, which is why this is not just a bigger number. How many
+ * lines a string occupies depends on the language and the viewport: the 75-character Georgian
+ * placeholder on the music studio wraps to four lines at 375px while its English equivalent takes two,
+ * and the global 16px font floor (see FIELD) makes every line 28px tall. Measured before this change:
+ * a `rows={3}` box was 110px tall holding 138px of content, so the placeholder was cut mid-word — and
+ * any number I picked would simply move which language it broke in.
+ *
+ * So the box measures itself instead. `rows` becomes the MINIMUM, `maxHeight` the ceiling, and past the
+ * ceiling it scrolls. Runs on mount and on every value change, so it is correct for a controlled value
+ * that was set programmatically as well as for typing.
+ */
+export const TextArea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement> & { maxHeightPx?: number }>(
+  function TextArea({ className, rows = 3, maxHeightPx = 220, value, onChange, ...rest }, ref) {
+    const inner = useRef<HTMLTextAreaElement | null>(null);
+
+    const fit = useCallback((el: HTMLTextAreaElement | null) => {
+      if (!el) return;
+      el.style.height = 'auto'; // release the previous height so scrollHeight reports the real content
+      el.style.height = `${Math.min(el.scrollHeight, maxHeightPx)}px`;
+      el.style.overflowY = el.scrollHeight > maxHeightPx ? 'auto' : 'hidden';
+    }, [maxHeightPx]);
+
+    // Layout effect, not effect: resize before paint so the box never flashes at the wrong height.
+    useLayoutEffect(() => { fit(inner.current); }, [fit, value]);
+
+    return (
+      <textarea
+        ref={(node) => {
+          inner.current = node;
+          if (typeof ref === 'function') ref(node);
+          else if (ref) (ref as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+        }}
+        rows={rows}
+        value={value}
+        onChange={(e) => { fit(e.currentTarget); onChange?.(e); }}
+        className={cx(TEXTAREA, className)}
+        {...rest}
+      />
+    );
   },
 );
 

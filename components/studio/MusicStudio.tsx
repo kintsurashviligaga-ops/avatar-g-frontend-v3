@@ -25,6 +25,7 @@ import {
   ArrowLeft, Music2, Mic, Square, Upload, Play, Pause, Download,
   Loader2, Sparkles, Trash2, AlertCircle, Wand2, Film, Image as ImageIcon,
 } from 'lucide-react';
+import { TextArea } from './ui/controls';
 import { CreditBadge } from '@/components/ui/CreditBadge';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 
@@ -120,7 +121,7 @@ function TrackPlayer({ url, coverUrl, t }: { url: string; coverUrl?: string; t: 
   const pct = dur ? (cur / dur) * 100 : 0;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(155deg,rgba(12,22,46,0.9),rgba(7,14,32,0.85))] shadow-[0_16px_48px_rgba(0,0,0,0.45)]">
+    <div className="overflow-hidden rounded-2xl border border-app-border/15 bg-app-surface/70 shadow-[0_16px_48px_rgba(0,0,0,0.28)]">
       <div className="flex flex-col items-stretch gap-4 p-4 sm:flex-row sm:items-center">
         {/* Album art */}
         <div className="relative mx-auto aspect-square w-40 shrink-0 overflow-hidden rounded-xl sm:mx-0 sm:w-24">
@@ -129,7 +130,7 @@ function TrackPlayer({ url, coverUrl, t }: { url: string; coverUrl?: string; t: 
             <img src={coverUrl} alt="cover" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-500/30 to-blue-700/30">
-              <Music2 className="text-white/70" size={32} />
+              <Music2 className="text-app-muted" size={32} />
             </div>
           )}
         </div>
@@ -140,19 +141,19 @@ function TrackPlayer({ url, coverUrl, t }: { url: string; coverUrl?: string; t: 
             <button
               type="button"
               onClick={toggle}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.4)] transition-transform hover:scale-105 active:scale-95"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-[0_0_24px_rgba(34,211,238,0.4)] transition-transform hover:scale-105 active:scale-95"
               aria-label={playing ? 'pause' : 'play'}
             >
               {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
             </button>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-white">{t.result}</div>
-              <div className="text-xs text-white/40">{fmtTime(cur)} / {fmtTime(dur)}</div>
+              <div className="truncate text-sm font-semibold text-app-text">{t.result}</div>
+              <div className="text-xs text-app-muted/70">{fmtTime(cur)} / {fmtTime(dur)}</div>
             </div>
             <a
               href={url}
               download="myavatar-track.mp3"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-app-border/10 text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"
               aria-label={t.download}
             >
               <Download size={17} />
@@ -162,16 +163,16 @@ function TrackPlayer({ url, coverUrl, t }: { url: string; coverUrl?: string; t: 
           {/* Scrubber */}
           <div
             onClick={seek}
-            className="group relative h-2 cursor-pointer rounded-full bg-white/10"
+            className="group relative h-2 cursor-pointer rounded-full bg-app-elevated"
             role="slider"
             aria-valuemin={0}
             aria-valuenow={Math.round(cur)}
             aria-valuemax={Math.round(dur)}
             tabIndex={0}
           >
-            <div className="absolute inset-y-0 left-0 rounded-full bg-cyan-400" style={{ width: `${pct}%` }} />
+            <div className="absolute inset-y-0 left-0 rounded-full bg-app-accent" style={{ width: `${pct}%` }} />
             <div
-              className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover:opacity-100"
+              className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-app-text opacity-0 shadow transition-opacity group-hover:opacity-100"
               style={{ left: `calc(${pct}% - 7px)` }}
             />
           </div>
@@ -419,20 +420,20 @@ export function MusicStudio() {
   const showLyrics = (!instrumental && !hasVoice) || isVoiceClone || (useMyVoice && hasTrainedVoice);
 
   return (
-    <div className="min-h-screen bg-transparent text-white">
+    <div className="min-h-screen bg-transparent text-app-text">
       <div className="mx-auto max-w-3xl space-y-6 px-4 pt-8 pb-28 sm:px-6 sm:pt-12">
         {/* Header */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href={`/${lang}/dashboard`} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/60 transition-colors hover:bg-white/10 hover:text-white" aria-label={t.back}>
+            <Link href={`/${lang}/dashboard`} className="flex h-9 w-9 items-center justify-center rounded-lg border border-app-border/10 text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text" aria-label={t.back}>
               <ArrowLeft size={18} />
             </Link>
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_22px_rgba(34,211,238,0.3)]">
-              <Music2 size={20} className="text-white" />
+              <Music2 size={20} className="text-app-text" />
             </div>
             <div>
               <h1 className="text-xl font-bold leading-tight">{t.title}</h1>
-              <p className="text-xs text-white/45">{t.subtitle}</p>
+              <p className="text-xs text-app-muted">{t.subtitle}</p>
             </div>
           </div>
           <CreditBadge />
@@ -440,26 +441,26 @@ export function MusicStudio() {
 
         {/* Composer */}
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
-          className="space-y-5 rounded-2xl border border-white/10 bg-[linear-gradient(155deg,rgba(12,22,46,0.85),rgba(7,14,32,0.78))] p-5 shadow-[0_16px_48px_rgba(0,0,0,0.4)]">
+          className="space-y-5 rounded-2xl border border-app-border/15 bg-app-surface/70 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.25)] sm:p-5">
           {/* Prompt */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-white/50">{t.promptLabel}</label>
-            <textarea
+            <label className="text-xs font-semibold uppercase tracking-wider text-app-muted">{t.promptLabel}</label>
+            <TextArea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
               placeholder={t.promptPh}
-              className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3.5 py-3 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-cyan-400/50"
+              
             />
           </div>
 
           {/* Genre */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-white/50">{t.genre}</label>
+            <label className="text-xs font-semibold uppercase tracking-wider text-app-muted">{t.genre}</label>
             <div className="flex flex-wrap gap-2">
               {GENRES.map((g) => (
                 <button key={g} type="button" onClick={() => setGenre(g)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors ${genre === g ? 'border-cyan-400/60 bg-cyan-400/15 text-cyan-200' : 'border-white/10 text-white/60 hover:bg-white/5'}`}>
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors ${genre === g ? 'border-app-accent/60 bg-app-accent/15 text-app-accent' : 'border-app-border/10 text-app-muted hover:bg-app-elevated/60'}`}>
                   {g}
                 </button>
               ))}
@@ -470,41 +471,41 @@ export function MusicStudio() {
           {!hasVoice && (
             <div className="flex gap-2">
               <button type="button" onClick={() => setInstrumental(true)}
-                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${instrumental ? 'border-cyan-400/60 bg-cyan-400/15 text-cyan-200' : 'border-white/10 text-white/60 hover:bg-white/5'}`}>
+                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${instrumental ? 'border-app-accent/60 bg-app-accent/15 text-app-accent' : 'border-app-border/10 text-app-muted hover:bg-app-elevated/60'}`}>
                 {t.instrumental}
               </button>
               <button type="button" onClick={() => setInstrumental(false)}
-                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${!instrumental ? 'border-cyan-400/60 bg-cyan-400/15 text-cyan-200' : 'border-white/10 text-white/60 hover:bg-white/5'}`}>
+                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${!instrumental ? 'border-app-accent/60 bg-app-accent/15 text-app-accent' : 'border-app-border/10 text-app-muted hover:bg-app-elevated/60'}`}>
                 {t.vocals}
               </button>
             </div>
           )}
 
           {/* ── Voice section (the headline feature) ───────────────────────── */}
-          <div className="space-y-3 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.04] p-4">
+          <div className="space-y-3 rounded-xl border border-app-accent/20 bg-app-accent/[0.04] p-4">
             <div className="flex items-center gap-2">
-              <Mic size={15} className="text-cyan-300" />
-              <span className="text-sm font-semibold text-white">{t.voiceTitle}</span>
+              <Mic size={15} className="text-app-accent" />
+              <span className="text-sm font-semibold text-app-text">{t.voiceTitle}</span>
             </div>
 
             {!hasVoice && (
               <>
-                <p className="text-xs leading-relaxed text-white/45">{t.voiceHint}</p>
+                <p className="text-xs leading-relaxed text-app-muted">{t.voiceHint}</p>
                 <div className="flex items-center gap-3">
                   {!recording ? (
                     <button type="button" onClick={startRecording}
-                      className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-105 active:scale-95">
+                      className="inline-flex items-center gap-2 rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-app-text transition-transform hover:scale-105 active:scale-95">
                       <Mic size={16} /> {t.record}
                     </button>
                   ) : (
                     <button type="button" onClick={stopRecording}
-                      className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950">
+                      className="inline-flex items-center gap-2 rounded-full bg-app-text px-4 py-2 text-sm font-semibold text-app-bg">
                       <Square size={14} fill="currentColor" /> {t.stop}
                     </button>
                   )}
-                  <span className="text-white/20">·</span>
+                  <span className="text-app-muted/50">·</span>
                   <button type="button" onClick={() => fileRef.current?.click()}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/5">
+                    className="inline-flex items-center gap-2 rounded-full border border-app-border/10 px-4 py-2 text-sm font-medium text-app-muted transition-colors hover:bg-app-elevated/60">
                     <Upload size={15} /> {t.upload}
                   </button>
                   <input ref={fileRef} type="file" accept="audio/*" onChange={onPickFile} className="hidden" />
@@ -512,16 +513,16 @@ export function MusicStudio() {
 
                 {/* Live recorder: timer + level meter */}
                 {recording && (
-                  <div className="flex items-center gap-3 rounded-lg bg-black/30 px-3 py-2">
+                  <div className="flex items-center gap-3 rounded-lg bg-app-elevated px-3 py-2">
                     <span className="flex h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-                    <span className="font-mono text-sm tabular-nums text-white">{fmtTime(recSec)}</span>
+                    <span className="font-mono text-sm tabular-nums text-app-text">{fmtTime(recSec)}</span>
                     <div className="flex flex-1 items-center gap-0.5">
                       {Array.from({ length: 16 }).map((_, i) => {
                         const active = level * 16 > i;
-                        return <span key={i} className={`h-4 flex-1 rounded-sm transition-all ${active ? 'bg-cyan-400' : 'bg-white/10'}`} style={{ height: active ? `${8 + Math.random() * 12}px` : '6px' }} />;
+                        return <span key={i} className={`h-4 flex-1 rounded-sm transition-all ${active ? 'bg-app-accent' : 'bg-app-elevated'}`} style={{ height: active ? `${8 + Math.random() * 12}px` : '6px' }} />;
                       })}
                     </div>
-                    <span className={`text-[11px] font-medium ${recSec >= MIN_REC_SEC ? 'text-cyan-300' : 'text-white/40'}`}>
+                    <span className={`text-[11px] font-medium ${recSec >= MIN_REC_SEC ? 'text-app-accent' : 'text-app-muted/70'}`}>
                       {recSec >= MIN_REC_SEC ? '✓' : t.needLonger}
                     </span>
                   </div>
@@ -534,17 +535,17 @@ export function MusicStudio() {
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <audio src={voicePreview} controls className="h-9 min-w-0 flex-1" />
-                  <button type="button" onClick={clearVoice} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-white/50 transition-colors hover:bg-red-500/15 hover:text-red-300" aria-label={t.remove}>
+                  <button type="button" onClick={clearVoice} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-app-border/10 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-300" aria-label={t.remove}>
                     <Trash2 size={15} />
                   </button>
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setVoiceMode('voice')}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${voiceMode === 'voice' ? 'border-cyan-400/60 bg-cyan-400/15 text-cyan-200' : 'border-white/10 text-white/55 hover:bg-white/5'}`}>
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${voiceMode === 'voice' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent' : 'border-app-border/10 text-app-muted hover:bg-app-elevated/60'}`}>
                     {t.useVoice}
                   </button>
                   <button type="button" onClick={() => setVoiceMode('cover')}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${voiceMode === 'cover' ? 'border-cyan-400/60 bg-cyan-400/15 text-cyan-200' : 'border-white/10 text-white/55 hover:bg-white/5'}`}>
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${voiceMode === 'cover' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent' : 'border-app-border/10 text-app-muted hover:bg-app-elevated/60'}`}>
                     {t.useCover}
                   </button>
                 </div>
@@ -556,7 +557,7 @@ export function MusicStudio() {
           <VoiceTrainer lang={lang} onReady={setHasTrainedVoice} />
           {hasTrainedVoice && (
             <button type="button" onClick={() => setUseMyVoice((v) => !v)}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${useMyVoice ? 'border-cyan-400/70 bg-cyan-400/20 text-cyan-100' : 'border-white/10 text-white/60 hover:bg-white/5'}`}>
+              className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${useMyVoice ? 'border-app-accent/70 bg-app-accent/20 text-app-accent' : 'border-app-border/10 text-app-muted hover:bg-app-elevated/60'}`}>
               🎤 {useMyVoice ? t.myVoiceOn : t.myVoiceOff}
             </button>
           )}
@@ -564,14 +565,20 @@ export function MusicStudio() {
           {/* Lyrics (vocals or voice-clone) */}
           <AnimatePresence>
             {showLyrics && (
-              <motion.textarea
+              // The MOTION WRAPPER animates the reveal; the TextArea inside owns its own height. Animating
+              // height on the textarea itself fought the auto-size — both write `style.height`, and the
+              // last writer won, which is how a lyrics box could open at the wrong size.
+              <motion.div
+                className="overflow-hidden"
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                value={lyrics}
-                onChange={(e) => setLyrics(e.target.value)}
-                rows={3}
-                placeholder={isVoiceClone ? t.voiceLyricsPh : t.lyricsPh}
-                className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3.5 py-3 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-cyan-400/50"
-              />
+              >
+                <TextArea
+                  value={lyrics}
+                  onChange={(e) => setLyrics(e.target.value)}
+                  rows={3}
+                  placeholder={isVoiceClone ? t.voiceLyricsPh : t.lyricsPh}
+                />
+              </motion.div>
             )}
           </AnimatePresence>
 
@@ -580,7 +587,7 @@ export function MusicStudio() {
             type="button"
             onClick={generate}
             disabled={!canGenerate}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3.5 text-sm font-bold text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.35)] transition-all hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3.5 text-sm font-bold text-app-bg shadow-[0_0_24px_rgba(34,211,238,0.35)] transition-all hover:bg-app-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? <><Loader2 size={17} className="animate-spin" /> {t.generating} {elapsed > 0 && `${elapsed}s`}</>
               : isVoiceClone ? <><Wand2 size={17} /> {t.useVoice}</>
@@ -605,15 +612,15 @@ export function MusicStudio() {
               <TrackPlayer url={result.url} coverUrl={result.coverUrl} t={t} />
 
               {/* DAY-4 — Photo → Music Video (isolated to this studio). Pair a still with the track → MP4. */}
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
-                <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-white/80">
+              <div className="rounded-2xl border border-app-border/10 bg-app-elevated/50 p-3.5">
+                <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-app-text">
                   <Film size={15} className="text-app-accent" /> {t.makeVideo}
                 </div>
                 <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={onPickPhoto} className="hidden" />
 
                 {videoResult ? (
                   <div className="space-y-2">
-                    <video src={videoResult.url} controls playsInline className="w-full rounded-xl bg-black" />
+                    <video src={videoResult.url} controls playsInline className="w-full rounded-xl bg-app-bg" />
                     <a href={videoResult.url} download="myavatar-music-video.mp4" target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-black transition hover:opacity-90">
                       <Download size={15} /> {t.downloadVideo}
@@ -623,7 +630,7 @@ export function MusicStudio() {
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-2.5">
                       <button type="button" onClick={() => photoRef.current?.click()} disabled={videoBusy}
-                        className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-semibold text-white/85 transition hover:bg-white/[0.08] disabled:opacity-50">
+                        className="inline-flex items-center gap-2 rounded-lg border border-app-border/15 bg-app-elevated/60 px-3.5 py-2 text-[12.5px] font-semibold text-app-text transition hover:bg-app-elevated disabled:opacity-50">
                         {photoPreview
                           ? <><img src={photoPreview} alt="" className="h-6 w-6 rounded object-cover" /> {t.changePhoto}</>
                           : <><ImageIcon size={15} /> {t.addPhoto}</>}
@@ -638,7 +645,7 @@ export function MusicStudio() {
                 )}
               </div>
 
-              <button type="button" onClick={() => { setResult(null); setVideoResult(null); setPhotoBlob(null); setPhotoPreview((p) => { if (p) URL.revokeObjectURL(p); return ''; }); }} className="mx-auto block text-xs text-white/40 transition-colors hover:text-white/70">
+              <button type="button" onClick={() => { setResult(null); setVideoResult(null); setPhotoBlob(null); setPhotoPreview((p) => { if (p) URL.revokeObjectURL(p); return ''; }); }} className="mx-auto block text-xs text-app-muted/70 transition-colors hover:text-app-muted">
                 {t.newTrack}
               </button>
             </motion.div>

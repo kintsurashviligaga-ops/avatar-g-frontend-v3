@@ -22,6 +22,11 @@ import {
   type MontageShot,
   type MontageTransition,
 } from '@/lib/services/montage/montagePlan';
+import {
+  Row, Grid, Label, Field, Select, ToggleRow, PrimaryButton, SecondaryButton, IconButton,
+  Note, Hint, ProgressBar,
+} from './ui/controls';
+import { FIELD } from './ui/tokens';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -41,6 +46,7 @@ const COPY = {
     fade: 'შავში',
     caption: 'წარწერა',
     mute: 'ხმის გარეშე',
+    moveUp: 'ზემოთ', moveDown: 'ქვემოთ', removeShot: 'კადრის წაშლა',
     remove: 'წაშლა',
     up: 'აწევა',
     down: 'ჩამოწევა',
@@ -73,6 +79,7 @@ const COPY = {
     fade: 'Through black',
     caption: 'Caption',
     mute: 'Mute',
+    moveUp: 'Move up', moveDown: 'Move down', removeShot: 'Remove shot',
     remove: 'Remove',
     up: 'Up',
     down: 'Down',
@@ -105,6 +112,7 @@ const COPY = {
     fade: 'Через чёрное',
     caption: 'Подпись',
     mute: 'Без звука',
+    moveUp: 'Вверх', moveDown: 'Вниз', removeShot: 'Удалить кадр',
     remove: 'Удалить',
     up: 'Вверх',
     down: 'Вниз',
@@ -214,8 +222,6 @@ export function MontageStudio({ locale }: { locale: string }) {
     }
   }
 
-  const field = 'w-full rounded-lg bg-app-elevated border border-app-border/15 px-2.5 py-2 text-sm !text-app-text outline-none focus:border-app-accent/50 transition-colors';
-  const chip = 'rounded-lg border border-app-border/15 px-2.5 py-1 text-xs text-app-muted hover:text-app-text hover:border-app-accent/40 transition-colors disabled:opacity-30';
 
   return (
     <div className="min-h-screen bg-app-surface px-4 py-10">
@@ -230,17 +236,16 @@ export function MontageStudio({ locale }: { locale: string }) {
                 <span className="text-xs font-semibold text-app-text">
                   {t.shot} {i + 1} · {row.kind === 'image' ? '🖼' : '🎬'}
                 </span>
-                <div className="flex gap-1.5">
-                  <button type="button" onClick={() => move(row.key, -1)} disabled={i === 0} className={chip}>↑</button>
-                  <button type="button" onClick={() => move(row.key, 1)} disabled={i === rows.length - 1} className={chip}>↓</button>
-                  <button
-                    type="button"
+                <div className="flex gap-1">
+                  <IconButton label={t.moveUp} onClick={() => move(row.key, -1)} disabled={i === 0}>↑</IconButton>
+                  <IconButton label={t.moveDown} onClick={() => move(row.key, 1)} disabled={i === rows.length - 1}>↓</IconButton>
+                  <IconButton
+                    label={t.removeShot}
                     onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
                     disabled={rows.length <= MIN_SHOTS}
-                    className={chip}
                   >
                     ✕
-                  </button>
+                  </IconButton>
                 </div>
               </div>
 
@@ -249,7 +254,7 @@ export function MontageStudio({ locale }: { locale: string }) {
                 value={row.url}
                 onChange={(e) => patch(row.key, { url: e.target.value })}
                 placeholder={`https://…/${row.kind === 'image' ? 'photo.jpg' : 'clip.mp4'}`}
-                className={field}
+                className={FIELD}
               />
 
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -259,7 +264,7 @@ export function MontageStudio({ locale }: { locale: string }) {
                     <input
                       type="number" min={0} step={0.1} value={row.startSec}
                       onChange={(e) => patch(row.key, { startSec: Math.max(0, Number(e.target.value) || 0) })}
-                      className={field}
+                      className={FIELD}
                     />
                   </label>
                 )}
@@ -272,21 +277,20 @@ export function MontageStudio({ locale }: { locale: string }) {
                       const v = Number(e.target.value) || 0;
                       patch(row.key, row.kind === 'image' ? { startSec: 0, endSec: Math.max(0.4, v) } : { endSec: v });
                     }}
-                    className={field}
+                    className={FIELD}
                   />
                 </label>
                 {i > 0 && (
                   <label className="block">
                     <span className="mb-1 block text-[11px] text-app-muted">{t.transition}</span>
-                    <select
+                    <Select
                       value={row.transition}
                       onChange={(e) => patch(row.key, { transition: e.target.value as MontageTransition })}
-                      className={field}
                     >
                       <option value="cut">{t.cut}</option>
                       <option value="crossfade">{t.crossfade}</option>
                       <option value="fade">{t.fade}</option>
-                    </select>
+                    </Select>
                   </label>
                 )}
                 <label className="block">
@@ -294,67 +298,61 @@ export function MontageStudio({ locale }: { locale: string }) {
                   <input
                     type="text" value={row.caption ?? ''} maxLength={120}
                     onChange={(e) => patch(row.key, { caption: e.target.value })}
-                    className={field}
+                    className={FIELD}
                   />
                 </label>
               </div>
 
               {row.kind === 'video' && (
-                <label className="mt-3 flex items-center gap-2 text-xs text-app-text">
-                  <input type="checkbox" checked={row.muted} onChange={(e) => patch(row.key, { muted: e.target.checked })} />
-                  {t.mute}
-                </label>
+                <div className="mt-2">
+                  <ToggleRow on={row.muted} onChange={(v) => patch(row.key, { muted: v })} label={t.mute} />
+                </div>
               )}
             </div>
           ))}
 
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setRows((rs) => [...rs, newRow('video')])} disabled={rows.length >= MAX_SHOTS} className={chip}>
+          <Row>
+            <SecondaryButton onClick={() => setRows((rs) => [...rs, newRow('video')])} disabled={rows.length >= MAX_SHOTS}>
               {t.addVideo}
-            </button>
-            <button type="button" onClick={() => setRows((rs) => [...rs, newRow('image')])} disabled={rows.length >= MAX_SHOTS} className={chip}>
+            </SecondaryButton>
+            <SecondaryButton onClick={() => setRows((rs) => [...rs, newRow('image')])} disabled={rows.length >= MAX_SHOTS}>
               {t.addImage}
-            </button>
-            {rows.length >= MAX_SHOTS && <span className="self-center text-xs text-app-muted">{t.maxShots}</span>}
-          </div>
+            </SecondaryButton>
+            {rows.length >= MAX_SHOTS && <Hint>{t.maxShots}</Hint>}
+          </Row>
         </div>
 
         <div className="mt-6 space-y-4 rounded-2xl border border-app-border/15 bg-app-elevated/40 p-5">
-          <div className="flex flex-wrap items-end gap-4">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.aspect}</span>
-              <select value={aspect} onChange={(e) => setAspect(e.target.value as MontageAspect)} className={field}>
+          <Grid cols={2}>
+            <div className="min-w-0">
+              <Label>{t.aspect}</Label>
+              <Select value={aspect} onChange={(e) => setAspect(e.target.value as MontageAspect)}>
                 {ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </label>
-            <div className="text-xs text-app-muted">
-              {t.total}: <span className={total > MAX_TOTAL_SEC ? 'text-red-400' : 'text-app-text'}>{total.toFixed(1)}s</span>
+              </Select>
+            </div>
+            <div className="flex min-w-0 items-end pb-1 text-[11px] text-app-muted">
+              {t.total}: <span className={`ml-1 font-semibold ${total > MAX_TOTAL_SEC ? 'text-red-400' : 'text-app-text'}`}>{total.toFixed(1)}s</span>
               {total > MAX_TOTAL_SEC && <span className="ml-2 text-red-400">{t.tooLong}</span>}
             </div>
+          </Grid>
+
+          <div className="min-w-0">
+            <Label>{t.music}</Label>
+            <Field type="url" inputMode="url" value={musicUrl} onChange={(e) => setMusicUrl(e.target.value)} placeholder="https://…/track.mp3" />
           </div>
+          {musicUrl.trim() && <ToggleRow on={musicOnly} onChange={setMusicOnly} label={t.musicOnly} />}
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.music}</span>
-            <input type="url" value={musicUrl} onChange={(e) => setMusicUrl(e.target.value)} placeholder="https://…/track.mp3" className={field} />
-          </label>
-          {musicUrl.trim() && (
-            <label className="flex items-center gap-2 text-sm text-app-text">
-              <input type="checkbox" checked={musicOnly} onChange={(e) => setMusicOnly(e.target.checked)} />
-              {t.musicOnly}
-            </label>
-          )}
-
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit}
-            className="w-full rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-bg transition-opacity disabled:opacity-40"
-          >
+          <PrimaryButton onClick={submit} loading={busy} full disabled={!canSubmit}>
             {busy ? t.working : t.submit}
-          </button>
-          {busy && <p className="text-center text-xs text-app-muted">{t.warn}</p>}
-          {!busy && filled.length !== rows.length && <p className="text-center text-xs text-app-muted">{t.needShots}</p>}
-          {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>}
+          </PrimaryButton>
+          {busy && (
+            <>
+              <ProgressBar label={t.working} />
+              <p className="text-center text-[11px] text-app-muted">{t.warn}</p>
+            </>
+          )}
+          {!busy && filled.length !== rows.length && <div className="text-center"><Hint>{t.needShots}</Hint></div>}
+          {error && <Note tone="error">{error}</Note>}
         </div>
 
         {result && (

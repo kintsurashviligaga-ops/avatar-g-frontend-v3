@@ -7,7 +7,7 @@
  * and one execute button. On run it uploads both to a private bucket (→ signed
  * https URLs) and hits POST /api/video/lipsync, which runs Wav2Lip
  * (devxpy/cog-wav2lip) on Replicate. Fail-open: any miss surfaces a clean notice
- * and leaves the inputs intact. Strict studio skin — black · white · #00D2FF.
+ * and leaves the inputs intact. Strict studio skin — black · white · rgb(var(--app-accent)).
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -79,24 +79,24 @@ function Dropzone({
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) onPick(f); }}
       className={`relative flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
-        over ? 'border-[#00D2FF] bg-[#00D2FF]/10' : picked ? 'border-[#00D2FF]/40 bg-[#00D2FF]/[0.04]' : 'border-white/15 bg-black hover:border-[#00D2FF]/40'
+        over ? 'border-[rgb(var(--app-accent))] bg-[rgb(var(--app-accent))]/10' : picked ? 'border-[rgb(var(--app-accent))]/40 bg-[rgb(var(--app-accent))]/[0.04]' : 'border-app-border/15 bg-app-bg hover:border-[rgb(var(--app-accent))]/40'
       }`}
     >
       <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); }} />
-      <span className={`flex h-10 w-10 items-center justify-center rounded-full ${picked ? 'bg-[#00D2FF]/15 text-[#00D2FF]' : 'bg-white/5 text-neutral-400'}`}>{icon}</span>
-      <p className="text-sm font-semibold text-white">{label}</p>
+      <span className={`flex h-10 w-10 items-center justify-center rounded-full ${picked ? 'bg-[rgb(var(--app-accent))]/15 text-[rgb(var(--app-accent))]' : 'bg-app-elevated/60 text-app-muted'}`}>{icon}</span>
+      <p className="text-sm font-semibold text-app-text">{label}</p>
       {picked ? (
-        <div className="flex items-center gap-2 text-[12px] text-[#00D2FF]">
+        <div className="flex items-center gap-2 text-[12px] text-[rgb(var(--app-accent))]">
           <span className="max-w-[180px] truncate">{picked.name}</span>
-          <button type="button" onClick={onClear} aria-label="clear" className="-m-2 inline-flex h-11 w-11 items-center justify-center p-2 text-neutral-500 transition-colors hover:text-white touch-manipulation"><X size={14} /></button>
+          <button type="button" onClick={onClear} aria-label="clear" className="-m-2 inline-flex h-11 w-11 items-center justify-center p-2 text-app-muted transition-colors hover:text-app-text touch-manipulation"><X size={14} /></button>
         </div>
       ) : (
-        <p className="text-[12px] text-neutral-500">{hint}</p>
+        <p className="text-[12px] text-app-muted">{hint}</p>
       )}
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="mt-1 inline-flex min-h-[44px] items-center rounded-lg border border-white/15 px-4 py-2.5 text-[13px] font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+        className="mt-1 inline-flex min-h-[44px] items-center rounded-lg border border-app-border/15 px-4 py-2.5 text-[13px] font-medium text-app-text transition-colors hover:border-[rgb(var(--app-accent))]/40 hover:text-[rgb(var(--app-accent))]"
       >
         {picked ? replaceLabel : <span className="inline-flex items-center gap-1"><UploadCloud size={13} /> {hint.split('—')[0]?.trim()}</span>}
       </button>
@@ -199,8 +199,8 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-6" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
       <header className="mb-5">
-        <h1 className="text-lg font-bold tracking-tight text-white">{t.title}</h1>
-        <p className="mt-0.5 text-[13px] text-neutral-500">{t.subtitle}</p>
+        <h1 className="text-lg font-bold tracking-tight text-app-text">{t.title}</h1>
+        <p className="mt-0.5 text-[13px] text-app-muted">{t.subtitle}</p>
       </header>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -222,7 +222,7 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
         type="button"
         onClick={() => void run()}
         disabled={busy || !video || !audio}
-        className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#00D2FF] to-[#0085FF] text-sm font-bold text-black transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[rgb(var(--app-accent))] to-[#0085FF] text-sm font-bold text-black transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
         {busy ? t.running : t.execute}
@@ -236,12 +236,12 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       {resultUrl && (
         <div className="mt-5 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">{t.result}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-app-muted">{t.result}</p>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video src={resultUrl} controls playsInline className="w-full rounded-xl border border-white/10 bg-black" />
+          <video src={resultUrl} controls playsInline className="w-full rounded-xl border border-app-border/10 bg-app-bg" />
           <a
             href={resultUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/10 px-4 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[rgb(var(--app-accent))]/30 bg-[rgb(var(--app-accent))]/10 px-4 py-2.5 text-xs font-semibold text-[rgb(var(--app-accent))] transition-colors hover:bg-[rgb(var(--app-accent))]/20"
           >
             <Download size={13} /> {t.download}
           </a>
