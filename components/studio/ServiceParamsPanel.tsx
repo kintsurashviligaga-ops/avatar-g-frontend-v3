@@ -245,12 +245,21 @@ export function ServiceParamsPanel({
   locale,
   onClose,
   onOpenFullEditor,
+  prefill,
 }: {
   service: PanelService;
   locale: string;
   onClose: () => void;
   /** Escalate into the full-screen clip editor (trim/crop/grade/audio). */
   onOpenFullEditor?: () => void;
+  /**
+   * Parameters mined from the chat sentence that opened this panel (lib/chat/studioIntent).
+   *
+   * Applied as INITIAL VALUES only — the user still reviews and presses the button, so a mis-parse costs
+   * a correction rather than a charge. Deliberately NOT auto-submitted: these services all spend credits,
+   * and "it started rendering because of something I typed in chat" is not a recoverable surprise.
+   */
+  prefill?: { targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string };
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -295,6 +304,20 @@ export function ServiceParamsPanel({
   // Presentation
   const [topic, setTopic] = useState('');
   const [slideCount, setSlideCount] = useState(DEFAULT_SLIDES);
+
+  // Apply what the chat sentence already told us. Keyed on `service` so switching services in the menu
+  // re-applies cleanly, and every value is validated against the SAME bounds the controls enforce —
+  // a mined number is untrusted input like any other, even though it came from the user's own sentence.
+  useEffect(() => {
+    if (!prefill) return;
+    if (prefill.targetLanguage && (DUBBING_LANGUAGES as readonly string[]).includes(prefill.targetLanguage)) {
+      setTargetLanguage(prefill.targetLanguage as DubbingLanguage);
+    }
+    if (typeof prefill.slideCount === 'number' && Number.isFinite(prefill.slideCount)) {
+      setSlideCount(Math.max(MIN_SLIDES, Math.min(MAX_SLIDES, Math.round(prefill.slideCount))));
+    }
+    if (prefill.topic && prefill.topic.trim()) setTopic(prefill.topic.trim().slice(0, 400));
+  }, [prefill, service]);
   const [deckLang, setDeckLang] = useState<DeckLanguage>(lang);
   const [withImages, setWithImages] = useState(false);
   // 3D

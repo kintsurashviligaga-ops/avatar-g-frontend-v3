@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard,
@@ -117,6 +118,7 @@ function LanguageSwitcher({ locale }: { locale: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const langClamp = useViewportClamp(open);
   const current = LANGS.find((l) => l.code === locale) ?? LANGS[0];
   const go = (code: string) => {
     setOpen(false);
@@ -134,7 +136,11 @@ function LanguageSwitcher({ locale }: { locale: string }) {
       {open && (
         <>
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} aria-hidden />
-          <div role="menu" className="absolute right-0 top-full z-[61] mt-1.5 w-36 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+          {/* ⚠️ MEASURED CLIPPED AT left:-36px ON A 320px VIEWPORT — the flags and the first characters of
+              each label were off-screen. `right-0` anchors this to the language BUTTON, which sits well
+              inside the header, and `max-w-[calc(100vw-1rem)]` cannot help because it caps WIDTH (the
+              menu is 153px against a 304px cap) while the defect is POSITION. Shared clamp. */}
+          <div role="menu" {...langClamp.props} className="absolute right-0 top-full z-[61] mt-1.5 w-36 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
             {LANGS.map((l) => (
               <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === locale} onClick={() => go(l.code)}
                 className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${l.code === locale ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}>

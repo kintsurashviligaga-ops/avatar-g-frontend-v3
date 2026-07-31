@@ -20,6 +20,8 @@ import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
+import { detectStudioIntent } from '@/lib/chat/studioIntent';
+import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -77,6 +79,15 @@ const SOON_LABEL: Record<Lang, string> = { ka: 'მალე', en: 'Soon', ru: '
 
 /** Services whose parameter controls open INSIDE the chat box rather than on their own route. */
 const PANEL_SERVICES = ['montage', 'dubbing', 'presentation', 'model3d'] as const;
+
+/** Display names for the chat line that confirms which studio a sentence opened. */
+const SERVICE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
+  montage: { ka: 'მონტაჟი', en: 'Montage', ru: 'Монтаж' },
+  dubbing: { ka: 'დუბლირება', en: 'Dubbing', ru: 'Дубляж' },
+  presentation: { ka: 'პრეზენტაცია', en: 'Presentation', ru: 'Презентация' },
+  model3d: { ka: '3D მოდელი', en: '3D Model', ru: '3D-модель' },
+  avatar: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
+};
 
 /**
  * The platform serializes generation to ONE render at a time. When a user tries to
@@ -1403,6 +1414,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const studioServices = useMemo(() => SERVICE_CATALOGUE.filter((s) => s.target.kind === 'path'), []);
   // Which service's parameter panel is open in the composer (null = none).
   const [panelService, setPanelService] = useState<PanelService | null>(null);
+  /** Parameters a chat sentence already specified, handed to the panel as initial values. */
+  const [studioPrefill, setStudioPrefill] = useState<{ targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string } | undefined>(undefined);
   // The active conversation id + its messages (resumed from the saved history).
   const [conversationId, setConversationId] = useState<string>(currentConversationId);
   const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
@@ -1663,6 +1676,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [showJump, setShowJump] = useState(false);
   // Inline mode selector popover (the Gemini "Flash ⌄" analog).
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
+
+  // Both floating menus use the shared clamp — see lib/ui/useViewportClamp for why measuring the
+  // element (not its width class) is the only version of this that is correct.
+  const modeMenuClamp = useViewportClamp(modeMenuOpen);
   // Per-service generation options.
   const [imgAspect, setImgAspect] = useState<ImgAspect>('1:1');
   // Default to the 2K tier for sharper, higher-fidelity output. The wider provider
@@ -4149,6 +4166,38 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // classify as generation. isGenerativeCommand dispatches ONLY an imperative command that LEADS with
     // a generate verb; everything else stays in the text stream (no wrong render / no wrong charge).
     const chatIntent = mode === 'chat' && text && isGenerativeCommand(text) ? detectIntent(text) : null;
+    // ⚠️ FOUR LIVE SERVICES HAD NO NATURAL-LANGUAGE PATH AT ALL. Montage, Dubbing, Presentation and 3D
+    // were reachable only by clicking them in the mode menu — typing "dub this video into Russian" or
+    // "make me a 10-slide deck" produced a conversational reply and nothing else, even though all four
+    // carry live: true and stable endpoints. The chat could TALK about every service and ACT on three.
+    //
+    // This opens the service's panel PREFILLED with whatever the sentence specified. It deliberately does
+    // NOT auto-submit: these all spend credits, and "it started rendering because of a sentence I typed"
+    // is not a recoverable surprise. Routing is conservative by construction (see lib/chat/studioIntent):
+    // a question about a service never opens its form.
+    const studio = mode === 'chat' ? detectStudioIntent(text) : null;
+    if (studio) {
+      if (studio.service === 'avatar') {
+        // Avatar was RECOGNISED and then dropped: detectIntent scores avatar_generation at 0.85, the
+        // dispatch block below has branches for image and music only, and nothing consumed the verdict —
+        // so "make me an avatar" cleared the gate and fell silently through to plain text.
+        setMode('lipsync');
+        setOptionsOpen(true);
+      } else {
+        setPanelService(studio.service as PanelService);
+        setStudioPrefill(studio.params);
+      }
+      const label = SERVICE_LABEL[studio.service]?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? studio.service;
+      setMessages((prev) => [...prev,
+        { role: 'user', text },
+        { role: 'assistant', text: locale === 'en' ? `Opened **${label}** with what you described — review the settings and start it when you're ready.`
+          : locale === 'ru' ? `Открыл **${label}** с вашими параметрами — проверьте настройки и запустите, когда будете готовы.`
+          : `გავხსენი **${label}** შენი აღწერით — გადახედე პარამეტრებს და დაიწყე, როცა მზად იქნები.` },
+      ]);
+      setInput(''); setAttachments([]); stopDictationEcho();
+      return;
+    }
+
     if (chatIntent && chatIntent.confidence >= 0.7) {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
       if (chatIntent.intent === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
@@ -7684,7 +7733,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <ServiceParamsPanel
             service={panelService}
             locale={locale}
-            onClose={() => setPanelService(null)}
+            prefill={studioPrefill}
+            onClose={() => { setPanelService(null); setStudioPrefill(undefined); }}
             // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
             // separately — one entry, both depths of editing.
             // Straight into the VIDEO workspace. Choosing Montage and pressing "full editor" has already
@@ -7750,7 +7800,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {modeMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
-                  <div role="menu" className="absolute bottom-full right-0 z-20 mb-2 w-48 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+                  {/* ⚠️ THIS WALKED OFF THE LEFT EDGE ON A SMALL PHONE. `right-0` anchors the menu to the
+                      MODE BUTTON, which is not at the viewport edge — the mic, live-voice chip and send
+                      button all sit to its right. At 320px the button's right edge lands around 174px,
+                      so a 192px-wide menu starts at roughly -18 and its first characters are simply gone.
+                      `max-w-[calc(100vw-1.5rem)]` never helped because it caps WIDTH (192 < 296 at 320px)
+                      and the defect is POSITION. Nudged back inside with a measured offset — CSS alone
+                      cannot express "stay within the viewport" for an element anchored to a mid-row
+                      element, and the offset is recomputed on open, resize and orientation change. */}
+                  <div
+                    role="menu"
+                    {...modeMenuClamp.props}
+                    className="absolute bottom-full right-0 z-20 mb-2 w-48 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl"
+                  >
                     {MENU_MODES.map(({ id, Icon, key: lk }) => (
                       <button
                         key={id}
@@ -7783,7 +7845,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           disabled={!svc.live}
                           onClick={() => {
                             setModeMenuOpen(false);
-                            if (inline) setPanelService(svc.id as PanelService);
+                            if (inline) { setStudioPrefill(undefined); setPanelService(svc.id as PanelService); }
                             else router.push(serviceHref(svc, locale));
                           }}
                           className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
