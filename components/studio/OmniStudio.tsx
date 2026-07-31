@@ -20,6 +20,7 @@ import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
+import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
@@ -5144,6 +5145,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // settles, which on a fast pass is effectively immediate.
       let inFlightP: Promise<void> | null = null;
       let failStreak = 0;
+      // Which chunk the last INTERIM pass ran at. See lib/voice/interimCadence: passes back off as the
+      // clip grows, because each one re-uploads and re-decodes the whole clip from the start.
+      let lastInterimChunk = 0;
       let stopped = false;
 
       // HANDS-FREE silence auto-stop: watch the live mic level and, once the user has spoken and then goes
@@ -5235,7 +5239,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         inFlightP = run();
         try { await inFlightP; } finally { inFlightP = null; }
       };
-      rec.ondataavailable = (e) => { if (e.data.size) { chunks.push(e.data); if (!stopped) void transcribeSoFar(); } };
+      rec.ondataavailable = (e) => {
+        if (!e.data.size) return;
+        chunks.push(e.data);
+        if (stopped) return;
+        // ⚠️ THIS USED TO TRANSCRIBE ON EVERY SINGLE CHUNK, and every pass re-uploaded the ENTIRE clip
+        // (chunks[0] holds the container header, so the accumulated blob is the only decodable form).
+        // Upload size and decode cost therefore grew with the length of the recording while the tick
+        // rate stayed fixed at 1.2s — total work rising with the SQUARE of how long you speak. The
+        // interim text fell steadily further behind the speaker and then jumped, and already-settled
+        // words could change under the cursor because the whole clip was re-decoded each time.
+        if (!shouldRunInterim(chunks.length, lastInterimChunk)) return;
+        lastInterimChunk = chunks.length;
+        void transcribeSoFar();
+      };
       rec.onstop = async () => {
         stopped = true;
         stopSilenceWatch();

@@ -51,7 +51,13 @@ export const SERVICE_CATALOGUE: readonly ServiceEntry[] = [
   {
     id: 'image', icon: '🖼', live: true, target: { kind: 'hash', hash: 'omni' },
     name: { ka: 'სურათი', en: 'Image', ru: 'Изображение' },
-    tagline: { ka: 'Imagen 4 გენერაცია', en: 'Imagen 4 generation', ru: 'Генерация Imagen 4' },
+    // ⚠️ THIS SAID "Imagen 4 generation" AND IT WAS NOT TRUE. This tile opens OmniStudio, whose image
+    // requests POST to /api/nanobanana/image — a cascade of NanoBananaAI → Grok → FLUX with no Imagen
+    // leg at all (NanoBananaAI is a third-party service at api.nanobananaapi.ai, not Google, despite
+    // the name). Imagen IS wired, but only inside ServiceManager, which this path never reaches.
+    // Naming the engine is good; naming the wrong one tells the user their picture came from somewhere
+    // it did not. Describing the OUTPUT is honest whichever engine wins the cascade.
+    tagline: { ka: 'ფოტორეალისტური გენერაცია', en: 'Photorealistic generation', ru: 'Фотореалистичная генерация' },
   },
   {
     id: 'video', icon: '🎬', live: true, target: { kind: 'hash', hash: 'film' },

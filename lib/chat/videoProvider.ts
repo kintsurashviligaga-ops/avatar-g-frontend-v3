@@ -35,13 +35,43 @@ export function hasReplicateToken(env: NodeJS.ProcessEnv = process.env): boolean
   return false;
 }
 
+/** Gemini keys, in the order the rest of the app resolves them. */
+export const GEMINI_API_KEY_ALIASES = ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'] as const;
+
 /**
- * True iff at least one video render provider is configured — the LTX director
- * key (any alias) OR the Replicate failover token. When this is false NO clip
- * can ever render, so the pipeline must halt before spending anything.
+ * True iff Veo can render — a Gemini key is present and Veo is not explicitly killed.
+ *
+ * Mirrors `hasGeminiVeoProvider()` in lib/ai/geminiVeo.ts, re-implemented here against an injectable
+ * `env` because this module's whole contract is that every predicate is testable with a fake
+ * environment. The kill-switch rule is the shared one: anything but 0/false/no/off means enabled.
+ */
+export function hasGeminiVeoKey(env: NodeJS.ProcessEnv = process.env): boolean {
+  const flag = (env.GEMINI_VEO_ENABLED ?? '').trim().toLowerCase();
+  if (flag === '0' || flag === 'false' || flag === 'no' || flag === 'off') return false;
+  for (const name of GEMINI_API_KEY_ALIASES) {
+    if ((env[name] ?? '').trim()) return true;
+  }
+  return false;
+}
+
+/**
+ * True iff at least one video render provider is configured.
+ *
+ * ⚠️ THIS DID NOT COUNT VEO, AND THAT IS A TRAP FOR ANYONE MOVING TO A GEMINI-ONLY SETUP. The predicate
+ * was `hasLtxApiKey(env) || hasReplicateToken(env)`, while Veo has been the PRIMARY clip engine for some
+ * time (ServiceManager tries it before Runway/Kling/LTX, live-by-default on a Gemini key alone). So on a
+ * config with a Gemini key and no Replicate/LTX token — exactly what "remove the legacy engines"
+ * produces — filmComposite's guard fires first:
+ *
+ *   if (!hasVideoProvider()) return { …, status: 'skipped', … }
+ *
+ * and EVERY scene is skipped before Veo is ever asked. The film comes back empty with no error naming a
+ * cause, on a configuration that can in fact render perfectly well. The comment above that guard warns
+ * about precisely this shape of mistake for the LTX/Replicate pair ("re-creating the ~38%
+ * silent-skip-after-spend trap") — Veo was simply never added when it became primary.
  */
 export function hasVideoProvider(env: NodeJS.ProcessEnv = process.env): boolean {
-  return hasLtxApiKey(env) || hasReplicateToken(env);
+  return hasGeminiVeoKey(env) || hasLtxApiKey(env) || hasReplicateToken(env);
 }
 
 /** Names-only presence snapshot for diagnostics / the client status dot. */
