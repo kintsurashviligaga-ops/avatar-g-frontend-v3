@@ -1,0 +1,189 @@
+'use client';
+
+import { Check, Loader2 } from 'lucide-react';
+
+/**
+ * THE loading card. One shape for every service that makes the user wait.
+ *
+ * ⚠️ WHY THIS MOVED OUT OF OmniStudio. It lived there and served exactly four kinds — image, music,
+ * video, lipsync — so those four got a real progress experience (a big live percentage, the stage being
+ * worked on, a checklist of what is done and what is left, and an estimate of the time remaining) while
+ * montage, dubbing, presentation, 3D and the editor got a thin indeterminate bar with a single label,
+ * or nothing at all. Same product, same wait, two completely different answers to "is this working?".
+ *
+ * A wait with no feedback is indistinguishable from a hang. That is the whole reason these renders felt
+ * broken: a montage that takes four minutes behind a 2px bar with no number reads as frozen long before
+ * it reads as slow.
+ *
+ * TWO HONESTY RULES, both load-bearing:
+ *
+ *  1. THE BAR NEVER REACHES 100% ON A GUESS. It eases asymptotically toward 95% and completes only when
+ *     the caller swaps the card for the real asset. A bar that hits 100% and then sits there is worse
+ *     than no bar — it says "done" while the user waits, and the next thing they do is reload and lose
+ *     the render.
+ *  2. THE ESTIMATE IS PACED TO THE REAL WALL-CLOCK, per service. A number that expires while the job is
+ *     still running teaches the user to distrust every number the product shows them.
+ *
+ * When the pipeline reports its own stage (the v2 services publish one to the job row), that text takes
+ * over the headline — a real stage beats an interpolated guess.
+ */
+
+export type ProgressKind =
+  | 'image' | 'music' | 'video' | 'lipsync'
+  | 'remix' | 'montage' | 'dubbing' | 'presentation' | 'model3d' | 'editor';
+
+type Lang = 'ka' | 'en' | 'ru';
+
+/**
+ * Stage narration per service.
+ *
+ * These are what the user reads while waiting, so they name the WORK, not the implementation: "mixing
+ * the voices", not "ffmpeg pass 2". Each list is ordered and the card walks it in step with the bar.
+ */
+export const STAGES: Record<Lang, Record<ProgressKind, string[]>> = {
+  ka: {
+    image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
+    music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
+    video: ['სცენარს ვშლი…', 'აუდიო & SFX…', 'ხმა…', 'ვიდეო კადრები…', 'მასტერინგი…', 'გრაფიკა…'],
+    lipsync: ['ფოტოს ვამზადებ…', 'ავატარი ცოცხლდება…', 'ვასრულებ…'],
+    remix: ['ვიდეოს ვამზადებ…', 'ცვლილებას ვამუშავებ…', 'ვასრულებ…'],
+    montage: ['კადრებს ვამზადებ…', 'გადასვლებს ვაწყობ…', 'ხმას ვურევ…', 'ვასრულებ…'],
+    dubbing: ['ხმას ვაცალკევებ…', 'ტექსტს ვშიფრავ…', 'ვთარგმნი…', 'ხმას ვქმნი…', 'ვასინქრონებ…', 'ვურევ…'],
+    presentation: ['გეგმას ვაწყობ…', 'სლაიდებს ვწერ…', 'ვხატავ…', 'ვასრულებ…'],
+    model3d: ['რეფერენსს ვამზადებ…', 'ფორმას ვაშენებ…', 'ტექსტურას ვადებ…', 'ვასრულებ…'],
+    editor: ['ფაილებს ვამზადებ…', 'მონტაჟს ვაწყობ…', 'ვარენდერებ…', 'ვასრულებ…'],
+  },
+  en: {
+    image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
+    music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
+    video: ['Scripting…', 'Audio SFX…', 'Voice…', 'Video clips…', 'Mastering…', 'Graphics…'],
+    lipsync: ['Preparing the photo…', 'Bringing the avatar to life…', 'Finishing up…'],
+    remix: ['Preparing the video…', 'Applying the change…', 'Finishing up…'],
+    montage: ['Preparing the shots…', 'Building the transitions…', 'Mixing the audio…', 'Finishing up…'],
+    dubbing: ['Extracting the audio…', 'Transcribing…', 'Translating…', 'Synthesising the voice…', 'Syncing…', 'Mixing…'],
+    presentation: ['Outlining…', 'Writing the slides…', 'Rendering…', 'Finishing up…'],
+    model3d: ['Preparing the reference…', 'Building the mesh…', 'Texturing…', 'Finishing up…'],
+    editor: ['Uploading the clips…', 'Assembling the edit…', 'Rendering…', 'Finishing up…'],
+  },
+  ru: {
+    image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
+    music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
+    video: ['Сценарий…', 'Аудио и SFX…', 'Голос…', 'Видео-клипы…', 'Мастеринг…', 'Графика…'],
+    lipsync: ['Готовлю фото…', 'Оживляю аватар…', 'Завершаю…'],
+    remix: ['Готовлю видео…', 'Применяю изменение…', 'Завершаю…'],
+    montage: ['Готовлю кадры…', 'Строю переходы…', 'Свожу звук…', 'Завершаю…'],
+    dubbing: ['Извлекаю звук…', 'Расшифровываю…', 'Перевожу…', 'Синтезирую голос…', 'Синхронизирую…', 'Свожу…'],
+    presentation: ['Составляю план…', 'Пишу слайды…', 'Рисую…', 'Завершаю…'],
+    model3d: ['Готовлю референс…', 'Строю модель…', 'Накладываю текстуру…', 'Завершаю…'],
+    editor: ['Загружаю клипы…', 'Собираю монтаж…', 'Рендерю…', 'Завершаю…'],
+  },
+};
+
+/**
+ * Wall-clock target per service, in seconds — what the "remaining" figure is paced against.
+ *
+ * These are MEASURED, not guessed, and that matters: an estimate that runs out while the job continues
+ * is worse than showing none, because it teaches the user that the product's numbers are decoration.
+ * The 30s film is the extreme case at roughly seven minutes end to end (clip generation plus the ffmpeg
+ * montage), so its bar has to crawl rather than finish early and stall.
+ */
+export const PROGRESS_TARGET: Record<ProgressKind, number> = {
+  image: 65,
+  music: 150,
+  video: 440,
+  lipsync: 70,
+  remix: 120,
+  montage: 200,   // conform pass per source + the N-input stitch + the music mux
+  dubbing: 280,   // seven legs, one TTS call per line of dialogue
+  presentation: 140, // outline + up to 12 sequential image calls + rasterisation
+  model3d: 420,   // reconstruction is the slowest thing in the product
+  editor: 150,
+};
+
+/** m:ss — exported because the composer's inline status line formats the same clock. */
+export function fmtClock(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function GenerationProgress({
+  kind, elapsed, status, locale, targetSec, pct: pctOverride, compact,
+}: {
+  kind: ProgressKind;
+  /** Seconds since the run started. */
+  elapsed: number;
+  /** A stage the PIPELINE reported — takes over the headline, because it is real. */
+  status?: string;
+  locale: Lang;
+  /** Override the eased target, e.g. a heavier image tier. */
+  targetSec?: number;
+  /** A real server-reported percentage. Beats the time-based estimate when present. */
+  pct?: number;
+  /** Drops the stage checklist — for tight surfaces like an in-chat panel. */
+  compact?: boolean;
+}) {
+  const stages = STAGES[locale][kind];
+  const target = targetSec ?? PROGRESS_TARGET[kind];
+  // Eased growth: fast at first, asymptotic toward 95%, so it never "finishes" ahead of the asset.
+  const eased = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
+  const pct = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0
+    ? Math.min(99, Math.round(pctOverride))
+    : eased;
+  // Video's bands are deliberately uneven — clip generation dominates 50–85% of the real time, so an
+  // even split would park the label on the wrong stage for minutes.
+  const stageIdx = kind === 'video'
+    ? (pct < 20 ? 0 : pct < 35 ? 1 : pct < 50 ? 2 : pct < 85 ? 3 : pct < 95 ? 4 : 5)
+    : Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
+  const headline = status && status.trim() ? status.trim() : stages[stageIdx];
+  const remaining = Math.max(0, Math.round(target - elapsed));
+  const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
+
+  return (
+    <div className="w-full max-w-[min(86vw,440px)] space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1">
+            <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
+            <span className="text-[17px] font-semibold text-app-muted">%</span>
+          </div>
+          <span className="mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium text-app-accent">
+            <Loader2 size={13} className="shrink-0 animate-spin" />
+            <span className="truncate">{headline}</span>
+          </span>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted/70">{remLabel}</p>
+          <p className="text-[15px] font-semibold tabular-nums text-app-text">{remaining > 0 ? `~${fmtClock(remaining)}` : '…'}</p>
+        </div>
+      </div>
+
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-border/15">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-app-accent/75 to-app-accent transition-[width] duration-700 ease-out"
+          style={{ width: `${Math.max(6, pct)}%` }}
+        />
+      </div>
+
+      {!compact && (
+        <ul className="space-y-1.5 pt-0.5">
+          {stages.map((s, i) => {
+            const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';
+            return (
+              <li key={i} className={`flex items-center gap-2.5 text-[12.5px] ${state === 'pending' ? 'text-app-muted/45' : state === 'active' ? 'font-medium text-app-text' : 'text-app-muted'}`}>
+                {state === 'done' ? (
+                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Check size={12} className="text-app-accent" /></span>
+                ) : state === 'active' ? (
+                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Loader2 size={12} className="animate-spin text-app-accent" /></span>
+                ) : (
+                  <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center"><span className="h-[13px] w-[13px] rounded-full border border-app-border/30" /></span>
+                )}
+                <span className="truncate">{s}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}

@@ -25,6 +25,7 @@ import {
   ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar, Dropzone,
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
+import { GenerationProgress } from './ui/GenerationProgress';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 
@@ -125,6 +126,14 @@ const COPY = {
  * Showing those raw would be worse than showing nothing, so each is given a human sentence. An unknown
  * stage falls through to the raw name rather than to silence — a new leg should still be visible.
  */
+/** Each panel service's progress vocabulary and wall-clock pacing. */
+const PROGRESS_KIND = {
+  montage: 'montage',
+  dubbing: 'dubbing',
+  presentation: 'presentation',
+  model3d: 'model3d',
+} as const;
+
 const STAGE_LABELS: Record<Lang, Record<string, string>> = {
   ka: {
     queued: 'რიგში…',
@@ -188,6 +197,16 @@ export function ServiceParamsPanel({
   // was already finished, and every one of those stages went to a row nobody was watching. The client
   // now NAMES the job up front and polls it, turning "Working…" into the leg actually running.
   const [stage, setStage] = useState<{ label: string; pct: number } | null>(null);
+  /**
+   * Seconds since Run was pressed. The progress card needs a real clock to pace its estimate against —
+   * these panels never tracked one, so they could not show elapsed time or a remaining figure at all.
+   */
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!busy) { setElapsed(0); return; }
+    const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [busy]);
 
   // Montage — clips carry a stable uid and the source's true duration; MontageEditor owns the UI.
   // Starts EMPTY: two blank rows were placeholders for a form, but this surface asks for files.
@@ -479,10 +498,21 @@ export function ServiceParamsPanel({
       </PrimaryButton>
 
       {busy && (
-        <div className="mt-2 space-y-1.5">
-          <ProgressBar
-            {...(stage ? { pct: stage.pct } : {})}
-            label={stage ? (STAGE_LABELS[lang][stage.label] ?? stage.label) : t.working}
+        <div className="mt-2.5 space-y-1.5">
+          {/* THE SAME CARD the chat shows for image/music/video. These panels used to get a 2px
+              indeterminate bar with one label and no number — for renders that take two to seven
+              minutes. A wait with no feedback is indistinguishable from a hang, which is exactly why
+              montage and dubbing "felt broken". `compact` drops the stage checklist because this
+              surface is inside the chat box, but the live percentage, the running stage and the
+              estimated remaining time are the whole point and stay.
+              A server-reported pct/stage overrides the time estimate whenever the pipeline sends one. */}
+          <GenerationProgress
+            kind={PROGRESS_KIND[service]}
+            locale={lang}
+            elapsed={elapsed}
+            compact
+            {...(stage?.pct ? { pct: stage.pct } : {})}
+            {...(stage ? { status: STAGE_LABELS[lang][stage.label] ?? stage.label } : {})}
           />
           <p className="text-center text-[11px] text-app-muted">{t.keepOpen}</p>
         </div>

@@ -15,6 +15,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
+import { GenerationProgress, PROGRESS_TARGET, fmtClock } from '@/components/studio/ui/GenerationProgress';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -247,115 +248,6 @@ const COPY: Record<Lang, {
 // percentage, so we narrate the work as human-legible stages while an eased,
 // time-based bar advances — the "loading process" a modern chatbot shows. (Video
 // already streams its own live status from the pipeline, which overrides these.)
-const STAGES: Record<Lang, Record<'image' | 'music' | 'video' | 'lipsync', string[]>> = {
-  ka: {
-    image: ['აღწერას ვიაზრებ…', 'კადრს ვხატავ…', 'დეტალებს ვამატებ…', 'ვასრულებ…'],
-    music: ['იდეას ვამუშავებ…', 'მელოდიას ვაკომპონებ…', 'ხმებს ვურევ…', 'ვასრულებ…'],
-    video: ['სცენარს ვშლი…', 'აუდიო & SFX…', 'ხმა…', 'ვიდეო კადრები…', 'მასტერინგი…', 'გრაფიკა…'],
-    lipsync: ['ფოტოს ვამზადებ…', 'ავატარი ცოცხლდება…', 'ვასრულებ…'],
-  },
-  en: {
-    image: ['Reading your prompt…', 'Painting the frame…', 'Adding details…', 'Finishing up…'],
-    music: ['Shaping the idea…', 'Composing the melody…', 'Mixing the voices…', 'Finishing up…'],
-    video: ['Scripting…', 'Audio SFX…', 'Voice…', 'Video clips…', 'Mastering…', 'Graphics…'],
-    lipsync: ['Preparing the photo…', 'Bringing the avatar to life…', 'Finishing up…'],
-  },
-  ru: {
-    image: ['Читаю запрос…', 'Рисую кадр…', 'Добавляю детали…', 'Завершаю…'],
-    music: ['Формирую идею…', 'Сочиняю мелодию…', 'Свожу голоса…', 'Завершаю…'],
-    video: ['Сценарий…', 'Аудио и SFX…', 'Голос…', 'Видео-клипы…', 'Мастеринг…', 'Графика…'],
-    lipsync: ['Готовлю фото…', 'Оживляю аватар…', 'Завершаю…'],
-  },
-};
-
-// Rough wall-clock targets (seconds) that drive the eased progress bar toward ~95%
-// without ever claiming completion before the asset actually returns.
-const PROGRESS_TARGET: Record<'image' | 'music' | 'video' | 'lipsync', number> = {
-  // Pace each bar to the REAL wall-clock so it never hits 95% then sits frozen
-  // (which read as "broken / not generating"). The 30s film is the big one: six
-  // LTX clips (~4–5 min) + the FFmpeg montage (~3 min) ≈ 7–8 min end-to-end —
-  // measured live — so the bar must crawl across ~7 min, not finish at ~2 min.
-  image: 65, music: 150, video: 440, lipsync: 70,
-};
-
-function fmtClock(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-/**
- * GenerationProgress — the live "loading process" card shown in the pending
- * assistant bubble for image / music / video / lip-sync. An eased, time-based bar
- * (never a fake 100%) + narrated stage labels + an elapsed clock. For video the
- * pipeline's own streamed status (`status`) takes over the headline line.
- */
-function GenerationProgress({ kind, elapsed, status, locale, targetSec }: {
-  kind: 'image' | 'music' | 'video' | 'lipsync';
-  elapsed: number;
-  status?: string;
-  locale: Lang;
-  /** Override the eased-bar target (s) — e.g. per image resolution tier. */
-  targetSec?: number;
-}) {
-  const stages = STAGES[locale][kind];
-  const target = targetSec ?? PROGRESS_TARGET[kind];
-  // Eased growth — fast at first, asymptotic toward 95% so it never "finishes"
-  // ahead of the real asset. Completes only when the bubble swaps to media.
-  const pct = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
-  // PHASE 2 L4 — video uses the explicit 6-phase bands (uneven on purpose:
-  // clip-gen dominates 50-85%); other kinds keep the even time-based split.
-  const stageIdx = kind === 'video'
-    ? (pct < 20 ? 0 : pct < 35 ? 1 : pct < 50 ? 2 : pct < 85 ? 3 : pct < 95 ? 4 : 5)
-    : Math.min(stages.length - 1, Math.floor((pct / 100) * stages.length));
-  const headline = status && status.trim() ? status.trim() : stages[stageIdx];
-  const remaining = Math.max(0, Math.round(target - elapsed));
-  const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
-  return (
-    <div className="w-[min(86vw,440px)] space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]">
-      {/* Big live % + current stage + estimated time remaining — legible at a glance. */}
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-1">
-            <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
-            <span className="text-[17px] font-semibold text-app-muted">%</span>
-          </div>
-          <span className="mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium text-app-accent">
-            <Loader2 size={13} className="shrink-0 animate-spin" />
-            <span className="truncate">{headline}</span>
-          </span>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted/70">{remLabel}</p>
-          <p className="text-[15px] font-semibold tabular-nums text-app-text">{remaining > 0 ? `~${fmtClock(remaining)}` : '…'}</p>
-        </div>
-      </div>
-      {/* Thicker gradient progress bar — never a fake 100% before the asset returns. */}
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-border/15">
-        <div className="h-full rounded-full bg-gradient-to-r from-app-accent/75 to-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(6, pct)}%` }} />
-      </div>
-      {/* Stage checklist — done ✓ · active ⟳ · pending ○ — in soft icon badges. */}
-      <ul className="space-y-1.5 pt-0.5">
-        {stages.map((s, i) => {
-          const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';
-          return (
-            <li key={i} className={`flex items-center gap-2.5 text-[12.5px] ${state === 'pending' ? 'text-app-muted/45' : state === 'active' ? 'font-medium text-app-text' : 'text-app-muted'}`}>
-              {state === 'done' ? (
-                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Check size={12} className="text-app-accent" /></span>
-              ) : state === 'active' ? (
-                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-app-accent/15"><Loader2 size={12} className="animate-spin text-app-accent" /></span>
-              ) : (
-                <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center"><span className="h-[13px] w-[13px] rounded-full border border-app-border/30" /></span>
-              )}
-              <span className="truncate">{s}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 /**
  * StoryboardFrame — one scene tile's media. Shows a spinner WHILE the frame image
  * loads, the image once it paints (fade-in), and a graceful icon — never a broken-
