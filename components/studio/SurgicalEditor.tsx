@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
+import { easedPct } from './ui/GenerationProgress';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
 import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
@@ -806,7 +807,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     if (!clip) { flash(t.needClip); return; }
     if (!hasMutations || exporting) return;
     setExporting(true); setExportPct(6); setResult(null); setSuccessAsset(null);
-    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 12)) : p)), 400);
+    const t0 = Date.now();
+    // ⚠️ WAS AN INCREMENTING TICKER THAT CONVERGED ON 90 AND THEN STOPPED. Once there it sat
+    // motionless for the rest of the render — indistinguishable from a crash, and the natural
+    // response to that is a reload, which loses the export. Driven by ELAPSED TIME it keeps
+    // easing toward 95 for as long as the job actually runs, and can never freeze on a number.
+    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 150)), 400);
     try {
       const byId = new Map(clips.map((c) => [c.id, c]));
       if (isPhoto) {
@@ -891,7 +897,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     if (!maskPainted || !c) { flash(t.paintFirst); return; }
     setExporting(true); setExportPct(20); setResult(null); setSuccessAsset(null);
     // Progress TICK so the bar keeps moving during the (long) Replicate poll instead of appearing frozen at 25%.
-    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 16)) : p)), 600);
+    const t0 = Date.now();
+    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 600);
     try {
       const maskUrl = c.toDataURL('image/png');
       const path = pathOf(await uploadClip(clip.file));
@@ -910,7 +917,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const runPhotoAction = useCallback(async (action: 'remove_bg' | 'upscale' | 'face_restore' | 'colorize') => {
     if (!clip || exporting) return;
     setExporting(true); setExportPct(15); setSuccessAsset(null);
-    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 14)) : p)), 500);
+    const t0 = Date.now();
+    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 500);
     try {
       // CHAIN: run on the last AI result if present, else the cached original (upload once, then reuse).
       let src = chainPath;
@@ -940,7 +948,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const runPhotoChain = useCallback(async (actions: string[]) => {
     if (!clip || exporting || actions.length < 2) return;
     setExporting(true); setExportPct(10); setSuccessAsset(null);
-    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 18)) : p)), 600);
+    const t0 = Date.now();
+    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 600);
     try {
       let src = chainPath;
       if (!src) { src = originalPath ?? pathOf(await uploadClip(clip.file)); if (src && !originalPath) setOriginalPath(src); }
@@ -980,7 +989,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const runAudioAI = useCallback(async (action: 'vocal_isolation' | 'splitter') => {
     if (!clip || exporting) return;
     setExporting(true); setExportPct(12); setSuccessAsset(null); setSecondaryAudio(null);
-    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 16)) : p)), 600);
+    const t0 = Date.now();
+    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 120)), 600);
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }
@@ -1008,7 +1018,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     if (!clip || exporting) return;
     if (!audioHasEdit) { flash(t.editHint); return; }
     setExporting(true); setExportPct(15); setSuccessAsset(null); setSecondaryAudio(null);
-    const tick = window.setInterval(() => setExportPct((p) => (p < 90 ? p + Math.max(1, Math.round((90 - p) / 12)) : p)), 350);
+    const t0 = Date.now();
+    const tick = window.setInterval(() => setExportPct(easedPct((Date.now() - t0) / 1000, 150)), 350);
     try {
       const src = await audioSource();
       if (!src) { flash(t.failed); return; }

@@ -91,7 +91,12 @@ export const PROGRESS_TARGET: Record<ProgressKind, number> = {
   image: 65,
   music: 150,
   video: 440,
-  lipsync: 70,
+  // ⚠️ WAS 70. LipsyncStudio's own comment records the measurement — "a live production test showed
+  // SadTalker renders take ~6 min (cold start + render)" — and both surfaces poll for TEN minutes. At
+  // 70s the bar pegged at 95% after about a minute and a half and the remaining figure hit zero, then
+  // the user waited another four minutes staring at a full bar. That is the single most convincing way
+  // to make a working render look hung.
+  lipsync: 360,
   remix: 120,
   montage: 200,   // conform pass per source + the N-input stitch + the music mux
   dubbing: 280,   // seven legs, one TTS call per line of dialogue
@@ -99,6 +104,18 @@ export const PROGRESS_TARGET: Record<ProgressKind, number> = {
   model3d: 420,   // reconstruction is the slowest thing in the product
   editor: 150,
 };
+
+/**
+ * The eased curve the card draws, exported so any surface can pace a bar the same way.
+ *
+ * Asymptotic toward 95: fast at the start, never arriving. That "never arriving" is the point — a bar
+ * that reaches its ceiling and stops incrementing looks IDENTICAL to a crashed render, and the user's
+ * next move is to reload and lose the work.
+ */
+export function easedPct(elapsedSec: number, targetSec: number): number {
+  const t = Math.max(1, targetSec);
+  return Math.min(95, Math.round((1 - Math.exp(-Math.max(0, elapsedSec) / (t / 2.4))) * 100));
+}
 
 /** m:ss — exported because the composer's inline status line formats the same clock. */
 export function fmtClock(sec: number): string {
@@ -126,7 +143,7 @@ export function GenerationProgress({
   const stages = STAGES[locale][kind];
   const target = targetSec ?? PROGRESS_TARGET[kind];
   // Eased growth: fast at first, asymptotic toward 95%, so it never "finishes" ahead of the asset.
-  const eased = Math.min(95, Math.round((1 - Math.exp(-elapsed / (target / 2.4))) * 100));
+  const eased = easedPct(elapsed, target);
   const pct = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0
     ? Math.min(99, Math.round(pctOverride))
     : eased;

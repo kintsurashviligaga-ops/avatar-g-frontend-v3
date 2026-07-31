@@ -173,6 +173,66 @@ interface Result {
   referenceUrl?: string;
   slides?: Array<{ index: number; pngUrl: string }>;
   subtitlesUrl?: string | null;
+  /**
+   * Degradations the pipeline reported.
+   *
+   * ⚠️ ALL THREE ROUTES COMPUTE THESE AND THE PANEL READ NONE OF THEM. Every partial result was shown
+   * as a clean one. The worst case: a montage with "Music only" enabled whose music mux failed hands
+   * back a COMPLETELY SILENT video under a green success card — the route knew (`musicRequestedButMissing`)
+   * and said so, and the UI dropped it on the floor. A dub with dropped or untranslated lines, and a deck
+   * that fell back to a generated outline or lost its images, were presented the same way.
+   */
+  warnings?: {
+    musicRequestedButMissing?: boolean;
+    droppedLines?: number;
+    untranslatedLines?: number;
+    lipSyncSkipped?: boolean;
+    usedFallbackOutline?: boolean;
+    imagesMissing?: number;
+    imagesRequested?: boolean;
+  };
+}
+
+/**
+ * Turn the route's warning flags into sentences. Returns [] for a clean result, so the card stays
+ * quiet when there is genuinely nothing to say.
+ */
+function warningLines(w: Result['warnings'], lang: Lang): string[] {
+  if (!w) return [];
+  const L = {
+    ka: {
+      music: 'მუსიკა ვერ დაემატა — ვიდეო ხმის გარეშეა.',
+      dropped: (n: number) => `${n} სტრიქონი ვერ გაიხმოვანდა.`,
+      untranslated: (n: number) => `${n} სტრიქონი უთარგმნელი დარჩა.`,
+      lipsync: 'ტუჩების სინქრონი არ შესრულებულა.',
+      outline: 'გეგმა ავტომატურად შეიქმნა — მოდელმა ვერ დააბრუნა.',
+      images: (n: number) => `${n} სლაიდი სურათის გარეშეა.`,
+    },
+    en: {
+      music: 'The music could not be added — this video has no sound.',
+      dropped: (n: number) => `${n} line${n === 1 ? '' : 's'} could not be voiced.`,
+      untranslated: (n: number) => `${n} line${n === 1 ? '' : 's'} were left untranslated.`,
+      lipsync: 'Lip-sync was not applied.',
+      outline: 'The outline was generated automatically — the model did not return one.',
+      images: (n: number) => `${n} slide${n === 1 ? '' : 's'} have no image.`,
+    },
+    ru: {
+      music: 'Музыку не удалось добавить — видео без звука.',
+      dropped: (n: number) => `${n} строк не озвучено.`,
+      untranslated: (n: number) => `${n} строк осталось без перевода.`,
+      lipsync: 'Синхронизация губ не выполнена.',
+      outline: 'План создан автоматически — модель его не вернула.',
+      images: (n: number) => `${n} слайдов без изображения.`,
+    },
+  }[lang];
+  const out: string[] = [];
+  if (w.musicRequestedButMissing) out.push(L.music);
+  if (w.droppedLines && w.droppedLines > 0) out.push(L.dropped(w.droppedLines));
+  if (w.untranslatedLines && w.untranslatedLines > 0) out.push(L.untranslated(w.untranslatedLines));
+  if (w.lipSyncSkipped) out.push(L.lipsync);
+  if (w.usedFallbackOutline) out.push(L.outline);
+  if (w.imagesRequested && w.imagesMissing && w.imagesMissing > 0) out.push(L.images(w.imagesMissing));
+  return out;
 }
 
 export function ServiceParamsPanel({
@@ -527,6 +587,10 @@ export function ServiceParamsPanel({
 
       {result && (
         <div className="mt-2.5 space-y-2">
+          {/* Stated BEFORE the media, so a partial result is never mistaken for a clean one. */}
+          {warningLines(result.warnings, lang).map((line) => (
+            <Note key={line} tone="warn">{line}</Note>
+          ))}
           {result.videoUrl && (
             <>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

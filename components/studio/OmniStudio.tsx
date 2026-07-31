@@ -4691,7 +4691,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     genIdRef.current += 1;
     try { abortRef.current?.abort(); } catch { /* noop */ }
     abortRef.current = null;
+    // ⚠️ EVERY BUSY FLAG, not just `busy` — stopping used to BRICK THE STUDIO.
+    //
+    // `genActiveRef` is derived from `busy || storyboardBusy || remixBusy`, and the legacy single-render
+    // entry points bail on `if (busy || genActiveRef.current) return`. Stop cleared only `busy`, so
+    // pressing it during a remix left `remixBusy` true forever: the remix console stayed frozen on
+    // screen, and — far worse — every future generation of ANY kind silently returned at the guard.
+    // Nothing looked broken; the app simply stopped responding to the Send button, permanently, until
+    // a reload. A stop that does not fully stop is worse than no stop at all.
     setBusy(false);
+    setStoryboardBusy(false);
+    setRemixBusy(false);
+    setRemixBusyIdx(null);
     setMessages((prev) => {
       const next = [...prev];
       const last = next[next.length - 1];
