@@ -2348,14 +2348,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transitCharacterUrl, transitAudioUrl, transitStoryboard]);
 
-  // Track the composer's live height so the scroll-to-bottom FAB always floats just
-  // above it (a fixed 104px offset overlapped a multi-line / attachments / open-options composer).
+  // Track the composer's live height so anything floating at the bottom clears it.
+  //
+  // Two consumers: the scroll-to-bottom FAB (a fixed 104px offset used to overlap a multi-line /
+  // attachments / open-options composer), and — via the --composer-h CSS variable published below —
+  // the render tray, which lives in a Portal and cannot read this component's state.
+  //
+  // ⚠️ THE TRAY WAS LANDING ON THE COMPOSER. JobTray is `fixed bottom-3 right-3`, which is exactly
+  // where the composer sits, so while any render was active "Describe…" and the Options row were
+  // covered and unusable — to show progress the chat stream was ALREADY displaying inline. A constant
+  // offset cannot fix it either, because the composer grows as the text wraps.
   useEffect(() => {
     const el = composerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     // Bail on no-op churn — the observer fires on every frame of an auto-grow /
     // options-expand, but React only needs the height when it actually changes.
-    const measure = () => setComposerH((h) => (h === el.offsetHeight ? h : el.offsetHeight));
+    const measure = () => setComposerH((h) => {
+      const next = el.offsetHeight;
+      // Publish for out-of-tree consumers (the portalled render tray) on every real change.
+      document.documentElement.style.setProperty('--composer-h', `${next}px`);
+      return h === next ? h : next;
+    });
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     measure();

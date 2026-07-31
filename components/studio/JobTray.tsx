@@ -181,7 +181,16 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   const queuedCount = visible.filter((j) => j.status === 'queued').length;
 
   return (
-    <div className="pointer-events-auto fixed bottom-3 right-3 z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
+    <div
+      className="pointer-events-auto fixed right-3 z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      // ⚠️ ABOVE THE COMPOSER, NOT ON IT. This used to be `bottom-3`, which is precisely where the
+      // composer sits — so an active render covered "Describe…" and the Options row and made the input
+      // unreachable, while duplicating progress the chat already showed inline. --composer-h is
+      // published by OmniStudio from a ResizeObserver, because the composer grows as the text wraps and
+      // any fixed offset would be wrong at some height. The fallback keeps this correct on surfaces
+      // that mount the tray without a composer.
+      style={{ bottom: 'calc(var(--composer-h, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))' }}
+    >
       <div className="mb-2 flex items-center justify-between px-0.5">
         <p className="text-[12px] font-bold text-app-text">
           {t.title}
