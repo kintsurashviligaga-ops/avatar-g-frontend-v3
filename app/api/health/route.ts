@@ -25,6 +25,12 @@ interface HealthResponse {
   version: string;
   redis: 'connected' | 'unconfigured' | 'error';
   missing: string[];
+  /** Per-provider "is a key set" map. Booleans only — see providerReadiness for why this exists. */
+  providers?: Record<string, boolean>;
+  providers_missing?: string[];
+  providers_note?: string;
+  /** 'test' means no real payment can be taken, however healthy everything else looks. */
+  payments?: 'test' | 'live' | 'unset';
   message?: string;
   region?: string;
 }
@@ -137,6 +143,48 @@ async function verifyRedis(): Promise<
 }
 
 /**
+ * Which PROVIDER capabilities are configured. Booleans only — never a value, never a prefix.
+ *
+ * ⚠️ WHY THIS EXISTS. `missing` only covers CORE_REQUIRED_VARS: Supabase plus three URLs. So this
+ * endpoint answered `env:"valid"`, `missing:[]`, `status:"healthy"` on a deployment where every single
+ * AI provider key could be absent — a green light on a product that cannot generate anything.
+ *
+ * That false green hid a real production fault for a long time. Three consecutive calls to
+ * /api/chat/gemini on myavatar.ge all returned `provider:"anthropic"`, which is that route's
+ * LAST-RESORT fallback — so the production GEMINI_API_KEY is absent or invalid, and with it Veo
+ * (video), Imagen (images) and Lyria (music) are all silently running on their backups. Health said
+ * "healthy" throughout, and nothing anywhere said otherwise.
+ *
+ * THIS CANNOT PROVE A KEY IS VALID OR FUNDED — only that something is set. Said in the payload rather
+ * than implied, because `gemini: true` next to a chat that answers from Anthropic is exactly the kind
+ * of half-truth that cost the time above.
+ */
+function providerReadiness(): Record<string, boolean> {
+  const set = (n: string) => Boolean(process.env[n] && String(process.env[n]).trim().length > 0);
+  return {
+    // One key, four headline features: chat, Imagen, Lyria AND Veo.
+    gemini: set('GEMINI_API_KEY') || set('GOOGLE_GENERATIVE_AI_API_KEY'),
+    anthropic: set('ANTHROPIC_API_KEY'),
+    replicate: set('REPLICATE_API_TOKEN'),   // FLUX · Kling · SadTalker · TRELLIS · MusicGen · Demucs
+    nanobanana: set('NANOBANANA_API_KEY'),   // default image engine
+    elevenlabs: set('ELEVENLABS_API_KEY'),   // EVERY text-to-speech leg: narration, dubbing, voiceover
+    heygen: set('HEYGEN_API_KEY'),           // primary avatar engine
+    xai: set('XAI_API_KEY'),                 // image fallback leg
+    stripe: set('STRIPE_SECRET_KEY'),
+    resend: set('RESEND_API_KEY'),           // sign-up OTP email
+    sentry: set('SENTRY_DSN') || set('NEXT_PUBLIC_SENTRY_DSN'),
+  };
+}
+
+/** test vs live, from the key prefix. A site in test mode takes no real money. */
+function stripeMode(): 'test' | 'live' | 'unset' {
+  const k = process.env.STRIPE_SECRET_KEY ?? '';
+  if (k.startsWith('sk_live_')) return 'live';
+  if (k.startsWith('sk_test_')) return 'test';
+  return 'unset';
+}
+
+/**
  * GET /api/health
  * Public health check endpoint
  */
@@ -148,8 +196,14 @@ export async function GET() {
     const ts = Date.now();
     const version = getVersion();
     const region = process.env.VERCEL_REGION;
+    const providers = providerReadiness();
+    const providersMissing = Object.entries(providers).filter(([, v]) => !v).map(([k]) => k);
 
     const response: HealthResponse = {
+      providers,
+      providers_missing: providersMissing,
+      providers_note: 'configured-only — does NOT prove a key is valid or funded',
+      payments: stripeMode(),
       ok: true,
       commit: version,
       time: new Date(ts).toISOString(),
