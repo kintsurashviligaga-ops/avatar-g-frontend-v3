@@ -1759,10 +1759,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         </div>
       )}
 
-      {/* Bounded and wrapping. It was an unconstrained single line centred with -translate-x-1/2, which
-          was survivable while every message was one word — now that toasts carry a real sentence, an
-          unbounded line would run off BOTH edges of the screen. */}
-      {toast && <div className="pointer-events-none absolute bottom-20 left-1/2 z-30 max-w-[min(92vw,26rem)] -translate-x-1/2 whitespace-pre-line break-words rounded-lg bg-black/80 px-4 py-2 text-center text-[12px] leading-snug text-white shadow-lg">{toast}</div>}
+      {/* Bounded and wrapping. It was an unconstrained single line, survivable while every message was
+          one word — but a toast now carries a sentence, and an unbounded centred line runs off BOTH
+          edges. Centred by AUTO MARGINS rather than left-1/2 + -translate-x-1/2: an absolutely
+          positioned box offset to 50% can only shrink-to-fit inside the REMAINING half, which measured
+          187px of a 375px screen and wrapped a one-line message onto six. */}
+      {toast && <div className="pointer-events-none absolute inset-x-0 bottom-20 z-30 mx-auto w-fit max-w-[min(92vw,26rem)] whitespace-pre-line break-words rounded-lg bg-black/80 px-4 py-2 text-center text-[12px] leading-snug text-white shadow-lg">{toast}</div>}
     </div>
   );
 }
