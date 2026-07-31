@@ -41,6 +41,7 @@ const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
+  tabClips: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   transition: string; tCut: string; tCross: string; tFade: string;
@@ -75,6 +76,8 @@ const T: Record<Lang, Copy> = {
     selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ატვირთეთ აუდიო ფაილი ან მუსიკალური ტრეკი დასამუშავებლად', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
     returnChat: 'ჩატში დაბრუნება ფაილით',
     agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
+    tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
+    cropSingleOnly: 'ჩარჩო მუშაობს ერთ კლიპზე — თანმიმდევრობაში დარჩება მთლიანი კადრი.',
     detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
   },
   en: {
@@ -94,6 +97,8 @@ const T: Record<Lang, Copy> = {
     selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Upload an audio file or music track to process', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
     returnChat: 'Return to chat with asset',
     agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
+    tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
+    cropSingleOnly: 'Crop works on a single clip — a multi-clip sequence keeps the full frame.',
     detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
   },
   ru: {
@@ -113,6 +118,8 @@ const T: Record<Lang, Copy> = {
     selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Загрузите аудиофайл или музыкальный трек для обработки', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
     returnChat: 'Вернуться в чат с файлом',
     agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
+    tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
+    cropSingleOnly: 'Кадрирование работает с одним клипом — в последовательности кадр остаётся целиком.',
     detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
   },
 };
@@ -126,7 +133,27 @@ interface TextOverlay { text: string; position: OverlayPosition; fontSize: numbe
 /** One block in the export sequence — points at its OWN source clip; `transition` = blend FROM the previous block. */
 interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 
+type VideoTab = 'clips' | 'adjust' | 'filters' | 'crop';
+
 const NEUTRAL: Grade = { saturation: 100, contrast: 100, brightness: 100, temperature: 0 };
+
+/**
+ * One-tap looks, in the spirit of the native Filters tab. Each is just a preset of the SAME four grade
+ * values the sliders drive, so it costs no new server work and stays fully adjustable afterwards —
+ * pick a look, then fine-tune it in Adjust.
+ */
+const FILTERS: { id: string; label: string; grade: Grade }[] = [
+  { id: 'original',  label: 'Original',  grade: NEUTRAL },
+  { id: 'vivid',     label: 'Vivid',     grade: { saturation: 150, contrast: 118, brightness: 104, temperature: 8 } },
+  { id: 'dramatic',  label: 'Dramatic',  grade: { saturation: 88,  contrast: 155, brightness: 94,  temperature: -12 } },
+  { id: 'warm',      label: 'Warm',      grade: { saturation: 118, contrast: 105, brightness: 104, temperature: 55 } },
+  { id: 'cool',      label: 'Cool',      grade: { saturation: 105, contrast: 108, brightness: 100, temperature: -55 } },
+  { id: 'mono',      label: 'Mono',      grade: { saturation: 0,   contrast: 120, brightness: 102, temperature: 0 } },
+  { id: 'noir',      label: 'Noir',      grade: { saturation: 0,   contrast: 160, brightness: 88,  temperature: 0 } },
+  { id: 'silver',    label: 'Silvertone',grade: { saturation: 30,  contrast: 125, brightness: 104, temperature: -18 } },
+];
+const sameGrade = (a: Grade, b: Grade) =>
+  a.saturation === b.saturation && a.contrast === b.contrast && a.brightness === b.brightness && a.temperature === b.temperature;
 const isNeutral = (g: Grade) => g.saturation === 100 && g.contrast === 100 && g.brightness === 100 && g.temperature === 0;
 
 function gradeFilter(g: Grade): string {
@@ -283,6 +310,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const [bgPrompt, setBgPrompt] = useState('');
   const [crop, setCrop] = useState<Rect | null>(null);
   const [cropOn, setCropOn] = useState(false);
+  // iOS-style workspace tabs for the VIDEO lane. The controls used to be one long scroll; grouping them
+  // is what makes the editor readable on a phone, and it mirrors the native Video/Adjust/Filters/Crop bar.
+  const [vtab, setVtab] = useState<VideoTab>('clips');
   const [segments, setSegments] = useState<Segment[]>([]); // the export SEQUENCE (across clips)
   const [selectedSeg, setSelectedSeg] = useState(0);
 
@@ -341,6 +371,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   }, [filenameFor]);
 
   // Native share sheet (mobile) → clipboard-copy fallback (desktop / unsupported). A user cancel is a no-op.
+  /** VIDEO lane only: is this section on a tab other than the active one? Photo/audio keep one column. */
+  const vHide = useCallback((tab: VideoTab) => !isPhoto && !isAudio && vtab !== tab, [isPhoto, isAudio, vtab]);
+
   const shareAsset = useCallback(async (url: string) => {
     const nav = navigator as Navigator & { share?: (d: { url?: string; title?: string }) => Promise<void> };
     if (typeof nav.share === 'function') {
@@ -1111,8 +1144,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             )}
 
             {/* Tools */}
-            <div className="grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3">
-              {(isPhoto || cropAllowed) && <ToolButton icon={<Crop size={15} />} label={t.crop} active={cropOn} onClick={() => setCropOn((v) => !v)} />}
+            <div className={`grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 ${vHide('clips') ? 'hidden' : ''}`}>
+              {isPhoto && <ToolButton icon={<Crop size={15} />} label={t.crop} active={cropOn} onClick={() => setCropOn((v) => !v)} />}
               {!isPhoto && <ToolButton icon={<Scissors size={15} />} label={t.split} onClick={splitAtPlayhead} />}
               <ToolButton icon={<RotateCcw size={15} />} label={t.reset} onClick={resetDraft} />
             </div>
@@ -1157,8 +1190,34 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               </div>
             )}
 
-            {/* Color grading */}
-            <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+            {/* FILTERS tab — one-tap looks that write the SAME grade the Adjust sliders drive, so a look
+                is a starting point rather than a separate mode. */}
+            {!isPhoto && !isAudio && vtab === 'filters' && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {FILTERS.map((f) => {
+                  const on = sameGrade(grade, f.grade);
+                  return (
+                    <button key={f.id} type="button" onClick={() => setGrade(f.grade)}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl p-2 transition-all ${on ? 'ring-2 ring-app-accent' : 'ring-1 ring-app-border/15 hover:ring-app-accent/40'}`}>
+                      {/* Live thumbnail: the actual frame under the actual filter, not a swatch. */}
+                      <span className="h-12 w-full overflow-hidden rounded-lg bg-app-elevated">
+                        {clip?.kind === 'image' && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={clip.url} alt="" className="h-full w-full object-cover" style={{ filter: gradeFilter(f.grade) }} />
+                        )}
+                        {clip?.kind === 'video' && (
+                          <video src={clip.url} muted playsInline preload="metadata" className="h-full w-full object-cover" style={{ filter: gradeFilter(f.grade) }} />
+                        )}
+                      </span>
+                      <span className={`text-[10.5px] font-semibold ${on ? 'text-app-accent' : 'text-app-muted'}`}>{f.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Color grading → ADJUST tab (video lane); always shown for photo/audio. */}
+            <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('adjust') ? 'hidden' : ''}`}>
               <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.color}</span>
               <Slider icon={<Droplet size={13} />} label={t.saturation} min={0} max={200} value={grade.saturation} onChange={(v) => setGrade((g) => ({ ...g, saturation: v }))} />
               <Slider icon={<ContrastIcon size={13} />} label={t.contrast} min={0} max={200} value={grade.contrast} onChange={(v) => setGrade((g) => ({ ...g, contrast: v }))} />
@@ -1166,9 +1225,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <Slider icon={<Thermometer size={13} />} label={t.temperature} min={-100} max={100} value={grade.temperature} onChange={(v) => setGrade((g) => ({ ...g, temperature: v }))} />
             </div>
 
-            {/* Speed + audio-detach (VIDEO) */}
+            {/* Speed + audio-detach (VIDEO) → CLIPS tab */}
             {!isPhoto && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('clips') ? 'hidden' : ''}`}>
                 <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.speed}</span>
                 <div className="flex items-center gap-2">
                   {[0.5, 1, 1.5, 2].map((s) => (
@@ -1185,18 +1244,18 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               </div>
             )}
 
-            {/* Fade (VIDEO) */}
+            {/* Fade (VIDEO) → ADJUST tab */}
             {!isPhoto && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('adjust') ? 'hidden' : ''}`}>
                 <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.fade}</span>
                 <Slider label={t.fadeIn} min={0} max={5} step={0.1} value={fade.inSec} onChange={(v) => setFade((f) => ({ ...f, inSec: v }))} suffix="s" />
                 <Slider label={t.fadeOut} min={0} max={5} step={0.1} value={fade.outSec} onChange={(v) => setFade((f) => ({ ...f, outSec: v }))} suffix="s" />
               </div>
             )}
 
-            {/* Text overlay for the selected segment */}
+            {/* Text overlay for the selected segment → CLIPS tab */}
             {!isPhoto && sel && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('clips') ? 'hidden' : ''}`}>
                 <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.textOverlay}</span>
                 <input value={sel.textOverlay?.text ?? ''} onChange={(e) => setSegOverlay(selectedSeg, { text: e.target.value })} placeholder={t.overlayPh}
                   className="w-full rounded-lg bg-app-bg/40 px-3 py-2 text-[13px] text-app-text placeholder:text-app-muted focus:outline-none" />
@@ -1216,6 +1275,21 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                   <span className="w-20 shrink-0 text-[11.5px] text-app-text/80 sm:w-24">{t.oColor}</span>
                   <input type="color" value={sel.textOverlay?.fontColor ?? '#ffffff'} onChange={(e) => setSegOverlay(selectedSeg, { fontColor: e.target.value })} className="h-7 w-14 cursor-pointer rounded bg-transparent" aria-label={t.oColor} />
                 </div>
+              </div>
+            )}
+
+            {/* CROP tab (video lane) — the tool plus the drag hint, so the frame is the workspace. */}
+            {!isPhoto && !isAudio && vtab === 'crop' && (
+              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.crop}</span>
+                <button type="button" onClick={() => setCropOn((v) => !v)} disabled={!cropAllowed}
+                  className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-[12.5px] font-semibold transition-colors disabled:opacity-40 ${cropOn ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
+                  <Crop size={14} />{t.crop}
+                </button>
+                {/* Honest about the limit instead of hiding the control: cropping applies to a single
+                    source, so with a multi-clip sequence it would be silently dropped from the payload. */}
+                <p className="text-[11px] text-app-muted">{cropAllowed ? t.cropHint : t.cropSingleOnly}</p>
+                {crop && <button type="button" onClick={() => { setCrop(null); setCropOn(false); }} className="w-full rounded-lg bg-app-elevated px-3 py-2 text-[12px] font-medium text-app-muted ring-1 ring-app-border/15">{t.reset}</button>}
               </div>
             )}
 
@@ -1308,6 +1382,32 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <button type="button" onClick={() => setSuccessAsset(null)} className="mt-2 w-full rounded-xl px-3 py-2 text-[12px] font-medium text-app-muted hover:text-app-text">{t.close}</button>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* iOS-STYLE TAB BAR (video lane). The controls used to be one long scroll — on a phone the sliders
+          sat far below the frame with no way to tell what else existed. Four tabs, a pill bar, and the
+          active one marked with a dot, mirroring the native editor. */}
+      {clips.length > 0 && !isPhoto && !isAudio && (
+        <div className="shrink-0 px-3 pb-1 pt-2">
+          <div className="mx-auto flex w-fit items-center gap-1 rounded-2xl border border-app-border/15 bg-app-surface/90 p-1 shadow-lg backdrop-blur">
+            {([
+              { id: 'clips',   icon: <Film size={17} />,       label: t.tabClips },
+              { id: 'adjust',  icon: <SunMedium size={17} />,  label: t.tabAdjust },
+              { id: 'filters', icon: <Droplet size={17} />,    label: t.tabFilters },
+              { id: 'crop',    icon: <Crop size={17} />,       label: t.tabCrop },
+            ] as { id: VideoTab; icon: React.ReactNode; label: string }[]).map((tb) => {
+              const on = vtab === tb.id;
+              return (
+                <button key={tb.id} type="button" onClick={() => setVtab(tb.id)}
+                  className={`relative flex min-w-[68px] flex-col items-center gap-1 rounded-xl px-3 py-1.5 transition-colors ${on ? 'bg-app-elevated text-app-text' : 'text-app-muted hover:text-app-text'}`}>
+                  {on && <span className="absolute left-1/2 top-0.5 h-1 w-1 -translate-x-1/2 rounded-full bg-app-accent" aria-hidden />}
+                  {tb.icon}
+                  <span className="text-[10.5px] font-semibold leading-none">{tb.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
