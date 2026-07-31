@@ -399,7 +399,7 @@ export function MontageEditor({
                         const s = Number(e.target.value);
                         patch(c.uid, { startSec: s, endSec: Math.max(s + MIN_SHOT_SEC, c.endSec) });
                       }}
-                      className="h-1 flex-1 accent-app-accent"
+                      className="h-6 flex-1 cursor-pointer accent-app-accent"
                       disabled={c.kind === 'image'}
                     />
                     <input
@@ -409,14 +409,14 @@ export function MontageEditor({
                         const en = Number(e.target.value);
                         patch(c.uid, { endSec: en, startSec: Math.min(c.startSec, en - MIN_SHOT_SEC) });
                       }}
-                      className="h-1 flex-1 accent-app-accent"
+                      className="h-6 flex-1 cursor-pointer accent-app-accent"
                     />
                   </div>
                   <input
                     type="text" maxLength={120} value={c.caption ?? ''}
                     onChange={(e) => patch(c.uid, { caption: e.target.value })}
                     placeholder={t.captionPh}
-                    className="w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2 py-1 text-[11px] !text-app-text outline-none focus:border-app-accent/50"
+                    className="min-h-[44px] w-full rounded-lg border border-app-border/15 bg-app-bg/40 px-2 py-1 text-[11px] !text-app-text outline-none focus:border-app-accent/50"
                   />
                 </div>
               </div>

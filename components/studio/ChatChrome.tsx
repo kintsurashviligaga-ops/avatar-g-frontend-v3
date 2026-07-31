@@ -143,7 +143,7 @@ function LanguageSwitcher({ locale }: { locale: string }) {
           <div role="menu" {...langClamp.props} className="absolute right-0 top-full z-[61] mt-1.5 w-36 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
             {LANGS.map((l) => (
               <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === locale} onClick={() => go(l.code)}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${l.code === locale ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}>
+                className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${l.code === locale ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}>
                 <span className="text-[16px] leading-none">{l.flag}</span>
                 <span className="flex-1 text-left font-medium">{l.label}</span>
                 {l.code === locale && <Check size={14} />}

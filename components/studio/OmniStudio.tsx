@@ -26,6 +26,7 @@ import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { TAP_MIN_PX } from './ui/tokens';
 import { PresetRow } from './ui/controls';
 import { VIDEO_PRESETS, matchVideoPreset, videoPresetValues } from '@/lib/video/videoPresets';
+import { IMAGE_PRESETS, matchImagePreset, imagePresetValues } from '@/lib/image/imagePresets';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -1874,6 +1875,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Which preset (if any) the CURRENT four values still describe. Derived every render on purpose —
   // see lib/video/videoPresets: a stored selection would stay lit after the user edits one of the
   // fields it set, and a highlighted chip that no longer matches the form is a lie about the form.
+  // Derived, never stored — same contract as the video and music rows.
+  const activeImagePreset = matchImagePreset({ aspect: imgAspect, quality: imgQuality, style: imgStyle });
+  const applyImagePreset = useCallback((id: string) => {
+    const v = imagePresetValues(id);
+    if (!v) return;
+    setImgAspect(v.aspect as typeof imgAspect);
+    setImgQuality(v.quality);
+    setImgStyle(v.style);
+  }, []);
+
   const activeVideoPreset = matchVideoPreset({
     mode: videoMode, duration: videoDuration, orientation: videoOrientation, style: videoStyle,
   });
@@ -6284,7 +6295,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t[activeModeKey]}</span>
             <button type="button" onClick={() => { setMode('chat'); setOptionsOpen(false); }}
               aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text active:scale-95">
+              className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text active:scale-95">
               <X size={17} />
             </button>
           </div>
@@ -6292,6 +6303,26 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
+            {/* START HERE — sets aspect, quality and style together. Quality is the field users
+                understand least ("1K / 2K / 4K" says nothing about what it is FOR) and the one where a
+                wrong guess costs the most render time; a preset answers it from the use case instead.
+                `count` is deliberately NOT part of any preset: it fans out into N separately billed
+                requests, and a chip that quadruples a bill is not a chip. */}
+            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">
+                ✨ {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
+              </span>
+              <PresetRow
+                presets={IMAGE_PRESETS.map((pr) => ({
+                  id: pr.id,
+                  label: pr.label[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
+                  hint: pr.hint[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
+                  icon: pr.emoji,
+                }))}
+                activeId={activeImagePreset}
+                onPick={applyImagePreset}
+              />
+            </div>
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
               {/* WRAPS rather than scrolls. A horizontal scroller was survivable at six ratios; at ten it
@@ -6340,7 +6371,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* P7 — Negative prompt (expandable) */}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgNegativeOpen((v) => !v)} aria-expanded={imgNegativeOpen}
-                className="flex w-full items-center justify-between text-[12.5px] font-semibold text-app-text">
+                style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
                 <span className="inline-flex items-center gap-1.5">🚫 {locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
                 <ChevronDown size={15} className={`transition-transform ${imgNegativeOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -6357,7 +6388,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script → N identity-anchored scenes → Video */}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgBoardOpen((v) => !v)} aria-expanded={imgBoardOpen}
-                className="flex w-full items-center justify-between text-[12.5px] font-semibold text-app-text">
+                style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
                 <span className="inline-flex items-center gap-1.5">🎬 {locale === 'en' ? 'Script → Storyboard' : locale === 'ru' ? 'Сценарий → Раскадровка' : 'სცენარი → სცენარიუმი'}{imgBoardScript.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
                 <ChevronDown size={15} className={`transition-transform ${imgBoardOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -6386,7 +6417,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                   {/* STEP 1 — render the identity-locked scene frames right here (no navigation yet). */}
                   <button type="button" onClick={() => void generateImageStoryboard()} disabled={imgBoardBusy || !imgBoardScript.trim()}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] ${imgBoardBusy || !imgBoardScript.trim() ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] min-h-[44px] ${imgBoardBusy || !imgBoardScript.trim() ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
                     {imgBoardBusy
                       ? `${locale === 'en' ? 'Rendering scenes' : locale === 'ru' ? 'Рендер сцен' : 'სცენების რენდერი'} ${imgBoardScenes.filter((c) => c.frameUrl).length}/${imgBoardScenes.length || (imgBoardDuration === 48 ? 6 : 3)}…`
                       : imgBoardScenes.length
@@ -6409,7 +6440,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           ))}
                         </div>
                         <button type="button" onClick={exportImageStoryboardToVideo} disabled={imgBoardBusy || done === 0}
-                          className={`flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] ${imgBoardBusy || done === 0 ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
+                          className={`flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] min-h-[44px] ${imgBoardBusy || done === 0 ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
                           🎥 {locale === 'en' ? 'Export storyboard to Video Studio' : locale === 'ru' ? 'Экспорт в видео-студию' : 'ექსპორტი ვიდეო სტუდიაში'}
                           {done < imgBoardScenes.length && <span className="text-[10px] font-normal opacity-80">({done}/{imgBoardScenes.length})</span>}
                         </button>
@@ -6427,11 +6458,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mb-2 space-y-2">
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" onClick={() => setLipTab('avatar')}
-                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'avatar' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'avatar' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
                 👄 {t.modeLipsync}
               </button>
               <button type="button" onClick={() => setLipTab('motion')}
-                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'motion' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'motion' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
                 🎭 {locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}
               </button>
             </div>
@@ -6471,7 +6502,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* P8 — built-in avatar gallery: tap to use as the talking face (no upload). */}
             <div>
               <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Or pick an avatar' : locale === 'ru' ? 'Или выберите аватар' : 'ან აირჩიე ავატარი'}</span>
-              <div className="grid grid-cols-6 gap-1.5">
+              {/* ⚠️ SIX COLUMNS MADE EVERY TILE 42px ON A 320px SCREEN — measured in the production build.
+                  These are aspect-square, so the column count IS the touch-target size: there is no
+                  padding to add. Five columns puts them over the 44px floor at the narrowest width and
+                  back to six once there is room for it. */}
+              <div className="grid grid-cols-5 gap-1.5 min-[380px]:grid-cols-6">
                 {AVATAR_PRESETS.map((p, i) => {
                   const selected = lipPreset === p.src;
                   return (
@@ -6503,7 +6538,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="mt-1.5 flex gap-1.5">
                   {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი']] as const).map(([g, label]) => (
                     <button key={g} type="button" onClick={() => setLipGender(g)} aria-pressed={lipGender === g}
-                      className={`flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
+                      className={`min-h-[44px] flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
                   ))}
                 </div>
               </div>
@@ -6512,7 +6547,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="mt-1.5 flex gap-1.5">
                   {(['9:16', '16:9', '1:1'] as const).map((f) => (
                     <button key={f} type="button" onClick={() => setLipFormat(f)} aria-pressed={lipFormat === f}
-                      className={`flex-1 rounded-lg px-1.5 py-2 text-[11px] font-semibold tabular-nums transition active:scale-[0.98] ${lipFormat === f ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{f}</button>
+                      className={`min-h-[44px] flex-1 rounded-lg px-1.5 py-2 text-[11px] font-semibold tabular-nums transition active:scale-[0.98] ${lipFormat === f ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{f}</button>
                   ))}
                 </div>
               </div>
@@ -7304,11 +7339,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 and never need to open Fine-tune. */}
             <div>
               <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Presets' : locale === 'ru' ? 'Пресеты' : 'პრესეტები'}</span>
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {MUSIC_PRESETS.map((p) => (
-                  <Chip key={p.id} active={activePresetId === p.id} onClick={() => applyMusicPreset(p)}>{p.emoji} {p.label[locale] ?? p.label.en}</Chip>
-                ))}
-              </div>
+              {/* Migrated to the shared PresetRow: it WRAPS instead of scrolling — a scroller hides the
+                  later presets behind an edge with no affordance — and its buttons carry a 44px floor,
+                  which the local Chip only gained recently. The derived `activePresetId` is unchanged:
+                  it was already computed from the live values rather than stored, which is the property
+                  that matters and the reason this row needed no logic change. */}
+              <PresetRow
+                presets={MUSIC_PRESETS.map((p) => ({
+                  id: p.id,
+                  label: p.label[locale] ?? p.label.en,
+                  icon: p.emoji,
+                }))}
+                activeId={activePresetId}
+                onPick={(id) => { const hit = MUSIC_PRESETS.find((x) => x.id === id); if (hit) applyMusicPreset(hit); }}
+              />
             </div>
 
             {/* A — Style (single select, horizontal scroll) */}
@@ -7380,7 +7424,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <span className="mb-1.5 flex items-center justify-between gap-2 text-[12.5px] font-semibold text-app-text">
                   <span>📝 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ლირიკა'} <span className="font-normal text-app-muted/60">({locale === 'en' ? 'optional' : locale === 'ru' ? 'необязательно' : 'არჩევითი'})</span></span>
                   <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-app-accent/40 px-2.5 py-1 text-[11px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 disabled:opacity-50">
+                    className="inline-flex shrink-0 items-center gap-1 min-h-[44px] rounded-full border border-app-accent/40 px-2.5 py-1 text-[11px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 disabled:opacity-50">
                     {writingLyrics ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t.writeLyricsBtn}
                   </button>
                 </span>
@@ -7407,19 +7451,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {/* Record (toggle) — live seconds while capturing; ≥15s hint until enough. */}
                   {voiceRecording ? (
                     <button type="button" onClick={stopVoiceRecording}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-red-300 transition-colors hover:bg-red-500/20">
+                      className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-red-300 transition-colors hover:bg-red-500/20">
                       <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
                       {voiceRecSec}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'} · {locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება'}{voiceRecSec < 15 ? ` (${t.need15})` : ''}
                     </button>
                   ) : (
                     <button type="button" onClick={() => void startVoiceRecording()}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                      className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                       <Mic size={13} /> {t.voiceRec}
                     </button>
                   )}
                   {/* Upload a voice file (mp3/wav/m4a, ≤50MB). */}
                   <button type="button" onClick={() => voiceFileRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+                    className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
                     <Upload size={13} /> {t.voiceUp}
                   </button>
                   {/* Trained RVC toggle — ONLY when a completed trained model exists (probed on mount). */}
@@ -7908,7 +7952,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         role="menuitemradio"
                         aria-checked={mode === id}
                         onClick={() => { if (id === mode) { setMode('chat'); setOptionsOpen(false); } else { setMode(id); } setModeMenuOpen(false); }}
-                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
+                        className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
                       >
                         <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
                       </button>
@@ -7936,7 +7980,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                             if (inline) { setStudioPrefill(undefined); setPanelService(svc.id as PanelService); }
                             else router.push(serviceHref(svc, locale));
                           }}
-                          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
+                          className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
                           title={svc.live ? undefined : SOON_LABEL[locale]}
                         >
                           <span className="w-[15px] shrink-0 text-center text-[13px] leading-none">{svc.icon}</span>
