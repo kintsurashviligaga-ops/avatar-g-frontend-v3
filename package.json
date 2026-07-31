@@ -37,7 +37,8 @@
     "mcp:install": "npm --prefix apps/myavatar-mcp-server install && npm --prefix apps/myavatar-mcp-server run build",
     "mcp:skill": "node scripts/mcp-skill.mjs",
     "voice:v2v": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run start",
-    "voice:v2v:dev": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run dev"
+    "voice:v2v:dev": "npm --prefix services/voice-v2v-node install && npm --prefix services/voice-v2v-node run dev",
+    "dev:main-ui": "NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=local-ui-inspection-anon-key SUPABASE_SERVICE_ROLE_KEY=local-ui-inspection-service-key next dev -p 3200"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.73",
