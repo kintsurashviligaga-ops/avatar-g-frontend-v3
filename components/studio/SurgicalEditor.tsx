@@ -199,20 +199,40 @@ function extFromUrl(url: string, fallback: string): string {
  * link if the fetch is CORS-blocked (rare — our storage + Replicate delivery allow GET).
  */
 async function downloadAsset(url: string, filename: string): Promise<void> {
+  let blob: Blob | null = null;
   try {
     const res = await fetch(url, { credentials: 'omit' });
-    if (!res.ok) throw new Error('fetch failed');
-    const blob = await res.blob();
+    if (res.ok) blob = await res.blob();
+  } catch { /* fall through to the plain link below */ }
+
+  // iOS: SAVE TO PHOTOS, not Files.
+  //
+  // `<a download>` on iOS always lands in Files — that is the whole complaint. The only route into the
+  // camera roll from a web page is the share sheet with an actual FILE payload: iOS then offers
+  // "Save Video" / "Save Image", which writes to Photos. Sharing a URL (which is what the Share button
+  // did) offers no such option, because there is nothing to save — only a link to copy.
+  if (blob) {
+    const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+    const nav = navigator as Navigator & {
+      canShare?: (d: { files?: File[] }) => boolean;
+      share?: (d: { files?: File[]; title?: string }) => Promise<void>;
+    };
+    if (typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
+      try { await nav.share({ files: [file], title: filename }); return; }
+      // A cancelled sheet is a deliberate user action, not a failure — do NOT then force a download.
+      catch (e) { if ((e as Error).name === 'AbortError') return; }
+    }
     const obj = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = obj; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     window.setTimeout(() => URL.revokeObjectURL(obj), 5000);
-  } catch {
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
-    document.body.appendChild(a); a.click(); a.remove();
+    return;
   }
+
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 /**
@@ -292,6 +312,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const stageRef = useRef<HTMLDivElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  // MOBILE UPLOAD FIX: `display:none` inputs nested in a <label> often refuse to open the picker on iOS
+  // Safari — which is why "drag a video or photo" looked dead on a phone, where dragging is impossible
+  // anyway. A ref + explicit .click() inside the tap handler works on every browser.
+  const emptyPickRef = useRef<HTMLInputElement>(null);
   const painting = useRef(false);
   const clipsRef = useRef<Clip[]>([]);
 
@@ -886,14 +910,20 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               return (
             <div className="flex flex-1 flex-col gap-3">
               <button type="button" onClick={() => setWorkspaceMode(null)} className="inline-flex w-fit items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text"><ChevronLeft size={14} />{t.changeMode}</button>
-              <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files, laneKind); }}
+              <div role="button" tabIndex={0}
+                onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files, laneKind); }}
+                onClick={() => emptyPickRef.current?.click()}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emptyPickRef.current?.click(); } }}
                 className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-app-border/25 bg-app-surface/40 p-10 text-center transition-colors hover:border-app-accent/40">
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-app-accent/12">{workspaceMode === 'audio' ? <Music2 size={24} className="text-app-accent" /> : workspaceMode === 'photo' ? <Crop size={24} className="text-app-accent" /> : <Film size={24} className="text-app-accent" />}</span>
                 <div className="text-[15px] font-semibold">{workspaceMode === 'video' ? t.wsVideoHint : workspaceMode === 'photo' ? t.wsPhotoHint : t.wsAudioHint}</div>
                 <div className="text-[12px] text-app-muted">{workspaceMode === 'audio' ? t.dropHintAudio : t.dropHint}</div>
                 <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
-                <input type="file" accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'} multiple className="hidden" onChange={(e) => addFiles(e.target.files, laneKind)} />
-              </label>
+                <input ref={emptyPickRef} type="file"
+                  accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'}
+                  multiple className="hidden"
+                  onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; addFiles(f, laneKind); }} />
+              </div>
             </div>
               );
             })()

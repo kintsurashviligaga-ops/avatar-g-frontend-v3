@@ -62,6 +62,8 @@ interface SequenceOpts {
   timeoutMs?: number;
   /** Host the finished master. Omit to use the shared base64 `host()` helper. */
   sink?: (buf: Buffer) => Promise<string | null>;
+  /** Internal: set by the one retry that keeps audio only where the probe was CONCLUSIVE. */
+  audioOverride?: boolean[];
 }
 
 /**
@@ -325,18 +327,50 @@ export async function renderVideoDraft(videoUrl: string, d: RenderDraft): Promis
   }
 }
 
-/** Probe whether an input has an audio stream (via ffmpeg-static's own stderr — no separate ffprobe binary). */
-async function probeHasAudio(url: string): Promise<boolean> {
+/**
+ * Does this input have an audio stream?
+ *
+ * ⚠️ THE BUG THIS REPLACES — the reason stitched clips came out silent.
+ *
+ * The old version returned a plain boolean and treated EVERY failure as "no audio". The probe shells out
+ * to ffmpeg against a REMOTE signed URL, so a 20s timeout, a truncated stderr or a network hiccup all
+ * produced `false` — and `false` makes runSequence swap the clip's real audio for synthesised
+ * `anullsrc` SILENCE. The clip had sound; the export did not.
+ *
+ * It got dramatically worse the moment you merged clips, because the probes ran through
+ * `Promise.all` — every input hitting the network at once, competing for the same bandwidth, so the
+ * more clips you added the likelier one of them silently "lost" its audio.
+ *
+ * Now: 'no' is returned ONLY when ffmpeg actually printed a stream list that contained no audio.
+ * Anything inconclusive is 'unknown', and the caller assumes sound is present — the safe direction,
+ * because a wrong "silent" is permanent and invisible, while a wrong "has audio" surfaces as a loud
+ * ffmpeg error the caller can retry (see runSequence's fallback).
+ */
+type AudioProbe = 'yes' | 'no' | 'unknown';
+
+async function probeHasAudio(url: string, timeoutMs = 45_000): Promise<AudioProbe> {
   const b = bin();
-  if (!b) return false;
-  try {
-    // `-i` with no output makes ffmpeg print stream info to stderr then exit non-zero → the catch parses it.
-    await exec(b, ['-hide_banner', '-i', url], { maxBuffer: 1 << 22, timeout: 20_000 });
-    return false;
-  } catch (e) {
-    const stderr = String((e as { stderr?: string }).stderr ?? (e as Error).message ?? '');
-    return /Stream #\d+:\d+.*: Audio:/i.test(stderr);
-  }
+  if (!b) return 'unknown';
+  const read = async (): Promise<string> => {
+    try {
+      // `-i` with no output makes ffmpeg print stream info to stderr then exit non-zero → the catch has it.
+      await exec(b, ['-hide_banner', '-i', url], { maxBuffer: 1 << 24, timeout: timeoutMs });
+      return '';
+    } catch (e) {
+      return String((e as { stderr?: string }).stderr ?? (e as Error).message ?? '');
+    }
+  };
+
+  let stderr = await read();
+  // A stderr with no stream list at all means we never got as far as reading the container — a timeout,
+  // a transient fetch failure, a truncated buffer. Worth exactly one retry before giving up.
+  if (!/Stream #\d+:\d+/.test(stderr)) stderr = await read();
+
+  if (/Stream #\d+:\d+.*: Audio:/i.test(stderr)) return 'yes';
+  // Conclusive only if we genuinely saw the stream list: streams were listed, none of them audio.
+  if (/Stream #\d+:\d+/.test(stderr)) return 'no';
+  console.warn('[surgical/probeHasAudio] inconclusive — assuming the clip HAS audio:', url.slice(0, 80));
+  return 'unknown';
 }
 
 /** Probe an input's video WxH (same ffmpeg-static stderr trick) — used to size overlay layers on the native frame. */
@@ -375,7 +409,13 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   const spd = clampNum(numFinite(d.speed, 1), 0.25, 4);
   const sped = Math.abs(spd - 1) > 1e-3;
 
-  const hasAudio = await Promise.all(inputs.map((u) => probeHasAudio(u)));
+  // SEQUENTIAL, not Promise.all. Every probe fetches a remote signed URL; running them all at once made
+  // them compete for the same bandwidth, so the more clips you merged the likelier one timed out — and a
+  // timed-out probe used to mean "silent". Sequential is slower by a few seconds and correct.
+  // `unknown` counts as HAS AUDIO: see the probe's note on which way to be wrong.
+  const probes: AudioProbe[] = [];
+  for (const u of inputs) probes.push(await probeHasAudio(u));
+  const hasAudio = opts.audioOverride ?? probes.map((p) => p !== 'no');
   const scale = opts.scaleW && opts.scaleH
     ? `scale=${even(opts.scaleW)}:${even(opts.scaleH)}:force_original_aspect_ratio=decrease,pad=${even(opts.scaleW)}:${even(opts.scaleH)}:(ow-iw)/2:(oh-ih)/2,setsar=1,`
     : '';
@@ -480,7 +520,17 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     // expects a LARGE master passes its own sink to avoid the base64 inflation (see MONTAGE note below).
     return opts.sink ? await opts.sink(buf) : await host(buf, tag, 'mp4', 'video/mp4');
   } catch (err) {
-    console.warn(`[surgical/${tag}] failed:`, err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    // SAFETY NET for the optimistic assumption above. If an input we ASSUMED had audio turns out to have
+    // none, ffmpeg says so explicitly — retry ONCE keeping audio only where the probe was conclusive.
+    // Without this, being wrong in the safe direction would still fail the render; with it, the worst
+    // case is one extra pass. `audioOverride` also stops this from recursing more than once.
+    const noAudioStream = /matches no streams|Stream specifier/i.test(msg);
+    if (noAudioStream && !opts.audioOverride) {
+      console.warn(`[surgical/${tag}] an assumed-audio input has none — retrying with confirmed audio only`);
+      return runSequence(inputs, rawEntries, d, { ...opts, audioOverride: probes.map((p) => p === 'yes') }, tag);
+    }
+    console.warn(`[surgical/${tag}] failed:`, msg);
     return null;
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
