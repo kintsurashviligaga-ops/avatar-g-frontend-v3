@@ -25,6 +25,7 @@ import {
   ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar, Dropzone,
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
+import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDuration';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { ResultActions } from './ui/ResultActions';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
@@ -279,6 +280,10 @@ export function ServiceParamsPanel({
   const [musicOnly, setMusicOnly] = useState(false);
   // Dubbing
   const [sourceVideoUrl, setSourceVideoUrl] = useState('');
+  // Measured from the local file before upload. null = we could not measure; see videoDuration.ts —
+  // the server must not receive a GUESSED length, because length is what it bills.
+  const [dubDurationSec, setDubDurationSec] = useState<number | null>(null);
+  const [dubTooLong, setDubTooLong] = useState<string | null>(null);
   const [targetLanguage, setTargetLanguage] = useState<DubbingLanguage>(lang === 'ka' ? 'en' : 'ka');
   const [preserveBg, setPreserveBg] = useState(true);
   const [subtitles, setSubtitles] = useState(true);
@@ -366,7 +371,13 @@ export function ServiceParamsPanel({
         };
       } else if (service === 'dubbing') {
         endpoint = '/api/v2/dubbing/start';
-        body = { sourceVideoUrl: sourceVideoUrl.trim(), sourceLanguage: 'auto', targetLanguage, preserveBackgroundAudio: preserveBg, subtitles };
+        // durationSec was NEVER SENT. The route then fell back to 60, which killed its own 5-minute cap
+        // and billed every dub — however long — as a single minute. Sent only when actually measured.
+        body = {
+          sourceVideoUrl: sourceVideoUrl.trim(), sourceLanguage: 'auto', targetLanguage,
+          preserveBackgroundAudio: preserveBg, subtitles,
+          ...(dubDurationSec ? { durationSec: Math.ceil(dubDurationSec) } : {}),
+        };
       } else if (service === 'presentation') {
         endpoint = '/api/v2/presentation/build';
         body = { topic: topic.trim(), slideCount, language: deckLang, theme: 'dark', withImages };
@@ -451,14 +462,31 @@ export function ServiceParamsPanel({
                 const f = files[0];
                 if (!f) return;
                 setDubFile(f.name);
+                setDubTooLong(null);
+                // Measure FIRST. Refusing an over-length video before a 50MB upload rather than after it
+                // is the difference between an instant answer and a wasted minute of a phone's data.
+                const secs = await readVideoDurationSec(f);
+                const verdict = checkSourceDuration(secs, lang);
+                if (!verdict.ok) {
+                  setDubTooLong(verdict.message ?? null);
+                  setDubFile(null); setSourceVideoUrl(''); setDubDurationSec(null);
+                  return;
+                }
+                setDubDurationSec(secs);
                 const path = await dubUpload.upload(f);
                 if (path) setSourceVideoUrl(path);
-                else { setDubFile(null); setSourceVideoUrl(''); }
+                else { setDubFile(null); setSourceVideoUrl(''); setDubDurationSec(null); }
               }}
             />
             {dubUpload.busy && <ProgressBar label={t.uploading} />}
             {dubUpload.error && <Note tone="error">{dubUpload.error}</Note>}
-            {sourceVideoUrl && !dubUpload.busy && <Note tone="success">{t.fileReady}</Note>}
+            {dubTooLong && <Note tone="error">{dubTooLong}</Note>}
+            {sourceVideoUrl && !dubUpload.busy && (
+              <Note tone="success">
+                {t.fileReady}
+                {dubDurationSec ? ` · ${Math.floor(dubDurationSec / 60)}:${String(Math.round(dubDurationSec % 60)).padStart(2, '0')}` : ''}
+              </Note>
+            )}
           </Group>
           <Group title={`🗣 ${t.targetLang}`}>
             <ChipGroup

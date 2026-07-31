@@ -2490,6 +2490,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         .map((c) => ({ ordinal: c.ordinal, url: c.url as string }));
       const remixCarry = landed.length >= 2 ? { filmClips: landed, filmPrompt, ...(res.matrix?.clipSec ? { filmClipSec: res.matrix.clipSec } : {}) } : {};
 
+      // ⚠️ A SALVAGED CUT WAS PRESENTED AS A FINISHED FILM. When some scenes fail, the pipeline
+      // rightly stitches the survivors rather than discarding good work — but the bubble it produced
+      // was byte-for-byte the one a clean render produces. Asking for five scenes and silently getting
+      // three means the story skips, and the only available explanation is "the AI is bad". Say it.
+      const shortBy = (res.scenesRequested ?? 0) - (res.scenesRendered ?? 0);
+      const partialNote = res.ok && res.masterUrl && shortBy > 0 && (res.scenesRequested ?? 0) > 0
+        ? (locale === 'en'
+            ? `⚠️ ${res.scenesRendered} of ${res.scenesRequested} scenes rendered — ${shortBy} failed and were left out of the cut.`
+            : locale === 'ru'
+              ? `⚠️ Отрендерено ${res.scenesRendered} из ${res.scenesRequested} сцен — ${shortBy} не удалось, они не вошли в монтаж.`
+              : `⚠️ ${res.scenesRequested}-დან ${res.scenesRendered} სცენა დარენდერდა — ${shortBy} ვერ მოხერხდა და მონტაჟში ვერ მოხვდა.`)
+        : '';
+
       // MUSIC VIDEO — the cinematic LTX montage is the PRIMARY result. We no longer relip the
       // whole master (sync/lipsync-2 warped the wide/aerial shots — "terrible"). Show the
       // cinematic video first, then generate a clean matched-lip SINGER PERFORMANCE via HeyGen
@@ -2499,7 +2512,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
-            ? { role: 'assistant', text: '', videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
+            ? { role: 'assistant', text: partialNote, videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }

@@ -112,6 +112,17 @@ export interface FilmStudioResult {
   matrix: FilmStudioMatrix | null;
   /** Quality grade of the master from the server Supervisor QA gate, if any. */
   qa?: FilmQaSummary | null;
+  /**
+   * How many scenes the film ACTUALLY contains vs how many were asked for.
+   *
+   * ⚠️ A SALVAGED CUT USED TO BE INDISTINGUISHABLE FROM A COMPLETE ONE. The salvage path is right —
+   * throwing away four good scenes because a fifth failed would be worse — but it returned the same
+   * `ok: true, phase: 'assembled'` as a clean render, with nothing anywhere saying scenes were dropped.
+   * The user asked for five, paid for five, and received a short film that simply skips parts of its own
+   * story, with no way to know why it felt truncated. Reporting the count lets the surface say so.
+   */
+  scenesRendered?: number;
+  scenesRequested?: number;
   /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
    *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
   musicUrl?: string | null;
@@ -937,7 +948,13 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // voice-over is mixed under the score) but the master is not lip-synced here; the
     // standalone Lip-sync mode covers true talking-character output for shorter clips.
     emit('assembled', matrix, master);
-    return { ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl, previewUrl: firstPreviewUrl(matrix), matrix, filmTokenId: matrix.statusTokenId ?? null };
+    return {
+      ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl,
+      previewUrl: firstPreviewUrl(matrix), matrix, filmTokenId: matrix.statusTokenId ?? null,
+      // Reached both by a clean render AND by the salvage path; the counts are what tell them apart.
+      scenesRendered: clips.length,
+      scenesRequested: matrix.sceneCount || matrix.clips.length,
+    };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { ok: false, phase: 'idle', masterUrl: null, previewUrl: null, matrix: null, error: 'Canceled.' };

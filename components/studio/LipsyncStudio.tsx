@@ -10,8 +10,9 @@
  * and leaves the inputs intact. Strict studio skin — black · white · rgb(var(--app-accent)).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { UploadCloud, Film, Music2, Wand2, Loader2, Download, X, AlertTriangle } from 'lucide-react';
+import { GenerationProgress } from './ui/GenerationProgress';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -109,6 +110,11 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [video, setVideo] = useState<Picked | null>(null);
   const [audio, setAudio] = useState<Picked | null>(null);
   const [busy, setBusy] = useState(false);
+  // ⚠️ THE ONLY FEEDBACK FOR A ~6-MINUTE RENDER WAS A SPINNER INSIDE THE BUTTON. The code's own comment
+  // says SadTalker takes about six minutes; against that, a spinner with no elapsed time and no stage is
+  // indistinguishable from a hang, and the reasonable response — reload, or press it again — either loses
+  // the render or pays for a second one. The shared card gives it the same clock every other service has.
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
 
@@ -126,6 +132,13 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
       return j.url && j.url.startsWith('https://') ? { url: j.url } : { error: 'fail' };
     } catch { return { error: 'fail' }; }
   }, []);
+
+  useEffect(() => {
+    if (!busy) { setElapsed(0); return; }
+    const t0 = Date.now();
+    const id = window.setInterval(() => setElapsed((Date.now() - t0) / 1000), 500);
+    return () => window.clearInterval(id);
+  }, [busy]);
 
   const run = useCallback(async () => {
     if (!video || !audio) { setError(t.needBoth); return; }
@@ -227,6 +240,12 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
         {busy ? t.running : t.execute}
       </button>
+
+      {busy && (
+        <div className="mt-4">
+          <GenerationProgress kind="lipsync" elapsed={elapsed} locale={locale} />
+        </div>
+      )}
 
       {error && (
         <p className="mt-3 inline-flex items-center gap-2 text-[13px] text-red-400">
