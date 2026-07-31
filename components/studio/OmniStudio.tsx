@@ -18,6 +18,7 @@ import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, 
 import { GenerationProgress, PROGRESS_TARGET, fmtClock } from '@/components/studio/ui/GenerationProgress';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration } from '@/lib/video/sceneGrid';
+import { describeAspect } from '@/lib/video/aspectConform';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -1638,6 +1639,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const genStartRef = useRef(0);
   // FIX 4 — per-result video duration (read from the player) for the result-card badge.
   const [videoResultDur, setVideoResultDur] = useState<Record<number, number>>({});
+  // Real pixel dimensions off the player. The duration beside them was already measured; the ASPECT was
+  // not — the card printed the shape the user requested, so a provider that returned something else was
+  // covered for by the UI. Two numbers side by side, one measured and one assumed, is worse than either.
+  const [videoResultDims, setVideoResultDims] = useState<Record<number, { w: number; h: number }>>({});
   // Live Director's-Console status for the post-assemble Lip-Sync agent (the music-video
   // singer sync). 'skipped' when no lip-sync is wanted; flips queued→processing→completed.
   const lipsyncStageRef = useRef<FilmAgentStatus>('idle');
@@ -4727,11 +4732,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const next = [...prev];
       const last = next[next.length - 1];
       if (last && last.role === 'assistant' && !last.text && !last.imageUrl && !last.audioUrl && !last.videoUrl) {
-        next[next.length - 1] = { role: 'assistant', text: `⏹ ${t.stopped}` };
+        // A chat stream really does stop when you stop it. A FILM does not: the scenes are already with
+        // the provider and keep rendering on their side — pressing Stop only stops us waiting for them.
+        // Saying just "Stopped" invited the reasonable assumption that nothing was spent, so the next
+        // move was to start the same render again and pay for it twice. No refund is promised here
+        // because none is guaranteed: the reaper that would issue one ships INERT (RENDER_DRAINER_ENABLED).
+        const wasFilm = Boolean(last.filmRoster || last.filmLog || last.remixOpKind || typeof last.videoProgress === 'number');
+        const filmNote = locale === 'en'
+          ? 'Stopped waiting. Scenes already sent to the render engine keep going on their side — starting again renders (and charges) a new film.'
+          : locale === 'ru'
+            ? 'Ожидание остановлено. Уже отправленные сцены продолжают рендериться на стороне движка — повторный запуск создаст (и оплатит) новый фильм.'
+            : 'ლოდინი შეწყდა. უკვე გაგზავნილი სცენები რენდერს აგრძელებს — ხელახლა გაშვება ახალ ფილმს დაარენდერებს (და დაგარიცხავს).';
+        next[next.length - 1] = { role: 'assistant', text: wasFilm ? `⏹ ${filmNote}` : `⏹ ${t.stopped}` };
       }
       return next;
     });
-  }, [t.stopped]);
+  }, [t.stopped, locale]);
 
   // Abort any in-flight request if the studio unmounts (e.g. New Chat remount).
   useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
@@ -5650,10 +5666,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       black box); preload=metadata forces that frame to load up front. */}
                   {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
                       pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const el = e.currentTarget; const d = el.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); const w = el.videoWidth, h = el.videoHeight; if (w > 0 && h > 0) setVideoResultDims((p) => (p[i]?.w === w && p[i]?.h === h ? p : { ...p, [i]: { w, h } })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
                   {/* FIX 4 — result meta: real clip length read from the player. */}
                   {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
-                    <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'} · {(m.orientation ?? videoOrientation) === 'vertical' ? '9:16' : (m.orientation ?? videoOrientation) === 'square' ? '1:1' : (m.orientation ?? videoOrientation) === 'portrait' ? '4:5' : '16:9'}</div>
+                    <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'}{(() => { const d = videoResultDims[i]; const label = d ? describeAspect(d.w, d.h) : null; return label ? ` · ${label}` : ''; })()}</div>
                   )}
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button

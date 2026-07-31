@@ -60,3 +60,28 @@ export function needsAspectConform(
   const actual = w / h;
   return Math.abs(actual - target) / target > tolerance;
 }
+
+/**
+ * Label a clip's shape from its REAL dimensions.
+ *
+ * ⚠️ The result card printed the shape the user ASKED FOR, not the one they received — it read
+ * `m.orientation ?? videoOrientation`, which is the request. Right beside it, the duration was read
+ * honestly off the player, so one number was measured and the one next to it was assumed. Whenever a
+ * provider returned a different shape (Kling ignoring aspect_ratio, Veo having no 1:1 at all), the card
+ * confidently stated an aspect the file did not have.
+ *
+ * Snaps to a standard label when it is within tolerance and otherwise reports the raw dimensions, so an
+ * unusual shape reads as unusual instead of being rounded into a lie.
+ */
+export function describeAspect(w: number, h: number): string | null {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const ratio = w / h;
+  let best: { label: string; delta: number } | null = null;
+  for (const [orientation, label] of Object.entries(ORIENTATION_ASPECT) as [Orientation, string][]) {
+    const [tw, th] = ORIENTATION_DIMS[orientation];
+    const delta = Math.abs(ratio - tw / th) / (tw / th);
+    if (!best || delta < best.delta) best = { label, delta };
+  }
+  if (best && best.delta <= 0.02) return best.label;
+  return `${Math.round(w)}×${Math.round(h)}`;
+}

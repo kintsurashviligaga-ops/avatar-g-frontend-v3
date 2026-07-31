@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { needsAspectConform, ORIENTATION_ASPECT, ORIENTATION_DIMS } from './aspectConform';
+import { needsAspectConform, describeAspect, ORIENTATION_ASPECT, ORIENTATION_DIMS } from './aspectConform';
 
 describe('the shapes a provider actually returns', () => {
   it('THE BUG: Veo returns 16:9, the user asked for vertical — that must be conformed', () => {
@@ -47,5 +47,26 @@ describe('the tables agree with the assembler', () => {
   it('portrait is 4:5 at 1080x1350 — the canvas the multi-clip filtergraph uses', () => {
     expect(ORIENTATION_DIMS.portrait).toEqual([1080, 1350]);
     expect(ORIENTATION_ASPECT.portrait).toBe('4:5');
+  });
+});
+
+describe('the card must state the shape actually delivered', () => {
+  it.each([[1920, 1080, '16:9'], [1080, 1920, '9:16'], [1080, 1080, '1:1'], [1080, 1350, '4:5']])(
+    '%ix%i → %s', (w, h, want) => {
+      expect(describeAspect(w, h)).toBe(want);
+    });
+
+  it('snaps a near-miss rather than inventing a new label', () => {
+    expect(describeAspect(1920, 1088)).toBe('16:9');
+  });
+
+  it('THE HONESTY CASE: an unusual shape reports its real dimensions, not a rounded lie', () => {
+    expect(describeAspect(2560, 1080)).toBe('2560×1080'); // ultrawide — none of the four
+  });
+
+  it('returns null rather than guessing when dimensions are unknown', () => {
+    expect(describeAspect(0, 0)).toBeNull();
+    expect(describeAspect(Number.NaN, 100)).toBeNull();
+    expect(describeAspect(-10, 10)).toBeNull();
   });
 });
