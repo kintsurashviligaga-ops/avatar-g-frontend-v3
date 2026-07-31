@@ -952,11 +952,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 <div className="text-[15px] font-semibold">{workspaceMode === 'video' ? t.wsVideoHint : workspaceMode === 'photo' ? t.wsPhotoHint : t.wsAudioHint}</div>
                 <div className="text-[12px] text-app-muted">{workspaceMode === 'audio' ? t.dropHintAudio : t.dropHint}</div>
                 <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
-                <input ref={emptyPickRef} type="file"
-                  accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'}
-                  multiple className="hidden"
-                  onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; addFiles(f, laneKind); }} />
               </div>
+              {/* SIBLING, not a child — see the note in MontageEditor: a nested input's programmatic
+                  click bubbles back into the zone and iOS cancels the picker. */}
+              <input ref={emptyPickRef} type="file"
+                accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'}
+                multiple className="hidden"
+                onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; addFiles(f, laneKind); }} />
             </div>
               );
             })()

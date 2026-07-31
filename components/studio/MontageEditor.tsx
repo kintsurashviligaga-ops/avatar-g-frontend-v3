@@ -34,7 +34,7 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY = {
   ka: {
-    drop: 'ჩააგდე ვიდეო ან ფოტო', or: 'ან', browse: 'აირჩიე ფაილი',
+    drop: 'დაამატე ვიდეო ან ფოტო', or: 'შეეხე ასარჩევად', browse: 'ან ჩააგდე ფაილი',
     uploading: 'იტვირთება…', uploadFailed: 'ატვირთვა ვერ მოხერხდა', authNeeded: 'ჯერ შედი სისტემაში',
     empty: 'დაამატე მინიმუმ ორი კადრი',
     trim: 'მოჭრა', caption: 'წარწერა', captionPh: 'ტექსტი კადრზე…',
@@ -45,7 +45,7 @@ const COPY = {
     fullEditor: 'სრული რედაქტორი →',
   },
   en: {
-    drop: 'Drop a video or photo', or: 'or', browse: 'Choose a file',
+    drop: 'Add a video or photo', or: 'Tap to choose', browse: 'or drop a file here',
     uploading: 'Uploading…', uploadFailed: 'Upload failed', authNeeded: 'Sign in first',
     empty: 'Add at least two shots',
     trim: 'Trim', caption: 'Caption', captionPh: 'Text on this shot…',
@@ -56,7 +56,7 @@ const COPY = {
     fullEditor: 'Full editor →',
   },
   ru: {
-    drop: 'Перетащите видео или фото', or: 'или', browse: 'Выбрать файл',
+    drop: 'Добавьте видео или фото', or: 'Нажмите, чтобы выбрать', browse: 'или перетащите файл',
     uploading: 'Загрузка…', uploadFailed: 'Не удалось загрузить', authNeeded: 'Сначала войдите',
     empty: 'Добавьте минимум два кадра',
     trim: 'Обрезка', caption: 'Подпись', captionPh: 'Текст на кадре…',
@@ -365,11 +365,15 @@ export function MontageEditor({
           {uploading > 0 ? `${t.uploading} (${uploading})` : t.drop}
         </span>
         <span className="text-[10px] text-app-muted">{t.or} · {t.browse}</span>
-        <input
-          ref={fileRef} type="file" accept="video/*,image/*" multiple className="hidden"
-          onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; if (f) void ingest(f); }}
-        />
       </div>
+      {/* The input is a SIBLING, never a child of the clickable zone. Nested, `fileRef.click()` fires a
+          click that BUBBLES back into the zone's own onClick and calls click() again — re-entrancy that
+          iOS Safari resolves by cancelling the picker outright, which is why choosing a file did nothing
+          on a phone. */}
+      <input
+        ref={fileRef} type="file" accept="video/*,image/*" multiple className="hidden"
+        onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; if (f) void ingest(f); }}
+      />
       {uploadError && (
         <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-400">{uploadError}</p>
       )}
