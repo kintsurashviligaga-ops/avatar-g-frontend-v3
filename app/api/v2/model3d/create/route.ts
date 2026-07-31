@@ -8,6 +8,7 @@ import { generateImagenImages, mapImagenAspect, hasGeminiImagenProvider } from '
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
+import { resolveUploadRef } from '@/lib/services/resolveUpload';
 import { createJob } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
@@ -37,7 +38,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const body = await req.json().catch(() => null);
+  const raw = await req.json().catch(() => null);
+
+  // Same as dubbing: the image-to-3D reference is uploaded browser-direct to storage, so it arrives as
+  // a PATH. Signing it here is what lets the panel offer a real file picker instead of demanding a URL.
+  const body = raw && typeof raw === 'object'
+    ? { ...(raw as Record<string, unknown>), imageUrl: await resolveUploadRef((raw as Record<string, unknown>).imageUrl) }
+    : raw;
+
   const parsed = validateModel3dRequest(body);
   if (!parsed.ok || !parsed.request) {
     return NextResponse.json({ error: 'invalid_request', message: parsed.error }, { status: 400 });

@@ -7,6 +7,7 @@ import { runDubbing } from '@/lib/services/dubbing/dubbingPipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
+import { resolveUploadRef } from '@/lib/services/resolveUpload';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,7 +42,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const body = await req.json().catch(() => null);
+  const raw = await req.json().catch(() => null);
+
+  // The browser uploads the source video straight to storage (a serverless body cannot carry 40MB), so
+  // what arrives here is a storage PATH. Sign it before validation — otherwise the validator's
+  // `^https?://` rule rejects the only thing the upload flow can produce, which is why this service
+  // used to demand a public link the user did not have. See lib/services/resolveUpload.
+  const body = raw && typeof raw === 'object'
+    ? { ...(raw as Record<string, unknown>), sourceVideoUrl: await resolveUploadRef((raw as Record<string, unknown>).sourceVideoUrl) }
+    : raw;
+
   const parsed = validateDubbingRequest(body);
   if (!parsed.ok || !parsed.request) {
     return NextResponse.json({ error: 'invalid_request', message: parsed.error }, { status: 400 });

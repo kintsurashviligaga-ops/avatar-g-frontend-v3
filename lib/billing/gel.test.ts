@@ -29,21 +29,35 @@ describe('formatGEL', () => {
   });
 });
 
-describe('formatWalletBalance (Iteration 4 — locale-honest currency)', () => {
-  it('shows ₾ for local (ka) users — matching the ₾ they are charged', () => {
-    expect(formatWalletBalance(5, 'ka')).toBe('5.00 ₾');
-    expect(formatWalletBalance(20, 'ka')).toBe('20.00 ₾');
+describe('formatWalletBalance — USD in EVERY locale', () => {
+  /**
+   * This used to return ₾ for `ka` and $ for everyone else, which is what produced the
+   * "balance is different on mobile and desktop" report: the two views resolved different locales, so
+   * one wallet rendered as two numbers in two currencies with nothing saying which was real.
+   */
+  it('shows USD for ka — the case that used to return ₾', () => {
+    expect(formatWalletBalance(5, 'ka')).toBe(`$${usdFromGel(5)}`);
+    expect(formatWalletBalance(20, 'ka')).toBe(`$${usdFromGel(20)}`);
   });
-  it('shows the USD equivalent (with $) for international (en/ru) users', () => {
-    expect(formatWalletBalance(5, 'en')).toBe(`$${usdFromGel(5)}`);
-    expect(formatWalletBalance(20, 'ru')).toBe(`$${usdFromGel(20)}`);
-    // an unknown locale defaults to the international USD form (never a bare number)
-    expect(formatWalletBalance(20, 'de')).toBe(`$${usdFromGel(20)}`);
+  it('shows the SAME string for every locale, which is the whole point', () => {
+    for (const amount of [0, 5, 20, 137.5]) {
+      const expected = `$${usdFromGel(amount)}`;
+      for (const loc of ['ka', 'en', 'ru', 'de', '', undefined as unknown as string]) {
+        expect(formatWalletBalance(amount, loc)).toBe(expected);
+      }
+    }
   });
-  it('treats null/NaN as 0 in both currencies (never renders NaN/undefined)', () => {
-    expect(formatWalletBalance(null, 'ka')).toBe('0.00 ₾');
+  it('never renders a bare number or a ₾ symbol', () => {
+    for (const loc of ['ka', 'en', 'ru']) {
+      const out = formatWalletBalance(42, loc);
+      expect(out.startsWith('$')).toBe(true);
+      expect(out).not.toContain('₾');
+    }
+  });
+  it('treats null/NaN as $0.00 — never NaN, never undefined, never a bare number', () => {
+    expect(formatWalletBalance(null, 'ka')).toBe('$0.00');
     expect(formatWalletBalance(undefined, 'en')).toBe('$0.00');
-    expect(formatWalletBalance(NaN, 'ka')).toBe('0.00 ₾');
+    expect(formatWalletBalance(NaN, 'ka')).toBe('$0.00');
   });
 });
 

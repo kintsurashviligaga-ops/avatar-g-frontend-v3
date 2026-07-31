@@ -21,9 +21,10 @@ import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/
 import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '@/lib/services/montage/montagePlan';
 import { MontageEditor, type EditorClip } from './MontageEditor';
 import {
-  Panel, PanelHeader, Group, Row, Label, Hint, Field, TextArea, LabelledField,
-  ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar,
+  Panel, PanelHeader, Group, Row, Label, TextArea, LabelledField,
+  ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar, Dropzone,
 } from './ui/controls';
+import { useUpload } from './ui/useUpload';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 
@@ -58,7 +59,10 @@ const COPY = {
     fromText: 'ტექსტიდან', fromImage: 'ფოტოდან', describe: 'აღწერა', photoUrl: 'ფოტოს ბმული',
     quality: 'ხარისხი', draft: 'სწრაფი', standard: 'სტანდარტული', removeBg: 'ფონის მოცილება',
     open: 'გახსნა', download: 'ჩამოტვირთვა', reference: 'რეფერენსი',
-    dubSourceHint: 'ვიდეოს პირდაპირი ბმული (MP4). მაქსიმუმ 5 წუთი.',
+    dubSourceHint: 'MP4 / MOV — მაქსიმუმ 5 წუთი, 50MB-მდე',
+    pickVideo: 'აირჩიე ან ჩააგდე ვიდეო', pickPhoto: 'აირჩიე ან ჩააგდე ფოტო',
+    photoHint: 'JPG / PNG — ერთი საგანი, სუფთა ფონი',
+    uploading: 'იტვირთება…', fileReady: 'ფაილი მზადაა ✓',
     keepBgHint: 'ორიგინალი ფონური ხმა შენარჩუნდება მუსიკისა და ეფექტებისთვის.',
     topicPh: 'რაზე უნდა იყოს პრეზენტაცია?',
     deckOptions: 'პარამეტრები', withImagesHint: 'თითო სლაიდს დაემატება გენერირებული სურათი (უფრო ნელია).',
@@ -79,7 +83,10 @@ const COPY = {
     fromText: 'From text', fromImage: 'From photo', describe: 'Description', photoUrl: 'Photo URL',
     quality: 'Quality', draft: 'Draft', standard: 'Standard', removeBg: 'Remove background',
     open: 'Open', download: 'Download', reference: 'Reference',
-    dubSourceHint: 'A direct link to the video (MP4). Up to 5 minutes.',
+    dubSourceHint: 'MP4 / MOV — up to 5 minutes, 50MB max',
+    pickVideo: 'Choose or drop a video', pickPhoto: 'Choose or drop a photo',
+    photoHint: 'JPG / PNG — a single object, plain background',
+    uploading: 'Uploading…', fileReady: 'File ready ✓',
     keepBgHint: 'Keeps the original background audio for music and effects.',
     topicPh: 'What should the deck be about?',
     deckOptions: 'Options', withImagesHint: 'Adds a generated image to each slide (slower).',
@@ -100,7 +107,10 @@ const COPY = {
     fromText: 'Из текста', fromImage: 'Из фото', describe: 'Описание', photoUrl: 'Ссылка на фото',
     quality: 'Качество', draft: 'Черновик', standard: 'Стандарт', removeBg: 'Удалить фон',
     open: 'Открыть', download: 'Скачать', reference: 'Референс',
-    dubSourceHint: 'Прямая ссылка на видео (MP4). До 5 минут.',
+    dubSourceHint: 'MP4 / MOV — до 5 минут, максимум 50 МБ',
+    pickVideo: 'Выберите или перетащите видео', pickPhoto: 'Выберите или перетащите фото',
+    photoHint: 'JPG / PNG — один объект, чистый фон',
+    uploading: 'Загрузка…', fileReady: 'Файл готов ✓',
     keepBgHint: 'Сохраняет оригинальный фоновый звук — музыку и эффекты.',
     topicPh: 'О чём должна быть презентация?',
     deckOptions: 'Параметры', withImagesHint: 'Добавляет к каждому слайду сгенерированное изображение (медленнее).',
@@ -199,6 +209,11 @@ export function ServiceParamsPanel({
   const [mode3d, setMode3d] = useState<Model3dMode>('text');
   const [prompt3d, setPrompt3d] = useState('');
   const [imageUrl3d, setImageUrl3d] = useState('');
+  // Local-file uploads for the two services that used to demand a public URL.
+  const [dubFile, setDubFile] = useState<string | null>(null);
+  const [img3dFile, setImg3dFile] = useState<string | null>(null);
+  const dubUpload = useUpload(lang);
+  const img3dUpload = useUpload(lang);
   const [quality3d, setQuality3d] = useState<Model3dQuality>('draft');
   const [removeBackground, setRemoveBackground] = useState(true);
 
@@ -338,8 +353,29 @@ export function ServiceParamsPanel({
         <div className="space-y-2.5">
           {/* SOURCE first, then TARGET, then options — the order the task is actually thought about. */}
           <Group title={`🎬 ${t.sourceVideo}`}>
-            <Field type="url" inputMode="url" value={sourceVideoUrl} onChange={(e) => setSourceVideoUrl(e.target.value)} placeholder="https://…/video.mp4" />
-            <Hint>{t.dubSourceHint}</Hint>
+            {/* A FILE PICKER, not a URL box. Asking for "https://…/video.mp4" required the user to host
+                their own video somewhere public first — a step most people cannot take at all, which
+                made the whole service unreachable no matter how well the pipeline worked. */}
+            <Dropzone
+              id="dub-source"
+              accept="video/*"
+              icon={<span aria-hidden>🎬</span>}
+              title={dubFile ? dubFile : t.pickVideo}
+              hint={t.dubSourceHint}
+              filled={Boolean(sourceVideoUrl)}
+              disabled={dubUpload.busy}
+              onFiles={async (files) => {
+                const f = files[0];
+                if (!f) return;
+                setDubFile(f.name);
+                const path = await dubUpload.upload(f);
+                if (path) setSourceVideoUrl(path);
+                else { setDubFile(null); setSourceVideoUrl(''); }
+              }}
+            />
+            {dubUpload.busy && <ProgressBar label={t.uploading} />}
+            {dubUpload.error && <Note tone="error">{dubUpload.error}</Note>}
+            {sourceVideoUrl && !dubUpload.busy && <Note tone="success">{t.fileReady}</Note>}
           </Group>
           <Group title={`🗣 ${t.targetLang}`}>
             <ChipGroup
@@ -402,8 +438,28 @@ export function ServiceParamsPanel({
               </LabelledField>
             ) : (
               <div className="min-w-0">
-                <Label>{t.photoUrl}</Label>
-                <Field type="url" inputMode="url" value={imageUrl3d} onChange={(e) => setImageUrl3d(e.target.value)} placeholder="https://…/photo.jpg" />
+                {/* Same reasoning as the dubbing source: a photo lives on the user's device, not at a
+                    public URL, so image-to-3D was unusable for anyone who could not self-host. */}
+                <Dropzone
+                  id="model3d-image"
+                  accept="image/*"
+                  icon={<span aria-hidden>🖼</span>}
+                  title={img3dFile ? img3dFile : t.pickPhoto}
+                  hint={t.photoHint}
+                  filled={Boolean(imageUrl3d)}
+                  disabled={img3dUpload.busy}
+                  onFiles={async (files) => {
+                    const f = files[0];
+                    if (!f) return;
+                    setImg3dFile(f.name);
+                    const path = await img3dUpload.upload(f);
+                    if (path) setImageUrl3d(path);
+                    else { setImg3dFile(null); setImageUrl3d(''); }
+                  }}
+                />
+                {img3dUpload.busy && <ProgressBar label={t.uploading} />}
+                {img3dUpload.error && <Note tone="error">{img3dUpload.error}</Note>}
+                {imageUrl3d && !img3dUpload.busy && <Note tone="success">{t.fileReady}</Note>}
               </div>
             )}
           </Group>

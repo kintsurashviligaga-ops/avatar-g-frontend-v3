@@ -46,15 +46,25 @@ export function usdFromGel(gel: number | null | undefined): string {
 }
 
 /**
- * Locale-aware wallet-balance display (Iteration 4 — currency honesty). The wallet is denominated in
- * GEL internally (₾ is what the top-up rails — BOG + Stripe wallet-topup — actually charge), so:
- *   • local (ka)          → show ₾ directly (`X.XX ₾`), matching the ₾ refill tiers the user pays.
- *   • international (en/ru)→ show the USD equivalent (`$X.XX`) via the single FX constant.
- * Returns the full display string INCLUDING the symbol (leading `$` or trailing ` ₾`) so callers don't
- * re-prefix. Keeps display in lockstep with the charged currency instead of always showing `$`.
+ * Wallet-balance display. ALWAYS USD, in every locale and on every device.
+ *
+ * ⚠️ THIS USED TO SWITCH ON LOCALE — `ka` got `X.XX ₾`, everyone else `$X.XX` — and that is the actual
+ * source of the "balance differs between mobile and desktop" report. It was never about the device: the
+ * two views were resolving different locales (a `/ka/` path in one, a default in the other), so the
+ * SAME wallet rendered as two different numbers in two different currencies with nothing on screen
+ * saying which was real. Seeing 12.00 ₾ in one place and $4.44 in another is indistinguishable from a
+ * balance bug, and correct arithmetic underneath does not make it any less alarming.
+ *
+ * One currency everywhere is worth more than per-locale familiarity. The pricing surface is already USD
+ * (Phase 39), so USD is also the number the user was quoted before spending. The wallet stays
+ * GEL-denominated internally — the top-up rails genuinely charge in ₾ — and the conversion goes through
+ * the single FX constant, so display can never drift from the ledger.
+ *
+ * `locale` stays in the signature on purpose: every call site already passes it, rewriting them all
+ * would be churn for no behavioural gain, and keeping it leaves room for a per-region currency later
+ * without a second sweep. It simply no longer selects the currency.
  */
-export function formatWalletBalance(gel: number | null | undefined, locale: string): string {
-  if (locale === 'ka') return formatGEL(typeof gel === 'number' && Number.isFinite(gel) ? gel : 0);
+export function formatWalletBalance(gel: number | null | undefined, _locale?: string): string {
   return `$${usdFromGel(gel)}`;
 }
 
