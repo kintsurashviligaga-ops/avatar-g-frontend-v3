@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Monitor, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -218,12 +218,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [userId, setUserId] = useState<string | null>(null);
 
   // Theme (Dark / Light / System) for the Appearance section. ThemeContext is binary
-  // (dark|light); "System" resolves the OS preference once via matchMedia.
+  // (dark|light). The old "System" option and its matchMedia resolver were removed from the UI; the
+  // helper outlived it as dead code and went with it.
   const { theme, setTheme } = useTheme();
-  const pickSystemTheme = useCallback(() => {
-    try { setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { setTheme('dark'); }
-  }, [setTheme]);
-
   // Settings prefs (Notifications + Generation defaults) — localStorage only, no API.
   const [emailNotif, setEmailNotif] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
@@ -373,7 +370,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-app-text transition-colors hover:bg-app-elevated';
   const sectionHdr = 'px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-app-muted';
   const settingsDivider = 'my-2 border-t border-app-border/10';
-  const sideRow = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-app-text transition-colors hover:bg-app-elevated';
+  // 44px, not the 38px it was. These rows ARE the app's primary navigation — Library, Persona,
+  // Billing, Settings — and they were the smallest targets on the screen. Measured at 242×38.
+  const sideRow = 'flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] font-medium text-app-text transition-colors hover:bg-app-elevated';
 
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
   const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
@@ -673,12 +672,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. Visible on every breakpoint now. */}
           <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
             aria-label={locale === 'en' ? 'Collapse sidebar' : locale === 'ru' ? 'Свернуть панель' : 'გვერდითი პანელის დაკეცვა'}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeftClose className="h-[18px] w-[18px]" /></button>
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeftClose className="h-[18px] w-[18px]" /></button>
         </div>
 
         {/* New chat */}
         <div className="px-2">
-          <button type="button" onClick={handleNewChat} className="flex w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/15 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
+          <button type="button" onClick={handleNewChat} className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/15 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
             <MessageSquarePlus className="h-[17px] w-[17px] text-app-accent" /> {t.newChat}
           </button>
         </div>
@@ -689,7 +688,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</span>
             {conversations.length > 0 && (
               <button type="button" onClick={handleClearAll} title={tClearAll}
-                className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-app-muted/80 transition-colors hover:bg-red-500/10 hover:text-red-400 touch-manipulation">
+                className="tap-44 relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-app-muted/80 transition-colors hover:bg-red-500/10 hover:text-red-400 touch-manipulation">
                 <Trash2 className="h-3 w-3" /> {tClearAll}
               </button>
             )}
@@ -704,12 +703,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   {g.items.map((c) => (
                     <div key={c.id} className="group relative">
                       {/* pr-8 leaves room for the delete control so the title never sits under it. */}
-                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="block w-full truncate rounded-lg py-2 pl-2.5 pr-8 text-left text-[14px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="flex min-h-[44px] w-full items-center truncate rounded-lg pl-2.5 pr-9 text-left text-[14px] text-app-text/90 transition-colors hover:bg-app-elevated">
                         {c.title}
                       </button>
                       {/* Delete: always tappable on mobile; hover-reveal on desktop (md). */}
                       <button type="button" onClick={(e) => handleDeleteConversation(c.id, e)} aria-label={tDelete} title={tDelete}
-                        className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-app-muted/70 opacity-100 transition-colors hover:bg-red-500/15 hover:text-red-400 touch-manipulation md:opacity-0 md:group-hover:opacity-100">
+                        className="tap-44 absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-app-muted/70 opacity-100 transition-colors hover:bg-red-500/15 hover:text-red-400 touch-manipulation md:opacity-0 md:group-hover:opacity-100">
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -779,7 +778,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 )
               )}
               {/* Mobile: open the sidebar drawer. */}
-              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
+              <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
               {/* Desktop/iPad: re-open the collapsed sidebar + keep the brand visible while it is hidden. */}

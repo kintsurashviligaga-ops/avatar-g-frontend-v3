@@ -1395,7 +1395,7 @@ function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, 
               <p className="truncate text-[12px] text-app-muted">{t.sbReview}</p>
             )}
           </div>
-          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-200 hover:bg-app-elevated hover:text-app-text active:scale-90 touch-manipulation sm:h-8 sm:w-8">
+          <button type="button" onClick={onCancel} aria-label={t.sbCancel} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-200 hover:bg-app-elevated hover:text-app-text active:scale-90 touch-manipulation sm:h-8 sm:w-8">
             <X size={18} />
           </button>
         </div>
@@ -7603,7 +7603,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mt-1 flex items-center gap-1">
             {/* [+] add / attach */}
             <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Plus size={20} />
             </button>
             {/* [📷] camera — image/camera capture specifically (rear camera on mobile);
@@ -7612,7 +7612,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <button type="button" onClick={() => cameraRef.current?.click()}
               aria-label={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
               title={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Camera size={19} />
             </button>
 
@@ -7627,7 +7627,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 onClick={() => setModeMenuOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={modeMenuOpen}
-                className="flex h-9 items-center gap-1 rounded-full bg-app-surface/60 px-2.5 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
+                className="flex h-11 shrink-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
               >
                 <ActiveModeIcon size={15} />
                 {/* Icon-only on mobile (the label would blow the single-row budget); label returns at sm+. */}
@@ -7692,14 +7692,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
             {busy ? (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
                 <Square size={15} className="fill-current" />
               </button>
             ) : recording ? (
               // While dictating, a STOP that never disappears — even as live text
               // arrives — so recording is always controllable.
               <button type="button" onClick={() => void toggleMic()} aria-label={t.stop} title={t.stop}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
                 <Square size={16} />
               </button>
             ) : (
@@ -7707,7 +7707,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. (Dictation → fills the text box.) */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-300 ease-out hover:scale-105 hover:bg-app-surface hover:text-app-text active:scale-95">
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-300 ease-out hover:scale-105 hover:bg-app-surface hover:text-app-text active:scale-95">
                   <Mic size={19} />
                 </button>
                 {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
@@ -7718,7 +7718,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative ml-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-accent transition-all duration-300 ease-out hover:scale-105 hover:bg-app-accent/10 active:scale-95">
+                  className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-all duration-300 ease-out hover:scale-105 hover:bg-app-accent/10 active:scale-95">
                   {/* Soft, steady accent aura (the motion comes from the equalizer, not a strobing halo). */}
                   <span aria-hidden="true" className="pointer-events-none absolute inset-[7px] rounded-full bg-app-accent/20 blur-md" />
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
@@ -7735,7 +7735,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button type="button" onClick={() => void send()}
                     aria-label={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : mode === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა') : mode === 'music' ? (locale === 'en' ? 'Create music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
                     title={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-all duration-300 ease-out hover:scale-105 hover:opacity-95 active:scale-95">
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-all duration-300 ease-out hover:scale-105 hover:opacity-95 active:scale-95">
                     <Send size={17} />
                   </button>
                 )}
@@ -7848,7 +7848,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <span className="tabular-nums text-app-muted">· {Math.min(95, Math.round((1 - Math.exp(-elapsed / 62)) * 100))}% · {fmtClock(elapsed)}</span>
                 </p>
               </div>
-              <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
+              <button type="button" onClick={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboardBusy(false); }} aria-label={t.sbCancel} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8">
                 <X size={18} />
               </button>
             </div>

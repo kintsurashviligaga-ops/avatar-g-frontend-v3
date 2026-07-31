@@ -17,6 +17,7 @@ import {
   Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2, CornerUpLeft,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
 import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
@@ -48,7 +49,7 @@ interface Copy {
   tabClips: string; tabRetouch: string; tabTrim: string; tabAi: string; cropWholeSeq: string; clipsUsed: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
-  fullClip: string; someDropped: string; uploadFailed: string;
+  fullClip: string; someDropped: string; uploadFailed: string; play: string; pause: string;
   transition: string; tCut: string; tCross: string; tFade: string;
   textOverlay: string; overlayPh: string; oSize: string; oColor: string;
   aiStudio: string; removeBg: string; upscale: string; faceRestore: string; colorize: string; photoProcessing: string; insufficient: string; notConfig: string;
@@ -71,6 +72,7 @@ const T: Record<Lang, Copy> = {
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
     maxReached: `მაქსიმუმ ${MAX_CLIPS} ფაილი`, max5: `მაქსიმუმ ${MAX_SEQ_CLIPS} კლიპი თანმიმდევრობაში`, cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
     fullClip: 'სრული', someDropped: 'ვერ წაიკითხა კლიპი', uploadFailed: 'ფაილი ვერ აიტვირთა',
+    play: 'დაკვრა', pause: 'პაუზა',
     transition: 'გადასვლა', tCut: 'კვეთა', tCross: 'გადადნობა', tFade: 'ჩაქრობა',
     textOverlay: 'ტექსტის დადება', overlayPh: 'სათაური / ხელმოწერა / წყალნიშანი…', oSize: 'ზომა', oColor: 'ფერი',
     aiStudio: 'AI ფოტო სტუდია', removeBg: 'ფონის წაშლა', upscale: 'ხარისხის 4X გაზრდა', faceRestore: 'სახის აღდგენა', colorize: 'გაფერადება', photoProcessing: 'მიმდინარეობს ფოტოს დამუშავება…', insufficient: 'არასაკმარისი კრედიტები', notConfig: 'ეს ხელსაწყო ჯერ არ არის კონფიგურირებული',
@@ -94,6 +96,7 @@ const T: Record<Lang, Copy> = {
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
     maxReached: `Maximum ${MAX_CLIPS} files`, max5: `Up to ${MAX_SEQ_CLIPS} clips in a sequence`, cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
     fullClip: 'full', someDropped: 'clip could not be read', uploadFailed: 'File could not be uploaded',
+    play: 'Play', pause: 'Pause',
     transition: 'Transition', tCut: 'Cut', tCross: 'Crossfade', tFade: 'Fade',
     textOverlay: 'Text overlay', overlayPh: 'Title / handle / watermark…', oSize: 'Size', oColor: 'Color',
     aiStudio: 'AI Photo Studio', removeBg: 'Remove background', upscale: '4× Upscale', faceRestore: 'Face restore', colorize: 'Colorize', photoProcessing: 'Processing AI photo magic…', insufficient: 'Insufficient credits', notConfig: 'This tool is not configured yet',
@@ -117,6 +120,7 @@ const T: Record<Lang, Copy> = {
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
     maxReached: `Максимум ${MAX_CLIPS} файлов`, max5: `До ${MAX_SEQ_CLIPS} клипов в последовательности`, cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
     fullClip: 'весь', someDropped: 'клип не удалось прочитать', uploadFailed: 'Файл не загрузился',
+    play: 'Воспроизвести', pause: 'Пауза',
     transition: 'Переход', tCut: 'Срез', tCross: 'Наплыв', tFade: 'Затемнение',
     textOverlay: 'Текст поверх', overlayPh: 'Заголовок / ник / водяной знак…', oSize: 'Размер', oColor: 'Цвет',
     aiStudio: 'AI фотостудия', removeBg: 'Удалить фон', upscale: 'Апскейл 4×', faceRestore: 'Восстановление лица', colorize: 'Колоризация', photoProcessing: 'Обработка фото…', insufficient: 'Недостаточно кредитов', notConfig: 'Инструмент ещё не настроен',
@@ -1003,7 +1007,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               <CornerUpLeft size={15} /><span className="hidden sm:inline">{t.returnChat}</span>
             </button>
           )}
-          <button type="button" onClick={onExit} aria-label={t.close} className="flex h-8 w-8 items-center justify-center rounded-lg text-app-muted hover:bg-app-elevated hover:text-app-text"><X size={17} /></button>
+          <button type="button" onClick={onExit} aria-label={t.close} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text"><X size={18} /></button>
         </div>
       </div>
 
@@ -1026,7 +1030,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               const laneKind: 'video' | 'image' | 'audio' = workspaceMode === 'photo' ? 'image' : workspaceMode;
               return (
             <div className="flex flex-1 flex-col gap-3">
-              <button type="button" onClick={() => setWorkspaceMode(null)} className="inline-flex w-fit items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text"><ChevronLeft size={14} />{t.changeMode}</button>
+              <button type="button" onClick={() => setWorkspaceMode(null)} className="inline-flex min-h-[44px] w-fit items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-app-muted transition-colors hover:text-app-text"><ChevronLeft size={15} />{t.changeMode}</button>
               <div role="button" tabIndex={0}
                 onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files, laneKind); }}
                 onClick={() => emptyPickRef.current?.click()}
@@ -1195,7 +1199,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             {!isPhoto && (
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
-                  <button type="button" onClick={togglePlay} className="flex h-8 w-8 items-center justify-center rounded-lg bg-app-elevated text-app-text ring-1 ring-app-border/15">{playing ? <Pause size={15} /> : <Play size={15} />}</button>
+                  <button type="button" onClick={togglePlay} aria-label={playing ? t.pause : t.play} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-app-elevated text-app-text ring-1 ring-app-border/15 transition-colors hover:text-app-accent active:scale-95">{playing ? <Pause size={17} /> : <Play size={17} />}</button>
                   <div className="relative h-8 flex-1 cursor-pointer overflow-hidden rounded-lg bg-app-elevated" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seekTo((e.clientX - r.left) / r.width); }}>
                     <div className="absolute inset-y-0 left-0 bg-app-accent/20" style={{ width: `${progress * 100}%` }} />
                     <div className="absolute inset-y-0 w-0.5 bg-app-accent" style={{ left: `${progress * 100}%` }} />
@@ -1438,7 +1442,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 {secondaryAudio && (
                   <div className="flex items-center justify-between gap-2 rounded-lg bg-app-elevated/60 px-3 py-2">
                     <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-app-muted"><Waves size={12} className="text-app-accent" />{t.instrumental}</span>
-                    <button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex items-center gap-1 rounded-md bg-app-bg/50 px-2.5 py-1 text-[11px] font-semibold text-app-text"><Download size={11} />{t.download}</button>
+                    <button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-app-bg/50 px-3 text-[12.5px] font-semibold text-app-text transition-colors hover:text-app-accent"><Download size={13} />{t.download}</button>
                   </div>
                 )}
               </div>
@@ -1479,15 +1483,15 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={successAsset.url} alt="" className="mb-3 max-h-48 w-full rounded-lg bg-black object-contain" />
                 : successAsset.kind === 'audio'
-                ? <div className="mb-3 rounded-lg bg-app-elevated/60 p-3"><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-app-muted"><Music2 size={13} className="text-app-accent" />{t.vocals}</div><audio src={successAsset.url} controls className="w-full" />{secondaryAudio && <div className="mt-2 border-t border-app-border/15 pt-2"><div className="mb-1.5 flex items-center justify-between text-[11.5px] font-semibold text-app-muted"><span className="flex items-center gap-1.5"><Waves size={12} className="text-app-accent" />{t.instrumental}</span><button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex items-center gap-1 rounded-md bg-app-bg/50 px-2 py-0.5 text-[10.5px] text-app-text"><Download size={10} />{t.download}</button></div><audio src={secondaryAudio} controls className="w-full" /></div>}</div>
+                ? <div className="mb-3 rounded-lg bg-app-elevated/60 p-3"><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-app-muted"><Music2 size={13} className="text-app-accent" />{t.vocals}</div><audio src={successAsset.url} controls className="w-full" />{secondaryAudio && <div className="mt-2 border-t border-app-border/15 pt-2"><div className="mb-1.5 flex items-center justify-between text-[11.5px] font-semibold text-app-muted"><span className="flex items-center gap-1.5"><Waves size={12} className="text-app-accent" />{t.instrumental}</span><button type="button" onClick={() => void downloadAsset(secondaryAudio, filenameFor(secondaryAudio, 'audio'))} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-app-bg/50 px-3 text-[12.5px] font-semibold text-app-text transition-colors hover:text-app-accent"><Download size={13} />{t.download}</button></div><audio src={secondaryAudio} controls className="w-full" /></div>}</div>
                 : <video src={successAsset.url} controls playsInline className="mb-3 max-h-48 w-full rounded-lg bg-black" />}
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void downloadAsset(successAsset.url, filenameFor(successAsset.url, successAsset.kind))}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2.5 text-[13px] font-bold text-app-bg transition-opacity hover:opacity-90"><Download size={15} />{t.download}</button>
+                  className={`${BTN_PRIMARY} w-full`}><Download size={15} />{t.download}</button>
                 <button type="button" onClick={() => void shareAsset(successAsset.url)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-app-elevated px-3 py-2.5 text-[13px] font-semibold text-app-text ring-1 ring-app-border/15 hover:bg-app-surface"><Share2 size={15} />{t.share}</button>
+                  className={`${BTN_SECONDARY} w-full`}><Share2 size={15} />{t.share}</button>
               </div>
-              <button type="button" onClick={() => setSuccessAsset(null)} className="mt-2 w-full rounded-xl px-3 py-2 text-[12px] font-medium text-app-muted hover:text-app-text">{t.close}</button>
+              <button type="button" onClick={() => setSuccessAsset(null)} className={`${BTN_GHOST} mt-2 w-full`}>{t.close}</button>
             </div>
           ) : null}
         </div>
