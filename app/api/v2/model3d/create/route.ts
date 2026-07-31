@@ -103,7 +103,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const submitted = await guardedCall(
-      { service: 'model3d', model: QUALITY_MODEL[request.quality], units: model3dUnits() },
+      {
+        service: 'model3d',
+        model: QUALITY_MODEL[request.quality],
+        units: model3dUnits(),
+        // ⚠️ BOOK NOTHING FOR A SUBMIT THAT NEVER REACHED THE PROVIDER.
+        //
+        // guardedCall books its estimate on whatever fn() RETURNS, and its own comment says booking
+        // happens "after a SUCCESSFUL call" — but submitReconstruction never throws BY DESIGN: a bad
+        // token, a 4xx, a non-JSON body and a timeout all come back as { ok:false }. So every failed
+        // submission still charged the full $0.10 model3d estimate against the platform envelope. An
+        // unfunded or misconfigured Replicate token would drain the budget on requests that produced
+        // nothing, tripping the ladder into economy / free_tier_restricted early and degrading services
+        // for everyone. A failed submit costs zero, and is now booked as zero.
+        actualCost: (r) => ((r as { ok?: boolean } | null)?.ok === false ? 0 : undefined),
+      },
       () => submitReconstruction(referenceUrl, request),
     );
 

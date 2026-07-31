@@ -130,6 +130,16 @@ export const RATE_LIMITS = {
   AUTH:      { maxRequests: 5,   windowMs: 15 * 60_000,  keyPrefix: 'rl:auth'  } as const,
   PUBLIC:    { maxRequests: 200, windowMs: 60_000,       keyPrefix: 'rl:pub'   } as const,
   AI:        { maxRequests: 10,  windowMs: 60_000,       keyPrefix: 'rl:ai'    } as const,
+  // 3D reconstruction STATUS polling — its OWN namespace, and that is the point.
+  //
+  // It used to draw on the AI bucket, which is the same bucket /api/ai/chat, /api/agent-g/chat,
+  // /api/v2/personas and /api/pipeline/run all use. The 3D poll ramps 3s,4s,5s,… so it fires at
+  // t=3,7,12,18,25,33,42,52 — EIGHT of the ten allowed requests inside the first minute. And the 3D
+  // surface lives INSIDE the chat box, whose own copy invites the user to keep talking while it runs, so
+  // the two were guaranteed to starve each other: chat messages came back "Too many requests" mid-render,
+  // and chatting got the poll 429'd (the client silently discards those ticks and burns poll attempts).
+  // Sized for a long poll — a status read is a cheap provider lookup, not a render.
+  POLL_3D:   { maxRequests: 60,  windowMs: 60_000,       keyPrefix: 'rl:3dpoll' } as const,
   WEBHOOK:   { maxRequests: 500, windowMs: 60_000,       keyPrefix: 'rl:wh'    } as const,
 } as const;
 

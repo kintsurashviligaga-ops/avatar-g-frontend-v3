@@ -91,7 +91,30 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
   // Lip-sync post-step: speak the typed text on the cloned KA voice and key the mouth to
   // it via the EXISTING async /api/video/lipsync (HeyGen→SadTalker). It returns a jobId we
   // poll. Fail-open: any miss returns the original motion clip (never throws).
-  async function applyLipsync(videoUrl: string): Promise<string> {
+  /**
+   * Returns the synced clip, or the ORIGINAL clip plus a reason when the sync did not happen.
+   *
+   * ⚠️ IT USED TO RETURN ONLY THE URL, and that hid every failure. `if (!sj.jobId) return videoUrl`,
+   * `return pj.url || videoUrl`, `return videoUrl` on timeout — three silent swallows. The route returns
+   * a null jobId with no error when no provider key is set, `tts-failed` when speech synthesis misses,
+   * and HTTP 402 `insufficient_credits` when the balance is short. None of it was read. The caller then
+   * called setResult(url) and the UI drew the green "Ready ✅" — so the user turned the toggle on, typed
+   * the line, waited about four extra minutes, and got a completely silent, un-synced clip labelled a
+   * success. Even "not enough credits" was reported as done. There was no way to tell a working lip-sync
+   * from a failed one.
+   *
+   * Fail-open on the ASSET (the motion clip is still worth keeping) but never on the MESSAGE.
+   */
+  async function applyLipsync(videoUrl: string): Promise<{ url: string; failure?: string }> {
+    const why = (code: string): string => (
+      code === 'insufficient_credits'
+        ? (lang === 'en' ? 'Not enough credits for lip-sync — the clip is saved without it.' : lang === 'ru' ? 'Недостаточно кредитов для синхронизации — клип сохранён без неё.' : 'ლიფსინკისთვის კრედიტი არ იყო საკმარისი — კლიპი შენახულია მის გარეშე.')
+      : code === 'provider_not_configured'
+        ? (lang === 'en' ? 'The lip-sync engine is unavailable — the clip is saved without it.' : lang === 'ru' ? 'Движок синхронизации недоступен — клип сохранён без неё.' : 'ლიფსინკის სერვისი მიუწვდომელია — კლიპი შენახულია მის გარეშე.')
+      : code === 'timeout'
+        ? (lang === 'en' ? 'Lip-sync timed out — the clip is saved without it.' : lang === 'ru' ? 'Синхронизация не успела — клип сохранён без неё.' : 'ლიფსინკს დრო არ ეყო — კლიპი შენახულია მის გარეშე.')
+      : (lang === 'en' ? 'Lip-sync did not complete — the clip is saved without it.' : lang === 'ru' ? 'Синхронизация не выполнена — клип сохранён без неё.' : 'ლიფსინკი ვერ შესრულდა — კლიპი შენახულია მის გარეშე.')
+    );
     try {
       const start = await fetch('/api/video/lipsync', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -100,16 +123,16 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         // image input) which silently fails on a video → the clip came back un-synced + silent.
         body: JSON.stringify({ videoUrl, text: lipsyncText.trim(), kind: 'film', orientation: ORIENT[aspectRatio] }),
       });
-      const sj = (await start.json().catch(() => ({}))) as { jobId?: string | null };
-      if (!sj.jobId) return videoUrl;
+      const sj = (await start.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null; code?: string | null };
+      if (!sj.jobId) return { url: videoUrl, failure: why(sj.code || sj.error || '') };
       for (let i = 0; i < 40; i++) { // ~40 × 6s ≈ 4 min headroom
         await new Promise((r) => setTimeout(r, 6000));
         const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(sj.jobId)}`, { credentials: 'include' });
-        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-        if (pj.done) return pj.url || videoUrl;
+        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+        if (pj.done) return pj.url ? { url: pj.url } : { url: videoUrl, failure: why(pj.error || '') };
       }
-      return videoUrl; // timed out → keep the motion clip
-    } catch { return videoUrl; }
+      return { url: videoUrl, failure: why('timeout') };
+    } catch { return { url: videoUrl, failure: why('') }; }
   }
 
   async function generate() {
@@ -165,9 +188,18 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
       // Charged on submit → nudge the header balance pill to refresh (ChatChrome listens for this).
       try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ }
 
-      // 3) Lip-sync post-step (unchanged — already async/poll-based).
-      if (wantLipsync) { setStage('lipsync'); url = await applyLipsync(url); }
+      // 3) Lip-sync post-step (async/poll-based). The clip is DELIVERED either way — a motion render the
+      //    user already paid for is not thrown away over a failed post-step — but a lip-sync that did not
+      //    happen is now SAID so, instead of a silent, un-synced clip wearing the green "Ready ✅".
+      let lipsyncNote: string | undefined;
+      if (wantLipsync) {
+        setStage('lipsync');
+        const synced = await applyLipsync(url);
+        url = synced.url;
+        lipsyncNote = synced.failure;
+      }
       setResult(url);
+      if (lipsyncNote) setError(lipsyncNote);
       onVideoGenerated?.(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

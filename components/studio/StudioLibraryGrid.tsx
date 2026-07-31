@@ -24,7 +24,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
-  Inbox, RefreshCw, Trash2, AlertTriangle,
+  Inbox, RefreshCw, Trash2, AlertTriangle, Boxes,
 } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -123,6 +123,17 @@ function kindIcon(kind: string) {
 
 const isVideo = (kind: string) => kind === 'film' || kind === 'avatar' || kind === 'interior';
 const isAudio = (kind: string) => kind === 'music' || kind === 'voice';
+/**
+ * A 3D mesh, detected from the FILE rather than from `service_type`.
+ *
+ * The DB CHECK on service_type only allows film|avatar|interior|image|music|voice, so a generated model
+ * is filed as 'image' — and everything non-video, non-audio here was rendered inside an <img> and
+ * downloaded as .png. A .glb can never decode in an <img>, so `onLoad` never fired and the tile shimmered
+ * as a blank black rectangle badged "IMAGE" forever; the download then saved real GLB bytes under a name
+ * no image viewer and no 3D viewer would open without the user renaming the file. The mesh was only ever
+ * usable if the tab it was generated in stayed open.
+ */
+const is3d = (url: string) => /\.glb(\?|#|$)/i.test(url || '');
 
 /** Maps server `service_type` strings to the user-facing filter tabs. */
 function filterMatches(kind: string, f: FilterKey): boolean {
@@ -176,7 +187,9 @@ const LibraryCard = memo(function LibraryCard({
     try {
       const res = await fetch(item.url, { cache: 'no-store' });
       const blob = await res.blob();
-      const ext = isVideo(item.kind) ? 'mp4' : isAudio(item.kind) ? 'mp3' : 'png';
+      // .glb first: the mesh rides under service_type 'image', so extension-by-kind alone renamed a
+      // model to .png and made the downloaded file unopenable.
+      const ext = is3d(item.url) ? 'glb' : isVideo(item.kind) ? 'mp4' : isAudio(item.kind) ? 'mp3' : 'png';
       const href = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = href;
@@ -275,6 +288,15 @@ const LibraryCard = memo(function LibraryCard({
             <Music2 className="h-8 w-8 text-[#00D2FF]/70" />
             <audio src={item.url} controls className="w-full" onLoadedData={() => setLoaded(true)} />
           </div>
+        ) : is3d(item.url) ? (
+          // A MESH, not a picture. Rendering it in an <img> gave a permanently-shimmering black tile,
+          // because a .glb never decodes and onLoad never fires. A labelled card instead — and the
+          // download beside it now saves a real .glb, which is what makes the model usable at all.
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#00D2FF]/12 to-transparent p-4 text-center">
+            <Boxes className="h-8 w-8 text-[#00D2FF]/80" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-white/70">3D · GLB</span>
+            {item.prompt && <span className="line-clamp-2 text-[10px] text-white/45">{item.prompt}</span>}
+          </div>
         ) : (
           // image (and any other still kind)
           // eslint-disable-next-line @next/next/no-img-element
@@ -288,7 +310,7 @@ const LibraryCard = memo(function LibraryCard({
         )}
 
         {/* Shimmer sweep until the media paints (skipped for audio, which has no thumbnail) */}
-        {!loaded && !isAudio(item.kind) && (
+        {!loaded && !isAudio(item.kind) && !is3d(item.url) && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white/[0.03]">
             <div className="absolute inset-0 animate-[tile-shimmer_1.6s_linear_infinite] bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
           </div>
@@ -296,7 +318,7 @@ const LibraryCard = memo(function LibraryCard({
 
         {/* Kind badge */}
         <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ring-1 ring-white/10">
-          {kindIcon(item.kind)} {item.kind}
+          {is3d(item.url) ? <Boxes className="h-3 w-3" /> : kindIcon(item.kind)} {is3d(item.url) ? '3d' : item.kind}
         </span>
 
         {/* HOVER QUICK-ACTIONS — top-right floating cluster, revealed on hover.

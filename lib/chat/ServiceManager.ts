@@ -372,6 +372,17 @@ export class ServiceManager {
    */
   private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
     if (!hasGeminiImagenProvider()) return null;
+    // ⚠️ EDIT GUARD — the reason an attached photo used to be thrown away.
+    //
+    // Imagen's :predict surface is PROMPT-ONLY; there is nowhere to put a source image. Imagen runs FIRST
+    // for every text-to-image, so "make this a watercolour" WITH a photo attached silently discarded the
+    // photo, generated an unrelated image from the words alone, returned it as
+    // predictionStatus:'succeeded' — and charged for it. No error, and nothing anywhere said the reference
+    // had been dropped. The sibling surface (/api/nanobanana/image) skips its own prompt-only legs for
+    // exactly this reason; this leg is the one that never got the guard.
+    //
+    // A reference request now falls through to the NanoBanana leg, which does accept one.
+    if (request.imageUrl) return null;
     const opts = request.selectedOptions || {};
     // An explicit engine pick opts OUT of Imagen, mirroring the Kling/Hailuo opt-out on the video side.
     const picked = (this.getOption(opts, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();

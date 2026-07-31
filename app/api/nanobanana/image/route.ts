@@ -70,10 +70,18 @@ export async function POST(req: NextRequest) {
   const gate = await applyApiGuards(req, { limit: RATE_LIMITS.EXPENSIVE, label: 'nanobanana.image' });
   if (gate.response) return gate.response;
 
-  const apiKey = process.env.NANOBANANA_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ success: false, error: 'NANOBANANA_API_KEY not configured' }, { status: 500 });
-  }
+  // ⚠️ THERE IS DELIBERATELY NO EARLY RETURN ON A MISSING NANOBANANA KEY.
+  //
+  // This route used to hard-return 500 here when NANOBANANA_API_KEY was absent — BEFORE the try block, so
+  // the two designed fallback legs (Grok/xAI, then FLUX 1.1 Pro) could never run. A single expired or
+  // rotated key therefore took image generation in the whole product to 100% dead: every prompt and every
+  // ×4 tile came back "Image generation failed. Try again." while XAI_API_KEY and REPLICATE_API_TOKEN sat
+  // wired up and perfectly able to produce the image.
+  //
+  // The early return was not load-bearing — nothing here reads the key. lib/nanobanana/client.ts re-reads
+  // it and throws, that throw is already caught below, and the catch sets providerText and falls through
+  // to Grok → FLUX exactly as the cascade intends. A key rotation now DEGRADES instead of breaking, and
+  // the 502-with-refund still fires if every leg genuinely misses.
 
   // ── PRE-RENDER RESERVE STATE (TOCTOU fix) ────────────────────────────────────
   // The credit is now DEBITED before the provider call (inside the try, once the tray jobId

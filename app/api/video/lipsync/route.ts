@@ -25,6 +25,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 
 // Same bucket uploadBigFile() / the /api/upload/sign route write user files into.
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
@@ -103,6 +104,19 @@ export async function GET(req: NextRequest) {
       if (user?.id) {
         await deductCredits(user.id, creditCostFor('avatar'), `avatar:lipsync:${id}:${user.id}`)
           .catch(() => { /* best-effort — the asset is already delivered */ });
+        // AND FILE IT IN THE LIBRARY. Nothing in the lip-sync path ever wrote a generation_jobs row, so
+        // a user was CHARGED for the render, watched it, and lost it permanently on refresh — the
+        // Lip-Sync Studio has no save control at all, and only the browser Download link (which they had
+        // to notice and click inside the session) preserved anything. Charging for work the product then
+        // throws away is the worst version of this bug, which is why it sits next to the deduct.
+        // The id is deterministic per provider job, so repeated polls upsert ONE row.
+        await recordCompletedFilm({
+          id: `lipsync:${id}`,
+          userId: user.id,
+          url: hosted,
+          orientation: 'vertical',
+          subtype: 'lipsync',
+        }).catch(() => { /* best-effort — never fail a delivered asset over its bookkeeping */ });
       }
     } catch { /* fail-open */ }
     return NextResponse.json({ done: true, url: hosted });
@@ -118,7 +132,13 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
-  if (!hasLipsyncProvider()) return NextResponse.json({ jobId: null });
+  // SAY WHY. This returned a bare { jobId: null }, and the client prints `startJson.error || t.failed`
+  // — so an operator problem (no HEYGEN_API_KEY, no REPLICATE_API_TOKEN) surfaced to the user as
+  // "Lip-sync failed. Try different files.", sending them to hunt for a fault in their own uploads and
+  // retry forever with new videos. A missing key is not the user's file.
+  if (!hasLipsyncProvider()) {
+    return NextResponse.json({ jobId: null, error: 'provider_not_configured', code: 'provider_not_configured' }, { status: 503 });
+  }
 
   // PRE-RENDER balance gate — don't start a paid avatar render (TTS + provider) for a user who
   // can't afford it. The charge lands on the GET poll-success; without this a 0-balance user could
@@ -143,7 +163,9 @@ export async function POST(req: NextRequest) {
   // music-video lip-sync was returning null (the HeyGen path itself self-tests as
   // working). `sceneIndex` rides along for callers that lip-sync a single scene clip.
   const videoUrl = (await resolveMedia(body.characterRef)) ?? (await resolveMedia(body.videoUrl));
-  if (!videoUrl) return NextResponse.json({ jobId: null });
+  // Same reasoning as the provider gate above: a bare null told the user their files were wrong when the
+  // real problem is that the reference could not be resolved to a fetchable URL at all.
+  if (!videoUrl) return NextResponse.json({ jobId: null, error: 'media_unresolved', code: 'media_unresolved' }, { status: 400 });
   let audioUrl: string = (await resolveMedia(body.audioUrl)) ?? videoUrl;
 
   // "Speak this text": type a script → ElevenLabs → optionally the user's TRAINED voice.

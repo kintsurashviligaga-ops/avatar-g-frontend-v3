@@ -25,8 +25,10 @@ const WEEK_SEC = 604_800;
  * with credentials.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  // AI limit, not EXPENSIVE: this is called repeatedly by the poll loop by design.
-  const limited = await checkRateLimit(req, RATE_LIMITS.AI);
+  // POLL_3D, not AI: the AI bucket is SHARED with /api/ai/chat and friends, and this poll spends eight of
+  // its ten requests in the first minute — so a running 3D job made the chat box (which is where this
+  // surface lives) answer "Too many requests". See the note on POLL_3D.
+  const limited = await checkRateLimit(req, RATE_LIMITS.POLL_3D);
   if (limited) return limited;
 
   const supabase = createSupabaseServerClient();
@@ -51,6 +53,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ status: 'failed', message: poll.error || 'generation failed' });
   }
 
+  // ⚠️ TERMINAL WITHOUT A MESH IS A FAILURE, NOT "STILL WORKING".
+  //
+  // This used to answer `{ status: poll.status }` for BOTH cases, so a prediction Replicate reported as
+  // SUCCEEDED whose output pickGlbUrl could not resolve to a .glb came back as {status:'succeeded'} with
+  // no glbUrl — and both clients only finish on `succeeded && glbUrl` and only abort on `failed`. So
+  // neither ever terminated: the user watched "Generating…" for the full 120-attempt loop (~29 minutes)
+  // and was then told it took too long, for a job that had actually succeeded and been billed. The job
+  // row was never completed or failed either, so nothing reached the Library and the abandoned-render
+  // cron could not see it. The same dead end was reached on a token rotation, since a non-ok HTTP maps
+  // to 'processing'. A terminal status with nothing to deliver now ENDS the loop and says so.
+  if (isTerminal(poll.status) && !poll.glbUrl) {
+    if (jobId) await failJob(jobId, 'the provider finished without a usable model file').catch(() => {});
+    return NextResponse.json({ status: 'failed', message: 'the generation finished without a usable model file' });
+  }
   if (!isTerminal(poll.status) || !poll.glbUrl) {
     return NextResponse.json({ status: poll.status });
   }

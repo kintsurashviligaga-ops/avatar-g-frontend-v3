@@ -20,6 +20,8 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { settleMusicCharge } from '@/lib/credits/musicSettlement';
+import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 
 /**
  * Assistant music generation.
@@ -303,6 +305,24 @@ export async function POST(req: NextRequest) {
     }
     if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
   };
+  /**
+   * Drop the in-flight mutex once the render has SETTLED, without touching credits.
+   *
+   * ⚠️ THIS DID NOT EXIST, and the comment below claimed it did. The key was claimed for 300 seconds and
+   * released only inside `refundReserve` — which runs on insufficient credits, on a file failure, and in
+   * the catch, but NEVER after a success. So finishing a track and pressing Generate again with the same
+   * brief (the normal way to roll a second variation of a song) was rejected 409 for the next five
+   * minutes. Worse, the client reads only `error`/`code` and not `message`, so `duplicate_request` fell
+   * through to the generic "⚠️ music failed" bubble and the tray job was marked failed: an unexplained
+   * failure on a service that had just worked.
+   *
+   * Releasing on success is safe. The window exists to stop a byte-identical resubmit landing a SECOND
+   * deductCredits while the first render is still in flight; once the render is done that race is over,
+   * and a resubmit reusing the same tray jobId hits the same reserveRef, which deductCredits dedupes.
+   */
+  const releaseMutex = async (): Promise<void> => {
+    if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
+  };
   try {
     const { user: rUser } = await authedClientFromRequest(req);
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
@@ -310,8 +330,8 @@ export async function POST(req: NextRequest) {
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
     // lapses mid-render and a byte-identical resubmit past the window mints a FRESH reserveRef → a second
     // deductCredits → DOUBLE-CHARGE. The key hashes the full brief, so only an identical duplicate submit
-    // inside the window is blocked (a changed brief is a new key); success releases it via refundReserve's
-    // sibling on the happy path, so an intentional re-roll isn't stuck for the full window.
+    // inside the window is blocked (a changed brief is a new key); success releases it through
+    // `releaseMutex`, so an intentional re-roll is not stuck for the full window.
     if (!(await claimIdempotencyKey(idemOwner, idemKey, 300))) {
       idemKey = ''; // the winning request holds it
       return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This track is already being generated.' }, { status: 409 });
@@ -413,6 +433,8 @@ export async function POST(req: NextRequest) {
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.
     let hostedUrl = providerAudioUrl;
+    // Measured off the same bytes we re-host, for the billing settlement below. 0 = could not measure.
+    let deliveredSec = 0;
     try {
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 25_000);
@@ -420,13 +442,36 @@ export async function POST(req: NextRequest) {
       if (r.ok) {
         const ct = r.headers.get('content-type') || 'audio/mpeg';
         const ext = /wav/i.test(ct) ? 'wav' : 'mp3';
-        const b64 = Buffer.from(await r.arrayBuffer()).toString('base64');
+        const buf = Buffer.from(await r.arrayBuffer());
+        deliveredSec = await probeTrackDurationSec(buf, ext).catch(() => 0);
         const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
+        const signed = await uploadAndSign('uploads', path, buf.toString('base64'), ct, 604800); // 7-day signed URL
         if (signed) hostedUrl = signed;
       }
     } catch {
       /* fail-open — keep the provider URL */
+    }
+
+    // ── SETTLE THE CHARGE AGAINST WHAT ACTUALLY LANDED ───────────────────────────────────────────────
+    // The duration tier was reserved from what the user PICKED, but the primary engine (Lyria) takes no
+    // length at all — it is prompt-steered, its API has no duration field, and its output is uploaded
+    // untrimmed. So "Full song" charged 12 credits and could return the same short clip the 30s setting
+    // produces. The length cannot be forced on the engine, so the price is corrected instead: anything
+    // paid above the delivered track's real tier goes back. An UNMEASURED track (deliveredSec 0) keeps
+    // its original charge — refunding on a failed probe would give credits away for a full-length song.
+    let settledSec = billSeconds;
+    if (reserved && reservedUid) {
+      const settlement = settleMusicCharge(billSeconds, deliveredSec);
+      settledSec = settlement.settledSec;
+      if (settlement.overcharged) {
+        const back = creditCostFor('music', { seconds: billSeconds }) - creditCostFor('music', { seconds: settlement.settledSec });
+        if (back > 0) {
+          // Its own ref, distinct from `${reserveRef}:refund`, so the failure refund can still fire later.
+          await refundCredits(reservedUid, back, `${reserveRef}:settle`).catch(() => {});
+          // eslint-disable-next-line no-console
+          console.warn(`[ai/music] ${engine} delivered ${deliveredSec.toFixed(1)}s against a ${billSeconds}s charge — refunded ${back} credits`);
+        }
+      }
     }
 
     // File the track into the Library — under the signed-in user, or the shared demo
@@ -441,9 +486,23 @@ export async function POST(req: NextRequest) {
       /* fail-open */
     }
 
+    // The render has SETTLED — drop the in-flight mutex so an intentional re-roll of the same brief is
+    // not rejected as a duplicate for the rest of the 5-minute window. (See releaseMutex: this is the
+    // "sibling on the happy path" the old comment claimed existed and did not.)
+    await releaseMutex();
+
     // The cover finished while the track generated — attach it for the result card.
     const coverUrl = await coverArtPromise;
-    return NextResponse.json({ success: true, url: hostedUrl, engine, ...(coverUrl ? { coverUrl } : {}) });
+    return NextResponse.json({
+      success: true,
+      url: hostedUrl,
+      engine,
+      // Stated so the result card can show the REAL length rather than the requested one, and say when
+      // the difference was refunded instead of leaving the user to notice the short track themselves.
+      ...(deliveredSec > 0 ? { durationSec: Math.round(deliveredSec) } : {}),
+      ...(settledSec !== billSeconds ? { billedSec: settledSec, requestedSec: billSeconds, refunded: true } : {}),
+      ...(coverUrl ? { coverUrl } : {}),
+    });
   } catch (err) {
     await refundReserve(); // mid-render throw → give the reserved credit back + release the mutex
     const message = err instanceof Error ? err.message : 'Music generation failed';

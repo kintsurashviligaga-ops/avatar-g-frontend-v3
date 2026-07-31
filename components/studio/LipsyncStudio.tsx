@@ -20,24 +20,34 @@ const COPY: Record<Lang, {
   videoLabel: string; videoHint: string; audioLabel: string; audioHint: string;
   execute: string; running: string; result: string; download: string;
   needBoth: string; failed: string; replace: string; authNeeded: string;
+  engineOff: string; noCredits: string; savedToLib: string;
 }> = {
   ka: {
     title: 'AI Lipsync სტუდია', subtitle: 'ზუსტი ტუჩების სინქრონი — საუბარი ან მუსიკა',
-    videoLabel: 'ავატარის ვიდეო', videoHint: 'MP4 / MOV / WEBM — ჩააგდე ან აირჩიე',
+    videoLabel: 'ავატარის ფოტო ან ვიდეო', videoHint: 'JPG / PNG / MP4 / MOV — ჩააგდე ან აირჩიე',
+    engineOff: 'სერვისი ამჟამად მიუწვდომელია (გასაღები არაა კონფიგურირებული). ფაილები რგოლში არაა.',
+    noCredits: 'არასაკმარისი კრედიტი — შეავსე ბალანსი.',
+    savedToLib: 'შენახულია ბიბლიოთეკაში',
     audioLabel: 'აუდიო ტრეკი', audioHint: 'MP3 / WAV — ჩააგდე ან აირჩიე',
     execute: 'ლიფსინკის გაშვება', running: 'სინქრონდება ტუჩები…', result: 'შედეგი',
     download: 'ჩამოტვირთვა', needBoth: 'ატვირთე ვიდეოც და აუდიოც.', failed: 'სინქრონი ვერ მოხერხდა. სცადე სხვა ფაილებით.', replace: 'შეცვლა', authNeeded: 'ლიფსინქისთვის ჯერ გაიარე ავტორიზაცია (ფაილების ასატვირთად).',
   },
   en: {
     title: 'AI Lipsync Studio', subtitle: 'Precise lip synchronization — speech or music',
-    videoLabel: 'Avatar video', videoHint: 'MP4 / MOV / WEBM — drop or choose',
+    videoLabel: 'Avatar photo or video', videoHint: 'JPG / PNG / MP4 / MOV — drop or choose',
+    engineOff: 'The lip-sync engine is not available right now (no provider key). Your files are fine.',
+    noCredits: 'Not enough credits — please top up.',
+    savedToLib: 'Saved to your Library',
     audioLabel: 'Audio track', audioHint: 'MP3 / WAV — drop or choose',
     execute: 'Run lip-sync', running: 'Syncing the lips…', result: 'Result',
     download: 'Download', needBoth: 'Add both a video and an audio track.', failed: 'Lip-sync failed. Try different files.', replace: 'Replace', authNeeded: 'Sign in first to use lip-sync (to upload your files).',
   },
   ru: {
     title: 'AI Lipsync студия', subtitle: 'Точная синхронизация губ — речь или музыка',
-    videoLabel: 'Видео аватара', videoHint: 'MP4 / MOV / WEBM — перетащите или выберите',
+    videoLabel: 'Фото или видео аватара', videoHint: 'JPG / PNG / MP4 / MOV — перетащите или выберите',
+    engineOff: 'Движок синхронизации сейчас недоступен (нет ключа). С вашими файлами всё в порядке.',
+    noCredits: 'Недостаточно кредитов — пополните баланс.',
+    savedToLib: 'Сохранено в библиотеке',
     audioLabel: 'Аудиодорожка', audioHint: 'MP3 / WAV — перетащите или выберите',
     execute: 'Запустить синхро', running: 'Синхронизирую губы…', result: 'Результат',
     download: 'Скачать', needBoth: 'Добавьте и видео, и аудио.', failed: 'Не удалось. Попробуйте другие файлы.', replace: 'Заменить', authNeeded: 'Войдите, чтобы использовать синхронизацию (для загрузки файлов).',
@@ -130,15 +140,34 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Start the async lip-sync job. The route returns { jobId } — NOT a url;
       // the rendered result is delivered only by polling GET ?id=. (The old code
       // read j.url here, which is always undefined → every run showed "failed".)
-      // kind:'photo' — declare the PHOTO lip-sync engine (SadTalker/HeyGen talking-photo)
-      // explicitly, matching the engine's expectations. The route routes kind:'film' to the
-      // video-input engine (sync/lipsync-2); everything else (incl. 'photo') takes the photo path.
+      //
+      // ⚠️ `kind` MUST FOLLOW THE FILE, and this studio was unusable because it did not.
+      //
+      // The picker accepted `video/*` only — while this hardcoded kind:'photo'. In the route ONLY
+      // kind:'film' reaches the video-input engine (sync/lipsync-2); every other kind goes to
+      // lipsyncCreate, a talking-PHOTO engine (HeyGen /v1/talking_photo, then SadTalker's
+      // `source_image`). An .mp4 can satisfy neither. So the one file type the UI demanded was the one
+      // file type the engine could not read, and NO combination of uploads could ever succeed — every
+      // run ended, after up to ten minutes of polling, in "Lip-sync failed. Try different files."
+      // MotionControlPanel carries a comment describing this exact trap and passes kind:'film';
+      // this surface never got the same fix.
+      const isVideoFace = video.type.startsWith('video/');
       const startRes = await fetch('/api/video/lipsync', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url, kind: 'photo' }), credentials: 'include',
+        body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url, kind: isVideoFace ? 'film' : 'photo' }), credentials: 'include',
       });
-      const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
-      if (!startJson.jobId) { setError(startJson.error || t.failed); return; }
+      const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null; code?: string | null };
+      if (!startJson.jobId) {
+        // Machine codes must not reach the screen: 'insufficient_credits' was printed verbatim into a
+        // Georgian UI, and a missing operator key was reported as a problem with the user's files.
+        const code = startJson.code || startJson.error || '';
+        setError(
+          code === 'insufficient_credits' ? t.noCredits
+            : code === 'provider_not_configured' ? t.engineOff
+            : t.failed,
+        );
+        return;
+      }
 
       // Poll job status every 5s, up to 60 retries (~5 min). Mirrors the OmniStudio
       // poll pattern: GET ?id=<jobId> → { done, url, error }. Complete on done+url;
@@ -176,7 +205,7 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Dropzone
-          accept="video/*" label={t.videoLabel} hint={t.videoHint} picked={video} replaceLabel={t.replace}
+          accept="image/*,video/*" label={t.videoLabel} hint={t.videoHint} picked={video} replaceLabel={t.replace}
           icon={<Film size={18} />}
           onPick={(f) => { void readFile(f).then(setVideo).catch(() => setError(t.failed)); }}
           onClear={() => setVideo(null)}
