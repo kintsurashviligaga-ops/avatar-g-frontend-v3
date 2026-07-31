@@ -133,6 +133,9 @@ function authCopy(locale: string) {
     haveAccount: 'უკვე გაქვთ ანგარიში?',
     signInLink: 'შესვლა',
     verifyEmailTitle: 'დაადასტურეთ ელ. ფოსტა',
+    otpSent: 'გამოგიგზავნეთ 6-ნიშნა კოდი ელ. ფოსტაზე. შეიყვანეთ ქვემოთ.',
+    verifyCode: 'დადასტურება',
+    otpInvalid: 'კოდი არასწორია ან ვადაგასულია.',
     checkEmailTitle: 'შეამოწმეთ ელ. ფოსტა',
     confirmationSent: 'გამოგიგზავნეთ დადასტურების ბმული ელ. ფოსტაზე. დააჭირეთ მას ანგარიშის გასააქტიურებლად.',
     resetSent: 'გამოგიგზავნეთ პაროლის აღდგენის ბმული ელ. ფოსტაზე.',
@@ -179,6 +182,9 @@ function authCopy(locale: string) {
     haveAccount: 'Already have an account?',
     signInLink: 'Sign in',
     verifyEmailTitle: 'Verify your email',
+    otpSent: 'We sent a 6-digit code to your email. Enter it below.',
+    verifyCode: 'Verify',
+    otpInvalid: 'That code is wrong or has expired.',
     checkEmailTitle: 'Check your email',
     confirmationSent: 'We sent a confirmation link to your email. Click it to activate your account.',
     resetSent: 'We sent a password reset link to your email.',
@@ -224,6 +230,9 @@ function authCopy(locale: string) {
     haveAccount: 'Уже есть аккаунт?',
     signInLink: 'Войти',
     verifyEmailTitle: 'Подтвердите эл. почту',
+    otpSent: 'Мы отправили 6-значный код на вашу почту. Введите его ниже.',
+    verifyCode: 'Подтвердить',
+    otpInvalid: 'Код неверный или истёк.',
     checkEmailTitle: 'Проверьте эл. почту',
     confirmationSent: 'Мы отправили ссылку для подтверждения на вашу эл. почту. Нажмите её, чтобы активировать аккаунт.',
     resetSent: 'Мы отправили ссылку для сброса пароля на вашу эл. почту.',
@@ -454,6 +463,14 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
   // Which success copy to show. `loadingProvider` is reset to null before the success screen renders, so it can't
   // distinguish signup ("verify your email") from a password reset ("check your email") — track it explicitly.
   const [successKind, setSuccessKind] = useState<'signup' | 'forgot'>('signup');
+  // 6-digit code state. This screen used to call supabase.auth.signUp(), which makes SUPABASE send the
+  // mail — rendering its own template, which is a confirmation LINK. /[locale]/signup therefore
+  // delivered something completely different from the in-app modal. Both now go through our route.
+  const [otpCode, setOtpCode] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+  // The address the code was sent to. `email` is read from FormData inside the submit handler, which is
+  // long out of scope by the time the user types the code.
+  const [otpEmail, setOtpEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
@@ -565,19 +582,21 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
       }
 
       try {
-        const { error } = await withAuthTimeout(
-          supabase.auth.signUp({
-            email,
-            password,
-            options: { emailRedirectTo: callbackUrl },
-          }),
-        );
-
-        if (error) {
-          setError(describeAuthError(error.message, locale));
-        } else {
+        // Our route calls admin.generateLink({type:'signup'}), which creates the unconfirmed account and
+        // returns Supabase's own 6-digit code WITHOUT Supabase mailing anything; we deliver it via
+        // Resend. No session exists until verifyOtp() succeeds below.
+        const res = await fetch('/api/auth/email-otp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, purpose: 'signup', locale }),
+        });
+        if (res.ok) {
+          setOtpEmail(email);
           setSuccessKind('signup');
           setSuccess(true);
+        } else {
+          const j = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+          setError(j?.error === 'email_taken' ? describeAuthError('User already registered', locale) : (j?.message ?? c.signUpFailed));
         }
       } catch (err) {
         setError(err instanceof AuthTimeoutError ? c.timeout : c.signUpFailed);
@@ -699,6 +718,29 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
   const livePrimary = primaryProviders.filter((p) => isProviderLive(p.id));
   const liveSecondary = secondaryProviders.filter((p) => isProviderLive(p.id));
 
+  /**
+   * Verify the 6-digit code. The code was minted by Supabase (admin.generateLink) and only DELIVERED by
+   * us, so verifyOtp validates it natively — its expiry, its single-use rule, and a real session.
+   */
+  const submitOtp = async () => {
+    const code = otpCode.replace(/\D/g, '');
+    if (code.length !== 6) return;
+    setError(null);
+    setOtpBusy(true);
+    try {
+      const { data, error: vErr } = await supabase.auth.verifyOtp({ email: otpEmail, token: code, type: 'signup' });
+      if (vErr) { setError(describeAuthError(vErr.message, locale)); return; }
+      if (!data.session) { setError(c.otpInvalid); return; }
+      // Let the cookie land before the server tree re-renders, or the refreshed page renders as guest.
+      await supabase.auth.getSession();
+      window.location.href = redirectTo;
+    } catch {
+      setError(c.signUpFailed);
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
   // ─── Success state (email confirmation) ──────────────────────────────────
 
   if (success) {
@@ -717,10 +759,34 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
             {isForgot ? c.checkEmailTitle : c.verifyEmailTitle}
           </h2>
           <p className="text-sm leading-relaxed mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-            {isForgot ? c.resetSent : c.confirmationSent}
+            {isForgot ? c.resetSent : c.otpSent}
           </p>
+
+          {/* SIGN-UP: the code goes here. A password reset still uses a link (correct for that flow). */}
+          {!isForgot && (
+            <div className="mb-6">
+              <input
+                inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={(e) => { if (e.key === 'Enter') void submitOtp(); }}
+                placeholder="000000"
+                className="w-full rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-[0.4em] outline-none"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--color-text)' }}
+              />
+              <button
+                onClick={() => void submitOtp()}
+                disabled={otpBusy || otpCode.length !== 6}
+                className="mt-3 w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-40"
+                style={{ background: 'var(--color-accent)', color: '#04070D' }}
+              >
+                {otpBusy ? '…' : c.verifyCode}
+              </button>
+              {error && <p className="mt-3 text-xs" style={{ color: '#F87171' }}>{error}</p>}
+            </div>
+          )}
+
           <button
-            onClick={() => { setSuccess(false); setMode('login'); setLoadingProvider(null); }}
+            onClick={() => { setSuccess(false); setMode('login'); setLoadingProvider(null); setOtpCode(''); }}
             className="text-sm font-medium transition-colors"
             style={{ color: 'var(--color-accent)' }}
           >

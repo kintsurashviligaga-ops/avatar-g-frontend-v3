@@ -15,7 +15,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-const MAIL_FROM = process.env.MAIL_FROM || 'MyAvatar <noreply@myavatar.ge>';
+// Same default as /api/mail/send on purpose: two different senders would mean two domains to verify in
+// Resend, and the auth one would 403 silently if only the other had been set up.
+const MAIL_FROM = process.env.MAIL_FROM || 'MyAvatar <info@myavatar.ge>';
 
 /**
  * POST /api/auth/email-otp/send — issue a 6-digit EMAIL code and deliver it ourselves.

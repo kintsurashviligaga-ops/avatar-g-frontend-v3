@@ -45,6 +45,12 @@ export const env = createEnv({
     VAPI_PHONE_NUMBER_ID: z.string().optional(),
     VAPI_WEBHOOK_SECRET: z.string().optional(),
 
+    // Email delivery (Resend). Auth codes go out through this — see app/api/auth/email-otp/send.
+    // Declared so a missing key is visible in the env checklist rather than only surfacing as a 503 at
+    // sign-up time. MAIL_FROM must be on a domain VERIFIED in Resend or the API answers 403.
+    RESEND_API_KEY: z.string().optional(),
+    MAIL_FROM: z.string().optional(),
+
     // Replicate
     REPLICATE_API_TOKEN: z.string().optional(),
 
@@ -122,6 +128,8 @@ export const env = createEnv({
     VAPI_API_KEY: process.env.VAPI_API_KEY,
     VAPI_PHONE_NUMBER_ID: process.env.VAPI_PHONE_NUMBER_ID,
     VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    MAIL_FROM: process.env.MAIL_FROM,
     REPLICATE_API_TOKEN: process.env.REPLICATE_API_TOKEN,
     MESHY_API_KEY: process.env.MESHY_API_KEY,
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
