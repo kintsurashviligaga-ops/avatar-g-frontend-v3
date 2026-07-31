@@ -420,12 +420,27 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   const spd = clampNum(numFinite(d.speed, 1), 0.25, 4);
   const sped = Math.abs(spd - 1) > 1e-3;
 
-  // SEQUENTIAL, not Promise.all. Every probe fetches a remote signed URL; running them all at once made
-  // them compete for the same bandwidth, so the more clips you merged the likelier one timed out — and a
-  // timed-out probe used to mean "silent". Sequential is slower by a few seconds and correct.
+  // BOUNDED CONCURRENCY, not Promise.all and not fully serial.
+  //
+  // Promise.all was the original bug's amplifier: every probe fetches a remote signed URL, so firing all
+  // of them at once made them fight for the same bandwidth and a timed-out probe used to mean "silent".
+  // But going fully sequential is its own problem now that a sequence can hold 12 clips — twelve serial
+  // network round trips before the render even starts. Three at a time keeps contention low while the
+  // wall-clock stays close to flat.
   // `unknown` counts as HAS AUDIO: see the probe's note on which way to be wrong.
-  const probes: AudioProbe[] = [];
-  for (const u of inputs) probes.push(await probeHasAudio(u));
+  const probes: AudioProbe[] = new Array(inputs.length).fill('unknown');
+  const PROBE_CONCURRENCY = 3;
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(PROBE_CONCURRENCY, inputs.length) }, async () => {
+      for (;;) {
+        const i = next++;
+        const u = inputs[i];
+        if (i >= inputs.length || u === undefined) return;
+        probes[i] = await probeHasAudio(u);
+      }
+    }),
+  );
   const hasAudio = opts.audioOverride ?? probes.map((p) => p !== 'no');
   const scale = opts.scaleW && opts.scaleH
     ? `scale=${even(opts.scaleW)}:${even(opts.scaleH)}:force_original_aspect_ratio=decrease,pad=${even(opts.scaleW)}:${even(opts.scaleH)}:(ow-iw)/2:(oh-ih)/2,setsar=1,`
