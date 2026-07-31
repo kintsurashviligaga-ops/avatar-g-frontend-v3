@@ -47,6 +47,23 @@ describe('the preset set is coherent', () => {
       if (p.mode === 'musicvideo') expect(p.orientation).toBe('vertical');
     }
   });
+
+  it('NO PRESET DUPLICATES A NEIGHBOURING CONTROL. The Mode card directly below this row offers exactly '
+    + '"Music video" and "Documentary"; presets with those names put the same choice on screen twice, '
+    + 'as a chip and as a card, with nothing saying which is in charge.', () => {
+    const ids = VIDEO_PRESETS.map((p) => p.id);
+    expect(ids).not.toContain('musicvideo');
+    expect(ids).not.toContain('documentary');
+  });
+
+  it('every surviving preset sets a COMBINATION no single control can express', () => {
+    // Each must differ from the panel's defaults (documentary / 24s / vertical / Cinematic) in at least
+    // one field beyond mode — otherwise it is just the Mode card wearing a chip.
+    for (const p of VIDEO_PRESETS) {
+      const beyondMode = [p.duration !== 24, p.orientation !== 'vertical', p.style !== 'Cinematic'];
+      expect(beyondMode.some(Boolean) || p.id === 'reel').toBe(true);
+    }
+  });
 });
 
 describe('bounds', () => {

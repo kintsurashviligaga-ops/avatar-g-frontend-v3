@@ -6577,15 +6577,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* PHASE 2 L1 — Cinema / Product-Ad / Character-Swap tabs (TASK 1 adds swap). */}
             <div className="grid grid-cols-3 gap-1.5">
               <button type="button" onClick={() => setVideoTab('cinema')}
-                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
                 🎬 {locale === 'en' ? 'Cinema' : locale === 'ru' ? 'Кино' : 'კინო'}
               </button>
               <button type="button" onClick={() => setVideoTab('product')}
-                className={`rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
                 📦 {locale === 'en' ? 'Product' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}
               </button>
               <button type="button" onClick={() => setVideoTab('videoswap')}
-                className={`relative rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'videoswap' ? 'border-orange-500/50 bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                className={`relative min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'videoswap' ? 'border-orange-500/50 bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
                 🔄 {locale === 'en' ? 'Swap' : locale === 'ru' ? 'Замена' : 'შეცვლა'}
                 <span className="absolute -right-1 -top-1 rounded-full bg-orange-500/30 px-1 text-[8px] font-bold text-orange-300">★</span>
               </button>
@@ -7288,7 +7288,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     queue (its own bubble by id), so it's always available + N swaps run concurrently
                     (independent of the legacy single-render `busy` used by chat/storyboard/lipsync). */}
                 <button type="button" disabled={!swapSourceVideo || !videoCharacterRef} onClick={() => void runVideoSwap()}
-                  className={`w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
+                  className={`min-h-[44px] w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
                   🔄 {locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა'}
                 </button>
               </div>

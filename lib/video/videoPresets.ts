@@ -37,6 +37,19 @@ export interface VideoPreset extends VideoPresetValues {
   hint: { ka: string; en: string; ru: string };
 }
 
+/**
+ * ⚠️ TWO PRESETS WERE REMOVED HERE, AND THE REASON IS WORTH KEEPING.
+ *
+ * The first version of this list included 'musicvideo' and 'documentary'. Those are the exact two
+ * options on the Mode card that sits DIRECTLY BELOW this row — so the same choice appeared twice on one
+ * screen, once as a chip and once as a card, with no way to tell which one was in charge. That is not a
+ * shortcut, it is a second control for a setting that already had one, and it made the panel harder to
+ * read rather than easier.
+ *
+ * What survives are the combinations you CANNOT express by tapping one existing control: Reel, Trailer
+ * and Teaser each set a mode AND a length AND a format AND a look together. A preset earns its place by
+ * collapsing several decisions; one that mirrors a single neighbouring control only adds noise.
+ */
 export const VIDEO_PRESETS: ReadonlyArray<VideoPreset> = [
   {
     id: 'reel',
@@ -70,28 +83,6 @@ export const VIDEO_PRESETS: ReadonlyArray<VideoPreset> = [
       ru: '8 с, одна сцена — быстро и дёшево проверить идею',
     },
     mode: 'documentary', duration: 8, orientation: 'vertical', style: 'Cinematic',
-  },
-  {
-    id: 'musicvideo',
-    emoji: '🎵',
-    label: { ka: 'მუსიკალური', en: 'Music video', ru: 'Клип' },
-    hint: {
-      ka: '48 წამი, ვერტიკალური — მუსიკა წამყვანია, ნარატორი გამორთულია',
-      en: '48s vertical — music leads and the narrator is switched off',
-      ru: '48 с, вертикальное — музыка ведёт, диктор выключен',
-    },
-    mode: 'musicvideo', duration: 48, orientation: 'vertical', style: 'Neon',
-  },
-  {
-    id: 'documentary',
-    emoji: '🎙',
-    label: { ka: 'დოკუმენტური', en: 'Documentary', ru: 'Документальный' },
-    hint: {
-      ka: '48 წამი, ფართო — ნარატორის ხმა წამყვანია',
-      en: '48s widescreen — narration leads',
-      ru: '48 с, широкий — ведёт закадровый голос',
-    },
-    mode: 'documentary', duration: 48, orientation: 'landscape', style: 'Documentary',
   },
 ];
 
