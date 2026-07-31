@@ -243,6 +243,36 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   // signup and vice versa, and resend() does not even support the sign-in case.
   const [otpKind, setOtpKind] = useState<'signup' | 'email'>('signup');
 
+  /**
+   * Ask our own route to issue and MAIL the 6-digit code.
+   *
+   * Supabase's client methods (signUp / signInWithOtp) make Supabase send the mail, and that mail renders
+   * the project's templates — which contain {{ .ConfirmationURL }} and therefore deliver a LINK. Those
+   * templates cannot be edited here (the dashboard locks the token variables), so the client asks the
+   * server to generate the code and deliver it through our own transport instead. The code is still
+   * Supabase's, so verifyOtp() below validates it natively.
+   */
+  const OTP_ERR: Record<'ka' | 'en' | 'ru', { taken: string; rate: string }> = {
+    ka: { taken: 'ეს ელფოსტა უკვე რეგისტრირებულია — გაიარეთ ავტორიზაცია.', rate: 'ძალიან ბევრი მცდელობა — სცადეთ რამდენიმე წუთში.' },
+    en: { taken: 'This email is already registered — sign in instead.', rate: 'Too many attempts — please wait a few minutes.' },
+    ru: { taken: 'Эта почта уже зарегистрирована — войдите в аккаунт.', rate: 'Слишком много попыток — подождите несколько минут.' },
+  };
+  const otpErr = OTP_ERR[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'];
+
+  const requestEmailCode = useCallback(async (purpose: 'signup' | 'signin', pwd?: string): Promise<string | null> => {
+    const res = await fetch('/api/auth/email-otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), purpose, locale, ...(pwd ? { password: pwd } : {}) }),
+    });
+    if (res.ok) return null;
+    const j = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+    if (j?.error === 'email_taken') return otpErr.taken;
+    if (j?.error === 'mail_not_configured') return j.message ?? 'Email delivery is not configured.';
+    if (res.status === 429) return otpErr.rate;
+    return j?.message ?? t.errGeneric;
+  }, [email, locale, t, otpErr]);
+
   const verifyOtp = useCallback(async () => {
     setError(null); setNotice(null);
     const code = otpCode.replace(/\D/g, '');
@@ -274,19 +304,18 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setOtpBusy(true);
     try {
-      const { error } = otpKind === 'signup'
-        ? await supabase.auth.resend({ type: 'signup', email: email.trim() })
-        // supabase.auth.resend() has no sign-in variant — re-issuing a login code means asking for one
-        // again. shouldCreateUser stays false so a resend cannot conjure an account.
-        : await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
-      if (error) throw error;
+      // Re-issue through OUR route, never supabase.auth.resend() — that would send the link template
+      // again and the user would receive two different-looking mails for the same action.
+      // A signup resend needs no password: the account already exists by now.
+      const failure = await requestEmailCode(otpKind === 'signup' ? 'signup' : 'signin');
+      if (failure) { setError(failure); return; }
       setNotice(t.otpResent);
     } catch (err) {
       setError(humanizeAuthError(err, t));
     } finally {
       setOtpBusy(false);
     }
-  }, [email, t, otpKind]);
+  }, [email, t, otpKind, requestEmailCode]);
 
   // OAuth (Google): only render the button when the Supabase project ACTUALLY has the
   // provider enabled (asked from GoTrue's public /settings), so we never show a dead
@@ -357,32 +386,20 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         // only by verifyOtp() below. If the project has email confirmation switched OFF, Supabase returns a
         // live session here — we honour it rather than locking the user out of a project configured that
         // way, but that is a project setting, not a code path we choose.
-        const { data, error } = await supabase.auth.signUp({
-          email, password,
-          // NO emailRedirectTo: that parameter belongs to the magic-LINK flow. Supplying it while the
-          // template is meant to render {{ .Token }} is contradictory, and is the difference between a
-          // mail containing a 6-digit code and one containing a confirmation link.
-          options: { data: { full_name: name || undefined } },
-        });
-        if (error) throw error;
-        if (data.session) {
-          track('user_signup', { method: 'email', verified: false });
-          await redeemRef();
-          onAuthed?.(); onClose();
-          await supabase.auth.getSession();
-          router.refresh();
-        } else {
-          // The expected path: no session until the emailed code is verified.
-          track('user_signup', { method: 'email', pending_confirm: true });
-          setOtpKind('signup');
-          setOtpStage(true);
-        }
+        // Our route calls admin.generateLink({type:'signup'}), which CREATES the unconfirmed account and
+        // returns the code without Supabase mailing anything. We mail it. No session exists until
+        // verifyOtp() succeeds, so an unverified address never gains access.
+        const failure = await requestEmailCode('signup', password);
+        if (failure) { setError(failure); return; }
+        track('user_signup', { method: 'email', pending_confirm: true });
+        setOtpKind('signup');
+        setOtpStage(true);
       } else if (mode === 'magic') {
-        // shouldCreateUser:false is a correctness fix, not a tweak: without it a mistyped address
-        // SILENTLY REGISTERS a new account instead of telling the person their email is unknown.
-        // No emailRedirectTo — see the sign-up note above; this flow delivers a code.
-        const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
-        if (error) throw error;
+        // Same route, sign-in purpose: it uses a magiclink-type generateLink, which does NOT create an
+        // account for an unknown address and answers ok either way so this cannot be used to enumerate
+        // which emails are registered.
+        const failure = await requestEmailCode('signin');
+        if (failure) { setError(failure); return; }
         setOtpKind('email');
         setOtpStage(true);
       } else if (mode === 'reset') {
@@ -395,7 +412,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setBusy(false);
     }
-  }, [mode, email, password, name, locale, t, onAuthed, onClose, reset]);
+  }, [mode, email, password, name, locale, t, onAuthed, onClose, reset, requestEmailCode, router]);
 
   const inputCls = 'w-full bg-app-elevated border border-app-border/15 rounded-xl pl-10 pr-3 py-3 text-[14px] text-app-text placeholder:text-app-muted outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all';
   const title = mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
