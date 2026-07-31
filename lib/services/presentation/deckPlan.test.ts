@@ -170,3 +170,31 @@ describe('SVG generation', () => {
     for (const node of texts) expect(node).toContain('FiraGO');
   });
 });
+
+describe('slide visuals — the column that used to stay empty', () => {
+  const uri = 'data:image/png;base64,AAAA';
+
+  it('embeds the image when one is supplied', () => {
+    const svg = buildSlideSvg({ title: 'T', bullets: ['x'] }, { imageDataUri: uri, hasImage: true });
+    expect(svg).toContain('<image');
+    expect(svg).toContain(uri);
+  });
+
+  it('draws NOTHING when there is no image — no empty <image> element', () => {
+    const svg = buildSlideSvg({ title: 'T', bullets: ['x'] });
+    expect(svg).not.toContain('<image');
+  });
+
+  it('crops rather than distorts the visual', () => {
+    const svg = buildSlideSvg({ title: 'T', bullets: [] }, { imageDataUri: uri, hasImage: true });
+    expect(svg).toContain('preserveAspectRatio="xMidYMid slice"');
+  });
+
+  it('keeps the text column narrow so copy never runs under the picture', () => {
+    const long = 'a '.repeat(40);
+    const count = (s: string) => (s.match(/<text/g) ?? []).length;
+    const wide = count(buildSlideSvg({ title: long, bullets: [] }));
+    const withImg = count(buildSlideSvg({ title: long, bullets: [] }, { imageDataUri: uri, hasImage: true }));
+    expect(withImg).toBeGreaterThanOrEqual(wide);
+  });
+});

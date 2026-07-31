@@ -75,12 +75,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const minutes = dubbingMinutes(durationSec);
 
   const jobId = randomUUID();
-  // service_type carries a DB CHECK constraint (film|avatar|interior|image|music|voice) — dubbing rides as
-  // 'voice' with the real service in params.subtype, the same way product/swap/motion already do.
+  // service_type carries a DB CHECK constraint (film|avatar|interior|image|music|voice).
+  // A dub OUTPUTS A VIDEO, so it files as 'film'. Filing it as 'voice' was both semantically wrong and
+  // invisible: the Library excludes 'voice' (trained voice models are not playable media), so every
+  // finished dub was written successfully and then hidden from the only place a user could find it.
   await createJob({
     id: jobId,
     userId: user.id,
-    serviceType: 'voice',
+    serviceType: 'film',
     params: { subtype: 'dubbing', targetLanguage: request.targetLanguage, minutes },
   }).catch(() => false);
 

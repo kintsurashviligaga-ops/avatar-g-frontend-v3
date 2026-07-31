@@ -104,6 +104,8 @@ export async function runDeckBuild(
     // ── LEG 2 · visuals ────────────────────────────────────────────────────────────────────────────
     const wantImages = req.withImages && hasGeminiImagenProvider();
     let imagesMissing = 0;
+    /** Per-slide data URIs of the generated visuals, indexed like `slides`. */
+    const imageData: (string | undefined)[] = [];
     const slides: Slide[] = outline.map((s) => ({ ...s }));
 
     if (wantImages) {
@@ -123,6 +125,9 @@ export async function runDeckBuild(
         if (!first) { imagesMissing += 1; continue; }
         const url = await hostPng(first.buffer, `img-${i}`).catch(() => null);
         if (url) slide.imageUrl = url; else imagesMissing += 1;
+        // Hold the BYTES for compositing. resvg does no network I/O, so an https href in the SVG draws
+        // nothing — the picture has to be inlined as a data URI at render time.
+        imageData[i] = `data:${first.mimeType || 'image/png'};base64,${first.buffer.toString('base64')}`;
       }
       stepsRun.push('visuals');
     } else if (req.withImages) {
@@ -144,7 +149,8 @@ export async function runDeckBuild(
         theme: req.theme,
         pageNumber: i + 1,
         totalPages: slides.length,
-        hasImage: Boolean(slide.imageUrl),
+        hasImage: Boolean(imageData[i]),
+        imageDataUri: imageData[i],
       });
       const png = rasterize(svg);
       if (!png) continue;
