@@ -58,7 +58,13 @@ function Model({ url }: { url: string }) {
 
 export default function GlbViewer({ url }: { url: string }) {
   return (
-    <div className="h-[420px] w-full overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated/40">
+    // ⚠️ A FIXED 420px CANVAS TRAPPED TOUCH SCROLLING ON A PHONE. This sits inside a panel capped at
+    // 52vh that must therefore scroll internally — and 52vh of a 667px iPhone SE viewport is ~347px, so
+    // the canvas ALONE overflowed it. OrbitControls sets `touchAction = 'none'` on its element to take
+    // over dragging, which means a finger landing anywhere in the viewer could not scroll the panel;
+    // the download button directly beneath it was unreachable without finding the thin strip beside
+    // the canvas. Sized to the viewport now: comfortable on desktop, scrollable past on a phone.
+    <div className="h-[min(48vh,240px)] w-full overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated/40 sm:h-[420px]">
       <Canvas camera={{ position: [0, 0, 4], fov: 45 }} dpr={[1, 2]}>
         {/* A raw GLB with no lighting renders black. Three lights is what Stage was giving us. */}
         <ambientLight intensity={0.6} />

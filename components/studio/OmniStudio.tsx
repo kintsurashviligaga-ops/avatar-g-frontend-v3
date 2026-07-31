@@ -23,6 +23,7 @@ import { audioExtFor } from '@/lib/voice/audioExt';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
+import { TAP_MIN_PX } from './ui/tokens';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -607,7 +608,18 @@ const AVATAR_PRESETS: { src: string; gender: 'female' | 'male' }[] = [
 ];
 
 // ── Per-service options (real backend capabilities) ──────────────────────────
-const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:2', '2:3'] as const;
+/**
+ * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist —
+ * it forwards `body.aspectRatio` straight through — and the FLUX 1.1 Pro fallback accepts eleven
+ * (FLUX_ASPECTS, lib/ai/fluxImage.ts:16). The four added here are the ones people actually ask for and
+ * could not select: 4:5 is the Instagram feed ratio, 3:4 the standard portrait print, 5:4 its landscape
+ * counterpart, and 21:9 cinemascope. Every one already rendered correctly end to end; nothing but this
+ * list stood between the user and them.
+ *
+ * Ordered by how often they are wanted, not numerically, because the strip wraps and the first row is
+ * what most people will ever read.
+ */
+const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'] as const;
 type ImgAspect = (typeof IMG_ASPECTS)[number];
 const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as const;
 type ImgQuality = (typeof IMG_QUALITIES)[number][0];
@@ -663,7 +675,18 @@ const MUSIC_PRESETS: ReadonlyArray<MusicPreset> = [
 ];
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
 
-// A small, theme-tokenised option chip used by the per-service options bar.
+/**
+ * The option chip used by every per-service panel — Image, Music, Video, Avatar and Remix.
+ *
+ * ⚠️ IT WAS 36px TALL, against this repo's own TAP_MIN_PX = 44 (components/studio/ui/tokens.ts). The
+ * shared CHIP_BASE honours that minimum; this local copy quietly did not, and because it is the chip
+ * for FIVE panels, essentially every option in the composer was an undersized touch target. 44px is
+ * not a stylistic preference — it is the floor below which a finger starts hitting the neighbour
+ * instead, and these chips sit in tightly wrapped rows where the neighbour is another paid setting.
+ *
+ * The panels get taller as a result. They are already height-capped and scroll internally, so the cost
+ * is a little more scrolling; the alternative is a control users mis-tap.
+ */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -671,7 +694,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       aria-pressed={active}
       className={`inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors active:scale-95 ${active ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}
-      style={{ minHeight: 36 }}
+      style={{ minHeight: TAP_MIN_PX }}
     >
       {children}
     </button>
@@ -6243,7 +6266,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mb-2 space-y-2">
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
-              <div className="flex items-end gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {/* WRAPS rather than scrolls. A horizontal scroller was survivable at six ratios; at ten it
+                  hides four of them behind the edge with no affordance that they exist, on exactly the
+                  narrow screens where discoverability matters most. Two rows on a phone, one on desktop. */}
+              <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1.5 pb-1">
                 {IMG_ASPECTS.map((a) => {
                   const [aw, ah] = a.split(':').map(Number) as [number, number];
                   const max = 26;

@@ -17,7 +17,7 @@
  * and for the reasoning behind each canonical value.
  */
 
-import { forwardRef, useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import {
   PANEL, GROUP, ROW, LABEL, SECTION_TITLE, HINT,
@@ -424,5 +424,210 @@ export function Dropzone({
         }}
       />
     </>
+  );
+}
+
+// ── PROGRESSIVE DISCLOSURE ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * A collapsible "Advanced" drawer.
+ *
+ * The whole point of these panels is that a novice sees a short, obvious form and a power user can
+ * still reach everything. That only works if the advanced set is genuinely CLOSED by default and its
+ * trigger reads as optional — a drawer that is open on arrival is just a longer form with a heading.
+ *
+ * Renders its children only while open. Options inside are inert when closed, which is what makes it
+ * safe to put rarely-wanted, high-consequence controls (negative prompts, seeds, bitrates) in here:
+ * a value a user never opened is a value they never accidentally changed.
+ *
+ * `summary` shows what the drawer currently holds while it is shut ("2 changed", "seed 4471"), so
+ * closing it never hides a setting the user has actually altered.
+ */
+export function Disclosure({
+  label, summary, children, defaultOpen = false, badge,
+}: {
+  label: ReactNode;
+  /** Short state readout shown while collapsed — never hide a NON-DEFAULT value behind a closed door. */
+  summary?: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  /** Count of non-default settings inside; renders as a dot so a changed drawer is visible when shut. */
+  badge?: number;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="min-w-0 rounded-xl border border-app-border/15 bg-app-elevated/25">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex min-h-[44px] w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors hover:bg-app-elevated/40 active:scale-[0.995]"
+      >
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-app-text">{label}</span>
+        {!open && badge ? (
+          <span className="shrink-0 rounded-full bg-app-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent">{badge}</span>
+        ) : null}
+        {!open && summary ? (
+          <span className="min-w-0 max-w-[45%] shrink truncate text-[11px] text-app-muted">{summary}</span>
+        ) : null}
+        <svg
+          aria-hidden
+          viewBox="0 0 20 20"
+          className={cx('h-4 w-4 shrink-0 text-app-muted transition-transform', open && 'rotate-180')}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && <div className="space-y-2.5 border-t border-app-border/10 px-3 pb-3 pt-2.5">{children}</div>}
+    </div>
+  );
+}
+
+// ── PRESETS ─────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One-tap presets that set SEVERAL parameters at once.
+ *
+ * This is the control that actually removes the jargon problem. A novice does not want to choose a
+ * quality tier, an aspect ratio and a style separately — they want "Instagram Reel" or "Cinematic".
+ * The preset writes all of those at once and the individual controls stay visible below, so the choice
+ * is a starting point rather than a mode the user is locked into.
+ *
+ * `activeId` is computed by the caller from the CURRENT values, not stored separately — otherwise a
+ * preset stays highlighted after the user edits one of the fields it set, which is a lie about state.
+ */
+export function PresetRow<T extends string>({
+  label, presets, activeId, onPick,
+}: {
+  label?: ReactNode;
+  presets: ReadonlyArray<{ id: T; label: ReactNode; hint?: string; icon?: ReactNode }>;
+  /** Derive from live values so an edited preset stops looking selected. */
+  activeId?: T | null;
+  onPick: (id: T) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      {label != null && <Label>{label}</Label>}
+      {/* Wraps rather than scrolls: a horizontal scroller hides options behind an edge on the exact
+          screens where discoverability matters most. */}
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onPick(p.id)}
+            aria-pressed={activeId === p.id}
+            title={p.hint}
+            className={cx(
+              'flex min-h-[44px] min-w-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold transition-all active:scale-[0.97]',
+              activeId === p.id
+                ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40'
+                : 'bg-app-elevated text-app-muted ring-1 ring-app-border/15 hover:text-app-text',
+            )}
+          >
+            {p.icon && <span aria-hidden className="shrink-0">{p.icon}</span>}
+            <span className="min-w-0 truncate">{p.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── VISUAL CARD SELECT ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A grid of tappable cards — the visual alternative to a `<select>` for a small, meaningful choice.
+ *
+ * Two columns on the narrowest phones and three from 420px. Deliberately NOT four: at 320px a
+ * four-column grid gives each card about 68px, which cannot hold a Georgian word without truncating it
+ * to the point of uselessness, and Georgian is this product's primary language.
+ *
+ * Every card is at least 44px tall (TAP_MIN_PX) and its label truncates rather than widening the grid,
+ * so no combination of translations can push this off the screen edge.
+ */
+export function CardSelect<T extends string>({
+  value, onChange, options, label, hint, cols = 3, disabled,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: ReadonlyArray<{ id: T; label: ReactNode; sub?: ReactNode; icon?: ReactNode; title?: string }>;
+  label?: ReactNode;
+  hint?: ReactNode;
+  /** Max columns at >=420px. 2 or 3 only — see the note above about 4. */
+  cols?: 2 | 3;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      {label != null && <Label>{label}</Label>}
+      <div className={cx('grid gap-1.5', cols === 2 ? 'grid-cols-2' : 'grid-cols-2 min-[420px]:grid-cols-3')}>
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(o.id)}
+            aria-pressed={value === o.id}
+            title={o.title}
+            className={cx(
+              'flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-2 text-center transition-all active:scale-[0.97] disabled:opacity-40',
+              value === o.id
+                ? 'bg-app-accent/15 ring-1 ring-app-accent/40'
+                : 'bg-app-elevated ring-1 ring-app-border/15 hover:ring-app-border/30',
+            )}
+          >
+            {o.icon && <span aria-hidden className="shrink-0 leading-none">{o.icon}</span>}
+            <span className={cx('w-full truncate text-[12px] font-semibold', value === o.id ? 'text-app-accent' : 'text-app-text')}>
+              {o.label}
+            </span>
+            {o.sub && <span className="w-full truncate text-[10px] text-app-muted">{o.sub}</span>}
+          </button>
+        ))}
+      </div>
+      {hint != null && <Hint>{hint}</Hint>}
+    </div>
+  );
+}
+
+// ── STEPPER ─────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A numeric stepper: two 44px targets and a readout, instead of a native number input.
+ *
+ * A `<input type="number">` on a phone opens a keyboard, risks the iOS zoom-on-focus problem, and
+ * accepts values the caller then has to defend against. The stepper cannot produce an out-of-range
+ * value at all — min/max are enforced by the control rather than validated after the fact.
+ */
+export function Stepper({
+  value, onChange, min = 1, max = 99, step = 1, label, hint, suffix, disabled,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  label?: ReactNode;
+  hint?: ReactNode;
+  suffix?: ReactNode;
+  disabled?: boolean;
+}) {
+  const clamp = (n: number) => Math.max(min, Math.min(max, n));
+  const btn = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[18px] font-semibold text-app-text transition-colors hover:bg-app-elevated disabled:opacity-30';
+  return (
+    <div className="min-w-0">
+      {label != null && <Label>{label}</Label>}
+      <div className="flex items-center gap-1 rounded-xl bg-app-elevated ring-1 ring-app-border/15">
+        <button type="button" className={btn} onClick={() => onChange(clamp(value - step))} disabled={disabled || value <= min} aria-label="−">−</button>
+        <span className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold tabular-nums text-app-text">
+          {value}{suffix ? <span className="ml-1 text-[11px] font-normal text-app-muted">{suffix}</span> : null}
+        </span>
+        <button type="button" className={btn} onClick={() => onChange(clamp(value + step))} disabled={disabled || value >= max} aria-label="+">+</button>
+      </div>
+      {hint != null && <Hint>{hint}</Hint>}
+    </div>
   );
 }

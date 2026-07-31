@@ -22,14 +22,14 @@ import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '
 import { MontageEditor, type EditorClip } from './MontageEditor';
 import {
   Panel, PanelHeader, Group, Row, Label, TextArea, LabelledField,
-  ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar, Dropzone,
+  ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
 import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDuration';
 import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { ResultActions } from './ui/ResultActions';
-import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
+import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 
 /**
@@ -51,7 +51,7 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY = {
   ka: {
-    close: 'დახურვა', run: 'გაშვება', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)',
+    close: 'დახურვა', run: 'გაშვება', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
     keepOpen: 'რამდენიმე წუთი სჭირდება — არ დახუროთ გვერდი.',
     montage: 'მონტაჟი', dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
     shots: 'კადრები', addShot: '+ კადრი', aspect: 'ფორმატი', music: 'მუსიკა (არჩევითი)',
@@ -75,7 +75,7 @@ const COPY = {
     removeBgHint: 'ფონი მოცილდება რეკონსტრუქციამდე.',
   },
   en: {
-    close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)',
+    close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
     montage: 'Montage', dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
     shots: 'Shots', addShot: '+ Shot', aspect: 'Aspect', music: 'Music (optional)',
@@ -99,7 +99,7 @@ const COPY = {
     removeBgHint: 'Cuts the background out before reconstruction.',
   },
   ru: {
-    close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)',
+    close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
     keepOpen: 'Это займёт несколько минут — не закрывайте страницу.',
     montage: 'Монтаж', dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
     shots: 'Кадры', addShot: '+ Кадр', aspect: 'Формат', music: 'Музыка (необязательно)',
@@ -304,6 +304,23 @@ export function ServiceParamsPanel({
   // Presentation
   const [topic, setTopic] = useState('');
   const [slideCount, setSlideCount] = useState(DEFAULT_SLIDES);
+  /** The route has always accepted this (deckPlan validates `b.theme === 'light' ? 'light' : 'dark'`);
+   *  the panel hardcoded 'dark', so a deck for a printed handout or a bright room was unreachable. */
+  const [deckTheme, setDeckTheme] = useState<DeckTheme>('dark');
+  /** Text-to-3D only. The route forwards this to Imagen inside `if (request.mode === 'text')`, so in
+   *  photo mode it would be a control that does nothing — hidden there rather than shown and ignored. */
+  const [neg3d, setNeg3d] = useState('');
+  /** 'auto' was hardcoded in the request body. The validator accepts a real language and uses it to
+   *  skip detection, which matters most for accented or noisy audio where auto-detect guesses wrong. */
+  const [sourceLanguage, setSourceLanguage] = useState<DubbingLanguage | 'auto'>('auto');
+
+  // Filtering the SOURCE list by the current target is not enough on its own: pick a source, then
+  // change the TARGET to that same language, and the pair becomes source === target — which the
+  // validator rejects outright with "nothing to dub". Fall back to auto instead of letting the user
+  // assemble a request that cannot succeed.
+  useEffect(() => {
+    if (sourceLanguage !== 'auto' && sourceLanguage === targetLanguage) setSourceLanguage('auto');
+  }, [targetLanguage, sourceLanguage]);
 
   // Apply what the chat sentence already told us. Keyed on `service` so switching services in the menu
   // re-applies cleanly, and every value is validated against the SAME bounds the controls enforce —
@@ -402,16 +419,20 @@ export function ServiceParamsPanel({
         // durationSec was NEVER SENT. The route then fell back to 60, which killed its own 5-minute cap
         // and billed every dub — however long — as a single minute. Sent only when actually measured.
         body = {
-          sourceVideoUrl: sourceVideoUrl.trim(), sourceLanguage: 'auto', targetLanguage,
+          sourceVideoUrl: sourceVideoUrl.trim(), sourceLanguage, targetLanguage,
           preserveBackgroundAudio: preserveBg, subtitles,
           ...(dubDurationSec ? { durationSec: Math.ceil(dubDurationSec) } : {}),
         };
       } else if (service === 'presentation') {
         endpoint = '/api/v2/presentation/build';
-        body = { topic: topic.trim(), slideCount, language: deckLang, theme: 'dark', withImages };
+        body = { topic: topic.trim(), slideCount, language: deckLang, theme: deckTheme, withImages };
       } else {
         endpoint = '/api/v2/model3d/create';
-        body = { mode: mode3d, prompt: prompt3d.trim(), imageUrl: imageUrl3d.trim(), quality: quality3d, removeBackground };
+        body = {
+          mode: mode3d, prompt: prompt3d.trim(), imageUrl: imageUrl3d.trim(), quality: quality3d, removeBackground,
+          // Only meaningful on the text path; the validator caps it at 300 chars so we match that here.
+          ...(mode3d === 'text' && neg3d.trim() ? { negativePrompt: neg3d.trim().slice(0, 300) } : {}),
+        };
       }
 
       const res = await fetch(endpoint, {
@@ -526,6 +547,26 @@ export function ServiceParamsPanel({
                 visually unrelated to every other control in the app. */}
             <ToggleRow on={preserveBg} onChange={setPreserveBg} label={t.keepBg} hint={t.keepBgHint} />
             <ToggleRow on={subtitles} onChange={setSubtitles} label={t.subs} />
+            {/* The request body hardcoded sourceLanguage:'auto'. The validator has always accepted a real
+                language and uses it to SKIP detection — which is what rescues accented or noisy audio
+                that auto-detect gets wrong. Behind a drawer because auto is right almost every time.
+                The validator rejects source === target ("nothing to dub"), so that pair is excluded
+                here rather than sent and bounced. */}
+            <Disclosure
+              label={t.advanced}
+              badge={sourceLanguage !== 'auto' ? 1 : 0}
+              summary={sourceLanguage !== 'auto' ? LANGUAGE_LABEL[sourceLanguage] : undefined}
+            >
+              <ChipGroup
+                label={t.sourceLang}
+                value={sourceLanguage}
+                onChange={setSourceLanguage}
+                options={[
+                  { id: 'auto' as const, label: t.autoDetect },
+                  ...DUBBING_LANGUAGES.filter((l) => l !== targetLanguage).map((l) => ({ id: l, label: LANGUAGE_LABEL[l] })),
+                ]}
+              />
+            </Disclosure>
           </Group>
         </div>
       )}
@@ -557,6 +598,18 @@ export function ServiceParamsPanel({
               value={deckLang}
               onChange={setDeckLang}
               options={[{ id: 'ka' as const, label: 'ქართული' }, { id: 'en' as const, label: 'English' }, { id: 'ru' as const, label: 'Русский' }]}
+            />
+            {/* The route validated this all along — the panel just never asked. A visual pair beats a
+                select here: the choice is about how the deck LOOKS, so the control should show it. */}
+            <CardSelect
+              label={t.deckTheme}
+              value={deckTheme}
+              onChange={setDeckTheme}
+              cols={2}
+              options={[
+                { id: 'dark' as const, label: t.themeDark, icon: '🌙' },
+                { id: 'light' as const, label: t.themeLight, icon: '☀️' },
+              ]}
             />
             <ToggleRow on={withImages} onChange={setWithImages} label={t.withImages} hint={t.withImagesHint} />
           </Group>
@@ -609,6 +662,25 @@ export function ServiceParamsPanel({
               options={[{ id: 'draft' as const, label: `⚡ ${t.draft}` }, { id: 'standard' as const, label: `✨ ${t.standard}` }]}
             />
             <ToggleRow on={removeBackground} onChange={setRemoveBackground} label={t.removeBg} hint={t.removeBgHint} />
+            {/* ⚠️ TEXT MODE ONLY — the route passes negativePrompt to Imagen inside
+                `if (request.mode === 'text')`, so rendering it in photo mode would be a knob that
+                silently does nothing. Text-to-3D is two hops (prompt → Imagen reference → mesh), so
+                anything unwanted in that reference becomes geometry; without this the only escape from
+                a bad reference was to rewrite the prompt and pay for another generation. */}
+            {mode3d === 'text' && (
+              <Disclosure label={t.advanced} badge={neg3d.trim() ? 1 : 0} summary={neg3d.trim() ? t.excludeSet : undefined}>
+                <div>
+                  <Label>{t.exclude}</Label>
+                  <UiTextArea
+                    value={neg3d}
+                    onChange={(e) => setNeg3d(e.target.value)}
+                    rows={2}
+                    maxLength={300}
+                    placeholder={t.excludeHint}
+                  />
+                </div>
+              </Disclosure>
+            )}
           </Group>
         </div>
       )}
@@ -696,13 +768,16 @@ export function ServiceParamsPanel({
             <div>
               <Label>{t.reference}</Label>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={result.referenceUrl} alt="" className="w-32 rounded-lg border border-app-border/10" />
+              {/* Was a fixed 128px thumbnail — too small to judge the reference a paid reconstruction is built from. */}
+              <img src={result.referenceUrl} alt="" className="w-full max-w-[220px] rounded-lg border border-app-border/10" />
             </div>
           )}
           {result.glbUrl && (
             <>
-              <GlbViewer url={result.glbUrl} />
+              {/* Actions ABOVE the canvas: OrbitControls owns every touch inside the viewer, so anything
+                  placed below it can be hard to reach on a phone. Belt and braces with the height fix. */}
               <ResultActions url={result.glbUrl} kind="model3d" locale={lang} onNote={setNote} />
+              <GlbViewer url={result.glbUrl} />
             </>
           )}
         </div>
