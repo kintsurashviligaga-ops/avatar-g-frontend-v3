@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { Chip, Row, IconButton, ToggleRow, Note, Hint, Label } from './ui/controls';
 import {
   MAX_SHOTS,
   MIN_SHOTS,
@@ -44,6 +45,8 @@ const COPY = {
     aspect: 'ფორმატი', music: 'ფონური მუსიკა', musicOnly: 'მხოლოდ მუსიკა',
     addMusic: '+ მუსიკა', mute: 'ხმა', tooMany: 'მაქსიმუმ ' + MAX_SHOTS + ' კადრი',
     notMedia: 'მხოლოდ ვიდეო ან ფოტო', pendingUpload: 'იტვირთება…',
+    removeMusic: 'მუსიკის მოხსნა', musicOnlyHint: 'კადრების ორიგინალი ხმა ჩაიხშობა.',
+    moveUp: 'ზემოთ', moveDown: 'ქვემოთ', removeShot: 'კადრის წაშლა',
     fullEditor: 'სრული რედაქტორი →',
   },
   en: {
@@ -56,6 +59,8 @@ const COPY = {
     aspect: 'Aspect', music: 'Background music', musicOnly: 'Music only',
     addMusic: '+ Music', mute: 'Sound', tooMany: `Maximum ${MAX_SHOTS} shots`,
     notMedia: 'Only video or photo files', pendingUpload: 'Uploading…',
+    removeMusic: 'Remove music', musicOnlyHint: 'Mutes the original sound of every shot.',
+    moveUp: 'Move up', moveDown: 'Move down', removeShot: 'Remove shot',
     fullEditor: 'Full editor →',
   },
   ru: {
@@ -68,6 +73,8 @@ const COPY = {
     aspect: 'Формат', music: 'Фоновая музыка', musicOnly: 'Только музыка',
     addMusic: '+ Музыка', mute: 'Звук', tooMany: `Максимум ${MAX_SHOTS} кадров`,
     notMedia: 'Только видео или фото', pendingUpload: 'Загрузка…',
+    removeMusic: 'Убрать музыку', musicOnlyHint: 'Заглушает оригинальный звук всех кадров.',
+    moveUp: 'Вверх', moveDown: 'Вниз', removeShot: 'Удалить кадр',
     fullEditor: 'Полный редактор →',
   },
 } satisfies Record<Lang, Record<string, string>>;
@@ -281,8 +288,8 @@ export function MontageEditor({
   const over = total > MAX_TOTAL_SEC;
   const filled = clips.filter((c) => c.url);
 
-  const pill = 'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors';
-  const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:border-app-accent/50 hover:text-app-accent active:scale-90 disabled:opacity-25';
+  // The local `pill` (26px tall) and `iconBtn` (28px) are gone: both were under the 44px tap floor and
+  // both had drifted from the same controls in every other panel. See components/studio/ui/tokens.
 
   return (
     <div className="space-y-3">
@@ -323,16 +330,9 @@ export function MontageEditor({
             <div className="my-1 flex items-center gap-1.5 pl-2">
               <span className="h-px flex-1 bg-app-border/15" />
               {TRANSITIONS.map((tr) => (
-                <button
-                  key={tr.id}
-                  type="button"
-                  onClick={() => patch(c.uid, { transition: tr.id })}
-                  className={`${pill} ${c.transition === tr.id
-                    ? 'border-app-accent/60 bg-app-accent/15 text-app-accent'
-                    : 'border-app-border/20 text-app-muted hover:border-app-accent/40'}`}
-                >
+                <Chip key={tr.id} active={c.transition === tr.id} onClick={() => patch(c.uid, { transition: tr.id })}>
                   <span aria-hidden>{tr.glyph}</span> {t[tr.key]}
-                </button>
+                </Chip>
               ))}
               <span className="h-px flex-1 bg-app-border/15" />
             </div>
@@ -368,23 +368,23 @@ export function MontageEditor({
                     {shotDuration(c).toFixed(1)}s{c.sourceSec > 0 && ` / ${c.sourceSec.toFixed(1)}s`}
                   </span>
                   {c.kind === 'video' && (
-                    <button type="button" onClick={() => patch(c.uid, { muted: !c.muted })}
-                      title={t.mute} className={`${iconBtn} ${c.muted ? '' : 'text-app-accent border-app-accent/40'}`}>
+                    <IconButton label={t.mute} onClick={() => patch(c.uid, { muted: !c.muted })}
+                      className={c.muted ? '' : 'border-app-accent/40 text-app-accent'}>
                       {c.muted ? '🔇' : '🔊'}
-                    </button>
+                    </IconButton>
                   )}
-                  <button type="button" onClick={() => setClips((cs) => {
+                  <IconButton label={t.moveUp} onClick={() => setClips((cs) => {
                     const j = i - 1; if (j < 0) return cs;
                     const out = [...cs]; const a = out[i]; const b = out[j];
                     if (!a || !b) return cs; out[i] = b; out[j] = a; return out;
-                  })} disabled={i === 0} className={iconBtn}>↑</button>
-                  <button type="button" onClick={() => setClips((cs) => {
+                  })} disabled={i === 0}>↑</IconButton>
+                  <IconButton label={t.moveDown} onClick={() => setClips((cs) => {
                     const j = i + 1; if (j >= cs.length) return cs;
                     const out = [...cs]; const a = out[i]; const b = out[j];
                     if (!a || !b) return cs; out[i] = b; out[j] = a; return out;
-                  })} disabled={i === clips.length - 1} className={iconBtn}>↓</button>
-                  <button type="button" onClick={() => setClips((cs) => cs.filter((x) => x.uid !== c.uid))}
-                    disabled={clips.length <= MIN_SHOTS} className={iconBtn}>✕</button>
+                  })} disabled={i === clips.length - 1}>↓</IconButton>
+                  <IconButton label={t.removeShot} onClick={() => setClips((cs) => cs.filter((x) => x.uid !== c.uid))}
+                    disabled={clips.length <= MIN_SHOTS}>✕</IconButton>
                 </div>
 
                 {/* TRIM — sliders bounded by the clip's REAL length, which is only knowable because the
@@ -452,34 +452,28 @@ export function MontageEditor({
         ref={fileRef} type="file" accept="video/*,image/*" multiple className="hidden"
         onChange={(e) => { const picked = Array.from(e.target.files ?? []); e.currentTarget.value = ''; if (picked.length) void ingest(picked); }}
       />
-      {uploadError && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-400">{uploadError}</p>
-      )}
+      {uploadError && <Note tone="error">{uploadError}</Note>}
       {filled.length < MIN_SHOTS && !uploading && (
-        <p className="text-center text-[11px] text-app-muted">{t.empty}</p>
+        <div className="text-center"><Hint>{t.empty}</Hint></div>
       )}
 
       {/* ── FORMAT + MUSIC — visual presets, matching the other services ──────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-[11px] font-medium text-app-muted">{t.aspect}</span>
-        {ASPECTS.map((a) => (
-          <button
-            key={a.id} type="button" onClick={() => setAspect(a.id)}
-            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] transition-colors ${
-              aspect === a.id ? 'border-app-accent/60 bg-app-accent/10 text-app-accent' : 'border-app-border/20 text-app-muted hover:border-app-accent/40'
-            }`}
-          >
-            <span style={{ width: a.w, height: a.h }} className="rounded-sm border border-current" aria-hidden />
-            {a.id}
-          </button>
-        ))}
+      <div className="min-w-0">
+        <Label>{t.aspect}</Label>
+        <Row>
+          {ASPECTS.map((a) => (
+            <Chip key={a.id} active={aspect === a.id} onClick={() => setAspect(a.id)}>
+              <span style={{ width: a.w, height: a.h }} className="rounded-sm border border-current" aria-hidden />
+              {a.id}
+            </Chip>
+          ))}
+        </Row>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => musicRef.current?.click()}
-          className={`${pill} border-app-border/20 text-app-muted hover:border-app-accent/40`}>
+      <Row>
+        <Chip active={!!musicUrl} onClick={() => musicRef.current?.click()}>
           🎵 {musicUrl ? t.music : t.addMusic}
-        </button>
+        </Chip>
         <input
           ref={musicRef} type="file" accept="audio/*" className="hidden"
           onChange={async (e) => {
@@ -494,21 +488,14 @@ export function MontageEditor({
           }}
         />
         {onOpenFullEditor && (
-          <button type="button" onClick={onOpenFullEditor}
-            className={`${pill} ml-auto border-app-accent/40 text-app-accent hover:bg-app-accent/10`}>
-            {t.fullEditor}
-          </button>
+          <Chip active onClick={onOpenFullEditor}>{t.fullEditor}</Chip>
         )}
-        {musicUrl && (
-          <>
-            <button type="button" onClick={() => setMusicUrl('')} className={iconBtn}>✕</button>
-            <label className="flex items-center gap-1.5 text-[11px] text-app-text">
-              <input type="checkbox" checked={musicOnly} onChange={(e) => setMusicOnly(e.target.checked)} />
-              {t.musicOnly}
-            </label>
-          </>
-        )}
-      </div>
+        {musicUrl && <IconButton label={t.removeMusic} onClick={() => setMusicUrl('')}>✕</IconButton>}
+      </Row>
+
+      {/* Only meaningful once a bed exists, so it appears with it — a switch, not a 13px native
+          checkbox that no other control in the app resembles. */}
+      {musicUrl && <ToggleRow on={musicOnly} onChange={setMusicOnly} label={t.musicOnly} hint={t.musicOnlyHint} />}
     </div>
   );
 }

@@ -20,8 +20,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '@/lib/services/montage/montagePlan';
 import { MontageEditor, type EditorClip } from './MontageEditor';
+import {
+  Panel, PanelHeader, Group, Row, Label, Hint, Field, TextArea, LabelledField,
+  ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar,
+} from './ui/controls';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
-import { pollDelayMs, MAX_POLL_ATTEMPTS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
+import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
+
+/**
+ * Server-side caps, surfaced in the UI.
+ *
+ * Both routes silently truncate past these, and the boxes that fed them accepted more and said nothing —
+ * so a long topic or prompt simply stopped mattering partway through with no indication. The counter on
+ * LabelledField makes the ceiling visible instead of letting the words disappear.
+ */
+const MAX_TOPIC_CHARS = 300;
+
+/** One style for every download link in the panel — they were three different inline strings. */
+const DOWNLOAD_LINK = 'tap-44 relative inline-flex items-center text-[12px] font-medium text-app-accent hover:underline';
 
 const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false });
 
@@ -42,6 +58,13 @@ const COPY = {
     fromText: 'ტექსტიდან', fromImage: 'ფოტოდან', describe: 'აღწერა', photoUrl: 'ფოტოს ბმული',
     quality: 'ხარისხი', draft: 'სწრაფი', standard: 'სტანდარტული', removeBg: 'ფონის მოცილება',
     open: 'გახსნა', download: 'ჩამოტვირთვა', reference: 'რეფერენსი',
+    dubSourceHint: 'ვიდეოს პირდაპირი ბმული (MP4). მაქსიმუმ 5 წუთი.',
+    keepBgHint: 'ორიგინალი ფონური ხმა შენარჩუნდება მუსიკისა და ეფექტებისთვის.',
+    topicPh: 'რაზე უნდა იყოს პრეზენტაცია?',
+    deckOptions: 'პარამეტრები', withImagesHint: 'თითო სლაიდს დაემატება გენერირებული სურათი (უფრო ნელია).',
+    describePh: 'აღწერე ობიექტი — ერთი საგანი, სუფთა ფონი',
+    describeHint: 'ერთი საგანი ყველაზე კარგად მუშაობს — არა სცენა.',
+    removeBgHint: 'ფონი მოცილდება რეკონსტრუქციამდე.',
   },
   en: {
     close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed',
@@ -56,6 +79,13 @@ const COPY = {
     fromText: 'From text', fromImage: 'From photo', describe: 'Description', photoUrl: 'Photo URL',
     quality: 'Quality', draft: 'Draft', standard: 'Standard', removeBg: 'Remove background',
     open: 'Open', download: 'Download', reference: 'Reference',
+    dubSourceHint: 'A direct link to the video (MP4). Up to 5 minutes.',
+    keepBgHint: 'Keeps the original background audio for music and effects.',
+    topicPh: 'What should the deck be about?',
+    deckOptions: 'Options', withImagesHint: 'Adds a generated image to each slide (slower).',
+    describePh: 'Describe the object — a single item, plain background',
+    describeHint: 'A single object reconstructs best — not a scene.',
+    removeBgHint: 'Cuts the background out before reconstruction.',
   },
   ru: {
     close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось',
@@ -70,6 +100,13 @@ const COPY = {
     fromText: 'Из текста', fromImage: 'Из фото', describe: 'Описание', photoUrl: 'Ссылка на фото',
     quality: 'Качество', draft: 'Черновик', standard: 'Стандарт', removeBg: 'Удалить фон',
     open: 'Открыть', download: 'Скачать', reference: 'Референс',
+    dubSourceHint: 'Прямая ссылка на видео (MP4). До 5 минут.',
+    keepBgHint: 'Сохраняет оригинальный фоновый звук — музыку и эффекты.',
+    topicPh: 'О чём должна быть презентация?',
+    deckOptions: 'Параметры', withImagesHint: 'Добавляет к каждому слайду сгенерированное изображение (медленнее).',
+    describePh: 'Опишите объект — один предмет, чистый фон',
+    describeHint: 'Один объект реконструируется лучше всего — не сцена.',
+    removeBgHint: 'Удаляет фон перед реконструкцией.',
   },
 } satisfies Record<Lang, Record<string, string>>;
 
@@ -272,20 +309,15 @@ export function ServiceParamsPanel({
       : mode3d === 'text' ? prompt3d.trim().length >= 3 : Boolean(imageUrl3d.trim())
   );
 
-  const field = 'w-full rounded-lg bg-app-elevated border border-app-border/15 px-2.5 py-1.5 text-[13px] !text-app-text outline-none focus:border-app-accent/50 transition-colors';
-  const lbl = 'mb-1 block text-[11px] font-medium text-app-muted';
-
   return (
-    // HEIGHT IS CAPPED, and the panel scrolls inside itself. A twelve-shot timeline is taller than the
+    // HEIGHT IS CAPPED and the panel scrolls inside itself. A twelve-shot timeline is taller than the
     // viewport, and letting it grow pushed the message input off screen — the one control that must
     // never leave, since this panel sits INSIDE the chat rather than on a page of its own.
-    <div className="mb-2 max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl border border-app-border/15 bg-app-surface/70 p-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-[12.5px] font-semibold text-app-text">{t[service]}</span>
-        <button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-[11px] text-app-muted hover:text-app-text">
-          {t.close} ✕
-        </button>
-      </div>
+    <Panel className="mb-2" maxHeight="52vh">
+      <PanelHeader
+        title={t[service]}
+        action={<GhostButton onClick={onClose} className="px-2">{t.close} ✕</GhostButton>}
+      />
 
       {service === 'montage' && (
         <MontageEditor
@@ -303,118 +335,121 @@ export function ServiceParamsPanel({
       )}
 
       {service === 'dubbing' && (
-        <div className="space-y-2">
-          <label className="block">
-            <span className={lbl}>{t.sourceVideo}</span>
-            <input type="url" value={sourceVideoUrl} onChange={(e) => setSourceVideoUrl(e.target.value)} placeholder="https://…/video.mp4" className={field} />
-          </label>
-          <label className="block">
-            <span className={lbl}>{t.targetLang}</span>
-            <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value as DubbingLanguage)} className={field}>
-              {DUBBING_LANGUAGES.map((l) => <option key={l} value={l}>{LANGUAGE_LABEL[l]}</option>)}
-            </select>
-          </label>
-          <div className="flex flex-wrap gap-4 text-[12px] text-app-text">
-            <label className="flex items-center gap-1.5"><input type="checkbox" checked={preserveBg} onChange={(e) => setPreserveBg(e.target.checked)} />{t.keepBg}</label>
-            <label className="flex items-center gap-1.5"><input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)} />{t.subs}</label>
-          </div>
+        <div className="space-y-2.5">
+          {/* SOURCE first, then TARGET, then options — the order the task is actually thought about. */}
+          <Group title={`🎬 ${t.sourceVideo}`}>
+            <Field type="url" inputMode="url" value={sourceVideoUrl} onChange={(e) => setSourceVideoUrl(e.target.value)} placeholder="https://…/video.mp4" />
+            <Hint>{t.dubSourceHint}</Hint>
+          </Group>
+          <Group title={`🗣 ${t.targetLang}`}>
+            <ChipGroup
+              value={targetLanguage}
+              onChange={setTargetLanguage}
+              options={DUBBING_LANGUAGES.map((l) => ({ id: l, label: LANGUAGE_LABEL[l] }))}
+            />
+            {/* Switches, not bare checkboxes: a native checkbox is ~13px — unhittable on a phone and
+                visually unrelated to every other control in the app. */}
+            <ToggleRow on={preserveBg} onChange={setPreserveBg} label={t.keepBg} hint={t.keepBgHint} />
+            <ToggleRow on={subtitles} onChange={setSubtitles} label={t.subs} />
+          </Group>
         </div>
       )}
 
       {service === 'presentation' && (
-        <div className="space-y-2">
-          <label className="block">
-            <span className={lbl}>{t.topic}</span>
-            <textarea rows={2} value={topic} onChange={(e) => setTopic(e.target.value)} className={field} />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="number" min={MIN_SLIDES} max={MAX_SLIDES} value={slideCount}
-              onChange={(e) => setSlideCount(Math.max(MIN_SLIDES, Math.min(MAX_SLIDES, Number(e.target.value) || DEFAULT_SLIDES)))}
-              className="w-20 rounded-lg bg-app-elevated border border-app-border/15 px-2 py-1 text-[12px] !text-app-text" title={t.slides}
+        <div className="space-y-2.5">
+          <Group title={`📝 ${t.topic}`}>
+            <LabelledField label={t.topic} maxLength={MAX_TOPIC_CHARS} value={topic}>
+              <TextArea rows={3} value={topic} maxLength={MAX_TOPIC_CHARS} onChange={(e) => setTopic(e.target.value)} placeholder={t.topicPh} />
+            </LabelledField>
+          </Group>
+          <Group title={`⚙️ ${t.deckOptions}`}>
+            {/* The slide count was a bare number input — a spinner is a poor control on a phone and
+                gave no sense of the allowed range. The range is the control now. */}
+            <div className="min-w-0">
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="text-[11px] font-medium text-app-muted">{t.slides}</span>
+                <span className="shrink-0 text-[11px] font-semibold tabular-nums text-app-accent">{slideCount}</span>
+              </div>
+              <input
+                type="range" min={MIN_SLIDES} max={MAX_SLIDES} step={1} value={slideCount}
+                onChange={(e) => setSlideCount(Number(e.target.value))}
+                className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-app-elevated accent-app-accent"
+                aria-label={t.slides}
+              />
+            </div>
+            <ChipGroup
+              label={t.deckLang}
+              value={deckLang}
+              onChange={setDeckLang}
+              options={[{ id: 'ka' as const, label: 'ქართული' }, { id: 'en' as const, label: 'English' }, { id: 'ru' as const, label: 'Русский' }]}
             />
-            <select value={deckLang} onChange={(e) => setDeckLang(e.target.value as DeckLanguage)} className="w-auto rounded-lg bg-app-elevated border border-app-border/15 px-2 py-1 text-[12px] !text-app-text">
-              <option value="ka">ქართული</option><option value="en">English</option><option value="ru">Русский</option>
-            </select>
-            <label className="flex items-center gap-1.5 text-[12px] text-app-text">
-              <input type="checkbox" checked={withImages} onChange={(e) => setWithImages(e.target.checked)} />{t.withImages}
-            </label>
-          </div>
+            <ToggleRow on={withImages} onChange={setWithImages} label={t.withImages} hint={t.withImagesHint} />
+          </Group>
         </div>
       )}
 
       {service === 'model3d' && (
-        <div className="space-y-2">
-          <div className="flex gap-1.5">
-            {(['text', 'image'] as const).map((m) => (
-              <button
-                key={m} type="button" onClick={() => setMode3d(m)}
-                className={`rounded-lg px-2 py-1 text-[11px] ${mode3d === m ? 'bg-app-accent text-app-bg' : 'border border-app-border/15 text-app-muted'}`}
-              >
-                {m === 'text' ? t.fromText : t.fromImage}
-              </button>
-            ))}
-          </div>
-          {mode3d === 'text' ? (
-            <label className="block">
-              <span className={lbl}>{t.describe}</span>
-              <textarea rows={2} value={prompt3d} onChange={(e) => setPrompt3d(e.target.value)} className={field} />
-            </label>
-          ) : (
-            <label className="block">
-              <span className={lbl}>{t.photoUrl}</span>
-              <input type="url" value={imageUrl3d} onChange={(e) => setImageUrl3d(e.target.value)} placeholder="https://…/photo.jpg" className={field} />
-            </label>
-          )}
-          <div className="flex flex-wrap items-center gap-3">
-            <select value={quality3d} onChange={(e) => setQuality3d(e.target.value as Model3dQuality)} className="w-auto rounded-lg bg-app-elevated border border-app-border/15 px-2 py-1 text-[12px] !text-app-text">
-              <option value="draft">{t.draft}</option><option value="standard">{t.standard}</option>
-            </select>
-            <label className="flex items-center gap-1.5 text-[12px] text-app-text">
-              <input type="checkbox" checked={removeBackground} onChange={(e) => setRemoveBackground(e.target.checked)} />{t.removeBg}
-            </label>
-          </div>
+        <div className="space-y-2.5">
+          <Group title={`🧊 ${t.model3d}`}>
+            <ChipGroup
+              value={mode3d}
+              onChange={setMode3d}
+              options={[{ id: 'text' as const, label: `✍️ ${t.fromText}` }, { id: 'image' as const, label: `🖼 ${t.fromImage}` }]}
+            />
+            {mode3d === 'text' ? (
+              <LabelledField label={t.describe} maxLength={MAX_PROMPT_CHARS} value={prompt3d} hint={t.describeHint}>
+                <TextArea rows={3} value={prompt3d} maxLength={MAX_PROMPT_CHARS} onChange={(e) => setPrompt3d(e.target.value)} placeholder={t.describePh} />
+              </LabelledField>
+            ) : (
+              <div className="min-w-0">
+                <Label>{t.photoUrl}</Label>
+                <Field type="url" inputMode="url" value={imageUrl3d} onChange={(e) => setImageUrl3d(e.target.value)} placeholder="https://…/photo.jpg" />
+              </div>
+            )}
+          </Group>
+          <Group title={`⚙️ ${t.quality}`}>
+            <ChipGroup
+              value={quality3d}
+              onChange={setQuality3d}
+              options={[{ id: 'draft' as const, label: `⚡ ${t.draft}` }, { id: 'standard' as const, label: `✨ ${t.standard}` }]}
+            />
+            <ToggleRow on={removeBackground} onChange={setRemoveBackground} label={t.removeBg} hint={t.removeBgHint} />
+          </Group>
         </div>
       )}
 
-      <button
-        type="button" onClick={run} disabled={!canRun}
-        className="mt-2.5 w-full rounded-xl bg-app-accent px-3 py-2 text-[12.5px] font-semibold text-app-bg transition-opacity disabled:opacity-40"
-      >
+      <PrimaryButton onClick={run} disabled={!canRun} loading={busy} full className="mt-3">
         {busy ? t.working : t.run}
-      </button>
+      </PrimaryButton>
+
       {busy && (
-        <div className="mt-2">
-          {stage && (
-            <>
-              <div className="mb-1 flex items-center justify-between text-[11px]">
-                <span className="text-app-accent">{STAGE_LABELS[lang][stage.label] ?? stage.label}</span>
-                <span className="tabular-nums text-app-muted">{Math.round(stage.pct)}%</span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-app-elevated">
-                <div className="h-full rounded-full bg-app-accent transition-all duration-500" style={{ width: `${Math.max(4, Math.min(100, stage.pct))}%` }} />
-              </div>
-            </>
-          )}
-          <p className="mt-1.5 text-center text-[11px] text-app-muted">{t.keepOpen}</p>
+        <div className="mt-2 space-y-1.5">
+          <ProgressBar
+            {...(stage ? { pct: stage.pct } : {})}
+            label={stage ? (STAGE_LABELS[lang][stage.label] ?? stage.label) : t.working}
+          />
+          <p className="text-center text-[11px] text-app-muted">{t.keepOpen}</p>
         </div>
       )}
-      {error && <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[12px] text-red-400">{error}</p>}
+
+      {error && <div className="mt-2"><Note tone="error">{error}</Note></div>}
 
       {result && (
         <div className="mt-2.5 space-y-2">
           {result.videoUrl && (
             <>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video src={result.videoUrl} controls className="w-full rounded-xl" />
-              <a href={result.videoUrl} download className="text-[11px] text-app-accent hover:underline">{t.download}</a>
+              <video src={result.videoUrl} controls playsInline className="w-full rounded-xl" />
+              <Row>
+                <a href={result.videoUrl} download className={DOWNLOAD_LINK}>⬇ {t.download}</a>
+                {result.subtitlesUrl && <a href={result.subtitlesUrl} download className={DOWNLOAD_LINK}>⬇ SRT</a>}
+              </Row>
             </>
           )}
-          {result.subtitlesUrl && (
-            <a href={result.subtitlesUrl} download className="ml-3 text-[11px] text-app-accent hover:underline">SRT</a>
-          )}
           {result.slides && result.slides.length > 0 && (
-            <div className="grid grid-cols-3 gap-1.5">
+            // 2 up on a phone, 3 from 480px. A hardcoded grid-cols-3 gave ~110px thumbnails on a 380px
+            // screen, which is not a preview of anything.
+            <div className="grid grid-cols-2 gap-1.5 min-[480px]:grid-cols-3">
               {result.slides.map((s) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img key={s.index} src={s.pngUrl} alt="" className="w-full rounded-lg border border-app-border/10" />
@@ -424,7 +459,7 @@ export function ServiceParamsPanel({
           {/* The reference shows while the mesh is still reconstructing, so the wait is not a blank box. */}
           {result.referenceUrl && !result.glbUrl && (
             <div>
-              <span className={lbl}>{t.reference}</span>
+              <Label>{t.reference}</Label>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={result.referenceUrl} alt="" className="w-32 rounded-lg border border-app-border/10" />
             </div>
@@ -432,11 +467,11 @@ export function ServiceParamsPanel({
           {result.glbUrl && (
             <>
               <GlbViewer url={result.glbUrl} />
-              <a href={result.glbUrl} download className="text-[11px] text-app-accent hover:underline">GLB</a>
+              <a href={result.glbUrl} download className={DOWNLOAD_LINK}>⬇ GLB</a>
             </>
           )}
         </div>
       )}
-    </div>
+    </Panel>
   );
 }

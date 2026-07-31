@@ -15,6 +15,10 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
+import {
+  Group, Grid, Label, Field, TextArea, ToggleRow, PrimaryButton, SecondaryButton, IconButton,
+  Note, ProgressBar, Select,
+} from './ui/controls';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -28,6 +32,7 @@ const COPY = {
     count: 'სლაიდების რაოდენობა',
     language: 'ენა',
     theme: 'თემა',
+    deckOptions: 'გაფორმება', prevSlide: 'წინა სლაიდი', nextSlide: 'შემდეგი სლაიდი',
     dark: 'მუქი',
     light: 'ღია',
     images: 'სურათების გენერაცია',
@@ -52,6 +57,7 @@ const COPY = {
     count: 'Slides',
     language: 'Language',
     theme: 'Theme',
+    deckOptions: 'Look', prevSlide: 'Previous slide', nextSlide: 'Next slide',
     dark: 'Dark',
     light: 'Light',
     images: 'Generate images',
@@ -76,6 +82,7 @@ const COPY = {
     count: 'Слайдов',
     language: 'Язык',
     theme: 'Тема',
+    deckOptions: 'Оформление', prevSlide: 'Предыдущий слайд', nextSlide: 'Следующий слайд',
     dark: 'Тёмная',
     light: 'Светлая',
     images: 'Генерировать изображения',
@@ -195,7 +202,6 @@ export function SlidesStudio({ locale }: { locale: string }) {
     }
   }
 
-  const field = 'w-full rounded-xl bg-app-elevated border border-app-border/15 px-3 py-2.5 text-sm !text-app-text outline-none focus:border-app-accent/50 transition-colors';
   const active = slides[current];
 
   return (
@@ -217,78 +223,81 @@ export function SlidesStudio({ locale }: { locale: string }) {
           <p className="mt-1 text-sm text-app-muted">{t.subtitle}</p>
 
           <div className="mt-8 space-y-4 rounded-2xl border border-app-border/15 bg-app-elevated/40 p-5">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.topic}</span>
-              <textarea rows={2} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t.topicPlaceholder} className={field} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.audience}</span>
-              <input type="text" value={audience} onChange={(e) => setAudience(e.target.value)} className={field} />
-            </label>
+            {/* WHAT the deck is about, then HOW it should look. Two groups, in that order. */}
+            <Group title={`📝 ${t.topic}`}>
+              <TextArea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t.topicPlaceholder} />
+              <div className="min-w-0">
+                <Label>{t.audience}</Label>
+                <Field type="text" value={audience} onChange={(e) => setAudience(e.target.value)} />
+              </div>
+            </Group>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.count}</span>
+            <Group title={`🎨 ${t.deckOptions}`}>
+              {/* A number spinner is a poor phone control and showed no range. The slider IS the range. */}
+              <div className="min-w-0">
+                <div className="mb-1 flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] font-medium text-app-muted">{t.count}</span>
+                  <span className="shrink-0 text-[11px] font-semibold tabular-nums text-app-accent">{slideCount}</span>
+                </div>
                 <input
-                  type="number" min={MIN_SLIDES} max={MAX_SLIDES} value={slideCount}
-                  onChange={(e) => setSlideCount(Math.max(MIN_SLIDES, Math.min(MAX_SLIDES, Number(e.target.value) || DEFAULT_SLIDES)))}
-                  className={field}
+                  type="range" min={MIN_SLIDES} max={MAX_SLIDES} step={1} value={slideCount}
+                  onChange={(e) => setSlideCount(Number(e.target.value))}
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-app-elevated accent-app-accent"
+                  aria-label={t.count}
                 />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.language}</span>
-                <select value={language} onChange={(e) => setLanguage(e.target.value as DeckLanguage)} className={field}>
-                  <option value="ka">ქართული</option>
-                  <option value="en">English</option>
-                  <option value="ru">Русский</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.theme}</span>
-                <select value={theme} onChange={(e) => setTheme(e.target.value as DeckTheme)} className={field}>
-                  <option value="dark">{t.dark}</option>
-                  <option value="light">{t.light}</option>
-                </select>
-              </label>
-            </div>
+              </div>
+              {/* Was sm:grid-cols-3 — three selects across a 380px phone is ~110px each, which clips a
+                  Georgian label mid-word. One column until there is room for two. */}
+              <Grid cols={2}>
+                <div className="min-w-0">
+                  <Label>{t.language}</Label>
+                  <Select value={language} onChange={(e) => setLanguage(e.target.value as DeckLanguage)}>
+                    <option value="ka">ქართული</option>
+                    <option value="en">English</option>
+                    <option value="ru">Русский</option>
+                  </Select>
+                </div>
+                <div className="min-w-0">
+                  <Label>{t.theme}</Label>
+                  <Select value={theme} onChange={(e) => setTheme(e.target.value as DeckTheme)}>
+                    <option value="dark">{t.dark}</option>
+                    <option value="light">{t.light}</option>
+                  </Select>
+                </div>
+              </Grid>
+              <ToggleRow on={withImages} onChange={setWithImages} label={t.images} />
+            </Group>
 
-            <label className="flex items-center gap-2 text-sm text-app-text">
-              <input type="checkbox" checked={withImages} onChange={(e) => setWithImages(e.target.checked)} />
-              {t.images}
-            </label>
-
-            <button
-              type="button" onClick={submit} disabled={busy || topic.trim().length < 3}
-              className="w-full rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-bg transition-opacity disabled:opacity-40"
-            >
+            <PrimaryButton onClick={submit} loading={busy} full disabled={topic.trim().length < 3}>
               {busy ? t.working : t.submit}
-            </button>
-            {busy && <p className="text-center text-xs text-app-muted">{t.warn}</p>}
-            {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>}
+            </PrimaryButton>
+            {busy && (
+              <>
+                <ProgressBar label={t.working} />
+                <p className="text-center text-[11px] text-app-muted">{t.warn}</p>
+              </>
+            )}
+            {error && <Note tone="error">{error}</Note>}
           </div>
         </div>
 
         {deck && slides.length > 0 && (
           <>
-            <div className="deck-noprint mt-6 flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => window.print()} className="rounded-xl bg-app-accent px-4 py-2 text-sm font-semibold text-app-bg">
-                {t.print}
-              </button>
-              <button type="button" onClick={downloadZip} disabled={zipping} className="rounded-xl border border-app-border/15 px-4 py-2 text-sm text-app-text disabled:opacity-40">
-                {zipping ? '…' : t.zip}
-              </button>
-              <div className="ml-auto flex items-center gap-2 text-sm text-app-muted">
-                <button type="button" onClick={() => go(-1)} disabled={current === 0} className="rounded-lg border border-app-border/15 px-3 py-1.5 disabled:opacity-30">←</button>
-                <span>{current + 1} / {slides.length}</span>
-                <button type="button" onClick={() => go(1)} disabled={current === slides.length - 1} className="rounded-lg border border-app-border/15 px-3 py-1.5 disabled:opacity-30">→</button>
+            <div className="deck-noprint mt-6 flex flex-wrap items-center gap-2">
+              <PrimaryButton onClick={() => window.print()}>{t.print}</PrimaryButton>
+              <SecondaryButton onClick={downloadZip} loading={zipping}>{t.zip}</SecondaryButton>
+              <div className="ml-auto flex items-center gap-2 text-[13px] text-app-muted">
+                <IconButton label={t.prevSlide} onClick={() => go(-1)} disabled={current === 0}>←</IconButton>
+                <span className="tabular-nums">{current + 1} / {slides.length}</span>
+                <IconButton label={t.nextSlide} onClick={() => go(1)} disabled={current === slides.length - 1}>→</IconButton>
               </div>
             </div>
 
             {deck.warnings?.usedFallbackOutline && (
-              <p className="deck-noprint mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">{t.fallbackWarn}</p>
+              <div className="deck-noprint mt-3"><Note tone="warn">{t.fallbackWarn}</Note></div>
             )}
             {deck.warnings?.imagesRequested && (deck.warnings.imagesMissing ?? 0) > 0 && (
-              <p className="deck-noprint mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">{t.imagesWarn}</p>
+              <div className="deck-noprint mt-2"><Note tone="warn">{t.imagesWarn}</Note></div>
             )}
 
             {/* The on-screen viewer: one slide at a time. */}

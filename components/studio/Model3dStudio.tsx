@@ -16,9 +16,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   pollDelayMs,
   MAX_POLL_ATTEMPTS,
+  MAX_PROMPT_CHARS,
   type Model3dMode,
   type Model3dQuality,
 } from '@/lib/services/model3d/model3dPlan';
+import {
+  ChipGroup, Label, Field, TextArea, LabelledField, ToggleRow, PrimaryButton, ProgressBar,
+} from './ui/controls';
 
 // three touches `window` on import — it cannot be server-rendered.
 const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false });
@@ -158,8 +162,6 @@ export function Model3dStudio({ locale }: { locale: string }) {
     }
   }
 
-  const field = 'w-full rounded-xl bg-app-elevated border border-app-border/15 px-3 py-2.5 text-sm !text-app-text outline-none focus:border-app-accent/50 transition-colors';
-
   return (
     <div className="min-h-screen bg-app-surface px-4 py-10">
       <div className="mx-auto w-full max-w-2xl">
@@ -167,52 +169,45 @@ export function Model3dStudio({ locale }: { locale: string }) {
         <p className="mt-1 text-sm text-app-muted">{t.subtitle}</p>
 
         <div className="mt-8 space-y-4 rounded-2xl border border-app-border/15 bg-app-elevated/40 p-5">
-          <div className="flex gap-2">
-            {(['text', 'image'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${mode === m ? 'bg-app-accent text-app-bg' : 'border border-app-border/15 text-app-muted'}`}
-              >
-                {m === 'text' ? t.modeText : t.modeImage}
-              </button>
-            ))}
-          </div>
+          <ChipGroup
+            value={mode}
+            onChange={setMode}
+            options={[{ id: 'text' as const, label: `✍️ ${t.modeText}` }, { id: 'image' as const, label: `🖼 ${t.modeImage}` }]}
+          />
 
           {mode === 'text' ? (
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.prompt}</span>
-              <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t.promptPlaceholder} className={field} />
-            </label>
+            <LabelledField label={t.prompt} maxLength={MAX_PROMPT_CHARS} value={prompt}>
+              <TextArea rows={3} value={prompt} maxLength={MAX_PROMPT_CHARS} onChange={(e) => setPrompt(e.target.value)} placeholder={t.promptPlaceholder} />
+            </LabelledField>
           ) : (
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.imageUrl}</span>
-              <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/photo.jpg" className={field} />
-            </label>
+            <div className="min-w-0">
+              <Label>{t.imageUrl}</Label>
+              <Field type="url" inputMode="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/photo.jpg" />
+            </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.quality}</span>
-              <select value={quality} onChange={(e) => setQuality(e.target.value as Model3dQuality)} className={field}>
-                <option value="draft">{t.draft}</option>
-                <option value="standard">{t.standard}</option>
-              </select>
-            </label>
-            <label className="flex items-end gap-2 pb-2.5 text-sm text-app-text">
-              <input type="checkbox" checked={removeBackground} onChange={(e) => setRemoveBackground(e.target.checked)} />
-              {t.removeBg}
-            </label>
-          </div>
+          <ChipGroup
+            label={t.quality}
+            value={quality}
+            onChange={setQuality}
+            options={[{ id: 'draft' as const, label: `⚡ ${t.draft}` }, { id: 'standard' as const, label: `✨ ${t.standard}` }]}
+          />
+          <ToggleRow on={removeBackground} onChange={setRemoveBackground} label={t.removeBg} />
 
-          <button
-            type="button" onClick={submit}
-            disabled={busy || (mode === 'text' ? prompt.trim().length < 3 : !imageUrl.trim())}
-            className="w-full rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-bg transition-opacity disabled:opacity-40"
+          <PrimaryButton
+            onClick={submit}
+            loading={busy}
+            full
+            disabled={mode === 'text' ? prompt.trim().length < 3 : !imageUrl.trim()}
           >
-            {busy ? `${t.working} ${progress > 0 ? `${Math.round(progress)}%` : ''}` : t.submit}
-          </button>
+            {/* The percentage used to render as a bare trailing space: the status endpoint returns no
+                `progress` field, so the button read "Generating… " and never advanced. */}
+            {busy ? t.working : t.submit}
+          </PrimaryButton>
+          {/* `progress` is still wired from the poll, so the bar becomes determinate the moment the
+              endpoint starts reporting one. Until then it animates rather than sitting frozen at 0%,
+              which is what made a multi-minute reconstruction look like a hung page. */}
+          {busy && <ProgressBar label={t.working} {...(progress > 0 ? { pct: progress } : {})} />}
           {busy && <p className="text-center text-xs text-app-muted">{t.warn}</p>}
           {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>}
         </div>

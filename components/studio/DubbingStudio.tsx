@@ -11,6 +11,7 @@
  */
 import { useState } from 'react';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
+import { Group, Label, Field, ToggleRow, PrimaryButton, Note, ProgressBar, Select } from './ui/controls';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -30,6 +31,7 @@ const COPY = {
     submit: 'დუბლაჟის დაწყება',
     working: 'მიმდინარეობს…',
     warn: 'დამუშავებას რამდენიმე წუთი სჭირდება. არ დახუროთ ეს გვერდი.',
+    options: 'პარამეტრები', sameLang: 'აირჩიე განსხვავებული სამიზნე ენა.',
     done: 'მზადაა',
     subsLink: 'სუბტიტრები (SRT)',
     audioLink: 'მხოლოდ აუდიო',
@@ -52,6 +54,7 @@ const COPY = {
     submit: 'Start dubbing',
     working: 'Dubbing…',
     warn: 'This takes a few minutes. Keep this tab open.',
+    options: 'Options', sameLang: 'Pick a different target language.',
     done: 'Ready',
     subsLink: 'Subtitles (SRT)',
     audioLink: 'Audio only',
@@ -74,6 +77,7 @@ const COPY = {
     submit: 'Начать дубляж',
     working: 'Дублируем…',
     warn: 'Это займёт несколько минут. Не закрывайте вкладку.',
+    options: 'Параметры', sameLang: 'Выберите другой целевой язык.',
     done: 'Готово',
     subsLink: 'Субтитры (SRT)',
     audioLink: 'Только звук',
@@ -137,7 +141,6 @@ export function DubbingStudio({ locale }: { locale: string }) {
     }
   }
 
-  const field = 'w-full rounded-xl bg-app-elevated border border-app-border/15 px-3 py-2.5 !text-app-text outline-none focus:border-app-accent/50 transition-colors';
 
   return (
     <div className="min-h-screen bg-app-surface px-4 py-10">
@@ -146,63 +149,65 @@ export function DubbingStudio({ locale }: { locale: string }) {
         <p className="mt-1 text-sm text-app-muted">{t.subtitle}</p>
 
         <div className="mt-8 space-y-5 rounded-2xl border border-app-border/15 bg-app-elevated/40 p-5">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.source}</span>
-            <input
+          {/* SOURCE → LANGUAGES → OPTIONS. Grouped in the order the job is actually thought about,
+              rather than as one flat stack of unrelated inputs. */}
+          <Group title={`🎬 ${t.source}`}>
+            <Field
               type="url"
+              inputMode="url"
               value={sourceVideoUrl}
               onChange={(e) => setSourceVideoUrl(e.target.value)}
               placeholder={t.sourcePlaceholder}
-              className={field}
             />
-          </label>
+          </Group>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.from}</span>
-              <select value={sourceLanguage} onChange={(e) => setSourceLanguage(e.target.value)} className={field}>
+          <Group title={`🌐 ${t.from} → ${t.to}`}>
+            <div className="min-w-0">
+              <Label>{t.from}</Label>
+              <Select value={sourceLanguage} onChange={(e) => setSourceLanguage(e.target.value)}>
                 <option value="auto">{t.auto}</option>
                 {DUBBING_LANGUAGES.map((l) => (
                   <option key={l} value={l}>{LANGUAGE_LABEL[l]}</option>
                 ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-app-muted">{t.to}</span>
-              <select
+              </Select>
+            </div>
+            <div className="min-w-0">
+              <Label>{t.to}</Label>
+              <Select
                 value={targetLanguage}
                 onChange={(e) => setTargetLanguage(e.target.value as DubbingLanguage)}
-                className={field}
               >
                 {DUBBING_LANGUAGES.map((l) => (
                   <option key={l} value={l}>{LANGUAGE_LABEL[l]}</option>
                 ))}
-              </select>
-            </label>
-          </div>
+              </Select>
+            </div>
+            {/* The one combination the route rejects, said BEFORE the button is pressed rather than
+                leaving a disabled button with no stated reason. */}
+            {sourceLanguage === targetLanguage && <Note tone="warn">{t.sameLang}</Note>}
+          </Group>
 
-          <div className="flex flex-wrap gap-5">
-            <label className="flex items-center gap-2 text-sm text-app-text">
-              <input type="checkbox" checked={preserveBackgroundAudio} onChange={(e) => setPreserveBg(e.target.checked)} />
-              {t.keepBg}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-app-text">
-              <input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)} />
-              {t.subs}
-            </label>
-          </div>
+          <Group title={`⚙️ ${t.options}`}>
+            <ToggleRow on={preserveBackgroundAudio} onChange={setPreserveBg} label={t.keepBg} />
+            <ToggleRow on={subtitles} onChange={setSubtitles} label={t.subs} />
+          </Group>
 
-          <button
-            type="button"
+          <PrimaryButton
             onClick={submit}
-            disabled={busy || !sourceVideoUrl.trim() || sourceLanguage === targetLanguage}
-            className="w-full rounded-xl bg-app-accent px-4 py-3 text-sm font-semibold text-app-bg transition-opacity disabled:opacity-40"
+            loading={busy}
+            full
+            disabled={!sourceVideoUrl.trim() || sourceLanguage === targetLanguage}
           >
             {busy ? t.working : t.submit}
-          </button>
+          </PrimaryButton>
 
-          {busy && <p className="text-center text-xs text-app-muted">{t.warn}</p>}
-          {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>}
+          {busy && (
+            <>
+              <ProgressBar label={t.working} />
+              <p className="text-center text-[11px] text-app-muted">{t.warn}</p>
+            </>
+          )}
+          {error && <Note tone="error">{error}</Note>}
         </div>
 
         {result && (

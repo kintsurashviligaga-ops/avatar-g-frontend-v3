@@ -3744,38 +3744,58 @@ a:focus-visible {
   border-radius: var(--radius-xl);
 }
 
-/* ── Range slider styling for tool panels ── */
-.service-chat-shell input[type="range"] {
+/* ── Range slider styling for tool panels ──────────────────────────────────────────────────────────
+   ⚠️ THESE RULES WERE DEAD. They were scoped to `.service-chat-shell`, a class that appears in exactly
+   ZERO .ts/.tsx files in the repo (verified by grep). So every slider in the app — the montage trim
+   handles, the slide count, the audio mixer — rendered with `appearance: none` stripping the native
+   control and nothing putting a thumb back: a bare track with no grabbable handle.
+
+   Re-scoped to `input[type="range"].appearance-none`, which is exactly the set that needs them: a range
+   that has opted out of the platform rendering MUST be given a thumb. A range without that utility keeps
+   its native control and is untouched.
+
+   THE 44px GRAB STRIP is the second half of the fix. The visible track is 6px, which is honest design
+   and an unusable touch target — measured at 6px tall on a phone. The INPUT is 44px with a transparent
+   box, the TRACK is painted 6px inside it, and the THUMB is 20px. So the strip a finger can grab is the
+   full 44px while the control still looks like a thin line. */
+input[type="range"].appearance-none {
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
-  border-radius: 3px;
+  height: 44px;
+  background: transparent;
   outline: none;
   cursor: pointer;
 }
-.service-chat-shell input[type="range"]::-webkit-slider-thumb {
+input[type="range"].appearance-none::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(var(--app-elevated));
+}
+input[type="range"].appearance-none::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(var(--app-elevated));
+}
+input[type="range"].appearance-none::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px; /* centres the 20px thumb on the 6px track */
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
-.service-chat-shell input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-}
-.service-chat-shell input[type="range"]::-webkit-slider-thumb:active {
-  transform: scale(0.95);
-}
-.service-chat-shell input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+input[type="range"].appearance-none::-webkit-slider-thumb:hover { transform: scale(1.12); }
+input[type="range"].appearance-none::-webkit-slider-thumb:active { transform: scale(0.94); }
+input[type="range"].appearance-none::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   border: none;
   cursor: pointer;
 }
@@ -4062,4 +4082,43 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
 }
 @media (prefers-reduced-motion: reduce) {
   .mya-scanline, .mya-scanline::before { animation: none; opacity: 0; }
+}
+
+/* ═══ SHARED STUDIO CONTROLS ═══════════════════════════════════════════════════════════════════════
+   Two utilities the panel primitives in components/studio/ui depend on. Kept here rather than in the
+   Tailwind config because both are behavioural, not thematic. */
+
+/* A GUARANTEED 44×44 TAP TARGET THAT DOES NOT CHANGE THE VISUAL SIZE.
+
+   The panels are dense by design — a row of six option chips has to fit a 380px screen — but the chips
+   themselves rendered at 26–36px, well under the 44px floor from the iOS HIG and WCAG 2.5.5, so they
+   were genuinely hard to hit on a phone. Padding them out to 44px would push that row onto three lines
+   and lose the density the design depends on. A centred, transparent pseudo-element gives the finger a
+   full 44×44 to land on while the chip keeps its size and the layout is untouched.
+
+   Requires `position: relative` on the element (every primitive that uses this sets it). */
+.tap-44::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 44px;
+  min-height: 44px;
+  width: 100%;
+  height: 100%;
+}
+
+/* An indeterminate progress bar. A determinate bar frozen at 0% reads as "nothing is happening" — which
+   is exactly what a long render looks like before its first stage lands — so with no percentage yet the
+   bar sweeps instead of sitting still. */
+@keyframes mya-progress-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.animate-progress-indeterminate {
+  animation: mya-progress-indeterminate 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-progress-indeterminate { animation: none; }
 }

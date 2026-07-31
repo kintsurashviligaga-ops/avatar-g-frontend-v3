@@ -28,6 +28,12 @@ export function AppToggle({ on, onChange, disabled, label }: AppToggleProps) {
       aria-label={label}
       disabled={disabled}
       onClick={() => !disabled && onChange(!on)}
+      // The switch is 44×24 — full width, but only 24px TALL, so it failed the 44px tap floor on its
+      // short axis and was measurably fiddly to hit on a phone. `.tap-44` adds a centred, transparent
+      // 44×44 hit area via a pseudo-element, so a finger gets a proper target while the switch keeps its
+      // slim look and the surrounding layout is untouched. It composes with the inline styles below —
+      // which stay inline for the reasons in the file header, since this class carries no colour.
+      className="tap-44"
       style={{
         position: 'relative',
         display: 'inline-flex',
