@@ -258,6 +258,17 @@ export interface RenderDraft {
  *  is handled by the cheaper mutedRanges path). Reorder/delete/gaps make it non-trivial → concat render. */
 function sequenceIsTrivial(segs: DraftSegment[] | undefined, total: number): boolean {
   if (!segs || segs.length === 0) return true;
+  // ⚠️ A SEQUENCE CARRYING WORK IS NEVER TRIVIAL, even when its timings cover the whole source.
+  //
+  // This used to test coverage ALONE. A single un-split clip with a burned caption is contiguous and
+  // full-length, so it was called "trivial", renderVideoDraft took the simple filter chain — which has no
+  // overlay and no xfade — and the text silently never appeared. The editor even draws a CSS preview of
+  // the caption over the frame, so it LOOKED applied right up until the export came back without it.
+  // Same for a transition picked on a clip that was never split.
+  for (const s of segs) {
+    if (s.textOverlay && s.textOverlay.text.trim()) return false;
+    if (s.transition && s.transition !== 'none') return false;
+  }
   let t = 0;
   for (const s of segs) {
     if (!(s.end > s.start)) return false;

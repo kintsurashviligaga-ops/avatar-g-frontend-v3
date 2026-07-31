@@ -55,6 +55,8 @@ async function resolveMedia(v: unknown): Promise<string | null> {
 
 type EditAction = 'split' | 'crop' | 'detach' | 'color' | 'fade' | 'inpaint' | 'render';
 const DETERMINISTIC = new Set<EditAction>(['split', 'crop', 'detach', 'color', 'fade', 'render']);
+/** Distinct sources allowed in ONE concat sequence. Must match MAX_SEQ_CLIPS in SurgicalEditor.tsx. */
+const MAX_CONCAT_SOURCES = 12;
 
 interface Bounds { x?: number; y?: number; w?: number; h?: number }
 
@@ -131,12 +133,19 @@ export async function POST(req: NextRequest) {
     const guard = await guardGeneration(req, 'video', { gate: false });
     if (!guard.ok) return guard.response;
     // Resolve ALL sources (positions must stay aligned with the sequence's `src` indices) — abort if any misses.
-    const resolved = await Promise.all(body.sources.slice(0, 5).map((s) => resolveMedia(s)));
+    // MAX_CONCAT_SOURCES must match MAX_SEQ_CLIPS in SurgicalEditor. It used to be a bare `slice(0, 5)`
+    // that SILENTLY DROPPED clips 6+ — the sequence still referenced them by index, so the render either
+    // failed or quietly used the wrong footage. Now it is a named cap, and the client refuses to build a
+    // sequence past it, so the truncation can no longer be reached.
+    const resolved = await Promise.all(body.sources.slice(0, MAX_CONCAT_SOURCES).map((s) => resolveMedia(s)));
     if (resolved.some((u) => !u)) {
       return NextResponse.json({ url: null, error: 'could not resolve all clip sources' }, { status: 400 });
     }
     const d = body?.draft ?? {};
-    const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec, speed: d.speed };
+    // `crop` was missing here while runSequence applies it post-fold — so a crop drawn on a multi-clip
+    // sequence was accepted by the UI and then dropped on the way to ffmpeg. Forwarding it makes the
+    // control real for sequences too, instead of only for a single clip.
+    const params: RenderDraft = { grade: d.grade, fadeInSec: d.fade?.inSec, fadeOutSec: d.fade?.outSec, speed: d.speed, crop: d.crop ?? null };
     const seq = body.sequence
       .filter((e) => e && Number.isInteger(e.src) && e.src >= 0 && e.src < resolved.length && e.end > e.start)
       .map((e) => ({ src: e.src, start: Number(e.start), end: Number(e.end), muted: !!e.muted, transition: e.transition, textOverlay: e.textOverlay }));

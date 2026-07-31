@@ -25,7 +25,11 @@ import { parsePhotoEditSliders } from '@/lib/ai/photoEditSliders';
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
 const MAX_CLIPS = 35;
-const MAX_SEQ_CLIPS = 5; // distinct video sources in one concat sequence
+// Distinct video sources allowed in ONE concat sequence. MUST match MAX_CONCAT_SOURCES in
+// app/api/ai/edit/route.ts — the server slices to it, and a mismatch would drop clips whose indices the
+// sequence still references. Raised from 5: that ceiling was invisible until you had already added a
+// sixth clip and got a toast, which is exactly the "hidden limitation" complaint.
+const MAX_SEQ_CLIPS = 12;
 const MASK_CAP = 1536;
 
 // Agent G granular reasoning steps shown in the editor's processing overlay (mirrors the chat overlay's 5 steps).
@@ -41,7 +45,7 @@ const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
-  tabClips: string; tabRetouch: string; tabTrim: string; tabAi: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
+  tabClips: string; tabRetouch: string; tabTrim: string; tabAi: string; cropWholeSeq: string; clipsUsed: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   transition: string; tCut: string; tCross: string; tFade: string;
@@ -78,6 +82,7 @@ const T: Record<Lang, Copy> = {
     agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
     tabRetouch: 'რეტუში', tabTrim: 'მოჭრა', tabAi: 'AI', tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
     cropSingleOnly: 'ჩარჩო მუშაობს ერთ კლიპზე — თანმიმდევრობაში დარჩება მთლიანი კადრი.',
+    cropWholeSeq: 'ჩარჩო მოქმედებს მთელ თანმიმდევრობაზე.', clipsUsed: 'კადრი',
     detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
   },
   en: {
@@ -99,6 +104,7 @@ const T: Record<Lang, Copy> = {
     agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
     tabRetouch: 'Retouch', tabTrim: 'Trim', tabAi: 'AI', tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
     cropSingleOnly: 'Crop works on a single clip — a multi-clip sequence keeps the full frame.',
+    cropWholeSeq: 'The crop frames the whole sequence.', clipsUsed: 'clips',
     detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
   },
   ru: {
@@ -120,6 +126,7 @@ const T: Record<Lang, Copy> = {
     agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
     tabRetouch: 'Ретушь', tabTrim: 'Обрезка', tabAi: 'AI', tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
     cropSingleOnly: 'Кадрирование работает с одним клипом — в последовательности кадр остаётся целиком.',
+    cropWholeSeq: 'Кадрирование применяется ко всей последовательности.', clipsUsed: 'кадров',
     detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
   },
 };
@@ -597,7 +604,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     !isNeutral(grade) || fade.inSec > 0 || fade.outSec > 0 || (!!crop && crop.w > 4) || segments.length > 1 || segments.some((s) => s.muted || !!s.textOverlay?.text.trim())
     || Math.abs(videoSpeed - 1) > 0.01 || detached || !!aspectCrop
   ), [grade, fade, crop, segments, videoSpeed, detached, aspectCrop]);
-  const cropAllowed = distinctClipIds.length <= 1; // crop is a single-source op
+  // Crop now works for a SEQUENCE too: the route forwards draft.crop and runSequence applies it
+  // post-fold, so one rectangle frames the whole concatenated master. It used to be single-source only,
+  // which is why the control vanished the moment you added a second clip.
+  const cropAllowed = true;
 
   // ── Export ──
   const doExport = useCallback(async () => {
@@ -622,7 +632,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         const res = await postEdit({
           action: 'render', kind: 'video', sources: uploads as string[], sequence,
           targetW: first?.w || 1280, targetH: first?.h || 720,
-          draft: { grade: isNeutral(grade) ? undefined : grade, fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined, speed: Math.abs(videoSpeed - 1) > 0.01 ? videoSpeed : undefined },
+          draft: {
+            grade: isNeutral(grade) ? undefined : grade,
+            fade: (fade.inSec > 0 || fade.outSec > 0) ? { inSec: fade.inSec, outSec: fade.outSec } : undefined,
+            speed: Math.abs(videoSpeed - 1) > 0.01 ? videoSpeed : undefined,
+            // Applied post-fold to the concatenated master, so one crop frames the whole sequence.
+            crop: sourceCrop(),
+          },
         });
         finishExport(res, 'video');
       } else {
@@ -986,7 +1002,12 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 </button>
               ))}
               <label title={t.pick} className="flex h-16 w-16 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-app-border/30 text-app-muted transition-colors hover:border-app-accent/50 hover:text-app-accent">
-                <Upload size={16} /><input type="file" accept="video/*,image/*,audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+                <Upload size={16} />
+                {/* The sequence budget, VISIBLE. It used to be discoverable only by adding one clip too
+                    many and getting a toast — the limit existed but nothing showed it. */}
+                {!isPhoto && !isAudio && <span className="text-[9px] font-bold tabular-nums leading-none">{distinctClipIds.length}/{MAX_SEQ_CLIPS}</span>}
+                <input type="file" accept="video/*,image/*,audio/*" multiple className="hidden"
+                  onChange={(e) => { const f = e.target.files; e.currentTarget.value = ''; addFiles(f); }} />
               </label>
             </div>
 
@@ -1299,13 +1320,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             {!isPhoto && !isAudio && vtab === 'crop' && (
               <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
                 <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.crop}</span>
-                <button type="button" onClick={() => setCropOn((v) => !v)} disabled={!cropAllowed}
+                <button type="button" onClick={() => setCropOn((v) => !v)}
                   className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-[12.5px] font-semibold transition-colors disabled:opacity-40 ${cropOn ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
                   <Crop size={14} />{t.crop}
                 </button>
                 {/* Honest about the limit instead of hiding the control: cropping applies to a single
                     source, so with a multi-clip sequence it would be silently dropped from the payload. */}
-                <p className="text-[11px] text-app-muted">{cropAllowed ? t.cropHint : t.cropSingleOnly}</p>
+                <p className="text-[11px] text-app-muted">{distinctClipIds.length > 1 ? t.cropWholeSeq : t.cropHint}</p>
                 {crop && <button type="button" onClick={() => { setCrop(null); setCropOn(false); }} className="w-full rounded-lg bg-app-elevated px-3 py-2 text-[12px] font-medium text-app-muted ring-1 ring-app-border/15">{t.reset}</button>}
               </div>
             )}
