@@ -33,6 +33,7 @@ import { Markdown } from './Markdown';
 import { MotionControlPanel } from './MotionControlPanel';
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
@@ -159,6 +160,7 @@ const COPY: Record<Lang, {
   modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   modeRemix: string; remixUploadHint: string; remixRunning: string; remixDone: string; remixFailed: string; remixNeedVideo: string;
+  remixNeedTrack: string; remixNeedCaption: string;
   modeSurgical: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
@@ -180,6 +182,8 @@ const COPY: Record<Lang, {
     generatingVideo: 'ვიდეო იქმნება… სცენარი, სცენები და საბოლოო მონტაჟი', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
+    remixNeedTrack: '🎵 მუსიკის ჩასამატებლად ვიდეოსთან ერთად აუდიო ფაილიც მიამაგრე (MP3 / WAV), მერე გამომიგზავნე.',
+    remixNeedCaption: '✏️ დამიწერე რა ტექსტი გნებავს კადრზე — ბრჭყალებში ან ორწერტილის შემდეგ. მაგ.: წარწერა: გამარჯობა',
     modeSurgical: 'რედაქტორი',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
@@ -202,6 +206,8 @@ const COPY: Record<Lang, {
     generatingVideo: 'Producing video… storyboard, scenes, then final montage', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
+    remixNeedTrack: '🎵 To add music, attach an audio file (MP3 / WAV) alongside the video, then send.',
+    remixNeedCaption: '✏️ Tell me the exact words to burn on — in quotes, or after a colon. E.g. caption: Hello world',
     modeSurgical: 'Editor',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
@@ -224,6 +230,8 @@ const COPY: Record<Lang, {
     generatingVideo: 'Создаю видео… раскадровка, сцены и монтаж', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
+    remixNeedTrack: '🎵 Чтобы добавить музыку, прикрепите аудиофайл (MP3 / WAV) вместе с видео и отправьте.',
+    remixNeedCaption: '✏️ Напишите точный текст для наложения — в кавычках или после двоеточия. Напр.: текст: Привет мир',
     modeSurgical: 'Редактор',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
@@ -1554,6 +1562,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // ── Video Remix mode — upload an existing video and edit it ──
   const [remixVideo, setRemixVideo] = useState<{ name: string; url: string } | null>(null);
   const [remixVideoBusy, setRemixVideoBusy] = useState(false);
+  // A failed pick used to leave NO trace — see the note in pickRemixMedia.
+  const [remixError, setRemixError] = useState<string | null>(null);
   const [remixOp, setRemixOp] = useState<'restyle' | 'character' | 'captions' | 'voiceover' | 'music' | 'redub' | 'trim'>('restyle');
   const [remixText, setRemixText] = useState('');
   const [remixGender, setRemixGender] = useState<'female' | 'male'>('female');
@@ -4262,9 +4272,50 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const intent = (await intentRes.json().catch(() => ({}))) as { op?: string; params?: Record<string, unknown> };
         // Patch the pending bubble so the panel shows the op-specific stages + ETA.
         if (mine() && intent.op) setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, remixOpKind: intent.op }; return next; });
+        const op = intent.op || 'color_grade';
+
+        // ── 🎵 MUSIC / REDUB NEED A TRACK, AND THE CHAT PATH NEVER LOOKED FOR ONE. ───────────────────
+        // The advertised 🎵 Music chip pre-fills "add background music", which classifies as add_music,
+        // and the route bails immediately with "Add a music track." — a 100% failure rate, after
+        // debiting 15 credits and refunding them, with no track picker anywhere in the chat flow. But
+        // the chat composer DOES accept audio/* attachments; this branch simply only ever looked at the
+        // video one. So: use the attached track when there is one, and when there is not, say what to do
+        // BEFORE spending anything, rather than sending the user into a charge-and-refund round trip.
+        const audioAtt = attachments.find((a) => isAudio(a.mimeType));
+        const needsTrack = op === 'add_music' || op === 'music';
+        if (needsTrack && !audioAtt) {
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev]; const last = next[next.length - 1];
+            if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: t.remixNeedTrack };
+            return next;
+          });
+          setBusy(false);
+          return;
+        }
+
+        // ── ✏️/📝 CAPTION OPS BURNED THE INSTRUCTION ITSELF ONTO THE VIDEO. ──────────────────────────
+        // `text` is the RAW message and the classifier returns no caption, so tapping the ✏️ Text chip
+        // (which pre-fills "add a text overlay") burned those literal words across the frame. Ask for
+        // the words rather than inventing them — burning the wrong caption is permanent and paid for.
+        const isCaptionOp = op === 'add_text_overlay' || op === 'add_subtitles';
+        const caption = isCaptionOp ? extractOverlayText(text) : null;
+        if (isCaptionOp && !caption) {
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev]; const last = next[next.length - 1];
+            if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: t.remixNeedCaption };
+            return next;
+          });
+          setBusy(false);
+          return;
+        }
+
         const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType || 'video/mp4');
         if (!videoUrl) throw new Error('upload failed');
-        const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op: intent.op || 'color_grade', videoUrl, text, ...(intent.params || {}) }) });
+        const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType || 'audio/mpeg') : null;
+        if (audioAtt && !audioUrl) throw new Error('upload failed');
+        const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op, videoUrl, text: caption ?? text, ...(audioUrl ? { audioUrl } : {}), ...(intent.params || {}) }) });
         const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean };
         setMessages((prev) => {
           if (!mine()) return prev;
@@ -4568,7 +4619,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed]);
+  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -4694,9 +4745,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (!dataUrl) return;
     if (kind === 'video') setRemixVideoBusy(true);
     const url = await uploadBigFile(dataUrl, file.type || (kind === 'video' ? 'video/mp4' : 'audio/mpeg'));
-    if (kind === 'video') { setRemixVideoBusy(false); if (url) setRemixVideo({ name: file.name, url }); }
-    else if (url) setRemixTrack({ name: file.name, url });
-  }, []);
+    if (kind === 'video') setRemixVideoBusy(false);
+    // SAY SOMETHING ON A MISS. This had no failure branch at all: uploadBigFile returns null on ANY miss
+    // (a 502 from /api/upload/sign, a storage policy rejection, a file over the bucket limit), so the
+    // spinner simply stopped and the picker reverted to "upload a video" — no error, no explanation, and
+    // the Run button stayed disabled with no stated reason. The user was left retrying the same file.
+    if (!url) { setRemixError(`${t.remixFailed} — ${file.name}`); return; }
+    setRemixError(null);
+    if (kind === 'video') setRemixVideo({ name: file.name, url });
+    else setRemixTrack({ name: file.name, url });
+  }, [t.remixFailed]);
 
   // STOP — cancel the in-flight generation. Bumps the generation token (so every
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
@@ -7216,6 +7274,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <input type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickRemixMedia(f, 'video'); e.currentTarget.value = ''; }} />
                 {remixVideoBusy ? <><Loader2 size={15} className="animate-spin" /> {t.remixRunning}</> : remixVideo ? <><Check size={15} className="text-app-accent" /> <span className="max-w-[200px] truncate">{remixVideo.name}</span></> : <><Upload size={15} /> {t.remixUploadHint}</>}
               </label>
+              {remixError && (
+                <p className="mt-1.5 text-[11.5px] leading-snug text-red-400">{remixError}</p>
+              )}
             </div>
 
             {/* 2 — Edit operation */}
@@ -7239,6 +7300,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           : (locale === 'en' ? 'New dialogue to lip-sync…' : locale === 'ru' ? 'Новый текст для синхрона…' : 'ახალი დიალოგი ლიპ-სინქისთვის…')
                 }
                 className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            )}
+
+            {/* ⚠️ SAY WHAT THESE OPS ACTUALLY DO. Restyle and Change-character do NOT edit the source
+                video: they take ONE frame at 0.5s, restyle it, and re-animate it into a brand-new clip
+                pinned to 5 seconds. Upload a 2-minute video, pick Restyle, pay 15 credits, and the rest
+                of the footage is silently discarded. Nothing in this panel said so. */}
+            {(remixOp === 'restyle' || remixOp === 'character') && (
+              <p className="rounded-lg bg-amber-400/10 px-2.5 py-1.5 text-[11.5px] leading-snug text-amber-300/90 ring-1 ring-amber-400/20">
+                {locale === 'en'
+                  ? 'Heads up: this builds a NEW 5-second clip from a single frame of your video — it does not restyle the whole footage.'
+                  : locale === 'ru'
+                    ? 'Обратите внимание: создаётся НОВЫЙ 5-секундный клип из одного кадра вашего видео — всё видео не перерисовывается.'
+                    : 'გაითვალისწინე: იქმნება ახალი 5-წამიანი კლიპი შენი ვიდეოს ერთი კადრიდან — მთელი ვიდეო არ გადამუშავდება.'}
+              </p>
             )}
 
             {(remixOp === 'voiceover' || remixOp === 'redub') && (
@@ -7300,10 +7375,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             </span>
             <div className="flex flex-wrap gap-1.5">
               {([
-                ['📝', locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრები', locale === 'en' ? 'add subtitles' : locale === 'ru' ? 'добавь субтитры' : 'სუბტიტრები დაამატე'],
+                ['📝', locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრები', locale === 'en' ? 'add subtitles: ' : locale === 'ru' ? 'добавь субтитры: ' : 'სუბტიტრები დაამატე: '],
                 ['🎨', locale === 'en' ? 'Color' : locale === 'ru' ? 'Цвет' : 'ფერი', locale === 'en' ? 'cinematic color grade' : locale === 'ru' ? 'кинематографичный цвет' : 'ფერი შეცვალე — კინემატოგრაფიული'],
-                ['🎵', locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', locale === 'en' ? 'add background music' : locale === 'ru' ? 'добавь музыку' : 'მუსიკა ჩაამატე'],
-                ['✏️', locale === 'en' ? 'Text' : locale === 'ru' ? 'Текст' : 'ტექსტი', locale === 'en' ? 'add a text overlay' : locale === 'ru' ? 'добавь текст' : 'ტექსტი დაამატე'],
+                ['🎵', locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', locale === 'en' ? 'add background music (attach an audio file too)' : locale === 'ru' ? 'добавь музыку (прикрепите аудиофайл)' : 'მუსიკა ჩაამატე (აუდიო ფაილიც მიამაგრე)'],
+                ['✏️', locale === 'en' ? 'Text' : locale === 'ru' ? 'Текст' : 'ტექსტი', locale === 'en' ? 'add a text overlay: ' : locale === 'ru' ? 'добавь текст: ' : 'ტექსტი დაამატე: '],
                 ['✂️', locale === 'en' ? 'Trim' : locale === 'ru' ? 'Обрезка' : 'მოჭრა', locale === 'en' ? 'trim the first 10 seconds' : locale === 'ru' ? 'обрежь первые 10 секунд' : 'მოჭერი პირველი 10 წამი'],
                 ['⚡', locale === 'en' ? 'Speed' : locale === 'ru' ? 'Скорость' : 'სიჩქარე', locale === 'en' ? 'speed it up 2x' : locale === 'ru' ? 'ускорь в 2 раза' : 'სიჩქარე გაზარდე 2x'],
               ] as const).map(([emoji, label, fill]) => (
