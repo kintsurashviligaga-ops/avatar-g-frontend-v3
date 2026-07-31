@@ -21,6 +21,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { settleMusicCharge } from '@/lib/credits/musicSettlement';
+import { buildMusicBrief, flattenMusicBrief, type MusicBrief } from '@/lib/ai/musicBrief';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 
 /**
@@ -102,7 +103,10 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // v330 — standalone music composition via ElevenLabs Music (the master audio engine,
 // replacing Udio), with Replicate MusicGen as the graceful fallback. EL Music returns
 // audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
-async function composeTrackUrl(prompt: string, style: string, instrumental: boolean, lengthSec = 30): Promise<{ url: string; engine: string }> {
+async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30): Promise<{ url: string; engine: string }> {
+  // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
+  // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.
+  const prompt = flattenMusicBrief(brief);
   // FIX 2 — lengthSec === 0 means "full song": keep Udio's full ~2–4 min output (no
   // trim). Otherwise clamp to a 15–90s window. secs===0 is the skip-trim sentinel.
   const secs = lengthSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
@@ -159,7 +163,14 @@ async function composeTrackUrl(prompt: string, style: string, instrumental: bool
   // flag so Lyria steers vocals on/off. Returns base64 audio → hosted like the others. On any miss the
   // failover moves to Udio/ElevenLabs/MusicGen.
   const lyriaRun = async (): Promise<Track> => {
-    const t = await generateLyriaTrack({ prompt: style ? `${prompt}. Style: ${style}.` : prompt, instrumental });
+    // ⚠️ `lyrics` PASSED SEPARATELY — this argument existed all along and no caller ever used it, so the
+    // user's words were folded into the prompt string and cut by its 1500-char slice. Given its own
+    // field they keep their own budget AND get the [Verse]/[Chorus] tagging the model understands.
+    const t = await generateLyriaTrack({
+      prompt: brief.prompt,
+      ...(brief.lyrics ? { lyrics: brief.lyrics } : {}),
+      instrumental,
+    });
     if (!t) throw new Error('Lyria did not return audio');
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -356,6 +367,7 @@ export async function POST(req: NextRequest) {
     // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
+    let briefTruncated: { prompt: boolean; lyrics: boolean } = { prompt: false, lyrics: false };
     let providerAudioUrl = '';
     // The engine that actually produced the track → returned to the client for an
     // honest "Generated with …" badge (the chain is runtime-dependent, so we can't
@@ -366,7 +378,10 @@ export async function POST(req: NextRequest) {
       // FAITHFUL "sing in my voice": ElevenLabs Music composes a song WITH vocals, then
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
-      const composed = await composeTrackUrl(lyrics ? `${capped}. Lyrics: ${lyrics}` : capped, style, false, durationSec);
+      const composed = await composeTrackUrl(
+        buildMusicBrief({ prompt: capped, style, lyrics, instrumental: false }),
+        style, false, durationSec,
+      );
       try {
         providerAudioUrl = await convertSongWithRvc(composed.url, trainedModel.modelUrl);
         engine = 'Your Voice (RVC)';
@@ -419,8 +434,14 @@ export async function POST(req: NextRequest) {
       // Compose a fresh track from the brief — ElevenLabs Music (sung when not
       // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt; the
       // vocal descriptor (female/male/duet) is appended for a sung track.
-      const composeBrief = vocalDescriptor ? `${capped}. ${vocalDescriptor}.` : capped;
-      const composed = await composeTrackUrl(lyrics ? `${composeBrief}. Lyrics: ${lyrics}` : composeBrief, style, makeInstrumental, durationSec);
+      // Structured, not concatenated: the brief, the style, the vocal descriptor and the LYRICS each
+      // stay their own field, so the boilerplate can never push the user's words out of the budget.
+      const brief = buildMusicBrief({ prompt: capped, style, vocalDescriptor, lyrics, instrumental: makeInstrumental });
+      // If anything STILL had to be cut, the user is told. Silently shortening the words someone chose
+      // deliberately and then handing back a track that does not match them is the whole failure mode
+      // this rewrite exists to end.
+      briefTruncated = brief.truncated;
+      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec);
       providerAudioUrl = composed.url;
       engine = composed.engine;
       // MusicGen (meta/musicgen) is INSTRUMENTAL-ONLY. If the vocal-capable engines (Udio, ElevenLabs
@@ -459,6 +480,7 @@ export async function POST(req: NextRequest) {
     // produces. The length cannot be forced on the engine, so the price is corrected instead: anything
     // paid above the delivered track's real tier goes back. An UNMEASURED track (deliveredSec 0) keeps
     // its original charge — refunding on a failed probe would give credits away for a full-length song.
+    // Reported in the response so the client can surface it — see buildMusicBrief.
     let settledSec = billSeconds;
     if (reserved && reservedUid) {
       const settlement = settleMusicCharge(billSeconds, deliveredSec);
@@ -501,6 +523,7 @@ export async function POST(req: NextRequest) {
       // the difference was refunded instead of leaving the user to notice the short track themselves.
       ...(deliveredSec > 0 ? { durationSec: Math.round(deliveredSec) } : {}),
       ...(settledSec !== billSeconds ? { billedSec: settledSec, requestedSec: billSeconds, refunded: true } : {}),
+      ...((briefTruncated.prompt || briefTruncated.lyrics) ? { truncated: briefTruncated } : {}),
       ...(coverUrl ? { coverUrl } : {}),
     });
   } catch (err) {
