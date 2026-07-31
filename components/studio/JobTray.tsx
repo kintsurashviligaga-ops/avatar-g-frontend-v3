@@ -190,7 +190,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
           </span>
         </p>
         {anyFinished && (
-          <button type="button" onClick={clearFinished} className="text-[10.5px] font-medium text-app-muted transition-colors hover:text-app-accent">
+          <button type="button" onClick={clearFinished} className="tap-44 relative text-[10.5px] font-medium text-app-muted transition-colors hover:text-app-accent">
             {t.clear}
           </button>
         )}

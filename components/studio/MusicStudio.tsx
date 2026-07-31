@@ -535,7 +535,7 @@ export function MusicStudio() {
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <audio src={voicePreview} controls className="h-9 min-w-0 flex-1" />
-                  <button type="button" onClick={clearVoice} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-app-border/10 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-300" aria-label={t.remove}>
+                  <button type="button" onClick={clearVoice} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-app-border/15 text-app-muted transition-colors hover:bg-red-500/15 hover:text-red-300" aria-label={t.remove}>
                     <Trash2 size={15} />
                   </button>
                 </div>

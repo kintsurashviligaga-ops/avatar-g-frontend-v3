@@ -241,7 +241,7 @@ const LibraryCard = memo(function LibraryCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black ring-1 ring-white/[0.04] transition-colors hover:border-[#00D2FF]/40"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-app-border/10 bg-black ring-1 ring-app-border/10 transition-colors hover:border-[#00D2FF]/40"
     >
       {/* VECTOR 6 — freshly-added asset badge (from a live remix/render refresh). */}
       {isNew ? (
@@ -272,7 +272,7 @@ const LibraryCard = memo(function LibraryCard({
                 aria-label="Play"
                 className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/10"
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/20 backdrop-blur-sm">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 ring-1 ring-app-border/20 backdrop-blur-sm">
                   <Play className="ml-0.5 h-5 w-5 text-white" />
                 </span>
               </button>
@@ -311,13 +311,13 @@ const LibraryCard = memo(function LibraryCard({
 
         {/* Shimmer sweep until the media paints (skipped for audio, which has no thumbnail) */}
         {!loaded && !isAudio(item.kind) && !is3d(item.url) && (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white/[0.03]">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden bg-app-elevated/50">
             <div className="absolute inset-0 animate-[tile-shimmer_1.6s_linear_infinite] bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
           </div>
         )}
 
         {/* Kind badge */}
-        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ring-1 ring-white/10">
+        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ring-1 ring-app-border/10">
           {is3d(item.url) ? <Boxes className="h-3 w-3" /> : kindIcon(item.kind)} {is3d(item.url) ? '3d' : item.kind}
         </span>
 
@@ -330,7 +330,7 @@ const LibraryCard = memo(function LibraryCard({
             disabled={downloading}
             title={t.download}
             aria-label={t.download}
-            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-[#00D2FF]/20 hover:text-[#00D2FF] disabled:opacity-60"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-[#00D2FF]/20 hover:text-[#00D2FF] disabled:opacity-60"
           >
             {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           </button>
@@ -339,7 +339,7 @@ const LibraryCard = memo(function LibraryCard({
             onClick={handleShare}
             title={t.share}
             aria-label={t.share}
-            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-[#00D2FF]/20 hover:text-[#00D2FF]"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-[#00D2FF]/20 hover:text-[#00D2FF]"
           >
             {copied === 'link' ? <Check className="h-3.5 w-3.5 text-[#00D2FF]" /> : <Share2 className="h-3.5 w-3.5" />}
           </button>
@@ -348,7 +348,7 @@ const LibraryCard = memo(function LibraryCard({
             onClick={() => setConfirming(true)}
             title={t.deleteAsset}
             aria-label={t.deleteAsset}
-            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-red-500/30 hover:text-red-300"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-red-500/30 hover:text-red-300"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -358,7 +358,7 @@ const LibraryCard = memo(function LibraryCard({
       {/* Prompt + bottom secondary action row (Copy prompt — kept here so it
           isn't obscured by media controls). */}
       <div className="flex flex-1 flex-col gap-2.5 p-3">
-        <p className={`line-clamp-2 text-[12px] leading-snug ${item.prompt ? 'text-neutral-300' : 'italic text-neutral-600'}`}>
+        <p className={`line-clamp-2 text-[12px] leading-snug ${item.prompt ? 'text-app-text' : 'italic text-app-muted/70'}`}>
           {item.prompt ?? t.noPrompt}
         </p>
         <div className="mt-auto flex items-center gap-1.5">
@@ -367,7 +367,7 @@ const LibraryCard = memo(function LibraryCard({
             onClick={handleCopyPrompt}
             disabled={!item.prompt}
             title={t.copyPrompt}
-            className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] text-[11px] font-medium text-neutral-300 transition-colors hover:border-white/25 hover:text-white disabled:opacity-40"
+            className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-app-border/10 bg-app-elevated/50 text-[11px] font-medium text-app-text transition-colors hover:border-app-border/25 hover:text-white disabled:opacity-40"
           >
             {copied === 'prompt' ? <Check className="h-3.5 w-3.5 text-[#00D2FF]" /> : <Copy className="h-3.5 w-3.5" />}
             <span>{copied === 'prompt' ? t.copied : t.copyPrompt}</span>
@@ -390,14 +390,14 @@ const LibraryCard = memo(function LibraryCard({
               <AlertTriangle className="h-4 w-4 text-red-400" />
             </div>
             <p className="text-[12px] font-medium text-white">{t.deleteConfirmTitle}</p>
-            <p className="text-[11px] leading-snug text-neutral-400">{t.deleteConfirmBody}</p>
+            <p className="text-[11px] leading-snug text-app-muted">{t.deleteConfirmBody}</p>
             {deleteErr && <p className="text-[11px] text-red-400">{deleteErr}</p>}
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => { setConfirming(false); setDeleteErr(null); }}
                 disabled={deleting}
-                className="inline-flex h-8 items-center rounded-md border border-white/15 bg-white/[0.04] px-3 text-[11px] font-medium text-neutral-300 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-app-border/15 bg-app-elevated px-3.5 text-[12.5px] font-medium text-app-text transition-colors hover:border-app-accent/50 hover:text-app-accent disabled:opacity-50"
               >
                 {t.cancel}
               </button>
@@ -535,12 +535,12 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-white">{t.title}</h2>
-          <p className="mt-0.5 text-[13px] text-neutral-500">{t.subtitle}</p>
+          <p className="mt-0.5 text-[13px] text-app-muted">{t.subtitle}</p>
         </div>
         <button
           type="button"
           onClick={() => void load()}
-          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-app-border/10 bg-app-elevated/50 px-3 text-xs font-semibold text-app-text transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           {t.retry}
@@ -562,13 +562,13 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
               className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-colors ${
                 active
                   ? 'bg-[#00D2FF] text-black shadow-[0_0_0_1px_rgba(0,210,255,0.4)]'
-                  : 'border border-white/10 bg-white/[0.03] text-neutral-300 hover:border-white/25 hover:text-white'
+                  : 'border border-app-border/10 bg-app-elevated/50 text-app-text hover:border-app-border/25 hover:text-app-text'
               }`}
             >
               <span>{tab.label}</span>
               {items && (
                 <span className={`min-w-[18px] rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums ${
-                  active ? 'bg-black/15 text-black' : 'bg-white/10 text-neutral-400'
+                  active ? 'bg-app-bg/20 text-app-bg' : 'bg-app-border/10 text-app-muted'
                 }`}>{count}</span>
               )}
             </button>
@@ -579,7 +579,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
       {loading && items === null ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="aspect-video animate-pulse rounded-2xl border border-white/5 bg-white/[0.03]" />
+            <div key={i} className="aspect-video animate-pulse rounded-2xl border border-app-border/10 bg-app-elevated/50" />
           ))}
         </div>
       ) : visible && visible.length > 0 ? (
@@ -595,7 +595,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
           {/* Infinite-scroll sentinel — observed by the IntersectionObserver to
               kick off the next page when ~300px from the viewport. */}
           {!exhausted && (
-            <div ref={sentinelRef} className="mt-6 flex items-center justify-center py-6 text-neutral-500">
+            <div ref={sentinelRef} className="mt-6 flex items-center justify-center py-6 text-app-muted">
               {loadingMore ? (
                 <span className="inline-flex items-center gap-2 text-[12px]">
                   <Loader2 className="h-4 w-4 animate-spin" /> {t.loadingMore}
@@ -608,12 +608,12 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
         </>
       ) : (
         <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
-            <Inbox className="h-7 w-7 text-neutral-600" />
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-app-border/10 bg-app-elevated/50">
+            <Inbox className="h-7 w-7 text-app-muted/70" />
           </div>
           <div>
-            <p className="text-base font-semibold text-neutral-300">{t.empty}</p>
-            <p className="mt-1 text-sm text-neutral-500">{t.emptyHint}</p>
+            <p className="text-base font-semibold text-app-text">{t.empty}</p>
+            <p className="mt-1 text-sm text-app-muted">{t.emptyHint}</p>
           </div>
           {onClose && (
             <button type="button" onClick={onClose}
