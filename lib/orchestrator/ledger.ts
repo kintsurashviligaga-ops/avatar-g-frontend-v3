@@ -11,6 +11,7 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { ensureProfileRow, isMissingProfileError } from '@/lib/orchestrator/ensureProfile';
 import { reportError } from '@/lib/observability/report-error';
 
 export type LedgerReason = 'insufficient' | 'skipped' | 'error';
@@ -64,7 +65,26 @@ export async function deductCredits(userId: string, amount: number, ref: string)
   if (!sb) return { ok: false, reason: 'skipped' };
   try {
     const { data, error } = await sb.rpc('deduct_credits', { p_user_id: userId, p_amount: amount, p_ref: ref });
-    if (error) return { ok: false, reason: classifyLedgerError(error.message) };
+    if (error) {
+      // ⚠️ "insufficient_credits" DOES NOT ALWAYS MEAN AN EMPTY BALANCE.
+      //
+      // The RPC reports a MISSING PROFILE ROW with the same message and only distinguishes it in
+      // `details`. Probed live: { code:'P0001', details:'no profile record', message:'insufficient_credits' }.
+      // So a validly signed-in user whose profile row never got created is told to top up — and topping
+      // up cannot help, because the row the balance would land in does not exist. Measured on the live
+      // database: 2 of 17 auth users were in exactly this state, permanently unable to pay for anything.
+      //
+      // Create the row and retry ONCE. The repair is idempotent, so concurrent requests race harmlessly,
+      // and this closes the gap however it happened — a signup path that bypassed the trigger, a row
+      // deleted later, an account older than the trigger itself.
+      const details = (error as { details?: string }).details;
+      if (isMissingProfileError(details, error.message) && (await ensureProfileRow(userId))) {
+        const retry = await sb.rpc('deduct_credits', { p_user_id: userId, p_amount: amount, p_ref: ref });
+        if (!retry.error) return { ok: true, balance: parseBalance(retry.data) };
+        return { ok: false, reason: classifyLedgerError(retry.error.message) };
+      }
+      return { ok: false, reason: classifyLedgerError(error.message) };
+    }
     return { ok: true, balance: parseBalance(data) };
   } catch (e) {
     // A thrown exception is a genuine connection failure → fail-fast.
@@ -89,6 +109,13 @@ export async function hasSufficientBalance(userId: string, cost: number): Promis
   try {
     const { data, error } = await sb.from('profiles').select('credits_balance').eq('id', userId).maybeSingle();
     if (error) return true; // read failed → fail-open (deduct is the backstop)
+    if (!data) {
+      // NO ROW, not a zero balance. This used to fail open straight into a paid provider call that the
+      // post-render deduct could never charge for. Create the row now so the user has somewhere to be
+      // billed; the deduct that follows is still the real gate on the amount.
+      await ensureProfileRow(userId);
+      return true;
+    }
     const bal = (data as { credits_balance?: number } | null)?.credits_balance;
     return typeof bal === 'number' ? bal >= cost : true;
   } catch {

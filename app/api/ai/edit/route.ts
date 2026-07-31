@@ -18,11 +18,9 @@
  * Every op is FAIL-OPEN: a miss returns { url: null, error } (never a 500 dead-end).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
-import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
@@ -80,7 +78,6 @@ interface TextOverlayPayload { text: string; position: 'top-left' | 'top-right' 
 // responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
 // noise next to it — and a result the user cannot find later is worse than a slightly slower response.
 async function saveCreation(
-  req: NextRequest,
   userId: string,
   url: string,
   action: EditAction,
@@ -92,19 +89,16 @@ async function saveCreation(
 ): Promise<void> {
   // LIBRARY ROW FIRST, in its own try: the `creations` insert below goes to a table nothing reads, and
   // wrapping both in one try meant a failure there would skip the row the Library actually shows.
+  // saveEditorOutput writes the generation_jobs row the Library actually reads — that is the whole
+  // job of this function.
+  //
+  // ⚠️ A SECOND INSERT INTO `creations` USED TO FOLLOW, AND THE TABLE DOES NOT EXIST. Verified against
+  // the live database: GET /rest/v1/creations → 404 "Could not find the table 'public.creations' in
+  // the schema cache". The migration creates `user_creations`; nothing anywhere creates `creations`.
+  // So every single editor operation paid for a guaranteed-failing round trip and pushed a guaranteed
+  // error into reportError — noise on the hot path that made the real errors harder to see, for a
+  // write nothing ever read. Deleted rather than repointed: the Library row already exists.
   await saveEditorOutput({ userId, url, media, action });
-  try {
-    const { supabase } = await authedClientFromRequest(req);
-    await supabase.from('creations').insert({
-      user_id: userId,
-      kind: media,
-      service: 'surgical',
-      prompt: `surgical:${action}`,
-      url,
-      thumbnail_url: url,
-      credits_used: DETERMINISTIC.has(action) ? 0 : creditCostFor('image'),
-    });
-  } catch (e) { reportError(e, { route: 'ai.edit', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {
@@ -197,7 +191,7 @@ export async function POST(req: NextRequest) {
         ),
         onDrop: (d) => { dropped = d.map((x) => ({ index: x.index, reason: x.reason })); },
       });
-      if (url) await saveCreation(req, guard.userId, url, 'render', 'video');
+      if (url) await saveCreation(guard.userId, url, 'render', 'video');
       return NextResponse.json({
         url,
         error: url ? undefined : 'concat render failed',
@@ -243,26 +237,26 @@ export async function POST(req: NextRequest) {
           : await renderVideoDraft(src, params);
         // A photo render produces a PNG. Filing it as 'video' is what put a still inside a <video>
         // element in the Library and named its download .mp4.
-        if (url) await saveCreation(req, guard.userId, url, action, isPhotoRender ? 'image' : 'video');
+        if (url) await saveCreation(guard.userId, url, action, isPhotoRender ? 'image' : 'video');
         return NextResponse.json({ url, error: url ? undefined : 'render failed' });
       }
       if (action === 'split') {
         const url = await trimClip(src, Number(body?.startSec) || 0, Math.max(1, Number(body?.durationSec) || 5));
-        if (url) await saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'split failed' });
       }
       if (action === 'crop') {
         const b = body?.bounds ?? body?.target_bounds ?? {};
         const url = await cropClip(src, Number(b.x) || 0, Number(b.y) || 0, Number(b.w) || 0, Number(b.h) || 0);
-        if (url) await saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'crop failed' });
       }
       if (action === 'detach') {
         const { video, audio } = await detachAudio(src);
-        if (video) await saveCreation(req, guard.userId, video, action, 'video');
+        if (video) await saveCreation(guard.userId, video, action, 'video');
         // The detached AUDIO was produced and returned to the client but never filed, so the half of
         // this operation the user actually asked for vanished on refresh.
-        if (audio) await saveCreation(req, guard.userId, audio, action, 'audio');
+        if (audio) await saveCreation(guard.userId, audio, action, 'audio');
         return NextResponse.json({ url: video, audioUrl: audio, error: video ? undefined : 'detach failed' });
       }
       if (action === 'color') {
@@ -270,7 +264,7 @@ export async function POST(req: NextRequest) {
           saturation: Number(body?.saturation), contrast: Number(body?.contrast),
           brightness: Number(body?.brightness), temperature: Number(body?.temperature),
         });
-        if (url) await saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'color grade failed' });
       }
       if (action === 'fade') {
@@ -278,7 +272,7 @@ export async function POST(req: NextRequest) {
           fadeInSec: Number(body?.fadeInSec) || 0, fadeOutSec: Number(body?.fadeOutSec) || 0,
           durationSec: Math.max(0.1, Number(body?.durationSec) || 0),
         });
-        if (url) await saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'fade failed' });
       }
     } catch (e) {
@@ -349,7 +343,7 @@ export async function POST(req: NextRequest) {
       if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // compensation ONLY if we charged
       return NextResponse.json({ url: null, error: 'inpaint produced no output' }, { status: 502 });
     }
-    await saveCreation(req, guard.userId, url, 'inpaint', 'image'); // inpaint output is always an image
+    await saveCreation(guard.userId, url, 'inpaint', 'image'); // inpaint output is always an image
     return NextResponse.json({ url });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge

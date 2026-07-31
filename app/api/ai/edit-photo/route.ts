@@ -11,10 +11,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
@@ -105,16 +103,11 @@ async function rehost(srcUrl: string): Promise<{ url: string; path: string } | n
 // AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
 // responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
 // noise next to it — and a result the user cannot find later is worse than a slightly slower response.
-async function saveCreation(req: NextRequest, userId: string, url: string, action: PhotoAction, cost: number): Promise<void> {
+async function saveCreation(userId: string, url: string, action: PhotoAction): Promise<void> {
   // See the note in app/api/ai/edit/route.ts — this is the write the Library actually reads.
+  // See the note in app/api/ai/edit/route.ts — the `creations` insert that used to follow targeted a
+  // table that does not exist in the database (404, verified live), so it failed on every call.
   await saveEditorOutput({ userId, url, media: 'image', action });
-  try {
-    const { supabase } = await authedClientFromRequest(req);
-    await supabase.from('creations').insert({
-      user_id: userId, kind: 'image', service: 'photo-studio',
-      prompt: `photo:${action}`, url, thumbnail_url: url, credits_used: cost,
-    });
-  } catch (e) { reportError(e, { route: 'ai.edit-photo', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {
@@ -170,7 +163,7 @@ export async function POST(req: NextRequest) {
     }
     const displayUrl = finalHosted?.url ?? curUrl;
     const last = CHAIN[CHAIN.length - 1];
-    if (last) await saveCreation(req, guard.userId, displayUrl, last, totalCost);
+    if (last) await saveCreation(guard.userId, displayUrl, last);
     return NextResponse.json({ url: displayUrl, path: finalHosted?.path, actions: CHAIN });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, totalCost, ref).catch(() => {}); // ATOMIC refund of the whole chain

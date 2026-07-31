@@ -9,11 +9,9 @@
  * Outputs are RE-HOSTED into our storage (Replicate URLs expire) and written to the user's library.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { reportError } from '@/lib/observability/report-error';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { audioProcess } from '@/lib/audio/audioOps';
@@ -60,16 +58,11 @@ async function rehost(srcUrl: string): Promise<{ url: string; path: string } | n
 // AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
 // responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
 // noise next to it — and a result the user cannot find later is worse than a slightly slower response.
-async function saveCreation(req: NextRequest, userId: string, url: string, action: AudioAction, cost: number): Promise<void> {
+async function saveCreation(userId: string, url: string, action: AudioAction): Promise<void> {
   // media:'audio' maps to service_type 'music', never 'voice' — the Library filters 'voice' out.
+  // See the note in app/api/ai/edit/route.ts — the `creations` insert that used to follow targeted a
+  // table that does not exist in the database (404, verified live), so it failed on every call.
   await saveEditorOutput({ userId, url, media: 'audio', action });
-  try {
-    const { supabase } = await authedClientFromRequest(req);
-    await supabase.from('creations').insert({
-      user_id: userId, kind: 'audio', service: 'audio-studio',
-      prompt: `audio:${action}`, url, thumbnail_url: url, credits_used: cost,
-    });
-  } catch (e) { reportError(e, { route: 'ai.edit-audio', fn: 'saveCreation', userId }); }
 }
 
 export async function POST(req: NextRequest) {
@@ -106,7 +99,7 @@ export async function POST(req: NextRequest) {
         volume: body?.volume === undefined ? 1 : Number(body.volume),
         durationSec: Number(body?.durationSec) || 0,
       });
-      if (url) await saveCreation(req, guard.userId, url, action, 0);
+      if (url) await saveCreation(guard.userId, url, action);
       return NextResponse.json({ url, path: null, error: url ? undefined : 'process failed' });
     } catch (e) {
       return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'process failed' }, { status: 502 });
@@ -147,8 +140,8 @@ export async function POST(req: NextRequest) {
     const hostedPrimary = await rehost(primary);
     const hostedSecondary = secondary ? await rehost(secondary) : null;
     const url = hostedPrimary?.url ?? primary;
-    await saveCreation(req, guard.userId, url, action, cost);
-    if (hostedSecondary?.url) await saveCreation(req, guard.userId, hostedSecondary.url, action, 0);
+    await saveCreation(guard.userId, url, action);
+    if (hostedSecondary?.url) await saveCreation(guard.userId, hostedSecondary.url, action);
     return NextResponse.json({ url, path: hostedPrimary?.path, secondaryUrl: hostedSecondary?.url ?? secondary ?? undefined });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
