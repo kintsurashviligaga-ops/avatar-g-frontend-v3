@@ -2,7 +2,11 @@ node_modules/
 .next/
 .turbo/
 out/
-build/
+# ANCHORED to the repo root. A bare `build/` matches at ANY depth, and it silently swallowed
+# app/api/v2/presentation/build/route.ts — the entire Presentation service was never committed, so
+# production 404s it while vercel.json and next.config.js still configure the function. `git status`
+# stayed clean throughout, because ignored files are never reported as untracked.
+/build/
 dist/
 coverage/
 logs/

@@ -18,7 +18,8 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
-import { MAX_SHOTS, MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect, type MontageShot, type MontageTransition } from '@/lib/services/montage/montagePlan';
+import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '@/lib/services/montage/montagePlan';
+import { MontageEditor, type EditorClip } from './MontageEditor';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 
@@ -104,9 +105,9 @@ export function ServiceParamsPanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
 
-  // Montage — full shot rows, not just urls, so the panel is an editor rather than a form.
-  const newShot = (): MontageShot => ({ url: '', kind: 'video', startSec: 0, endSec: 5, muted: false, transition: 'cut' });
-  const [shots, setShots] = useState<MontageShot[]>(() => [newShot(), newShot()]);
+  // Montage — clips carry a stable uid and the source's true duration; MontageEditor owns the UI.
+  // Starts EMPTY: two blank rows were placeholders for a form, but this surface asks for files.
+  const [shots, setShots] = useState<EditorClip[]>([]);
   const [aspect, setAspect] = useState<MontageAspect>('16:9');
   const [musicUrl, setMusicUrl] = useState('');
   const [musicOnly, setMusicOnly] = useState(false);
@@ -147,20 +148,6 @@ export function ServiceParamsPanel({
     setError(t.failed);
   }, [t]);
 
-  const patchShot = (i: number, next: Partial<MontageShot>) =>
-    setShots((rows) => rows.map((r, j) => (j === i ? { ...r, ...next } : r)));
-  const addShot = () => setShots((rows) => [...rows, newShot()]);
-  const removeShot = (i: number) => setShots((rows) => rows.filter((_, j) => j !== i));
-  const moveShot = (i: number, dir: -1 | 1) =>
-    setShots((rows) => {
-      const j = i + dir;
-      if (j < 0 || j >= rows.length) return rows;
-      const out = [...rows];
-      const a = out[i]; const b = out[j];
-      if (!a || !b) return rows;
-      out[i] = b; out[j] = a;
-      return out;
-    });
   // Same pure function the server bills and encodes against, so this number is not an approximation.
   const montageTotal = timelineDuration(shots);
 
@@ -175,7 +162,14 @@ export function ServiceParamsPanel({
 
       if (service === 'montage') {
         endpoint = '/api/v2/montage/render';
-        body = { shots: shots.filter((s) => s.url.trim()), aspect, ...(musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}), musicOnly };
+        // uid/sourceSec/previewUrl are client-only; the validator would ignore them but sending a local
+        // blob: url in `previewUrl` has no business leaving the browser.
+        body = {
+          shots: shots.filter((s) => s.url.trim()).map(({ uid: _u, sourceSec: _s, previewUrl: _p, ...shot }) => shot),
+          aspect,
+          ...(musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
+          musicOnly,
+        };
       } else if (service === 'dubbing') {
         endpoint = '/api/v2/dubbing/start';
         body = { sourceVideoUrl: sourceVideoUrl.trim(), sourceLanguage: 'auto', targetLanguage, preserveBackgroundAudio: preserveBg, subtitles };
@@ -218,7 +212,6 @@ export function ServiceParamsPanel({
 
   const field = 'w-full rounded-lg bg-app-elevated border border-app-border/15 px-2.5 py-1.5 text-[13px] !text-app-text outline-none focus:border-app-accent/50 transition-colors';
   const lbl = 'mb-1 block text-[11px] font-medium text-app-muted';
-  const miniBtn = 'shrink-0 rounded-lg border border-app-border/15 px-1.5 py-1 text-[11px] text-app-muted hover:text-app-text disabled:opacity-25';
 
   return (
     // HEIGHT IS CAPPED, and the panel scrolls inside itself. A twelve-shot timeline is taller than the
@@ -233,87 +226,18 @@ export function ServiceParamsPanel({
       </div>
 
       {service === 'montage' && (
-        <div className="space-y-2">
-          {/* A TIMELINE, not a URL list: every shot carries its own in/out points, the transition into
-              it, an optional burned caption and a mute toggle — the parameters an editor actually
-              reaches for, laid out per clip. Reordering is what makes it an edit rather than a form. */}
-          <span className={lbl}>{t.shots}</span>
-          {shots.map((shot, i) => (
-            <div key={i} className="rounded-xl border border-app-border/10 bg-app-elevated/40 p-2">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <span className="rounded bg-app-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent">{i + 1}</span>
-                <input
-                  type="url" value={shot.url} placeholder="https://…/clip.mp4"
-                  className={`${field} flex-1`}
-                  onChange={(e) => patchShot(i, { url: e.target.value })}
-                />
-                <button type="button" onClick={() => moveShot(i, -1)} disabled={i === 0} className={miniBtn}>↑</button>
-                <button type="button" onClick={() => moveShot(i, 1)} disabled={i === shots.length - 1} className={miniBtn}>↓</button>
-                <button type="button" onClick={() => removeShot(i)} disabled={shots.length <= MIN_SHOTS} className={miniBtn}>✕</button>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                <label className="block">
-                  <span className="mb-0.5 block text-[10px] text-app-muted">{t.trimFrom}</span>
-                  <input type="number" min={0} step={0.1} value={shot.startSec} className={field}
-                    onChange={(e) => patchShot(i, { startSec: Math.max(0, Number(e.target.value) || 0) })} />
-                </label>
-                <label className="block">
-                  <span className="mb-0.5 block text-[10px] text-app-muted">{t.trimTo}</span>
-                  <input type="number" min={0.4} step={0.1} value={shot.endSec} className={field}
-                    onChange={(e) => patchShot(i, { endSec: Number(e.target.value) || 0 })} />
-                </label>
-                {i > 0 && (
-                  <label className="block">
-                    <span className="mb-0.5 block text-[10px] text-app-muted">{t.transition}</span>
-                    <select value={shot.transition} className={field}
-                      onChange={(e) => patchShot(i, { transition: e.target.value as MontageTransition })}>
-                      <option value="cut">{t.cut}</option>
-                      <option value="crossfade">{t.crossfade}</option>
-                      <option value="fade">{t.fadeBlack}</option>
-                    </select>
-                  </label>
-                )}
-                <label className="block">
-                  <span className="mb-0.5 block text-[10px] text-app-muted">{t.caption}</span>
-                  <input type="text" maxLength={120} value={shot.caption ?? ''} className={field}
-                    onChange={(e) => patchShot(i, { caption: e.target.value })} />
-                </label>
-              </div>
-              <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-app-text">
-                <input type="checkbox" checked={shot.muted} onChange={(e) => patchShot(i, { muted: e.target.checked })} />
-                {t.mute}
-              </label>
-            </div>
-          ))}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" disabled={shots.length >= MAX_SHOTS} onClick={addShot}
-              className="rounded-lg border border-app-border/15 px-2 py-1 text-[11px] text-app-muted disabled:opacity-30">
-              {t.addShot}
-            </button>
-            <select value={aspect} onChange={(e) => setAspect(e.target.value as MontageAspect)} className="w-auto rounded-lg bg-app-elevated border border-app-border/15 px-2 py-1 text-[12px] !text-app-text">
-              {(['16:9', '9:16', '1:1'] as const).map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-            <span className={`text-[11px] ${montageTotal > MAX_TOTAL_SEC ? 'text-red-400' : 'text-app-muted'}`}>
-              {t.duration}: {montageTotal.toFixed(1)}s
-            </span>
-            {/* Escalation into the full-screen clip editor (trim/crop/grade/audio). This is why the menu
-                no longer carries a second "Editor" row — one Montage entry reaches both. */}
-            {onOpenFullEditor && (
-              <button type="button" onClick={onOpenFullEditor}
-                className="ml-auto rounded-lg border border-app-accent/40 px-2 py-1 text-[11px] text-app-accent">
-                {t.fullEditor}
-              </button>
-            )}
-          </div>
-          <input type="url" value={musicUrl} onChange={(e) => setMusicUrl(e.target.value)} placeholder={t.music} className={field} />
-          {musicUrl.trim() && (
-            <label className="flex items-center gap-1.5 text-[12px] text-app-text">
-              <input type="checkbox" checked={musicOnly} onChange={(e) => setMusicOnly(e.target.checked)} />
-              {t.musicOnly}
-            </label>
-          )}
-        </div>
+        <MontageEditor
+          locale={locale}
+          clips={shots}
+          setClips={setShots}
+          aspect={aspect}
+          setAspect={setAspect}
+          musicUrl={musicUrl}
+          setMusicUrl={setMusicUrl}
+          musicOnly={musicOnly}
+          setMusicOnly={setMusicOnly}
+          onOpenFullEditor={onOpenFullEditor}
+        />
       )}
 
       {service === 'dubbing' && (
