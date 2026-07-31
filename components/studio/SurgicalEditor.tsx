@@ -41,7 +41,7 @@ const stepForPct = (p: number) => (p < 15 ? 0 : p < 35 ? 1 : p < 75 ? 2 : p < 95
 interface Copy {
   title: string; subtitle: string; drop: string; dropHint: string; dropHintAudio: string; pick: string;
   crop: string; color: string; fade: string; split: string; mute: string; unmute: string; reset: string;
-  tabClips: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
+  tabClips: string; tabRetouch: string; tabAdjust: string; tabFilters: string; tabCrop: string; cropSingleOnly: string;
   saturation: string; contrast: string; brightness: string; temperature: string; fadeIn: string; fadeOut: string;
   maxReached: string; max5: string; cropHint: string; sequence: string; seqDur: string; del: string; moveL: string; moveR: string; clipN: string;
   transition: string; tCut: string; tCross: string; tFade: string;
@@ -76,7 +76,7 @@ const T: Record<Lang, Copy> = {
     selectMode: 'აირჩიეთ სამუშაო რეჟიმი', wsVideo: 'ვიდეო მონტაჟი', wsPhoto: 'AI ფოტო სტუდია', wsAudio: 'AI ხმის სტუდია', wsVideoHint: 'ჩააგდე ან ატვირთე ვიდეო', wsPhotoHint: 'ჩააგდე ან ატვირთე ფოტო', wsAudioHint: 'ატვირთეთ აუდიო ფაილი ან მუსიკალური ტრეკი დასამუშავებლად', changeMode: 'რეჟიმის შეცვლა', timedOut: 'დრო ამოიწურა — სცადე ხელახლა',
     returnChat: 'ჩატში დაბრუნება ფაილით',
     agentTitle: 'Agent G — ბრძანება ტექსტით', agentPhPhoto: 'ფონი მოაშორე, გააფერადე, ხარისხი გაზარდე…', agentPhVideo: 'გაჭერი, დაადუმე…', agentPhAudio: 'ვოკალი გამოყავი, ხმაური მოაშორე…', agentSend: 'გაშვება', agentNoOp: 'ბრძანება ვერ გავიგე — სცადე სხვანაირად',
-    tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
+    tabRetouch: 'რეტუში', tabClips: 'ვიდეო', tabAdjust: 'რეგულირება', tabFilters: 'ფილტრები', tabCrop: 'ჩარჩო',
     cropSingleOnly: 'ჩარჩო მუშაობს ერთ კლიპზე — თანმიმდევრობაში დარჩება მთლიანი კადრი.',
     detach: 'ხმის მოხსნა', undetach: 'ხმის დაბრუნება', aspect: 'პროპორცია', aspectOrig: 'ორიგინალი', bgReplace: 'AI ფონის შეცვლა', bgReplacePh: 'აღწერე ახალი ფონი — მაგ. „ზღვის სანაპირო“…', volume: 'ხმის სიმაღლე',
   },
@@ -97,7 +97,7 @@ const T: Record<Lang, Copy> = {
     selectMode: 'Select Workspace Mode', wsVideo: 'Video Editor', wsPhoto: 'AI Photo Studio', wsAudio: 'AI Audio Studio', wsVideoHint: 'Drop or upload video', wsPhotoHint: 'Drop or upload photo', wsAudioHint: 'Upload an audio file or music track to process', changeMode: 'Change mode', timedOut: 'Timed out — please try again',
     returnChat: 'Return to chat with asset',
     agentTitle: 'Agent G — command by text', agentPhPhoto: 'remove the background, colorize, upscale…', agentPhVideo: 'split, mute…', agentPhAudio: 'isolate vocals, remove noise…', agentSend: 'Run', agentNoOp: 'Didn’t catch that command — try rephrasing',
-    tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
+    tabRetouch: 'Retouch', tabClips: 'Video', tabAdjust: 'Adjust', tabFilters: 'Filters', tabCrop: 'Crop',
     cropSingleOnly: 'Crop works on a single clip — a multi-clip sequence keeps the full frame.',
     detach: 'Mute audio', undetach: 'Unmute audio', aspect: 'Aspect', aspectOrig: 'Original', bgReplace: 'AI Background Replace', bgReplacePh: 'Describe the new background — e.g. "a beach at sunset"…', volume: 'Volume',
   },
@@ -118,7 +118,7 @@ const T: Record<Lang, Copy> = {
     selectMode: 'Выберите режим', wsVideo: 'Видеоредактор', wsPhoto: 'AI фотостудия', wsAudio: 'AI аудиостудия', wsVideoHint: 'Перетащите или загрузите видео', wsPhotoHint: 'Перетащите или загрузите фото', wsAudioHint: 'Загрузите аудиофайл или музыкальный трек для обработки', changeMode: 'Сменить режим', timedOut: 'Время истекло — попробуйте снова',
     returnChat: 'Вернуться в чат с файлом',
     agentTitle: 'Agent G — команда текстом', agentPhPhoto: 'убери фон, раскрась, апскейл…', agentPhVideo: 'разрежь, заглуши…', agentPhAudio: 'извлеки вокал, убери шум…', agentSend: 'Запуск', agentNoOp: 'Не понял команду — попробуйте иначе',
-    tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
+    tabRetouch: 'Ретушь', tabClips: 'Видео', tabAdjust: 'Настройка', tabFilters: 'Фильтры', tabCrop: 'Кадр',
     cropSingleOnly: 'Кадрирование работает с одним клипом — в последовательности кадр остаётся целиком.',
     detach: 'Убрать звук', undetach: 'Вернуть звук', aspect: 'Формат', aspectOrig: 'Оригинал', bgReplace: 'AI замена фона', bgReplacePh: 'Опишите новый фон — напр. «пляж на закате»…', volume: 'Громкость',
   },
@@ -133,7 +133,7 @@ interface TextOverlay { text: string; position: OverlayPosition; fontSize: numbe
 /** One block in the export sequence — points at its OWN source clip; `transition` = blend FROM the previous block. */
 interface Segment { id: string; clipId: string; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
 
-type VideoTab = 'clips' | 'adjust' | 'filters' | 'crop';
+type VideoTab = 'clips' | 'retouch' | 'adjust' | 'filters' | 'crop';
 
 const NEUTRAL: Grade = { saturation: 100, contrast: 100, brightness: 100, temperature: 0 };
 
@@ -371,8 +371,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   }, [filenameFor]);
 
   // Native share sheet (mobile) → clipboard-copy fallback (desktop / unsupported). A user cancel is a no-op.
-  /** VIDEO lane only: is this section on a tab other than the active one? Photo/audio keep one column. */
-  const vHide = useCallback((tab: VideoTab) => !isPhoto && !isAudio && vtab !== tab, [isPhoto, isAudio, vtab]);
+  /** Is this section on a tab other than the active one? Audio keeps its single column for now. */
+  const vHide = useCallback((tab: VideoTab) => !isAudio && vtab !== tab, [isAudio, vtab]);
 
   const shareAsset = useCallback(async (url: string) => {
     const nav = navigator as Navigator & { share?: (d: { url?: string; title?: string }) => Promise<void> };
@@ -395,6 +395,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   // Switching the PREVIEW clip resets only preview-local UI (crop/mask/playhead) — the sequence + grade/fade
   // are the GLOBAL draft and persist across clips.
   useEffect(() => {
+    // Land on the lane's own first tab — 'clips' does not exist for a photo, 'retouch' does not for video.
+    setVtab(clipsRef.current[active]?.kind === 'image' ? 'retouch' : 'clips');
     setCrop(null); setCropOn(false); setMaskMode(false); setMaskPainted(false); setCurrent(0); setPhotoDim(null); setChainPath(null); setOriginalPath(null);
     setAudioDur(0); setAudioCur(0); setAudioPlaying(false); setPitch(0); setAudioSpeed(1); setATrim({ start: 0, end: 0 }); setSecondaryAudio(null);
     setResult(null); setSuccessAsset(null); // the last result belongs to the PREVIOUS clip — never bleed it into the new one
@@ -1146,15 +1148,15 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             )}
 
             {/* Tools */}
-            <div className={`grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 ${vHide('clips') ? 'hidden' : ''}`}>
+            <div className={`grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 ${vHide(isPhoto ? 'crop' : 'clips') ? 'hidden' : ''}`}>
               {isPhoto && <ToolButton icon={<Crop size={15} />} label={t.crop} active={cropOn} onClick={() => setCropOn((v) => !v)} />}
               {!isPhoto && <ToolButton icon={<Scissors size={15} />} label={t.split} onClick={splitAtPlayhead} />}
               <ToolButton icon={<RotateCcw size={15} />} label={t.reset} onClick={resetDraft} />
             </div>
 
-            {/* AI Photo Studio actions (PHOTO) — one-click Replicate transforms, billed server-side */}
+            {/* AI Photo Studio actions (PHOTO) → RETOUCH tab */}
             {isPhoto && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('retouch') ? 'hidden' : ''}`}>
                 <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.aiStudio}</span>
                 <div className="grid grid-cols-2 gap-2">
                   <PhotoCard icon={<Eraser size={16} />} label={t.removeBg} cost={2} disabled={exporting} onClick={() => void runPhotoAction('remove_bg')} />
@@ -1174,9 +1176,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               </div>
             )}
 
-            {/* Aspect ratio presets (PHOTO) */}
+            {/* Aspect ratio presets (PHOTO) → CROP tab, next to the crop tool it belongs with */}
             {isPhoto && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('crop') ? 'hidden' : ''}`}>
                 <span className="text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t.aspect}</span>
                 <div className="flex items-center gap-2">
                   {([['1:1', 1], ['16:9', 16 / 9], ['9:16', 9 / 16], [t.aspectOrig, null]] as [string, number | null][]).map(([label, ratio]) => {
@@ -1194,7 +1196,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
 
             {/* FILTERS tab — one-tap looks that write the SAME grade the Adjust sliders drive, so a look
                 is a starting point rather than a separate mode. */}
-            {!isPhoto && !isAudio && vtab === 'filters' && (
+            {!isAudio && vtab === 'filters' && (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {FILTERS.map((f) => {
                   const on = sameGrade(grade, f.grade);
@@ -1295,9 +1297,9 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               </div>
             )}
 
-            {/* AI object removal (PHOTO) */}
+            {/* AI object removal (PHOTO) → RETOUCH tab */}
             {isPhoto && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5">
+              <div className={`space-y-2.5 rounded-xl border border-app-border/15 bg-app-surface/50 p-3.5 ${vHide('retouch') ? 'hidden' : ''}`}>
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted"><Sparkles size={12} className="text-app-accent" />{t.aiRemove}</span>
                   <div className="flex gap-1.5">
@@ -1390,11 +1392,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       {/* iOS-STYLE TAB BAR (video lane). The controls used to be one long scroll — on a phone the sliders
           sat far below the frame with no way to tell what else existed. Four tabs, a pill bar, and the
           active one marked with a dot, mirroring the native editor. */}
-      {clips.length > 0 && !isPhoto && !isAudio && (
+      {clips.length > 0 && !isAudio && (
         <div className="shrink-0 px-3 pb-1 pt-2">
           <div className="mx-auto flex w-fit items-center gap-1 rounded-2xl border border-app-border/15 bg-app-surface/90 p-1 shadow-lg backdrop-blur">
             {([
-              { id: 'clips',   icon: <Film size={17} />,       label: t.tabClips },
+              isPhoto
+                ? { id: 'retouch', icon: <Sparkles size={17} />, label: t.tabRetouch }
+                : { id: 'clips',   icon: <Film size={17} />,     label: t.tabClips },
               { id: 'adjust',  icon: <SunMedium size={17} />,  label: t.tabAdjust },
               { id: 'filters', icon: <Droplet size={17} />,    label: t.tabFilters },
               { id: 'crop',    icon: <Crop size={17} />,       label: t.tabCrop },
