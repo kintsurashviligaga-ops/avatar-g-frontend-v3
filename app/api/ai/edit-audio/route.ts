@@ -15,7 +15,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { createPrediction, pollPrediction } from '@/lib/replicate/client';
+import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { audioProcess } from '@/lib/audio/audioOps';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
@@ -127,7 +127,10 @@ export async function POST(req: NextRequest) {
   try {
     const created = await createPrediction(DEMUCS_MODEL, { audio: src });
     let out = created;
-    if (created.status !== 'succeeded' && created.status !== 'failed') out = await pollPrediction(created.id);
+    // ⚠️ WAS A SINGLE `pollPrediction` — see the long note in /api/ai/edit. Demucs stem separation on a
+    // full track takes tens of seconds; it was given milliseconds, so vocal isolation and the
+    // vocal/instrumental splitter returned "separation failed" every time on a valid Replicate token.
+    if (created.status !== 'succeeded' && created.status !== 'failed') out = await pollUntilDone(created.id, 120, 2000);
     if (out.status !== 'succeeded') {
       if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
       return NextResponse.json({ url: null, error: 'separation failed' }, { status: 502 });

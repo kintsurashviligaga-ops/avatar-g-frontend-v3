@@ -26,7 +26,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
-import { createPrediction, pollPrediction } from '@/lib/replicate/client';
+import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
@@ -78,15 +78,25 @@ interface TextOverlayPayload { text: string; position: 'top-left' | 'top-right' 
 // AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
 // responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
 // noise next to it — and a result the user cannot find later is worse than a slightly slower response.
-async function saveCreation(req: NextRequest, userId: string, url: string, action: EditAction): Promise<void> {
+async function saveCreation(
+  req: NextRequest,
+  userId: string,
+  url: string,
+  action: EditAction,
+  // ⚠️ MUST BE PASSED. This was hard-coded 'video' while the route also serves photo renders
+  // (kind==='photo') and inpaint, both of which produce a PNG. saveEditorOutput maps 'video' →
+  // service_type 'film', so a still was filed as a film — and the Library then puts it in a <video>
+  // element whose onLoad never fires (permanent shimmer) and offers it for download as .mp4.
+  media: 'video' | 'image' | 'audio' = 'video',
+): Promise<void> {
   // LIBRARY ROW FIRST, in its own try: the `creations` insert below goes to a table nothing reads, and
   // wrapping both in one try meant a failure there would skip the row the Library actually shows.
-  await saveEditorOutput({ userId, url, media: 'video', action });
+  await saveEditorOutput({ userId, url, media, action });
   try {
     const { supabase } = await authedClientFromRequest(req);
     await supabase.from('creations').insert({
       user_id: userId,
-      kind: 'video',
+      kind: media,
       service: 'surgical',
       prompt: `surgical:${action}`,
       url,
@@ -201,10 +211,13 @@ export async function POST(req: NextRequest) {
           speed: d.speed,
           durationSec: Number(body?.durationSec) || 0,
         };
-        const url = body?.kind === 'photo'
+        const isPhotoRender = body?.kind === 'photo';
+        const url = isPhotoRender
           ? await renderPhotoDraft(src, params)
           : await renderVideoDraft(src, params);
-        if (url) await saveCreation(req, guard.userId, url, action);
+        // A photo render produces a PNG. Filing it as 'video' is what put a still inside a <video>
+        // element in the Library and named its download .mp4.
+        if (url) await saveCreation(req, guard.userId, url, action, isPhotoRender ? 'image' : 'video');
         return NextResponse.json({ url, error: url ? undefined : 'render failed' });
       }
       if (action === 'split') {
@@ -220,7 +233,10 @@ export async function POST(req: NextRequest) {
       }
       if (action === 'detach') {
         const { video, audio } = await detachAudio(src);
-        if (video) await saveCreation(req, guard.userId, video, action);
+        if (video) await saveCreation(req, guard.userId, video, action, 'video');
+        // The detached AUDIO was produced and returned to the client but never filed, so the half of
+        // this operation the user actually asked for vanished on refresh.
+        if (audio) await saveCreation(req, guard.userId, audio, action, 'audio');
         return NextResponse.json({ url: video, audioUrl: audio, error: video ? undefined : 'detach failed' });
       }
       if (action === 'color') {
@@ -289,14 +305,25 @@ export async function POST(req: NextRequest) {
     const created = await createPrediction(model, { image: src, mask, prompt: body?.prompt || '' });
     let out = created;
     if (created.status !== 'succeeded' && created.status !== 'failed') {
-      out = await pollPrediction(created.id);
+      // ⚠️ THIS WAS A SINGLE `pollPrediction`, AND IT MADE OBJECT REMOVAL FAIL 100% OF THE TIME.
+      //
+      // createPrediction sends `Prefer: respond-async` (lib/replicate/client.ts:53), so it returns as
+      // soon as the job is QUEUED — status 'starting'. Polling once, milliseconds later, still reads
+      // 'starting', so `url` came out null, the credit was refunded and the route answered 502
+      // "inpaint produced no output". An inpaint takes tens of seconds; it was never given any of them.
+      // The Replicate token is valid — this failed with a perfectly good key.
+      //
+      // pollUntilDone already existed for exactly this (client.ts:94) and is what the storyboard and
+      // pipeline routes use. Bounded to 240s so it always loses to maxDuration=300 and the caller gets
+      // a real JSON reason rather than a gateway timeout with an unparseable body.
+      out = await pollUntilDone(created.id, 120, 2000);
     }
     const url = out.status === 'succeeded' ? firstUrl(out.output) : null;
     if (!url) {
       if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // compensation ONLY if we charged
       return NextResponse.json({ url: null, error: 'inpaint produced no output' }, { status: 502 });
     }
-    await saveCreation(req, guard.userId, url, 'inpaint');
+    await saveCreation(req, guard.userId, url, 'inpaint', 'image'); // inpaint output is always an image
     return NextResponse.json({ url });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge

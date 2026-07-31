@@ -16,7 +16,7 @@ import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generatio
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
-import { createPrediction, pollPrediction } from '@/lib/replicate/client';
+import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
@@ -154,7 +154,13 @@ export async function POST(req: NextRequest) {
     for (const act of CHAIN) {
       const created = await createPrediction(modelFor(act), inputFor(act, curUrl, prompt));
       let out = created;
-      if (created.status !== 'succeeded' && created.status !== 'failed') out = await pollPrediction(created.id);
+      // ⚠️ WAS A SINGLE `pollPrediction` — see the long note in /api/ai/edit. createPrediction sends
+      // `Prefer: respond-async` and returns 'starting'; one poll milliseconds later still reads
+      // 'starting', so EVERY Photo Studio action (remove background, 4× upscale, face restore,
+      // colorize, background replace) threw "<action> produced no output", refunded and 502'd — with a
+      // valid Replicate token. This chain runs up to several models in sequence, so the budget is split
+      // across them: 60 × 2s per leg keeps the worst case inside maxDuration.
+      if (created.status !== 'succeeded' && created.status !== 'failed') out = await pollUntilDone(created.id, 60, 2000);
       const raw = out.status === 'succeeded' ? firstUrl(out.output) : null;
       if (!raw) throw new Error(`${act} produced no output`);
       // Re-host each intermediary so the NEXT model consumes a persistent URL (Replicate outputs expire).
