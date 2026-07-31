@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
  * plain unauthenticated POST — the new client flow simply not calling it would not stop anyone else from
  * doing so, and any confirmed-account-on-demand endpoint defeats the verification gate that replaced it.
  *
- * THE REPLACEMENT: `supabase.auth.signUp()` → Supabase mails a 6-digit code → `verifyOtp({ type: 'signup' })`
+ * THE REPLACEMENT: POST /api/auth/email-otp/send → WE mail Supabase's 6-digit code via Resend → `verifyOtp()`
  * (components/chat/AuthModal.tsx). The account is created UNCONFIRMED with no session, and only a correct
  * code produces one, so an unverified sign-up can never reach the product.
  *
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     {
       ok: false,
       code: 'deprecated',
-      message: 'Auto-confirmed registration has been retired. Sign up with supabase.auth.signUp() and verify the emailed code.',
+      message: 'Auto-confirmed registration has been retired. Sign up through the app: POST /api/auth/email-otp/send, then verify the emailed code.',
     },
     { status: 410 },
   );

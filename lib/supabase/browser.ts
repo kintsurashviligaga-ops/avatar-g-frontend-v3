@@ -46,20 +46,31 @@ let browserClient: BrowserClient | null = null;
 function makeUnconfiguredClient(): BrowserClient {
   const noSession = { data: { session: null }, error: null };
   const noUser = { data: { user: null }, error: null };
+  // An auth ACTION that cannot happen must report failure. Degrading a READ to "signed out" is right;
+  // degrading a WRITE to "success" is not — signUp/verifyOtp/resend/resetPasswordForEmail previously
+  // resolved with error:null, so the UI said "check your email" while nothing had been sent and nothing
+  // logged. Reads stay successful-but-empty; actions now fail loudly.
+  const notConfigured = {
+    name: 'AuthRetryableFetchError',
+    message: 'Supabase is not configured on this deployment.',
+    status: 503,
+  };
+  const failedAction = async () => ({ data: { user: null, session: null }, error: notConfigured });
+
   const auth = {
     getUser: async () => noUser,
     getSession: async () => noSession,
     // Callers destructure `data.subscription.unsubscribe()` in a cleanup — it must exist.
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     signOut: async () => ({ error: null }),
-    signUp: async () => noUser,
-    signInWithPassword: async () => noUser,
-    signInWithOtp: async () => ({ data: { user: null, session: null }, error: null }),
-    signInWithOAuth: async () => ({ data: { provider: null, url: null }, error: null }),
-    verifyOtp: async () => noUser,
-    resend: async () => ({ data: {}, error: null }),
-    resetPasswordForEmail: async () => ({ data: {}, error: null }),
-    updateUser: async () => noUser,
+    signUp: failedAction,
+    signInWithPassword: failedAction,
+    signInWithOtp: failedAction,
+    signInWithOAuth: failedAction,
+    verifyOtp: failedAction,
+    resend: failedAction,
+    resetPasswordForEmail: failedAction,
+    updateUser: failedAction,
   };
   // A chainable query stub: every builder method returns itself, and awaiting yields an empty result.
   const query: Record<string, unknown> = {};

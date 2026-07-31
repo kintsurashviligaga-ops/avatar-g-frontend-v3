@@ -8,6 +8,8 @@ import {
   isPlausibleEmail,
   linkTypeFor,
   normalizeLocale,
+  isUserNotFoundError,
+  isEmailTakenError,
   type OtpPurpose,
 } from '@/lib/auth/otpEmail';
 
@@ -85,14 +87,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const msg = String(error.message || '').toLowerCase();
       // Sign-up on an existing address: say so. They need the sign-in tab, and hiding it just makes them
       // retry forever. A sign-up form reveals this either way.
-      if (purpose === 'signup' && (msg.includes('already') || msg.includes('registered') || msg.includes('exists'))) {
+      if (purpose === 'signup' && isEmailTakenError(msg)) {
         return NextResponse.json({ error: 'email_taken' }, { status: 409 });
       }
-      // Sign-in for an unknown address: answer OK anyway. Confirming which addresses have accounts would
-      // turn this endpoint into an account-enumeration oracle.
-      if (purpose === 'signin') return NextResponse.json({ ok: true });
+      // Sign-in for an UNKNOWN ADDRESS answers OK, because confirming which addresses have accounts
+      // would turn this endpoint into an account-enumeration oracle.
+      //
+      // BUT ONLY FOR THAT. This used to swallow EVERY sign-in error, so a bad service-role key, a GoTrue
+      // 5xx, its rate limit or a network fault all reported "code sent" — and because the branch sat
+      // above the log line, nothing was recorded either. The user then waited forever for a code that
+      // was never generated. That is the exact silent failure this endpoint must not have.
+      if (purpose === 'signin' && isUserNotFoundError(msg)) return NextResponse.json({ ok: true });
+
+      // Everything else is a REAL failure and is logged, whatever the purpose.
       // eslint-disable-next-line no-console
-      console.error('[email-otp/send] generateLink:', error.message);
+      console.error(`[email-otp/send] generateLink (${purpose}):`, error.message);
       return NextResponse.json({ error: 'send_failed' }, { status: 502 });
     }
 

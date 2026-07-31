@@ -61,6 +61,27 @@ export function extractEmailOtp(response: unknown): string | null {
   return null;
 }
 
+/**
+ * Does this provider error mean "no such account", as opposed to a real failure?
+ *
+ * LOAD-BEARING FOR SECURITY *AND* FOR NOT LYING. A sign-in for an unknown address must answer OK, or the
+ * endpoint becomes an account-enumeration oracle. But that exemption must apply ONLY to this case: the
+ * first version swallowed every sign-in error, so a bad service-role key, a GoTrue 5xx, its rate limit
+ * or a network fault all reported "code sent" while nothing was generated and nothing was logged.
+ */
+export function isUserNotFoundError(message: unknown): boolean {
+  const m = String(message ?? '').toLowerCase();
+  if (!m) return false;
+  return m.includes('not found') || m.includes('no user') || m.includes('does not exist');
+}
+
+/** Does this provider error mean the address is already registered? */
+export function isEmailTakenError(message: unknown): boolean {
+  const m = String(message ?? '').toLowerCase();
+  if (!m) return false;
+  return m.includes('already') || m.includes('registered') || m.includes('exists');
+}
+
 /** Basic address sanity. Deliberately permissive — Supabase is the real validator. */
 export function isPlausibleEmail(v: unknown): v is string {
   return typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) && v.trim().length <= 254;

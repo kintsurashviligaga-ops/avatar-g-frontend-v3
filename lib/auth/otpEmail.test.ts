@@ -8,6 +8,8 @@ import {
   isPlausibleEmail,
   normalizeLocale,
   buildOtpEmail,
+  isUserNotFoundError,
+  isEmailTakenError,
 } from './otpEmail';
 
 describe('purpose → Supabase vocabulary', () => {
@@ -109,5 +111,30 @@ describe('the email itself', () => {
     expect(normalizeLocale('xx')).toBe('ka');
     expect(normalizeLocale(undefined)).toBe('ka');
     expect(normalizeLocale('ru')).toBe('ru');
+  });
+});
+
+describe('provider-error classification — the silent-failure fix', () => {
+  it('recognises a genuinely unknown account, so sign-in can answer OK without enumerating', () => {
+    expect(isUserNotFoundError('User not found')).toBe(true);
+    expect(isUserNotFoundError('no user found with that email')).toBe(true);
+    expect(isUserNotFoundError('User does not exist')).toBe(true);
+  });
+
+  it('does NOT swallow real failures — the bug this replaces reported "code sent" for all of these', () => {
+    expect(isUserNotFoundError('Invalid API key')).toBe(false);
+    expect(isUserNotFoundError('service_role key required')).toBe(false);
+    expect(isUserNotFoundError('Internal Server Error')).toBe(false);
+    expect(isUserNotFoundError('email rate limit exceeded')).toBe(false);
+    expect(isUserNotFoundError('fetch failed')).toBe(false);
+    expect(isUserNotFoundError('')).toBe(false);
+    expect(isUserNotFoundError(undefined)).toBe(false);
+  });
+
+  it('recognises an already-registered address for the sign-up branch', () => {
+    expect(isEmailTakenError('User already registered')).toBe(true);
+    expect(isEmailTakenError('email address already exists')).toBe(true);
+    expect(isEmailTakenError('Invalid API key')).toBe(false);
+    expect(isEmailTakenError(null)).toBe(false);
   });
 });
