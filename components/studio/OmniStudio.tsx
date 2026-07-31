@@ -19,6 +19,7 @@ import { GenerationProgress, PROGRESS_TARGET, fmtClock } from '@/components/stud
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
+import { audioExtFor } from '@/lib/voice/audioExt';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -730,6 +731,9 @@ interface SpeechRecognitionLike {
   onresult: ((e: SREvent) => void) | null;
   onend: (() => void) | null;
   onerror: (() => void) | null;
+  /** Fires when the ENGINE itself detects speech — the signal that separates "the user hasn't started
+   *  talking yet" from "the user is talking and this engine is producing nothing". See the watchdog. */
+  onspeechstart: (() => void) | null;
   start: () => void;
   stop: () => void;
 }
@@ -1414,6 +1418,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [attachments, setAttachments] = useState<Media[]>([]);
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
+  /** True only between a user Stop tap and the recognizer actually ending — see rec.onend's auto-restart. */
+  const micStopRequestedRef = useRef(false);
+  // The recorder path (all of iOS, and every Georgian fallback) does a FINAL transcription pass after
+  // Stop. Until now `setRecording(false)` fired first and nothing replaced it, so the composer sat
+  // unchanged with a plain mic icon for the length of a Whisper round-trip — reading exactly like "the
+  // mic ate my sentence". This makes that wait visible instead of invisible.
+  const [transcribing, setTranscribing] = useState(false);
+  /** Set when interim transcription keeps failing, so a dead mic stops looking like a working one. */
+  const [dictationWarn, setDictationWarn] = useState<string | null>(null);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
@@ -5005,8 +5018,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // Seed the "last recorder write" baseline to the pre-dictation text so a short (<1.2s) clip that
       // reaches only the final pass — with no progressive write — still recognises an untouched composer.
       lastSttWriteRef.current = base;
-      const extFor = (t: string) => /mp4/i.test(t) ? 'mp4' : /aac/i.test(t) ? 'm4a' : /mpeg|mp3/i.test(t) ? 'mp3' : /wav/i.test(t) ? 'wav' : 'webm';
-      let inFlight = false;
+      // Shared with the SERVER's upload label (lib/voice/audioExt) — they must agree, and until now the
+      // server hardcoded '.wav' and silently failed every transcription this side got right.
+      const extFor = (t: string) => audioExtFor(t);
+      // ⚠️ WAS A BOOLEAN POLLED IN A LOOP. `onstop` did `for (let i = 0; inFlight && i < 25; i++) await
+      // sleep(200)` — up to FIVE SECONDS of artificial waiting before the final transcription round-trip
+      // even began. Holding the promise lets Stop await the actual request and continue the instant it
+      // settles, which on a fast pass is effectively immediate.
+      let inFlightP: Promise<void> | null = null;
+      let failStreak = 0;
       let stopped = false;
 
       // HANDS-FREE silence auto-stop: watch the live mic level and, once the user has spoken and then goes
@@ -5050,12 +5070,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // the accumulated blob (chunk[0] carries the container header) is a valid clip,
       // so the text grows live as you speak instead of only appearing when you stop.
       const transcribeSoFar = async () => {
-        if (sttDiscardRef.current || inFlight) return; // a send() discarded this dictation
+        if (sttDiscardRef.current || inFlightP) return; // a send() discarded this dictation
 
         const type = rec.mimeType || chosen || 'audio/webm';
         const blob = new Blob(chunks, { type });
         if (blob.size < 1600) return;
-        inFlight = true;
+        const run = async () => {
         try {
           const fd = new FormData();
           fd.append('audio', blob, `clip.${extFor(type)}`);
@@ -5066,7 +5086,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // in flight, it already cleared the composer — writing the transcript now would RE-FILL the
           // just-emptied box (the "my dictated text jumps back after I send" bug; iOS uses this recorder
           // path, and it only bites when you send before transcription resolves). Drop it silently.
-          if (sttDiscardRef.current) { inFlight = false; return; }
+          if (sttDiscardRef.current) return; // the outer finally clears inFlightP
           if (j.text && j.text.trim()) {
             const next = base + j.text.trim();
             // Functional update so we read the LIVE composer: if the user has typed since the recorder last
@@ -5080,8 +5100,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               return next;
             });
           }
-        } catch { /* fail-soft */ }
-        inFlight = false;
+          failStreak = 0;
+          setDictationWarn(null);
+        } catch {
+          // ⚠️ THIS WAS A BARE `catch { /* fail-soft */ }`. A 429 (the route shares the 100-req/60s READ
+          // bucket and a long dictation fires a pass every 1.2s), a 500 or an offline blip produced no
+          // toast, no state change and no retry — the recording UI kept pulsing while text silently
+          // stopped arriving, so the user carried on talking into a void. Still fail-soft; no longer silent.
+          failStreak += 1;
+          if (failStreak >= 2) {
+            setDictationWarn(locale === 'en' ? 'Transcription is not responding — your words may not be captured.'
+              : locale === 'ru' ? 'Расшифровка не отвечает — слова могут не записаться.'
+              : 'ტრანსკრიფცია არ პასუხობს — სიტყვები შესაძლოა არ ჩაიწეროს.');
+          }
+        }
+        };
+        inFlightP = run();
+        try { await inFlightP; } finally { inFlightP = null; }
       };
       rec.ondataavailable = (e) => { if (e.data.size) { chunks.push(e.data); if (!stopped) void transcribeSoFar(); } };
       rec.onstop = async () => {
@@ -5094,10 +5129,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // 2nd mic tap "froze" — startRecorderFallback returned immediately and nothing recorded.
         streamRef.current = null;
         recRef.current = null;
-        // Wait out any in-flight request, then do one FINAL pass over the whole clip.
-        for (let i = 0; inFlight && i < 25; i++) await new Promise((r) => setTimeout(r, 200));
-        inFlight = false;
-        await transcribeSoFar();
+        // Await the ACTUAL in-flight request, then do one FINAL pass over the whole clip. The old code
+        // polled a boolean 25 times at 200ms — a flat 5s ceiling of pure waiting before the final pass
+        // could even start, on top of the round-trip itself.
+        setTranscribing(true);
+        try {
+          if (inFlightP) await inFlightP.catch(() => {});
+          inFlightP = null;
+          await transcribeSoFar();
+        } finally {
+          setTranscribing(false);
+        }
       };
       recRef.current = rec;
       rec.start(1200); // emit a chunk every 1.2s → snappier progressive transcription (was 2.5s)
@@ -5111,11 +5153,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   const toggleMic = useCallback(async () => {
     if (recording) {
+      // Mark the stop as INTENTIONAL before stopping, so rec.onend can tell it apart from Chrome ending
+      // recognition on its own (which it does after silence, and which must auto-restart instead).
+      micStopRequestedRef.current = true;
       // Stop whichever recognizer is active (live recognizer or fallback recorder).
       try { recognitionRef.current?.stop(); } catch { /* noop */ }
       try { recRef.current?.stop(); } catch { /* noop */ }
       return;
     }
+    micStopRequestedRef.current = false;
+    setDictationWarn(null); // a fresh dictation clears any previous transcription warning
     // Master Contract V17 — INSTANT capture: flip the mic UI to "recording" the moment the user taps,
     // BEFORE the async recognizer / getUserMedia spins up, so there is zero perceived lag and no lost first
     // words. Every failure path below reverts it (SR onerror/onend + the recorder fallback's catch).
@@ -5128,10 +5175,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // (up to the watchdog) before failing, which is a big part of "the mic takes forever" for ka users.
     // So on iOS + Georgian, skip Web Speech and go STRAIGHT to the Whisper recorder (it transcribes ka
     // fine). Desktop Chrome / en / ru keep live Web Speech (Google's engine DOES support ka).
-    const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
-    // Try LIVE Web Speech FIRST (streams text as you talk); an 8s watchdog drops a silent engine to the
+    // ⚠️ THIS TESTED THE DEVICE, NOT THE ENGINE. The comment above is about APPLE's speech engine, but
+    // /iPad|iPhone|iPod/ does not match macOS Safari — which exposes `webkitSpeechRecognition`, runs that
+    // same Georgian-less engine, and therefore took the Web Speech branch and ate the full watchdog stall
+    // on EVERY dictation. Georgian is this product's primary locale, so that was a first-class path.
+    // Detecting Safari itself (WebKit that is neither Chrome nor Android) covers both.
+    const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+    const isAppleSpeechEngine = /iPad|iPhone|iPod/.test(ua) || (/safari/i.test(ua) && !/chrome|chromium|crios|android|edg/i.test(ua));
+    // Try LIVE Web Speech FIRST (streams text as you talk); a watchdog drops a silent engine to the
     // record-and-transcribe fallback so the mic always does something.
-    if (SR && !(isIOS && lang.startsWith('ka'))) {
+    if (SR && !(isAppleSpeechEngine && lang.startsWith('ka'))) {
       try {
         const rec = new SR();
         rec.lang = lang;
@@ -5149,10 +5202,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           recognitionRef.current = null;
           void startRecorderFallback();
         };
-        // Give Web Speech a generous window to deliver the first text before assuming
-        // it's a "silent" engine and dropping to the recorder — otherwise pausing a
-        // moment before speaking would wrongly kill live transcription.
-        const watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 8000);
+        // ⚠️ THIS WAS A FLAT 8-SECOND TIMER, AND IT MEASURED THE WRONG THING.
+        //
+        // It counted from the moment the mic was tapped, so a silent engine (Apple's, which has no
+        // Georgian; a locked-down WebView; a blocked network) let the user talk for a full eight seconds
+        // seeing NOTHING, and only then switched to the recorder — which starts a brand-new capture, so
+        // every one of those words was gone and the sentence had to be repeated. That is the single
+        // largest "the mic takes forever / does nothing" complaint.
+        //
+        // Shortening the flat timer was not the answer: the long window exists so that pausing to think
+        // before speaking does not wrongly kill live transcription, and the old comment says exactly that.
+        // The fix is to time the right interval. `onspeechstart` is the engine's own report that it can
+        // hear speech, so once it fires we know silence is the ENGINE's fault, not the user's, and 2.5s
+        // is plenty. Until it fires we keep waiting, so a slow starter is never cut off.
+        let watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 8000);
+        rec.onspeechstart = () => {
+          if (gotResult || fellBack) return;
+          clearTimeout(watchdog);
+          watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 2500);
+        };
         rec.onresult = (e: SREvent) => {
           if (sttDiscardRef.current) return; // a send() discarded this dictation
           gotResult = true;
@@ -5167,7 +5235,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           inputSourceRef.current = 'voice';
           setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
         };
-        rec.onend = () => { clearTimeout(watchdog); recognitionRef.current = null; if (!fellBack) setRecording(false); };
+        // ⚠️ CHROME FIRES onend BY ITSELF after a stretch of silence, even with continuous = true. This
+        // used to end dictation outright: the Stop button vanished, the mic turned itself off mid-thought,
+        // and the user's next words went nowhere with nothing on screen explaining why. Restart it unless
+        // the user actually asked to stop. The guard is a restart BUDGET, not a flag — an engine that ends
+        // immediately and repeatedly would otherwise spin in a tight start/end loop.
+        let restarts = 0;
+        rec.onend = () => {
+          clearTimeout(watchdog);
+          if (fellBack) { recognitionRef.current = null; return; }
+          if (!micStopRequestedRef.current && restarts < 8) {
+            restarts += 1;
+            try { rec.start(); return; } catch { /* fall through to ending cleanly */ }
+          }
+          recognitionRef.current = null;
+          setRecording(false);
+        };
         // No text yet + an error (incl. the silent webview case) → record-and-transcribe.
         rec.onerror = () => { clearTimeout(watchdog); if (!gotResult) toRecorder(); else { recognitionRef.current = null; setRecording(false); } };
         recognitionRef.current = rec;
@@ -6053,6 +6136,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
           mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
       <div ref={composerRef} className="shrink-0 pt-1">
+        {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
+            fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
+            fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so
+            the mic kept pulsing while text stopped arriving and the user talked into a void.
+            Shown only after the SECOND consecutive failure, so one flaky pass stays invisible. */}
+        {dictationWarn && (
+          <div role="status" className="mb-2 rounded-xl border border-app-warning/25 bg-app-warning/10 px-3 py-2 text-[12px] leading-snug text-app-text">
+            ⚠️ {dictationWarn}
+          </div>
+        )}
         {/* Service shortcuts intentionally REMOVED from the composer — the in-pill mode
             dropdown (Chat ⌄ / Video ⌄) is the single, canonical mode switcher. The empty
             state is now just the heading + subtitle (no pills, no templates). */}
@@ -7710,7 +7803,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
-            {busy ? (
+            {/* ⚠️ THE MIC USED TO DISAPPEAR WHILE A REPLY WAS STREAMING. Both voice entry points lived in
+                the final `!busy && !recording` branch, so during generation — the exact window in which
+                someone would want to start dictating their follow-up — there was no way to begin voice
+                input at all, and a dictated follow-up always cost the full reply latency first. The mic
+                now sits BESIDE the generation Stop, so the two can overlap. */}
+            {busy && !recording && !transcribing && (
+              <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-300 ease-out hover:scale-105 hover:bg-app-surface hover:text-app-text active:scale-95">
+                <Mic size={19} />
+              </button>
+            )}
+            {/* Generation Stop, kept reachable when dictation owns the primary slot — otherwise starting to
+                dictate mid-reply would take away the only way to stop that reply. */}
+            {busy && (recording || transcribing) && (
+              <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
+                <Square size={15} className="fill-current" />
+              </button>
+            )}
+            {/* Dictation state wins the primary slot: while recording, Stop must mean "stop the mic". */}
+            {busy && !recording && !transcribing ? (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
                 <Square size={15} className="fill-current" />
@@ -7722,6 +7835,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full animate-pulse bg-app-danger/15 text-app-danger">
                 <Square size={16} />
               </button>
+            ) : transcribing ? (
+              // The recorder path (iOS, and every Georgian fallback) runs one FINAL transcription pass
+              // AFTER Stop. `setRecording(false)` fires first, so this slot used to revert to a plain mic
+              // and the composer sat unchanged for a whole round-trip — which reads as "the mic ate my
+              // sentence" and invites a second tap. The wait is now visible and non-interactive.
+              <span
+                aria-live="polite"
+                aria-label={locale === 'en' ? 'Transcribing' : locale === 'ru' ? 'Расшифровка' : 'ტრანსკრიფცია'}
+                title={locale === 'en' ? 'Transcribing…' : locale === 'ru' ? 'Расшифровка…' : 'ტრანსკრიფცია…'}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent"
+              >
+                <Loader2 size={18} className="animate-spin" />
+              </span>
             ) : (
               <>
                 {/* Mic stays available even with text in the box — tap again to keep

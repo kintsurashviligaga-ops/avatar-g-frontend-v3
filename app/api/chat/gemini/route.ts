@@ -6,6 +6,9 @@ import { platformKnowledge } from '@/lib/chat/platformContext';
 import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+
+/** Derived from the helper's own return type — lib/supabase/server does not export its client alias. */
+type AnyAuthedClient = Awaited<ReturnType<typeof authedClientFromRequest>>['supabase'];
 import { embed } from '@/lib/memory/embed';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { classifyGeminiMessage, logGeminiState } from '@/lib/orchestrator/gemini-guard';
@@ -155,19 +158,31 @@ function extractLatestUserText(messages: IncomingMessage[]): string {
   return '';
 }
 
-async function buildMemoryPreamble(req: NextRequest, messages: IncomingMessage[]): Promise<string | null> {
+/**
+ * ⚠️ TIME-TO-FIRST-TOKEN. This used to resolve auth ITSELF, and `authedClientFromRequest` is a real
+ * network call — `cookieClient.auth.getUser()` validates the JWT against Supabase, it is not a local
+ * decode. The route then resolved the SAME user a second time a few lines later for profile facts, so
+ * every chat message paid that round-trip twice, back to back, on the critical path.
+ *
+ * It also embedded FIRST and checked auth SECOND, so every anonymous message — and this route is
+ * explicitly reachable without auth — paid a full HTTPS POST to gemini-embedding-001 whose result was
+ * discarded two lines later. Anonymous is exactly the traffic used for preview testing.
+ *
+ * Auth is now resolved once by the caller and passed in, and the user check happens before the embed.
+ */
+async function buildMemoryPreamble(
+  auth: { supabase: AnyAuthedClient; user: { id: string } | null },
+  messages: IncomingMessage[],
+): Promise<string | null> {
   try {
     const userText = extractLatestUserText(messages);
     if (!userText) return null;
 
+    const { supabase, user } = auth;
+    if (!user) return null;
+
     const embedding = await embed(userText);
     if (!embedding) return null;
-
-    // Accept both cookie-based (browser) and Bearer-token (mobile / SDK) auth.
-    // The previous createSupabaseServerClient() path read cookies only, which
-    // meant memory was never injected for any non-browser caller.
-    const { supabase, user } = await authedClientFromRequest(req);
-    if (!user) return null;
 
     const { data, error } = await supabase.rpc('match_memories', {
       query_embedding: embedding,
@@ -281,28 +296,47 @@ export async function POST(req: NextRequest) {
 
     const modelMessages = toCoreMessages(messages);
 
-    // Best-effort memory injection. Never blocks the chat — if the lookup
-    // fails for any reason we fall back to the base system prompt.
-    const memoryPreamble = await buildMemoryPreamble(req, messages);
+    // ⚠️ SIX TO EIGHT SERIAL ROUND-TRIPS USED TO RUN HERE, ONE AFTER ANOTHER, BEFORE THE MODEL WAS EVEN
+    // DIALLED: an Upstash rate-limit pipeline, a Gemini embedContent POST, `auth.getUser()`, the
+    // match_memories pgvector RPC, a SECOND `auth.getUser()`, a user_profile_facts select, and a billing
+    // scan. Every one was an independent lookup awaited in sequence, so their latencies ADDED — several
+    // hundred ms to over a second of dead air on every single turn, before the first token was requested.
+    //
+    // Three changes, no behaviour lost:
+    //   · auth is resolved ONCE here and threaded down (it was two identical network validations),
+    //   · the memory and profile lookups now run CONCURRENTLY — they never depended on each other,
+    //   · the budget gate is STARTED here and awaited inside the stream, so it overlaps everything above
+    //     instead of sitting alone in front of the model.
+    // All three remain fail-open exactly as before.
+    const auth: { supabase: AnyAuthedClient | null; user: { id: string } | null } =
+      await authedClientFromRequest(req).catch(() => ({ supabase: null, user: null }));
+    const budgetText = modelMessages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' ');
+    const budgetPromise = chatBudgetAllows(budgetText).catch(() => true); // fail OPEN, as before
 
-    // VECTOR 3 — cross-chat PERSISTENT user memory. Read the user's stored facts (name/weight/height/age,
-    // preferred companion name) → inject them so Agent G remembers the user across every separate chat, and
-    // (fire-and-forget) extract any explicit new fact from this turn. Fully fail-open: no user / absent table
-    // (pre-migration 007) / any error → null preamble + no write, so the chat is byte-identical until the
-    // table exists, then springs to life. See lib/chat/userMemory.
-    let profilePreamble: string | null = null;
-    try {
-      const { supabase: memClient, user: memUser } = await authedClientFromRequest(req);
-      const facts = await getUserProfileFacts(memClient, memUser?.id ?? null);
-      profilePreamble = buildProfilePreamble(facts);
-      const latestUser = extractLatestUserText(messages);
-      if (memUser?.id && latestUser) {
-        const fresh = extractProfileFacts(latestUser);
-        if (fresh.length) void saveUserProfileFacts(memClient, memUser.id, fresh);
-      }
-    } catch {
-      // memory is best-effort — never block the chat
-    }
+    const [memoryPreamble, profilePreamble] = await Promise.all([
+      auth.supabase
+        ? buildMemoryPreamble(auth as { supabase: AnyAuthedClient; user: { id: string } | null }, messages)
+        : Promise.resolve(null),
+      // VECTOR 3 — cross-chat PERSISTENT user memory. Read the user's stored facts (name/weight/height/age,
+      // preferred companion name) → inject them so Agent G remembers the user across every separate chat, and
+      // (fire-and-forget) extract any explicit new fact from this turn. Fully fail-open: no user / absent table
+      // (pre-migration 007) / any error → null preamble + no write. See lib/chat/userMemory.
+      (async (): Promise<string | null> => {
+        try {
+          const { supabase: memClient, user: memUser } = auth;
+          if (!memClient) return null;
+          const facts = await getUserProfileFacts(memClient, memUser?.id ?? null);
+          const latestUser = extractLatestUserText(messages);
+          if (memUser?.id && latestUser) {
+            const fresh = extractProfileFacts(latestUser);
+            if (fresh.length) void saveUserProfileFacts(memClient, memUser.id, fresh);
+          }
+          return buildProfilePreamble(facts);
+        } catch {
+          return null; // memory is best-effort — never block the chat
+        }
+      })(),
+    ]);
 
     // Live web facts now come from OFFICIAL Google Search grounding (the googleSearch tool on the Gemini
     // streamText call below), which the model invokes in real time — far more accurate than the old
@@ -349,8 +383,8 @@ export async function POST(req: NextRequest) {
           // $45 chat slice of the budget), so it passes the same guard as image/video/music. The check
           // runs INSIDE the stream so a refusal is delivered as a normal assistant message rather than
           // an HTTP error the chat shell would render as a dead turn. Fails OPEN on a guard fault.
-          const budgetText = modelMessages.map((m) => (typeof m.content === 'string' ? m.content : '')).join(' ');
-          if (!(await chatBudgetAllows(budgetText))) {
+          // Started before the preambles above, so its latency overlaps them instead of adding to them.
+          if (!(await budgetPromise)) {
             sendMeta({ provider: 'budget', model: 'none' });
             send(BUDGET_EXHAUSTED_MESSAGE);
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -401,6 +435,14 @@ export async function POST(req: NextRequest) {
               });
               for await (const chunk of result.textStream) {
                 if (chunk) {
+                  // ⚠️ THE ENGINE BADGE USED TO ARRIVE ONLY AFTER THE WHOLE ANSWER HAD STREAMED. The
+                  // marker exists precisely so a silently-degraded provider is visible — and it was
+                  // emitted last, the moment it is least useful: through the entire wait, the one span
+                  // where you would want to know whether you are on Gemini or the Anthropic fallback,
+                  // there was nothing to show. Sent on the FIRST chunk instead, which is the earliest
+                  // point it is actually TRUE (the model has committed to answering). The terminal
+                  // sendMeta calls stay: they correct the badge if the turn ends up partial or rotates.
+                  if (streamed === 0) sendMeta({ provider: 'gemini', model: modelName });
                   send(chunk);
                   streamed += chunk.length;
                 }
@@ -512,6 +554,11 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive',
+        // Its sibling /api/chat/claude sets this and the other three streaming chat routes did not. Any
+        // nginx-class buffering proxy in front of the app will otherwise accumulate the whole SSE body
+        // and deliver it in one piece — turning a correctly-implemented token stream into exactly the
+        // "it all appears at once, late" symptom, with nothing wrong in the code to find.
+        'X-Accel-Buffering': 'no',
       },
     });
 

@@ -1,4 +1,5 @@
 import 'server-only';
+import { audioFileName } from '@/lib/voice/audioExt';
 
 import OpenAI from 'openai';
 
@@ -91,7 +92,11 @@ async function transcribeWithOpenAI(params: {
   const mimeType = String(params.mimeType || 'audio/wav').trim() || 'audio/wav';
 
   const form = new FormData();
-  form.append('file', new Blob([arrayBufferFromBase64(params.audioBase64)], { type: mimeType }), `chunk.${mimeType.includes('mpeg') ? 'mp3' : 'wav'}`);
+  // ⚠️ THIS USED TO SEND EVERYTHING AS `.wav`. Whisper dispatches on the FILENAME EXTENSION, so the
+  // browser's real audio/webm (or audio/mp4 on iOS) was rejected or garbled on every call — the primary
+  // provider failed 100% of the time on genuine mic audio, and the cascade paid two doomed round-trips
+  // before reaching one that works. Shared with the client's recorder so both label a clip identically.
+  form.append('file', new Blob([arrayBufferFromBase64(params.audioBase64)], { type: mimeType }), audioFileName(mimeType));
   form.append('model', model);
   form.append('language', language);
 
