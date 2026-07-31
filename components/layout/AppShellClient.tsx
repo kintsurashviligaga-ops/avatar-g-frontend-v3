@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 type AppShellClientProps = {
   userEmail: string;
@@ -19,7 +20,7 @@ export function AppShellClient({ userEmail, children }: AppShellClientProps) {
     setIsLoggingOut(true);
     try {
       const supabase = createBrowserClient();
-      await supabase.auth.signOut();
+      await signOutAndClear(supabase);
     } finally {
       router.replace('/auth');
       router.refresh();

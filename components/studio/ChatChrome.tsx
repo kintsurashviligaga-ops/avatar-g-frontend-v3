@@ -57,6 +57,7 @@ import { useTheme } from '@/lib/theme/ThemeContext';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -450,6 +451,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // import) so a secondary surface like /library doesn't pull the whole 5k-line studio
   // into its bundle just for this key. MUST match OMNI_CURRENT_ID_KEY in OmniStudio.tsx.
   const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
+  // One-shot handoff for "open this old chat". MUST match OMNI_RESUME_KEY in OmniStudio.tsx.
+  const OMNI_RESUME_KEY = 'myavatar-omni-resume';
   const handleNewChat = useCallback(() => {
     window.dispatchEvent(new Event('myavatar:new-chat'));
     // On the studio surface onNewChat resets the chat in place. On OTHER surfaces that
@@ -470,7 +473,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     if ((pathname ?? '').includes('/dashboard')) {
       window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
     } else {
-      try { window.localStorage.setItem(OMNI_CURRENT_ID_KEY, id); } catch { /* ignore */ }
+      // One-shot handoff: OmniStudio consumes this on mount. Writing OMNI_CURRENT_ID_KEY instead would
+      // make the chat sticky across every later refresh, which is the behaviour we just removed.
+      try { window.localStorage.setItem(OMNI_RESUME_KEY, id); } catch { /* ignore */ }
       router.push(`/${locale}/dashboard`);
     }
     setSidebarOpen(false);
@@ -877,7 +882,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
                   <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
-                  <button type="button" onClick={async () => { try { await createBrowserClient().auth.signOut(); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
+                  <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (
                 <div className="px-2 pb-1 pt-0.5">

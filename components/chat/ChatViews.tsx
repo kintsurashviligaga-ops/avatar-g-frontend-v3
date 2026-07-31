@@ -19,6 +19,7 @@ import InlineMedia from '@/components/dashboard/command-center/InlineMedia';
 import { BarChart, KpiTile, LineChart, TopicList, WeeklyUsageChart } from '@/components/analytics/AnalyticsCharts';
 import { PricingGrid } from '@/components/dashboard/PricingGrid';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 export function AvatarGalleryView({ locale, onBackToChat }: { locale: string; onBackToChat: () => void }) {
   const [items, setItems] = useState<Array<{ id: string; url: string | null; prompt: string | null; created_at: string }>>([]);
@@ -433,7 +434,7 @@ export function AccountSection({
   const signOut = useCallback(async () => {
     try {
       const supabase = createBrowserClient();
-      if (supabase) await supabase.auth.signOut();
+      await signOutAndClear(supabase);
     } catch { /* ignore */ }
     window.location.href = `/${locale}/login`;
   }, [locale]);

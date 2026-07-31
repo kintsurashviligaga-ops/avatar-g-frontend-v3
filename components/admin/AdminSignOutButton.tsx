@@ -7,6 +7,7 @@
  */
 import { useState } from 'react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 export default function AdminSignOutButton({ locale, className, label }: { locale: string; className?: string; label?: string }) {
   const ka = locale === 'ka';
@@ -14,7 +15,7 @@ export default function AdminSignOutButton({ locale, className, label }: { local
 
   const onClick = async () => {
     setBusy(true);
-    try { await createBrowserClient().auth.signOut(); } catch { /* sign-out is best-effort; navigate regardless */ }
+    try { await signOutAndClear(createBrowserClient()); } catch { /* sign-out is best-effort; navigate regardless */ }
     window.location.assign(`/${locale}/admin`);
   };
 

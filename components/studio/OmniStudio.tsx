@@ -951,6 +951,14 @@ function isMusicVideoIntent(s: string): boolean {
 // reload or "New Chat" (see ServiceHub) resumes/forks correctly.
 export const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
 export const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
+/**
+ * ONE-SHOT resume handoff. The app must land on a FRESH, EMPTY chat on every open and every refresh —
+ * the way ChatGPT and Gemini do — instead of dropping the user back inside whatever they last said.
+ * Past chats are not lost: they stay in the sidebar History and are opened EXPLICITLY, which writes the
+ * id here. `currentConversationId()` consumes and deletes it, so the resume applies exactly once and the
+ * next reload is a clean slate again.
+ */
+export const OMNI_RESUME_KEY = 'myavatar-omni-resume';
 const HISTORY_MAX = 80;  // max turns kept per conversation
 const CONV_MAX = 40;     // max conversations kept overall
 
@@ -976,8 +984,16 @@ function saveConversations(list: Conversation[]): void {
 function currentConversationId(): string {
   if (typeof window === 'undefined') return newConversationId();
   try {
-    const id = window.localStorage.getItem(OMNI_CURRENT_ID_KEY);
-    if (id) return id;
+    // An EXPLICIT pick from the sidebar is the only thing that reopens an old chat, and only once.
+    const resume = window.localStorage.getItem(OMNI_RESUME_KEY);
+    if (resume) {
+      window.localStorage.removeItem(OMNI_RESUME_KEY);
+      window.localStorage.setItem(OMNI_CURRENT_ID_KEY, resume);
+      return resume;
+    }
+    // Otherwise: always a new, empty conversation. Reading OMNI_CURRENT_ID_KEY here is what used to
+    // strand people inside a days-old thread on every visit. An empty chat is never written to History
+    // (upsertConversation drops zero-message entries), so this creates no clutter.
     const fresh = newConversationId();
     window.localStorage.setItem(OMNI_CURRENT_ID_KEY, fresh);
     return fresh;

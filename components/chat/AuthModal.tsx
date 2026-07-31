@@ -238,6 +238,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
    * type 'signup' consumes the confirmation token Supabase mailed, marks the address confirmed and returns
    * the session. An unverified sign-up simply never gets one.
    */
+  // Which flow produced the code on screen. 'signup' = account confirmation, 'email' = sign-in OTP.
+  // verifyOtp() and the resend button BOTH need this: Supabase rejects a sign-in code verified as a
+  // signup and vice versa, and resend() does not even support the sign-in case.
+  const [otpKind, setOtpKind] = useState<'signup' | 'email'>('signup');
+
   const verifyOtp = useCallback(async () => {
     setError(null); setNotice(null);
     const code = otpCode.replace(/\D/g, '');
@@ -246,7 +251,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setOtpBusy(true);
     try {
-      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: 'signup' });
+      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: otpKind });
       if (error) throw error;
       if (!data.session) { setError(t.errOtpInvalid); return; }
       track('user_signup', { method: 'email', verified: true });
@@ -260,7 +265,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setOtpBusy(false);
     }
-  }, [otpCode, email, t, onAuthed, onClose, router]);
+  }, [otpCode, email, t, onAuthed, onClose, router, otpKind]);
 
   /** Re-send the sign-up confirmation code (Supabase rate-limits this server-side). */
   const resendOtp = useCallback(async () => {
@@ -269,7 +274,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setOtpBusy(true);
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+      const { error } = otpKind === 'signup'
+        ? await supabase.auth.resend({ type: 'signup', email: email.trim() })
+        // supabase.auth.resend() has no sign-in variant — re-issuing a login code means asking for one
+        // again. shouldCreateUser stays false so a resend cannot conjure an account.
+        : await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
       if (error) throw error;
       setNotice(t.otpResent);
     } catch (err) {
@@ -277,7 +286,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setOtpBusy(false);
     }
-  }, [email, t]);
+  }, [email, t, otpKind]);
 
   // OAuth (Google): only render the button when the Supabase project ACTUALLY has the
   // provider enabled (asked from GoTrue's public /settings), so we never show a dead
@@ -327,7 +336,6 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setBusy(true);
     try {
-      const redirectTo = `${window.location.origin}/${locale}/dashboard`;
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -351,7 +359,10 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         // way, but that is a project setting, not a code path we choose.
         const { data, error } = await supabase.auth.signUp({
           email, password,
-          options: { data: { full_name: name || undefined }, emailRedirectTo: redirectTo },
+          // NO emailRedirectTo: that parameter belongs to the magic-LINK flow. Supplying it while the
+          // template is meant to render {{ .Token }} is contradictory, and is the difference between a
+          // mail containing a 6-digit code and one containing a confirmation link.
+          options: { data: { full_name: name || undefined } },
         });
         if (error) throw error;
         if (data.session) {
@@ -363,12 +374,17 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         } else {
           // The expected path: no session until the emailed code is verified.
           track('user_signup', { method: 'email', pending_confirm: true });
+          setOtpKind('signup');
           setOtpStage(true);
         }
       } else if (mode === 'magic') {
-        const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+        // shouldCreateUser:false is a correctness fix, not a tweak: without it a mistyped address
+        // SILENTLY REGISTERS a new account instead of telling the person their email is unknown.
+        // No emailRedirectTo — see the sign-up note above; this flow delivers a code.
+        const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
         if (error) throw error;
-        setNotice(t.checkEmail);
+        setOtpKind('email');
+        setOtpStage(true);
       } else if (mode === 'reset') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/${locale}/login` });
         if (error) throw error;

@@ -15,6 +15,7 @@
 import { useCallback, useState } from 'react';
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 type Dict = {
   trigger: string;
@@ -85,7 +86,7 @@ export function DeleteAccountButton({ locale }: { locale: string }) {
       if (!res.ok) throw new Error('delete failed');
       // Auth row is gone; clear local session, then leave for a clean state.
       try {
-        await createBrowserClient().auth.signOut();
+        await signOutAndClear(createBrowserClient());
       } catch {
         /* session already invalid server-side */
       }

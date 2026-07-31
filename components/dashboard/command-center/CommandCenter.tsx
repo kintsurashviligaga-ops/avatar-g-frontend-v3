@@ -50,6 +50,7 @@ import ReferralPanel from '@/components/dashboard/ReferralPanel';
 import InviteReferralBanner from '@/components/dashboard/InviteReferralBanner';
 import { useRateLimit } from '@/hooks/useRateLimit';
 import { analytics } from '@/components/analytics/PostHogProvider';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1270,7 +1271,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
             <button type="button" className="cc-prof-link cc-danger" onClick={async () => {
               try {
                 const supabase = createBrowserClient();
-                if (supabase) await supabase.auth.signOut();
+                await signOutAndClear(supabase);
               } catch { /* ignore */ }
               window.location.href = '/';
             }}>

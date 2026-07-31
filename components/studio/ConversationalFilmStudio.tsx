@@ -72,6 +72,7 @@ import { looksLikeFilmEdit } from '@/lib/chat/remixPlanner';
 import { composeMusicVideoPrompt, MV_GENRES, MV_SHOTS, MV_CAMERA_MOVES, MV_LIGHTING } from '@/lib/chat/musicVideoPresets';
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
+import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 
 interface Slot {
   dataUrl: string;
@@ -2238,7 +2239,7 @@ export function ConversationalFilmStudio({
                   type="button"
                   onClick={async () => {
                     try {
-                      await createBrowserClient().auth.signOut();
+                      await signOutAndClear(createBrowserClient());
                     } catch {
                       /* ignore — the auth listener still clears local state */
                     }
