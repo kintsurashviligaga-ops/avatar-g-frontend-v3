@@ -6,7 +6,7 @@ import { validateMontageRequest, montageUnits, timelineDuration, MAX_TOTAL_SEC }
 import { runMontage } from '@/lib/services/montage/montagePipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
-import { createJob, completeJob, failJob } from '@/lib/orchestrator/jobs';
+import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,15 +62,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const jobId = randomUUID();
+  // The browser may name the job so it can poll `current_stage` WHILE this synchronous render runs;
+  // otherwise it only learns the id once everything is finished. safeJobId enforces the UUID shape, and
+  // a collision with someone else's row fails the insert below — which is why we fall back on !created.
+  const fallbackId = randomUUID();
+  let jobId = safeJobId((body as { clientJobId?: unknown } | null)?.clientJobId, fallbackId);
   // service_type has a DB CHECK ('film','avatar','interior','image','music','voice') — montage rides as
   // 'film' with the real service in params.subtype, the way product/swap/motion already do.
-  await createJob({
+  const created = await createJob({
     id: jobId,
     userId: user.id,
     serviceType: 'film',
     params: { subtype: 'montage', shots: request.shots.length, aspect: request.aspect, durationSec: totalSec },
   }).catch(() => false);
+  // A false result means the INSERT did not land — most likely the client-supplied id already exists,
+  // which would otherwise let this request stamp progress onto a row it does not own.
+  if (!created) jobId = fallbackId;
 
   try {
     const outcome = await guardedCall(

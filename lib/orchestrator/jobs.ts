@@ -71,6 +71,26 @@ function client(): ReturnType<typeof createServiceRoleClient> | null {
 }
 
 /** Insert a `pending` job row. Best-effort; returns true on a confirmed write. */
+/**
+ * Accept a CLIENT-SUPPLIED job id, or fall back to a fresh one.
+ *
+ * Why a client id at all: the v2 services run synchronously, so the browser only learns the server's job
+ * id once the whole render is finished — far too late to poll `current_stage` while it works. Letting the
+ * client name the job up front is what makes live per-leg progress possible.
+ *
+ * ⚠️ SECURITY — this is why it validates rather than trusting. An arbitrary caller-supplied id could name
+ * ANOTHER USER'S job row; `updateJobStage` and `completeJob` patch by id alone, so a colliding id would
+ * let one user stamp progress onto someone else's render. Two defences: the shape must be a v4-style
+ * UUID, and `createJob` must report that the INSERT actually landed — a collision fails the insert, and
+ * the caller then uses its own generated id instead.
+ */
+export function safeJobId(candidate: unknown, fallback: string): string {
+  return typeof candidate === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)
+    ? candidate
+    : fallback;
+}
+
 export async function createJob(input: {
   id: string;
   userId: string;

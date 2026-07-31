@@ -6,7 +6,7 @@ import { validateDubbingRequest, plannedSteps, dubbingMinutes } from '@/lib/serv
 import { runDubbing } from '@/lib/services/dubbing/dubbingPipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
-import { createJob, completeJob, failJob } from '@/lib/orchestrator/jobs';
+import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,17 +74,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const minutes = dubbingMinutes(durationSec);
 
-  const jobId = randomUUID();
+  // See the note in the montage route: a client-named job is what makes live progress possible, and
+  // safeJobId + the created check are what keep it from touching another user's row.
+  const fallbackId = randomUUID();
+  let jobId = safeJobId((body as { clientJobId?: unknown } | null)?.clientJobId, fallbackId);
   // service_type carries a DB CHECK constraint (film|avatar|interior|image|music|voice).
   // A dub OUTPUTS A VIDEO, so it files as 'film'. Filing it as 'voice' was both semantically wrong and
   // invisible: the Library excludes 'voice' (trained voice models are not playable media), so every
   // finished dub was written successfully and then hidden from the only place a user could find it.
-  await createJob({
+  const created = await createJob({
     id: jobId,
     userId: user.id,
     serviceType: 'film',
     params: { subtype: 'dubbing', targetLanguage: request.targetLanguage, minutes },
   }).catch(() => false);
+  // A false result means the INSERT did not land — most likely the client-supplied id already exists,
+  // which would otherwise let this request stamp progress onto a row it does not own.
+  if (!created) jobId = fallbackId;
 
   try {
     const outcome = await guardedCall(

@@ -73,6 +73,38 @@ const COPY = {
   },
 } satisfies Record<Lang, Record<string, string>>;
 
+/**
+ * The pipelines write machine stage names (extract_audio, transcribe, stitch, outline…) to the job row.
+ * Showing those raw would be worse than showing nothing, so each is given a human sentence. An unknown
+ * stage falls through to the raw name rather than to silence — a new leg should still be visible.
+ */
+const STAGE_LABELS: Record<Lang, Record<string, string>> = {
+  ka: {
+    queued: 'რიგში…',
+    resolve: 'ფაილები მოწმდება…', bridge: 'ფოტოები კადრებად…', normalize: 'ფორმატი ერთდება…',
+    stitch: 'კადრები იკერება…', music: 'მუსიკა ედება…',
+    extract_audio: 'ხმა გამოიყოფა…', transcribe: 'ტექსტი იშიფრება…', translate: 'ითარგმნება…',
+    synthesize: 'ხმა იწერება…', sync: 'დრო ეწყობა…', mix: 'მიქსი…',
+    outline: 'გეგმა იწერება…', visuals: 'სურათები იქმნება…', render: 'სლაიდები იხატება…',
+  },
+  en: {
+    queued: 'Queued…',
+    resolve: 'Checking files…', bridge: 'Turning photos into shots…', normalize: 'Matching formats…',
+    stitch: 'Stitching the clips…', music: 'Laying the music…',
+    extract_audio: 'Extracting audio…', transcribe: 'Transcribing…', translate: 'Translating…',
+    synthesize: 'Recording the voices…', sync: 'Fitting the timing…', mix: 'Mixing…',
+    outline: 'Writing the outline…', visuals: 'Generating visuals…', render: 'Drawing the slides…',
+  },
+  ru: {
+    queued: 'В очереди…',
+    resolve: 'Проверяем файлы…', bridge: 'Фото в кадры…', normalize: 'Приводим форматы…',
+    stitch: 'Склеиваем кадры…', music: 'Добавляем музыку…',
+    extract_audio: 'Извлекаем звук…', transcribe: 'Расшифровываем…', translate: 'Переводим…',
+    synthesize: 'Записываем голоса…', sync: 'Подгоняем тайминг…', mix: 'Сводим…',
+    outline: 'Пишем план…', visuals: 'Создаём изображения…', render: 'Рисуем слайды…',
+  },
+};
+
 const LANGUAGE_LABEL: Record<DubbingLanguage, string> = {
   ka: 'ქართული', en: 'English', ru: 'Русский', de: 'Deutsch', fr: 'Français', es: 'Español',
   it: 'Italiano', tr: 'Türkçe', ar: 'العربية', zh: '中文', ja: '日本語', ko: '한국어',
@@ -104,6 +136,11 @@ export function ServiceParamsPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  // LIVE STAGE. Montage, dubbing and presentation each publish their per-leg stage to the job row while
+  // they work, but the request is synchronous — so the browser only learned the job id once everything
+  // was already finished, and every one of those stages went to a row nobody was watching. The client
+  // now NAMES the job up front and polls it, turning "Working…" into the leg actually running.
+  const [stage, setStage] = useState<{ label: string; pct: number } | null>(null);
 
   // Montage — clips carry a stable uid and the source's true duration; MontageEditor owns the UI.
   // Starts EMPTY: two blank rows were placeholders for a form, but this surface asks for files.
@@ -131,6 +168,23 @@ export function ServiceParamsPanel({
   const cancelled = useRef(false);
   useEffect(() => () => { cancelled.current = true; }, []);
 
+  /** Poll our own job row until the request settles. Fail-quiet: progress is a nicety, never a blocker. */
+  const watchStage = useCallback((jobId: string, stop: { done: boolean }) => {
+    void (async () => {
+      while (!stop.done && !cancelled.current) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (stop.done || cancelled.current) return;
+        const res = await fetch('/api/orchestrator/jobs?status=active&limit=20').catch(() => null);
+        const j = (await res?.json().catch(() => null)) as { jobs?: Array<Record<string, unknown>> } | null;
+        const row = j?.jobs?.find((x) => x.id === jobId);
+        if (!row) continue;
+        const label = String(row.current_stage ?? '');
+        const pct = Number(row.pct ?? 0);
+        if (label) setStage({ label, pct: Number.isFinite(pct) ? pct : 0 });
+      }
+    })();
+  }, []);
+
   // 3D is the only one that submits then polls — reconstruction runs far past any request budget.
   const poll3d = useCallback(async (predictionId: string, jobId: string) => {
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
@@ -156,6 +210,11 @@ export function ServiceParamsPanel({
     setBusy(true);
     setError(null);
     setResult(null);
+    setStage(null);
+    // Name the job so the poller below can follow it while the synchronous request is still open.
+    const clientJobId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '';
+    const stop = { done: false };
+    if (clientJobId && service !== 'model3d') watchStage(clientJobId, stop);
     try {
       let endpoint = '';
       let body: Record<string, unknown> = {};
@@ -182,7 +241,8 @@ export function ServiceParamsPanel({
       }
 
       const res = await fetch(endpoint, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientJobId ? { ...body, clientJobId } : body),
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) {
@@ -199,6 +259,8 @@ export function ServiceParamsPanel({
     } catch {
       setError(t.failed);
     } finally {
+      stop.done = true;
+      setStage(null);
       setBusy(false);
     }
   }
@@ -321,7 +383,22 @@ export function ServiceParamsPanel({
       >
         {busy ? t.working : t.run}
       </button>
-      {busy && <p className="mt-1.5 text-center text-[11px] text-app-muted">{t.keepOpen}</p>}
+      {busy && (
+        <div className="mt-2">
+          {stage && (
+            <>
+              <div className="mb-1 flex items-center justify-between text-[11px]">
+                <span className="text-app-accent">{STAGE_LABELS[lang][stage.label] ?? stage.label}</span>
+                <span className="tabular-nums text-app-muted">{Math.round(stage.pct)}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-app-elevated">
+                <div className="h-full rounded-full bg-app-accent transition-all duration-500" style={{ width: `${Math.max(4, Math.min(100, stage.pct))}%` }} />
+              </div>
+            </>
+          )}
+          <p className="mt-1.5 text-center text-[11px] text-app-muted">{t.keepOpen}</p>
+        </div>
+      )}
       {error && <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[12px] text-red-400">{error}</p>}
 
       {result && (

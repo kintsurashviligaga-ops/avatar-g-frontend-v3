@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateDeckRequest, deckUnits } from '@/lib/services/presentation/deckPlan';
 import { runDeckBuild } from '@/lib/services/presentation/deckPipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
-import { createJob, completeJob, failJob } from '@/lib/orchestrator/jobs';
+import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,13 +34,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const request = parsed.request;
 
   // No SSRF surface here: every input is text, and the only URLs fetched are ones this server generated.
-  const jobId = randomUUID();
-  await createJob({
+  // See the note in the montage route.
+  const fallbackId = randomUUID();
+  let jobId = safeJobId((body as { clientJobId?: unknown } | null)?.clientJobId, fallbackId);
+  const created = await createJob({
     id: jobId,
     userId: user.id,
     serviceType: 'image',
     params: { subtype: 'presentation', slides: request.slideCount, language: request.language },
   }).catch(() => false);
+  // A false result means the INSERT did not land — most likely the client-supplied id already exists,
+  // which would otherwise let this request stamp progress onto a row it does not own.
+  if (!created) jobId = fallbackId;
 
   try {
     const outcome = await guardedCall(
