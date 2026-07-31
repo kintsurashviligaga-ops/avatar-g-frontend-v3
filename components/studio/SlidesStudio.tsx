@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
+import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import {
   Group, Grid, Label, Field, TextArea, ToggleRow, PrimaryButton, SecondaryButton, IconButton,
   Note, ProgressBar, Select,
@@ -176,30 +177,11 @@ export function SlidesStudio({ locale }: { locale: string }) {
   async function downloadZip() {
     if (!deck || zipping) return;
     setZipping(true);
-    try {
-      // Dynamic import keeps jszip out of the main bundle — it is only ever needed after a build.
-      const { default: JSZip } = await import('jszip');
-      const zip = new JSZip();
-      if (deck.coverUrl) {
-        const cover = await fetch(deck.coverUrl).then((r) => r.blob());
-        zip.file('00-cover.png', cover);
-      }
-      for (const s of deck.slides) {
-        const blob = await fetch(s.pngUrl).then((r) => r.blob());
-        zip.file(`${String(s.index).padStart(2, '0')}-slide.png`, blob);
-      }
-      const out = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(out);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${(deck.title || 'deck').slice(0, 40).replace(/[^\p{L}\p{N}]+/gu, '-')}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setError(t.failed);
-    } finally {
-      setZipping(false);
-    }
+    // Shared with the in-chat panel — see lib/services/presentation/deckZip.ts. It lived here as a
+    // closure, which is why the panel had no export at all.
+    try { await downloadDeckZip(deck); }
+    catch { setError(t.failed); }
+    finally { setZipping(false); }
   }
 
   const active = slides[current];

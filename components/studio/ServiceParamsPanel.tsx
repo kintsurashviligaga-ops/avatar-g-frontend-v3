@@ -26,6 +26,7 @@ import {
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
 import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDuration';
+import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { ResultActions } from './ui/ResultActions';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage } from '@/lib/services/presentation/deckPlan';
@@ -50,7 +51,7 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY = {
   ka: {
-    close: 'დახურვა', run: 'გაშვება', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა',
+    close: 'დახურვა', run: 'გაშვება', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)',
     keepOpen: 'რამდენიმე წუთი სჭირდება — არ დახუროთ გვერდი.',
     montage: 'მონტაჟი', dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
     shots: 'კადრები', addShot: '+ კადრი', aspect: 'ფორმატი', music: 'მუსიკა (არჩევითი)',
@@ -74,7 +75,7 @@ const COPY = {
     removeBgHint: 'ფონი მოცილდება რეკონსტრუქციამდე.',
   },
   en: {
-    close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed',
+    close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)',
     keepOpen: 'This takes a few minutes — keep the page open.',
     montage: 'Montage', dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
     shots: 'Shots', addShot: '+ Shot', aspect: 'Aspect', music: 'Music (optional)',
@@ -98,7 +99,7 @@ const COPY = {
     removeBgHint: 'Cuts the background out before reconstruction.',
   },
   ru: {
-    close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось',
+    close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)',
     keepOpen: 'Это займёт несколько минут — не закрывайте страницу.',
     montage: 'Монтаж', dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
     shots: 'Кадры', addShot: '+ Кадр', aspect: 'Формат', music: 'Музыка (необязательно)',
@@ -170,6 +171,9 @@ const LANGUAGE_LABEL: Record<DubbingLanguage, string> = {
 
 interface Result {
   videoUrl?: string;
+  /** Deck identity — used for the ZIP filename and the cover slide. Both already returned by the route. */
+  title?: string;
+  coverUrl?: string | null;
   glbUrl?: string;
   referenceUrl?: string;
   slides?: Array<{ index: number; pngUrl: string }>;
@@ -284,6 +288,7 @@ export function ServiceParamsPanel({
   // the server must not receive a GUESSED length, because length is what it bills.
   const [dubDurationSec, setDubDurationSec] = useState<number | null>(null);
   const [dubTooLong, setDubTooLong] = useState<string | null>(null);
+  const [zipping, setZipping] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<DubbingLanguage>(lang === 'ka' ? 'en' : 'ka');
   const [preserveBg, setPreserveBg] = useState(true);
   const [subtitles, setSubtitles] = useState(true);
@@ -633,6 +638,25 @@ export function ServiceParamsPanel({
                 {result.subtitlesUrl && <a href={result.subtitlesUrl} download className={DOWNLOAD_LINK}>⬇ SRT</a>}
               </Row>
             </>
+          )}
+          {/* ⚠️ A FINISHED DECK COULD NOT BE TAKEN OUT OF THE BROWSER. This panel rendered thumbnails and
+              stopped: no download, no ZIP, no print. The user had paid for a deck and the only way to
+              obtain it was to right-click each slide in turn. The standalone studio had the export all
+              along — as a closure this file could not reach — so it is now shared. */}
+          {result.slides && result.slides.length > 0 && (
+            <Row>
+              <PrimaryButton
+                onClick={async () => {
+                  setZipping(true);
+                  try { await downloadDeckZip({ title: result.title, coverUrl: result.coverUrl, slides: result.slides ?? [] }); }
+                  catch { setNote(t.failed); }
+                  finally { setZipping(false); }
+                }}
+                loading={zipping}
+              >
+                {t.downloadDeck}
+              </PrimaryButton>
+            </Row>
           )}
           {result.slides && result.slides.length > 0 && (
             // 2 up on a phone, 3 from 480px. A hardcoded grid-cols-3 gave ~110px thumbnails on a 380px

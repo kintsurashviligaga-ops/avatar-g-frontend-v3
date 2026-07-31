@@ -19,6 +19,7 @@ import {
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
 import { easedPct } from './ui/GenerationProgress';
+import { describeOpFailure } from '@/lib/ui/opFailure';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
 import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
@@ -428,7 +429,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => () => { clipsRef.current.forEach((c) => URL.revokeObjectURL(c.url)); }, []);
 
-  const flash = useCallback((m: string) => { setToast(m); window.setTimeout(() => setToast(null), 2600); }, []);
+  // 2600ms was fine for "Done"; a one-line explanation needs longer than that to be read at all, so the
+  // dwell scales with length (bounded, so it never becomes a sticky banner).
+  const flash = useCallback((m: string) => {
+    setToast(m);
+    const ms = Math.min(9000, Math.max(2600, 1200 + m.length * 55));
+    window.setTimeout(() => setToast(null), ms);
+  }, []);
 
   const filenameFor = useCallback((url: string, kind: 'video' | 'image' | 'audio') => `myavatar-${Date.now()}.${extFromUrl(url, kind === 'video' ? 'mp4' : kind === 'audio' ? 'm4a' : 'png')}`, []);
 
@@ -908,7 +915,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       if (status === 402) flash(t.insufficient);
       else if (status === 503) flash(t.inpaintOff);
       else if (ok && j?.url) { setExportPct(100); try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ } onAssetReady(j.url, 'image'); flash(t.done); }
-      else flash(t.failed);
+      else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, maskPainted, prompt, onAssetReady, flash, t.paintFirst, t.failed, t.done, t.inpaintOff, t.insufficient, t.timedOut]);
@@ -938,7 +945,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
         onAssetReady(j.url, 'image');
         flash(t.done);
-      } else flash(t.failed);
+      } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
@@ -963,7 +970,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         if (j.path) setChainPath(j.path);
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
         onAssetReady(j.url, 'image'); flash(t.done);
-      } else flash(t.failed);
+      } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, chainPath, originalPath, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
@@ -1004,7 +1011,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         if (j.secondaryUrl) setSecondaryAudio(j.secondaryUrl);
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
         onAssetReady(j.url, 'audio'); flash(t.done);
-      } else flash(t.failed);
+      } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioSource, onAssetReady, flash, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
@@ -1025,7 +1032,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
       if (!src) { flash(t.failed); return; }
       const { ok, body } = await postJson('/api/ai/edit-audio', { action: 'process', mediaUrl: src, semitones: pitch, speed: audioSpeed, trimStart: aTrim.start, trimEnd: aTrim.end, fadeInSec: fade.inSec, fadeOutSec: fade.outSec, volume: audioVol, durationSec: audioDur });
       const j = body as { url?: string | null } | null;
-      if (ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(t.failed);
+      if (ok && j?.url) { setExportPct(100); onAssetReady(j.url, 'audio'); flash(t.done); } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, audioHasEdit, audioSource, pitch, audioSpeed, aTrim, fade, audioVol, audioDur, onAssetReady, flash, t.failed, t.done, t.editHint, t.timedOut]);
@@ -1100,7 +1107,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         if (j.path) setChainPath(j.path);
         try { window.dispatchEvent(new CustomEvent('myavatar:library-updated')); } catch { /* noop */ }
         onAssetReady(j.url, 'image'); flash(t.done);
-      } else flash(t.failed);
+      } else flash(describeOpFailure(body, t.failed));
     } catch (e) { flash((e as Error)?.name === 'AbortError' ? t.timedOut : t.failed); }
     finally { window.clearInterval(tick); window.setTimeout(() => { setExporting(false); setExportPct(0); }, 400); }
   }, [clip, exporting, bgPrompt, chainPath, originalPath, onAssetReady, flash, t.agentNoOp, t.failed, t.done, t.insufficient, t.notConfig, t.timedOut]);
@@ -1752,7 +1759,10 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
         </div>
       )}
 
-      {toast && <div className="pointer-events-none absolute bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-black/80 px-4 py-2 text-[12px] text-white shadow-lg">{toast}</div>}
+      {/* Bounded and wrapping. It was an unconstrained single line centred with -translate-x-1/2, which
+          was survivable while every message was one word — now that toasts carry a real sentence, an
+          unbounded line would run off BOTH edges of the screen. */}
+      {toast && <div className="pointer-events-none absolute bottom-20 left-1/2 z-30 max-w-[min(92vw,26rem)] -translate-x-1/2 whitespace-pre-line break-words rounded-lg bg-black/80 px-4 py-2 text-center text-[12px] leading-snug text-white shadow-lg">{toast}</div>}
     </div>
   );
 }
