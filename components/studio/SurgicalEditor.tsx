@@ -71,7 +71,7 @@ const T: Record<Lang, Copy> = {
     drop: 'ჩააგდე ან ატვირთე ვიდეო/ფოტო', dropHint: 'ვიდეო ან სურათი — მაქს. 35 ფაილი', dropHintAudio: 'MP3 · WAV · M4A', pick: 'ფაილის არჩევა',
     crop: 'ჩამოჭრა', color: 'ფერის გრადაცია', fade: 'მილევა', split: 'გაჭრა', mute: 'დადუმება', unmute: 'ხმის ჩართვა', reset: 'გადატვირთვა',
     saturation: 'გაჯერება', contrast: 'კონტრასტი', brightness: 'სიკაშკაშე', temperature: 'ტემპერატურა', fadeIn: 'შესვლა', fadeOut: 'გასვლა',
-    maxReached: `მაქსიმუმ ${MAX_CLIPS} ფაილი`, max5: `მაქსიმუმ ${MAX_SEQ_CLIPS} კლიპი თანმიმდევრობაში`, cropHint: 'გადაათრიე კადრზე მოსაჭრელი არეს მოსანიშნად', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
+    maxReached: `მაქსიმუმ ${MAX_CLIPS} ფაილი`, max5: `მაქსიმუმ ${MAX_SEQ_CLIPS} კლიპი თანმიმდევრობაში`, cropHint: 'გადაათრიე მოსაჭრელი არის მოსანიშნად · კუთხეებით შეცვალე ზომა', sequence: 'თანმიმდევრობა', seqDur: 'ხანგრძლივობა', del: 'წაშლა', moveL: 'მარცხნივ', moveR: 'მარჯვნივ', clipN: 'კლიპი',
     fullClip: 'სრული', someDropped: 'ვერ წაიკითხა კლიპი', uploadFailed: 'ფაილი ვერ აიტვირთა',
     play: 'დაკვრა', pause: 'პაუზა',
     signInToUpload: 'ატვირთვამდე გაიარე ავტორიზაცია.', tooFast: 'ძალიან ბევრი ატვირთვა — დაელოდე წამებს და სცადე თავიდან.',
@@ -96,7 +96,7 @@ const T: Record<Lang, Copy> = {
     drop: 'Drop or upload video/photo', dropHint: 'Video or image — up to 35 files', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Choose file',
     crop: 'Crop', color: 'Color grade', fade: 'Fade', split: 'Split', mute: 'Mute', unmute: 'Unmute', reset: 'Reset',
     saturation: 'Saturation', contrast: 'Contrast', brightness: 'Brightness', temperature: 'Temperature', fadeIn: 'In', fadeOut: 'Out',
-    maxReached: `Maximum ${MAX_CLIPS} files`, max5: `Up to ${MAX_SEQ_CLIPS} clips in a sequence`, cropHint: 'Drag on the frame to mark the crop region', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
+    maxReached: `Maximum ${MAX_CLIPS} files`, max5: `Up to ${MAX_SEQ_CLIPS} clips in a sequence`, cropHint: 'Drag to mark the crop · drag inside to move, corners to resize', sequence: 'Sequence', seqDur: 'Length', del: 'Delete', moveL: 'Left', moveR: 'Right', clipN: 'Clip',
     fullClip: 'full', someDropped: 'clip could not be read', uploadFailed: 'File could not be uploaded',
     play: 'Play', pause: 'Pause',
     signInToUpload: 'Sign in before uploading.', tooFast: 'Too many uploads — wait a few seconds and try again.',
@@ -121,7 +121,7 @@ const T: Record<Lang, Copy> = {
     drop: 'Перетащите или загрузите видео/фото', dropHint: 'Видео или изображение — до 35 файлов', dropHintAudio: 'MP3 · WAV · M4A', pick: 'Выбрать файл',
     crop: 'Обрезка', color: 'Цветокоррекция', fade: 'Затухание', split: 'Разрез', mute: 'Заглушить', unmute: 'Включить звук', reset: 'Сброс',
     saturation: 'Насыщенность', contrast: 'Контраст', brightness: 'Яркость', temperature: 'Температура', fadeIn: 'Вход', fadeOut: 'Выход',
-    maxReached: `Максимум ${MAX_CLIPS} файлов`, max5: `До ${MAX_SEQ_CLIPS} клипов в последовательности`, cropHint: 'Проведите по кадру, чтобы задать область обрезки', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
+    maxReached: `Максимум ${MAX_CLIPS} файлов`, max5: `До ${MAX_SEQ_CLIPS} клипов в последовательности`, cropHint: 'Проведите, чтобы задать обрезку · внутри — сдвиг, углы — размер', sequence: 'Последовательность', seqDur: 'Длина', del: 'Удалить', moveL: 'Влево', moveR: 'Вправо', clipN: 'Клип',
     fullClip: 'весь', someDropped: 'клип не удалось прочитать', uploadFailed: 'Файл не загрузился',
     play: 'Воспроизвести', pause: 'Пауза',
     signInToUpload: 'Войдите, чтобы загружать файлы.', tooFast: 'Слишком много загрузок — подождите несколько секунд.',
@@ -340,11 +340,26 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: T): Promise<T> {
   return Promise.race([p, new Promise<T>((resolve) => window.setTimeout(() => resolve(onTimeout), ms))]);
 }
 
-export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnToChat }: { locale: string; onExit: () => void; initialAsset?: { url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null; onReturnToChat?: (asset: { url: string; kind: 'video' | 'image' | 'audio' }) => void }) {
+export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnToChat, initialMode }: {
+  locale: string;
+  onExit: () => void;
+  initialAsset?: { url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null;
+  onReturnToChat?: (asset: { url: string; kind: 'video' | 'image' | 'audio' }) => void;
+  /**
+   * Skip the mode picker when the CALLER already knows which workspace is wanted.
+   *
+   * ⚠️ THIS REMOVES A REDUNDANT STEP. Opening the editor from the Montage panel's "full editor" button
+   * used to land on a three-card chooser — Video / Photo / Audio — even though picking Montage and then
+   * pressing "full editor" has already said "video" twice. The user had to answer a question they had
+   * just answered, on a screen that looks like a dead end because nothing on it is their footage.
+   */
+  initialMode?: 'video' | 'photo' | 'audio';
+}) {
   const t = T[norm(locale)];
   const [clips, setClips] = useState<Clip[]>([]);
-  // Empty-state workspace pre-selection (V1): which media the dropzone is scoped to before any file is loaded.
-  const [workspaceMode, setWorkspaceMode] = useState<'video' | 'photo' | 'audio' | null>(null);
+  // Empty-state workspace pre-selection (V1): which media the dropzone is scoped to before any file is
+  // loaded. Seeded from `initialMode` so a caller that already knows skips the chooser entirely.
+  const [workspaceMode, setWorkspaceMode] = useState<'video' | 'photo' | 'audio' | null>(initialMode ?? null);
   const [active, setActive] = useState(0);
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
@@ -396,7 +411,6 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
   const imgRef = useRef<HTMLImageElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
   // MOBILE UPLOAD FIX: `display:none` inputs nested in a <label> often refuse to open the picker on iOS
   // Safari — which is why "drag a video or photo" looked dead on a phone, where dragging is impossible
   // anyway. A ref + explicit .click() inside the tap handler works on every browser.
@@ -600,20 +614,114 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
     }));
   }, []);
 
-  // ── Crop overlay (single-source only) ──
-  const onStageDown = useCallback((e: React.MouseEvent) => {
-    if (!cropOn || !stageRef.current) return;
+  // ── CROP ────────────────────────────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ THIS WAS MOUSE-ONLY AND THEREFORE DEAD ON A PHONE. It listened for onMouseDown/Move/Up, which
+  // touch does not reliably synthesise — and where a browser does synthesise them, it does so after a
+  // delay and only once it has decided the gesture is not a scroll. So on mobile a drag across the
+  // frame scrolled the page and left no crop box at all, with nothing explaining why.
+  //
+  // Pointer Events handle mouse, touch and pen through ONE path. Three things make it actually work:
+  //   · setPointerCapture — the drag keeps tracking after the finger leaves the stage, so a crop that
+  //     starts near an edge does not silently stop the moment you overshoot.
+  //   · touch-action:none while cropping (see the stage) — without it the browser claims the gesture
+  //     for scrolling before the handler ever sees the second move.
+  //   · every point clamped to the MEDIA rect, not the stage — the stage is letterboxed, so an
+  //     unclamped box could select black bars that do not exist in the source.
+  //
+  // The box is also editable after it is drawn: drag inside to move it, drag a corner to resize. Before
+  // this, an imprecise crop meant starting over.
+  type CropGesture = { mode: 'new' | 'move' | 'resize'; corner?: 'nw' | 'ne' | 'sw' | 'se'; startX: number; startY: number; orig: Rect };
+  const gesture = useRef<CropGesture | null>(null);
+
+  /** The media's box in STAGE coordinates. Crop lives in stage space; this is what bounds it. */
+  const mediaBox = useCallback((): Rect | null => {
+    const el: HTMLVideoElement | HTMLImageElement | null = isPhoto ? imgRef.current : videoRef.current;
+    if (!el || !stageRef.current) return null;
+    const m = el.getBoundingClientRect();
+    const st = stageRef.current.getBoundingClientRect();
+    if (!m.width || !m.height) return null;
+    return { x: m.left - st.left, y: m.top - st.top, w: m.width, h: m.height };
+  }, [isPhoto]);
+
+  const clampToMedia = useCallback((r: Rect): Rect => {
+    const b = mediaBox();
+    if (!b) return r;
+    const w = Math.min(r.w, b.w);
+    const h = Math.min(r.h, b.h);
+    return {
+      x: Math.max(b.x, Math.min(r.x, b.x + b.w - w)),
+      y: Math.max(b.y, Math.min(r.y, b.y + b.h - h)),
+      w, h,
+    };
+  }, [mediaBox]);
+
+  const stagePoint = (e: React.PointerEvent): { x: number; y: number } | null => {
+    if (!stageRef.current) return null;
     const r = stageRef.current.getBoundingClientRect();
-    dragStart.current = { x: e.clientX - r.left, y: e.clientY - r.top };
-    setCrop({ x: dragStart.current.x, y: dragStart.current.y, w: 0, h: 0 });
-  }, [cropOn]);
-  const onStageMove = useCallback((e: React.MouseEvent) => {
-    if (!cropOn || !dragStart.current || !stageRef.current) return;
-    const r = stageRef.current.getBoundingClientRect();
-    const cx = e.clientX - r.left, cy = e.clientY - r.top; const s = dragStart.current;
-    setCrop({ x: Math.min(s.x, cx), y: Math.min(s.y, cy), w: Math.abs(cx - s.x), h: Math.abs(cy - s.y) });
-  }, [cropOn]);
-  const onStageUp = useCallback(() => { dragStart.current = null; }, []);
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  const onStageDown = useCallback((e: React.PointerEvent) => {
+    if (!cropOn) return;
+    const p = stagePoint(e);
+    if (!p) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+
+    // An existing box: a corner starts a resize, the inside starts a move, outside starts a new box.
+    if (crop && crop.w > 4) {
+      const HANDLE = 22; // generous — a fingertip is ~9mm, and a 10px corner is not hittable
+      const corners: Array<{ id: 'nw' | 'ne' | 'sw' | 'se'; x: number; y: number }> = [
+        { id: 'nw', x: crop.x, y: crop.y },
+        { id: 'ne', x: crop.x + crop.w, y: crop.y },
+        { id: 'sw', x: crop.x, y: crop.y + crop.h },
+        { id: 'se', x: crop.x + crop.w, y: crop.y + crop.h },
+      ];
+      const hit = corners.find((c) => Math.abs(p.x - c.x) < HANDLE && Math.abs(p.y - c.y) < HANDLE);
+      if (hit) { gesture.current = { mode: 'resize', corner: hit.id, startX: p.x, startY: p.y, orig: crop }; return; }
+      const inside = p.x > crop.x && p.x < crop.x + crop.w && p.y > crop.y && p.y < crop.y + crop.h;
+      if (inside) { gesture.current = { mode: 'move', startX: p.x, startY: p.y, orig: crop }; return; }
+    }
+    gesture.current = { mode: 'new', startX: p.x, startY: p.y, orig: { x: p.x, y: p.y, w: 0, h: 0 } };
+    setCrop(clampToMedia({ x: p.x, y: p.y, w: 0, h: 0 }));
+  }, [cropOn, crop, clampToMedia]);
+
+  const onStageMove = useCallback((e: React.PointerEvent) => {
+    const g = gesture.current;
+    if (!cropOn || !g) return;
+    const p = stagePoint(e);
+    if (!p) return;
+    e.preventDefault();
+    const dx = p.x - g.startX, dy = p.y - g.startY;
+
+    if (g.mode === 'move') {
+      setCrop(clampToMedia({ ...g.orig, x: g.orig.x + dx, y: g.orig.y + dy }));
+      return;
+    }
+    if (g.mode === 'resize' && g.corner) {
+      const o = g.orig;
+      let x = o.x, y = o.y, w = o.w, h = o.h;
+      if (g.corner === 'se') { w = o.w + dx; h = o.h + dy; }
+      else if (g.corner === 'sw') { x = o.x + dx; w = o.w - dx; h = o.h + dy; }
+      else if (g.corner === 'ne') { y = o.y + dy; w = o.w + dx; h = o.h - dy; }
+      else { x = o.x + dx; y = o.y + dy; w = o.w - dx; h = o.h - dy; }
+      // A drag PAST the opposite edge flips the box rather than producing a negative size.
+      if (w < 0) { x += w; w = -w; }
+      if (h < 0) { y += h; h = -h; }
+      setCrop(clampToMedia({ x, y, w, h }));
+      return;
+    }
+    setCrop(clampToMedia({
+      x: Math.min(g.startX, p.x), y: Math.min(g.startY, p.y),
+      w: Math.abs(p.x - g.startX), h: Math.abs(p.y - g.startY),
+    }));
+  }, [cropOn, clampToMedia]);
+
+  const onStageUp = useCallback((e: React.PointerEvent) => {
+    gesture.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+  }, []);
 
   const sourceCrop = useCallback((): Rect | null => {
     if (!crop || crop.w < 4 || !stageRef.current) return null;
@@ -1192,8 +1300,13 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             </div>
             ) : (<>
             {/* Preview stage */}
-            <div ref={stageRef} onMouseDown={onStageDown} onMouseMove={onStageMove} onMouseUp={onStageUp} onMouseLeave={onStageUp}
-              className={`relative flex items-center justify-center overflow-hidden rounded-xl bg-black ${cropOn ? 'cursor-crosshair' : ''}`} style={{ minHeight: 220, maxHeight: 360 }}>
+            <div ref={stageRef}
+              onPointerDown={onStageDown} onPointerMove={onStageMove} onPointerUp={onStageUp} onPointerCancel={onStageUp}
+              className={`relative flex items-center justify-center overflow-hidden rounded-xl bg-black ${cropOn ? 'cursor-crosshair' : ''}`}
+              // touch-action:none ONLY while cropping — otherwise the browser decides the drag is a
+              // page scroll before the second pointermove ever arrives, which is why crop did nothing
+              // at all on a phone. Left as pan-y otherwise so the page still scrolls normally.
+              style={{ minHeight: 220, maxHeight: 360, touchAction: cropOn ? 'none' : undefined }}>
               {isPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img ref={imgRef} src={result?.kind === 'image' ? result.url : clip?.url} alt="" style={{ filter: filterCss, maxHeight: 360 }} className="h-auto max-w-full"
@@ -1215,8 +1328,43 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                     onTouchEnd={() => { painting.current = false; }} />
                 );
               })()}
-              {cropOn && crop && crop.w > 4 && <div className="pointer-events-none absolute border-2 border-app-accent bg-app-accent/10" style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }} />}
-              {cropOn && !crop && <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-3 py-1 text-[11px] text-white">{t.cropHint}</div>}
+              {/* CROP OVERLAY. The old version was a bare outlined rectangle: nothing showed what would be
+                  KEPT versus discarded, and nothing suggested the box could be adjusted — so an
+                  imprecise drag meant starting over. Now the surround is dimmed (what you keep is the
+                  bright part), thirds guide the framing, corner handles say "grab me", and the live
+                  output size in real pixels means the export is never a surprise. */}
+              {cropOn && crop && crop.w > 4 && crop.h > 4 && (() => {
+                const px = sourceCrop();
+                return (
+                  <>
+                    {/* Dimmed surround, drawn as four rects so the selection itself stays untinted. */}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 bg-black/55" style={{ height: Math.max(0, crop.y) }} />
+                    <div className="pointer-events-none absolute inset-x-0 bg-black/55" style={{ top: crop.y + crop.h, bottom: 0 }} />
+                    <div className="pointer-events-none absolute bg-black/55" style={{ left: 0, top: crop.y, width: Math.max(0, crop.x), height: crop.h }} />
+                    <div className="pointer-events-none absolute bg-black/55" style={{ left: crop.x + crop.w, right: 0, top: crop.y, height: crop.h }} />
+
+                    <div className="pointer-events-none absolute border-2 border-app-accent" style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }}>
+                      {/* Rule-of-thirds guides — the reason a crop tool feels like a camera. */}
+                      <span className="absolute inset-y-0 left-1/3 w-px bg-white/25" />
+                      <span className="absolute inset-y-0 left-2/3 w-px bg-white/25" />
+                      <span className="absolute inset-x-0 top-1/3 h-px bg-white/25" />
+                      <span className="absolute inset-x-0 top-2/3 h-px bg-white/25" />
+                      {/* Corner handles. Visually 14px, but the hit test in onStageDown uses 22px so a
+                          fingertip can actually land on one. */}
+                      {([['nw','-top-1.5 -left-1.5'],['ne','-top-1.5 -right-1.5'],['sw','-bottom-1.5 -left-1.5'],['se','-bottom-1.5 -right-1.5']] as const).map(([id, pos]) => (
+                        <span key={id} className={`absolute h-3.5 w-3.5 rounded-sm border-2 border-app-accent bg-app-bg ${pos}`} />
+                      ))}
+                    </div>
+
+                    {px && (
+                      <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-md bg-black/75 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white">
+                        {Math.round(px.w)} × {Math.round(px.h)}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+              {cropOn && (!crop || crop.w <= 4) && <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md bg-black/70 px-3 py-1 text-[11px] text-white">{t.cropHint}</div>}
               {/* Instant CSS preview of the selected segment's text overlay, positioned over the video box. */}
               {!isPhoto && sel?.textOverlay?.text.trim() && sel.clipId === clip?.id && videoRef.current && stageRef.current && (() => {
                 const vr = videoRef.current.getBoundingClientRect(); const sr = stageRef.current.getBoundingClientRect();

@@ -1524,6 +1524,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
+  // Which workspace the editor should open in, when the caller already knows (see SurgicalEditor).
+  const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
   // Agent G — glowing granular loader while the router classifies + orchestrates. `agentGPhase` drives the step text.
   const [agentGBusy, setAgentGBusy] = useState(false);
   const [agentGPhase, setAgentGPhase] = useState(0);
@@ -5401,7 +5403,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   if (mode === 'surgical') {
     return (
       <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden text-app-text">
-        <SurgicalEditor locale={locale} initialAsset={editorAsset} onReturnToChat={handleReturnToChat} onExit={() => { setEditorAsset(null); setMode('chat'); }} />
+        <SurgicalEditor
+          locale={locale}
+          initialAsset={editorAsset}
+          {...(editorMode ? { initialMode: editorMode } : {})}
+          onReturnToChat={handleReturnToChat}
+          onExit={() => { setEditorAsset(null); setEditorMode(null); setMode('chat'); }}
+        />
       </div>
     );
   }
@@ -7577,7 +7585,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             onClose={() => setPanelService(null)}
             // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
             // separately — one entry, both depths of editing.
-            onOpenFullEditor={() => { setPanelService(null); setMode('surgical'); }}
+            // Straight into the VIDEO workspace. Choosing Montage and pressing "full editor" has already
+            // said "video" — making the user pick it again from a three-card menu was a step that
+            // answered a question they had just answered.
+            onOpenFullEditor={() => { setPanelService(null); setEditorMode('video'); setMode('surgical'); }}
           />
         )}
 
