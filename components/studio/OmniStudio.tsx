@@ -21,6 +21,7 @@ import { sceneCountForDuration } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
+import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import SurgicalEditor from '@/components/studio/SurgicalEditor';
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
@@ -2532,6 +2533,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // was byte-for-byte the one a clean render produces. Asking for five scenes and silently getting
       // three means the story skips, and the only available explanation is "the AI is bad". Say it.
       const shortBy = (res.scenesRequested ?? 0) - (res.scenesRendered ?? 0);
+      // The score leg reports separately from the scene count: a film can be complete and SILENT.
+      const deliveryNotes = res.ok && res.masterUrl
+        ? describeFilmDelivery({ scoreFallback: res.scoreFallback, // A user-uploaded soundtrack means no score was generated, so a null report is not a failure;
+          // and `videoMusic` off means silence was the request. Neither should produce a warning.
+          musicRequested: !snap.videoSoundtrack && Boolean(snap.videoMusic) }, locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka')
+        : [];
       const partialNote = res.ok && res.masterUrl && shortBy > 0 && (res.scenesRequested ?? 0) > 0
         ? (locale === 'en'
             ? `⚠️ ${res.scenesRendered} of ${res.scenesRequested} scenes rendered — ${shortBy} failed and were left out of the cut.`
@@ -2549,7 +2556,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
-            ? { role: 'assistant', text: partialNote, videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
+            ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }

@@ -123,6 +123,8 @@ export interface FilmStudioResult {
    */
   scenesRendered?: number;
   scenesRequested?: number;
+  /** What the score leg did — null means every music provider missed and the film is SILENT. */
+  scoreFallback?: string | null;
   /** The resolved song/vocal URL (ElevenLabs Music / Udio) — drives the HeyGen
    *  singer-performance lip-sync (face frame + this vocal). Null when silent. */
   musicUrl?: string | null;
@@ -533,7 +535,7 @@ async function assembleMaster(
   dialogueStems?: { url: string; speaker: string; startSec: number }[] | null,
   /** The film's real per-scene length (4–8s). Absent → the 8s default grid. */
   clipSec?: number | null,
-): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null } | { url: null; error: string } | null> {
+): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
   let finalVoiceUrl = voiceUrl ?? null;
@@ -600,7 +602,10 @@ async function assembleMaster(
   // FIX 4 — surface the route's STRUCTURED reason (insufficient credits, audio/
   // stitch failure) instead of collapsing every non-OK response to a blank null.
   // The message is propagated up to the chat bubble so the user always learns why.
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown } | null;
+  // ⚠️ `scoreFallback` WAS MISSING FROM THIS CAST, so the route's own report that every music provider
+  // missed — it literally logs "SILENT (all music providers missed — proceeding silent, not 500)" —
+  // was dropped right here at the door, and a film with no soundtrack was handed back as a clean one.
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown } | null;
   if (!res.ok) {
     const msg = typeof json?.message === 'string' && json.message.trim()
       ? json.message.trim()
@@ -612,7 +617,14 @@ async function assembleMaster(
   if (!(json && typeof json.url === 'string' && json.url.length > 0)) {
     return { url: null, error: 'The editor finished but returned no playable master URL.' };
   }
-  return { url: json.url, qa: asQa(json.qa), musicUrl: typeof json.musicUrl === 'string' ? json.musicUrl : null };
+  return {
+    url: json.url,
+    qa: asQa(json.qa),
+    musicUrl: typeof json.musicUrl === 'string' ? json.musicUrl : null,
+    // null is MEANINGFUL here (every provider missed) and must survive as null, not collapse to
+    // undefined — undefined means "the route did not report", which is a different thing entirely.
+    scoreFallback: json.scoreFallback === null ? null : (typeof json.scoreFallback === 'string' ? json.scoreFallback : undefined),
+  };
 }
 
 /** Recover an already-hosted master (+ its QA verdict) from the durable tracker. */
@@ -954,6 +966,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
       // Reached both by a clean render AND by the salvage path; the counts are what tell them apart.
       scenesRendered: clips.length,
       scenesRequested: matrix.sceneCount || matrix.clips.length,
+      // A master RECOVERED from the durable tracker carries no score report, and `undefined` is the
+      // honest value for that — it means "not reported", which the delivery notice treats differently
+      // from null ("every provider missed"). Inventing null here would warn about a film that is fine.
+      scoreFallback: 'scoreFallback' in assembled ? (assembled.scoreFallback as string | null | undefined) : undefined,
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
