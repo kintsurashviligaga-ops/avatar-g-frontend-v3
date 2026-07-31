@@ -17,6 +17,7 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
+import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -101,7 +102,12 @@ async function rehost(srcUrl: string): Promise<{ url: string; path: string } | n
   }
 }
 /** Best-effort save to the user's library (never blocks the response). */
+// AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
+// responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
+// noise next to it — and a result the user cannot find later is worse than a slightly slower response.
 async function saveCreation(req: NextRequest, userId: string, url: string, action: PhotoAction, cost: number): Promise<void> {
+  // See the note in app/api/ai/edit/route.ts — this is the write the Library actually reads.
+  await saveEditorOutput({ userId, url, media: 'image', action });
   try {
     const { supabase } = await authedClientFromRequest(req);
     await supabase.from('creations').insert({
@@ -158,7 +164,7 @@ export async function POST(req: NextRequest) {
     }
     const displayUrl = finalHosted?.url ?? curUrl;
     const last = CHAIN[CHAIN.length - 1];
-    if (last) void saveCreation(req, guard.userId, displayUrl, last, totalCost);
+    if (last) await saveCreation(req, guard.userId, displayUrl, last, totalCost);
     return NextResponse.json({ url: displayUrl, path: finalHosted?.path, actions: CHAIN });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, totalCost, ref).catch(() => {}); // ATOMIC refund of the whole chain

@@ -17,6 +17,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { audioProcess } from '@/lib/audio/audioOps';
+import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,7 +57,12 @@ async function rehost(srcUrl: string): Promise<{ url: string; path: string } | n
     return signed ? { url: signed, path } : null;
   } catch { return null; }
 }
+// AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
+// responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
+// noise next to it — and a result the user cannot find later is worse than a slightly slower response.
 async function saveCreation(req: NextRequest, userId: string, url: string, action: AudioAction, cost: number): Promise<void> {
+  // media:'audio' maps to service_type 'music', never 'voice' — the Library filters 'voice' out.
+  await saveEditorOutput({ userId, url, media: 'audio', action });
   try {
     const { supabase } = await authedClientFromRequest(req);
     await supabase.from('creations').insert({
@@ -100,7 +106,7 @@ export async function POST(req: NextRequest) {
         volume: body?.volume === undefined ? 1 : Number(body.volume),
         durationSec: Number(body?.durationSec) || 0,
       });
-      if (url) void saveCreation(req, guard.userId, url, action, 0);
+      if (url) await saveCreation(req, guard.userId, url, action, 0);
       return NextResponse.json({ url, path: null, error: url ? undefined : 'process failed' });
     } catch (e) {
       return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'process failed' }, { status: 502 });
@@ -138,8 +144,8 @@ export async function POST(req: NextRequest) {
     const hostedPrimary = await rehost(primary);
     const hostedSecondary = secondary ? await rehost(secondary) : null;
     const url = hostedPrimary?.url ?? primary;
-    void saveCreation(req, guard.userId, url, action, cost);
-    if (hostedSecondary?.url) void saveCreation(req, guard.userId, hostedSecondary.url, action, 0);
+    await saveCreation(req, guard.userId, url, action, cost);
+    if (hostedSecondary?.url) await saveCreation(req, guard.userId, hostedSecondary.url, action, 0);
     return NextResponse.json({ url, path: hostedPrimary?.path, secondaryUrl: hostedSecondary?.url ?? secondary ?? undefined });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});

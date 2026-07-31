@@ -27,6 +27,7 @@ import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl } from '
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
+import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -72,7 +73,13 @@ interface DraftPayload {
 interface TextOverlayPayload { text: string; position: 'top-left' | 'top-right' | 'bottom-center' | 'center'; fontSize: number; fontColor: string }
 
 /** Best-effort save of an edited asset to the user's library (never blocks the response). */
+// AWAITED at every call site, not fire-and-forget: a serverless function can be frozen the moment it
+// responds, dropping an un-awaited write. The op itself is an ffmpeg render, so one small insert is
+// noise next to it — and a result the user cannot find later is worse than a slightly slower response.
 async function saveCreation(req: NextRequest, userId: string, url: string, action: EditAction): Promise<void> {
+  // LIBRARY ROW FIRST, in its own try: the `creations` insert below goes to a table nothing reads, and
+  // wrapping both in one try meant a failure there would skip the row the Library actually shows.
+  await saveEditorOutput({ userId, url, media: 'video', action });
   try {
     const { supabase } = await authedClientFromRequest(req);
     await supabase.from('creations').insert({
@@ -136,7 +143,7 @@ export async function POST(req: NextRequest) {
     if (!seq.length) return NextResponse.json({ url: null, error: 'empty sequence' }, { status: 400 });
     try {
       const url = await renderConcat(resolved as string[], seq, params, Number(body?.targetW) || 1280, Number(body?.targetH) || 720);
-      if (url) void saveCreation(req, guard.userId, url, 'render');
+      if (url) await saveCreation(req, guard.userId, url, 'render');
       return NextResponse.json({ url, error: url ? undefined : 'concat render failed' });
     } catch (e) {
       return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'concat failed' }, { status: 502 });
@@ -173,23 +180,23 @@ export async function POST(req: NextRequest) {
         const url = body?.kind === 'photo'
           ? await renderPhotoDraft(src, params)
           : await renderVideoDraft(src, params);
-        if (url) void saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(req, guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'render failed' });
       }
       if (action === 'split') {
         const url = await trimClip(src, Number(body?.startSec) || 0, Math.max(1, Number(body?.durationSec) || 5));
-        if (url) void saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(req, guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'split failed' });
       }
       if (action === 'crop') {
         const b = body?.bounds ?? body?.target_bounds ?? {};
         const url = await cropClip(src, Number(b.x) || 0, Number(b.y) || 0, Number(b.w) || 0, Number(b.h) || 0);
-        if (url) void saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(req, guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'crop failed' });
       }
       if (action === 'detach') {
         const { video, audio } = await detachAudio(src);
-        if (video) void saveCreation(req, guard.userId, video, action);
+        if (video) await saveCreation(req, guard.userId, video, action);
         return NextResponse.json({ url: video, audioUrl: audio, error: video ? undefined : 'detach failed' });
       }
       if (action === 'color') {
@@ -197,7 +204,7 @@ export async function POST(req: NextRequest) {
           saturation: Number(body?.saturation), contrast: Number(body?.contrast),
           brightness: Number(body?.brightness), temperature: Number(body?.temperature),
         });
-        if (url) void saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(req, guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'color grade failed' });
       }
       if (action === 'fade') {
@@ -205,7 +212,7 @@ export async function POST(req: NextRequest) {
           fadeInSec: Number(body?.fadeInSec) || 0, fadeOutSec: Number(body?.fadeOutSec) || 0,
           durationSec: Math.max(0.1, Number(body?.durationSec) || 0),
         });
-        if (url) void saveCreation(req, guard.userId, url, action);
+        if (url) await saveCreation(req, guard.userId, url, action);
         return NextResponse.json({ url, error: url ? undefined : 'fade failed' });
       }
     } catch (e) {
@@ -265,7 +272,7 @@ export async function POST(req: NextRequest) {
       if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // compensation ONLY if we charged
       return NextResponse.json({ url: null, error: 'inpaint produced no output' }, { status: 502 });
     }
-    void saveCreation(req, guard.userId, url, 'inpaint');
+    await saveCreation(req, guard.userId, url, 'inpaint');
     return NextResponse.json({ url });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge
