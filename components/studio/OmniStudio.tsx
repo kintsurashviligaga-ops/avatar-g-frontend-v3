@@ -5744,7 +5744,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
-      className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden px-4 pt-2 text-app-text"
+      // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
+      // scroll as a whole, the message pane scrolls internally — but it clips with NO way to reach what
+      // is cut. Measured on an iPad in LANDSCAPE (1024×768) with the video panel open: this box is 314px
+      // tall around 734px of content, so 420px was simply unreachable. That is "the panels do not open
+      // fully": nothing is broken visually, the rest of the panel is just gone.
+      //
+      // Portrait (768×1024) fits and is unaffected. The escape hatch is therefore scoped to SHORT
+      // viewports by height, so the fixed-shell behaviour that is correct everywhere else is untouched.
+      className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden [@media(max-height:820px)]:overflow-y-auto [@media(max-height:820px)]:overscroll-contain px-4 pt-2 text-app-text"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
       onDragEnter={onChatDragEnter}
       onDragOver={onChatDragOver}
