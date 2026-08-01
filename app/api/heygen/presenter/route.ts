@@ -5,6 +5,7 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 /**
@@ -167,6 +168,22 @@ export async function GET(req: NextRequest) {
         if (user?.id) {
           await deductCredits(user.id, creditCostFor('avatar'), `avatar:presenter:${id}:${user.id}`)
             .catch(() => { /* best-effort — the asset is already delivered */ });
+          // ⚠️ CHARGED, DELIVERED, AND THEN LOST. This route re-hosts the video and takes the credit,
+          // but never wrote a generation_jobs row — so the Library never saw it and the only reference
+          // was the URL sitting in the client's React state. Close the tab and the thing the user just
+          // paid for was gone, with a signed URL that expires anyway.
+          // The id is deterministic per HeyGen videoId, so the client's repeated 6s polls UPSERT ONE row
+          // rather than filing a duplicate on every tick.
+          // ⚠️ service_type stays 'film': generation_jobs carries a DB CHECK limited to
+          // film|avatar|interior|image|music|voice, so 'presenter' would be REJECTED and the asset
+          // silently lost again. The distinguishing label rides in `subtype`, which is what it is for.
+          await recordCompletedFilm({
+            id: `presenter:${id}`,
+            userId: user.id,
+            url: hosted,
+            orientation: 'vertical',
+            subtype: 'presenter',
+          }).catch(() => { /* the asset is delivered; filing is best-effort */ });
         }
       } catch { /* fail-open */ }
       return NextResponse.json({ done: true, url: hosted });

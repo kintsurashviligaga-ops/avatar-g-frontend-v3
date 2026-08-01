@@ -66,7 +66,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const r = outcome.result;
     await completeJob(jobId, {
       signedUrl: r.coverUrl ?? r.slides[0]?.pngUrl ?? null,
-      result: { subtype: 'presentation', slides: r.slides.length, coverUrl: r.coverUrl },
+      // ⚠️ ONLY THE COUNT WAS STORED, SO THE DECK WAS UNRECOVERABLE. `slides: r.slides.length` persisted
+      // the NUMBER of slides and threw the slides away; SlidesStudio held them in component state. After
+      // a reload the user could recover exactly one cover image from a deck they had paid for. The pages
+      // are now persisted, so the Library and a re-opened panel can both rebuild the whole deck.
+      result: {
+        subtype: 'presentation',
+        slideCount: r.slides.length,
+        coverUrl: r.coverUrl,
+        // `url` is what app/api/studio/library/route.ts's pickUrl falls back to when signed_url is null;
+        // without it a completed deck is silently dropped from the Library listing.
+        url: r.coverUrl ?? r.slides[0]?.pngUrl ?? null,
+        slides: r.slides.map((sl) => ({ index: sl.index, pngUrl: sl.pngUrl })),
+      },
     }).catch(() => {});
 
     return NextResponse.json({

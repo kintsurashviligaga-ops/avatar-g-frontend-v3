@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { pollReconstruction, fetchGlbBuffer, hasReplicate3dProvider } from '@/lib/services/model3d/replicate3dClient';
 import { isTerminal } from '@/lib/services/model3d/model3dPlan';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
-import { completeJob, failJob } from '@/lib/orchestrator/jobs';
+import { completeJob, failJob, jobOwnerId } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +41,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const predictionId = (req.nextUrl.searchParams.get('predictionId') || '').trim();
   const jobId = (req.nextUrl.searchParams.get('jobId') || '').trim();
+  // ⚠️ jobId ARRIVES FROM THE CLIENT AND WAS TRUSTED. Every completeJob/failJob below fired on whatever
+  // id the caller passed, with no check that the row belongs to them — so any signed-in user could
+  // complete or fail ANOTHER user's job by guessing an id, corrupting someone else's Library entry and
+  // their view of what finished. The poll itself is safe (predictionId only reaches Replicate), but the
+  // job-row writes are not. Resolved ONCE here so every write site below shares one authorization.
+  const ownsJob = jobId ? (await jobOwnerId(jobId)) === user.id : false;
   // Replicate ids are opaque alphanumerics; bound and charset-check so nothing hostile reaches the path.
   if (!predictionId || predictionId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(predictionId)) {
     return NextResponse.json({ error: 'invalid_request', message: 'predictionId is required' }, { status: 400 });
@@ -49,7 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const poll = await pollReconstruction(`https://api.replicate.com/v1/predictions/${predictionId}`);
 
   if (poll.status === 'failed') {
-    if (jobId) await failJob(jobId, poll.error || 'replicate reported failure').catch(() => {});
+    if (ownsJob) await failJob(jobId, poll.error || 'replicate reported failure').catch(() => {});
     return NextResponse.json({ status: 'failed', message: poll.error || 'generation failed' });
   }
 
@@ -64,7 +70,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // cron could not see it. The same dead end was reached on a token rotation, since a non-ok HTTP maps
   // to 'processing'. A terminal status with nothing to deliver now ENDS the loop and says so.
   if (isTerminal(poll.status) && !poll.glbUrl) {
-    if (jobId) await failJob(jobId, 'the provider finished without a usable model file').catch(() => {});
+    if (ownsJob) await failJob(jobId, 'the provider finished without a usable model file').catch(() => {});
     return NextResponse.json({ status: 'failed', message: 'the generation finished without a usable model file' });
   }
   if (!isTerminal(poll.status) || !poll.glbUrl) {
@@ -73,7 +79,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const buf = await fetchGlbBuffer(poll.glbUrl);
   if (!buf) {
-    if (jobId) await failJob(jobId, 'could not download the generated model').catch(() => {});
+    if (ownsJob) await failJob(jobId, 'could not download the generated model').catch(() => {});
     return NextResponse.json({ status: 'failed', message: 'the model could not be downloaded' }, { status: 502 });
   }
 
@@ -85,11 +91,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     WEEK_SEC,
   );
   if (!hosted) {
-    if (jobId) await failJob(jobId, 'could not store the generated model').catch(() => {});
+    if (ownsJob) await failJob(jobId, 'could not store the generated model').catch(() => {});
     return NextResponse.json({ status: 'failed', message: 'the model could not be stored' }, { status: 502 });
   }
 
-  if (jobId) {
+  if (ownsJob) {
     await completeJob(jobId, {
       signedUrl: hosted,
       result: { subtype: 'model3d', glbUrl: hosted },

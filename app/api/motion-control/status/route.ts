@@ -25,6 +25,7 @@ import { refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { generateMusic } from '@/lib/ai/replicate';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
+import { reportError } from '@/lib/observability/report-error';
 
 // Mood → instrumental MusicGen prompt (no vocals, so the bed never fights the visuals).
 const MOOD_PROMPTS: Record<string, string> = {
@@ -96,7 +97,16 @@ export async function GET(req: Request) {
         const signed = await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800);
         if (signed) finalUrl = signed;
       }
-    } catch { /* keep the Replicate URL */ }
+      // ⚠️ A FAIL-OPEN HERE IS NOT FREE, AND IT WAS SILENT. Keeping the provider URL means the row that
+      // gets filed carries an EXTERNAL url, which the Library's re-signer cannot resolve
+      // (parseSupabaseObjectUrl returns null for a non-Supabase host) — so it is skipped on read and the
+      // card is dead the moment the provider link expires. Delivering the short-lived URL is still the
+      // right call over failing a render the user paid for, but it must be observable: a rising count
+      // here is exactly the signal that Library entries are quietly rotting.
+    } catch (e) {
+      reportError(e, { route: 'motion-control.status', step: 'rehost' });
+      /* keep the Replicate URL */
+    }
   }
 
   // Optional instrumental background music, muxed onto the silent clip (mode 'replace').

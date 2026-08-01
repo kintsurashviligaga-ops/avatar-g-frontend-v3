@@ -18,6 +18,8 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { renderPhotoMusicVideo } from '@/lib/pipeline/photoMusicVideo';
 import { isAllowedAudioUrl, fetchAllowlistedAudio, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
+import { randomUUID } from 'node:crypto';
+import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,6 +63,19 @@ export async function POST(req: Request) {
     const objectPath = `${user.id}/music-video-${Date.now()}.mp4`;
     const url = await uploadBufferAndSign(process.env.RENDER_BUCKET ?? 'renders', objectPath, mp4, 'video/mp4', 604_800);
     if (!url) return NextResponse.json({ error: 'upload failed' }, { status: 500 });
+
+    // ⚠️ RENDERED, UPLOADED, AND THEN FORGOTTEN. This route never wrote a generation_jobs row, and the
+    // caller (MusicStudio) holds the url in React state only — so the finished music video existed
+    // nowhere the user could get back to it, and its signed URL expires regardless.
+    // serviceType is 'film', NOT 'music': the deliverable is an MP4, and StudioLibraryGrid renders
+    // 'film' rows in a <video> element. Filing it as 'music' would put a video behind an audio player.
+    await recordCompletedAsset({
+      id: randomUUID(),
+      userId: user.id,
+      serviceType: 'film',
+      url,
+      prompt: 'music video',
+    }).catch(() => { /* the asset is delivered; filing is best-effort */ });
 
     return NextResponse.json({ url, durationSec });
   } catch (e) {

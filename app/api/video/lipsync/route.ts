@@ -26,6 +26,7 @@ import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orc
 import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { reportError } from '@/lib/observability/report-error';
 
 // Same bucket uploadBigFile() / the /api/upload/sign route write user files into.
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
@@ -93,7 +94,14 @@ export async function GET(req: NextRequest) {
           if (signed) hosted = signed;
         }
       }
-    } catch {
+      // ⚠️ A FAIL-OPEN HERE IS NOT FREE, AND IT WAS SILENT. Keeping the provider URL means the row that
+      // gets filed carries an EXTERNAL url, which the Library's re-signer cannot resolve
+      // (parseSupabaseObjectUrl returns null for a non-Supabase host) — so it is skipped on read and the
+      // card is dead the moment the provider link expires. Delivering the short-lived URL is still the
+      // right call over failing a render the user paid for, but it must be observable: a rising count
+      // here is exactly the signal that Library entries are quietly rotting.
+    } catch (e) {
+      reportError(e, { route: 'video.lipsync', step: 'rehost' });
       /* fail-open — keep the provider URL */
     }
     // BILLING FIX — avatar/lip-sync billing was DEFERRED to "its own pipeline" and never wired, so
