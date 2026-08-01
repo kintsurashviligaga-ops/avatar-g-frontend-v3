@@ -548,7 +548,11 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
       const ov = entries[i]!.textOverlay;
       if (!ov || !ov.text.trim()) continue;
       const png = await renderTextLayerPng({ text: ov.text, position: ov.position, fontSize: ov.fontSize, fontColor: ov.fontColor }, FW || 1280, FH || 720).catch(() => null);
-      if (!png) continue;
+      // SAY SO. A null here means resvg could not rasterise the caption (missing @resvg native binding in
+      // the lambda, unreadable font) — the render then SUCCEEDS with the caption silently absent, which is
+      // indistinguishable from "the feature does nothing". renderTextLayerPng swallows its own throw, so
+      // this warn is the only trace that would ever exist.
+      if (!png) { console.warn(`[surgical/${tag}] text overlay for segment ${i} could not be rasterised — exporting WITHOUT it`); continue; }
       const p = join(dir, `ov${i}.png`);
       await writeFile(p, png);
       overlayInputIdx[i] = inputs.length + overlayPaths.length; // index among ALL -i inputs (videos first, then PNGs)
@@ -567,7 +571,13 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     const ovIdx = overlayInputIdx[i];
     if (ovIdx !== null) {
       parts.push(`${vchain}[vpre${i}]`);
-      parts.push(`[vpre${i}][${ovIdx}:v]overlay=0:0[v${i}]`);
+      // `shortest=1` IS LOAD-BEARING, not a tweak. The overlay PNG is fed as `-loop 1` (line below),
+      // i.e. an INFINITE input, and framesync's default `shortest=0` runs the filter until the LONGEST
+      // input ends — which never happens. Measured with the bundled ffmpeg-static on a 4s clip: the
+      // unbounded form was still encoding 45 minutes of duplicated frames when killed; with this option
+      // it finishes in 92ms at exactly 4.00s with the caption burned in. Without it EVERY export that
+      // carries a text overlay ran out the exec/lambda budget and came back as "render failed".
+      parts.push(`[vpre${i}][${ovIdx}:v]overlay=0:0:shortest=1[v${i}]`);
     } else {
       parts.push(`${vchain}[v${i}]`);
     }
@@ -619,7 +629,10 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
 
   const args: string[] = ['-y'];
   inputs.forEach((u) => args.push('-i', u));
-  overlayPaths.forEach((p) => args.push('-loop', '1', '-i', p)); // still overlay layers — loop so they persist over the segment
+  // Looped so one still persists across the whole segment. ⚠️ THIS MAKES EACH PNG AN INFINITE INPUT —
+  // the `overlay=...:shortest=1` above is what stops the graph; drop it and the encode never ends.
+  // (Same hazard, same rule, as lib/pipeline/compositing/musicVideoGraphics.ts, which bounds it with `-t`.)
+  overlayPaths.forEach((p) => args.push('-loop', '1', '-i', p));
   args.push('-filter_complex', parts.join(';'), '-map', '[outv]', '-map', '[outa]', ...videoTail(opts.maxrateKbps));
 
   try {
