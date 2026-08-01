@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { upscaleImage } from '@/lib/ai/replicate';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -16,6 +17,14 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  // ⚠️ THIS ROUTE HAD NO AUTH GATE AT ALL. It ran a paid upscale for anyone who could reach the URL and
+  // then attributed the result to DEMO_VOICE_USER_ID when no session existed — so guest spend was not
+  // merely unbilled, it was filed under a placeholder account where nothing would ever reconcile it.
+  {
+    const { user } = await authedClientFromRequest(req);
+    const gate = requireAuthForGeneration(user?.id ?? null);
+    if (gate.response) return gate.response;
+  }
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // anon-reachable: rate cap is the only abuse gate
   const body = (await req.json().catch(() => ({}))) as { imageUrl?: unknown; scale?: unknown };
   const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';

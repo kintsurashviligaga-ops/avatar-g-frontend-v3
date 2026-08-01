@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
@@ -340,6 +341,12 @@ export async function POST(req: NextRequest) {
   };
   try {
     const { user: rUser } = await authedClientFromRequest(req);
+    // ⚠️ ANONYMOUS CALLERS PROCEEDED WITH AN `anon:` IDEMPOTENCY OWNER AND GENERATED FOR FREE. Music is
+    // one of the most expensive calls on the platform (Lyria / Udio / ElevenLabs Music), and there was
+    // no account to charge or attribute it to — the `anon:` prefix was invented precisely so the mutex
+    // key would not crash, which quietly made guest generation a supported path.
+    const musicGate = requireAuthForGeneration(rUser?.id ?? null);
+    if (musicGate.response) return musicGate.response;
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
     idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0 })}`;
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
