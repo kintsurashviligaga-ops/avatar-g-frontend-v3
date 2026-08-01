@@ -61,13 +61,16 @@ const RULES: IntentRule[] = [
     weight: 0.82,
     contextBoost: ['image', 'interior'],
     patterns: [
-      /\b(generate|create|make|render|design)\b.*\b(image|poster|thumbnail|banner|illustration|graphic|artwork)/i,
+      // ⚠️ `photo` AND `picture` WERE MISSING FROM THIS LIST, which is how "Make the photo of the jungle"
+      // — a plain, imperative image request — classified as text_chat and got a chatty essay about what
+      // Image Studio *would* do. They are the two commonest words for the thing this service makes.
+      /\b(generate|create|make|render|design)\b.*\b(image|photo|picture|pic|poster|thumbnail|banner|illustration|graphic|artwork|wallpaper|portrait)/i,
       /\b(image|poster|thumbnail|banner)\b.*\b(generat|creat|render)/i,
       /\bflux\b/i,
       /\bsdxl\b/i,
       /\bphoto[ -]?real/i,
       /\b3d\s*render/i,
-      /\bგამოსახულება|изображение|плакат|постер/i,
+      /\bგამოსახულება|изображени|картинк|фото|плакат|постер|обо[ий]/i,
       // ⚠️ "draw me a cat" HAD NO PATTERN AT ALL. Every rule above needs a media NOUN
       // (image/poster/banner/…), and "cat" is not one — so the most canonical image request in the
       // language classified as text_chat and the user got a conversational reply instead of a picture.
@@ -81,8 +84,8 @@ const RULES: IntentRule[] = [
       // verbs (გააკეთ/გამიკეთ = "do/make") from hijacking an ANALYSIS/DESCRIPTION request such as
       // "გააკეთე ფოტოს ანალიზი" (do an analysis of the photo) into a paid img2img render — those fall
       // through to visual_analysis (see below) and the vision chat stream instead.
-      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ|დაგენერირ|გამოსახ)(?!.{0,40}(ანალიზ|აღწერ)).{0,40}(სურათ|ფოტო|ნახატ|გამოსახ|პორტრეტ|ილუსტრაცი)/,
-      /(სურათ|ფოტო|ნახატ|პორტრეტ|ილუსტრაცი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ)/,
+      /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამოსახ)(?!.{0,40}(ანალიზ|აღწერ)).{0,40}(სურათ|ფოტო|ნახატ|გამოსახ|პორტრეტ|ილუსტრაცი)/,
+      /(სურათ|ფოტო|ნახატ|პორტრეტ|ილუსტრაცი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ)/,
       // ⚠️ Georgian verbs carry a PREVERB and an OBJECT MARKER, so the real imperative a user types is
       // `დამიხატე` (draw for ME), not the bare `დახატე` this pattern used to hold. `დამიხატე ლამაზი კატა`
       // matched nothing — neither this nor the noun-bearing rules above, whose object list has no "cat".
@@ -321,4 +324,44 @@ export function intentToReplicateService(intent: IntentCategory): string | null 
     case 'visual_analysis': return 'visual-ai';
     default: return null;
   }
+}
+
+/**
+ * Deliverables that are TEXT. A generate command aimed at one of these belongs in the chat stream, not
+ * in an image render — "make me a list of ideas" is a request to write, not to draw.
+ */
+const TEXT_DELIVERABLE = /\b(list|plan|summary|essay|email|letter|article|blog|post|caption|script|story|poem|code|table|recipe|schedule|itinerary|outline|report|translation|joke|ideas?|names?|slogans?|description|explanation|answer|reply|message)\b|სია|გეგმა|წერილ|სტატი|ტექსტ|კოდ|იდეა|სახელ|რეცეპტ|список|план|письмо|стать|текст|код|иде[яю]|рецепт/i;
+
+/**
+ * The lane an imperative generate command belongs to, or null to leave it in the chat stream.
+ *
+ * ⚠️ WHY A DEFAULT EXISTS AT ALL. Every bank above needs the user to name a MEDIA NOUN — image, photo,
+ * video, song. Real requests do not: "make a jungle scene with a lion", "generate a lion in the jungle",
+ * "create something cyberpunk" name a SUBJECT and expect a picture. Those all scored text_chat, so the
+ * model answered with an essay describing what it *would* generate — which is the single worst outcome
+ * available, because the user asked for a thing and got a description of the thing.
+ *
+ * `isGenerativeCommand` has ALREADY established that this is an imperative order to MAKE something (it
+ * requires a leading generate verb and rejects questions, complaints and declaratives). Once past that
+ * gate, "we could not tell which service, so here is some prose" is never the right answer. Image is the
+ * default because it is the cheapest deliverable, the fastest, and by far the most common — and because
+ * a wrong image costs one credit and a retry, where a wrong video costs many times that.
+ *
+ * The veto keeps written work written: an imperative aimed at a TEXT deliverable stays in the chat.
+ */
+export function resolveGenerativeLane(
+  text: string,
+  detected: DetectedIntent,
+): 'image_generation' | 'video_generation' | 'music_generation' | 'avatar_generation' | null {
+  if (detected.confidence >= 0.7) {
+    if (detected.intent === 'image_generation') return 'image_generation';
+    if (detected.intent === 'video_generation') return 'video_generation';
+    if (detected.intent === 'music_generation') return 'music_generation';
+    if (detected.intent === 'avatar_generation') return 'avatar_generation';
+  }
+  // Only text_chat falls through to the default — a confident business/workflow/analysis verdict is a
+  // real classification and must be respected, not overridden into a render.
+  if (detected.intent !== 'text_chat') return null;
+  if (TEXT_DELIVERABLE.test(text)) return null;
+  return 'image_generation';
 }

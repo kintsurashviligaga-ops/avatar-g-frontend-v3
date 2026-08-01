@@ -15,7 +15,7 @@
  * ships a Russian locale. A case list that is 90% English will pass while the product is unusable,
  * which is exactly what happened. Every capability below is asserted in KA and RU as well as EN.
  */
-import { detectIntent, isGenerativeCommand } from './intentDetector';
+import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from './intentDetector';
 import { detectStudioIntent } from './studioIntent';
 
 /** Where a sentence ends up. `chat` means the plain conversational stream. */
@@ -35,12 +35,13 @@ function route(text: string): Lane {
   const studio = detectStudioIntent(text);
   if (studio) return studio.service as Lane;
   if (!isGenerativeCommand(text)) return 'chat';
-  const d = detectIntent(text);
-  if (d.confidence < 0.7) return 'chat';
-  if (d.intent === 'image_generation') return 'image';
-  if (d.intent === 'video_generation') return 'video';
-  if (d.intent === 'music_generation') return 'music';
-  if (d.intent === 'avatar_generation') return 'avatar';
+  // Mirrors the dispatch exactly: resolveGenerativeLane owns the confidence check AND the default, so a
+  // recognised imperative can never fall through to prose. See lib/chat/intentDetector.ts.
+  const lane = resolveGenerativeLane(text, detectIntent(text));
+  if (lane === 'image_generation') return 'image';
+  if (lane === 'video_generation') return 'video';
+  if (lane === 'music_generation') return 'music';
+  if (lane === 'avatar_generation') return 'avatar';
   return 'chat';
 }
 
@@ -203,5 +204,38 @@ describe('what must NOT route — a wrong render is a wrong charge', () => {
     ['წაიკითხე ეს ტექსტი'],
   ])('does not open dubbing for a text-to-speech ask: %s', (text) => {
     expect(detectStudioIntent(text)?.service).not.toBe('dubbing');
+  });
+});
+
+describe('an imperative order never comes back as an essay', () => {
+  // ⚠️ THE LIVE FAILURE, FROM THE USER'S OWN SCREENSHOTS. "Make the photo of the jungle…" produced a
+  // chatty explanation of what Image Studio *would* do. The gate recognised the command; the classifier
+  // then said text_chat because `photo` and `picture` were absent from the image noun list.
+  it.each([
+    ['Make the photo of the jungle 9:16 format, high quality, with a lion'],
+    ['make me a picture of a lion'],
+    ['create a photo of the mountains'],
+    ['сделай фото джунглей'],
+    ['сделай картинку льва'],
+    ['დამიგენერირე ლომის სურათი'],
+    // No media noun AT ALL — a subject and nothing else. These are the ones that prove the default
+    // matters: requiring the user to name "image" can never cover how people actually ask.
+    ['make a jungle scene with a lion'],
+    ['generate a lion in the jungle'],
+    ['create something cyberpunk and neon'],
+  ])('generates instead of talking: %s', (text) => {
+    expect(route(text)).toBe('image');
+  });
+
+  // The veto: an imperative aimed at a TEXT deliverable must stay written, not become a picture.
+  it.each([
+    ['make me a list of content ideas'],
+    ['write me an email to my client'],
+    ['create a plan for next week'],
+    ['make a summary of this article'],
+    ['сделай список идей'],
+    ['გამიკეთე გეგმა შემდეგი კვირისთვის'],
+  ])('still answers in text: %s', (text) => {
+    expect(route(text)).toBe('chat');
   });
 });

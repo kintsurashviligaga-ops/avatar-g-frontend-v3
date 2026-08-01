@@ -22,7 +22,7 @@ import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
-import { adoptLegacyArchive, conversationsKey, currentUid } from '@/lib/chat/historyKeys';
+import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
@@ -66,7 +66,7 @@ import { useDurableProgress } from '@/hooks/useDurableProgress';
 import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from '@/lib/jobs/trackJob';
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
-import { detectIntent, isGenerativeCommand } from '@/lib/chat/intentDetector';
+import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { computeCloudAdditions } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
@@ -3985,28 +3985,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (!sb) return;
         const { data: { user } } = await sb.auth.getUser();
         if (!user || !alive) return;
-        if (messagesRef.current.length === 0) {
-          // #1 — resume the text transcript from the server (cross-device).
-          let sid: string | null = null;
-          try {
-            const raw = localStorage.getItem('myavatar:chat-session');
-            if (raw) { const p = JSON.parse(raw) as { uid?: string; sid?: string }; if (p?.uid === user.id && p.sid) sid = p.sid; }
-          } catch { /* ignore */ }
-          if (!sid) {
-            const convos = await getConversations(user.id);
-            sid = convos[0]?.session_id ?? null;
-            if (sid) { try { localStorage.setItem('myavatar:chat-session', JSON.stringify({ uid: user.id, sid })); } catch { /* ignore */ } }
-          }
-          if (!sid || !alive) return;
-          chatSessionIdRef.current = sid; // reuse for the write path (continue the resumed session)
-          const rows = await getMessages(sid);
-          if (!alive || rows.length === 0) return;
-          const serverMsgs: Msg[] = rows
-            .filter((r) => r.role === 'user' || r.role === 'assistant')
-            .map((r) => ({ role: r.role as 'user' | 'assistant', text: r.content }));
-          // Guard against a race: only replace if the view is STILL empty (user hasn't typed yet).
-          if (serverMsgs.length && messagesRef.current.length === 0) setMessages(serverMsgs);
-        } else if (messagesRef.current.some((m) => m.batch?.tiles.some((t) => t.status === 'pending' && t.jobId))) {
+        // ⚠️ THIS USED TO RESUME THE LAST SESSION INTO THE ACTIVE CHAT, AND THAT IS A REGRESSION I
+        // INTRODUCED. It fetched the most recent server session and called setMessages() with it, so
+        // every fresh page load dropped the user back inside a days-old conversation. It never fired
+        // before because getConversations/getMessages always returned [] against the broken schema —
+        // fixing the schema switched this on, and the app stopped opening on a clean slate.
+        //
+        // `currentConversationId()` states the intended rule outright: "The app must land on a FRESH,
+        // EMPTY chat on every open and every refresh — the way ChatGPT and Gemini do." Cross-device
+        // continuity means your past chats APPEAR IN HISTORY, not that you are dumped back into the last
+        // one. Both halves of that already exist and are the right mechanism: the sidebar sync below
+        // merges the account's server sessions as "cloud" entries, and opening one EXPLICITLY lazy-loads
+        // its transcript (see the convo.serverSid branch in the sidebar open handler). Nothing is lost by
+        // deleting the auto-resume; a whole behaviour is fixed.
+        //
+        // It also must not adopt the old session id here: doing so made a brand-new chat write into the
+        // PREVIOUS session row — the same corruption startNewConversation was fixed for.
+        if (messagesRef.current.some((m) => m.batch?.tiles.some((t) => t.status === 'pending' && t.jobId))) {
           // #3 — reconcile still-pending batch tiles against the durable generation_jobs rows.
           const res = await fetch('/api/orchestrator/jobs?limit=50', { credentials: 'include' });
           if (!res.ok || !alive) return;
@@ -4540,9 +4535,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return;
     }
 
-    if (chatIntent && chatIntent.confidence >= 0.7) {
+    // ⚠️ AN IMPERATIVE ORDER MUST NEVER END AS AN ESSAY. Every bank in detectIntent needs the user to
+    // name a media NOUN, and real requests do not: "generate a lion in the jungle", "make a jungle scene"
+    // name a SUBJECT and expect a picture. Those scored text_chat and fell to the chat stream, so the
+    // model replied with prose describing what it *would* generate — the user asked for a thing and got
+    // a description of the thing. isGenerativeCommand has already established this is an imperative order
+    // to MAKE something, so past that gate "we could not tell which service" is not an answer.
+    // resolveGenerativeLane defaults those to image (cheapest, fastest, most common) and vetoes anything
+    // aimed at a TEXT deliverable, so "make me a list of ideas" still gets written, not drawn.
+    const chatLane = chatIntent ? resolveGenerativeLane(text, chatIntent) : null;
+    if (chatLane) {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
-      if (chatIntent.intent === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
+      if (chatLane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
         setOptionsOpen(false);
         const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
@@ -4560,7 +4564,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // already recognizes "music video"/"video clip"/"მუსიკალური ვიდეო", so those fall through to the
       // video/storyboard route at (musicVideo → videoMode='musicvideo'). Bare "make a song"/"make music"
       // carry no video cue, so they still dispatch here.
-      if (chatIntent.intent === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) {
+      if (chatLane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) {
         setOptionsOpen(false);
         const mAudioRef = attachments.find((a) => isAudio(a.mimeType))?.dataUrl;
         const mAudioMime = attachments.find((a) => isAudio(a.mimeType))?.mimeType;
