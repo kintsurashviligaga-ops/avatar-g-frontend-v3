@@ -94,10 +94,16 @@ const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
 // Engine names are Gemini-era — the old copy advertised "Runway Gen-4" to users long after Veo became the
 // primary video engine.
 const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
+  // ⚠️ THIS SAID VIDEO WAS PAID-ONLY WHILE THE PRODUCT WAS GIVING IT AWAY. The welcome modal tells every
+  // new signup "3 უფასო ვიდეო გელოდება" and it is TELLING THE TRUTH — I checked the live table, and
+  // free_films_remaining is 3 on every recent account. This bullet said the opposite, and a new user met
+  // both claims within about a minute of registering. A product that contradicts itself about what costs
+  // money is not read as buggy, it is read as untrustworthy — so the copy was corrected to match what the
+  // database actually grants, not the other way round.
   free: {
-    ka: ['6 სურათი თვეში', 'AI ჩატი (Gemini)', 'ვიდეო და მუსიკა — ფასიან გეგმებზე'],
-    en: ['6 images a month', 'AI chat (Gemini)', 'Video & music on paid plans'],
-    ru: ['6 изображений в месяц', 'AI-чат (Gemini)', 'Видео и музыка — на платных планах'],
+    ka: ['3 უფასო ვიდეო', '10 კრედიტი სასტარტოდ (5 სურათი)', 'AI ჩატი (Gemini)'],
+    en: ['3 free videos', '10 starter credits (5 images)', 'AI chat (Gemini)'],
+    ru: ['3 бесплатных видео', '10 стартовых кредитов (5 изображений)', 'AI-чат (Gemini)'],
   },
   basic: {
     ka: ['4 ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)', '40 კინემატოგრაფიული სურათი', '10 მუსიკალური ტრეკი (Lyria 3)', 'ხმის სინთეზი ქართულად'],

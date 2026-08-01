@@ -471,6 +471,16 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
   // The address the code was sent to. `email` is read from FormData inside the submit handler, which is
   // long out of scope by the time the user types the code.
   const [otpEmail, setOtpEmail] = useState('');
+  /**
+   * The password used to register, kept only until the code is verified.
+   *
+   * ⚠️ NEEDED BECAUSE THE RESEND CANNOT WORK WITHOUT IT. /api/auth/email-otp/send rejects
+   * `purpose:'signup'` when the password is shorter than 6 characters, and this screen reads its
+   * fields out of FormData inside the submit handler — so by the time the user is staring at the code
+   * box, the password is gone and a resend has nothing to send. Held in component state (never
+   * persisted, never logged) and cleared the moment verification succeeds.
+   */
+  const [otpPassword, setOtpPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
@@ -592,6 +602,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         });
         if (res.ok) {
           setOtpEmail(email);
+          setOtpPassword(password);
           setSuccessKind('signup');
           setSuccess(true);
         } else {
@@ -729,6 +740,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
     setOtpBusy(true);
     try {
       const { data, error: vErr } = await supabase.auth.verifyOtp({ email: otpEmail, token: code, type: 'signup' });
+      if (!vErr) setOtpPassword(''); // no reason to keep it once the account is confirmed
       if (vErr) { setError(describeAuthError(vErr.message, locale)); return; }
       if (!data.session) { setError(c.otpInvalid); return; }
       // Let the cookie land before the server tree re-renders, or the refreshed page renders as guest.
@@ -783,6 +795,40 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
               </button>
               {error && <p className="mt-3 text-xs" style={{ color: '#F87171' }}>{error}</p>}
             </div>
+          )}
+
+          {/* ⚠️ THIS SCREEN OFFERED NO WAY OUT WHEN THE CODE DID NOT ARRIVE. Its only action was "back to
+              sign in" — which returns the user to a login form for an account that EXISTS but is
+              unconfirmed, and therefore cannot be signed into. A slow mail or a spam folder was a total
+              dead end, at the last step of registration, after the user had already given us everything.
+              The modal has had a resend for a while; this standalone /signup page never got one. */}
+          {successKind === 'signup' && (
+            <button
+              type="button"
+              disabled={otpBusy}
+              onClick={async () => {
+                setError(null); setOtpBusy(true);
+                try {
+                  // Same route and the same body shape as the original send — including `password`,
+                  // which /api/auth/email-otp/send rejects `purpose:'signup'` without.
+                  const res = await fetch('/api/auth/email-otp/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: otpEmail, password: otpPassword, purpose: 'signup', locale }),
+                  });
+                  if (res.ok) setError(null);
+                  else {
+                    const j = (await res.json().catch(() => null)) as { message?: string } | null;
+                    setError(j?.message ?? c.signUpFailed);
+                  }
+                } catch { setError(c.signUpFailed); }
+                finally { setOtpBusy(false); }
+              }}
+              className="mb-3 block w-full text-sm font-medium transition-colors disabled:opacity-50"
+              style={{ color: 'var(--color-accent)' }}
+            >
+              {locale === 'en' ? 'Resend code' : locale === 'ru' ? 'Отправить код ещё раз' : 'კოდის ხელახლა გაგზავნა'}
+            </button>
           )}
 
           <button

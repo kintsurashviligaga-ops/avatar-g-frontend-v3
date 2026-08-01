@@ -39,9 +39,13 @@ const MAIL_FROM = process.env.MAIL_FROM || 'MyAvatar <info@myavatar.ge>';
  * THE CODE IS NEVER RETURNED TO THE CLIENT. It lives in this function and in the outgoing email.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // AUTH limit (5 / 15min): this both writes auth state and sends mail — the two things worth abusing.
-  const limited = await checkRateLimit(req, RATE_LIMITS.AUTH);
-  if (limited) return limited;
+  // ⚠️ TWO LIMITS, AND THEY DO DIFFERENT JOBS. A single IP-keyed 5-per-15-minutes bucket meant that
+  // behind Georgian mobile CGNAT, an office or a cafe, the SIXTH sign-up attempt from that whole
+  // network was refused — punishing people for a stranger's traffic. AUTH_IP is the loose network
+  // ceiling that still stops one host mass-creating accounts; the tight per-user budget is applied
+  // BELOW, once the body has been read and the email is known to scope it to one person.
+  const ipLimited = await checkRateLimit(req, RATE_LIMITS.AUTH_IP);
+  if (ipLimited) return ipLimited;
 
   if (!isSupabaseConfiguredServer()) {
     return NextResponse.json({ error: 'not_configured', message: 'Authentication is not configured.' }, { status: 503 });
@@ -55,6 +59,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!isPlausibleEmail(email)) {
     return NextResponse.json({ error: 'invalid_email' }, { status: 400 });
   }
+  // The real budget: 5 attempts per 15 minutes for THIS email, so one person's retries can never
+  // consume anyone else's. Applied after validation so a malformed request cannot spend it.
+  const emailLimited = await checkRateLimit(req, RATE_LIMITS.AUTH, email);
+  if (emailLimited) return emailLimited;
+
   const purpose: OtpPurpose = isOtpPurpose(body?.purpose) ? body.purpose : 'signin';
   const locale = normalizeLocale(body?.locale);
   const password = typeof body?.password === 'string' ? body.password : '';

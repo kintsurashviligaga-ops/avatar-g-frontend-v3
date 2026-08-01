@@ -127,7 +127,15 @@ export const RATE_LIMITS = {
   // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This
   // dedicated tier sizes the limit to a full board (+ a re-roll or two) per minute.
   STORYBOARD:{ maxRequests: 30,  windowMs: 60_000,       keyPrefix: 'rl:sb'    } as const,
+  // ⚠️ THIS USED TO LOCK OUT WHOLE NETWORKS. 5 per 15 minutes keyed on IP alone means that behind
+  // Georgian mobile CGNAT, an office, or a cafe, the SIXTH registration attempt from that entire
+  // network in a quarter of an hour is refused — for something the person has not done. And since a
+  // broken resend also spent from this budget, one user's failed sign-up could exhaust it for everyone
+  // around them. Auth routes now pass the email as an identity so the small per-user budget is scoped
+  // to that user, and AUTH_IP is the far looser ceiling that still stops one host mass-creating
+  // accounts. Neither number alone can do both jobs.
   AUTH:      { maxRequests: 5,   windowMs: 15 * 60_000,  keyPrefix: 'rl:auth'  } as const,
+  AUTH_IP:   { maxRequests: 40,  windowMs: 15 * 60_000,  keyPrefix: 'rl:authip'} as const,
   PUBLIC:    { maxRequests: 200, windowMs: 60_000,       keyPrefix: 'rl:pub'   } as const,
   AI:        { maxRequests: 10,  windowMs: 60_000,       keyPrefix: 'rl:ai'    } as const,
   // 3D reconstruction STATUS polling — its OWN namespace, and that is the point.
@@ -156,13 +164,15 @@ export function getRateLimitForPlan(
   return { ...base, maxRequests: Math.round(base.maxRequests * mult) };
 }
 
-function getClientKey(req: NextRequest, prefix: string): string {
+function getClientKey(req: NextRequest, prefix: string, identity?: string): string {
   const ip =
     req.headers.get('cf-connecting-ip') ||
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     req.headers.get('x-real-ip') ||
     'unknown';
-  return `${prefix}:${ip}`;
+  // An identity (an email, a user id) scopes the bucket to ONE person sharing that IP, which is the
+  // difference between rate-limiting an abuser and rate-limiting a cafe.
+  return identity ? `${prefix}:${ip}:${identity.toLowerCase().trim()}` : `${prefix}:${ip}`;
 }
 
 /** Run the limiter for an already-built key and return a 429 response if the window is exhausted. */
@@ -197,9 +207,11 @@ async function limitByKey(key: string, config: RateLimitConfig): Promise<NextRes
 
 export async function checkRateLimit(
   req: NextRequest,
-  config: RateLimitConfig = RATE_LIMITS.READ
+  config: RateLimitConfig = RATE_LIMITS.READ,
+  /** Scopes the bucket to one person on a shared IP — see AUTH/AUTH_IP. */
+  identity?: string,
 ): Promise<NextResponse | null> {
-  return limitByKey(getClientKey(req, config.keyPrefix ?? 'rl'), config);
+  return limitByKey(getClientKey(req, config.keyPrefix ?? 'rl', identity), config);
 }
 
 /**

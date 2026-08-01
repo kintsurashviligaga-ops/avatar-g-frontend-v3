@@ -385,6 +385,23 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return () => window.removeEventListener('myavatar:open-credits', openCredits);
   }, []);
 
+  /**
+   * Pick up a purchase the user started on the pricing page.
+   *
+   * ⚠️ THEY CLICKED A PLAN AND WE FORGOT. PricingSection sends people to /signup?plan=pro; the signup
+   * page now stashes that choice, and this is the other half — once they are actually signed in, the
+   * checkout they were heading for opens by itself. Without this the stash is just a value nobody reads,
+   * and the highest-intent click in the funnel still ends in a dashboard with no mention of the plan.
+   * Consumed on read, so it fires exactly once and a later visit is not ambushed by a payment dialog.
+   */
+  useEffect(() => {
+    if (!authed) return;
+    let plan: string | null = null;
+    try { plan = sessionStorage.getItem('myavatar:intended-plan'); sessionStorage.removeItem('myavatar:intended-plan'); }
+    catch { /* private mode — nothing stashed */ }
+    if (plan) setCreditsOpen(true);
+  }, [authed]);
+
   // Live Avatar enrollment bridge — any surface can dispatch `myavatar:avatar-enroll`. Authed → open the
   // enrollment sheet; guest → sign-in first (enrollment writes to the user's profile).
   useEffect(() => {
