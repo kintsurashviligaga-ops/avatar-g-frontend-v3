@@ -350,6 +350,13 @@ export async function POST(req: NextRequest) {
       // STILL — not a generated video at all — and the response still claimed Kling rendered it.
       const adEngine = veoAd?.engine
         ?? (animated ? 'Kling AI' : 'Ken Burns (still pan — video engine unavailable)');
+      // ⚠️ THE CLIENT WAS DECLARING THE CLIP LENGTH AND THE ENGINE WAS DECIDING IT. Veo is asked for 8s,
+      // Kling's create pins `duration: 5`, and kenBurnsClip is built at 5 — but the composer sent a flat
+      // 8s per clip to /api/video/assemble, which derives the MUSIC BED from those declared seconds. So
+      // whenever the cascade fell past Veo, the ad was scored for a film several seconds longer than the
+      // one that existed: a 24s ad rendered as 3×5=15s got a 24s bed, leaving music running over nothing.
+      // Only the renderer knows which engine answered, so the renderer reports the length.
+      const adClipSec = veoAd?.url ? 8 : 5;
       // The ad is now paid for (primary clip, full video tier above). Stamp the client jobId
       // as an already-billed token so the downstream /api/video/assemble (which the client calls
       // with `billingToken: jobId`) waives ITS charge — one video credit per ad, not remix+assemble.
@@ -378,11 +385,11 @@ export async function POST(req: NextRequest) {
           // [0:a], and on a source with no audio track the exec throws and it falls through to the same
           // clean replace. So a silent Kling clip produces byte-identical output to before.
           const scored = await muxAudioOntoVideo(url, music, 'under', 12);
-          if (scored) return ok(scored, { engine: adEngine, music: true });
+          if (scored) return ok(scored, { engine: adEngine, music: true, clipSec: adClipSec });
         }
-        return ok(url, { engine: adEngine, music: false });
+        return ok(url, { engine: adEngine, music: false, clipSec: adClipSec });
       }
-      return ok(url, { engine: adEngine });
+      return ok(url, { engine: adEngine, clipSec: adClipSec });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[video/remix] productad', err instanceof Error ? err.message : err);

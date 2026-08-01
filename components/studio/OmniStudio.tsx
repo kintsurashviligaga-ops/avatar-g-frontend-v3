@@ -2981,7 +2981,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // a job the user already PAID for while it was still rendering. Wait past the real render (250s).
     const CLIP_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_TIMEOUT_MS) || 250_000;
     let onClipSettle: (ok: boolean) => void = () => {};
-    const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean } | null> => {
+    const genClip = async (sceneIndex: number, noMusic = false): Promise<{ url: string; music: boolean; clipSec: number } | null> => {
       // Job already cancelled → don't fire a LATER pool wave's paid Kling call. (A concurrency-
       // bounded fan-out starts clips over time, so a clip picked up after the abort must short-circuit
       // — addEventListener('abort') doesn't fire for an already-aborted signal.)
@@ -3000,8 +3000,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // dedupes while a NEW ad (new jobId) charges correctly — fixing the once-per-user under-charge.
           body: JSON.stringify({ op: 'productad', imageUrl, preset, aspect, noMusic, jobId, productDurationSec: duration, ...(sceneIndex >= 0 ? { sceneIndex } : {}) }),
         });
-        const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean } | null;
-        const out = r.ok && j?.url ? { url: j.url, music: j.music === true } : null;
+        const j = (await r.json().catch(() => null)) as { url?: string; music?: boolean; clipSec?: number } | null;
+        // ⚠️ clipSec COMES FROM THE RENDERER, NOT FROM US. Veo answers 8s, Kling pins 5, kenBurns is 5 —
+        // and only the route knows which one actually ran. Declaring a flat length here is what scored
+        // fallback ads for a film that never existed.
+        const out = r.ok && j?.url
+          ? { url: j.url, music: j.music === true, clipSec: Number.isFinite(j.clipSec) ? Number(j.clipSec) : PRODUCT_CLIP_SEC }
+          : null;
         onClipSettle(!!out);
         return out;
       } catch {
@@ -3071,19 +3076,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // the shared order-preserving worker pool. Survivor set, StallDetector ticks, per-clip 45s
       // ceiling and job-signal abort are ALL unchanged — only the peak in-flight count is capped.
       const CLIP_CONCURRENCY = Number(process.env.NEXT_PUBLIC_PRODUCT_CLIP_CONCURRENCY) || 4;
-      let clips: string[];
+      let clips: { url: string; clipSec: number }[];
       try {
         const settledClips = await mapWithConcurrency(
           Array.from({ length: n }, (_, i) => i),
           CLIP_CONCURRENCY,
           (i) => genClip(i),
         );
-        clips = settledClips.filter((c): c is { url: string; music: boolean } => !!c).map((c) => c.url);
+        clips = settledClips
+          .filter((c): c is { url: string; music: boolean; clipSec: number } => !!c)
+          .map((c) => ({ url: c.url, clipSec: c.clipSec }));
       } finally {
         clearInterval(watchdog);
       }
       if (clips.length < 2) {
-        if (clips[0]) { landVideo(clips[0]); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0], 'film'); return clips[0]; }
+        if (clips[0]) { landVideo(clips[0].url); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0].url, 'film'); return clips[0].url; }
         throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
       }
       setStage(enrich
@@ -3091,10 +3098,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         : (locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…'));
       // Declared length must match what the engine actually produced: the assembler derives the music
       // bed from these seconds, so a wrong figure scores the ad for a different film.
-      const finalUrl = await assemble(clips.map((url) => ({ url, durationSec: PRODUCT_CLIP_SEC })));
+      // Each clip carries the length the engine that made it actually produced, so the assembler's music
+      // bed is sized against the real film rather than an assumed one.
+      const finalUrl = await assemble(clips.map((c) => ({ url: c.url, durationSec: c.clipSec })));
       // Assembled master carries the ElevenLabs music bed (+ VO/overlays).
       if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
-      if (clips[0]) { landVideo(clips[0]); return clips[0]; } // fail-open: show the first clip
+      if (clips[0]) { landVideo(clips[0].url); return clips[0].url; } // fail-open: show the first clip
       throw new Error(locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.');
     } catch (e) {
       // Error lands in THIS job's bubble (never a shared panel slot); rethrow → tray shows failed.
