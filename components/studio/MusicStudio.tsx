@@ -213,7 +213,12 @@ export function MusicStudio() {
 
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [result, setResult] = useState<{ url: string; coverUrl?: string } | null>(null);
+  // `engine` is carried so the card can name what ACTUALLY produced the track. The route already
+  // computes an honest badge — on a vocal request that fell through to MusicGen it returns
+  // 'MusicGen (instrumental — vocals unavailable)', because MusicGen cannot sing — and this surface
+  // discarded it, so a user who asked for a song with lyrics received an instrumental under a clean
+  // success card with nothing saying the lyrics were never sung.
+  const [result, setResult] = useState<{ url: string; coverUrl?: string; engine?: string } | null>(null);
   const [error, setError] = useState('');
   // Trained-voice (RVC) state — set by the VoiceTrainer once a model is ready.
   const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
@@ -407,8 +412,8 @@ export function MusicStudio() {
         body: JSON.stringify(body),
         credentials: 'include',
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; coverUrl?: string; error?: string };
-      if (j.success && j.url) setResult({ url: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}) });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; coverUrl?: string; error?: string; engine?: string };
+      if (j.success && j.url) setResult({ url: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}) });
       else setError(j.error || t.failed);
     } catch {
       setError(t.failed);
@@ -610,6 +615,16 @@ export function MusicStudio() {
           {result && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
               <TrackPlayer url={result.url} coverUrl={result.coverUrl} t={t} />
+
+              {/* The engine that ACTUALLY produced this track. Stated ABOVE the player only when it is a
+                  degradation, so a clean Lyria render stays uncluttered while a vocal request that fell
+                  through to an engine which cannot sing says so — instead of handing back an instrumental
+                  under a success card and leaving the user to wonder where their lyrics went. */}
+              {result.engine && /instrumental|unavailable/i.test(result.engine) && (
+                <p className="rounded-lg bg-amber-400/[0.08] px-3 py-2 text-[11.5px] leading-snug text-amber-600 ring-1 ring-amber-400/25 dark:text-amber-400">
+                  ⚠️ {result.engine}
+                </p>
+              )}
 
               {/* DAY-4 — Photo → Music Video (isolated to this studio). Pair a still with the track → MP4. */}
               <div className="rounded-2xl border border-app-border/10 bg-app-elevated/50 p-3.5">
