@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
@@ -839,6 +840,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
             <div className="flex shrink-0 items-center gap-1">
               {/* FIX 3 — language switcher moved here from Settings (flag dropdown). */}
+              {/* Only renders when the app is genuinely installable — see InstallAppButton. Installing is
+                  the one thing that removes the browser's address-bar pill above the mobile keyboard,
+                  because a page cannot hide its own browser's chrome. */}
+              <InstallAppButton locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} />
               <LanguageSwitcher locale={locale} />
               {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
               <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
