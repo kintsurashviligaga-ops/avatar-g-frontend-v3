@@ -17,6 +17,7 @@
  * Request: { op, videoUrl, ... per-op params }   Response: { url, error? }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
 import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, fitAspect, type GradeStyle } from '@/lib/video/remixOps';
@@ -165,7 +166,6 @@ export async function POST(req: NextRequest) {
   // share it, so a retry of the primary clip still dedupes, while a brand-new job → new ref →
   // correctly charges. Fall back to a fresh uuid when no jobId is supplied (still fixes the
   // under-charge; that path just isn't retry-idempotent, which is safe — none of these auto-retry).
-  const txnRef = `remix:${op}:${jobId ?? crypto.randomUUID()}`;
   // ── IN-FLIGHT MUTEX (V1) ─────────────────────────────────────────────────────
   // A short-TTL Redis lock keyed on the FULL request signature instantly blocks a double-click from
   // spawning a SECOND paid roop/Kling render. Claimed ONLY for PAID ops — the free local-ffmpeg ops
@@ -205,6 +205,20 @@ export async function POST(req: NextRequest) {
   const chargeAmount = productAdPrimary
     ? creditCostFor('video', { seconds: productAdDurationSec })
     : CREDIT_COSTS.remix_video;
+  // ⚠️ TWO COMPOUNDING HOLES LIVED HERE, AND THEY PAID OUT TOGETHER.
+  //
+  // (a) `chargeAmount` is CLIENT-STEERED — `productDurationSec` selects video_30s=25 vs video_60s=45 —
+  //     while the ref keyed only on op+jobId. So an attacker charged once at 25 with jobId=X, then
+  //     replayed jobId=X with productDurationSec=60 and a missing photo to trip an early refund, and was
+  //     paid back 45. Net positive credits per cycle, repeatable.
+  // (b) deduct_credits dedupes on (user_id, ref) forever and returns SUCCESS on the deduped call, so a
+  //     replay set `charged = true` with no money moving — a refund for a charge that did not happen.
+  //
+  // Binding the AMOUNT into the ref closes both: a request at a different amount is a different charge
+  // ref, so it is genuinely charged before it can be refunded, and any single ref can only ever pay back
+  // the amount that ref was charged. The body fingerprint (same server-derived helper as the produce
+  // routes) additionally stops a changed request from riding an old jobId.
+  const txnRef = `remix:${op}:${jobId ?? crypto.randomUUID()}:${chargeAmount}:${bodyFingerprint(body)}`;
   // Did we actually take an up-front credit off the wallet? (Only then must a downstream miss
   // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
@@ -233,7 +247,12 @@ export async function POST(req: NextRequest) {
     if (!charged || refunded || !remixUid) return;
     refunded = true;
     try {
-      const r = await refundCredits(remixUid, chargeAmount, `${txnRef}:refund:${why}`);
+      // ⚠️ THE REFUND REF USED TO CARRY THE FAILURE REASON — `:refund:${why}` — and `why` takes 13
+      // distinct values across this handler. So ONE charge could be followed by up to THIRTEEN distinct,
+      // each-idempotent refunds, simply by replaying the request until it failed a different way. The
+      // in-request `refunded` flag only ever guarded a single execution. One ref, one refund, forever.
+      // The reason stays in the log below, where it belongs.
+      const r = await refundCredits(remixUid, chargeAmount, `${txnRef}:refund`);
       if (!r.ok) {
         // eslint-disable-next-line no-console
         console.error(`[video/remix] REFUND FAILED op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why} reason=${r.reason} — ${chargeAmount} credit(s) may be STRANDED, manual reconcile needed`);
