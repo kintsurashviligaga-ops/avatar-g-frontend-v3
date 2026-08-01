@@ -3387,7 +3387,20 @@ function StreamingText({
     let current = 0;
     let last = 0;
     const total = text.length;
-    const step = Math.max(2, Math.ceil(total / 70)); // bound total reveal ≈1.7s
+    // ⚠️ THIS ANIMATED AN ALREADY-COMPLETE STRING FOR ~1.7 SECONDS. The orchestrator returns the whole
+    // reply in one JSON, so by the time this runs the answer has fully arrived — every millisecond of
+    // the reveal is latency ADDED after the wait the user already served. It is a simulation of
+    // streaming, and it was slower than the streaming it imitates.
+    //
+    // The reveal is kept, at roughly a quarter of the duration: painting several hundred characters in
+    // one frame causes a visible reflow jump on a long answer, and a short ramp absorbs that. ~70 frames
+    // became ~16 (≈380ms at the 24ms tick below), which is under the threshold where a reveal reads as
+    // waiting rather than as rendering.
+    //
+    // The larger cost on this surface is untouched and is NOT this line: /chat awaits the entire JSON
+    // before showing anything, so perceived time-to-first-token is the FULL generation. Fixing that
+    // means moving this surface onto a streaming route — a real migration, not a constant.
+    const step = Math.max(2, Math.ceil(total / 16));
     let raf = 0;
     const tick = (ts: number) => {
       if (cancelled) return;
