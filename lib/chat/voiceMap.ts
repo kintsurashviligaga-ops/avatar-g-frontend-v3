@@ -28,6 +28,15 @@ export type VoiceTone = 'epic' | 'emotional' | 'energetic';
  *  voices; `en`/`ru` use ElevenLabs stock voices (spec-provided ids). child/elderly
  *  default to the female/male slot of the language until a dedicated id is set. */
 export const VOICE_MAP: Record<VoiceLanguage, Record<VoicePersonaSel, string>> = {
+  // ⚠️ CHILD AND ELDERLY ARE NOT DISTINCT VOICES — they alias female and male respectively, in EVERY
+  // language below. The composer offers four persona chips (👨 Man / 👩 Woman / 👶 Child / 👴 Elder) and
+  // two of them are therefore placebo: personaToGender() maps child→female and elderly→male, so the
+  // whole request is byte-identical to picking Woman or Man. A user who selects a child narrator pays
+  // for a render and receives an adult voice, with nothing saying the choice was ignored.
+  //
+  // This is a MISSING ASSET, not a bug in this table: no ELEVENLABS_VOICE_ID_*_CHILD / *_ELDERLY exists
+  // anywhere. Fixing it properly means either sourcing two more cloned voices, or removing the two chips
+  // — both product decisions. Recorded here so the next reader does not mistake the aliasing for intent.
   ka: { male: KA_VOICE_MALE, female: KA_VOICE_FEMALE, child: KA_VOICE_FEMALE, elderly: KA_VOICE_MALE },
   en: { male: 'pNInz6obpgDQGcFmaJgB', female: 'EXAVITQu4vr4xnSDxMaL', child: 'EXAVITQu4vr4xnSDxMaL', elderly: 'pNInz6obpgDQGcFmaJgB' },
   ru: { male: 'VR6AewLTigWG4xSOukaG', female: 'oWAxZDx7w5VEj9dCyTzz', child: 'oWAxZDx7w5VEj9dCyTzz', elderly: 'VR6AewLTigWG4xSOukaG' },
