@@ -7,7 +7,7 @@
 --     wallet_topups  = ref, user_id, amount_gel, created_at
 --     profiles       = ..., credits_balance
 --   An earlier draft of this file keyed idempotency on credit_ledger.ref and would have failed on the
---   first statement. Idempotency here uses `reason` + `metadata`, which do exist.
+--   first statement. Idempotency here keys off `metadata`, which does exist (see the note below).
 --
 -- ⚠️ THE DEFECT. Spends are priced in CREDITS (1 credit = 0.10 GEL, lib/credits/pricing.ts) and every
 --   generate route debits profiles.credits_balance in credits. But the cash rails credit that same
@@ -19,6 +19,13 @@
 -- ⚠️ AND THE SIGNUP GRANT WAS 1 CREDIT while the cheapest action costs 2 — so the first prompt after
 --   registering was guaranteed to hit a 402. Owner's decision: 10 credits = five free images, enough to
 --   see the product work before being asked for money.
+--
+-- ⚠️ `reason` IS CONSTRAINED. credit_ledger has a CHECK (credit_ledger_reason_check) that accepts only
+--   a small set — 'purchase', 'commit', 'refund' are the values actually present. A first run of this
+--   file used reason='denomination_repair_20260802' and died with 23514 on that constraint. This repo
+--   already learned that lesson once: 20260705_fix_credit_wallet_gel_reason.sql fixed the identical
+--   failure for reason='wallet_topup'. The established pattern is the one used here — a VALID reason,
+--   with the specifics in `metadata` — and idempotency keys off metadata rather than off reason.
 --
 -- SAFE TO RUN REPEATEDLY. Every statement is CREATE OR REPLACE or guarded by a marker row.
 -- ============================================================================
@@ -75,13 +82,14 @@ BEGIN
   -- Guarded so a re-fired trigger cannot stack grants on one account.
   IF EXISTS (
     SELECT 1 FROM public.credit_ledger
-     WHERE user_id = NEW.id AND reason = 'signup_bonus'
+     WHERE user_id = NEW.id AND metadata->>'kind' = 'signup_bonus'
   ) THEN
     RETURN NEW;
   END IF;
 
   INSERT INTO public.credit_ledger (user_id, delta, reason, metadata)
-  VALUES (NEW.id, 10, 'signup_bonus', jsonb_build_object('credits', 10, 'images', 5));
+  VALUES (NEW.id, 10, 'purchase',
+          jsonb_build_object('kind', 'signup_bonus', 'credits', 10, 'images', 5));
 
   UPDATE public.profiles
      SET credits_balance = COALESCE(credits_balance, 0) + 10
@@ -97,11 +105,11 @@ $fn$;
 -- Nobody is ever debited — GREATEST(...,0) means an account that somehow received MORE keeps it.
 DO $$
 DECLARE
-  v_marker text := 'denomination_repair_20260802';
+  v_marker text := 'denomination_repair_20260802';  -- lives in metadata->>'kind', NOT in reason
   v_rows   integer := 0;
   v_total  integer := 0;
 BEGIN
-  IF EXISTS (SELECT 1 FROM public.credit_ledger WHERE reason = v_marker) THEN
+  IF EXISTS (SELECT 1 FROM public.credit_ledger WHERE metadata->>'kind' = v_marker) THEN
     RAISE NOTICE 'denomination repair already applied — skipping';
     RETURN;
   END IF;
@@ -126,8 +134,9 @@ BEGIN
 
   -- Credit the difference and record WHY, so the ledger explains itself to whoever reads it next.
   INSERT INTO public.credit_ledger (user_id, delta, reason, metadata)
-  SELECT user_id, shortfall, v_marker,
-         jsonb_build_object('note', 'retroactive correction: cash top-ups were credited at 1 credit per GEL instead of 10')
+  SELECT user_id, shortfall, 'purchase',
+         jsonb_build_object('kind', v_marker,
+                            'note', 'retroactive correction: cash top-ups were credited at 1 credit per GEL instead of 10')
     FROM _owed
    WHERE shortfall > 0;
 
@@ -142,7 +151,7 @@ BEGIN
   -- Always leave the marker, even when nothing was owed, so a re-run is a genuine no-op.
   IF v_rows = 0 THEN
     INSERT INTO public.credit_ledger (user_id, delta, reason, metadata)
-    SELECT id, 0, v_marker, jsonb_build_object('note', 'no shortfall found')
+    SELECT id, 0, 'purchase', jsonb_build_object('kind', v_marker, 'note', 'no shortfall found')
       FROM public.profiles ORDER BY created_at NULLS LAST LIMIT 1;
   END IF;
 

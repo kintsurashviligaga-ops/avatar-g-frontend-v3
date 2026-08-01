@@ -6038,23 +6038,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setUpscaling(false);
   }, [upscaling, t.upscaling, t.upscaleFailed]);
 
-  // Surgical Editor is a full-panel, self-contained editor — it replaces the chat/composer view for its
-  // mode (a deterministic timeline editor doesn't fit the message-stream paradigm). Placed AFTER every hook
-  // above so the early return never violates the rules of hooks.
-  if (mode === 'surgical') {
-    return (
-      <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden text-app-text">
-        <SurgicalEditor
-          locale={locale}
-          initialAsset={editorAsset}
-          {...(editorMode ? { initialMode: editorMode } : {})}
-          onReturnToChat={handleReturnToChat}
-          onExit={() => { setEditorAsset(null); setEditorMode(null); setMode('chat'); }}
-        />
-      </div>
-    );
-  }
-
   /**
    * The rendered message list, memoised.
    *
@@ -6636,6 +6619,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // "ReferenceError: pending is not defined", and neither tsc nor exhaustive-deps caught it. Any name
   // added here must be a binding of THIS component.
 
+  // Surgical Editor is a full-panel, self-contained editor — it replaces the chat/composer view for its
+  // mode (a deterministic timeline editor doesn't fit the message-stream paradigm). Placed AFTER every hook
+  // above so the early return never violates the rules of hooks.
+  //
+  // ⚠️⚠️ NO HOOK MAY BE ADDED BELOW THIS LINE. I added a useMemo under it and every Montage/editor open
+  // crashed with React error #300 — "rendered fewer hooks than expected" — because this return skips it.
+  // The sentence above already said so and I added the hook anyway, so this is the louder version:
+  // a `useState`/`useMemo`/`useCallback`/`useEffect` placed after this `if` is a guaranteed white screen
+  // the moment `mode === 'surgical'`. New hooks go ABOVE, next to messageList.
+  if (mode === 'surgical') {
+    return (
+      <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden text-app-text">
+        <SurgicalEditor
+          locale={locale}
+          initialAsset={editorAsset}
+          {...(editorMode ? { initialMode: editorMode } : {})}
+          onReturnToChat={handleReturnToChat}
+          onExit={() => { setEditorAsset(null); setEditorMode(null); setMode('chat'); }}
+        />
+      </div>
+    );
+  }
+
+
   return (
     <div
       // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
@@ -6747,19 +6754,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <h2 className="text-[28px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
               <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-app-muted">{mode === 'video' ? (locale === 'en' ? 'Attach a photo, describe your video, and pick a length — then tap Create. I’ll storyboard it and render the film with Veo.' : locale === 'ru' ? 'Прикрепите фото, опишите видео и выберите длину — затем нажмите «Создать». Я сделаю раскадровку и соберу фильм на Veo.' : 'ატვირთე ფოტო, აღწერე ვიდეო და აირჩიე ხანგრძლივობა — შემდეგ დააჭირე „შექმნას". სცენარსაც და ფილმის აწყობასაც Veo-თი მე გავაკეთებ.') : t.empty}</p>
             </div>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {(locale === 'en'
-                ? ['A portrait of a Georgian winemaker, golden hour', 'A Tbilisi balcony cafe at dusk', 'A minimalist logo for a coffee brand']
-                : locale === 'ru'
-                ? ['Портрет грузинского винодела на закате', 'Кафе на балконе в Тбилиси, сумерки', 'Минималистичный логотип для кофейни']
-                : ['ქართველი მეღვინის პორტრეტი, ოქროს საათი', 'აივნის კაფე თბილისში, საღამო', 'მინიმალისტური ლოგო ყავის ბრენდისთვის']
-              ).map((p) => (
-                <button key={p} type="button" onClick={() => runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
-                  className="rounded-full border border-app-border/20 bg-app-elevated/40 px-3.5 py-2 text-[12.5px] text-app-text transition hover:border-app-accent/50 hover:bg-app-accent/5">
-                  {p}
-                </button>
-              ))}
-            </div>
+            {/* ⚠️ NO SAMPLE-PROMPT CHIPS HERE — REMOVED ON THE OWNER'S CALL, AND THIS COMMENT EXISTS SO
+                THEY ARE NOT RE-ADDED BY THE NEXT CONVERSION AUDIT. Three fixed suggestions were added
+                here to solve "a new user faces a blank box", and the owner looked at the result and
+                judged them visual noise on the product's most important screen. A pre-written prompt
+                also has a cost the audit did not price: it makes the first thing the user creates
+                somebody else's idea, and on a phone the chips pushed the composer down the fold.
+                If first-run guidance is wanted again, it belongs in the PLACEHOLDER or a dismissible
+                one-time hint — not as permanent furniture between the headline and the input. */}
           </div>
         ) : messageList}
       </div>

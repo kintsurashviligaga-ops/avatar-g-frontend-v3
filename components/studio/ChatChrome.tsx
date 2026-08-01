@@ -127,6 +127,35 @@ function LanguageSwitcher({ locale }: { locale: string }) {
   const [open, setOpen] = useState(false);
   const langClamp = useViewportClamp(open);
   const current = LANGS.find((l) => l.code === locale) ?? LANGS[0];
+  /**
+   * ⚠️ THE BACKDROP BELOW DOES NOT CATCH OUTSIDE TAPS, AND CANNOT. It is `fixed inset-0 z-[60]`, which
+   * looks like it covers the viewport — but it is rendered INSIDE the header, and the header establishes
+   * its own stacking context. So that z-60 is ordered against the header's other children, not against
+   * the composer and message list, which live in a sibling context painted on top. Measured: with the
+   * menu open, elementFromPoint(200, 600) returns the composer's BUTTON, never the backdrop. Tapping
+   * anywhere in the app left the menu hanging open.
+   *
+   * A document-level listener does not care about stacking contexts, so that is what closes it. The
+   * backdrop stays for what it is genuinely good at — swallowing the tap so the thing behind it is not
+   * ALSO activated when the tap does land on it.
+   *
+   * `pointerdown`, not `click`: it fires before focus moves and before a scroll can steal the gesture,
+   * which is what makes this feel instant on a phone rather than a beat late.
+   */
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
   const go = (code: string) => {
     setOpen(false);
     if (code === locale) return;
@@ -134,7 +163,7 @@ function LanguageSwitcher({ locale }: { locale: string }) {
     router.push(next.startsWith(`/${code}`) ? next : `/${code}/dashboard`);
   };
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapRef}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Language" aria-haspopup="menu" aria-expanded={open}
         className="flex min-h-[44px] items-center gap-1 rounded-full px-2 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
         <span className="text-[15px] leading-none">{current.flag}</span>
