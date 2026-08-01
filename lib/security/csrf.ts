@@ -1,7 +1,26 @@
 /**
  * CSRF Protection — Double-Submit Cookie Pattern
  *
- * Flow:
+ * ⚠️⚠️ NOT WIRED. THIS PROTECTS NOTHING TODAY. READ THIS BEFORE RELYING ON IT. ⚠️⚠️
+ *
+ * Every step of the flow described below is currently fiction, verified by grep:
+ *   · NO route calls `withCsrf()` — the composer exposes it (lib/api/compose.ts) and the only two
+ *     compose() users chain `.withRateLimit(...)` and nothing else.
+ *   · NO client sends an `X-CSRF-Token` header — the only occurrences of that string are in this file.
+ *   · `/api/auth/csrf` DOES NOT EXIST — app/api/auth/ contains only email-otp, otp, register and whoami.
+ *   · `generateCsrfToken` and `getServerCsrfToken` have zero call sites.
+ *
+ * So a reader — or an operator, or a security reviewer — encounters a file that asserts double-submit
+ * CSRF protection is in place, while zero requests are checked. A false assurance is worse than a
+ * missing one: it stops the question being asked. The implementation below is kept because it is
+ * correct and adopting it is a small change; what was wrong is that the header described it in the
+ * present tense.
+ *
+ * TO ACTUALLY ENABLE IT: add the GET /api/auth/csrf route, chain `.withCsrf()` on state-changing
+ * routes, and have the client send the header on mutations. Until all three exist, this module is
+ * inert — and this warning should be deleted only in the commit that wires the last of them.
+ *
+ * Intended flow (NOT the current behaviour):
  * 1. Client calls GET /api/auth/csrf → receives signed token in Set-Cookie + JSON body.
  * 2. Client includes the token in the `X-CSRF-Token` header on every mutation.
  * 3. Server validates the header value matches the cookie value before processing.
