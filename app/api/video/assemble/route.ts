@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { runSaga, type SagaStep } from '@/lib/orchestrator/saga';
@@ -258,6 +259,15 @@ async function assembleImpl(req: NextRequest) {
   // saga still runs unchanged for signed-in users.
   const { user } = await authedClientFromRequest(req);
   const uid = user?.id ?? null;
+  // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
+  // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
+  // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or
+  // capped. Rate limits do not help: they bound requests per key, and an anonymous caller has no key.
+  // Every guest render was pure external cost. The gate is now the first thing this route does.
+  {
+    const gate = requireAuthForGeneration(uid);
+    if (gate.response) return gate.response;
+  }
 
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
