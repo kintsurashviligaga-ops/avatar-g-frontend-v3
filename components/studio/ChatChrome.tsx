@@ -163,7 +163,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // iOS Safari leaves 100dvh full-height when the keyboard opens, sliding the composer
   // under it. Subtract the measured keyboard height from the shell so the input stays
   // visible (the same fix the sibling chat surface already uses).
-  const { keyboardOffset } = useKeyboardResilience();
+  // Only the measured height is needed here; the raw inset is consumed by OmniStudio, which
+  // publishes it as --kb-inset for the fixed-position overlays.
+  const { viewportHeight } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
   // GLOBAL LOADING BAR — a thin top progress bar shown during ANY generation. OmniStudio
   // (and other surfaces) emit `myavatar:busy` {active, service}; the shell just renders.
@@ -637,7 +639,17 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const closeLabel = lang === 'en' ? 'Close' : lang === 'ru' ? 'Закрыть' : 'დახურვა';
 
   return (
-    <div className="ag-fixed-shell fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{ height: keyboardOffset > 0 ? `calc(100dvh - ${keyboardOffset}px)` : '100dvh' }}>
+    <div className="ag-fixed-shell fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{
+      // ⚠️ WAS `calc(100dvh - keyboardOffset)`, WHICH DOUBLE-SUBTRACTS ON ANDROID. Chrome's `dvh` is the
+      // DYNAMIC viewport and already shrinks when the keyboard opens, so subtracting the offset removed
+      // the keyboard height twice and left a band of dead black space between the composer and the
+      // keyboard. iOS Safari does not shrink `dvh`, which is why the old formula looked correct there
+      // and the defect only ever showed on Android.
+      //
+      // The measured visual viewport is the visible area on both platforms, with no arithmetic to get
+      // wrong. Falls back to 100dvh where visualViewport is unsupported — the pre-existing behaviour.
+      height: viewportHeight > 0 ? `${viewportHeight}px` : '100dvh',
+    }}>
       {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
       {genBusy && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-[999]" aria-hidden style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
