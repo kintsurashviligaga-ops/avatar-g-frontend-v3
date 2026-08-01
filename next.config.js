@@ -40,6 +40,11 @@ if (process.env.VERCEL_GIT_COMMIT_SHA) {
 const nextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_ID: buildVersion,
+    // ⚠️ THE SETTINGS PANEL HARDCODED "v1.0.0" WHILE package.json SAID 2.0.0. A version string typed
+    // into a component drifts the moment anyone bumps the real one, and then it is actively misleading:
+    // a support conversation that starts from the wrong version number wastes everybody's time. Read
+    // from the single place the version actually lives.
+    NEXT_PUBLIC_APP_VERSION: require('./package.json').version,
   },
   images: {
     remotePatterns: [

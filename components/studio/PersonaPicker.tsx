@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { Bot, Check, Clapperboard, Code2, Palette, Plus, Sparkles, TrendingUp, Trash2, Wand2, X, type LucideIcon } from 'lucide-react';
 import {
   BUILT_IN_PERSONAS,
   personaName,
@@ -92,6 +92,37 @@ export interface PersonaPickerProps {
   onClose: () => void;
   /** Fires with the newly selected persona (null = default) so the shell can thread it into chat requests. */
   onSelect?: (persona: Persona | null) => void;
+}
+
+/**
+ * Line icons for the built-in personas, so this picker speaks the same visual language as the service
+ * menu beside it.
+ *
+ * ⚠️ THE TWO MENUS DISAGREED WITH EACH OTHER. The service picker draws crafted lucide line icons; this
+ * one drew the emoji from each persona's catalogue entry (🎬 📈 🎹 ⚙️ 🎨 ✨). Two lists, one composer,
+ * two icon systems — and emoji are painted by the OPERATING SYSTEM, so half of this menu looks different
+ * on an iPhone, an Android and a desktop no matter what the CSS says.
+ *
+ * The catalogue keeps its emoji: personas also appear in plain-text contexts where one glyph is the
+ * right unit. This map is the PICKER's opinion, and a persona with no entry — every USER-CREATED one —
+ * still falls back to its emoji rather than rendering nothing.
+ */
+const PERSONA_ICON: Record<string, LucideIcon> = {
+  default: Bot,
+  'film-director': Clapperboard,
+  'marketing-expert': TrendingUp,
+  'music-producer': Sparkles,
+  'software-engineer': Code2,
+  'ux-designer': Palette,
+  'content-creator': Wand2,
+};
+
+/** The line icon when we have one, the persona's own emoji when we do not. */
+function PersonaGlyph({ id, emoji }: { id: string; emoji: string }) {
+  const Icon = PERSONA_ICON[id];
+  return Icon
+    ? <Icon size={20} className="shrink-0 text-app-text" />
+    : <span className="text-[20px] leading-none">{emoji}</span>;
 }
 
 export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }: PersonaPickerProps) {
@@ -180,9 +211,11 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
           </button>
         </div>
 
-        {/* Default (no persona) */}
+        {/* Default (no persona) — hardcoded here rather than coming from the catalogue, which is why it
+            kept its emoji while every other row switched to a line icon. Same glyph component, so the
+            list is uniform top to bottom. */}
         <button type="button" onClick={() => choose('')} className={row}>
-          <span className="text-[20px] leading-none">🤖</span>
+          <PersonaGlyph id="default" emoji="🤖" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[13.5px] font-semibold text-app-text">{t.none}</span>
             <span className="block truncate text-[11.5px] text-app-muted">{t.noneSub}</span>
@@ -194,7 +227,7 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
 
         {BUILT_IN_PERSONAS.map((p) => (
           <button key={p.id} type="button" onClick={() => choose(p.id)} className={row}>
-            <span className="text-[20px] leading-none">{p.icon}</span>
+            <PersonaGlyph id={p.id} emoji={p.icon} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13.5px] font-semibold text-app-text">{personaName(p, lang)}</span>
               <span className="block truncate text-[11.5px] text-app-muted">{p.tagline[lang]}</span>
@@ -209,7 +242,7 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
             {customs.map((p) => (
               <div key={p.id} className="group flex items-center gap-1">
                 <button type="button" onClick={() => choose(p.id)} className={`${row} flex-1`}>
-                  <span className="text-[20px] leading-none">{p.icon}</span>
+                  <PersonaGlyph id={p.id} emoji={p.icon} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-semibold text-app-text">{personaName(p, lang)}</span>
                     <span className="block truncate text-[11.5px] text-app-muted">{p.directive.slice(0, 60)}</span>

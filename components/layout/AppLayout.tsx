@@ -33,7 +33,7 @@ const footerContentMap: Record<SupportedLocale, FooterContent> = {
       { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
       { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
     ],
-    copyright: '2024 MyAvatar. All rights reserved.',
+    copyright: 'MyAvatar. All rights reserved.',
     builtFor: 'Built for creators',
   },
   ka: {
@@ -43,7 +43,7 @@ const footerContentMap: Record<SupportedLocale, FooterContent> = {
       { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
       { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
     ],
-    copyright: '2024 MyAvatar.',
+    copyright: 'MyAvatar.',
     builtFor: 'Built for creators',
   },
   ru: {
@@ -53,7 +53,7 @@ const footerContentMap: Record<SupportedLocale, FooterContent> = {
       { title: 'Contact', links: ['Support', 'Contact Form', 'Status'] },
       { title: 'Socials', links: ['X', 'LinkedIn', 'GitHub'] },
     ],
-    copyright: '2024 MyAvatar.',
+    copyright: 'MyAvatar.',
     builtFor: 'Built for creators',
   },
 };
@@ -107,7 +107,10 @@ export function Footer() {
           ))}
         </div>
         <div className="flex flex-col md:flex-row justify-between items-center text-xs text-gray-400 pt-8 border-t border-white/10">
-          <span>{content.copyright}</span>
+          {/* ⚠️ THE YEAR WAS HARDCODED TO 2024 AND HAD GONE STALE. A footer two years behind is a small
+              detail that does specific damage on a page asking for a card: it is the cheapest available
+              signal that nobody is home. Derived at render, so it can never rot again. */}
+          <span>© {new Date().getFullYear()} {content.copyright}</span>
           <span>{content.builtFor}</span>
         </div>
       </div>

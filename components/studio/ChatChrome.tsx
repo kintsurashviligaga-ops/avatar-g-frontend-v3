@@ -1071,14 +1071,16 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <div className={settingsDivider} />
               {/* SECTION 5 — ABOUT (instant legal modals · mailto support) */}
               <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
-              <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v1.0.0</p>
+              <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v{process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0'}</p>
               <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
               <button type="button" onClick={() => setLegalOpen('terms')} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
               <a href="mailto:support@myavatar.ge" className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
               {authed && (
                 <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
               )}
-              <p className="px-2 pt-3 text-center text-[11px] text-app-muted">© 2024 MyAvatar</p>
+              {/* Derived, not written down — a hardcoded year goes stale every January and reads as an
+                  abandoned product to someone deciding whether to trust it with a payment. */}
+              <p className="px-2 pt-3 text-center text-[11px] text-app-muted">© {new Date().getFullYear()} MyAvatar</p>
             </div>
           </aside>
         </div>
