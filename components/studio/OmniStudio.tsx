@@ -3979,9 +3979,27 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // silence is far beyond any real first-token latency (even gemini-2.5-pro), so it never trips a
     // healthy answer — only a genuinely hung one.
     let watchdog: ReturnType<typeof setTimeout> | null = null;
+    // ⚠️ TIME-TO-FIRST-TOKEN WAS NEVER MEASURED, so every latency claim about this chat — including my
+    // own — has been unfalsifiable. There is no way to tell a healthy-but-slow provider from a wedged
+    // one without it, and no way to know whether a change helped. TTFT is the number that matters to a
+    // user: not how long the answer takes, but how long the screen stays empty.
+    const t0 = Date.now();
+    let ttftMs = 0;
+    const markFirstToken = () => {
+      if (ttftMs) return;
+      ttftMs = Date.now() - t0;
+      // eslint-disable-next-line no-console
+      console.info(`[chat] TTFT ${ttftMs}ms`);
+    };
+
     const armWatchdog = () => {
       if (watchdog) clearTimeout(watchdog);
-      watchdog = setTimeout(() => { try { ac.abort(); } catch { /* noop */ } }, 45_000);
+      // Before the first token the risk is a connection that never produces anything; after it, the risk
+      // is a stream that stalls mid-answer. The pre-token window is deliberately tighter: 45s of a blank
+      // screen is indistinguishable from a hang to the person waiting, whereas a 45s GAP inside a
+      // visibly-growing answer is a provider being slow at something already working.
+      const ms = ttftMs ? 45_000 : 20_000;
+      watchdog = setTimeout(() => { try { ac.abort(); } catch { /* noop */ } }, ms);
     };
     // Build the Gemini payload: text-only → string content; with media → native
     // multimodal parts (image / file) the route forwards as inline_data.
@@ -4039,6 +4057,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (!mine()) { try { await reader.cancel(); } catch { /* noop */ } break; }
         const { value, done } = await reader.read();
         if (done) break;
+        markFirstToken(); // first byte of the body — the moment the wait visibly ends
         armWatchdog(); // a chunk arrived → the stream is alive; reset the inactivity timer
         buf += dec.decode(value, { stream: true });
         const lines = buf.split('\n\n');
