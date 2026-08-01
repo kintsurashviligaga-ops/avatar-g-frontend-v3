@@ -91,11 +91,25 @@ export async function GET(req: NextRequest) {
 
     // Messages — joined via chat_sessions (production schema; legacy
     // "conversations"/"messages" tables don't exist on this Supabase project)
+    // ⚠️ TOLERATES BOTH COLUMN NAMES ON PURPOSE. supabase/migrations/20260801_durable_chat_history.sql
+    // renames chat_sessions.id -> session_id (the name lib/chat-history.ts, the trash route and
+    // types/database.types.ts have always assumed). This route is the ONE consumer still on the live
+    // name `id`, so a strict select here makes the deploy order load-bearing: rename first and this 500s
+    // until the code ships; ship first and it 500s until the SQL runs. Since the SQL is applied by hand
+    // in the Supabase editor, that window is not something this code can schedule. Asking for both and
+    // taking whichever exists removes the ordering constraint entirely.
     const { data: sessionRows } = await supabase
       .from('chat_sessions')
-      .select('id')
+      .select('session_id')
       .eq('user_id', user.id);
-    const sessionIds = (sessionRows ?? []).map(r => r.id);
+    let rows: Array<Record<string, unknown>> = (sessionRows ?? []) as Array<Record<string, unknown>>;
+    if (!sessionRows) {
+      const legacy = await supabase.from('chat_sessions').select('id').eq('user_id', user.id);
+      rows = (legacy.data ?? []) as Array<Record<string, unknown>>;
+    }
+    const sessionIds = rows
+      .map((r) => r.session_id ?? r.id)
+      .filter((v): v is string => typeof v === 'string');
 
     let messages: Array<{ content: string; created_at: string; role: string }> = [];
     if (sessionIds.length > 0) {

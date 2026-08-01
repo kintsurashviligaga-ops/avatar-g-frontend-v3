@@ -22,6 +22,7 @@ import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
+import { adoptLegacyArchive, conversationsKey, currentUid } from '@/lib/chat/historyKeys';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
@@ -920,7 +921,13 @@ function isMusicVideoIntent(s: string): boolean {
 // a LEAN copy — text + remote result URLs — and DROP base64 `medias` uploads (they
 // would blow the ~5 MB quota). `OMNI_CURRENT_ID_KEY` tracks the active chat so a
 // reload or "New Chat" (see ServiceHub) resumes/forks correctly.
-export const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
+/**
+ * ⚠️ WAS A SINGLE GLOBAL SLOT INSIDE THE SIGN-OUT WIPE. Two accounts on one browser overwrote each
+ * other's history, and signing out deleted it outright — permanently, because Supabase has never held
+ * a copy (chat_sessions: 0 rows; createSession selects a column that does not exist). Now uid-scoped and
+ * under ARCHIVE_PREFIX, which sign-out preserves. See lib/chat/historyKeys.ts.
+ */
+export const omniConversationsKey = (uid?: string | null) => conversationsKey(uid);
 export const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
 /**
  * ONE-SHOT resume handoff. The app must land on a FRESH, EMPTY chat on every open and every refresh —
@@ -941,16 +948,34 @@ function newConversationId(): string {
 function loadConversations(): Conversation[] {
   if (typeof window === 'undefined') return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as unknown;
+    const parsed = JSON.parse(window.localStorage.getItem(omniConversationsKey(currentUid())) ?? '[]') as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages))
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   } catch { return []; }
 }
+/**
+ * ⚠️ A QUOTA FAILURE USED TO DISCARD THE ENTIRE WRITE, SILENTLY. The bare catch-and-ignore meant that once
+ * the archive approached the ~5MB localStorage budget, EVERY subsequent save threw and was swallowed —
+ * so the history simply stopped recording new conversations while appearing to work, and the user's read
+ * of that is "it deleted itself". With no server copy (chat_sessions: 0 rows) that was permanent.
+ *
+ * Now the write SHEDS rather than fails: on a quota error it retries with progressively fewer
+ * conversations, oldest dropped first, so the newest work always lands. Losing the oldest thread is a
+ * real cost and it is the lesser one — the alternative was losing whatever the user just said.
+ */
 function saveConversations(list: Conversation[]): void {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(OMNI_CONVERSATIONS_KEY, JSON.stringify(list.slice(0, CONV_MAX))); } catch { /* quota */ }
+  const key = omniConversationsKey(currentUid());
+  const capped = list.slice(0, CONV_MAX);
+  for (const keep of [capped.length, Math.floor(capped.length / 2), 10, 3, 1]) {
+    if (keep <= 0) continue;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(capped.slice(0, keep)));
+      return;
+    } catch { /* quota — shed the oldest and try again */ }
+  }
 }
 function currentConversationId(): string {
   if (typeof window === 'undefined') return newConversationId();
@@ -2193,7 +2218,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, [conversationId]);
   const clearAllConversations = useCallback(() => {
-    try { window.localStorage.removeItem(OMNI_CONVERSATIONS_KEY); } catch { /* ignore */ }
+    try { window.localStorage.removeItem(omniConversationsKey(currentUid())); } catch { /* ignore */ }
     const fresh = newConversationId();
     setConversationId(fresh);
     setCurrentConversationId(fresh);

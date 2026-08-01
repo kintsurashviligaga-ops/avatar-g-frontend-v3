@@ -28,10 +28,37 @@ export const APP_STORAGE_PREFIXES = ['myavatar', 'omni', 'avatar-g', 'avatar_g',
  */
 export const PRESERVED_KEYS = ['myavatar-cookie-consent', 'myavatar-theme'] as const;
 
+/**
+ * ⚠️ SIGNING OUT WAS PERMANENTLY DESTROYING EVERY CHAT THE USER HAD EVER HAD.
+ *
+ * The wipe above is right for SESSION STATE and its reasoning is sound — on a shared machine the next
+ * person must not inherit the previous one's threads. But it was written on the stated assumption that
+ * Supabase held a copy, and that assumption is false: `chat_sessions` and `chat_messages` are EMPTY —
+ * 0 rows, verified against the live project. `createSession()` selects a `session_id` column that does
+ * not exist on the live table, PostgREST answers 42703, and the fail-soft catch swallows it, so the
+ * "DB mirror" has never once written a row. localStorage was not a CACHE of the history. It WAS the
+ * history — and sign-out deleted it, irreversibly, every time.
+ *
+ * The fix separates the two things that rule conflated. SESSION STATE (tokens, `sb-*`, the
+ * active-conversation pointer) belongs to the machine and still goes. The conversation ARCHIVE belongs
+ * to the USER and is now keyed by their uid — so the next person to sign in on this browser reads their
+ * own key and cannot see it. That is the privacy property the wipe was actually protecting, obtained
+ * without the destruction.
+ *
+ * ⚠️ ONE HONEST CAVEAT: a uid-scoped key is not encrypted, so anyone with devtools on that machine can
+ * still read it. That is a real weakening versus deleting outright, and it is the deliberate trade —
+ * while the server holds nothing, deleting the archive is not privacy, it is the only copy going in the
+ * bin. Once server persistence is verified writing rows this may revert to deletion: at that point the
+ * local copy genuinely IS a cache and dropping it costs the user nothing.
+ */
+export const ARCHIVE_PREFIX = 'myavatar-archive::';
+
 /** Does this storage key belong to the app's session data? Pure. */
 export function isAppSessionKey(key: string): boolean {
   if (!key) return false;
   if ((PRESERVED_KEYS as readonly string[]).includes(key)) return false;
+  // User-owned, uid-scoped archives outlive the session — see ARCHIVE_PREFIX above.
+  if (key.startsWith(ARCHIVE_PREFIX)) return false;
   const lower = key.toLowerCase();
   return APP_STORAGE_PREFIXES.some((p) => lower.startsWith(p));
 }

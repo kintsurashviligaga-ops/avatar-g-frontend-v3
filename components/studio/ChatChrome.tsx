@@ -60,6 +60,7 @@ import { AppToggle } from '@/components/ui/AppToggle';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
+import { adoptLegacyArchive, conversationsKey } from '@/lib/chat/historyKeys';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -319,7 +320,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // any consumer reads it with zero async.
   useEffect(() => {
     document.documentElement.dataset.authed = authed ? '1' : '0';
-  }, [authed]);
+    // Published for the same reason as `authed`: the conversation archive is keyed by uid and is touched
+    // from two components that share no provider. A stale uid in either would split one user's history
+    // across two storage keys — exactly the loss lib/chat/historyKeys.ts exists to prevent.
+    if (userId) document.documentElement.dataset.uid = userId;
+    else delete document.documentElement.dataset.uid;
+    adoptLegacyArchive(userId);
+  }, [authed, userId]);
 
   // Generation gate bridge — a surface that detects a guest dispatches `myavatar:auth-required` and we
   // open sign-in. This replaces the old shape where the request went out, the route answered 401, and
@@ -402,7 +409,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const sideRow = 'flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] font-medium text-app-text transition-colors hover:bg-app-elevated';
 
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
-  const OMNI_CONVERSATIONS_KEY = 'myavatar-omni-conversations';
+  // uid-scoped, and OUTSIDE the sign-out wipe — see lib/chat/historyKeys.ts. It was a single global slot
+  // that two accounts on one browser overwrote for each other, and that sign-out deleted outright.
+  const OMNI_CONVERSATIONS_KEY = conversationsKey(userId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Service hub is collapsed by default: chat history stays the sidebar's centre of gravity.
   const [personaOpen, setPersonaOpen] = useState(false);
