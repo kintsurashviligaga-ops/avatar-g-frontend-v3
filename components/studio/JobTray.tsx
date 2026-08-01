@@ -140,13 +140,25 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
 export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   const localJobs = useJobQueue((s) => s.jobs);
   const durableJobs = useJobQueue((s) => s.durableJobs);
+  const inlineJobIds = useJobQueue((s) => s.inlineJobIds);
   const cancel = useJobQueue((s) => s.cancel);
   const clearFinished = useJobQueue((s) => s.clearFinished);
   const t = tr(locale);
 
-  // Merge locally-run jobs with server-OBSERVED (reload-hydrated) ones — dedup by id so a
-  // job never renders twice. Observed rows sync to the DB pct/current_stage.
-  const jobs = mergeTrayJobs(localJobs, durableJobs);
+  // ONE OWNER PER JOB — this tray shows ONLY what nothing else is already showing.
+  //
+  // Every job submitted through the composer's queue pushes its own chat bubble in the same breath
+  // (runImageJob · runImageBatch · runMusicJob · submitFilmJob · generateProductAd · runVideoSwap all do),
+  // and that bubble renders GenerationProgress / FilmDirectorConsole / RemixStudioConsole INLINE in the
+  // conversation. So a LOCAL job is by construction already on screen, and repeating it in a floating
+  // corner card is not a second opinion — it is the fragmentation the user sees as "Renders · 2 active"
+  // hovering over "94% Drawing the slides…". Same for a durable row a mounted panel is narrating itself:
+  // ServiceParamsPanel claims its job id for as long as its card is up.
+  //
+  // What is LEFT is exactly what a tray is for: a server-side render with no card ANYWHERE — another tab,
+  // another device, a reload before the bubble came back, or a panel the user closed mid-render.
+  const owned = new Set<string>([...localJobs.map((j) => j.id), ...inlineJobIds]);
+  const jobs = mergeTrayJobs(localJobs, durableJobs).filter((j) => !owned.has(j.id));
 
   // VECTOR 2 — auto-dismiss a SUCCESSFUL render 4s after it lands, so the green "მზადაა" row never
   // lingers forever. Only HIDES it from the tray (the durable data log is untouched); failed /
@@ -168,13 +180,14 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => () => { for (const tmr of timersRef.current.values()) clearTimeout(tmr); timersRef.current.clear(); }, []);
 
   const visible = jobs.filter((j) => !dismissed.has(j.id));
-  // The loading card lives INLINE in the message stream (centred, in the chat flow) — NOT this floating
-  // corner card, which read as "hanging in the bottom-right". So the tray stays hidden whenever at most ONE
-  // render is ACTIVE (rendering/queued): the common single-generation case shows only the in-stream card.
-  // Counting ACTIVE jobs (not lingering "done"/"failed" rows) means a just-finished job can't resurrect the
-  // corner card while a NEW single generation is running. The tray returns ONLY as a 2+-parallel overview.
-  const activeVisible = visible.filter((j) => j.status === 'rendering' || j.status === 'queued');
-  if (activeVisible.length <= 1) return null;
+  // ⚠️ THE COUNT WAS THE WRONG LEVER. This used to hide the tray whenever ≤1 render was active, on the
+  // theory that the single-generation case is covered inline. It bought silence for exactly one job and
+  // then failed in both directions: a SECOND render made the tray reappear listing jobs that ALREADY had
+  // inline cards (two live percentages for the same work, in two places, disagreeing), while a lone render
+  // with no card anywhere — a closed panel, another tab, a reload — stayed hidden precisely when this tray
+  // was the only thing that could have shown it. Ownership, not arithmetic: `jobs` above is already only
+  // the unowned work, so the tray shows whatever is left and disappears when nothing is.
+  if (visible.length === 0) return null;
 
   const anyFinished = visible.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
   const activeCount = visible.filter((j) => j.status === 'rendering').length;

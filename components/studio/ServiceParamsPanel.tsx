@@ -29,6 +29,7 @@ import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDura
 import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { ResultActions } from './ui/ResultActions';
+import { useJobQueue } from '@/store/useJobQueue';
 import { DeckViewer } from './ui/DeckViewer';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
@@ -374,7 +375,20 @@ export function ServiceParamsPanel({
   const [removeBackground, setRemoveBackground] = useState(true);
 
   const cancelled = useRef(false);
-  useEffect(() => () => { cancelled.current = true; }, []);
+  // SINGLE OWNER PER JOB. Montage/dubbing/presentation/3D all create a `generation_jobs` row that
+  // useDurableProgress hydrates straight into the floating JobTray — so while this panel draws its own
+  // live card, the tray was drawing a SECOND one for the identical render (labelled "Image", since these
+  // rows ride service_type='image'). Claim the id while the card is up; release it on settle AND on
+  // unmount, so closing the panel mid-render HANDS the render to the tray instead of losing it.
+  const claimInline = useJobQueue((s) => s.claimInline);
+  const releaseInline = useJobQueue((s) => s.releaseInline);
+  const claimedRef = useRef<string[]>([]);
+  const claimJob = (id: string) => { if (!id || claimedRef.current.includes(id)) return; claimedRef.current.push(id); claimInline(id); };
+  const releaseClaims = () => { for (const id of claimedRef.current) releaseInline(id); claimedRef.current = []; };
+  // Held in a ref so the unmount teardown stays a true unmount-only effect (no re-subscribe churn).
+  const releaseRef = useRef(releaseClaims);
+  releaseRef.current = releaseClaims;
+  useEffect(() => () => { cancelled.current = true; releaseRef.current(); }, []);
 
   /** Poll our own job row until the request settles. Fail-quiet: progress is a nicety, never a blocker. */
   const watchStage = useCallback((jobId: string, stop: { done: boolean }) => {
@@ -428,7 +442,7 @@ export function ServiceParamsPanel({
     // Name the job so the poller below can follow it while the synchronous request is still open.
     const clientJobId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '';
     const stop = { done: false };
-    if (clientJobId && service !== 'model3d') watchStage(clientJobId, stop);
+    if (clientJobId && service !== 'model3d') { watchStage(clientJobId, stop); claimJob(clientJobId); }
     try {
       let endpoint = '';
       let body: Record<string, unknown> = {};
@@ -474,6 +488,10 @@ export function ServiceParamsPanel({
         return;
       }
       if (service === 'model3d') {
+        // ⚠️ 3D's row id is SERVER-generated: /api/v2/model3d/create ignores clientJobId and returns its
+        // own `jobId`, so the claim can only be made here, once the response lands. Without it the tray
+        // draws a second card over this panel's for the whole (slowest in the product) reconstruction.
+        if (typeof j?.jobId === 'string' && j.jobId) claimJob(j.jobId);
         // Show the reference image immediately; the mesh arrives via the poll below.
         setResult({ referenceUrl: j.referenceUrl });
         await poll3d(j.predictionId, j.jobId);
@@ -488,6 +506,9 @@ export function ServiceParamsPanel({
       stop.done = true;
       setStage(null);
       setBusy(false);
+      // The card is gone the instant busy clears, so ownership goes back immediately — a row that is
+      // somehow still active (e.g. a 502 the server has not yet marked failed) reappears in the tray.
+      releaseClaims();
     }
   }
 

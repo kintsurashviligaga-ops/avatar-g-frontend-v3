@@ -55,6 +55,16 @@ interface JobQueueState {
    * to the DB `pct`/`current_stage`. They have no local runner (read-only in the tray).
    */
   durableJobs: Job[];
+  /**
+   * SINGLE SOURCE OF TRUTH FOR "WHO IS ALREADY SHOWING THIS". Ids of jobs a surface is rendering its
+   * OWN inline progress card for (today: ServiceParamsPanel, for the durable row its render created).
+   * The JobTray subtracts these — plus every LOCAL job, which by construction always has a chat bubble —
+   * so one render is never drawn in two places at once. Claim while the card is on screen, release the
+   * moment it is not, which is what hands a closed-panel render back to the tray.
+   */
+  inlineJobIds: string[];
+  claimInline: (id: string) => void;
+  releaseInline: (id: string) => void;
   submit: (input: SubmitInput) => string;
   cancel: (id: string) => void;
   clearFinished: () => void;
@@ -72,6 +82,12 @@ export const useJobQueue = create<JobQueueState>((set, get) => {
   return {
     jobs: [],
     durableJobs: [],
+    inlineJobIds: [],
+    // Returning the SAME state object is an exact no-op in zustand (setState short-circuits on Object.is),
+    // so a redundant claim/release cannot re-render every tray subscriber. Do NOT "simplify" these into
+    // always allocating a new array.
+    claimInline: (id) => set((s) => (!id || s.inlineJobIds.includes(id) ? s : { inlineJobIds: [...s.inlineJobIds, id] })),
+    releaseInline: (id) => set((s) => (s.inlineJobIds.includes(id) ? { inlineJobIds: s.inlineJobIds.filter((x) => x !== id) } : s)),
     submit: (input) => {
       const id = queue.submit(input);
       // TASK 6 — CREATE THE DURABLE ROW AT THE FRONT-EDGE OF SUBMISSION (not at run-start), so a
