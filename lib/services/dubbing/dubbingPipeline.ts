@@ -135,37 +135,54 @@ export async function runDubbing(
     const voices = assignVoices(segments, opts.voiceId ?? null);
     dir = await mkdtemp(join(tmpdir(), 'dub-tts-'));
 
-    const clips: PlacedClip[] = [];
+    // ⚠️ THIS WAS ONE TTS ROUND TRIP PER LINE OF DIALOGUE, AWAITED BACK TO BACK. The route's header sizes
+    // a 5-minute source at 60–100 lines, so this loop alone was 60–100 serial calls — the longest single
+    // stretch of a job the browser is synchronously holding open.
+    //
+    // The lines are independent, and every ElevenLabs call already passes through `withElevenLabsSlot`,
+    // whose whole purpose is to hold real concurrency at the account's own limit
+    // (ELEVENLABS_MAX_CONCURRENCY, default 2). So the work was being serialised twice — once by the gate
+    // and once, redundantly, by this `await` — and the gate was running at a concurrency of one. Issuing
+    // the calls together cannot produce the 429 the gate exists to prevent; it just lets the gate do its
+    // job, and the leg gets faster for free if the EL plan is ever raised.
+    //
+    // Results are written back BY INDEX and filtered at the end, so clip order, every clip's timings and
+    // the `dropped` tally are exactly what the sequential loop produced. Each line's bytes are written to
+    // disk inside its own task and never returned, so peak memory stays at the gate's width, not N lines.
+    const dubDir = dir;
+    const slots: Array<PlacedClip | null> = segments.map(() => null);
     let dropped = 0;
-    for (let i = 0; i < segments.length; i += 1) {
-      const seg = segments[i];
-      if (!seg) continue;
+    let synthesized = 0;
+    await Promise.all(segments.map(async (seg, i) => {
+      if (!seg) return;
       const line = (seg.translated || seg.text).trim();
       const voiceId = voices.get(seg.speaker ?? '_') || '';
-      if (!line || !voiceId) { dropped += 1; continue; }
+      if (!line || !voiceId) { dropped += 1; return; }
 
       const out = await synthesizeWithTimestamps(line, voiceId);
       if (!out.ok) {
         dropped += 1;
         console.warn(`[dub/tts] segment ${i} failed: ${out.error}`);
-        continue;
+        return;
       }
       // ffmpeg reads these straight off disk — uploading every line just to hand it back a URL would add
       // one network round trip per line of dialogue.
-      const file = join(dir, `seg-${String(i).padStart(4, '0')}.mp3`);
+      const file = join(dubDir, `seg-${String(i).padStart(4, '0')}.mp3`);
       await writeFile(file, Buffer.from(out.audioBase64, 'base64'));
-      clips.push({
+      slots[i] = {
         url: file,
         startSec: seg.startSec,
         slotSec: Math.max(0.1, seg.endSec - seg.startSec),
         synthesizedSec: alignmentDuration(out.alignment?.character_end_times_seconds),
-      });
+      };
 
-      if (jobId && i % 10 === 0) {
+      synthesized += 1;
+      if (jobId && synthesized % 10 === 0) {
         const span = PCT.synthesize - PCT.translate;
-        await updateJobStage(jobId, 'synthesize', PCT.translate + Math.round((span * i) / segments.length)).catch(() => {});
+        await updateJobStage(jobId, 'synthesize', PCT.translate + Math.round((span * synthesized) / segments.length)).catch(() => {});
       }
-    }
+    }));
+    const clips: PlacedClip[] = slots.filter((c): c is PlacedClip => c !== null);
     if (!clips.length) return { ok: false, step: 'synthesize', error: 'no dialogue could be synthesized' };
     stepsRun.push('synthesize');
 

@@ -90,16 +90,37 @@ export async function renderVeoClipSync(args: VeoSyncArgs): Promise<VeoSyncResul
     if (!uri) return null; // deadline passed — caller falls through to its next engine
 
     // The raw Veo URI needs the API key to read, so it can never be handed to a client. Download
-    // server-side, re-host, then crop the watermark (audio preserved — that is the whole point of
-    // moving this surface to Veo).
+    // server-side, crop the watermark, host ONCE (audio preserved — that is the whole point of moving
+    // this surface to Veo).
+    //
+    // ⚠️ ORDER MATTERS FOR COST. This used to upload the raw clip and then hand stripBottomWatermark the
+    // resulting signed URL — so ffmpeg pulled the same ~10MB clip straight back down over the network to
+    // crop it, and the uncropped object then sat in the bucket for its full 7-day TTL with nothing
+    // pointing at it (one orphan per scene, every film). ffmpeg reads a path exactly like a URL, so the
+    // crop now works off the bytes we already have. The raw upload only happens if the crop does not
+    // produce a hosted result.
     const buf = await fetchVeoVideoBuffer(uri);
     if (!buf) return null;
     const folder = (args.folder || 'veo').replace(/[^a-z0-9/_-]/gi, '');
-    const hosted = await uploadBufferAndSign('renders', `${folder}/${Date.now()}.mp4`, buf, 'video/mp4', 604_800);
-    if (!hosted) return null; // generated but undeliverable — treat as a miss, never return a dead URL
-
     const cropAspect = (aspect === '9:16' ? '9:16' : '16:9') as '9:16' | '16:9';
-    const finalUrl = (await stripBottomWatermark(hosted, cropAspect).catch(() => null)) || hosted;
+    const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    let finalUrl: string | null = null;
+    const scratch = await mkdtemp(join(tmpdir(), 'veo-sync-'));
+    try {
+      const local = join(scratch, 'veo.mp4');
+      await writeFile(local, buf);
+      const cropped = await stripBottomWatermark(local, cropAspect).catch(() => null);
+      // ⚠️ stripBottomWatermark returns its INPUT unchanged when the crop percentage is 0, so only a real
+      // hosted https result may become the delivered URL — a /tmp path must never escape this function.
+      if (cropped && /^https?:\/\//i.test(cropped)) finalUrl = cropped;
+    } finally {
+      await rm(scratch, { recursive: true, force: true }).catch(() => {});
+    }
+    // Crop disabled (VEO_WATERMARK_CROP_PCT=0) or missed → host the raw clip, exactly as before.
+    if (!finalUrl) finalUrl = await uploadBufferAndSign('renders', `${folder}/${Date.now()}.mp4`, buf, 'video/mp4', 604_800);
+    if (!finalUrl) return null; // generated but undeliverable — treat as a miss, never return a dead URL
     return { url: finalUrl, engine: `Gemini Veo (${geminiVeoModel()})` };
   } catch {
     // Fail-open by contract — the caller's fallback chain handles it.

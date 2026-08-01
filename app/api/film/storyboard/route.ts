@@ -509,6 +509,12 @@ export async function POST(req: NextRequest) {
       clipSec,
       planOnly: true,
       anchorMode,
+      // The attached photos, ALREADY copied to signed Supabase URLs by hostRef above. Handing them
+      // back lets the client send THESE on the follow-up scriptsOnly + per-scene frame calls in the
+      // same flow instead of re-POSTing the identical base64 — which made this route write a fresh,
+      // byte-identical object to the bucket (and mint a new signed URL) once per call: 1 + 1 + one
+      // per scene. Same image, same frames; one upload instead of N.
+      hostedRefs,
       scenes: plan.scenes.map((s, i) => {
         const uploadedAnchor = anchorMode && i < hostedRefs.length;
         const scene1Locked = i === 0 && lockScene1Plan;

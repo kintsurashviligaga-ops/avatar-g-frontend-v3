@@ -248,7 +248,14 @@ export async function muxDubOntoVideo(videoUrl: string, audioUrl: string): Promi
     const buf = await readFile(out);
     if (buf.byteLength < 4096) return null;
     const path = `dubbing/video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', WEEK_SEC)) ?? null;
+    // Upload the BYTES, not a base64 string of them. The picture is stream-copied above, so this file is
+    // as big as the user's source (up to the 300s MAX_SOURCE_SEC ceiling). `uploadAndSign` takes base64,
+    // so this used to hold the buffer, a 1.33x string of it and the adapter's decoded copy at the same
+    // time — ~3.3x the file, at the very last step of a job that has already spent ten minutes. Same fix,
+    // same reason, as lib/video/surgicalOps.ts `host()`. (Local import: the module is already loaded, and
+    // `uploadAndSign` is still used by mixDubbedTrack/hostSubtitles in this file.)
+    const { uploadBufferAndSign } = await import('@/lib/orchestrator/storage-adapter');
+    return (await uploadBufferAndSign('renders', path, buf, 'video/mp4', WEEK_SEC)) ?? null;
   } catch (err) {
     console.warn('[dub/mux] failed:', err instanceof Error ? err.message : err);
     reportError(err, { where: 'dubbingFfmpeg.mux' });

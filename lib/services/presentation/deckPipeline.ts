@@ -110,24 +110,39 @@ export async function runDeckBuild(
 
     if (wantImages) {
       await stage(jobId, 'visuals');
-      for (let i = 0; i < slides.length; i += 1) {
+      // ⚠️ THIS WAS TWELVE IMAGEN ROUND TRIPS AWAITED ONE AFTER ANOTHER. Each is a 6–10s call with a 20s
+      // timeout followed by its own upload, so a full illustrated deck spent ~100s here — inside a 300s
+      // function, before 13 rasterisations and 13 more uploads had even started.
+      //
+      // Nothing here is sequential by nature: a slide's visual depends only on its own prompt, and the
+      // results are written back by index. Running them in fixed batches keeps slide order, the
+      // `imagesMissing` tally and the per-slide degradation bit-for-bit identical, while collapsing the
+      // leg to ~a third. The width is deliberately small — Imagen is metered per request and this is a
+      // fan-out, not a flood; the per-slide `.catch(() => null)` still absorbs every individual miss.
+      const VISUAL_CONCURRENCY = 3;
+      const buildVisual = async (i: number): Promise<void> => {
         const slide = slides[i];
-        if (!slide) continue;
+        if (!slide) return;
         // Fall back to the title when the model gave no imagePrompt — better than skipping the visual.
         const prompt = slide.imagePrompt || slide.title;
-        if (!prompt) { imagesMissing += 1; continue; }
+        if (!prompt) { imagesMissing += 1; return; }
         const images = await generateImagenImages({
           prompt: `${prompt}. Clean editorial illustration, no text, no words, no letters.`,
           aspectRatio: mapImagenAspect('16:9'),
           numberOfImages: 1,
         }).catch(() => null);
         const first = images?.[0];
-        if (!first) { imagesMissing += 1; continue; }
+        if (!first) { imagesMissing += 1; return; }
         const url = await hostPng(first.buffer, `img-${i}`).catch(() => null);
         if (url) slide.imageUrl = url; else imagesMissing += 1;
         // Hold the BYTES for compositing. resvg does no network I/O, so an https href in the SVG draws
         // nothing — the picture has to be inlined as a data URI at render time.
         imageData[i] = `data:${first.mimeType || 'image/png'};base64,${first.buffer.toString('base64')}`;
+      };
+      for (let start = 0; start < slides.length; start += VISUAL_CONCURRENCY) {
+        const batch: Array<Promise<void>> = [];
+        for (let i = start; i < Math.min(start + VISUAL_CONCURRENCY, slides.length); i += 1) batch.push(buildVisual(i));
+        await Promise.all(batch);
       }
       stepsRun.push('visuals');
     } else if (req.withImages) {

@@ -16,7 +16,12 @@
 /** Errors that mean "stop now" — never worth a retry. */
 function isTerminal(error: unknown): boolean {
   const name = error instanceof Error ? error.name : '';
-  return name === 'AbortError' || name === 'TimeoutError';
+  // 'NonRetryableError' is set by a call site that already KNOWS the upstream failure is
+  // deterministic (401 bad key / quota exhausted, 402, 403, 422 validation). Re-issuing the
+  // request buys the identical error a second and third time, plus the backoff sleep, before
+  // the caller's fallback finally runs. Purely additive: nothing sets this name today, so every
+  // existing call site keeps its current attempt count byte-for-byte.
+  return name === 'AbortError' || name === 'TimeoutError' || name === 'NonRetryableError';
 }
 
 export async function withRetry<T>(

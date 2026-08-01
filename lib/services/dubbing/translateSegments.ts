@@ -125,12 +125,17 @@ export async function translateSegments(
   const target = languageName(targetLanguage);
   const source = sourceLanguage ? languageName(sourceLanguage) : null;
 
-  const translated: string[] = [];
-  for (let i = 0; i < segments.length; i += BATCH_SIZE) {
+  // The batches are independent — each carries its own numbered slice, and nothing in one reads the
+  // result of another — so awaiting them in turn only added their latencies together: a 100-line source
+  // was four serial LLM calls. Running them together and flattening in slice order rebuilds precisely the
+  // array the sequential pushes produced, including the per-batch one-by-one fallback.
+  const batchStarts: number[] = [];
+  for (let i = 0; i < segments.length; i += BATCH_SIZE) batchStarts.push(i);
+  const batches = await Promise.all(batchStarts.map(async (i) => {
     const slice = segments.slice(i, i + BATCH_SIZE).map((s) => s.text);
-    const batch = await translateBatch(slice, target, source);
-    translated.push(...(batch ?? (await translateOneByOne(slice, target, source))));
-  }
+    return (await translateBatch(slice, target, source)) ?? (await translateOneByOne(slice, target, source));
+  }));
+  const translated: string[] = batches.flat();
 
   let untranslated = 0;
   const out = segments.map((s, i) => {

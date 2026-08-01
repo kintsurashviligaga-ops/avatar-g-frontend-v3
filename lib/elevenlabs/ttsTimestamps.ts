@@ -71,10 +71,24 @@ export async function synthesizeWithTimestamps(
               model_id: resolveTtsModel(opts?.modelId),
               voice_settings: { stability: opts?.stability ?? 0.48, similarity_boost: 0.8 },
             }),
-            ...(opts?.signal ? { signal: opts.signal } : {}),
+            // ⚠️ NO BOUND. Node's fetch never times out on its own, and the dubbing pipeline issues one of
+            // these per line of dialogue inside a 600s route — so ONE stalled connection burned the whole
+            // remaining budget and killed a job that had already paid for its extract, transcription and
+            // translation. withRetry treats a TimeoutError as terminal, so an expiry surfaces as the
+            // designed leg-4 degradation (that line is dropped and counted) rather than a retry storm.
+            // Built INSIDE the retried body so a second attempt would get a fresh clock, and a
+            // caller-supplied signal still wins exactly as before.
+            signal: opts?.signal ?? AbortSignal.timeout(120_000),
           });
           if (!res.ok) {
-            throw new Error(`ElevenLabs with-timestamps ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+            const err = new Error(`ElevenLabs with-timestamps ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+            // 429 (concurrent_limit_exceeded) and 5xx are transient — keep retrying those. Everything
+            // else from ElevenLabs is deterministic (401 = bad key OR quota_exceeded, 422 = validation),
+            // so the second attempt re-buys the same failure after a 1.5s sleep. The dubbing pipeline
+            // calls this ONCE PER LINE of dialogue, so that is one wasted request + 1.5s per line.
+            // The message the caller reports is unchanged — only the attempt count is.
+            if (res.status !== 429 && res.status < 500) err.name = 'NonRetryableError';
+            throw err;
           }
           const j = (await res.json()) as { audio_base64?: string; alignment?: unknown };
           if (!j.audio_base64 || !isElevenAlignment(j.alignment)) {

@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { withRetry } from '@/lib/utils/withRetry';
 import ffmpegStatic from 'ffmpeg-static';
-import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 
@@ -47,10 +47,19 @@ const BIN = ffmpegStatic as unknown as string | null;
 
 const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p'];
 
+/**
+ * Host a finished clip.
+ *
+ * ⚠️ USES uploadBufferAndSign, NOT uploadAndSign — the same fix, for the same reason, as
+ * lib/video/surgicalOps.ts `host()`. uploadAndSign takes BASE64, so this used to hold the buffer, a
+ * 1.33x base64 string built from it, and the adapter's decoded copy of that string all at once —
+ * roughly 3.3x the clip's size in a memory-bounded lambda, which is how large exports died with no
+ * error at all. The buffer path uploads the bytes directly and retries once on a transient failure.
+ */
 async function hostMp4(buf: Buffer, tag: string): Promise<string | null> {
   if (buf.byteLength < 1_024) return null;
   const path = `remix/${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-  return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
+  return (await uploadBufferAndSign('uploads', path, buf, 'video/mp4', 604_800)) ?? null;
 }
 
 /**
@@ -69,6 +78,28 @@ async function hostMp4(buf: Buffer, tag: string): Promise<string | null> {
  * `-shortest` keeps the output to the shorter of the two so a long VO never tails
  * past the picture.
  */
+/**
+ * Can this source's video stream be stream-COPIED into MP4 and still play exactly as the X264 pass
+ * would have played it? Requires H.264, 8-bit 4:2:0, and NO rotation display-matrix (autorotation is
+ * baked in by a re-encode but only carried as metadata by a copy, so a rotated phone clip keeps the
+ * proven re-encode). Anything else — HEVC, VP9, 10-bit, 4:2:2/4:4:4 — returns false. One header-only
+ * `ffmpeg -i` read (no decode, ~1 round trip) decides whether a full re-encode is needed at all.
+ */
+async function videoStreamIsMp4Copyable(url: string): Promise<boolean> {
+  if (!BIN) return false;
+  try {
+    // `-i` with no output prints the stream list to stderr then exits non-zero → the catch has it.
+    await exec(BIN, ['-hide_banner', '-i', url], { maxBuffer: 1 << 22, timeout: 30_000 });
+    return false;
+  } catch (e) {
+    const log = String((e as { stderr?: string })?.stderr ?? '');
+    if (/displaymatrix|rotation of/i.test(log)) return false; // autorotation must stay baked in
+    const m = /Stream #\d+:\d+[^\n]*: Video: ([^\n]*)/.exec(log);
+    if (!m || !m[1]) return false;
+    return /^h264\b/.test(m[1].trim()) && /\byuv420p\b/.test(m[1]);
+  }
+}
+
 export async function muxAudioOntoVideo(
   videoUrl: string,
   audioUrl: string,
@@ -80,10 +111,17 @@ export async function muxAudioOntoVideo(
   try {
     dir = await mkdtemp(join(tmpdir(), 'remix-mux-'));
     const out = join(dir, 'out.mp4');
+    // ONLY THE AUDIO CHANGES HERE, so the picture is stream-COPIED whenever the source allows it.
+    // Re-encoding a master we did not touch costs a full x264 pass over every frame (a 3-minute 1080p
+    // montage master is ~45-90s of lambda CPU), adds a generation of loss, and re-inflates a file that
+    // renderConcat deliberately VBV-capped to fit the storage limit. dubbingFfmpeg.muxDubOntoVideo has
+    // always copied for exactly this reason. The probe keeps the OUTPUT identical in codec, pixel
+    // format and orientation: anything not already H.264 8-bit 4:2:0 and unrotated takes X264 as before.
+    const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
     const replaceArgs = [
       '-y', '-i', videoUrl, '-i', audioUrl,
       '-map', '0:v:0', '-map', '1:a:0',
-      ...X264, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
+      ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
     ];
     if (mode === 'mix' || mode === 'under') {
       const db = Math.max(0, duckDb);
@@ -96,7 +134,7 @@ export async function muxAudioOntoVideo(
         '-y', '-i', videoUrl, '-i', audioUrl,
         '-filter_complex', graph,
         '-map', '0:v:0', '-map', '[aout]',
-        ...X264, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
+        ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
       ];
       try {
         await exec(BIN, mixArgs, { maxBuffer: 1 << 26, timeout: 180_000 });

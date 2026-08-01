@@ -3376,7 +3376,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // at the RENDER path above — a music video's audio is the song, not TTS dialogue.)
         body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; clipSec?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; clipSec?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null; hostedRefs?: string[] | null };
+      // The plan call above already hosted every attached photo to a signed Supabase URL. Reuse THOSE
+      // for the rest of this flow: re-sending the base64 made the route upload a fresh, identical copy
+      // on every follow-up call (scriptsOnly + one per scene) and re-shipped the whole payload each
+      // time. Only swap when the server hosted ALL of them to https — otherwise keep the originals so
+      // behaviour is byte-for-byte what it was.
+      const postedRefs = Array.isArray(j.hostedRefs)
+        && j.hostedRefs.length === refs.length
+        && j.hostedRefs.every((u) => typeof u === 'string' && /^https?:\/\//i.test(u))
+        ? j.hostedRefs
+        : refs;
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
         await startFilmRender(filmPrompt, refs, orientation, undefined); // plan miss → direct render (or queue when flag ON)
         return;
@@ -3431,7 +3441,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // INVENTS a persona (the "30-year-old man in a skydiver suit" drift). With refs it locks the real subject
             // and the route vision-extracts the actual character from the photo.
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
           });
           const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
@@ -3468,7 +3478,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // keeps the same face, hair and wardrobe. Skipped when the user uploaded their
       // own reference (that selfie already anchors identity). Fail-open: a miss falls
       // back to per-scene text frames (the prior, drift-prone behaviour).
-      let anchorRefs = refs;
+      let anchorRefs = postedRefs;
       if (!refs.length) {
         try {
           const ar = await fetch('/api/film/storyboard', {

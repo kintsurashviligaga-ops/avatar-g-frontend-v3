@@ -58,7 +58,12 @@ export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      throw new Error(`ElevenLabs Music ${res.status}: ${detail.slice(0, 300)}`);
+      const err = new Error(`ElevenLabs Music ${res.status}: ${detail.slice(0, 300)}`);
+      // Retry 429 (concurrent_limit_exceeded) and 5xx only. A 401 (bad key / quota_exceeded) or 422
+      // is deterministic: the current 3-attempt policy fires three identical paid-surface requests and
+      // sleeps 2s + 4s before the caller drops to MusicGen. Same final error, 6s sooner, 2 fewer calls.
+      if (res.status !== 429 && res.status < 500) err.name = 'NonRetryableError';
+      throw err;
     }
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 1_024) throw new Error('ElevenLabs Music returned an empty track');

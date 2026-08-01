@@ -518,7 +518,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       try {
         const muted = join(dir, 'master_mixed.mp4');
         await exec(bin, ['-y', '-i', out, '-af', hardMuteAf, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', muted], { maxBuffer: 1 << 28, timeout: 120_000, ...(signal ? { signal } : {}) });
-        await writeFile(out, await readFile(muted));
+        await rename(muted, out); // same fs → atomic, and no 42MB read-into-memory-and-write-back
         // eslint-disable-next-line no-console
         console.log(`[assemble] applied audio-mix hard-mute (${clampedMute.windows.length} window(s))`);
       } catch (e) { console.warn('[assemble] hard-mute post-pass skipped:', e instanceof Error ? e.message : e); }

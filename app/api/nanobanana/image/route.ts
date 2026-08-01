@@ -145,7 +145,11 @@ export async function POST(req: NextRequest) {
     // on a true insufficient balance; a ledger 'error'/'skipped' fails OPEN (proceed unbilled) to
     // preserve this route's try-to-generate behaviour, exactly as the old read-gate did.
     try {
-      const { user: rUser } = await authedClientFromRequest(req);
+      // ⚠️ SECOND NETWORK VALIDATION OF THE SAME JWT. applyApiGuards above already resolved the cookie
+      // session through auth.getUser(), which is a real round trip to GoTrue and not a local decode.
+      // Reuse its answer when it has one; fall back to the full resolver otherwise, because getAuthContext
+      // only reads cookies and this route must still accept the Authorization: Bearer path unchanged.
+      const rUser = gate.auth ? { id: gate.auth.userId } : (await authedClientFromRequest(req)).user;
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;

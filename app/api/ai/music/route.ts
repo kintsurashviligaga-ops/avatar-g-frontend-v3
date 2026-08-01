@@ -516,8 +516,13 @@ export async function POST(req: NextRequest) {
     // above), so there is NO charge here — only the durable completion row. Reuse the composer's tray
     // jobId so this UPSERTS the client's placeholder (one row, no duplicate); other callers get a UUID.
     try {
-      const { user } = await authedClientFromRequest(req);
-      await recordCompletedAsset({ id: clientJobId || randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'music', url: hostedUrl, prompt: capped });
+      // ⚠️ THE THIRD NETWORK VALIDATION OF THE SAME JWT IN ONE REQUEST — and this one sits between a
+      // finished track and the response the browser is waiting on, so its round trip is pure added
+      // latency with nothing to overlap it. The reserve block above already resolved this user into
+      // `reservedUid`; only the path where that block failed open still needs a lookup, and it lands on
+      // the same demo identity it always did.
+      const userId = reservedUid ?? (await authedClientFromRequest(req)).user?.id ?? DEMO_VOICE_USER_ID;
+      await recordCompletedAsset({ id: clientJobId || randomUUID(), userId, serviceType: 'music', url: hostedUrl, prompt: capped });
     } catch {
       /* fail-open */
     }
