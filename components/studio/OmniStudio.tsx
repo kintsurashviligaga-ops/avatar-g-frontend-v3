@@ -8035,7 +8035,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           disabled={!svc.live}
                           onClick={() => {
                             setModeMenuOpen(false);
-                            if (inline) { setStudioPrefill(undefined); setPanelService(svc.id as PanelService); }
+                            if (inline) {
+                              setStudioPrefill(undefined);
+                              // ⚠️ MONTAGE SKIPS THE PARAMS PANEL AND OPENS THE EDITOR DIRECTLY. The panel's
+                              // montage view was a staging step whose only forward action was a
+                              // "Full editor →" chip performing exactly this transition — so every montage
+                              // began with a tap that had one possible outcome. Editing video is what the
+                              // service IS; the drop target belongs on screen immediately, not one tap in.
+                              // This is the same state that chip set, reached without the detour.
+                              if (svc.id === 'montage') { setPanelService(null); setEditorMode('video'); setMode('surgical'); }
+                              else setPanelService(svc.id as PanelService);
+                            }
                             else router.push(serviceHref(svc, locale));
                           }}
                           className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
