@@ -63,8 +63,10 @@ export async function POST(req: NextRequest) {
   // rather than EXPENSIVE (5/min) which a couple of generations would exhaust.
   const rl = await checkRateLimit(req, RATE_LIMITS.AI);
   if (rl) return rl;
-  const apiKey = process.env.HEYGEN_API_KEY;
-  if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured' }, { status: 503 });
+  // The HeyGen key gates PHASE B ONLY. Phase A is pure ElevenLabs TTS and is the INPUT to the
+  // SadTalker fallback tier — gating it here killed the very fallback that exists to cover a
+  // missing HeyGen key, leaving presenter mode with ZERO working tiers. Gate moved to Phase B.
+  const apiKey = process.env.HEYGEN_API_KEY?.trim();
 
   // PRE-RENDER balance gate — block a paid presenter render (TTS + HeyGen) for a user who can't
   // afford it. The charge lands on the GET poll-success; authed only; fail-open.
@@ -87,11 +89,16 @@ export async function POST(req: NextRequest) {
     const gender = body.gender === 'male' ? 'male' : 'female';
     const audioUrl = await textToHostedSpeech(text.slice(0, 1500), georgianVoiceId(gender)).catch(() => null);
     if (!audioUrl) return NextResponse.json({ success: false, error: 'voice synthesis failed (no cloned-voice audio)' }, { status: 502 });
-    return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
+    // heygenReady tells the client whether Phase B is even worth attempting; when false it
+    // goes straight to the SadTalker tier with this same audioUrl.
+    return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, heygenReady: !!apiKey, voiceProvider: 'elevenlabs:cloned-ka' });
   }
 
   // ── PHASE B — drive the default presenter face with the hosted audio via HeyGen's
   // talking_photo path (upload + submit, both internally timeout-bounded → fast).
+  // THIS is where the HeyGen key is actually required. A 503 here is non-fatal: the client
+  // still has the Phase A audio and falls through to the Replicate SadTalker presenter.
+  if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured', code: 'heygen_not_configured' }, { status: 503 });
   const audioUrl = body.audioUrl;
   const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;
 

@@ -2297,7 +2297,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // local job settles (done → completed+url · failed/canceled → failed). Fired by the queue
   // engine's onSettle; best-effort (fire-and-forget POST). id === jobId, so the hydration
   // poll dedupes it via mergeTrayJobs.
-  const trackJobSettle = useCallback((job: QueueJob) => {
+  // `bubbleId` — the chat bubble this job owns, when it has one. Passed by every flow that pushes a
+  // progress bubble at submit time, so a settle that is NOT 'done' can replace the spinner with an
+  // honest line. Optional: the ×N batch patches its own tiles and passes nothing.
+  const trackJobSettle = useCallback((job: QueueJob, bubbleId?: string) => {
     if (job.status === 'done') {
       trackJobComplete(job.id, typeof job.result === 'string' ? job.result : undefined);
       // P91 — a QUEUED (background) video render just finished. The completion choke point
@@ -2313,6 +2316,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }
     } else {
       trackJobFail(job.id, job.status === 'canceled' ? 'canceled' : (job.error ?? undefined));
+      // ⚠️ THE CARD USED TO SPIN FOREVER. The engine guarantees every job reaches a terminal state, but
+      // nothing propagated that to the CHAT BUBBLE: the inline progress card only closes on an asset key
+      // or a '⚠️' text, and three paths land here with the bubble still empty — a transport rejection or
+      // an abort that escapes a runner before its error branch, and a cancel while the job is still
+      // QUEUED (jobQueue.cancel finalizes directly, run() never executes, so NO runner-side catch can
+      // ever fire). This is the one place every terminal outcome passes through, so the honest message is
+      // written here. Guarded: a landed asset, or a reason the runner already wrote, is never overwritten.
+      if (bubbleId) {
+        const canceled = job.status === 'canceled';
+        const note = canceled
+          ? `⏹ ${locale === 'en' ? 'Stopped' : locale === 'ru' ? 'Остановлено' : 'შეჩერდა'}`
+          : `⚠️ ${locale === 'en' ? 'Generation failed. Try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხერხდა. სცადე თავიდან.'}`;
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== bubbleId) return m;
+          if (m.imageUrl || m.audioUrl || m.videoUrl || m.text.startsWith('⚠️') || m.text.startsWith('⏹')) return m;
+          // '⚠️' is itself the close signal for all three inflight gates, so a FAILED bubble KEEPS its
+          // genKind (that key is what suppresses the chat-only Retry button, which would stream a text
+          // answer instead of re-running the generation). A CANCEL is not an error and must not shout,
+          // so it instead drops the keys those gates read.
+          return canceled
+            ? { ...m, text: note, genKind: undefined, remixOpKind: undefined, videoProgress: undefined }
+            : { ...m, text: note };
+        }));
+      }
     }
     // TASK 6 — a terminal job holds NO queue position; null it so no ghost "#N" lingers in the DB
     // (isolated from the status write above so a pre-migration column-miss can't undo the terminal).
@@ -2977,7 +3004,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Open the result in the chat (like image/music/swap): close the panel + drop a progress bubble.
     setOptionsOpen(false);
     setMessages((prev) => [...prev, { role: 'user', text: `🛍 ${productBrand.trim() || jobLabel}` }, { role: 'assistant', text: t.remixRunning, id: bubbleId, remixOpKind: 'productad' }]);
-    submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: trackJobSettle, run: async ({ signal, onProgress, jobId }): Promise<string> => {
+    submitJob({ kind: 'product', label: jobLabel, createParams: { title: productBrand.trim() || jobLabel }, onSettle: (job) => trackJobSettle(job, bubbleId), run: async ({ signal, onProgress, jobId }): Promise<string> => {
     // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
     trackJobUpdate(jobId, jobLabel, 10);
     // Stage → THIS job's bubble (by id) + tray. Never touches shared panel state, so concurrent
@@ -3562,7 +3589,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       kind: 'image',
       label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),
       createParams: { prompt },
-      onSettle: trackJobSettle,
+      // Terminal-honesty: a settle that is not 'done' (transport throw, abort, or a cancel while this
+      // job was still QUEUED and run() never ran) replaces this bubble's spinner. See trackJobSettle.
+      onSettle: (job) => trackJobSettle(job, bubbleId),
       run: async ({ signal, onProgress, jobId }) => {
         // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
         trackJobUpdate(jobId, 'Rendering', 8);
@@ -3573,6 +3602,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           credentials: 'include',
           signal,
           body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+        }).catch((e: unknown) => {
+          // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
+          // rejection escapes, because the floating tray is hidden while only one job is active
+          // (JobTray returns null at activeVisible.length <= 1). This runner had no catch at all, so a
+          // dropped connection skipped both updateBubble calls below and left the card at 95% forever.
+          // An abort is left to the settle handler, which writes the '⏹' line and clears the gate keys.
+          const aborted = signal.aborted || (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message)));
+          if (!aborted) updateBubble(bubbleId, { text: `⚠️ ${t.imageFailed}` });
+          throw e;
         });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
         onProgress({ pct: 100 });
@@ -3623,7 +3661,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         kind: 'image',
         label: `${(spec.prompt || 'Image').trim().slice(0, 32)} (${tileIdx + 1}/${count})`,
         createParams: { prompt: spec.prompt },
-        onSettle: trackJobSettle,
+        // The per-tile try/catch below covers a throwing runner — but a tile canceled while still
+        // QUEUED never runs it at all, and one 'pending' tile holds the whole batch card's inflight
+        // gate open (see the batch.tiles.some(pending) clause). Settle is the only place that shows.
+        onSettle: (job) => {
+          trackJobSettle(job);
+          if (job.status !== 'done') updateTile(tileIdx, { status: 'failed', jobId: job.id, error: job.status === 'canceled' ? undefined : (job.error ?? undefined) });
+        },
         run: async ({ signal, onProgress, jobId }) => {
           trackJobUpdate(jobId, 'Rendering', 8);
           onProgress({ pct: 8 });
@@ -3754,7 +3798,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       kind: 'music',
       label: m.prompt.trim().slice(0, 42) || (locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა'),
       createParams: { prompt: m.prompt },
-      onSettle: trackJobSettle,
+      // Same hole as the image runner: uploadBigFile / fetch below can reject before either
+      // updateBubble, and a queued-then-canceled job never runs at all. Settle patches the bubble.
+      onSettle: (job) => trackJobSettle(job, bubbleId),
       run: async ({ signal, onProgress, jobId }) => {
         trackJobUpdate(jobId, 'Composing', 10);
         onProgress({ pct: 10 });
@@ -4681,9 +4727,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Honour the panel's Voice (Female/Male) + Format selections.
             body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean };
           let sj: { success?: boolean; videoId?: string } = {};
-          if (syn.success && syn.audioUrl) {
+          // No HeyGen key → don't burn a round-trip on a submit that must 503; the SadTalker
+          // fallback below runs on the SAME cloned-voice audio. (undefined = older server → try.)
+          if (syn.success && syn.audioUrl && syn.heygenReady !== false) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
               body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation }),
@@ -4710,7 +4758,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
                 body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation }),
               });
-              const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null };
+              const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
+              // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
+              // media_unresolved) instead of the generic "lip-sync failed".
+              if (!fb.jobId && fb.error) failReason = fb.error;
               if (fb.jobId) {
                 failReason = null;
                 for (let i = 0; i < 90 && !url; i++) {
@@ -4931,7 +4982,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       label,
       createParams: { title: label },
       onSettle: (job) => {
-        trackJobSettle(job);
+        // bubbleId → a non-'done' settle (transport throw, abort, or a cancel while still queued)
+        // replaces this swap bubble's staged-timer console with an honest line.
+        trackJobSettle(job, bubbleId);
         // Ghost-asset wipe (Step 5): once the swap SETTLES (done / canceled / error) drop the
         // source video from the panel so no intermediate upload lingers as a stray ref. Guarded
         // by url so a source the user has SINCE replaced isn't clobbered; the cleanup effect then
