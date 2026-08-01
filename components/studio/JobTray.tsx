@@ -14,21 +14,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useJobQueue } from '@/store/useJobQueue';
-import type { Job, JobKind, JobStatus } from '@/lib/jobs/jobQueue';
+import type { Job } from '@/lib/jobs/jobQueue';
 import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
-import { Loader2, Check, X, AlertTriangle, Clock, Film, Music2, Image as ImageIcon, User, Wand2, type LucideIcon } from 'lucide-react';
+import { GenerationProgress, type ProgressKind, type ProgressState } from './ui/GenerationProgress';
 
 type Lang = 'ka' | 'en' | 'ru';
 
-const KIND_ICON: Record<JobKind, LucideIcon> = {
-  video: Film,
-  music: Music2,
-  avatar: User,
-  image: ImageIcon,
-  product: Film,
-  remix: Wand2,
-  lipsync: User,
-};
 
 function tr(locale: Lang) {
   const en = {
@@ -76,64 +67,46 @@ function tr(locale: Lang) {
   return en;
 }
 
-const STATUS_TONE: Record<JobStatus, string> = {
-  queued: 'text-app-muted',
-  rendering: 'text-app-accent',
-  done: 'text-emerald-500 dark:text-emerald-400',
-  failed: 'text-red-500 dark:text-red-400',
-  canceled: 'text-app-muted',
-};
 
+/**
+ * ⚠️ THIS ROW USED TO BE A SECOND, SMALLER IMPLEMENTATION OF THE PROGRESS CARD, and which one a user saw
+ * depended on WHICH DEVICE THEY WERE HOLDING. The device that submitted a render owns a chat bubble and
+ * gets the full GenerationProgress card; every other device — and this one after a reload — fell here, to
+ * a 7px icon, a 1.5px rail and a 10.5px caption. Nothing about that was responsive design: there is not
+ * one breakpoint class in either file. It was two implementations of one idea that were never meant to be
+ * compared side by side, and then the user put a phone and a desktop next to each other.
+ *
+ * It now renders the SAME card in `compact` form. Everything the old row showed is preserved — the job
+ * label, the queue position, the stage line, the failure reason, the cancel button — because dropping any
+ * of them to unify the look would trade one complaint for another.
+ */
 function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (id: string) => void }) {
-  const t = tr(locale);
-  const Icon = KIND_ICON[job.kind] ?? Film;
-  const active = job.status === 'rendering';
-  const queued = job.status === 'queued';
-
-  const statusLine =
-    queued ? t.queuePos(job.position ?? 1)
-    : active ? (job.stage || `${t.rendering}${job.pct ? ` ${job.pct}%` : ''}`)
-    : job.status === 'done' ? t.done
-    : job.status === 'failed' ? (job.error ? job.error.slice(0, 60) : t.failed)
-    : t.canceled;
+  // `product` is the only queue kind with no card equivalent; it is a video deliverable, so it reads as one.
+  const kind: ProgressKind = job.kind === 'product' ? 'video' : job.kind === 'avatar' ? 'lipsync' : job.kind;
+  const state: ProgressState =
+    job.status === 'rendering' ? 'running'
+    : job.status === 'queued' ? 'queued'
+    : job.status;
+  // Seconds this JOB has been running — not the shared component clock the inline card used to use.
+  const startedAt = job.startedAt ?? job.createdAt ?? Date.now();
+  const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
 
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2">
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-app-elevated ${STATUS_TONE[job.status]}`}>
-        {active ? <Loader2 size={14} className="animate-spin" />
-          : queued ? <Clock size={14} />
-          : job.status === 'done' ? <Check size={14} />
-          : job.status === 'failed' ? <AlertTriangle size={14} />
-          : <X size={14} />}
-      </span>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <Icon size={12} className="shrink-0 text-app-muted" />
-          <p className="truncate text-[12px] font-semibold text-app-text">{job.label}</p>
-        </div>
-        {/* Progress bar (rendering) or a thin idle rail (queued). */}
-        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-app-elevated">
-          <div
-            className={`h-full rounded-full transition-[width] duration-500 ${active ? 'bg-app-accent' : job.status === 'done' ? 'bg-emerald-500' : job.status === 'failed' ? 'bg-red-500' : 'bg-app-border/40'}`}
-            style={{ width: `${active ? Math.max(3, job.pct) : queued ? 8 : 100}%` }}
-          />
-        </div>
-        <p className={`mt-0.5 truncate text-[10.5px] ${STATUS_TONE[job.status]}`}>{statusLine}</p>
-      </div>
-
-      {(active || queued) && !job.observed && (
-        <button
-          type="button"
-          onClick={() => onCancel(job.id)}
-          aria-label={t.cancel}
-          title={t.cancel}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-        >
-          <X size={13} />
-        </button>
-      )}
-    </div>
+    <GenerationProgress
+      kind={kind}
+      locale={locale}
+      compact
+      elapsed={elapsed}
+      title={job.label}
+      state={state}
+      {...(job.pct ? { pct: job.pct } : {})}
+      {...(job.stage ? { status: job.stage } : {})}
+      {...(job.position ? { queuePosition: job.position } : {})}
+      {...(job.error ? { error: job.error } : {})}
+      {...((job.status === 'rendering' || job.status === 'queued') && !job.observed
+        ? { onCancel: () => onCancel(job.id) }
+        : {})}
+    />
   );
 }
 
