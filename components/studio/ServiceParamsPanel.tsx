@@ -169,7 +169,7 @@ const LANGUAGE_LABEL: Record<DubbingLanguage, string> = {
   it: 'Italiano', tr: 'Türkçe', ar: 'العربية', zh: '中文', ja: '日本語', ko: '한국어',
 };
 
-interface Result {
+export interface Result {
   videoUrl?: string;
   /** Deck identity — used for the ZIP filename and the cover slide. Both already returned by the route. */
   title?: string;
@@ -246,6 +246,7 @@ export function ServiceParamsPanel({
   onClose,
   onOpenFullEditor,
   prefill,
+  onDelivered,
 }: {
   service: PanelService;
   locale: string;
@@ -260,6 +261,17 @@ export function ServiceParamsPanel({
    * and "it started rendering because of something I typed in chat" is not a recoverable surprise.
    */
   prefill?: { targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string };
+  /**
+   * Hand a finished result to the conversation.
+   *
+   * ⚠️ WITHOUT THIS, EVERY RESULT THIS PANEL PRODUCES DIES WHEN THE PANEL CLOSES. Montage, dubbing,
+   * decks and 3D all rendered into `result` — local component state, inside a panel with a ✕ on it and
+   * nothing else holding a reference. A user could wait out a five-minute dub, see it, tap ✕ to get back
+   * to the conversation, and the video was simply gone from the screen: never posted to the stream,
+   * never recoverable except by hunting the Library. Four of the platform's live services delivered
+   * into a container designed to be dismissed.
+   */
+  onDelivered?: (service: PanelService, result: Result) => void;
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -279,6 +291,10 @@ export function ServiceParamsPanel({
   const [elapsed, setElapsed] = useState(0);
   /** Short confirmation from a result action ("Saved", "Link copied"), cleared on the next run. */
   const [note, setNote] = useState<string | null>(null);
+  // Held in a ref so the 3D poller — a useCallback that must not re-create mid-poll — can reach the
+  // current handler without taking it as a dependency.
+  const onDeliveredRef = useRef(onDelivered);
+  useEffect(() => { onDeliveredRef.current = onDelivered; }, [onDelivered]);
   useEffect(() => {
     if (!busy) { setElapsed(0); return; }
     const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -380,7 +396,11 @@ export function ServiceParamsPanel({
       ).catch(() => null);
       const j = await res?.json().catch(() => null);
       if (!j) continue;
-      if (j.status === 'succeeded' && j.glbUrl) { setResult((p) => ({ ...(p ?? {}), glbUrl: j.glbUrl })); return; }
+      if (j.status === 'succeeded' && j.glbUrl) {
+        setResult((p) => ({ ...(p ?? {}), glbUrl: j.glbUrl }));
+        onDeliveredRef.current?.('model3d', { glbUrl: j.glbUrl });
+        return;
+      }
       if (j.status === 'failed') { setError(j.message ? `${t.failed} · ${j.message}` : t.failed); return; }
     }
     setError(t.failed);
@@ -450,6 +470,8 @@ export function ServiceParamsPanel({
         await poll3d(j.predictionId, j.jobId);
       } else {
         setResult(j as Result);
+        // Post it to the conversation as well as showing it here, so closing the panel cannot destroy it.
+        onDeliveredRef.current?.(service, j as Result);
       }
     } catch {
       setError(t.failed);

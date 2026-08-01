@@ -134,6 +134,17 @@ describe('presentation', () => {
     expect(detectStudioIntent('make me a 10-slide deck about AI')?.params.slideCount).toBe(10);
     expect(detectStudioIntent('გამიკეთე 10 სლაიდიანი პრეზენტაცია AI-ზე')?.params.slideCount).toBe(10);
   });
+
+  // ⚠️ REGRESSION: the subject IS the request, and it was the one field never mined — the panel opened
+  // with the slide count filled, the topic blank, and the chat claiming it had captured the description.
+  it('mines the topic — the field that is the whole request', () => {
+    expect(detectStudioIntent('make me a 10-slide deck about AI')?.params.topic).toBe('AI');
+    expect(detectStudioIntent('გამიკეთე 10 სლაიდიანი პრეზენტაცია AI-ზე')?.params.topic).toBe('AI');
+    expect(detectStudioIntent('сделай презентацию на 10 слайдов про космос')?.params.topic).toBe('космос');
+    // The leading article is scaffolding, not subject — "history of Georgia" is the topic.
+    expect(detectStudioIntent('make a presentation about the history of Georgia')?.params.topic)
+      .toBe('history of Georgia');
+  });
 });
 
 describe('3D', () => {
@@ -143,6 +154,11 @@ describe('3D', () => {
     ['сделай 3d модель стула'],
   ])('routes to model3d: %s', (text) => {
     expect(route(text)).toBe('model3d');
+  });
+
+  it('mines the subject of the model', () => {
+    expect(detectStudioIntent('make a 3d model of a chair')?.params.topic).toBe('chair');
+    expect(detectStudioIntent('გამიკეთე 3d მოდელი სკამის')?.params.topic).toBe('სკამის');
   });
 });
 

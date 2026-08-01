@@ -22,6 +22,7 @@ import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
+import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
@@ -853,13 +854,24 @@ const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
 const isVideo = (m: string) => m.startsWith('video/');
 
-// Agent G granular reasoning steps (shown in the glowing overlay as the router orchestrates).
+/**
+ * Agent G steps, shown in the glowing overlay while the router classifies.
+ *
+ * ⚠️ THESE USED TO BE FIVE STEPS ADVANCED BY A 500 ms TIMER, AND FOUR OF THEM WERE FICTION. The only
+ * work happening behind that overlay is ONE call to /api/ai/agent-g — a text classifier with a 3-second
+ * timeout that decides which editor to open. It renders nothing and it saves nothing. Yet the overlay
+ * ticked off "Spinning up specialized models", "Rendering creative modifications" and "Securely
+ * persisting final asset" on a clock, so a user watched their file be "persisted to the library" by a
+ * process that never touched a file. If it ran slow the checkmarks landed anyway; if it failed they had
+ * already landed. A progress display whose steps are a function of `setInterval` is not reporting
+ * progress, it is animating.
+ *
+ * Two steps now, each tied to an event that actually occurs: the classify request going out, and the
+ * editor opening once it comes back with a route.
+ */
 const AGENT_G_PHASES: { icon: string; ka: string; en: string; ru: string }[] = [
-  { icon: '🔍', ka: 'მიმდინარეობს ბრძანების ანალიზი…', en: 'Parsing command parameters…', ru: 'Разбираю параметры команды…' },
-  { icon: '⚙️', ka: 'ხდება AI მოდელების ინიციალიზაცია…', en: 'Spinning up specialized models…', ru: 'Запускаю нейромодели…' },
-  { icon: '🎨', ka: 'მიმდინარეობს კრეატიული გენერაცია…', en: 'Rendering creative modifications…', ru: 'Генерирую творческие изменения…' },
-  { icon: '💾', ka: 'ფაილი საიმედოდ ინახება ბიბლიოთეკაში…', en: 'Securely persisting final asset…', ru: 'Надёжно сохраняю результат…' },
-  { icon: '🚀', ka: 'დასრულდა! სამუშაო სივრცე მზადაა…', en: 'Content ready. Refreshing workspace…', ru: 'Готово! Обновляю рабочую область…' },
+  { icon: '🔍', ka: 'ბრძანებას ვიგებ…', en: 'Understanding the command…', ru: 'Разбираю команду…' },
+  { icon: '🚀', ka: 'ვხსნი რედაქტორს…', en: 'Opening the editor…', ru: 'Открываю редактор…' },
 ];
 
 // FIX 2 — Chat-mode video intent. When the user describes a video in plain Chat
@@ -3493,7 +3505,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ? (spec.kind === 'image'
                 ? { role: 'assistant', text: '', imageUrl: j.url, regen: spec }
                 : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: spec })
-            : { role: 'assistant', text: `⚠️ ${j.error || failMsg}` };
+            // ⚠️ `j.error` is a MACHINE CODE. A 409 put the literal bubble "⚠️ duplicate_request" into a
+            // Georgian conversation — the user's own chat, speaking to them in snake_case English. The
+            // helper that turns a route body into a sentence already existed (lib/ui/opFailure) and was
+            // wired into the Surgical Editor only, so the same failure read properly in one surface and
+            // as a token dump in the other.
+            : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, failMsg)}` };
         }
         return next;
       });
@@ -4181,8 +4198,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // editor/remix path below — only a still image + a video-generation brief is redirected.
     if (gKind === 'image' && mentionsVideoDeliverable(text)) return false;
     if (!isImperativeCommand(text) || classifyIntent(text, gKind).route === 'CLARIFY') return false;
+    // Phase 0 is true for exactly as long as the classify request is in flight — no timer.
     setAgentGPhase(0); setAgentGBusy(true);
-    const phaseTimer = window.setInterval(() => setAgentGPhase((p) => (p < 3 ? p + 1 : p)), 500);
     try {
       const gRes = await fetch('/api/ai/agent-g', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -4196,9 +4213,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         body: JSON.stringify({ text, mediaKind: gKind }), signal: AbortSignal.timeout(3000),
       });
       const gj = (await gRes.json().catch(() => null)) as { route?: string; action?: string | null; actions?: string[] } | null;
-      window.clearInterval(phaseTimer);
       if (gRes.ok && gj?.route && gj.route !== 'CLARIFY') {
-        setAgentGPhase(4);
+        // Phase 1 = the router returned a route and the editor is being opened. This is the last thing
+        // that actually happens here; nothing renders and nothing is saved on this path.
+        setAgentGPhase(1);
         const actions = Array.isArray(gj.actions) && gj.actions.length ? gj.actions : gj.action ? [gj.action] : [];
         setEditorAsset({ url: a0.dataUrl, kind: gKind, ...(actions.length ? { autoActions: actions } : {}) });
         setInput(''); setAttachments([]); setOptionsOpen(false);
@@ -4209,7 +4227,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return true;
       }
     } catch {
-      window.clearInterval(phaseTimer);
       const msg = locale === 'en' ? 'G-Agent unavailable — continuing in chat' : locale === 'ru' ? 'G-Agent недоступен — продолжаю в чате' : 'G-Agent მიუწვდომელია — ვაგრძელებ ჩატში';
       setShareToast(msg); window.setTimeout(() => setShareToast((s) => (s === msg ? null : s)), 2400);
     }
@@ -4341,13 +4358,40 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         setStudioPrefill(studio.params);
       }
       const label = SERVICE_LABEL[studio.service]?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? studio.service;
+      // ⚠️ THIS REPLY CLAIMED A CAPTURE THAT OFTEN DID NOT HAPPEN. "Opened X with what you described" was
+      // printed unconditionally — including when the sentence yielded no parameters at all, and, before
+      // `topic` was mined, for every deck and 3D request, whose SUBJECT is the entire description. Telling
+      // someone you captured what you dropped is worse than saying nothing: it stops them checking the
+      // field you left blank. So the reply now lists what was actually applied, and admits an empty list.
+      const p = studio.params;
+      const en = locale === 'en', ru = locale === 'ru';
+      const captured: string[] = [];
+      if (p.topic) captured.push(en ? `topic “${p.topic}”` : ru ? `тема «${p.topic}»` : `თემა „${p.topic}“`);
+      if (p.slideCount) captured.push(en ? `${p.slideCount} slides` : ru ? `${p.slideCount} слайдов` : `${p.slideCount} სლაიდი`);
+      if (p.targetLanguage) captured.push((en ? 'language ' : ru ? 'язык ' : 'ენა ') + p.targetLanguage.toUpperCase());
+      if (p.durationSec) captured.push(en ? `${p.durationSec}s` : ru ? `${p.durationSec} сек` : `${p.durationSec} წმ`);
+      // ⚠️ AND THE USER'S FILES WERE DELETED HERE. `setAttachments([])` ran on this path too, so "dub this
+      // video" WITH the video attached opened the dubbing panel and destroyed the upload in the same step
+      // — leaving an empty picker and no file to put in it. The panel owns its own picker and needs a
+      // storage path (see lib/services/resolveUpload), so the honest move is to leave the attachment
+      // exactly where the user put it and say where to select it, rather than silently discard it.
+      const head = en ? `Opened **${label}**` : ru ? `Открыл **${label}**` : `გავხსენი **${label}**`;
+      const filled = captured.length
+        ? (en ? ` — filled in: ${captured.join(', ')}.` : ru ? ` — заполнил: ${captured.join(', ')}.` : ` — შევავსე: ${captured.join(', ')}.`)
+        : '.';
+      const files = attachments.length
+        ? (en ? ' Your attached file is still in the composer — pick it in the panel to use it.'
+          : ru ? ' Ваш файл остался в поле ввода — выберите его в панели.'
+            : ' შენი ფაილი შეტანის ველში დარჩა — აირჩიე პანელში გამოსაყენებლად.')
+        : '';
+      const tail = en ? ' Review the settings and start when you’re ready.'
+        : ru ? ' Проверьте настройки и запустите, когда будете готовы.'
+          : ' გადახედე პარამეტრებს და დაიწყე, როცა მზად იქნები.';
       setMessages((prev) => [...prev,
         { role: 'user', text },
-        { role: 'assistant', text: locale === 'en' ? `Opened **${label}** with what you described — review the settings and start it when you're ready.`
-          : locale === 'ru' ? `Открыл **${label}** с вашими параметрами — проверьте настройки и запустите, когда будете готовы.`
-          : `გავხსენი **${label}** შენი აღწერით — გადახედე პარამეტრებს და დაიწყე, როცა მზად იქნები.` },
+        { role: 'assistant', text: head + filled + files + tail },
       ]);
-      setInput(''); setAttachments([]); stopDictationEcho();
+      setInput(''); stopDictationEcho();
       return;
     }
 
@@ -8029,6 +8073,37 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             service={panelService}
             locale={locale}
             prefill={studioPrefill}
+            // ⚠️ FOUR LIVE SERVICES DELIVERED INTO A DISMISSIBLE BOX. Montage, dubbing, decks and 3D all
+            // rendered into the panel's own local state, and the panel has a ✕ on it — so a user could
+            // wait out a five-minute dub, look at it, tap ✕ to return to the conversation, and the video
+            // was gone from the screen with nothing in the chat to show it ever existed. The chat is
+            // supposed to be where the user RECEIVES things; these were the four that never arrived.
+            // Posting the result as a real message also means it survives a panel switch and a reload,
+            // and picks up the video branch's player, download, share, save and edit affordances for free.
+            onDelivered={(svc, r) => {
+              const en = locale === 'en', ru = locale === 'ru';
+              const label = SERVICE_LABEL[svc]?.[en ? 'en' : ru ? 'ru' : 'ka'] ?? svc;
+              const done = en ? `**${label}** — ready.` : ru ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
+              if (r.videoUrl) {
+                setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl: r.videoUrl }]);
+                return;
+              }
+              if (r.slides?.length) {
+                // The deck's own cover carries the thumbnail; the slide count is the honest summary, and
+                // the panel keeps the full ZIP. Without this the deck existed only until the panel closed.
+                const n = r.slides.length;
+                const summary = en ? `${done} ${n} slides${r.title ? ` · ${r.title}` : ''}`
+                  : ru ? `${done} ${n} слайдов${r.title ? ` · ${r.title}` : ''}`
+                    : `${done} ${n} სლაიდი${r.title ? ` · ${r.title}` : ''}`;
+                setMessages((prev) => [...prev, { role: 'assistant', text: summary, ...(r.coverUrl ? { imageUrl: r.coverUrl } : {}) }]);
+                return;
+              }
+              if (r.glbUrl) {
+                // No 3D branch exists in the message renderer, so this is a link rather than a viewer —
+                // a link that persists beats a viewer that is destroyed the moment the panel closes.
+                setMessages((prev) => [...prev, { role: 'assistant', text: `${done}\n\n[${en ? 'Open the 3D model' : ru ? 'Открыть 3D-модель' : '3D მოდელის გახსნა'}](${r.glbUrl})`, ...(r.referenceUrl ? { imageUrl: r.referenceUrl } : {}) }]);
+              }
+            }}
             onClose={() => { setPanelService(null); setStudioPrefill(undefined); }}
             // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
             // separately — one entry, both depths of editing.

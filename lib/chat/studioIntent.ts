@@ -170,6 +170,46 @@ function mineTargetLanguage(text: string): string | undefined {
 }
 
 /**
+ * The deck's subject / the model's object — extracted as the user's own words.
+ *
+ * ⚠️ THE ONE FIELD THAT IS THE WHOLE REQUEST WAS THE ONE FIELD NEVER MINED. `topic` is declared on
+ * StudioIntent['params'] and ServiceParamsPanel already consumes it (`if (prefill.topic) setTopic(...)`)
+ * — both ends of the wire were built and nothing ever connected them. So "make me a 10-slide deck about
+ * AI" opened the deck panel with the slide count filled, the subject blank, and the chat announcing
+ * "Opened Presentation with what you described". The count is the trivia; the subject is the request.
+ *
+ * SUBTRACTIVE, NOT PATTERN-MATCHED: strip the parts we have already understood — the imperative lead,
+ * the slide-count phrase, the service noun, then leading articles and "about/of/про/на" connectors —
+ * and whatever survives is the subject. A positive pattern would need to enumerate every possible topic;
+ * this only needs to enumerate the scaffolding, which is finite and already written above.
+ *
+ * Georgian marks "about X" with a postposition rather than a preposition (`AI-ზე`), so that suffix is
+ * removed at the end — a leading-connector rule cannot reach it.
+ */
+const TOPIC_CONNECTORS = new RegExp(
+  `^(?:${B0}(?:about|regarding|concerning|on\\s+the\\s+topic\\s+of|on|of|for|на\\s+тему|про|об|о|на|თემაზე|შესახებ)${B1}[\\s,]*)+`,
+  'iu',
+);
+/** Leading filler that is never part of a subject. */
+const TOPIC_FILLER = new RegExp(`^(?:${B0}(?:a|an|the|me|us|my|our|some|мне|нам)${B1}[\\s,]*)+`, 'iu');
+
+function mineTopic(t: string, service: StudioService): string | undefined {
+  if (service !== 'presentation' && service !== 'model3d') return undefined;
+  let s = t.replace(IMPERATIVE_LEAD, ' ');
+  // The slide-count phrase in all three languages, including the Georgian adjective form `10 სლაიდიანი`.
+  s = s.replace(new RegExp(`\\d{1,3}\\s*-?\\s*(?:slides?|სლაიდ${L}*|слайд${L}*)`, 'giu'), ' ');
+  const nounRe = SERVICE_NOUNS.find((n) => n.service === service)?.re;
+  if (nounRe) s = s.replace(new RegExp(nounRe.source, 'giu'), ' ');
+  s = s.replace(/[«»"'`]/g, ' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(TOPIC_FILLER, '').replace(TOPIC_CONNECTORS, '').replace(TOPIC_FILLER, '');
+  s = s.replace(new RegExp(`[-\\s]?ზე${B1}`, 'giu'), '');
+  s = s.replace(/^[\s,.;:—–-]+/, '').replace(/[\s,.;:!?]+$/, '').trim();
+  // Two characters is the floor for a real subject; below that it is punctuation debris, and a blank
+  // field the user must fill is better than a wrong one they have to notice and clear.
+  return s.length >= 2 ? s.slice(0, 200) : undefined;
+}
+
+/**
  * Route a sentence to a studio service, or null.
  *
  * Bounded: only the first 400 characters are examined. Every regex here is anchored or bounded, but a
@@ -209,5 +249,7 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
     const d = mineDurationSec(t);
     if (d) params.durationSec = d;
   }
+  const topic = mineTopic(t, hit.service);
+  if (topic) params.topic = topic;
   return { service: hit.service, params };
 }
