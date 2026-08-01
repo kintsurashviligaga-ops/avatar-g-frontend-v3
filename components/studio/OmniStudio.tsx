@@ -4269,6 +4269,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
+    // ⚠️ `mode` IS STICKY, AND THE MODE INTERCEPTS BELOW CLAIM EVERY TURN WITHOUT READING THE MESSAGE.
+    // `mode` is plain component state (declared ~1497) that persists until something sets it back, and the
+    // avatar branch begins with a bare `if (mode === 'lipsync')` — no intent check of any kind. So once
+    // ANYTHING puts the composer into a service mode (a tap in the mode menu, or the avatar sentence route
+    // that calls setMode('lipsync')), every later message is handed to that service no matter what it says.
+    //
+    // That is exactly how "გამიკეთე მულტფილმის საწყისი ფრეიმი 9:16 ფორმატი ამ რეფერენსით" — make me a
+    // cartoon opening frame in 9:16 from this reference — came back as "Avatar creation failed". The
+    // sentence never reached a classifier. It was a plain image-from-reference request, and the user was
+    // told that a service they never asked for had failed, then advised to re-attach their photo and try
+    // again, which could only ever fail the same way. Blaming the user for a misroute is the most
+    // confusing error this product can produce, and it is unfalsifiable from their side.
+    //
+    // So an EXPLICIT high-confidence command for a DIFFERENT service now releases the sticky mode. The bar
+    // is deliberately high — an imperative generate command AND confidence >= 0.8 — because a genuine
+    // follow-up inside a service ("make it longer", "again but warmer") carries no service noun, scores
+    // below it, and must stay with the service the user is working in. Bias: only an unmistakable switch
+    // moves the user, and everything ambiguous keeps today's behaviour.
+    let effMode = mode;
+    if (text && mode !== 'chat' && mode !== 'surgical' && isGenerativeCommand(text)) {
+      const want = detectIntent(text);
+      const MODE_BY_INTENT: Record<string, typeof mode> = {
+        image_generation: 'image', video_generation: 'video',
+        music_generation: 'music', avatar_generation: 'lipsync',
+      };
+      const wanted = want.confidence >= 0.8 ? MODE_BY_INTENT[want.intent] : undefined;
+      if (wanted && wanted !== mode) { effMode = wanted; setMode(wanted); }
+    }
     // PHASE 20 — request native-notification permission on the GENERATE gesture (this click),
     // for generative modes only. Must ride a user gesture (Chrome/Firefox block mount-time
     // prompts); once granted/denied it never re-prompts. Fire-and-forget — never blocks the send.
@@ -4628,7 +4656,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // the user's TRAINED voice via RVC) → Wav2Lip keys the character's lips to that
     // audio. A direct audio attachment also works (skips TTS). One long request → the
     // synced master, rendered inline like any other video result.
-    if (mode === 'lipsync') {
+    // effMode, not mode: an unmistakable image/video/music command typed while the composer happens to be
+    // parked in avatar mode belongs to that service, not to this one. See the mode-release guard above.
+    if (effMode === 'lipsync') {
       // Output format the user picked: presenter dimension + the result player's box.
       const lipOrientation = lipFormat === '9:16' ? 'vertical' : lipFormat === '1:1' ? 'square' : 'landscape';
       const lipResultOrientation: 'landscape' | 'vertical' = lipFormat === '16:9' ? 'landscape' : 'vertical';
