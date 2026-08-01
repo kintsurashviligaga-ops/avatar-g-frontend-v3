@@ -703,6 +703,57 @@ const MUSIC_PRESETS: ReadonlyArray<MusicPreset> = [
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
 
 /**
+ * Display names for the style chips.
+ *
+ * ⚠️ THIRTY CHIPS WERE RENDERING THEIR RAW ENGLISH VALUE into a Georgian-primary UI. The image and video
+ * strips did `{IMG_STYLES.map((s) => <Chip>{s}</Chip>)}`, so a Georgian user read "Photorealistic",
+ * "Oil Painting", "Line Art", "Noir" — and, best of all, a video style called "Georgian". These are the
+ * most-tapped controls in the two most-used panels, and they were the only part of those panels never
+ * translated.
+ *
+ * ⚠️ THE VALUE MUST STAY ENGLISH. It is not an id — it is appended to the model prompt as a style token,
+ * so translating the VALUE would change what gets rendered. This maps value → label and leaves the value
+ * untouched, which is why it is a lookup rather than a rewrite of the two arrays.
+ *
+ * Unmapped styles fall back to the raw value, so adding one to either array still ships a working chip.
+ */
+const STYLE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
+  Auto: { ka: 'ავტო', en: 'Auto', ru: 'Авто' },
+  Photorealistic: { ka: 'ფოტორეალისტური', en: 'Photorealistic', ru: 'Фотореализм' },
+  Cinematic: { ka: 'კინემატოგრაფიული', en: 'Cinematic', ru: 'Кинематографично' },
+  'Digital Art': { ka: 'ციფრული არტი', en: 'Digital Art', ru: 'Цифровое искусство' },
+  Anime: { ka: 'ანიმე', en: 'Anime', ru: 'Аниме' },
+  '3D Render': { ka: '3D რენდერი', en: '3D Render', ru: '3D-рендер' },
+  'Oil Painting': { ka: 'ზეთის ფერწერა', en: 'Oil Painting', ru: 'Масляная живопись' },
+  Watercolor: { ka: 'აკვარელი', en: 'Watercolor', ru: 'Акварель' },
+  Cyberpunk: { ka: 'კიბერპანკი', en: 'Cyberpunk', ru: 'Киберпанк' },
+  Fantasy: { ka: 'ფენტეზი', en: 'Fantasy', ru: 'Фэнтези' },
+  Minimalist: { ka: 'მინიმალისტური', en: 'Minimalist', ru: 'Минимализм' },
+  'Line Art': { ka: 'ხაზოვანი გრაფიკა', en: 'Line Art', ru: 'Линейная графика' },
+  'Pixel Art': { ka: 'პიქსელ არტი', en: 'Pixel Art', ru: 'Пиксель-арт' },
+  Documentary: { ka: 'დოკუმენტური', en: 'Documentary', ru: 'Документально' },
+  Vintage: { ka: 'ვინტაჟი', en: 'Vintage', ru: 'Винтаж' },
+  Neon: { ka: 'ნეონი', en: 'Neon', ru: 'Неон' },
+  Nature: { ka: 'ბუნება', en: 'Nature', ru: 'Природа' },
+  Noir: { ka: 'ნუარი', en: 'Noir', ru: 'Нуар' },
+  Aerial: { ka: 'საჰაერო ხედი', en: 'Aerial', ru: 'С высоты' },
+  Realistic: { ka: 'რეალისტური', en: 'Realistic', ru: 'Реалистично' },
+  Georgian: { ka: 'ქართული', en: 'Georgian', ru: 'Грузинский' },
+  Dramatic: { ka: 'დრამატული', en: 'Dramatic', ru: 'Драматично' },
+  Romantic: { ka: 'რომანტიული', en: 'Romantic', ru: 'Романтично' },
+  Action: { ka: 'ექშენი', en: 'Action', ru: 'Экшен' },
+  Horror: { ka: 'საშინელება', en: 'Horror', ru: 'Хоррор' },
+  Comedy: { ka: 'კომედია', en: 'Comedy', ru: 'Комедия' },
+};
+
+/** value → localized label, falling back to the value so a newly-added style still renders. */
+function styleLabel(value: string, locale: string): string {
+  const e = STYLE_LABEL[value];
+  if (!e) return value;
+  return locale === 'en' ? e.en : locale === 'ru' ? e.ru : e.ka;
+}
+
+/**
  * The option chip used by every per-service panel — Image, Music, Video, Avatar and Remix.
  *
  * ⚠️ IT WAS 36px TALL, against this repo's own TAP_MIN_PX = 44 (components/studio/ui/tokens.ts). The
@@ -6779,7 +6830,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {/* Horizontal-scroll strip (13 styles) — one calm row instead of a 4-5 row wrap wall.
                   Chips are shrink-0 so they scroll; matches the music Style + aspect strips. */}
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{s}</Chip>)}
+                {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{styleLabel(s, locale)}</Chip>)}
               </div>
             </div>
             {/* P7 — Negative prompt (expandable) */}
@@ -7416,7 +7467,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
                   reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{s}</Chip>)}
+                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
               </div>
             </div>
 
@@ -8367,6 +8418,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 onClick={() => setModeMenuOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={modeMenuOpen}
+                // ⚠️ ON MOBILE THIS BUTTON HAD NO ACCESSIBLE NAME AT ALL. Its only text is
+                // `hidden sm:inline`, so below the sm breakpoint the control is a bare icon and a screen
+                // reader announced nothing but "button" — for the composer's PRIMARY service picker, on
+                // the viewport where most of this product is used. `aria-haspopup`/`aria-expanded`
+                // already convey that it opens a menu; what was missing is WHICH service is selected,
+                // which is exactly what a sighted user reads off the icon.
+                aria-label={t[activeModeKey]}
                 className="flex h-11 shrink-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
               >
                 <ActiveModeIcon size={15} />
