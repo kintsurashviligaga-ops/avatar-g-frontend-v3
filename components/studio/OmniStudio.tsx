@@ -5065,11 +5065,42 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (live()) setSpeakPhase('playing');
         await new Promise<void>((resolve) => {
           let settled = false;
-          const done = () => { if (settled) return; settled = true; ttsResolveRef.current = null; URL.revokeObjectURL(url); resolve(); };
+          // ⚠️ THE WATCHDOG IS PART OF THE FIX, NOT A PRECAUTION. Ignoring a stale error means that if a
+          // load genuinely dies without ever firing `ended`, nothing would resolve this promise and the
+          // read would hang forever with the spinner up — trading a truncation for a freeze, which is
+          // worse. A sentence of TTS is a few seconds, so this ceiling can never cut real audio short;
+          // it only guarantees the loop always moves on.
+          let guard = 0;
+          const done = () => {
+            if (settled) return;
+            settled = true;
+            if (guard) window.clearTimeout(guard);
+            ttsResolveRef.current = null;
+            el.onended = null;
+            el.onerror = null;
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          guard = window.setTimeout(done, 90_000);
           // Register with the ref so a stop / message-switch can force this to resolve (pause fires neither event).
           ttsResolveRef.current = done;
-          el.onended = done;
-          el.onerror = done;
+
+          // ⚠️ A STALE `error` FROM THE PREVIOUS CHUNK ENDED THIS ONE BEFORE IT PLAYED — the read cut off
+          // after two or three words. One <audio> element is deliberately reused across chunks (that is
+          // what keeps playback user-activated), and `el.load()` on a src swap ABORTS the pending load,
+          // which fires `error`. That event is asynchronous, so it can land AFTER the next chunk has
+          // already assigned its own handlers — and the old handler ran `done`, which revoked this
+          // chunk's blob URL and advanced the loop before a single sample was played. Every later chunk
+          // met the same fate, so the message stopped almost immediately while the UI showed success.
+          //
+          // The guard: only accept an error that actually belongs to THIS chunk. `currentSrc` is the URL
+          // the element is really working on, so an event from a superseded load no longer counts. A
+          // genuine failure still ends the chunk — `el.error` is set for those, and the loop's `continue`
+          // skips it and keeps reading the rest.
+          const isForThisChunk = () => !el.currentSrc || el.currentSrc === url;
+          el.onended = () => { if (isForThisChunk()) done(); };
+          el.onerror = () => { if (isForThisChunk() && el.error) done(); };
+          // play() rejecting IS about the call we just made, so it is always ours to handle.
           el.play().catch(done);
         });
         if (!live()) { drainNext(nextUrlPromise); return; } // stopped mid-read → don't leak the prefetched chunk
