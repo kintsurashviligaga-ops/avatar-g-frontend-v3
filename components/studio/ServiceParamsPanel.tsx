@@ -22,13 +22,14 @@ import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '
 import { MontageEditor, type EditorClip } from './MontageEditor';
 import {
   Panel, PanelHeader, Group, Row, Label, TextArea, LabelledField,
-  ChipGroup, ToggleRow, PrimaryButton, GhostButton, Note, ProgressBar, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
+  ChipGroup, ToggleRow, PrimaryButton, SecondaryButton, GhostButton, Note, ProgressBar, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
 } from './ui/controls';
 import { useUpload } from './ui/useUpload';
 import { checkSourceDuration, readVideoDurationSec } from '@/lib/media/videoDuration';
 import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { ResultActions } from './ui/ResultActions';
+import { DeckViewer } from './ui/DeckViewer';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 
@@ -314,6 +315,13 @@ export function ServiceParamsPanel({
   const [dubDurationSec, setDubDurationSec] = useState<number | null>(null);
   const [dubTooLong, setDubTooLong] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
+  /**
+   * Which slide is open in the full-screen deck viewer; null = closed.
+   *
+   * Mirrors OmniStudio's `lightbox` state (a value = open, null = closed), but holds an INDEX rather
+   * than a url because a deck pages and a single chat image does not.
+   */
+  const [slideIndex, setSlideIndex] = useState<number | null>(null);
   const [targetLanguage, setTargetLanguage] = useState<DubbingLanguage>(lang === 'ka' ? 'en' : 'ka');
   const [preserveBg, setPreserveBg] = useState(true);
   const [subtitles, setSubtitles] = useState(true);
@@ -414,6 +422,7 @@ export function ServiceParamsPanel({
     setBusy(true);
     setError(null);
     setResult(null);
+    setSlideIndex(null);
     setStage(null);
     setNote(null);
     // Name the job so the poller below can follow it while the synchronous request is still open.
@@ -488,6 +497,19 @@ export function ServiceParamsPanel({
       : service === 'presentation' ? topic.trim().length >= 3
       : mode3d === 'text' ? prompt3d.trim().length >= 3 : Boolean(imageUrl3d.trim())
   );
+
+  /**
+   * Every page of the finished deck, COVER FIRST — one array driving both the thumbnail grid and the
+   * full-screen viewer, so a tile's position and the viewer's index can never drift apart.
+   *
+   * The cover is included deliberately: it is the deck's first page, it ships inside the ZIP as
+   * 00-cover.png (lib/services/presentation/deckZip.ts), and it is what the chat message uses as the
+   * deck's thumbnail — yet this panel never showed it at all.
+   */
+  const deckSlides = result?.slides ?? [];
+  const deckImages = deckSlides.length
+    ? [...(result?.coverUrl ? [result.coverUrl] : []), ...deckSlides.map((s) => s.pngUrl)]
+    : [];
 
   return (
     // HEIGHT IS CAPPED and the panel scrolls inside itself. A twelve-shot timeline is taller than the
@@ -756,13 +778,36 @@ export function ServiceParamsPanel({
               </Row>
             </>
           )}
-          {/* ⚠️ A FINISHED DECK COULD NOT BE TAKEN OUT OF THE BROWSER. This panel rendered thumbnails and
-              stopped: no download, no ZIP, no print. The user had paid for a deck and the only way to
-              obtain it was to right-click each slide in turn. The standalone studio had the export all
-              along — as a closure this file could not reach — so it is now shared. */}
-          {result.slides && result.slides.length > 0 && (
+          {/* ⚠️ THE DECK COULD BE DOWNLOADED BUT NOT READ. The grid below is capped at 52vh inside this
+              panel, so on a phone each slide was a ~110px tile — and tapping one did nothing. The deck
+              the user had just paid for could only be inspected by exporting the ZIP and opening it in
+              another app, which is not a preview of anything.
+
+              Each tile is now the trigger for the same full-screen overlay the chat uses for its images
+              (OmniStudio's `lightbox`), plus the paging a deck needs and a single picture does not. The
+              ZIP survives — demoted to the secondary action it always was, and moved BELOW the deck it
+              exports, so the first thing offered is the deck itself. */}
+          {deckImages.length > 0 && (
+            // 2 up on a phone, 3 from 480px. A hardcoded grid-cols-3 gave ~110px thumbnails on a 380px
+            // screen, which is not a preview of anything.
+            <div className="grid grid-cols-2 gap-1.5 min-[480px]:grid-cols-3">
+              {deckImages.map((url, i) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setSlideIndex(i)}
+                  aria-label={`${t.slides} ${i + 1}`}
+                  className="block w-full cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="w-full rounded-lg border border-app-border/10" />
+                </button>
+              ))}
+            </div>
+          )}
+          {deckImages.length > 0 && (
             <Row>
-              <PrimaryButton
+              <SecondaryButton
                 onClick={async () => {
                   setZipping(true);
                   try { await downloadDeckZip({ title: result.title, coverUrl: result.coverUrl, slides: result.slides ?? [] }); }
@@ -772,18 +817,17 @@ export function ServiceParamsPanel({
                 loading={zipping}
               >
                 {t.downloadDeck}
-              </PrimaryButton>
+              </SecondaryButton>
             </Row>
           )}
-          {result.slides && result.slides.length > 0 && (
-            // 2 up on a phone, 3 from 480px. A hardcoded grid-cols-3 gave ~110px thumbnails on a 380px
-            // screen, which is not a preview of anything.
-            <div className="grid grid-cols-2 gap-1.5 min-[480px]:grid-cols-3">
-              {result.slides.map((s) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={s.index} src={s.pngUrl} alt="" className="w-full rounded-lg border border-app-border/10" />
-              ))}
-            </div>
+          {slideIndex !== null && deckImages.length > 0 && (
+            <DeckViewer
+              images={deckImages}
+              index={slideIndex}
+              onIndex={setSlideIndex}
+              onClose={() => setSlideIndex(null)}
+              locale={lang}
+            />
           )}
           {/* The reference shows while the mesh is still reconstructing, so the wait is not a blank box. */}
           {result.referenceUrl && !result.glbUrl && (
