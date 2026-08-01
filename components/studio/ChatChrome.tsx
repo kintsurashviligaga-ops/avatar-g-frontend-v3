@@ -311,6 +311,24 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return () => window.removeEventListener('myavatar:voice-open', openVoice);
   }, [authed]);
 
+  // ⚠️ THE GENERATION GATE, PUBLISHED WHERE ANY SURFACE CAN READ IT SYNCHRONOUSLY. The composer must
+  // decide whether to send BEFORE it fires a request, and it cannot await an auth lookup at the moment
+  // of a tap without adding the very latency this session has been removing. A data attribute on <html>
+  // is the same publish-once pattern already used for --composer-h and --kb-inset: one owner writes it,
+  // any consumer reads it with zero async.
+  useEffect(() => {
+    document.documentElement.dataset.authed = authed ? '1' : '0';
+  }, [authed]);
+
+  // Generation gate bridge — a surface that detects a guest dispatches `myavatar:auth-required` and we
+  // open sign-in. This replaces the old shape where the request went out, the route answered 401, and
+  // the user met an error for something the UI could have known before spending the round-trip.
+  useEffect(() => {
+    const needAuth = () => { setAuthMode('login'); setAuthOpen(true); };
+    window.addEventListener('myavatar:auth-required', needAuth);
+    return () => window.removeEventListener('myavatar:auth-required', needAuth);
+  }, []);
+
   // Live Avatar enrollment bridge — any surface can dispatch `myavatar:avatar-enroll`. Authed → open the
   // enrollment sheet; guest → sign-in first (enrollment writes to the user's profile).
   useEffect(() => {

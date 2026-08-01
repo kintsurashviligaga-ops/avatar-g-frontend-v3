@@ -4233,6 +4233,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const lastSttWriteRef = useRef('');
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean }) => {
+    // ⚠️ GUESTS ARE STOPPED HERE, BEFORE ANY REQUEST LEAVES. The API routes now reject them (assemble,
+    // music, upscale), which stops the cost leak — but a 401 arriving after the send is a bad
+    // experience for something the UI already knew: the user watches a spinner, then gets an error for
+    // being logged out. Reading the flag ChatChrome publishes on <html> is synchronous, so this costs
+    // nothing at the moment of the tap, and the composer keeps its text — nothing is lost by signing in
+    // and pressing send again.
+    if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+      return;
+    }
     const text = (opts?.promptOverride ?? input).trim();
     // Was this send's text dictated (mic) or typed? Drives inputMethod + whether the reply auto-plays.
     // The mic sets inputSourceRef to 'voice' while transcribing; the keyboard onChange resets it to 'text'.
