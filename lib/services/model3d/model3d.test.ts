@@ -123,14 +123,18 @@ describe('client — submit', () => {
     expect(r).toMatchObject({ ok: false, retryable: false });
   });
 
-  it('uses the version-less model endpoint and returns the poll url Replicate supplies', async () => {
+  it('creates the prediction on the VERSIONED endpoint (firtoz/trellis is a community model, so the\n     version-less /v1/models/{owner}/{name}/predictions endpoint 404s) and returns the poll url', async () => {
     process.env.REPLICATE_API_TOKEN = 'k';
     let seen = '';
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async (url) => {
+    let sentBody: Record<string, unknown> = {};
+    const r = await submitReconstruction('https://x.dev/a.png', req(), async (url, init) => {
       seen = String(url);
+      if (init?.method === 'POST') sentBody = JSON.parse(String(init.body));
       return res({ body: { id: 'p1', urls: { get: 'https://api.replicate.com/v1/predictions/p1' } } });
     });
-    expect(seen).toBe('https://api.replicate.com/v1/models/firtoz/trellis/predictions');
+    expect(seen).toBe('https://api.replicate.com/v1/predictions');
+    expect(typeof sentBody.version).toBe('string');
+    expect(String(sentBody.version)).toHaveLength(64);
     expect(r).toMatchObject({ ok: true, predictionId: 'p1', pollUrl: 'https://api.replicate.com/v1/predictions/p1' });
   });
 

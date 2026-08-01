@@ -16,13 +16,18 @@ const MODELS = {
     label: 'Stability SDXL',
     outputType: 'image' as const,
   },
+  // BARE SLUGS, NOT PINNED HASHES. Both entries carried version hashes that 404 on
+  // GET /v1/models/{o}/{n}/versions/{id}: `lucataco/instant-id` no longer exists as a MODEL at all
+  // (404 "Model not found."), and the face-to-many hash shares only a 25-char prefix with the real one
+  // (a07f252abbbd832009640b27f063ea52…) — i.e. it was never a real version. createPrediction resolves a
+  // bare slug to the model's current latest_version, so these can no longer rot.
   'instant-id': {
-    id: 'lucataco/instant-id:4431ba781e823e9b0735b784f12d7aabb4af0ef6e13bde31f2697bb34323daff',
+    id: 'zsxkib/instant-id',
     label: 'Instant ID',
     outputType: 'image' as const,
   },
   'face-to-many': {
-    id: 'fofr/face-to-many:a07f252abbbd832009640b27f7a90d0a6b9e4e94be940163159f02f65bb6253f',
+    id: 'fofr/face-to-many',
     label: 'Face to Many',
     outputType: 'image' as const,
   },
@@ -38,8 +43,10 @@ const MODELS = {
     label: 'FLUX 1.1 Pro',
     outputType: 'image' as const,
   },
+  // Bare slug: the pinned hash 2c835e46… 404s (the model's real latest is 2c8e954decbf…), so the IMAGE
+  // service's `realistic` variant failed on every call. Let createPrediction resolve latest_version.
   'realistic-vision': {
-    id: 'lucataco/realistic-vision-v5.1:2c835e4606319db4dcb0acb0e6fba0a74af72de529aeab7c8dce1bba53b4972e',
+    id: 'lucataco/realistic-vision-v5.1',
     label: 'Realistic Vision',
     outputType: 'image' as const,
   },

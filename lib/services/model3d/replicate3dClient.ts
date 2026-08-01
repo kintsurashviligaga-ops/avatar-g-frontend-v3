@@ -5,9 +5,12 @@
  * so that service could never run. REPLICATE_API_TOKEN is already configured and already drives four other
  * pipelines here (anchor frames, lip-sync, the video cascade, FLUX).
  *
- * Uses the VERSION-LESS model endpoint (`/v1/models/{owner}/{name}/predictions`), the same shape
- * lib/pipeline/lipsync/lipsyncNode.ts uses — Replicate resolves the current version server-side, so a new
- * model release does not require a code change to a pinned hash.
+ * Predictions are created on `/v1/predictions` with an explicit `version`, NOT on the version-less
+ * `/v1/models/{owner}/{name}/predictions` endpoint. That version-less shape (which lipsyncNode uses for
+ * `sync/lipsync-2`) works ONLY for models Replicate flags `is_official: true`. firtoz/trellis is a
+ * community model, and the version-less endpoint answers 404 "The requested resource could not be found."
+ * for it — verified live. The version is resolved from the model's `latest_version` and cached, so a new
+ * model release still needs no code change; the pinned hash is only the fallback if that lookup fails.
  *
  * ⚠️ NOT VERIFIED AGAINST THE LIVE API. REPLICATE_API_TOKEN is empty locally (real values live in Vercel),
  * so every path below is exercised with a stubbed fetch and none with a real call. The output parsing is
@@ -24,6 +27,15 @@ import { mapReplicateStatus, pickGlbUrl, QUALITY_STEPS, type Model3dStatus, type
  * shap-e's output is not shippable.
  */
 const MODEL = 'firtoz/trellis';
+/**
+ * `firtoz/trellis` is `is_official: false`. Replicate's version-less `/v1/models/{owner}/{name}/predictions`
+ * endpoint is OFFICIAL-MODELS-ONLY; for a community model it returns 404 ("The requested resource could not
+ * be found"), which is exactly the `replicate_http_404` every 3D job was reporting. Community models must be
+ * run via `/v1/predictions` with a `version`. Resolved from `latest_version` at first use and cached for the
+ * lambda's life; this hash is the verified fallback if that lookup is unavailable.
+ */
+const MODEL_VERSION_FALLBACK = 'e8f6c45206993f297372f5436b90350817bd9b4a0d52d2a76df50c1c8afa2b3c';
+let _cachedVersion = '';
 const BASE = 'https://api.replicate.com/v1';
 const SUBMIT_TIMEOUT_MS = 30_000;
 const POLL_TIMEOUT_MS = 15_000;
@@ -51,6 +63,31 @@ function retryableStatus(status: number): boolean {
 }
 
 /**
+ * Current version hash for MODEL. NEVER THROWS — a failed lookup degrades to the pinned fallback rather
+ * than failing a submit, because a stale-but-valid version still renders while no version renders nothing.
+ */
+async function resolveModelVersion(k: string, fetchImpl: FetchImpl): Promise<string> {
+  if (_cachedVersion) return _cachedVersion;
+  try {
+    const res = await fetchImpl(`${BASE}/models/${MODEL}`, {
+      headers: { Authorization: `Bearer ${k}` },
+      signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
+    });
+    if (res.ok) {
+      const j = (await res.json().catch(() => null)) as { latest_version?: { id?: unknown } } | null;
+      const id = j?.latest_version?.id;
+      if (typeof id === 'string' && id) {
+        _cachedVersion = id;
+        return id;
+      }
+    }
+  } catch {
+    /* fall through to the pinned hash */
+  }
+  return MODEL_VERSION_FALLBACK;
+}
+
+/**
  * Submit a reconstruction. `imageUrl` must be PUBLICLY FETCHABLE — Replicate pulls it from its own
  * network, so a signed URL has to still be valid and a private-range host will simply fail there.
  */
@@ -64,10 +101,12 @@ export async function submitReconstruction(
   if (!/^https?:\/\//i.test(imageUrl)) return { ok: false, error: 'a reference image is required', retryable: false };
 
   try {
-    const res = await fetchImpl(`${BASE}/models/${MODEL}/predictions`, {
+    const version = await resolveModelVersion(k, fetchImpl);
+    const res = await fetchImpl(`${BASE}/predictions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        version,
         input: {
           images: [imageUrl],
           generate_model: true,

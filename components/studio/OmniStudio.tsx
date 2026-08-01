@@ -1463,7 +1463,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // added there shows up here without touching this file.
   const studioServices = useMemo(() => SERVICE_CATALOGUE.filter((s) => s.target.kind === 'path'), []);
   // Which service's parameter panel is open in the composer (null = none).
-  const [panelService, setPanelService] = useState<PanelService | null>(null);
+  const [panelService, setPanelServiceRaw] = useState<PanelService | null>(null);
   /** Parameters a chat sentence already specified, handed to the panel as initial values. */
   const [studioPrefill, setStudioPrefill] = useState<{ targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string } | undefined>(undefined);
   // The active conversation id + its messages (resumed from the saved history).
@@ -1494,7 +1494,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
-  const [mode, setMode] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
+  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -1520,6 +1520,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Mobile: the service-option panels collapse behind a toggle so they never cover the
   // chat (the cards are tall). Default collapsed on mobile; on desktop (sm:) always open.
   const [optionsOpen, setOptionsOpen] = useState(false);
+  /**
+   * ⚠️ THE COMPOSER HAD TWO OPTIONS SURFACES AND NO RULE THAT ONLY ONE MAY BE OPEN. `mode` drives the
+   * accordion panels (image · music · video · lipsync · remix, rendered inside the collapsible div at
+   * ~:6520) and `panelService` drives ServiceParamsPanel (dubbing · presentation · 3D, rendered BELOW
+   * that div at ~:8101). They are separate state, ten different call sites set one without touching the
+   * other, and both render — so choosing Dubbing while the Avatar panel was open stacked a floating
+   * "Dubbing ✕" card underneath the live Avatar/Motion tabs, two services accepting input at once.
+   *
+   * Enforced HERE rather than at the ten call sites on purpose: a per-site fix is one forgotten
+   * `setMode` away from coming back, and the eleventh call site has not been written yet. Opening either
+   * surface closes the other, LAST ACTION WINS, and no call site changes.
+   *
+   * `setMode('chat')` deliberately does NOT clear the panel — opening a panel parks `mode` at 'chat',
+   * so clearing there would close the panel the same tick it opened.
+   */
+  const setMode = useCallback((m: 'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical') => {
+    setModeRaw(m);
+    if (m !== 'chat') { setPanelServiceRaw(null); setStudioPrefill(undefined); }
+  }, []);
+  const setPanelService = useCallback((svc: PanelService | null) => {
+    setPanelServiceRaw(svc);
+    if (svc) { setModeRaw('chat'); setOptionsOpen(false); }
+  }, []);
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).

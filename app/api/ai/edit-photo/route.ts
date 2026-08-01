@@ -33,12 +33,16 @@ const COST: Record<PhotoAction, number> = { remove_bg: 2, upscale: 5, face_resto
 // These are the stable, high-traffic, currently-active checkpoints for each op. Overridable via env; a wrong/absent
 // slug fails cleanly (createPrediction throws) → the credit is REFUNDED, not lost. Fallbacks an operator may pin:
 // remove_bg → cjwbw/rembg or 851-labs/background-remover; upscale → lucataco/real-esrgan-large.
+// ⚠️ EVERY SLUG BELOW WAS VERIFIED TO EXIST via GET /v1/models/{owner}/{name}. Three of the previous
+// defaults (briaai/bria-rmbg, tencentarc/ddcolor, bria/replace-background) DO NOT EXIST on Replicate —
+// they returned 404 "Model not found.", so remove_bg, colorize and background_replace failed on 100% of
+// calls with `Replicate model lookup 404`. Never add a slug here without checking it against the live API.
 const DEFAULT_MODEL: Record<PhotoAction, string> = {
-  remove_bg: 'briaai/bria-rmbg',       // BRIA RMBG — commercial-grade, ultra-clean background removal (input: image)
-  upscale: 'nightmareai/real-esrgan',  // Real-ESRGAN super-resolution (most-run, bulletproof)
-  face_restore: 'tencentarc/gfpgan',   // GFPGAN v1.4 face restoration (industry standard)
-  colorize: 'tencentarc/ddcolor',      // DDColor B/W → colour (stable, realistic)
-  background_replace: 'bria/replace-background', // prompt-driven background swap (input: image + prompt). PIN via env to your verified checkpoint.
+  remove_bg: '851-labs/background-remover',  // required input: `image`. Verified live.
+  upscale: 'nightmareai/real-esrgan',        // Real-ESRGAN super-resolution (official, verified live)
+  face_restore: 'tencentarc/gfpgan',         // GFPGAN v1.4 face restoration (verified live)
+  colorize: 'piddnad/ddcolor',               // DDColor B/W → colour, required input: `image`. Verified live (2.7M runs).
+  background_replace: 'bria/generate-background', // official; accepts `image` + `bg_prompt` — exactly what inputFor() already sends. Verified live.
 };
 const ENV_KEY: Record<PhotoAction, string> = {
   remove_bg: 'REPLICATE_REMOVE_BG_MODEL',
