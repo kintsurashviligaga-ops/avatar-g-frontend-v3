@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
 import { GenerationProgress, PROGRESS_TARGET, fmtClock } from '@/components/studio/ui/GenerationProgress';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
-import { sceneCountForDuration } from '@/lib/video/sceneGrid';
+import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
@@ -1852,7 +1852,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Product-Ad still renders via Kling (~5s clips), so it keeps its OWN coherent 6/30/60 grid (30s = 6×5s).
   // Moving it to Veo's 8s grid needs handling Veo's baked-in per-clip audio in the music/VO assembly — a
   // deliberate follow-up, tracked separately from the Veo-first FILM pipeline (which IS on the 8/24/48 grid).
-  const [productDuration, setProductDuration] = useState<6 | 30 | 60>(6);
+  // ⚠️ REALIGNED TO VEO'S 8s GRID. This was 6/30/60, sized for Kling's ~5s clips. Product-Ad became
+  // Veo-primary, and Veo renders 4–8s per clip — so "30s" was fanning out 6 clips at 8s ≈ 48s, and the
+  // assembler was told each was 5s, which also sized the music bed for a film 18 seconds shorter than
+  // the one it scored. Same grid as Cinema now (sceneCountForDuration: 8→1, 24→3, 48→6), so the chip
+  // the user taps is the length they receive.
+  const [productDuration, setProductDuration] = useState<8 | 24 | 48>(8);
   // Product-Ad context — brand/price/hook + CTA + Georgian voiceover. Optional; when set
   // they feed the EXISTING assemble marketing overlay (price chip + CTA pill + brand
   // lower-third) and an auto voiceover script (TTS'd server-side on the cloned KA voice).
@@ -3048,7 +3053,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         landVideo(res.url); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film');
         return res.url;
       }
-      const n = Math.round(duration / 5); // product-ad: 30→6, 60→12 clips of ~5s (Kling)
+      const n = sceneCountForDuration(duration); // 8→1 · 24→3 · 48→6, the same 8s grid the server renders
       setStage(locale === 'en' ? `Generating ${n} clips…` : locale === 'ru' ? `Генерация ${n} клипов…` : `${n} კლიპის გენერაცია…`);
       // Batch StallDetector (Task 5.1): tick as clips settle; a 5s watchdog surfaces a "provider
       // slow" stage the FIRST time no clip has landed for the stall window — an honest bottleneck
@@ -3084,7 +3089,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setStage(enrich
         ? (locale === 'en' ? 'Stitching + voiceover + branding…' : locale === 'ru' ? 'Сборка + озвучка + брендинг…' : 'შეერთება + გახმოვანება + ბრენდინგი…')
         : (locale === 'en' ? 'Stitching + music…' : locale === 'ru' ? 'Сборка + музыка…' : 'შეერთება + მუსიკა…'));
-      const finalUrl = await assemble(clips.map((url) => ({ url, durationSec: 5 })));
+      // Declared length must match what the engine actually produced: the assembler derives the music
+      // bed from these seconds, so a wrong figure scores the ad for a different film.
+      const finalUrl = await assemble(clips.map((url) => ({ url, durationSec: PRODUCT_CLIP_SEC })));
       // Assembled master carries the ElevenLabs music bed (+ VO/overlays).
       if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
       if (clips[0]) { landVideo(clips[0]); return clips[0]; } // fail-open: show the first clip
@@ -7235,9 +7242,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div>
                   <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    <Chip active={productDuration === 6} onClick={() => setProductDuration(6)}>6{locale === 'en' ? 's' : 'წმ'}</Chip>
-                    <Chip active={productDuration === 30} onClick={() => setProductDuration(30)}>30{locale === 'en' ? 's' : 'წმ'}</Chip>
-                    <Chip active={productDuration === 60} onClick={() => setProductDuration(60)}>60{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 8} onClick={() => setProductDuration(8)}>8{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 24} onClick={() => setProductDuration(24)}>24{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 48} onClick={() => setProductDuration(48)}>48{locale === 'en' ? 's' : 'წმ'}</Chip>
                   </div>
                 </div>
                 {/* Generate — always enabled once a product photo is set (no busy gate). Progress +

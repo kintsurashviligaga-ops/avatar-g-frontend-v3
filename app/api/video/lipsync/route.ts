@@ -122,6 +122,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ done: true, url: hosted });
   }
   if (status === 'failed' || status === 'canceled') return NextResponse.json({ done: true, url: null, error });
+  // ⚠️ A TERMINAL STATUS WITH NO URL USED TO FALL THROUGH TO `{done:false}` FOREVER. `lipsyncFetch`
+  // populates `url` only when the provider both SUCCEEDED and yielded a resolvable output — Replicate
+  // via extractUrl(pred.output), HeyGen via `d.video_url ?? null`. So a job that genuinely completed but
+  // whose output could not be resolved (an empty HeyGen video_url, an output shape extractUrl does not
+  // match) missed the `succeeded && url` branch above AND the failed/canceled branch, and answered
+  // "still working" on every poll from then on.
+  //
+  // Nothing ever ended it: LipsyncStudio polls 120×5s and OmniStudio 70×6s across 3 attempts (~21
+  // minutes) before giving up with "try different files" — blaming the user's input for a render that
+  // completed and was paid for. This is the identical dead end that /api/v2/model3d/status documents and
+  // fixed ("TERMINAL WITHOUT A MESH IS A FAILURE, NOT 'STILL WORKING'"); it was never applied here.
+  if (status === 'succeeded') {
+    return NextResponse.json({
+      done: true, url: null,
+      error: error || 'the provider finished without a usable video file',
+    });
+  }
   return NextResponse.json({ done: false });
 }
 
