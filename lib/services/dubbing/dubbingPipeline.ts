@@ -22,6 +22,7 @@
  * not synthesize is dropped from the mix and counted, because losing one line beats losing the film.
  */
 import 'server-only';
+import { extractInstrumentalStem } from '@/lib/audio/instrumentalStem';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -60,6 +61,13 @@ export interface DubbingResult {
   droppedLines: number;
   /** Lines that came back in the source language. 0 on a clean run. */
   untranslatedLines: number;
+  /**
+   * True when the background bed is a SEPARATED instrumental (voices removed). False means separation
+   * was unavailable or missed and the bed is the original audio ducked — so the original speakers are
+   * still faintly audible under the dub. The user asked to keep the background; they deserve to know
+   * WHICH background they got, because the two sound materially different.
+   */
+  backgroundSeparated: boolean;
 }
 
 export type DubbingOutcome =
@@ -168,9 +176,27 @@ export async function runDubbing(
     stepsRun.push('sync');
 
     await stage(jobId, 'mix');
+    // ⚠️ THE BED USED TO BE THE ORIGINAL AUDIO, MERELY DUCKED — so the original speakers stayed audible
+    // underneath the dub and the viewer heard two languages at once. Ducking cannot fix that: voices and
+    // music are the same signal, so ducking harder removes the music too. dubbingFfmpeg's header called
+    // this out as a known, audible limitation and named the remedy — "wiring a separator later only
+    // changes `bedUrl`" — so that is precisely what this is.
+    //
+    // Demucs was already running in this repo for the audio studio's splitter; it was simply unreachable
+    // from here. On success the bed becomes music + ambience with the voices REMOVED, which is what
+    // "preserve background audio" was always supposed to mean.
+    //
+    // Fail-open to the previous behaviour: no token, a miss, or a timeout returns null and the ducked
+    // original is used exactly as before. A dub that ships with the old bed is today's product; a dub
+    // that fails because a separator was unavailable would be a regression caused by an improvement.
+    let bedUrl: string | null = req.preserveBackgroundAudio ? req.sourceVideoUrl : null;
+    let bedSeparated = false;
+    if (bedUrl) {
+      const stem = await extractInstrumentalStem(bedUrl).catch(() => null);
+      if (stem?.url) { bedUrl = stem.url; bedSeparated = true; }
+    }
     const audioUrl = await mixDubbedTrack(clips, {
-      // The bed is the original audio itself (ducked) — see the BACKGROUND BED note in dubbingFfmpeg.
-      bedUrl: req.preserveBackgroundAudio ? req.sourceVideoUrl : null,
+      bedUrl,
       totalSec,
     });
     if (!audioUrl) return { ok: false, step: 'mix', error: 'could not build the dubbed audio track' };
@@ -196,6 +222,7 @@ export async function runDubbing(
         stepsRun,
         droppedLines: dropped,
         untranslatedLines: untranslated,
+        backgroundSeparated: bedSeparated,
       },
     };
   } catch (err) {
