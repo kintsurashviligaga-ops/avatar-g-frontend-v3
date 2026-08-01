@@ -374,6 +374,17 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return () => window.removeEventListener('myavatar:auth-required', needAuth);
   }, []);
 
+  // ⚠️ RUNNING OUT OF CREDITS WAS A DEAD END. The chat printed a grey "insufficient credits" bubble and
+  // stopped there — the user had to work out for themselves that the balance pill in the header is also
+  // the top-up button. That is the single moment in the whole product where someone has ALREADY DECIDED
+  // to spend money, and it offered them no way to. Same bridge as the auth gate: the surface that
+  // detects it dispatches, and the component that owns the modal opens it.
+  useEffect(() => {
+    const openCredits = () => setCreditsOpen(true);
+    window.addEventListener('myavatar:open-credits', openCredits);
+    return () => window.removeEventListener('myavatar:open-credits', openCredits);
+  }, []);
+
   // Live Avatar enrollment bridge — any surface can dispatch `myavatar:avatar-enroll`. Authed → open the
   // enrollment sheet; guest → sign-in first (enrollment writes to the user's profile).
   useEffect(() => {

@@ -913,7 +913,7 @@ interface FilmSnap {
   clipSec?: number;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
@@ -3803,7 +3803,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // truth, and it invites exactly the retry that will 409 again. Every sibling flow in this file
         // (video, remix, lipsync, upscale, and image's own regenerate) already surfaces the reason.
         const reason = j.code === 'insufficient_credits' ? (j.message || j.error) : j.message;
-        updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec });
+        // A refusal for want of credits is the one failure with an obvious next step — offer it.
+        updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'image failed');
       },
     });
@@ -4008,7 +4009,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
           return j.url;
         }
-        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.musicFailed}` });
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.musicFailed}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'music failed');
       },
     });
@@ -6608,6 +6609,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <RotateCcw size={13} /> {t.regenerate}
                   </button>
                 )}
+                {/* ⚠️ THE ONE MOMENT SOMEONE HAS ALREADY DECIDED TO PAY. A refusal for want of credits
+                    used to be a grey sentence and nothing else — the user had to deduce that the balance
+                    figure in the header doubles as the top-up button. Unlike every other failure in this
+                    file, this one has an obvious next step, so it gets a button. Shown on ANY such bubble
+                    rather than only the last, because the refusal often sits above later chatter. */}
+                {m.role === 'assistant' && m.topUp && (
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
+                    className="mt-1 inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]"
+                  >
+                    <Plus size={14} /> {locale === 'en' ? 'Top up balance' : locale === 'ru' ? 'Пополнить баланс' : 'ბალანსის შევსება'}
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -6793,11 +6808,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ⚠️ {dictationWarn}
           </div>
         )}
-        {mode === 'image' && !busy && (
-          <div className="mb-2 text-center text-[11.5px] text-app-muted">
-            {locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: {creditCostFor('image') * imgCount} {locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი'} · ~{imgTargetFor(imgQuality)}s
-          </div>
-        )}
+        {/* ⚠️ THE PRICE MUST BE ON SCREEN BEFORE THE SPEND, IN EVERY STUDIO — NOT JUST IMAGE.
+            A cost line was added for image and nowhere else, so video, music, avatar and remix still
+            charged an amount the user could only discover by watching the balance drop afterwards. For
+            the two expensive ones that is the difference between a considered purchase and a nasty
+            surprise, and a nasty surprise on a first generation is a refund request, not a customer.
+            One expression covers all five, so a new mode cannot quietly ship without a price again. */}
+        {!busy && (() => {
+          const priced: Record<string, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }> = {
+            image: { kind: 'image', n: imgCount, secs: imgTargetFor(imgQuality) },
+            music: { kind: 'music', n: 1, secs: PROGRESS_TARGET.music },
+            video: { kind: 'video', n: 1, secs: PROGRESS_TARGET.video },
+            lipsync: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
+            remix: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
+          };
+          const p = priced[mode];
+          if (!p) return null;
+          const credits = creditCostFor(p.kind, mode === 'video' ? { seconds: videoDuration } : undefined) * p.n;
+          if (credits <= 0) return null;
+          const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი';
+          return (
+            <div className="mb-2 text-center text-[11.5px] text-app-muted">
+              {locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: {credits} {unit} · ~{p.secs}s
+            </div>
+          );
+        })()}
         {/* Service shortcuts intentionally REMOVED from the composer — the in-pill mode
             dropdown (Chat ⌄ / Video ⌄) is the single, canonical mode switcher. The empty
             state is now just the heading + subtitle (no pills, no templates). */}
