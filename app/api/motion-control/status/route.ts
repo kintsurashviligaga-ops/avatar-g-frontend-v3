@@ -20,7 +20,7 @@ import { NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingPoll } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
-import { failJob, recordCompletedAsset } from '@/lib/orchestrator/jobs';
+import { failJob, recordCompletedAsset, jobOwnerId } from '@/lib/orchestrator/jobs';
 import { refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { generateMusic } from '@/lib/ai/replicate';
@@ -51,11 +51,27 @@ export async function GET(req: Request) {
   if (poll.status === 'processing') return NextResponse.json({ done: false });
   if (poll.status === 'failed' || !poll.url) {
     // TRACK 1 — close the motion telemetry lifecycle (the pending row from POST) as failed. Fail-open.
+    // ⚠️ THE REFUND USED TO GO TO WHOEVER POLLED. There was no link at all between `id` — a raw query
+    // parameter — and the user who paid for it, and `klingPoll` reads ANY prediction on the shared
+    // Replicate token. So a signed-in user could collect failed prediction ids from another endpoint,
+    // poll this one, and receive creditCostFor('remix') into their own wallet. The refund ref is keyed
+    // per-id, so each fresh id minted another payout: spendable balance created out of nothing, without
+    // limit. The old comment reasoned only about DOUBLE-refunding the same id and missed entirely that
+    // the claimant was never checked.
+    //
+    // The charge wrote a job row (`motion:<jobId>`, user_id = the payer). That row is now the authority.
+    const owner = await jobOwnerId(`motion:${id}`);
+    // Telemetry is closed regardless — a failed render is a failed render whoever asked about it.
     void failJob(`motion:${id}`, poll.error || 'motion generation failed');
-    // Refund the credits reserved at submit — the paid render produced no deliverable. Idempotent by the
-    // `:refund` ref (the RPC dedupes), so repeated polls of a failed job can't double-refund. Must match
-    // the POST reserve ref `motion:charge:<jobId>` and its flat MOTION_COST (creditCostFor('remix')).
-    void refundCredits(user.id, creditCostFor('remix'), `motion:charge:${id}:refund`).catch(() => {});
+    // FAIL-CLOSED on money. No row, or a row belonging to somebody else, means this caller cannot be
+    // shown to have paid — and an unissued refund is recoverable by support, while minted credits are
+    // not. Refund only the user the charge is recorded against, never the one holding the id.
+    if (owner && owner === user.id) {
+      void refundCredits(user.id, creditCostFor('remix'), `motion:charge:${id}:refund`).catch(() => {});
+    } else if (owner && owner !== user.id) {
+      // eslint-disable-next-line no-console
+      console.warn(`[motion.status] refund refused — ${user.id} polled a job owned by another user`);
+    }
     return NextResponse.json({ done: true, error: poll.error || 'motion generation failed' });
   }
 

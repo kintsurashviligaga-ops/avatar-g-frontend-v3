@@ -179,6 +179,33 @@ export async function completeJob(
 }
 
 /** Mark a job failed with a short reason. */
+/**
+ * The user_id that OWNS a job row, or null when the row does not exist / cannot be read.
+ *
+ * ⚠️ THIS EXISTS TO STOP A CREDIT-MINTING EXPLOIT. /api/motion-control/status refunded
+ * `creditCostFor('remix')` to whoever POLLED, for whatever prediction id arrived in the query string,
+ * with no check that the caller had ever paid for it. `klingPoll` reads ANY prediction on the shared
+ * Replicate token, so a user could harvest failed prediction ids from another endpoint and mint credits
+ * on repeat — the refund ref is per-id, so every fresh id minted again, without limit.
+ *
+ * A refund must therefore be authorised by the row written at CHARGE time, not by the poller.
+ *
+ * Returns null rather than throwing: the caller decides what an unknown owner means. For money that
+ * decision must be fail-CLOSED — see the call site.
+ */
+export async function jobOwnerId(id: string): Promise<string | null> {
+  const sb = client();
+  if (!sb || !id) return null;
+  try {
+    const { data, error } = await sb.from(TABLE).select('user_id').eq('id', id).maybeSingle();
+    if (error || !data) return null;
+    const owner = (data as { user_id?: unknown }).user_id;
+    return typeof owner === 'string' && owner ? owner : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function failJob(id: string, error: string): Promise<void> {
   await patch(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) });
 }
