@@ -777,7 +777,9 @@ interface SpeechRecognitionLike {
   interimResults: boolean;
   onresult: ((e: SREvent) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  /** The event carries `error` — a code like 'language-not-supported' / 'no-speech' / 'aborted'.
+   *  It used to be typed as `() => void`, which discarded the one field that says WHAT went wrong. */
+  onerror: ((e: { error?: string }) => void) | null;
   /** Fires when the ENGINE itself detects speech — the signal that separates "the user hasn't started
    *  talking yet" from "the user is talking and this engine is producing nothing". See the watchdog. */
   onspeechstart: (() => void) | null;
@@ -1509,6 +1511,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
+  // Languages this browser's speech engine has rejected this session (see rec.onerror). Persisting the
+  // rejection turns a repeated 8s stall into an immediate, correct fallback.
+  const webSpeechUnsupportedLangsRef = useRef<Set<string>>(new Set());
   const { keyboardOffset } = useKeyboardResilience();
 
   // ⚠️ PUBLISHED FOR THE FIXED OVERLAYS THAT LIVE OUTSIDE THE SHELL. ChatChrome shrinks the SHELL by
@@ -5399,7 +5404,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const isAppleSpeechEngine = /iPad|iPhone|iPod/.test(ua) || (/safari/i.test(ua) && !/chrome|chromium|crios|android|edg/i.test(ua));
     // Try LIVE Web Speech FIRST (streams text as you talk); a watchdog drops a silent engine to the
     // record-and-transcribe fallback so the mic always does something.
-    if (SR && !(isAppleSpeechEngine && lang.startsWith('ka'))) {
+    // A lang the engine has already rejected this session goes straight to the recorder — retrying a
+    // permanent rejection only spends the watchdog window before falling back anyway.
+    if (SR && !(isAppleSpeechEngine && lang.startsWith('ka')) && !webSpeechUnsupportedLangsRef.current.has(lang)) {
       try {
         const rec = new SR();
         rec.lang = lang;
@@ -5467,7 +5474,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           setRecording(false);
         };
         // No text yet + an error (incl. the silent webview case) → record-and-transcribe.
-        rec.onerror = () => { clearTimeout(watchdog); if (!gotResult) toRecorder(); else { recognitionRef.current = null; setRecording(false); } };
+        // ⚠️ THIS DISCARDED THE ERROR CODE, AND THAT IS WHY GEORGIAN WAS UNDIAGNOSABLE. The handler was
+        // typed `() => void`, so 'language-not-supported' — the code an engine returns when it cannot do
+        // `rec.lang`, and which 'en-US' never triggers because English is universally supported — was
+        // collapsed into the same branch as 'no-speech' and 'aborted'. Nothing was logged, so two
+        // previous attempts at the Georgian bug had no signal at all to work from.
+        //
+        // Two behavioural corrections come with reading it:
+        //  · A language rejection is PERMANENT for this locale, so retrying Web Speech is pure delay.
+        //    It is remembered for the session and the recorder path is used directly from then on.
+        //  · 'no-speech' is NOT fatal — it means the user simply has not spoken yet. Tearing down a live
+        //    recognizer for that threw away a working session mid-pause.
+        rec.onerror = (ev) => {
+          const code = (ev && typeof ev.error === 'string') ? ev.error : '';
+          if (code === 'no-speech') return; // keep listening; the watchdog still covers a silent engine
+          clearTimeout(watchdog);
+          if (code === 'language-not-supported' || code === 'service-not-allowed') {
+            webSpeechUnsupportedLangsRef.current.add(lang);
+            // eslint-disable-next-line no-console
+            console.warn(`[stt] Web Speech rejected lang=${lang} (${code}) — using the recorder path for this session`);
+          }
+          if (!gotResult) toRecorder(); else { recognitionRef.current = null; setRecording(false); }
+        };
         recognitionRef.current = rec;
         rec.start();
         setRecording(true);
