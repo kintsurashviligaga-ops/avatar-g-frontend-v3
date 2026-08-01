@@ -11,11 +11,15 @@ import { useEffect, useState } from 'react';
  * Returns 0 whenever the keyboard is closed (offsets under a small threshold are
  * treated as noise from browser chrome show/hide).
  */
-export function useKeyboardResilience(): { keyboardOffset: number; viewportHeight: number } {
+export function useKeyboardResilience(): { keyboardOffset: number; viewportHeight: number; viewportTop: number } {
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   // The VISIBLE height, measured. Consumers should size a full-screen shell with THIS rather than
   // `calc(100dvh - keyboardOffset)` — see the note on the return statement.
   const [viewportHeight, setViewportHeight] = useState(0);
+  // Where the visible band STARTS inside the layout viewport. Non-zero whenever the browser has
+  // scroll-shifted the visual viewport to reveal a focused field — which is exactly when a keyboard is
+  // open. A shell that is sized but not MOVED by this is drawn offsetTop pixels too high.
+  const [viewportTop, setViewportTop] = useState(0);
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -37,6 +41,8 @@ export function useKeyboardResilience(): { keyboardOffset: number; viewportHeigh
       setKeyboardOffset((prev) => (prev === next ? prev : next));
       const vh = Math.round(vv.height);
       setViewportHeight((prev) => (prev === vh ? prev : vh));
+      const vt = Math.round(vv.offsetTop) || 0;
+      setViewportTop((prev) => (prev === vt ? prev : vt));
     };
     // Coalesce bursts of resize+scroll during the open/close animation into one
     // update per frame.
@@ -66,5 +72,10 @@ export function useKeyboardResilience(): { keyboardOffset: number; viewportHeigh
   // `visualViewport.height` is the visible area on BOTH, keyboard open or closed, with no arithmetic and
   // nothing to double-count. `keyboardOffset` is still exported because fixed-position overlays, which
   // resolve against the layout viewport, genuinely do need the inset itself.
-  return { keyboardOffset, viewportHeight };
+  // ⚠️ NOTE THE DISTINCTION FROM THE COMMENT ABOVE. offsetTop is deliberately NOT subtracted from the
+  // keyboard HEIGHT — doing that made the same physical keyboard measure smaller mid-scroll and the
+  // composer jittered. But offsetTop IS the correct POSITION for the visible band, and a shell that is
+  // sized to the visual viewport without being moved to its origin renders that far above where the user
+  // is looking. Sizing and positioning are two different uses of the same number.
+  return { keyboardOffset, viewportHeight, viewportTop };
 }

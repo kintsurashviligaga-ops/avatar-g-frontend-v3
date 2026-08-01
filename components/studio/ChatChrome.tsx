@@ -165,7 +165,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // visible (the same fix the sibling chat surface already uses).
   // Only the measured height is needed here; the raw inset is consumed by OmniStudio, which
   // publishes it as --kb-inset for the fixed-position overlays.
-  const { viewportHeight } = useKeyboardResilience();
+  const { viewportHeight, viewportTop } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
   // GLOBAL LOADING BAR — a thin top progress bar shown during ANY generation. OmniStudio
   // (and other surfaces) emit `myavatar:busy` {active, service}; the shell just renders.
@@ -648,6 +648,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       //
       // The measured visual viewport is the visible area on both platforms, with no arithmetic to get
       // wrong. Falls back to 100dvh where visualViewport is unsupported — the pre-existing behaviour.
+      // ⚠️ SIZING ALONE WAS NOT ENOUGH — THE SHELL ALSO HAS TO MOVE. `inset-0` pins top:0, so giving it
+      // the visual viewport's HEIGHT while leaving it at the layout viewport's ORIGIN draws it
+      // `offsetTop` pixels too high the moment the browser scroll-shifts to reveal the focused input.
+      // The composer then appears near the top of the screen with a band of black beneath it, which is
+      // the screenshot. Anchor to the visible band's origin as well as its height, and release `bottom`
+      // so inset-0's bottom:0 cannot fight the explicit height.
+      top: viewportHeight > 0 ? `${viewportTop}px` : 0,
+      bottom: viewportHeight > 0 ? 'auto' : 0,
       height: viewportHeight > 0 ? `${viewportHeight}px` : '100dvh',
     }}>
       {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
