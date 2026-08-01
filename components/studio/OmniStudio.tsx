@@ -15,7 +15,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
-import { GenerationProgress, PROGRESS_TARGET, fmtClock } from '@/components/studio/ui/GenerationProgress';
+import { GenerationProgress, PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
@@ -847,6 +847,19 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; medias?: 
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait' }
+
+/**
+ * Seconds a render of this tier is EXPECTED to take — the curve both the inline card and the durable
+ * heartbeat are drawn against.
+ *
+ * ⚠️ THESE WERE MEASURED, NOT GUESSED, AND THE OLD 40s WAS WRONG. NanoBanana was observed still working
+ * at 48 seconds, so a 40-second target pinned the bar at its 95% ceiling before the median image even
+ * landed — which is exactly the "stuck at 93%" the user photographed. A target that is too SHORT does
+ * not make the app feel fast, it makes the bar finish and then lie.
+ */
+export function imgTargetFor(quality: string): number {
+  return quality === 'standard' ? 55 : quality === 'high' ? 75 : 215;
+}
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -3657,14 +3670,30 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // job was still QUEUED and run() never ran) replaces this bubble's spinner. See trackJobSettle.
       onSettle: (job) => trackJobSettle(job, bubbleId),
       run: async ({ signal, onProgress, jobId }) => {
-        // Durable-progress: the placeholder row is created at SUBMIT (Task 6); flip it to processing.
+        // ⚠️ THE DURABLE ROW WAS WRITTEN ONCE AND NEVER AGAIN, so another device's tray read "queued 0%"
+        // for the entire render while this device's card climbed to 93%. One job, two surfaces, two
+        // different stories. The heartbeat below publishes the SAME eased number the inline card draws,
+        // so every device — and a reload — sees one value.
+        const startedAt = Date.now();
+        const tickPct = () => easedPct(Math.round((Date.now() - startedAt) / 1000), imgTargetFor(spec.quality));
         trackJobUpdate(jobId, 'Rendering', 8);
         onProgress({ pct: 8 });
+        const hb = window.setInterval(() => {
+          const p = tickPct();
+          onProgress({ pct: p });
+          trackJobUpdate(jobId, 'Rendering', p);
+        }, 6000);
+        // ⚠️ AND THE FETCH HAD NO DEADLINE AT ALL. The only signal was the queue's AbortController, which
+        // nothing but a user cancel ever fires — so a wedged socket (a phone changing network, iOS
+        // backgrounding the tab) left the promise pending forever, the job never settled, and the card
+        // span at 95% until reload. THAT is the "never completes". The route's own ceiling is 300s, so
+        // this deadline sits just past it: if the server is going to answer at all, it already has.
+        const deadline = AbortSignal.timeout(330_000);
         const res = await fetch('/api/nanobanana/image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          signal,
+          signal: AbortSignal.any([signal, deadline]),
           body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
         }).catch((e: unknown) => {
           // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
@@ -6349,7 +6378,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   // showed "37% · remaining ~2:17" and then simply appeared — the estimate was
                   // decoration, and a number that is wrong by 5x on the default path is worse than no
                   // number at all, because it is what teaches users to ignore every figure we show.
-                  const imgTarget = imgQuality === 'standard' ? 42 : imgQuality === 'high' ? 40 : 215;
+                  const imgTarget = imgQuality === 'standard' ? 55 : imgQuality === 'high' ? 75 : 215;
                   // Prefer the kind stamped on the message at render-start (intrinsic),
                   // so a mid-render mode switch can't swap the wrong progress UI in.
                   const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));

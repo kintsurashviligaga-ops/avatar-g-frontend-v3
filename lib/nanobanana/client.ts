@@ -341,7 +341,10 @@ async function requestNanoBanana(
     cache: 'no-store',
     // Per-request bound: the poll LOOP owns the waiting, so 60s only kills a hung create-POST/status-GET
     // socket; body is read via .text() so aborting is clean. Callers already try/catch this.
-    signal: AbortSignal.timeout(60_000),
+    // 25s: the create POST returns 200 + taskId in ~1-2s and record-info is a small status GET, so 60s
+    // per socket is pure dead air — three create attempts alone could burn 186s of the caller's budget
+    // before any fallback tier ran.
+    signal: AbortSignal.timeout(25_000),
   });
 
   const rawText = await response.text();
@@ -369,12 +372,20 @@ function buildRequestError(result: NanoRequestResult): string {
     || `NanoBanana request failed (${result.status})`;
 }
 
-async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string, opts?: { maxAttempts?: number; pollIntervalMs?: number }): Promise<{ url?: string; text?: string; raw: unknown }> {
+async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string, opts?: { maxAttempts?: number; pollIntervalMs?: number; budgetMs?: number }): Promise<{ url?: string; text?: string; raw: unknown }> {
   const pollUrl = composeUrl(baseUrl, resolveEndpointPath('task-details'));
-  const maxAttempts = opts?.maxAttempts ?? parsePositiveInt(process.env.NANOBANANA_MAX_POLL_ATTEMPTS, 20);
-  const pollIntervalMs = opts?.pollIntervalMs ?? parsePositiveInt(process.env.NANOBANANA_POLL_INTERVAL_MS, 1500);
+  const pollIntervalMs = opts?.pollIntervalMs ?? parsePositiveInt(process.env.NANOBANANA_POLL_INTERVAL_MS, 2500);
+  // MEASURED: NanoBanana was still processing at 48s. 20x1500 = 30s abandoned a HEALTHY render.
+  const budgetMs = opts?.budgetMs ?? parsePositiveInt(process.env.NANOBANANA_POLL_BUDGET_MS, 150_000);
+  const maxAttempts = opts?.maxAttempts ?? Math.max(4, Math.ceil(budgetMs / (pollIntervalMs + 400)));
+  const deadline = Date.now() + budgetMs;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+  // WALL-CLOCK CAP. Attempts alone do NOT bound this leg: every status GET can additionally burn its
+  // own socket timeout, so "40 × 2.5s" is a FLOOR, not a ceiling, and a hung provider stretches it past
+  // the caller's whole function budget. Past the deadline we fall out of the loop into the existing
+  // `timed out` throw, which the route already catches and falls through to its next tier.
+  const deadlineAt = Date.now() + maxAttempts * pollIntervalMs + 20_000;
+  for (let attempt = 0; attempt < maxAttempts && Date.now() < deadlineAt; attempt += 1) {
     const result = await requestNanoBanana(
       withQuery(pollUrl, { taskId }),
       apiKey,
@@ -433,7 +444,8 @@ async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string, o
     }
   }
 
-  throw new Error(`NanoBanana task ${taskId} timed out`);
+  const timeoutErr = Object.assign(new Error(`NanoBanana task ${taskId} timed out after ${budgetMs}ms`), { code: 'NANOBANANA_TIMEOUT', taskId });
+  throw timeoutErr;
 }
 
 function buildCreatePayload(endpoint: NanoBananaEndpoint, input: NanoBananaGenerateInput): JsonRecord {
@@ -505,7 +517,9 @@ export async function generateNanoBananaImage(input: NanoBananaGenerateInput): P
       if (!r.ok && r.status >= 500) throw new Error(buildRequestError(r));
       return r;
     },
-    { maxAttempts: 3, baseDelayMs: 2000, label: 'nanobanana-create' },
+    // 2 attempts: one retry still covers a transient 5xx, but a persistently-down provider now costs
+    // ~51s (25 + 1.5 + 25) instead of ~186s before the Grok/FLUX tiers get their turn.
+    { maxAttempts: 2, baseDelayMs: 1500, label: 'nanobanana-create' },
   );
 
   if (!createResult.ok) {

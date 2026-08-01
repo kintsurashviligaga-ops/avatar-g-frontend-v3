@@ -74,7 +74,14 @@ export async function POST(req: NextRequest) {
       const pos = typeof body.position === 'number' && body.position > 0 ? Math.floor(body.position) : null;
       // Try WITH the position column; if the migration hasn't landed yet the column is unknown, so
       // retry WITHOUT it — the core placeholder row must always be written (migration-order-safe).
-      let { error } = await supabase.from('generation_jobs').upsert({ ...base, position_in_queue: pos }, { onConflict: 'id' });
+      // ⚠️ CREATE MUST NOT CLOBBER A ROW THAT HAS ALREADY ADVANCED. The queue starts the runner
+      // SYNCHRONOUSLY inside submit(), so the runner's first trackJobUpdate('Rendering', 8) is dispatched
+      // BEFORE this create — and then this create landed second and overwrote it back to
+      // status:'pending' / stage:'queued' / pct:0. Nothing wrote the row again for the rest of the
+      // render, which is why another device's tray showed the literal word "queued" at 0% for the whole
+      // job. `ignoreDuplicates` makes the create a no-op once the row exists, so the later real progress
+      // write wins regardless of which of the two arrives first.
+      let { error } = await supabase.from('generation_jobs').upsert({ ...base, position_in_queue: pos }, { onConflict: 'id', ignoreDuplicates: true });
       if (error && /position_in_queue/i.test(error.message)) {
         ({ error } = await supabase.from('generation_jobs').upsert(base, { onConflict: 'id' }));
       }

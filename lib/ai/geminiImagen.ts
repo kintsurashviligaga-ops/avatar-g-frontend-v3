@@ -16,10 +16,14 @@
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
-import { isEnabledByDefault } from '@/lib/env/flag';
+import { isTruthyFlag } from '@/lib/env/flag';
 
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 20_000;
+/** Short-lived memo of a hard billing/quota wall (402/403/429). An unfunded key must not cost a
+ *  round-trip on every generation; the wall expires on its own so a top-up self-heals with no redeploy. */
+let quotaWallUntil = 0;
+const QUOTA_WALL_MS = 10 * 60_000;
 
 /** Imagen 4 tiers. `-fast-` trades fidelity for latency; `-ultra-` is the highest quality, one image only. */
 export function geminiImagenModel(): string {
@@ -28,7 +32,11 @@ export function geminiImagenModel(): string {
 
 /** True iff a Gemini key is present AND Imagen isn't explicitly killed (GEMINI_IMAGEN_ENABLED=0). */
 export function hasGeminiImagenProvider(): boolean {
-  return isEnabledByDefault(process.env.GEMINI_IMAGEN_ENABLED) && !!resolveGeminiKey();
+  // OPT-IN, not opt-out. A Gemini key being PRESENT is not evidence that it is FUNDED: with Google's
+  // balance empty this leg 429s on every single generation, and because ServiceManager.runTextToImage
+  // tries it FIRST, every user waited out that round-trip before NanoBanana/FLUX even started.
+  // Re-enable with GEMINI_IMAGEN_ENABLED=1 once billing is topped up — no code push needed.
+  return isTruthyFlag(process.env.GEMINI_IMAGEN_ENABLED) && !!resolveGeminiKey();
 }
 
 /** Imagen accepts these five ratios; anything else (4:5, 2:3, …) is snapped to the nearest supported one. */
@@ -64,6 +72,8 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
   const key = resolveGeminiKey();
   const prompt = String(args.prompt ?? '').trim();
   if (!key || !prompt) return null;
+  // A known billing/quota wall → skip WITHOUT a round-trip (the caller falls through to FLUX/NanoBanana).
+  if (Date.now() < quotaWallUntil) return null;
 
   const model = geminiImagenModel();
   // The ultra tier returns exactly one sample; asking for more is a 400.
@@ -89,6 +99,10 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
+      // 429 quota / 402 billing / 403 no-access are ACCOUNT-level, not request-level: they will repeat
+      // identically for every caller until the operator acts, so arm the wall instead of re-paying the
+      // latency on each generation.
+      if (res.status === 429 || res.status === 402 || res.status === 403) quotaWallUntil = Date.now() + QUOTA_WALL_MS;
       reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body, model: geminiImagenModel() });
       return null;
     }

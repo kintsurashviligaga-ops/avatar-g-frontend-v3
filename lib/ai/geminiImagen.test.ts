@@ -37,9 +37,11 @@ describe('Imagen 4 — model + kill switch', () => {
     expect(geminiImagenModel()).toBe('imagen-4.0-fast-generate-001');
   });
 
-  it('is live-by-default with a key, and the kill switch reverts to the FLUX/NanoBanana cascade', () => {
+  it('is OPT-IN — a present-but-unfunded key must not be tried ahead of FLUX/NanoBanana on every render', () => {
     process.env.GEMINI_API_KEY = 'test-key';
     delete process.env.GEMINI_IMAGEN_ENABLED;
+    expect(hasGeminiImagenProvider()).toBe(false);
+    process.env.GEMINI_IMAGEN_ENABLED = '1';
     expect(hasGeminiImagenProvider()).toBe(true);
     process.env.GEMINI_IMAGEN_ENABLED = '0';
     expect(hasGeminiImagenProvider()).toBe(false);

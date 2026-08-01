@@ -215,7 +215,11 @@ export async function POST(req: NextRequest) {
           aspectRatio: body.aspectRatio ?? '1:1',
           style:       styleLabel || undefined,
           ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
-          pollMaxAttempts: 100,
+          // Poll budget matched to the engine's REAL latency AND to what this function can afford.
+          // maxDuration is 300s; the FLUX leg (45s) + the re-host copy (25s) still have to run AFTER
+          // this returns, so the primary may never own more than ~150s or the fallback is unreachable
+          // and Vercel 504s the lambda before the refund path at the bottom can fire.
+          pollMaxAttempts: endpoint === 'pro-4k' || endpoint === 'v2-4k' ? 60 : 40, // 150s / 100s
           pollIntervalMs:  2500,
         });
         providerUrl = primary.url ?? null;
@@ -267,9 +271,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (!providerUrl && !backupB64) {
-      await refundReserve(); // paid for nothing → give the reserved credit back
+      const refunded = reserved;   // capture BEFORE refundReserve() clears the flag
+      await refundReserve();       // paid for nothing → give the reserved credit back
       return NextResponse.json({
         success: false,
+        code:    'provider_unavailable',
+        // ⚠️ THE CLIENT SHOWS `message` AND DROPS `error` for every code except insufficient_credits
+        // (OmniStudio.runImageJob; describeOpFailure does the same). Without this field the honest
+        // reason — and the fact that the credit was returned — was replaced by "Image generation failed".
+        message: `ვერ შევქმენი სურათი — ყველა ძრავა დროებით მიუწვდომელია${refunded ? ', კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / Every image engine is unavailable right now${refunded ? ' — your credit was returned' : ''}. Please try again.`,
         error:   providerText ?? 'Image provider returned no image URL',
       }, { status: 502 });
     }
@@ -314,8 +324,14 @@ export async function POST(req: NextRequest) {
 
     // A backup-b64 upload miss can leave no usable URL → treat as a provider miss (502).
     if (!hostedUrl) {
-      await refundReserve(); // no deliverable asset → give the reserved credit back
-      return NextResponse.json({ success: false, error: 'Image host failed' }, { status: 502 });
+      const refunded = reserved;   // capture BEFORE refundReserve() clears the flag
+      await refundReserve();       // no deliverable asset → give the reserved credit back
+      return NextResponse.json({
+        success: false,
+        code:    'host_failed',
+        message: `სურათი შეიქმნა, მაგრამ ატვირთვა ვერ მოხერხდა${refunded ? ' — კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / The image was generated but could not be stored${refunded ? ' — your credit was returned' : ''}. Please try again.`,
+        error:   'Image host failed',
+      }, { status: 502 });
     }
 
     // File the finished asset. The credit was already RESERVED up front (see the reserve above),

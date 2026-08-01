@@ -89,12 +89,12 @@ export const useJobQueue = create<JobQueueState>((set, get) => {
     claimInline: (id) => set((s) => (!id || s.inlineJobIds.includes(id) ? s : { inlineJobIds: [...s.inlineJobIds, id] })),
     releaseInline: (id) => set((s) => (s.inlineJobIds.includes(id) ? { inlineJobIds: s.inlineJobIds.filter((x) => x !== id) } : s)),
     submit: (input) => {
-      const id = queue.submit(input);
-      // TASK 6 — CREATE THE DURABLE ROW AT THE FRONT-EDGE OF SUBMISSION (not at run-start), so a
-      // job sitting in the queue survives a reload. onChange fired synchronously inside submit(),
-      // so `jobs` already carries this job's admitted status + position.
-      const job = get().jobs.find((j) => j.id === id);
-      try { trackJobCreate(id, input.kind, input.createParams ?? {}, job?.stage ?? undefined, job?.pct ?? 0, job?.position ?? null); } catch { /* best-effort */ }
+      // The create fires from onAdmit — BEFORE pump() starts the runner — because pump() invokes
+      // run() synchronously and the runner's first act is a progress write against this row.
+      const id = queue.submit({
+        ...input,
+        onAdmit: (jobId) => { try { trackJobCreate(jobId, input.kind, input.createParams ?? {}, undefined, 0, null); } catch { /* best-effort */ } },
+      });
       return id;
     },
     cancel: (id) => queue.cancel(id),

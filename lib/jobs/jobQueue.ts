@@ -85,6 +85,18 @@ export interface SubmitInput {
    */
   createParams?: Record<string, unknown>;
   /**
+   * Fired the moment the job is ADMITTED to the queue — synchronously, BEFORE pump() starts the runner.
+   *
+   * ⚠️ ORDER IS THE WHOLE POINT. pump() invokes run() synchronously (see start()), and the image
+   * runner's first act is a progress write against the durable row. The create used to fire only after
+   * submit() RETURNED, so the update raced ahead of it, matched zero rows, was silently dropped, and the
+   * create then wrote status:'pending'/stage:'queued'/pct:0 over the top. Nothing wrote the row again
+   * for the rest of the render — which is why a second device's tray showed the literal word "queued"
+   * at 0% for a job that was minutes into rendering. Admitting first makes the row exist before anyone
+   * can write to it.
+   */
+  onAdmit?: (id: string) => void;
+  /**
    * Fired ONCE when the job reaches a terminal state (done | failed | canceled), with the
    * final public job (result/error populated). Used by durable-progress to mark the
    * server `generation_jobs` row completed/failed without threading it through the runner's
@@ -168,6 +180,9 @@ export class JobQueue {
       _onSettle: input.onSettle,
     };
     this.jobs.push(job);
+    // The durable row MUST exist before the runner can post progress against it: pump() invokes
+    // run() SYNCHRONOUSLY (see start()), so anything the runner writes at t=0 would hit a missing row.
+    try { input.onAdmit?.(id); } catch { /* best-effort telemetry, never re-enters the queue */ }
     this.pump();
     this.emit();
     return id;

@@ -90,6 +90,9 @@
     "app/api/cron/**": {
       "maxDuration": 60
     },
+    "app/api/nanobanana/**": {
+      "maxDuration": 300
+    },
     "app/api/**": {
       "maxDuration": 15
     }
