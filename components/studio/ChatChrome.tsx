@@ -166,7 +166,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // visible (the same fix the sibling chat surface already uses).
   // Only the measured height is needed here; the raw inset is consumed by OmniStudio, which
   // publishes it as --kb-inset for the fixed-position overlays.
-  const { viewportHeight, viewportTop } = useKeyboardResilience();
+  const { keyboardOffset, viewportHeight, viewportTop } = useKeyboardResilience();
   const [menuOpen, setMenuOpen] = useState(false);
   // GLOBAL LOADING BAR — a thin top progress bar shown during ANY generation. OmniStudio
   // (and other surfaces) emit `myavatar:busy` {active, service}; the shell just renders.
@@ -673,9 +673,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       // The composer then appears near the top of the screen with a band of black beneath it, which is
       // the screenshot. Anchor to the visible band's origin as well as its height, and release `bottom`
       // so inset-0's bottom:0 cannot fight the explicit height.
-      top: viewportHeight > 0 ? `${viewportTop}px` : 0,
-      bottom: viewportHeight > 0 ? 'auto' : 0,
-      height: viewportHeight > 0 ? `${viewportHeight}px` : '100dvh',
+      // ⚠️ THIS WAS FIGHTING THE PLATFORM FIX. The viewport meta already declares
+      // `interactive-widget=resizes-content`, which makes the LAYOUT viewport shrink for the keyboard —
+      // so `inset-0` and `100dvh` track it natively, exactly like the Gemini comparison. But the
+      // condition here was `viewportHeight > 0`, which is true the moment visualViewport reports
+      // anything, i.e. ALWAYS. So the JS overrode top/height/bottom unconditionally — including when the
+      // keyboard was shut and when the platform had already done the job correctly — and pinned the
+      // shell to measured pixels instead of letting it resize. That is the composer landing in an odd
+      // place with a gap beneath it.
+      //
+      // Compensate ONLY when the platform did not: keyboardOffset is the gap between the layout and
+      // visual viewports, so it is ~0 exactly when `resizes-content` worked, and the full keyboard
+      // height on an engine that ignores it. Native path first, JS as the fallback it was meant to be.
+      ...(keyboardOffset > 0
+        ? { top: `${viewportTop}px`, bottom: 'auto' as const, height: `${viewportHeight}px` }
+        : { top: 0, bottom: 0, height: '100dvh' }),
     }}>
       {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
       {genBusy && (

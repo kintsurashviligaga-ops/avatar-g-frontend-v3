@@ -66,6 +66,20 @@ export const viewport: Viewport = {
 	maximumScale: 1,
 	userScalable: false,
 	viewportFit: 'cover',
+	// ⚠️ THE KEYBOARD FIX THAT NO AMOUNT OF JAVASCRIPT REPLACES. By default the on-screen keyboard resizes
+	// only the VISUAL viewport: the layout viewport — what `100dvh`, `fixed` and `inset-0` are measured
+	// against — stays full height, so a bottom-docked composer is pinned behind the keyboard and the
+	// browser scroll-shifts the page to compensate. That shifting is the drifting, gap-leaving layout in
+	// the screenshots, and every fix so far has been JS compensating for a promise CSS could not keep.
+	//
+	// `resizes-content` makes the LAYOUT viewport shrink instead. The shell, the composer and every fixed
+	// overlay then track the keyboard natively, with no measurement and no compensation — which is how the
+	// Gemini comparison behaves.
+	//
+	// The visualViewport JS (hooks/useKeyboardResilience) stays as the fallback for engines that ignore
+	// this, and composes correctly rather than fighting it: once the layout viewport shrinks,
+	// innerHeight === visualViewport.height, so keyboardOffset computes 0 and --kb-inset publishes 0. The
+	// JS becomes inert exactly where the platform takes over.
 	interactiveWidget: 'resizes-content',
 	themeColor: '#000000',
 };
