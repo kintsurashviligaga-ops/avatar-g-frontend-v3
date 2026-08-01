@@ -178,6 +178,10 @@
     {
       "path": "/api/cron/drain-renders",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/app/worker/tick",
+      "schedule": "*/2 * * * *"
     }
   ]
 }

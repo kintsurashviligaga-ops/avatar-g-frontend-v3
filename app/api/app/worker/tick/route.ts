@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isCronAuthorized } from '@/lib/api/cronAuth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { dequeueQueueItems, enqueueQueueItem, getQueueSnapshot } from '@/lib/platform/queues';
@@ -13,8 +14,16 @@ export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID();
   let statusCode = 200;
 
+  // ⚠️ THIS ACCEPTED ONLY AN INTERNAL TOKEN THAT NOTHING SET, SO IT ALWAYS 403'd — and it is the ONLY
+  // consumer of the `webhooks_ingest` queue that Telegram and WhatsApp write into. Every inbound message
+  // was accepted, queued, and then never drained: users messaged the bot and got silence, permanently.
+  // A Vercel cron authenticates with `Authorization: Bearer $CRON_SECRET`, not this header, so adding a
+  // cron entry alone would have turned a silent no-run into a scheduled 403. Both are accepted now: the
+  // cron secret for scheduled runs, the internal token for direct server-to-server calls.
   const internalToken = request.headers.get('x-internal-worker-token');
-  if (!process.env.WORKER_INTERNAL_TOKEN || internalToken !== process.env.WORKER_INTERNAL_TOKEN) {
+  const workerToken = (process.env.WORKER_INTERNAL_TOKEN || '').trim();
+  const viaInternal = !!workerToken && internalToken === workerToken;
+  if (!viaInternal && !isCronAuthorized(request)) {
     statusCode = 403;
     const response = NextResponse.json({ error: 'Forbidden', request_id: requestId }, { status: 403 });
     response.headers.set('x-request-id', requestId);

@@ -1,5 +1,6 @@
 // API: Sync tracking (manual trigger or cron)
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized } from '@/lib/api/cronAuth';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { TrackingSyncService } from '@/lib/fulfillment/TrackingSyncService';
 
@@ -8,10 +9,10 @@ export async function POST(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
 
     // Verify authorization (admin only or cron secret)
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    // ⚠️ WAS `authHeader !== \`Bearer ${cronSecret}\``, which with CRON_SECRET unset compares against the
+    // literal "Bearer undefined" — a header any caller can send. isCronAuthorized refuses outright when
+    // the secret is missing, so a misconfiguration locks the door instead of publishing the key.
+    if (!isCronAuthorized(request)) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
