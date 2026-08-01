@@ -68,6 +68,23 @@ export function formatWalletBalance(gel: number | null | undefined, _locale?: st
   return `$${usdFromGel(gel)}`;
 }
 
+/**
+ * The SPENDABLE balance, rendered in the unit the generation routes actually move: CREDITS.
+ *
+ * `profiles.credits_balance` is debited in whole credits by every produce route
+ * (deductCredits(user, creditCostFor('image')=2, ...)) and granted in whole credits by the Stripe
+ * tier webhook. It is NOT a GEL amount, so `formatWalletBalance` — which divides by the FX rate and
+ * prefixes `$` — states a currency the column does not carry, and overstates it by 10x.
+ *
+ * Use THIS for the wallet chip / balance readouts. Keep `formatWalletBalance` for the call sites that
+ * genuinely hold GEL (e.g. `formatWalletBalance(creditsToGel(n))` in the spend toast and settings ledger).
+ */
+export function formatCreditBalance(credits: number | null | undefined, locale?: string): string {
+  const n = typeof credits === 'number' && Number.isFinite(credits) ? Math.max(0, Math.round(credits)) : 0;
+  const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кред.' : 'კრედიტი';
+  return `${n} ${unit}`;
+}
+
 /** Cost of a metered action in GEL. Unknown actions are free (0). */
 export function costOf(action: MeteredAction): number {
   return GEL_COST[action] ?? 0;

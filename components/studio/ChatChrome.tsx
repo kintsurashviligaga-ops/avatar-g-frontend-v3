@@ -51,7 +51,7 @@ import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
-import { formatWalletBalance } from '@/lib/billing/gel';
+import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
@@ -100,6 +100,10 @@ interface ChatChromeProps {
   title?: string;
   /** Set true for a scroll-the-whole-body surface (the Lip-sync tool). */
   scrollBody?: boolean;
+  /** Server-known session state, used ONLY to seed `authed` so the generation gate published on
+   *  <html> is never '0' during the client-side getUser() round-trip. Optional: surfaces that do not
+   *  know (e.g. /library) keep today's behaviour. */
+  initialAuthed?: boolean;
   children: React.ReactNode;
 }
 
@@ -159,7 +163,7 @@ function LanguageSwitcher({ locale }: { locale: string }) {
   );
 }
 
-export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody = false, children }: ChatChromeProps) {
+export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody = false, initialAuthed = false, children }: ChatChromeProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
 
@@ -184,7 +188,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const router = useRouter();
   const pathname = usePathname();
   const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
-  const [authed, setAuthed] = useState(false);
+  // Seeded from the SERVER-rendered session (dashboard page.tsx → ServiceHub → here) so the generation
+  // gate on <html> is never published as '0' while the client-side getUser() round-trip is in flight —
+  // that window made an ALREADY-SIGNED-IN user who tapped send get the sign-in modal. getUser() and
+  // onAuthStateChange still correct this either way; the seed only removes the wrong FIRST answer.
+  const [authed, setAuthed] = useState(initialAuthed);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   // PHASE 3 Task 2 — first-login welcome. Default true to avoid a flash before the
   // localStorage read; the effect flips it false for users who haven't seen it.
@@ -332,7 +340,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // open sign-in. This replaces the old shape where the request went out, the route answered 401, and
   // the user met an error for something the UI could have known before spending the round-trip.
   useEffect(() => {
-    const needAuth = () => { setAuthMode('login'); setAuthOpen(true); };
+    const needAuth = () => { setAuthMode('register'); setAuthOpen(true); };
     window.addEventListener('myavatar:auth-required', needAuth);
     return () => window.removeEventListener('myavatar:auth-required', needAuth);
   }, []);
@@ -863,7 +871,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   )}
                 </div>
               )}
-              <span className={`truncate text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
+              <span className={`shrink-0 text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
                 {title ?? (
                   <span className="inline-flex items-center gap-1.5">
                     {/* Brand Rocket lockup — the OFFICIAL premium mark (same asset the Admin Panel's
@@ -887,12 +895,20 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   because a page cannot hide its own browser's chrome. */}
               <InstallAppButton locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} />
               <LanguageSwitcher locale={locale} />
-              {/* FEATURE 5 — the whole "X.XX ₾ +" pill is one button → Credits/Billing modal. */}
-              <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
-                className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
-                <span className="text-[14px] font-semibold tabular-nums">{formatWalletBalance(balanceGel, locale)}</span>
-                <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
-              </button>
+              {/* The balance pill — SIGNED-IN ONLY.
+                  ⚠️ A GUEST WAS SHOWN A ZERO BALANCE BEFORE THEY HAD AN ACCOUNT. The first number a
+                  first-time visitor met on the page was their own emptiness — "you are broke", at the
+                  exact moment the screen should be saying "try this". It also cost the 83px that was
+                  truncating the wordmark to "MyAv" on a 390px phone: hiding it for guests is what lets
+                  the brand name fit. A signed-out visitor who wants prices has the Sign in button and
+                  the pricing link; they do not need a balance they cannot have. */}
+              {authed && (
+                <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
+                  className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
+                  <span className="text-[14px] font-semibold tabular-nums">{formatCreditBalance(balanceGel, locale)}</span>
+                  <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
+                </button>
+              )}
               {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an
                   avatar initial (→ settings) once signed in. The modal itself is AuthModal. */}
               {authed ? (

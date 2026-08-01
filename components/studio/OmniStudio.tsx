@@ -3803,7 +3803,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // truth, and it invites exactly the retry that will 409 again. Every sibling flow in this file
         // (video, remix, lipsync, upscale, and image's own regenerate) already surfaces the reason.
         const reason = j.code === 'insufficient_credits' ? (j.message || j.error) : j.message;
-        updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}` });
+        updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec });
         throw new Error(j.error || 'image failed');
       },
     });
@@ -6509,6 +6509,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     </>
                   );
                 })()}
+                {m.genKind === 'image' && m.regen && !busy && m.text.startsWith('⚠️') && (
+                  <button
+                    type="button"
+                    onClick={() => void regenerate(m.regen!)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                  >
+                    <RotateCcw size={13} /> {t.retry}
+                  </button>
+                )}
                 {/* FIX 4 — one-click retry on a failed video render (reuses the stored
                     prompt + refs + orientation; no re-typing / re-uploading). */}
                 {m.retryVideo && !busy && (
@@ -6733,13 +6742,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-5 px-2 text-center">
+          <div className="flex min-h-full flex-col items-center justify-center gap-5 px-2 py-6 text-center">
             <div className="space-y-1.5">
               <h2 className="text-[28px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
               <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-app-muted">{mode === 'video' ? (locale === 'en' ? 'Attach a photo, describe your video, and pick a length — then tap Create. I’ll storyboard it and render the film with Veo.' : locale === 'ru' ? 'Прикрепите фото, опишите видео и выберите длину — затем нажмите «Создать». Я сделаю раскадровку и соберу фильм на Veo.' : 'ატვირთე ფოტო, აღწერე ვიდეო და აირჩიე ხანგრძლივობა — შემდეგ დააჭირე „შექმნას". სცენარსაც და ფილმის აწყობასაც Veo-თი მე გავაკეთებ.') : t.empty}</p>
             </div>
-            {/* No hardcoded template suggestions here — the 4 ghost service pills above
-                the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {(locale === 'en'
+                ? ['A portrait of a Georgian winemaker, golden hour', 'A Tbilisi balcony cafe at dusk', 'A minimalist logo for a coffee brand']
+                : locale === 'ru'
+                ? ['Портрет грузинского винодела на закате', 'Кафе на балконе в Тбилиси, сумерки', 'Минималистичный логотип для кофейни']
+                : ['ქართველი მეღვინის პორტრეტი, ოქროს საათი', 'აივნის კაფე თბილისში, საღამო', 'მინიმალისტური ლოგო ყავის ბრენდისთვის']
+              ).map((p) => (
+                <button key={p} type="button" onClick={() => runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
+                  className="rounded-full border border-app-border/20 bg-app-elevated/40 px-3.5 py-2 text-[12.5px] text-app-text transition hover:border-app-accent/50 hover:bg-app-accent/5">
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
         ) : messageList}
       </div>
@@ -6769,6 +6789,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {dictationWarn && (
           <div role="status" className="mb-2 rounded-xl border border-app-warning/25 bg-app-warning/10 px-3 py-2 text-[12px] leading-snug text-app-text">
             ⚠️ {dictationWarn}
+          </div>
+        )}
+        {mode === 'image' && !busy && (
+          <div className="mb-2 text-center text-[11.5px] text-app-muted">
+            {locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: {creditCostFor('image') * imgCount} {locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი'} · ~{imgTargetFor(imgQuality)}s
           </div>
         )}
         {/* Service shortcuts intentionally REMOVED from the composer — the in-pill mode

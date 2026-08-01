@@ -126,6 +126,9 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     return (
       <ChatChrome
         locale={locale}
+        // The dashboard page resolved the session server-side; forwarding it stops the composer's
+        // auth gate from answering '0' for a signed-in user during the client getUser() round-trip.
+        initialAuthed={isAuthenticated}
         // The assistant chatbox IS the home — it has nothing to go "back" to, so it
         // gets NO back control (the old one routed to the #hub card grid, which read
         // as a "ghost page" landing on every press/refresh). Lipsync is a secondary

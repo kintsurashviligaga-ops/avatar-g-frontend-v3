@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle, Check } from 'lucide-react';
 import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig';
-import { formatWalletBalance } from '@/lib/billing/gel';
+import { formatCreditBalance } from '@/lib/billing/gel';
 import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -38,7 +38,7 @@ interface CreditsModalProps {
 // DAY-6 — the credits modal now renders the SINGLE SOURCE OF TRUTH tiers (PRICING_TIERS: Starter 38/140 ·
 // Pro Creator 299/700 · Studio Annual 899/3250) — the SAME data the /pricing page shows — instead of the legacy
 // 9/29/89 top-up packs. The per-item "tetri" cost guide is removed (see TODO(GG) below).
-const PACKAGES = PRICING_TIERS;
+const PACKAGES = PRICING_TIERS.filter((t) => t.priceUsd > 0);
 
 const COPY: Record<Lang, {
   title: string; balance: string; freeVideos: string; pay: string; cardHint: string;
@@ -225,6 +225,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
               className="inline-flex items-center gap-2 rounded-xl bg-app-accent px-5 py-2.5 text-[14px] font-semibold text-app-bg transition-opacity hover:opacity-90">
               <LogIn size={16} /> {t.signIn}
             </button>
+            <a href={`/${lang}/pricing`} className="text-[12.5px] font-medium text-app-accent underline-offset-2 hover:underline">{t.viewAllPlans}</a>
           </div>
         ) : (
           /* ── Signed-in billing body ───────────────────────────────────────── */
@@ -232,7 +233,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             {/* Balance + free videos */}
             <div className="rounded-2xl bg-app-elevated/60 px-4 py-4 text-center">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.balance}</p>
-              <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">{formatWalletBalance(balanceGel, locale)}</p>
+              <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">{formatCreditBalance(balanceGel, locale)}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] text-app-muted">
                 🎬 {t.freeVideos}: <span className="font-semibold tabular-nums text-app-text">{loading && freeFilms === null ? <Loader2 size={12} className="inline animate-spin" /> : (freeFilms ?? '—')}</span> / 3
               </p>
@@ -260,7 +261,10 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                     )}
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-[14.5px] font-bold tracking-tight text-app-text">{TIER_NAME[p.id][lang]}</span>
-                      <span className="text-[21px] font-black leading-none tabular-nums text-app-text">${p.priceUsd}<span className="ml-1 text-[11px] font-medium text-app-muted">{period}</span></span>
+                      <span className="flex flex-col items-end">
+                        <span className="text-[21px] font-black leading-none tabular-nums text-app-text">${p.priceUsd}<span className="ml-1 text-[11px] font-medium text-app-muted">{period}</span></span>
+                        <span className="mt-1 text-[10.5px] font-medium tabular-nums text-app-muted">≈ {p.priceGel} ₾</span>
+                      </span>
                     </div>
                     <ul className="mt-3 space-y-1.5">
                       {TIER_FEATURES[p.id][lang].map((f) => (

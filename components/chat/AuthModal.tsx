@@ -268,9 +268,18 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (res.ok) return null;
     const j = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
     if (j?.error === 'email_taken') return otpErr.taken;
-    if (j?.error === 'mail_not_configured') return j.message ?? 'Email delivery is not configured.';
     if (res.status === 429) return otpErr.rate;
-    return j?.message ?? t.errGeneric;
+    if (j?.error === 'weak_password') return t.errWeakPassword;
+    if (j?.error === 'invalid_email') return t.errInvalidEmail;
+    // Infrastructure failures (mail_not_configured / not_configured / send_failed) carry an ENGLISH,
+    // OPERATOR-facing `message` that names an env var. Never show that to a user — say what they can do.
+    if (j?.error === 'mail_not_configured' || j?.error === 'not_configured' || j?.error === 'send_failed')
+      return locale === 'en'
+        ? `We couldn't send the code right now. Please try again in a minute, or write to ${SUPPORT_EMAIL}.`
+        : locale === 'ru'
+          ? `Не удалось отправить код. Попробуйте через минуту или напишите на ${SUPPORT_EMAIL}.`
+          : `კოდის გაგზავნა ვერ მოხერხდა. სცადეთ ერთ წუთში ან მოგვწერეთ ${SUPPORT_EMAIL}.`;
+    return t.errGeneric;
   }, [email, locale, t, otpErr]);
 
   const verifyOtp = useCallback(async () => {
@@ -306,8 +315,15 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     try {
       // Re-issue through OUR route, never supabase.auth.resend() — that would send the link template
       // again and the user would receive two different-looking mails for the same action.
-      // A signup resend needs no password: the account already exists by now.
-      const failure = await requestEmailCode(otpKind === 'signup' ? 'signup' : 'signin');
+      //
+      // ⚠️ THE SIGN-UP RESEND MUST CARRY THE PASSWORD. /api/auth/email-otp/send rejects
+      // purpose:'signup' when `password.length < 6` BEFORE it ever reaches Supabase, and this call
+      // passed no password at all — so the button failed 100% of the time with the generic
+      // "try again" line, at the exact moment a registration dies (the first code never arrived).
+      const failure = await requestEmailCode(
+        otpKind === 'signup' ? 'signup' : 'signin',
+        otpKind === 'signup' ? password : undefined,
+      );
       if (failure) { setError(failure); return; }
       setNotice(t.otpResent);
     } catch (err) {
@@ -315,7 +331,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setOtpBusy(false);
     }
-  }, [email, t, otpKind, requestEmailCode]);
+  }, [email, password, t, otpKind, requestEmailCode]);
 
   // OAuth (Google): only render the button when the Supabase project ACTUALLY has the
   // provider enabled (asked from GoTrue's public /settings), so we never show a dead
@@ -458,6 +474,18 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                 <X size={16} />
               </button>
             </div>
+
+            {/* WHY THIS CARD APPEARED. The gate used to open with nothing but the word "შესვლა" —
+                the visitor had just tapped send and was given no reason and no promise. */}
+            {!otpStage && (
+              <p className="-mt-3 mb-4 text-[12.5px] leading-snug text-app-muted">
+                {locale === 'en'
+                  ? 'An account is needed to generate — it holds your balance and keeps every result you make.'
+                  : locale === 'ru'
+                    ? 'Аккаунт нужен для генерации — в нём хранится баланс и все ваши результаты.'
+                    : 'გენერაციისთვის საჭიროა ანგარიში — მასში ინახება ბალანსი და ყველა შედეგი.'}
+              </p>
+            )}
 
             {/* OAuth removed — the Supabase project has no social providers enabled
                 (Google/Apple/GitHub returned "provider is not enabled"). Email + password

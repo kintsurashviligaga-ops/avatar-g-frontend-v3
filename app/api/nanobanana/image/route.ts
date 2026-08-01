@@ -246,7 +246,7 @@ export async function POST(req: NextRequest) {
     // reference image is set, e.g. "edit this photo") they'd ignore the source and return an UNRELATED
     // new image — which we'd deliver as success and still charge. When only NanoBanana can honor the
     // reference and it missed, skip these legs so the 502-refund path below fires instead.
-    if (!providerUrl && !referenceImageUrl) {
+    if (!providerUrl && !referenceImageUrl && !(await isProviderTripped('grok').catch(() => false))) {
       try {
         const grok = await generateGrokImage(finalPrompt);
         if (grok?.url) { providerUrl = grok.url; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
     // image coming through instead of a 502. Fail-open: null → the 502 below fires as before.
     // Same edit-guard as the Grok leg: FLUX 1.1 Pro is prompt-only, so it must not substitute an unrelated
     // image for an edit request — skip it when a reference image is set so the 502-refund path fires.
-    if (!providerUrl && !backupB64 && !referenceImageUrl) {
+    if (!providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('flux-pro').catch(() => false))) {
       try {
         const flux = await generateFluxProImage(finalPrompt, body.aspectRatio ?? '1:1');
         if (flux) { providerUrl = flux; model = 'FLUX 1.1 Pro'; await recordProviderResult('flux-pro', true).catch(() => {}); }

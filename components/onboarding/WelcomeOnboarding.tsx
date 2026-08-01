@@ -149,9 +149,15 @@ export default function WelcomeOnboarding({ locale, balanceGel, onComplete }: {
 
           {step === 3 && (
             <div className="flex flex-col items-center gap-4 text-center">
-              <span className="text-4xl">🎬</span>
-              <h2 className="text-[18px] font-bold leading-tight text-app-text">{t.s3Title}</h2>
-              <p className="text-[13px] text-app-muted">{t.s3Sub}</p>
+              <span className="text-4xl">{service === 'video' ? '🎬' : service === 'music' ? '🎵' : '🖼️'}</span>
+              {service === 'video' ? (
+                <>
+                  <h2 className="text-[18px] font-bold leading-tight text-app-text">{t.s3Title}</h2>
+                  <p className="text-[13px] text-app-muted">{t.s3Sub}</p>
+                </>
+              ) : (
+                <h2 className="text-[18px] font-bold leading-tight text-app-text">{SERVICES.find((s) => s.id === service)?.label}</h2>
+              )}
               <div className="w-full rounded-2xl bg-app-elevated/60 px-4 py-3">
                 <p className="text-[10.5px] font-semibold uppercase tracking-wider text-app-muted">{t.balance}</p>
                 <p className="mt-0.5 text-[26px] font-bold tabular-nums text-app-text">{formatWalletBalance(balanceGel, locale)}</p>
