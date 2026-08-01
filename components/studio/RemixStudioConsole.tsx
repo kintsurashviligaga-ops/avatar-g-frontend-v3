@@ -13,15 +13,11 @@
  * video). Pure app-token palette so the dark theme + theming hold; sized
  * w-[min(88vw,460px)] so it never overflows a 375px phone.
  */
-import { Wand2, Loader2, Check, Clock, Square, Upload, Paintbrush, Type, Music, Gauge, Scissors, Mic, Waves, UserCog, Film } from 'lucide-react';
+import { Wand2, Loader2, Check, Upload, Paintbrush, Type, Music, Gauge, Scissors, Mic, Waves, UserCog, Film } from 'lucide-react';
+import { GenerationProgress } from './ui/GenerationProgress';
 
 type Loc = 'en' | 'ru' | 'ka';
 const asLoc = (l: string): Loc => (l === 'ru' || l === 'ka' ? l : 'en');
-
-const fmtClock = (sec: number): string => {
-  const s = Math.max(0, Math.round(sec));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
 
 type Stage = { icon: typeof Wand2; weight: number; label: Record<Loc, string> };
 type OpPlan = { targetSec: number; title: Record<Loc, string>; stages: Stage[] };
@@ -61,8 +57,6 @@ const GENERIC: OpPlan = { targetSec: 45, title: { en: 'Remix', ru: 'Ремикс
 
 const TITLE: Record<Loc, string> = { en: 'Remix Studio', ru: 'Студия ремикса', ka: 'რემიქს სტუდია' };
 const SUBTITLE: Record<Loc, string> = { en: 'AI editor · live', ru: 'ИИ-монтаж · в эфире', ka: 'AI მონტაჟი · ლაივი' };
-const ELAPSED: Record<Loc, string> = { en: 'elapsed', ru: 'прошло', ka: 'გავიდა' };
-const LEFT: Record<Loc, string> = { en: 'left', ru: 'осталось', ka: 'დარჩა' };
 
 export default function RemixStudioConsole({
   op,
@@ -86,7 +80,6 @@ export default function RemixStudioConsole({
   // Eased overall %: asymptotic toward 96 so it climbs fast then settles — it never
   // hits 100 until the real result lands and the bubble swaps to the video.
   const pct = Math.min(96, Math.round((1 - Math.exp((-1.8 * elapsed) / target)) * 100));
-  const remaining = Math.max(0, Math.round(target - elapsed));
 
   // Which stage is active: walk the cumulative weights against progress fraction.
   const frac = Math.min(0.999, elapsed / target);
@@ -99,55 +92,27 @@ export default function RemixStudioConsole({
   }
 
   return (
-    <div className="w-[min(88vw,460px)] space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/55 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
-      {/* Header — REC pulse + title + live clock + big % */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold leading-tight text-app-text">{TITLE[loc]}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{SUBTITLE[loc]} · {plan.title[loc]}</p>
-          </div>
-        </div>
-        <div className="flex items-end gap-3">
-          <div className="text-right leading-tight">
-            <p className="flex items-center justify-end gap-1 text-[13px] font-semibold tabular-nums text-app-text">
-              <Clock size={11} className="text-app-muted" />
-              {fmtClock(elapsed)}
-            </p>
-            <p className="text-[9px] uppercase tracking-wider text-app-muted/60">
-              {remaining > 0 ? `~${fmtClock(remaining)} ${LEFT[loc]}` : ELAPSED[loc]}
-            </p>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-[26px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
-            <span className="text-[13px] font-semibold text-app-muted">%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Overall progress bar + Cancel */}
-      <div className="flex items-center gap-2">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/15">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-app-accent/70 to-app-accent transition-[width] duration-700 ease-out"
-            style={{ width: `${Math.max(4, pct)}%` }}
-          />
-        </div>
-        {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label={stopLabel || 'Stop'}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/20 active:scale-[0.98] touch-manipulation"
-          >
-            <Square size={10} className="fill-current" /> {stopLabel || 'Stop'}
-          </button>
-        ) : null}
-      </div>
+    // ⚠️ THIS USED TO BE ITS OWN CARD — same idea as every other service's progress panel, but a different
+    // shell, a different type scale and a different bar. Each service owning a private "a job is running"
+    // design is precisely how a phone and a desktop ended up looking like two separate products.
+    // The SHELL is shared now (chrome, live %, bar, clock, cancel); the weighted stage list below stays,
+    // because it is what THIS console actually knows and a generic checklist does not.
+    <GenerationProgress
+      kind="remix"
+      locale={loc}
+      elapsed={elapsed}
+      pct={pct}
+      // ⚠️ PASS THE OP'S OWN TARGET. The card would otherwise fall back to the generic remix estimate,
+      // discarding the per-op numbers this file documents at length (redub 300s because runLipsync polls
+      // for 240s; character 260s because roopFaceSwapVideo carries a nine-minute budget). Erring long is
+      // safe here and erring short is not — a zeroed countdown under a full bar is what "it's frozen,
+      // I'll reload" is made of.
+      targetSec={target}
+      title={TITLE[loc]}
+      subtitle={`${SUBTITLE[loc]} · ${plan.title[loc]}`}
+      {...(onCancel ? { onCancel } : {})}
+      {...(stopLabel ? { cancelLabel: stopLabel } : {})}
+    >
 
       {/* Stage list — completed / processing / upcoming */}
       <div className="space-y-1.5">
@@ -173,6 +138,6 @@ export default function RemixStudioConsole({
           );
         })}
       </div>
-    </div>
+    </GenerationProgress>
   );
 }

@@ -146,7 +146,7 @@ export type ProgressState = 'running' | 'queued' | 'done' | 'failed' | 'canceled
 
 export function GenerationProgress({
   kind, elapsed, status, locale, targetSec, pct: pctOverride, compact,
-  title, state = 'running', queuePosition, error, onCancel,
+  title, subtitle, state = 'running', queuePosition, error, onCancel, cancelLabel, children,
 }: {
   kind: ProgressKind;
   /** Seconds since the run started. */
@@ -159,8 +159,22 @@ export function GenerationProgress({
   queuePosition?: number;
   /** Failure reason, for `state === 'failed'`. */
   error?: string;
+  /** Second line under the title — the film/remix consoles name the specific pipeline here. */
+  subtitle?: string;
   /** Renders a cancel affordance when supplied. */
   onCancel?: () => void;
+  /** Overrides the card's own wording — a caller that already localises "Stop" keeps its label. */
+  cancelLabel?: string;
+  /**
+   * A service-specific body, rendered in place of the generic stage checklist.
+   *
+   * ⚠️ THIS EXISTS SO UNIFYING THE LOOK DOES NOT COST INFORMATION. The film console shows a nine-agent
+   * crew grid and the remix console shows a weighted stage list; both are richer than a checklist and
+   * neither could survive being replaced by this card wholesale. Sharing the SHELL — the card chrome, the
+   * live percentage, the bar, the clock and the cancel button — is what makes every service look like one
+   * product. Sharing the BODY would just delete what each service knows about itself.
+   */
+  children?: React.ReactNode;
   /** A stage the PIPELINE reported — takes over the headline, because it is real. */
   status?: string;
   locale: Lang;
@@ -208,8 +222,11 @@ export function GenerationProgress({
     // `compact` fills its container (the tray is a fixed-width panel); otherwise the card is clamped so a
     // desktop bubble does not stretch a progress card to the full width of the conversation.
     <div className={`${compact ? 'w-full' : 'w-full max-w-[min(86vw,440px)]'} space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-4 shadow-[0_10px_34px_rgba(0,0,0,0.20)]`}>
-      {title && (
-        <p className="truncate text-[12.5px] font-semibold text-app-text" title={title}>{title}</p>
+      {(title || subtitle) && (
+        <div className="min-w-0">
+          {title && <p className="truncate text-[12.5px] font-semibold text-app-text" title={title}>{title}</p>}
+          {subtitle && <p className="truncate text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{subtitle}</p>}
+        </div>
       )}
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
@@ -237,8 +254,8 @@ export function GenerationProgress({
             <button
               type="button"
               onClick={onCancel}
-              aria-label={sc.cancel}
-              title={sc.cancel}
+              aria-label={cancelLabel || sc.cancel}
+              title={cancelLabel || sc.cancel}
               className="flex h-8 w-8 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
             >
               <X size={15} />
@@ -254,7 +271,9 @@ export function GenerationProgress({
         />
       </div>
 
-      {!compact && running && (
+      {children}
+
+      {!children && !compact && running && (
         <ul className="space-y-1.5 pt-0.5">
           {stages.map((s, i) => {
             const state = i < stageIdx ? 'done' : i === stageIdx ? 'active' : 'pending';

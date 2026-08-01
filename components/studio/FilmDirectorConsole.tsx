@@ -23,10 +23,9 @@ import {
   Loader2,
   Check,
   AlertTriangle,
-  Clock,
   ArrowDown,
-  Square,
 } from 'lucide-react';
+import { GenerationProgress } from './ui/GenerationProgress';
 import { useEffect, useRef, useState } from 'react';
 import {
   deriveFilmRoster,
@@ -283,8 +282,6 @@ function LogTerminal({ log, loc }: { log: FilmLogLine[]; loc: Loc }) {
   );
 }
 
-const ELAPSED: Record<Loc, string> = { en: 'elapsed', ru: 'прошло', ka: 'გავიდა' };
-const LEFT: Record<Loc, string> = { en: 'left', ru: 'осталось', ka: 'დარჩა' };
 
 export default function FilmDirectorConsole({
   roster,
@@ -324,64 +321,26 @@ export default function FilmDirectorConsole({
   // ETA projected from the REAL progress %, so the clock and the big % stay
   // consistent (81% → ~elapsed*19/81 left, not a fixed 440s estimate). Falls back to
   // the eased target only very early (pct≈0) before there's progress to project from.
-  const remaining = !allDone && typeof elapsed === 'number' && pct > 2
-    ? Math.round((elapsed * (100 - pct)) / pct)
-    : typeof targetSec === 'number' && typeof elapsed === 'number' && !allDone
-      ? Math.max(0, targetSec - elapsed)
-      : null;
+  // `remaining` used to be computed here; the shared card derives it from elapsed + targetSec, so the
+  // console no longer keeps a second, slightly different estimate that could disagree with the tray's.
 
   return (
-    <div className="w-[min(88vw,460px)] space-y-3 rounded-2xl border border-app-border/15 bg-app-elevated/55 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
-      {/* Header — REC pulse + title + big live overall % */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="relative flex h-2.5 w-2.5">
-            {anyWorking && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70" />}
-            <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${anyWorking ? 'bg-red-500' : 'bg-app-muted/50'}`} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold leading-tight text-app-text">{(musicVideo ? MV_TITLE : TITLE)[loc]}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted/70">{(musicVideo ? MV_SUBTITLE : SUBTITLE)[loc]}</p>
-          </div>
-        </div>
-        <div className="flex items-end gap-3">
-          {typeof elapsed === 'number' ? (
-            <div className="text-right leading-tight">
-              <p className="flex items-center justify-end gap-1 text-[13px] font-semibold tabular-nums text-app-text">
-                <Clock size={11} className="text-app-muted" />
-                {fmtClock(elapsed)}
-              </p>
-              <p className="text-[9px] uppercase tracking-wider text-app-muted/60">
-                {remaining !== null && remaining > 0 ? `~${fmtClock(remaining)} ${LEFT[loc]}` : ELAPSED[loc]}
-              </p>
-            </div>
-          ) : null}
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-[26px] font-bold leading-none tabular-nums text-app-text">{pct}</span>
-            <span className="text-[13px] font-semibold text-app-muted">%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Overall progress bar + Cancel (abort the running render) */}
-      <div className="flex items-center gap-2">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-border/15">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-app-accent/70 to-app-accent transition-[width] duration-700 ease-out"
-            style={{ width: `${Math.max(4, pct)}%` }}
-          />
-        </div>
-        {onCancel && (anyWorking || !allDone) ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label={stopLabel || 'Stop'}
-            className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/20 active:scale-[0.98] touch-manipulation"
-          >
-            <Square size={10} className="fill-current" /> {stopLabel || 'Stop'}
-          </button>
-        ) : null}
-      </div>
+    // ⚠️ THIS WAS A THIRD PRIVATE COPY of the same "a job is running" panel — its own shell, its own type
+    // scale, its own bar, differing from both the chat card and the tray row. Three implementations is how
+    // one product ends up looking like three, and the user found it by holding a phone next to a desktop.
+    // The SHELL is shared now; the nine-agent crew grid below stays, because that roster is what this
+    // console uniquely knows and no generic checklist could replace it.
+    <GenerationProgress
+      kind="video"
+      locale={loc}
+      elapsed={typeof elapsed === 'number' ? elapsed : 0}
+      pct={pct}
+      title={(musicVideo ? MV_TITLE : TITLE)[loc]}
+      subtitle={(musicVideo ? MV_SUBTITLE : SUBTITLE)[loc]}
+      {...(typeof targetSec === 'number' ? { targetSec } : {})}
+      {...(onCancel && (anyWorking || !allDone) ? { onCancel } : {})}
+      {...(stopLabel ? { cancelLabel: stopLabel } : {})}
+    >
 
       {/* 9-agent crew grid */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -400,6 +359,6 @@ export default function FilmDirectorConsole({
 
       {/* Streaming activity log — the crew narrates its work in real time */}
       {log && log.length ? <LogTerminal log={log} loc={loc} /> : null}
-    </div>
+    </GenerationProgress>
   );
 }
