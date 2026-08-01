@@ -68,6 +68,14 @@ const RULES: IntentRule[] = [
       /\bphoto[ -]?real/i,
       /\b3d\s*render/i,
       /\bგამოსახულება|изображение|плакат|постер/i,
+      // ⚠️ "draw me a cat" HAD NO PATTERN AT ALL. Every rule above needs a media NOUN
+      // (image/poster/banner/…), and "cat" is not one — so the most canonical image request in the
+      // language classified as text_chat and the user got a conversational reply instead of a picture.
+      // For these four verbs the VERB IS the intent; the exclusions are the only common senses that
+      // mean something other than "make a picture".
+      /\b(draw|sketch|illustrate|paint)\b(?!\s+(a\s+|the\s+|your\s+|my\s+)?(conclusion|comparison|parallel|distinction|analogy|attention|inspiration|line\b))/i,
+      // No `\b` — it is ASCII-only and never matches before a Cyrillic letter (see isGenerativeCommand).
+      /(нарисуй|изобрази|набросай)/i,
       // Georgian: image/photo/drawing/portrait noun near a generate verb (either order). Catches
       // "გამიკეთე სურათი", "დახატე კატა", "სურათი შემიქმენი". The negative lookahead keeps the GENERIC
       // verbs (გააკეთ/გამიკეთ = "do/make") from hijacking an ANALYSIS/DESCRIPTION request such as
@@ -75,7 +83,10 @@ const RULES: IntentRule[] = [
       // through to visual_analysis (see below) and the vision chat stream instead.
       /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ|დაგენერირ|გამოსახ)(?!.{0,40}(ანალიზ|აღწერ)).{0,40}(სურათ|ფოტო|ნახატ|გამოსახ|პორტრეტ|ილუსტრაცი)/,
       /(სურათ|ფოტო|ნახატ|პორტრეტ|ილუსტრაცი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დააგენერირ)/,
-      /დახატ(ე|ავ)/,
+      // ⚠️ Georgian verbs carry a PREVERB and an OBJECT MARKER, so the real imperative a user types is
+      // `დამიხატე` (draw for ME), not the bare `დახატე` this pattern used to hold. `დამიხატე ლამაზი კატა`
+      // matched nothing — neither this nor the noun-bearing rules above, whose object list has no "cat".
+      /(და)?(მი|გვი)?ხატ(ე|ავ|ო)/,
     ],
   },
   // ── Photo edit / enhancement ───────────────────────────────────────
@@ -125,7 +136,10 @@ const RULES: IntentRule[] = [
       /\b(music|beat|song|track|soundtrack)\b.*\b(generat|creat|compos)/i,
       /\bmusicgen\b/i,
       /\b(ambient|cinematic|trap|house|orchestral)\b.*\b(track|beat|music)/i,
-      /მუსიკა|მელოდია|სიმღერა|музыка|трек|бит/i,
+      // Stems, not whole words: Russian and Georgian both inflect the object, so `музыка` missed the
+    // accusative `музыку` that any real request uses ("сочини музыку для видео") — and the bare `видео`
+    // in that same sentence then handed a MUSIC request to the video bank.
+    /მუსიკ|მელოდი|სიმღერ|музык|трек|бит|песн|мелоди/i,
       /(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დააგენერირ|დაგენერირ|დამიწერ|დაწერ).{0,40}(მუსიკა|სიმღერ|მელოდი|ბიტ|ტრეკ)/,
       /(მუსიკა|სიმღერ|მელოდი).{0,40}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დააგენერირ)/,
     ],
@@ -260,12 +274,23 @@ export function isGenerativeCommand(text: string): boolean {
   // Must LEAD with a generate verb, allowing a short chain of polite lead-ins first ("please generate
   // …", "can you make …", "could you please generate …"). The polite set is specific, so a question
   // that starts with how/what/is/should/which (not in the set) can't reach the verb → it isn't a command.
-  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста)\s+){0,3}(make|create|generate|render|compose|design|draw|produce|animate|paint|write\s+me|сделай|создай|сгенерируй|нарисуй|сочини|придумай)\b/i.test(s);
+  // ⚠️ `\b` IS ASCII-ONLY AND SILENTLY KILLED EVERY RUSSIAN COMMAND. JavaScript defines the word
+  // boundary against `\w` = [A-Za-z0-9_], so no Cyrillic letter is ever a "word character": in
+  // `нарисуй кота` both sides of the intended boundary (`й` and the space) are non-`\w`, there is no
+  // transition, and `\b` does not match. Every Russian verb in this alternation was therefore dead on
+  // arrival — `нарисуй кота`, `сделай видео`, `сочини музыку` all fell through to plain chat while
+  // their English equivalents dispatched. The product ships a `ru` locale, so this was the whole
+  // generative surface for those users. Unicode-aware end-of-token lookahead instead, `u` flag.
+  // (lib/chat/studioIntent.ts documents this same trap in its own header — it was fixed there and not
+  // here, which is why Russian worked through the studio panels but never through generation.)
+  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста)\s+){0,3}(make|create|generate|render|compose|design|draw|sketch|illustrate|produce|animate|paint|write\s+me|сделай|создай|сгенерируй|нарисуй|изобрази|набросай|сочини|придумай|собери)(?![\p{L}\p{N}])/iu.test(s);
   // Georgian imperative generate verbs (stems, so conjugations like -ე/-ავ/-ე match), optionally after a
   // polite "გთხოვ" / "თუ შეიძლება". Georgian script isn't \w, so this leads at ^ without \b. Covers the
   // common phrasings that were silently falling through to plain chat ("გამიკეთე სურათი", "დახატე …",
   // "შემიქმენი ვიდეო", "დააგენერირე …").
-  const leadsKa = /^\s*(გთხოვ\s+|თუ\s+შეიძლება\s+){0,2}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|გადამიღ|გადაიღ|შემიდგინ)/.test(s);
+  // `დამიწერ`/`დაწერ` ("write me …") was missing, so `დამიწერე სიმღერა სიყვარულზე` — a plain request for
+  // a song — never reached the music bank that already recognised it.
+  const leadsKa = /^\s*(გთხოვ\s+|თუ\s+შეიძლება\s+){0,2}(გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიხატ|დახატ|დამიგენერირ|დააგენერირ|დაგენერირ|გამომისახ|გამოსახ|დამიმზად|მიმზად|გადამიღ|გადაიღ|შემიდგინ|დამიწერ|დაწერ|შემითხზ|დამირთ)/.test(s);
   if (!leadsLatin && !leadsKa) return false;
   // EXCLUDE a Georgian ANALYSIS/DESCRIPTION request that only leads with a GENERIC verb (გააკეთ/გამიკეთ =
   // "do/make"): "გააკეთე ფოტოს ანალიზი" / "აღწერე ეს ფოტო" must go to the vision chat stream, never a paid

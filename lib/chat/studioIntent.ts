@@ -60,9 +60,27 @@ const QUESTION_LEAD = new RegExp(
   'iu',
 );
 
-/** An explicit request to act. */
+/**
+ * An explicit request to act.
+ *
+ * ⚠️ THE GEORGIAN LIST WAS SPELLED AS WHOLE WORDS AND SO MISSED THE COMMONEST IMPERATIVE IN THE
+ * LANGUAGE. It held `გააკეთე` ("do it") but not `გამიკეთე` ("make it FOR ME") — and `გამიკეთე` is how
+ * a Georgian speaker actually asks for something. Every KA studio request that opened that way
+ * ("გამიკეთე პრეზენტაცია", "გამიკეთე 3d მოდელი") failed this gate and fell to plain chat, while the
+ * identical English sentence routed correctly. Whole-word spellings cannot survive an agglutinative
+ * language, so the Georgian arm is now STEM + `\p{L}*`: one entry covers every conjugation and every
+ * object marker, instead of needing a new alternative per inflection.
+ */
+const KA_IMPERATIVE_STEMS = [
+  'გამიკეთ', 'გააკეთ', 'დამიმზად', 'დაამზად', 'შემიქმენ', 'შექმენ',
+  'დამიგენერირ', 'დააგენერირ', 'გადათარგმნ', 'გადმოაკეთ', 'გადააკეთ',
+  'დამიდუბლირ', 'დაადუბლირ', 'დამიმონტაჟ', 'დაამონტაჟ',
+  'გააერთიან', 'გამიერთიან', 'შემიდგინ', 'შემიკრიბ',
+  'მინდა', 'მჭირდებ', 'დაიწყ', 'გახსენ', 'გამიხსენ',
+].join('|');
+
 const IMPERATIVE_LEAD = new RegExp(
-  `^\\s*(?:please\\s+)?(?:make|create|generate|build|produce|render|do|give me|i want|i need|i'd like|let's|start|open|turn|convert|dub|translate|assemble|stitch|splice|combine|merge|edit|cut|design|prepare|გააკეთე|შექმენი|დამიმზადე|დამიგენერირე|გადათარგმნე|გადმოაკეთე|დაამზადე|მინდა|მჭირდება|დაიწყე|გახსენი|შემიქმენი|გააერთიანე|дублируй|сделай|создай|сгенерируй|собери|склей|переведи|озвучь|хочу|нужно|начни|открой|подготовь)${B1}`,
+  `^\\s*(?:please\\s+)?(?:(?:make|create|generate|build|produce|render|do|give me|i want|i need|i'd like|let's|start|open|turn|convert|dub|translate|assemble|stitch|splice|combine|merge|edit|cut|design|prepare|дублируй|сделай|создай|сгенерируй|собери|склей|переведи|озвучь|хочу|нужно|начни|открой|подготовь)|(?:${KA_IMPERATIVE_STEMS})${L}*)${B1}`,
   'iu',
 );
 
@@ -76,13 +94,26 @@ const SERVICE_NOUNS: Array<{ service: StudioService; re: RegExp }> = [
   // Dubbing FIRST: "dub this video" also contains "video", and dubbing is the more specific claim.
   // "translate/გადათარგმნე/переведи + a video object" is a dubbing request too — that is what a user
   // means by translating a video, and it was the phrasing that fell through to plain chat.
-  { service: 'dubbing', re: new RegExp(`${B0}(?:dub(?:bing|bed)?|voice[\\s-]?over\\s+in|lip[\\s-]?dub|დუბლირ${L}*|გახმოვან${L}*|дубляж|дублир${L}*|озвуч${L}*)${B1}|(?:translate|გადათარგმნე|переведи)${B1}[\\s\\S]{0,40}(?:video|clip|ვიდეო|видео)`, 'iu') },
+  // ⚠️ The Georgian stem needs its PREVERB: the imperative is `დაადუბლირე`, and the start-of-token guard
+  // rejected it because `დაა` is a letter sitting where the guard demands none. Only the bare `დუბლირ`
+  // form — which nobody types — could ever match.
+  { service: 'dubbing', re: new RegExp(`${B0}(?:dub(?:bing|bed)?|voice[\\s-]?over\\s+in|lip[\\s-]?dub|(?:დაა|და|გადა|გა)?დუბლირ${L}*|(?:გა)?ახმოვან${L}*|გახმოვან${L}*|дубляж|дублир${L}*|озвуч${L}*)${B1}|(?:translate|გადათარგმნე|переведи)${B1}[\\s\\S]{0,40}(?:video|clip|ვიდეო|видео)`, 'iu') },
   { service: 'presentation', re: new RegExp(`${B0}(?:presentation|slide\\s*deck|slides?|deck|powerpoint|keynote|პრეზენტაცი${L}*|სლაიდ${L}*|презентаци${L}*|слайд${L}*)${B1}`, 'iu') },
   { service: 'model3d', re: new RegExp(`${B0}(?:3\\s*-?\\s*d\\s*(?:model|object|mesh|asset)|three[\\s-]?d\\s*model|glb|3d\\s*მოდელ${L}*|სამგანზომილებ${L}*|3d[\\s-]?модел${L}*|трёхмерн${L}*)${B1}`, 'iu') },
   // Montage LAST: its nouns (clips, footage) are the most likely to appear incidentally.
   { service: 'montage', re: new RegExp(`${B0}(?:montage|stitch|splice|(?:combine|merge|join)\\s+(?:the\\s+)?(?:clips?|videos?|footage)|edit\\s+together|cut\\s+together|მონტაჟ${L}*|გააერთიან${L}*|монтаж${L}*|склей${L}*|соедини${L}*)${B1}`, 'iu') },
   { service: 'avatar', re: new RegExp(`${B0}(?:avatar|talking\\s+head|lip[\\s-]?sync|ავატარ${L}*|аватар${L}*|липсинк)${B1}`, 'iu') },
 ];
+
+/** What the sentence is pointed AT — used to keep the dub/read-aloud ambiguity from picking the wrong tool. */
+const TEXT_OBJECT = new RegExp(
+  `${B0}(?:text|paragraph|sentence|article|script|ტექსტ${L}*|წინადადებ${L}*|სტატი${L}*|текст${L}*|предложени${L}*|стать${L}*|абзац${L}*)`,
+  'iu',
+);
+const VIDEO_OBJECT = new RegExp(
+  `${B0}(?:video|clip|movie|film|footage|reel|ვიდეო${L}*|კლიპ${L}*|ფილმ${L}*|რგოლ${L}*|видео${L}*|клип${L}*|ролик${L}*|фильм${L}*)`,
+  'iu',
+);
 
 /** Dubbing target languages the service supports, by how a user names them. */
 const LANGUAGE_WORDS: Array<{ code: string; re: RegExp }> = [
@@ -154,6 +185,13 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
 
   const hit = SERVICE_NOUNS.find(({ re }) => re.test(t));
   if (!hit) return null;
+
+  // ⚠️ `озвучь` and `გახმოვანე` mean BOTH "dub this video" AND "read this aloud" — the same word covers
+  // a video operation and a text-to-speech one. So "озвучь этот текст" ("read this text aloud") opened
+  // the DUBBING studio: a video tool, aimed at a sentence, with a file picker the user has nothing to
+  // put in. Dubbing is by definition an operation ON A VIDEO, so when the object named is text and no
+  // video is named anywhere, this is not a dubbing request and must fall through to the voice/chat path.
+  if (hit.service === 'dubbing' && TEXT_OBJECT.test(t) && !VIDEO_OBJECT.test(t)) return null;
 
   // Needs a reason to believe this is a REQUEST: an imperative lead, or a deictic object ("dub THIS").
   if (!IMPERATIVE_LEAD.test(t) && !DEICTIC.test(t)) return null;
