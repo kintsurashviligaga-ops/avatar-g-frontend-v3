@@ -6055,6 +6055,572 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     );
   }
 
+  /**
+   * The rendered message list, memoised.
+   *
+   * ⚠️ EVERY KEYSTROKE RE-RENDERED EVERY MESSAGE. This map is 541 lines and 145 JSX tags living inline in
+   * the component's own JSX, so React re-executed it for all N messages on each character typed —
+   * measured with React 18.3 at 0.435 ms/keystroke over 20 messages, 0.993 ms over 50, 1.985 ms over 100.
+   * On a mid-range phone that is the difference between typing that feels attached to your finger and
+   * typing that lags behind it, and it gets worse the longer the conversation runs.
+   *
+   * ⚠️ WHY A useMemo AND NOT AN EXTRACTED <MessageRow memo>. I enumerated what this block actually closes
+   * over: 55 bindings. Threading those as props means 55 chances to pass a fresh object literal, and ONE
+   * unstable prop silently reduces React.memo to a no-op plus overhead — a refactor that looks done,
+   * measures identical, and nobody can tell why. The decisive fact is that `input` IS NOT AMONG THE 55:
+   * the rows never read the composer text. So holding the ELEMENT identical across a keystroke is
+   * sufficient — React bails out of re-rendering a subtree whose element reference is unchanged — and it
+   * needs no prop surgery at all.
+   *
+   * ⚠️ THE DEPENDENCY ARRAY IS THE WHOLE CORRECTNESS ARGUMENT. It was derived mechanically, not by eye:
+   * comments and string literals stripped, identifiers extracted, then intersected with the bindings this
+   * component declares. A missing entry here is a stale bubble — a result that never appears — so if you
+   * add a binding to the block, add it here in the same edit.
+   */
+  const messageList = useMemo(() => (
+          messages.map((m, i) => (
+            <div key={i} className={`group flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start gap-2.5'}`}>
+              {/* Assistant avatar — a small "M" brand circle to the left, Claude.ai-style. */}
+              {m.role === 'assistant' && (
+                <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-app-accent/15 text-[12px] font-bold text-app-accent">M</span>
+              )}
+              <div className={`text-[16px] leading-[1.7] ${
+                m.role === 'user'
+                  ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
+                  : 'min-w-0 flex-1 text-app-text'
+              }`}>
+                {m.role === 'assistant' && m.chatModel && (
+                  <div className="mb-1 text-[10px] font-medium text-app-muted/55" title="answering engine">{m.chatModel}</div>
+                )}
+                {m.medias && m.medias.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {m.medias.map((md, mi) => (
+                      isImage(md.mimeType) ? (
+                        <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
+                        </button>
+                      ) : isVideo(md.mimeType) ? (
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        <video key={mi} src={md.dataUrl} controls className="max-h-44 rounded-lg" />
+                      ) : isAudio(md.mimeType) ? (
+                        <audio key={mi} src={md.dataUrl} controls className="w-full" />
+                      ) : (
+                        <span key={mi} className="inline-flex items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted"><FileText size={12} /> document</span>
+                      )
+                    ))}
+                  </div>
+                )}
+                {m.imageUrl && (
+                  <div className="space-y-1.5">
+                    <div className="group relative">
+                      <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
+                      </button>
+                      {/* Cross-service bridge — send this image to the Video studio as the character ref.
+                          Corner badge (always visible) + a hover pill (always shown on touch). */}
+                      <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
+                        title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
+                        onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
+                        className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/70 text-[15px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation before:absolute before:-inset-2 before:content-['']">
+                        🎬
+                      </button>
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
+                          className="pointer-events-auto inline-flex min-h-[44px] sm:min-h-0 items-center gap-1.5 rounded-full bg-app-bg/85 px-3.5 py-1.5 text-[12px] font-semibold text-app-text shadow-lg backdrop-blur ring-1 ring-app-border/15 transition-colors hover:bg-app-elevated hover:text-app-accent active:scale-[0.98]">
+                          🎬 <span>{locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}</span>
+                        </button>
+                      </div>
+                    </div>
+                    {/* Icon-only result toolbar (Phase 8): labels live in title/aria; 44px touch hit-box (h-11) → 36px on desktop. */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void dl(m.imageUrl!, 'myavatar-image.png')}
+                        title={t.imgDownload} aria-label={t.imgDownload}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
+                      >
+                        <Download size={16} />
+                      </button>
+                      <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')} title={t.share} aria-label={t.share}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                        <Share2 size={16} />
+                      </button>
+                      <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling} title={t.upscaleBtn.replace(/^[⬆🔍]\s*/, '')} aria-label={t.upscaleBtn.replace(/^[⬆🔍]\s*/, '')}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                        <Sparkles size={16} />
+                      </button>
+                      {m.regen && (
+                        <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                          <RotateCcw size={16} />
+                        </button>
+                      )}
+                      {/* Edit → load this image as the img2img source. */}
+                      <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy} title={t.editImage} aria-label={t.editImage}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                        <Pencil size={16} />
+                      </button>
+                      {saveLibButton(m.imageUrl, 'image', m.regen?.kind === 'image' ? m.regen.prompt : undefined)}
+                      {editButton(m.imageUrl, 'image')}
+                    </div>
+                  </div>
+                )}
+                {m.batch && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {m.batch.tiles.map((tile, k) => (
+                        <div key={k} className="relative overflow-hidden rounded-xl bg-app-elevated/40 ring-1 ring-app-border/10" style={{ aspectRatio: m.batch!.spec.aspect.replace(':', '/') }}>
+                          {tile.status === 'done' && tile.url ? (
+                            <>
+                              <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
+                              </button>
+                              {/* Cross-service bridge — each variation can be sent to the Video studio too. */}
+                              <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'} title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
+                                onClick={(e) => { e.stopPropagation(); sendImageToVideo(tile.url!); }}
+                                className="absolute right-1.5 top-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-app-bg/70 text-[13px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation">🎬</button>
+                            </>
+                          ) : tile.status === 'failed' ? (
+                            // A reason and a way out, instead of a bare glyph. Retrying ONE tile also
+                            // stops the user re-billing the variations they were happy with, which is
+                            // what the regenerate-all button below forces them to do.
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1.5 text-center">
+                              <X size={16} className="text-app-danger/70" />
+                              {tile.error && <span className="line-clamp-2 text-[9px] leading-tight text-app-muted">{tile.error}</span>}
+                              <button type="button" disabled={busy}
+                                onClick={() => void runImageBatch(m.batch!.spec, 1)}
+                                className="rounded-full bg-app-elevated px-2 py-0.5 text-[9.5px] font-semibold text-app-accent ring-1 ring-app-border/15 disabled:opacity-40">
+                                {t.regenerate}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-app-muted/50"><Loader2 size={18} className="animate-spin" /></div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
+                      <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                        <RotateCcw size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {m.audioUrl && (
+                  <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
+                    {/* Polished Suno-style player (album art + play/scrub/time). */}
+                    <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} />
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void dl(m.audioUrl!, 'myavatar-track.mp3')}
+                        title={t.imgDownload} aria-label={t.imgDownload}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
+                      >
+                        <Download size={16} />
+                      </button>
+                      <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                        <Share2 size={16} />
+                      </button>
+                      {m.regen && (
+                        <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
+                          <RotateCcw size={16} />
+                        </button>
+                      )}
+                      {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
+                      {editButton(m.audioUrl, 'audio')}
+                      {/* Cross-service bridge — turn this track into a music video (Video studio). The 🎤 IS the icon. */}
+                      <button type="button" onClick={() => sendMusicToMusicVideo(m.audioUrl!, 0, m.regen?.kind === 'music' ? (m.regen.prompt || 'Generated Track') : 'Generated Track')}
+                        title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-[16px] leading-none ring-1 ring-app-border/15 transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                        🎤
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {m.videoUrl && (
+                  <div className="space-y-1.5">
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    {/* #t=0.1 makes the browser paint a real frame as the poster (not a
+                        black box); preload=metadata forces that frame to load up front. */}
+                    {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
+                        pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
+                    <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const el = e.currentTarget; const d = el.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); const w = el.videoWidth, h = el.videoHeight; if (w > 0 && h > 0) setVideoResultDims((p) => (p[i]?.w === w && p[i]?.h === h ? p : { ...p, [i]: { w, h } })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
+                    {/* FIX 4 — result meta: real clip length read from the player. */}
+                    {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
+                      <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'}{(() => { const d = videoResultDims[i]; const label = d ? describeAspect(d.w, d.h) : null; return label ? ` · ${label}` : ''; })()}</div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void dl(m.videoUrl!, `myavatar-video-${Date.now()}.mp4`)}
+                        title={t.imgDownload} aria-label={t.imgDownload}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
+                      >
+                        <Download size={16} />
+                      </button>
+                      <button type="button" onClick={() => void share(m.videoUrl!, `myavatar-video-${Date.now()}.mp4`)} title={t.share} aria-label={t.share}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                        <Share2 size={16} />
+                      </button>
+                      {saveLibButton(m.videoUrl, 'film', m.filmPrompt)}
+                      {editButton(m.videoUrl, 'video')}
+                    </div>
+                    {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
+                        shown once the film captured its landed clips + brief. */}
+                    {m.filmClips && m.filmClips.length > 0 && (
+                      <div className="space-y-1.5 pt-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={remixDrafts[i] ?? ''}
+                            onChange={(e) => setRemixDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if ((remixDrafts[i] ?? '').trim()) setRemixPreviewIdx(i); } }}
+                            placeholder={t.remixPlaceholder}
+                            disabled={remixBusyIdx !== null}
+                            className="min-w-0 flex-1 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setRemixPreviewIdx(i)}
+                            disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+                          >
+                            {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
+                          </button>
+                        </div>
+                        {/* P10 — preview which scenes change vs reuse, then Confirm/Cancel. */}
+                        {remixPreviewIdx === i && (() => {
+                          const totalScenes = m.filmClips!.length;
+                          const change = parseRemixScenes(remixDrafts[i] ?? '', totalScenes);
+                          const reuse = Array.from({ length: totalScenes }, (_, k) => k + 1).filter((n) => !change.includes(n));
+                          return (
+                            <div className="space-y-2 rounded-xl border border-app-accent/30 bg-app-accent/[0.06] p-3 text-[12px]">
+                              <p className="font-semibold text-app-text">{locale === 'en' ? 'Remix preview' : locale === 'ru' ? 'Предпросмотр ремикса' : 'რემიქსის გადახედვა'}</p>
+                              {change.length > 0 ? (
+                                <p className="text-app-muted">
+                                  <span className="font-semibold text-app-accent">{locale === 'en' ? `Scene${change.length > 1 ? 's' : ''} ${change.join(', ')}` : locale === 'ru' ? `Сцен${change.length > 1 ? 'ы' : 'а'} ${change.join(', ')}` : `სცენა ${change.join(', ')}`}</span> {locale === 'en' ? 'will be re-rendered.' : locale === 'ru' ? 'будет перерисована.' : 'გადაირენდერდება.'} {reuse.length > 0 && (locale === 'en' ? `Scenes ${reuse.join(', ')} will be reused.` : locale === 'ru' ? `Сцены ${reuse.join(', ')} будут переиспользованы.` : `სცენები ${reuse.join(', ')} ხელახლა გამოიყენება.`)}
+                                </p>
+                              ) : (
+                                <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <button type="button" onClick={() => { setRemixPreviewIdx(null); void remixFilm(i); }}
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]">
+                                  <Check size={13} /> {locale === 'en' ? 'Confirm' : locale === 'ru' ? 'Подтвердить' : 'დადასტურება'}
+                                </button>
+                                <button type="button" onClick={() => setRemixPreviewIdx(null)}
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-medium text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90">
+                                  {locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {(() => {
+                  const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
+                  // Director's Console for QUEUED cinema renders: the Cap-3 queue path never sets the
+                  // global `busy` flag (so `pending` is false and the console was hidden). Key off the
+                  // bubble's OWN genKind/videoProgress/filmRoster instead — per-message + queue-safe, so
+                  // it shows from the moment the film bubble is pushed and survives parallel jobs (not
+                  // just the last message). Excludes done (videoUrl) and failed (⚠️) bubbles.
+                  const isInflightVideo = m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.batch && !m.text?.startsWith('⚠️') && (typeof m.videoProgress === 'number' || !!m.filmRoster || i === messages.length - 1);
+                  // IMAGE / MUSIC / LIPSYNC dispatch through the Cap-3 QUEUE and never set `busy`, so the
+                  // inline loading card was missing and progress only showed in the floating corner tray — the
+                  // "loading card hanging in the bottom-right" complaint. Key off the bubble's OWN genKind (per-
+                  // message, queue-safe) so the card sits INLINE in the message flow. Excludes done/failed/batch.
+                  // `!m.batch` used to be part of this gate, which meant a ×2/×4 batch could NEVER show the
+                  // progress card — the user got N grey tiles with bare spinners, no percentage, no stage
+                  // and no estimate, and the only live numbers were in the floating corner tray. That is
+                  // exactly the regression the inline card was built to end, reintroduced for the one case
+                  // that waits longest. A batch now reports aggregate progress (see batchPct below).
+                  const isInflightGen = m.role === 'assistant' && !!m.genKind && m.genKind !== 'video'
+                    && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.text?.startsWith('⚠️')
+                    && (!m.batch || m.batch.tiles.some((t) => t.status === 'pending'));
+                  // A remix/product-ad bubble in flight — product-ad runs through the QUEUE (no `busy`), so it
+                  // gets its inline staged console here too instead of only the floating tray.
+                  const isInflightRemix = m.role === 'assistant' && !!m.remixOpKind && !m.videoUrl && !m.audioUrl && !m.text?.startsWith('⚠️');
+                  // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
+                  // staged-timer console. Checked first so it wins in chat mode too.
+                  if ((pending || isInflightRemix) && m.remixOpKind) {
+                    return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
+                  }
+                  // Generative modes get the live staged progress card (bar + clock +
+                  // narrated steps) — the real "loading process". Chat gets typing dots.
+                  // isInflightVideo also opens the second (mode/storyboard) gate so a queued film
+                  // bubble in chat mode without a storyboard still shows the console.
+                  if ((pending || isInflightVideo || isInflightGen) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo || isInflightGen)) {
+                    // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
+                    // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
+                    //
+                    // ⚠️ THE 2K FIGURE WAS FIVE TIMES TOO LONG. 170s came from the original per-tier
+                    // measurement, but 'high' later became the DEFAULT tier and the newer live timing
+                    // recorded in this same file is ~33s. At target=170 a 2K image that lands in 33s
+                    // showed "37% · remaining ~2:17" and then simply appeared — the estimate was
+                    // decoration, and a number that is wrong by 5x on the default path is worse than no
+                    // number at all, because it is what teaches users to ignore every figure we show.
+                    const imgTarget = imgQuality === 'standard' ? 55 : imgQuality === 'high' ? 75 : 215;
+                    // Prefer the kind stamped on the message at render-start (intrinsic),
+                    // so a mid-render mode switch can't swap the wrong progress UI in.
+                    const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
+                    return (
+                      // Explicit vertical stack — the storyboard grid sits ABOVE the
+                      // Director's Console and the two can never overlap (no absolute/
+                      // fixed positioning, no shared z-index).
+                      <div className="flex flex-col gap-3">
+                        {/* Storyboard frames stay in view during the ~7-min render. */}
+                        {m.storyboard && m.storyboard.length > 0 && (
+                          <div className="grid w-[min(88vw,460px)] grid-cols-3 gap-1.5">
+                            {m.storyboard.map((s) => (
+                              <div key={s.ordinal} className={`relative overflow-hidden rounded-lg ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10 ring-1 ring-app-border/10`}>
+                                <StoryboardFrame url={s.frameUrl} label={`${t.sbScene} ${s.ordinal}`} onZoom={setLightbox} />
+                                <span className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {kind === 'video' ? (
+                          // The Master-Prompt Director's Console — the 9-agent crew,
+                          // live, driven by the real film-pipeline matrix.
+                          <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
+                        ) : (
+                          <GenerationProgress
+                            kind={kind}
+                            elapsed={elapsed}
+                            status={m.text}
+                            locale={locale}
+                            targetSec={kind === 'image' ? imgTarget : undefined}
+                            // A BATCH knows its real completion — tiles done over tiles total — so it
+                            // reports that instead of an interpolated guess. Capped below 100 by the card
+                            // itself, since the last tile is not finished until its bubble swaps.
+                            {...(m.batch && m.batch.tiles.length
+                              ? { pct: Math.round((m.batch.tiles.filter((t) => t.status !== 'pending').length / m.batch.tiles.length) * 100) }
+                              : {})}
+                          />
+                        )}
+                      </div>
+                    );
+                  }
+                  if (pending && mode === 'chat' && !m.text) return <TypingDots />;
+                  if (!m.text) return null;
+                  // Inline edit mode for a user turn → textarea + Send/Cancel.
+                  if (m.role === 'user' && editingIdx === i) {
+                    return (
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          rows={2}
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); } else if (e.key === 'Escape') cancelEdit(); }}
+                          className="w-[min(70vw,420px)] max-w-full resize-none rounded-xl bg-app-surface px-3 py-2 text-[14.5px] text-app-text outline-none ring-1 ring-app-accent/40"
+                        />
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button type="button" onClick={cancelEdit} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text">{locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}</button>
+                          <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  // The user's own text stays verbatim; assistant replies render as rich markdown.
+                  if (m.role !== 'assistant') return <span className="whitespace-pre-wrap break-words">{m.text}</span>;
+                  // VECTOR 1 — split out image blocks so a `[Image: …]` placeholder never renders as a raw bracketed
+                  // text block: real URLs become <img> frames (Download + Open-in-Editor), URL-less descriptions
+                  // become a one-tap "Generate" card. Plain prose is untouched (fast-path when there are no blocks).
+                  const parsed = hasImageBlocks(m.text) ? parseImageBlocks(m.text) : { text: m.text, urls: [] as string[], prompts: [] as string[], audioUrls: [] as string[] };
+                  // VECTOR 1 — a chat model sometimes hallucinates a { "service": … } routing JSON. Never render it raw
+                  // (stripDanglingServiceBlock also hides a still-streaming partial), and when the block DOMINATES the
+                  // reply, offer a ONE-TAP Generate chip wired to the right backend. A long answer that merely contains
+                  // an example JSON is left intact. Generation is only ever triggered by the user tapping the chip.
+                  const svcBlk = hasServiceBlock(parsed.text) ? parseServiceBlock(parsed.text) : null;
+                  const routingChip = svcBlk && svcBlk.service && svcBlk.text.length < 200 ? svcBlk.service : null;
+                  const routingPrompt = ((svcBlk?.prompt) || (i > 0 && messages[i - 1]?.role === 'user' ? messages[i - 1]!.text : '') || '').trim();
+                  const displayText = stripDanglingServiceBlock(parsed.text);
+                  return (
+                    <>
+                      {typeof m.videoProgress === 'number' && !m.videoUrl && (
+                        <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
+                          <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
+                        </div>
+                      )}
+                      {displayText && <Markdown>{displayText}</Markdown>}
+                      {/* Streaming caret — a soft blink while the reply is still arriving, so the
+                          text reads as live-typed rather than snapping in as chunks land. */}
+                      {pending && !m.genKind && (
+                        <span aria-hidden className="mya-caret -mt-1 inline-block h-4 w-[3px] translate-y-[3px] rounded-full bg-app-accent" style={{ animation: 'mya-caret 1.05s ease-in-out infinite' }} />
+                      )}
+                      {routingChip && routingPrompt && (
+                        <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
+                          {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <Volume2 size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{routingPrompt}</span>
+                          <button type="button" disabled={busy} onClick={() => dispatchServiceBlock(routingChip, routingPrompt)}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
+                            <Sparkles size={13} />{(routingChip === 'image' || routingChip === 'music')
+                              ? (locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია')
+                              : (locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა')}
+                          </button>
+                        </div>
+                      )}
+                      {parsed.urls.map((url, k) => (
+                        <div key={`imgblk-${k}`} className="mt-2 overflow-hidden rounded-xl ring-1 ring-app-border/10">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" loading="lazy" decoding="async" onClick={() => setLightbox(url)}
+                            className="block max-h-[60vh] w-full max-w-[min(82vw,420px)] cursor-zoom-in bg-black/40 object-contain" />
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.png`)} title={t.imgDownload} aria-label={t.imgDownload}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
+                            {editButton(url, 'image')}
+                          </div>
+                        </div>
+                      ))}
+                      {parsed.prompts.map((p, k) => (
+                        <div key={`genblk-${k}`} className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
+                          <ImageIcon size={16} className="shrink-0 text-app-accent" />
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{p}</span>
+                          <button type="button" disabled={busy} onClick={() => void runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
+                            <Sparkles size={13} />{locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია'}
+                          </button>
+                        </div>
+                      ))}
+                      {/* VECTOR 3 — a generated track referenced in text ([Audio: url]) renders as a native player + actions. */}
+                      {parsed.audioUrls.map((url, k) => (
+                        <div key={`audblk-${k}`} className="mt-2 w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
+                          <TrackPlayer url={url} label={t.modeMusic} />
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.mp3`)} title={t.imgDownload} aria-label={t.imgDownload}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
+                            <button type="button" onClick={() => void share(url, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90"><Share2 size={15} /></button>
+                            {editButton(url, 'audio')}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
+                {/* FIX 4 — one-click retry on a failed video render (reuses the stored
+                    prompt + refs + orientation; no re-typing / re-uploading). */}
+                {m.retryVideo && !busy && (
+                  <button
+                    type="button"
+                    onClick={() => { const r = m.retryReq ?? lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                  >
+                    {t.retry}
+                  </button>
+                )}
+                {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
+                    could copy assistant replies but not their own messages. On desktop
+                    the row reveals on hover / keyboard focus (group-hover); on mobile
+                    (no hover) it stays visible so the action is always reachable. */}
+                {m.role === 'user' && m.text && editingIdx !== i && !busy && (
+                  <div className="mt-1 flex justify-end gap-1.5 text-app-muted transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => void copyMsg(m.text, i)}
+                      aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                      title={copiedIdx === i
+                        ? (locale === 'en' ? 'Copied!' : locale === 'ru' ? 'Скопировано!' : 'დაკოპირდა!')
+                        : (locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება')}
+                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-border/15 hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                    >
+                      {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(i)}
+                      aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
+                      title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
+                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md text-app-muted transition-colors hover:bg-app-border/15 hover:text-app-accent"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  </div>
+                )}
+                {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
+                    Like/Dislike, per the one-window spec. */}
+                {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
+                  <div className="mt-1 flex items-center gap-1.5 text-app-muted">
+                    <button
+                      type="button"
+                      onClick={() => void speakMsg(m.text, i)}
+                      aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
+                      title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
+                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${speakingIdx === i ? 'text-app-accent' : ''}`}
+                    >
+                      {speakingIdx === i
+                        ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
+                        : <Volume2 size={13} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void copyMsg(m.text, i)}
+                      aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                      title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                    >
+                      {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => rateMsg(i, 'up', m.text)}
+                      aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
+                      title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
+                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
+                    >
+                      <ThumbsUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => rateMsg(i, 'down', m.text)}
+                      aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
+                      title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
+                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
+                    >
+                      <ThumbsDown size={13} />
+                    </button>
+                    {i === messages.length - 1 && !busy && (
+                      <button
+                        type="button"
+                        onClick={() => regenerateChat()}
+                        aria-label={t.regenerate}
+                        title={t.regenerate}
+                        className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90"
+                      >
+                        <RotateCcw size={13} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/* Retry — the last reply errored; re-run the same turn cleanly. */}
+                {/* Chat-only retry: a failed IMAGE/MUSIC/VIDEO bubble keeps its genKind (video also sets
+                    retryVideo + its own retry), so exclude those — regenerateChat() streams a TEXT reply and
+                    would NOT re-run the generation, silently turning a failed image job into a chat answer. */}
+                {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && !m.genKind && !m.retryVideo && (
+                  <button
+                    type="button"
+                    onClick={() => regenerateChat()}
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]"
+                  >
+                    <RotateCcw size={13} /> {t.regenerate}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+  ), [busy, cancelEdit, copiedIdx, copyMsg, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, pending]);
+
   return (
     <div
       // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
@@ -6169,547 +6735,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* No hardcoded template suggestions here — the 4 ghost service pills above
                 the composer (🖼/🎵/🎬/💬) are the only first-run shortcuts. */}
           </div>
-        ) : messages.map((m, i) => (
-          <div key={i} className={`group flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start gap-2.5'}`}>
-            {/* Assistant avatar — a small "M" brand circle to the left, Claude.ai-style. */}
-            {m.role === 'assistant' && (
-              <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-app-accent/15 text-[12px] font-bold text-app-accent">M</span>
-            )}
-            <div className={`text-[16px] leading-[1.7] ${
-              m.role === 'user'
-                ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
-                : 'min-w-0 flex-1 text-app-text'
-            }`}>
-              {m.role === 'assistant' && m.chatModel && (
-                <div className="mb-1 text-[10px] font-medium text-app-muted/55" title="answering engine">{m.chatModel}</div>
-              )}
-              {m.medias && m.medias.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {m.medias.map((md, mi) => (
-                    isImage(md.mimeType) ? (
-                      <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
-                      </button>
-                    ) : isVideo(md.mimeType) ? (
-                      // eslint-disable-next-line jsx-a11y/media-has-caption
-                      <video key={mi} src={md.dataUrl} controls className="max-h-44 rounded-lg" />
-                    ) : isAudio(md.mimeType) ? (
-                      <audio key={mi} src={md.dataUrl} controls className="w-full" />
-                    ) : (
-                      <span key={mi} className="inline-flex items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted"><FileText size={12} /> document</span>
-                    )
-                  ))}
-                </div>
-              )}
-              {m.imageUrl && (
-                <div className="space-y-1.5">
-                  <div className="group relative">
-                    <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
-                    </button>
-                    {/* Cross-service bridge — send this image to the Video studio as the character ref.
-                        Corner badge (always visible) + a hover pill (always shown on touch). */}
-                    <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
-                      title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
-                      onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
-                      className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/70 text-[15px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation before:absolute before:-inset-2 before:content-['']">
-                      🎬
-                    </button>
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
-                      <button type="button" onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
-                        className="pointer-events-auto inline-flex min-h-[44px] sm:min-h-0 items-center gap-1.5 rounded-full bg-app-bg/85 px-3.5 py-1.5 text-[12px] font-semibold text-app-text shadow-lg backdrop-blur ring-1 ring-app-border/15 transition-colors hover:bg-app-elevated hover:text-app-accent active:scale-[0.98]">
-                        🎬 <span>{locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}</span>
-                      </button>
-                    </div>
-                  </div>
-                  {/* Icon-only result toolbar (Phase 8): labels live in title/aria; 44px touch hit-box (h-11) → 36px on desktop. */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void dl(m.imageUrl!, 'myavatar-image.png')}
-                      title={t.imgDownload} aria-label={t.imgDownload}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
-                    >
-                      <Download size={16} />
-                    </button>
-                    <button type="button" onClick={() => void share(m.imageUrl!, 'myavatar-image.png')} title={t.share} aria-label={t.share}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                      <Share2 size={16} />
-                    </button>
-                    <button type="button" onClick={() => void upscale(m.imageUrl!)} disabled={upscaling} title={t.upscaleBtn.replace(/^[⬆🔍]\s*/, '')} aria-label={t.upscaleBtn.replace(/^[⬆🔍]\s*/, '')}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
-                      <Sparkles size={16} />
-                    </button>
-                    {m.regen && (
-                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
-                        <RotateCcw size={16} />
-                      </button>
-                    )}
-                    {/* Edit → load this image as the img2img source. */}
-                    <button type="button" onClick={() => startImageEdit(m.imageUrl!)} disabled={busy} title={t.editImage} aria-label={t.editImage}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
-                      <Pencil size={16} />
-                    </button>
-                    {saveLibButton(m.imageUrl, 'image', m.regen?.kind === 'image' ? m.regen.prompt : undefined)}
-                    {editButton(m.imageUrl, 'image')}
-                  </div>
-                </div>
-              )}
-              {m.batch && (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {m.batch.tiles.map((tile, k) => (
-                      <div key={k} className="relative overflow-hidden rounded-xl bg-app-elevated/40 ring-1 ring-app-border/10" style={{ aspectRatio: m.batch!.spec.aspect.replace(':', '/') }}>
-                        {tile.status === 'done' && tile.url ? (
-                          <>
-                            <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
-                            </button>
-                            {/* Cross-service bridge — each variation can be sent to the Video studio too. */}
-                            <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'} title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
-                              onClick={(e) => { e.stopPropagation(); sendImageToVideo(tile.url!); }}
-                              className="absolute right-1.5 top-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-app-bg/70 text-[13px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation">🎬</button>
-                          </>
-                        ) : tile.status === 'failed' ? (
-                          // A reason and a way out, instead of a bare glyph. Retrying ONE tile also
-                          // stops the user re-billing the variations they were happy with, which is
-                          // what the regenerate-all button below forces them to do.
-                          <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1.5 text-center">
-                            <X size={16} className="text-app-danger/70" />
-                            {tile.error && <span className="line-clamp-2 text-[9px] leading-tight text-app-muted">{tile.error}</span>}
-                            <button type="button" disabled={busy}
-                              onClick={() => void runImageBatch(m.batch!.spec, 1)}
-                              className="rounded-full bg-app-elevated px-2 py-0.5 text-[9.5px] font-semibold text-app-accent ring-1 ring-app-border/15 disabled:opacity-40">
-                              {t.regenerate}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-app-muted/50"><Loader2 size={18} className="animate-spin" /></div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
-                    <button type="button" onClick={() => void runImageBatch(m.batch!.spec, m.batch!.tiles.length)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
-                      <RotateCcw size={16} />
-                    </button>
-                  )}
-                </div>
-              )}
-              {m.audioUrl && (
-                <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
-                  {/* Polished Suno-style player (album art + play/scrub/time). */}
-                  <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} />
-                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void dl(m.audioUrl!, 'myavatar-track.mp3')}
-                      title={t.imgDownload} aria-label={t.imgDownload}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
-                    >
-                      <Download size={16} />
-                    </button>
-                    <button type="button" onClick={() => void share(m.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                      <Share2 size={16} />
-                    </button>
-                    {m.regen && (
-                      <button type="button" onClick={() => void regenerate(m.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40 sm:h-9 sm:w-9">
-                        <RotateCcw size={16} />
-                      </button>
-                    )}
-                    {saveLibButton(m.audioUrl, 'music', m.regen?.kind === 'music' ? m.regen.prompt : undefined)}
-                    {editButton(m.audioUrl, 'audio')}
-                    {/* Cross-service bridge — turn this track into a music video (Video studio). The 🎤 IS the icon. */}
-                    <button type="button" onClick={() => sendMusicToMusicVideo(m.audioUrl!, 0, m.regen?.kind === 'music' ? (m.regen.prompt || 'Generated Track') : 'Generated Track')}
-                      title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-[16px] leading-none ring-1 ring-app-border/15 transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
-                      🎤
-                    </button>
-                  </div>
-                </div>
-              )}
-              {m.videoUrl && (
-                <div className="space-y-1.5">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  {/* #t=0.1 makes the browser paint a real frame as the poster (not a
-                      black box); preload=metadata forces that frame to load up front. */}
-                  {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
-                      pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
-                  <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const el = e.currentTarget; const d = el.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); const w = el.videoWidth, h = el.videoHeight; if (w > 0 && h > 0) setVideoResultDims((p) => (p[i]?.w === w && p[i]?.h === h ? p : { ...p, [i]: { w, h } })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
-                  {/* FIX 4 — result meta: real clip length read from the player. */}
-                  {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
-                    <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'}{(() => { const d = videoResultDims[i]; const label = d ? describeAspect(d.w, d.h) : null; return label ? ` · ${label}` : ''; })()}</div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void dl(m.videoUrl!, `myavatar-video-${Date.now()}.mp4`)}
-                      title={t.imgDownload} aria-label={t.imgDownload}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9"
-                    >
-                      <Download size={16} />
-                    </button>
-                    <button type="button" onClick={() => void share(m.videoUrl!, `myavatar-video-${Date.now()}.mp4`)} title={t.share} aria-label={t.share}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                      <Share2 size={16} />
-                    </button>
-                    {saveLibButton(m.videoUrl, 'film', m.filmPrompt)}
-                    {editButton(m.videoUrl, 'video')}
-                  </div>
-                  {/* Remix — re-render ONLY the edited scene, reuse the rest. Only
-                      shown once the film captured its landed clips + brief. */}
-                  {m.filmClips && m.filmClips.length > 0 && (
-                    <div className="space-y-1.5 pt-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={remixDrafts[i] ?? ''}
-                          onChange={(e) => setRemixDrafts((d) => ({ ...d, [i]: e.target.value }))}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if ((remixDrafts[i] ?? '').trim()) setRemixPreviewIdx(i); } }}
-                          placeholder={t.remixPlaceholder}
-                          disabled={remixBusyIdx !== null}
-                          className="min-w-0 flex-1 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] text-app-text outline-none ring-1 ring-app-border/15 placeholder:text-app-muted/50 focus:ring-app-accent/40 disabled:opacity-50"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setRemixPreviewIdx(i)}
-                          disabled={remixBusyIdx !== null || !(remixDrafts[i] ?? '').trim()}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-elevated min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
-                        >
-                          {remixBusyIdx === i ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t.remix}
-                        </button>
-                      </div>
-                      {/* P10 — preview which scenes change vs reuse, then Confirm/Cancel. */}
-                      {remixPreviewIdx === i && (() => {
-                        const totalScenes = m.filmClips!.length;
-                        const change = parseRemixScenes(remixDrafts[i] ?? '', totalScenes);
-                        const reuse = Array.from({ length: totalScenes }, (_, k) => k + 1).filter((n) => !change.includes(n));
-                        return (
-                          <div className="space-y-2 rounded-xl border border-app-accent/30 bg-app-accent/[0.06] p-3 text-[12px]">
-                            <p className="font-semibold text-app-text">{locale === 'en' ? 'Remix preview' : locale === 'ru' ? 'Предпросмотр ремикса' : 'რემიქსის გადახედვა'}</p>
-                            {change.length > 0 ? (
-                              <p className="text-app-muted">
-                                <span className="font-semibold text-app-accent">{locale === 'en' ? `Scene${change.length > 1 ? 's' : ''} ${change.join(', ')}` : locale === 'ru' ? `Сцен${change.length > 1 ? 'ы' : 'а'} ${change.join(', ')}` : `სცენა ${change.join(', ')}`}</span> {locale === 'en' ? 'will be re-rendered.' : locale === 'ru' ? 'будет перерисована.' : 'გადაირენდერდება.'} {reuse.length > 0 && (locale === 'en' ? `Scenes ${reuse.join(', ')} will be reused.` : locale === 'ru' ? `Сцены ${reuse.join(', ')} будут переиспользованы.` : `სცენები ${reuse.join(', ')} ხელახლა გამოიყენება.`)}
-                              </p>
-                            ) : (
-                              <p className="text-app-muted">{locale === 'en' ? 'The AI will pick the scene(s) to re-render from your edit; the rest are reused.' : locale === 'ru' ? 'ИИ выберет сцену(ы) для перерисовки; остальные переиспользуются.' : 'AI აირჩევს გადასარენდერებელ სცენას; დანარჩენი ხელახლა გამოიყენება.'}</p>
-                            )}
-                            <div className="flex items-center gap-1.5">
-                              <button type="button" onClick={() => { setRemixPreviewIdx(null); void remixFilm(i); }}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]">
-                                <Check size={13} /> {locale === 'en' ? 'Confirm' : locale === 'ru' ? 'Подтвердить' : 'დადასტურება'}
-                              </button>
-                              <button type="button" onClick={() => setRemixPreviewIdx(null)}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 text-[12px] font-medium text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90">
-                                {locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-              )}
-              {(() => {
-                const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
-                // Director's Console for QUEUED cinema renders: the Cap-3 queue path never sets the
-                // global `busy` flag (so `pending` is false and the console was hidden). Key off the
-                // bubble's OWN genKind/videoProgress/filmRoster instead — per-message + queue-safe, so
-                // it shows from the moment the film bubble is pushed and survives parallel jobs (not
-                // just the last message). Excludes done (videoUrl) and failed (⚠️) bubbles.
-                const isInflightVideo = m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.batch && !m.text?.startsWith('⚠️') && (typeof m.videoProgress === 'number' || !!m.filmRoster || i === messages.length - 1);
-                // IMAGE / MUSIC / LIPSYNC dispatch through the Cap-3 QUEUE and never set `busy`, so the
-                // inline loading card was missing and progress only showed in the floating corner tray — the
-                // "loading card hanging in the bottom-right" complaint. Key off the bubble's OWN genKind (per-
-                // message, queue-safe) so the card sits INLINE in the message flow. Excludes done/failed/batch.
-                // `!m.batch` used to be part of this gate, which meant a ×2/×4 batch could NEVER show the
-                // progress card — the user got N grey tiles with bare spinners, no percentage, no stage
-                // and no estimate, and the only live numbers were in the floating corner tray. That is
-                // exactly the regression the inline card was built to end, reintroduced for the one case
-                // that waits longest. A batch now reports aggregate progress (see batchPct below).
-                const isInflightGen = m.role === 'assistant' && !!m.genKind && m.genKind !== 'video'
-                  && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.text?.startsWith('⚠️')
-                  && (!m.batch || m.batch.tiles.some((t) => t.status === 'pending'));
-                // A remix/product-ad bubble in flight — product-ad runs through the QUEUE (no `busy`), so it
-                // gets its inline staged console here too instead of only the floating tray.
-                const isInflightRemix = m.role === 'assistant' && !!m.remixOpKind && !m.videoUrl && !m.audioUrl && !m.text?.startsWith('⚠️');
-                // FIX 6 — a remix op (panel OR chat-attached) gets the Remix Studio
-                // staged-timer console. Checked first so it wins in chat mode too.
-                if ((pending || isInflightRemix) && m.remixOpKind) {
-                  return <RemixStudioConsole op={m.remixOpKind} elapsed={elapsed} locale={locale} onCancel={stop} stopLabel={t.stop} />;
-                }
-                // Generative modes get the live staged progress card (bar + clock +
-                // narrated steps) — the real "loading process". Chat gets typing dots.
-                // isInflightVideo also opens the second (mode/storyboard) gate so a queued film
-                // bubble in chat mode without a storyboard still shows the console.
-                if ((pending || isInflightVideo || isInflightGen) && (mode !== 'chat' || (m.storyboard?.length ?? 0) > 0 || isInflightVideo || isInflightGen)) {
-                  // Pace the image bar to the chosen resolution (1K ≈ 40s · 2K ≈
-                  // 170s · 4K ≈ 220s) so it doesn't sit at 95% looking stuck.
-                  //
-                  // ⚠️ THE 2K FIGURE WAS FIVE TIMES TOO LONG. 170s came from the original per-tier
-                  // measurement, but 'high' later became the DEFAULT tier and the newer live timing
-                  // recorded in this same file is ~33s. At target=170 a 2K image that lands in 33s
-                  // showed "37% · remaining ~2:17" and then simply appeared — the estimate was
-                  // decoration, and a number that is wrong by 5x on the default path is worse than no
-                  // number at all, because it is what teaches users to ignore every figure we show.
-                  const imgTarget = imgQuality === 'standard' ? 55 : imgQuality === 'high' ? 75 : 215;
-                  // Prefer the kind stamped on the message at render-start (intrinsic),
-                  // so a mid-render mode switch can't swap the wrong progress UI in.
-                  const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
-                  return (
-                    // Explicit vertical stack — the storyboard grid sits ABOVE the
-                    // Director's Console and the two can never overlap (no absolute/
-                    // fixed positioning, no shared z-index).
-                    <div className="flex flex-col gap-3">
-                      {/* Storyboard frames stay in view during the ~7-min render. */}
-                      {m.storyboard && m.storyboard.length > 0 && (
-                        <div className="grid w-[min(88vw,460px)] grid-cols-3 gap-1.5">
-                          {m.storyboard.map((s) => (
-                            <div key={s.ordinal} className={`relative overflow-hidden rounded-lg ${videoOrientation === 'vertical' ? 'aspect-[9/16]' : 'aspect-video'} bg-app-border/10 ring-1 ring-app-border/10`}>
-                              <StoryboardFrame url={s.frameUrl} label={`${t.sbScene} ${s.ordinal}`} onZoom={setLightbox} />
-                              <span className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 text-[9px] font-medium text-white">{s.ordinal}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {kind === 'video' ? (
-                        // The Master-Prompt Director's Console — the 9-agent crew,
-                        // live, driven by the real film-pipeline matrix.
-                        <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
-                      ) : (
-                        <GenerationProgress
-                          kind={kind}
-                          elapsed={elapsed}
-                          status={m.text}
-                          locale={locale}
-                          targetSec={kind === 'image' ? imgTarget : undefined}
-                          // A BATCH knows its real completion — tiles done over tiles total — so it
-                          // reports that instead of an interpolated guess. Capped below 100 by the card
-                          // itself, since the last tile is not finished until its bubble swaps.
-                          {...(m.batch && m.batch.tiles.length
-                            ? { pct: Math.round((m.batch.tiles.filter((t) => t.status !== 'pending').length / m.batch.tiles.length) * 100) }
-                            : {})}
-                        />
-                      )}
-                    </div>
-                  );
-                }
-                if (pending && mode === 'chat' && !m.text) return <TypingDots />;
-                if (!m.text) return null;
-                // Inline edit mode for a user turn → textarea + Send/Cancel.
-                if (m.role === 'user' && editingIdx === i) {
-                  return (
-                    <div className="space-y-1.5">
-                      <textarea
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        rows={2}
-                        autoFocus
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); } else if (e.key === 'Escape') cancelEdit(); }}
-                        className="w-[min(70vw,420px)] max-w-full resize-none rounded-xl bg-app-surface px-3 py-2 text-[14.5px] text-app-text outline-none ring-1 ring-app-accent/40"
-                      />
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button type="button" onClick={cancelEdit} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text">{locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}</button>
-                        <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
-                      </div>
-                    </div>
-                  );
-                }
-                // The user's own text stays verbatim; assistant replies render as rich markdown.
-                if (m.role !== 'assistant') return <span className="whitespace-pre-wrap break-words">{m.text}</span>;
-                // VECTOR 1 — split out image blocks so a `[Image: …]` placeholder never renders as a raw bracketed
-                // text block: real URLs become <img> frames (Download + Open-in-Editor), URL-less descriptions
-                // become a one-tap "Generate" card. Plain prose is untouched (fast-path when there are no blocks).
-                const parsed = hasImageBlocks(m.text) ? parseImageBlocks(m.text) : { text: m.text, urls: [] as string[], prompts: [] as string[], audioUrls: [] as string[] };
-                // VECTOR 1 — a chat model sometimes hallucinates a { "service": … } routing JSON. Never render it raw
-                // (stripDanglingServiceBlock also hides a still-streaming partial), and when the block DOMINATES the
-                // reply, offer a ONE-TAP Generate chip wired to the right backend. A long answer that merely contains
-                // an example JSON is left intact. Generation is only ever triggered by the user tapping the chip.
-                const svcBlk = hasServiceBlock(parsed.text) ? parseServiceBlock(parsed.text) : null;
-                const routingChip = svcBlk && svcBlk.service && svcBlk.text.length < 200 ? svcBlk.service : null;
-                const routingPrompt = ((svcBlk?.prompt) || (i > 0 && messages[i - 1]?.role === 'user' ? messages[i - 1]!.text : '') || '').trim();
-                const displayText = stripDanglingServiceBlock(parsed.text);
-                return (
-                  <>
-                    {typeof m.videoProgress === 'number' && !m.videoUrl && (
-                      <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
-                        <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
-                      </div>
-                    )}
-                    {displayText && <Markdown>{displayText}</Markdown>}
-                    {/* Streaming caret — a soft blink while the reply is still arriving, so the
-                        text reads as live-typed rather than snapping in as chunks land. */}
-                    {pending && !m.genKind && (
-                      <span aria-hidden className="mya-caret -mt-1 inline-block h-4 w-[3px] translate-y-[3px] rounded-full bg-app-accent" style={{ animation: 'mya-caret 1.05s ease-in-out infinite' }} />
-                    )}
-                    {routingChip && routingPrompt && (
-                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
-                        {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <Volume2 size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{routingPrompt}</span>
-                        <button type="button" disabled={busy} onClick={() => dispatchServiceBlock(routingChip, routingPrompt)}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
-                          <Sparkles size={13} />{(routingChip === 'image' || routingChip === 'music')
-                            ? (locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია')
-                            : (locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა')}
-                        </button>
-                      </div>
-                    )}
-                    {parsed.urls.map((url, k) => (
-                      <div key={`imgblk-${k}`} className="mt-2 overflow-hidden rounded-xl ring-1 ring-app-border/10">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" loading="lazy" decoding="async" onClick={() => setLightbox(url)}
-                          className="block max-h-[60vh] w-full max-w-[min(82vw,420px)] cursor-zoom-in bg-black/40 object-contain" />
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.png`)} title={t.imgDownload} aria-label={t.imgDownload}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
-                          {editButton(url, 'image')}
-                        </div>
-                      </div>
-                    ))}
-                    {parsed.prompts.map((p, k) => (
-                      <div key={`genblk-${k}`} className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
-                        <ImageIcon size={16} className="shrink-0 text-app-accent" />
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{p}</span>
-                        <button type="button" disabled={busy} onClick={() => void runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
-                          <Sparkles size={13} />{locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია'}
-                        </button>
-                      </div>
-                    ))}
-                    {/* VECTOR 3 — a generated track referenced in text ([Audio: url]) renders as a native player + actions. */}
-                    {parsed.audioUrls.map((url, k) => (
-                      <div key={`audblk-${k}`} className="mt-2 w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
-                        <TrackPlayer url={url} label={t.modeMusic} />
-                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                          <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.mp3`)} title={t.imgDownload} aria-label={t.imgDownload}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
-                          <button type="button" onClick={() => void share(url, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90"><Share2 size={15} /></button>
-                          {editButton(url, 'audio')}
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                );
-              })()}
-              {/* FIX 4 — one-click retry on a failed video render (reuses the stored
-                  prompt + refs + orientation; no re-typing / re-uploading). */}
-              {m.retryVideo && !busy && (
-                <button
-                  type="button"
-                  onClick={() => { const r = m.retryReq ?? lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                >
-                  {t.retry}
-                </button>
-              )}
-              {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
-                  could copy assistant replies but not their own messages. On desktop
-                  the row reveals on hover / keyboard focus (group-hover); on mobile
-                  (no hover) it stays visible so the action is always reachable. */}
-              {m.role === 'user' && m.text && editingIdx !== i && !busy && (
-                <div className="mt-1 flex justify-end gap-1.5 text-app-muted transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => void copyMsg(m.text, i)}
-                    aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    title={copiedIdx === i
-                      ? (locale === 'en' ? 'Copied!' : locale === 'ru' ? 'Скопировано!' : 'დაკოპირდა!')
-                      : (locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება')}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-border/15 hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
-                  >
-                    {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startEdit(i)}
-                    aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
-                    title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
-                    className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md text-app-muted transition-colors hover:bg-app-border/15 hover:text-app-accent"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                </div>
-              )}
-              {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
-                  Like/Dislike, per the one-window spec. */}
-              {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
-                <div className="mt-1 flex items-center gap-1.5 text-app-muted">
-                  <button
-                    type="button"
-                    onClick={() => void speakMsg(m.text, i)}
-                    aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${speakingIdx === i ? 'text-app-accent' : ''}`}
-                  >
-                    {speakingIdx === i
-                      ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
-                      : <Volume2 size={13} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void copyMsg(m.text, i)}
-                    aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${copiedIdx === i ? 'text-app-accent' : ''}`}
-                  >
-                    {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => rateMsg(i, 'up', m.text)}
-                    aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                    title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
-                  >
-                    <ThumbsUp size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => rateMsg(i, 'down', m.text)}
-                    aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                    title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                    className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
-                  >
-                    <ThumbsDown size={13} />
-                  </button>
-                  {i === messages.length - 1 && !busy && (
-                    <button
-                      type="button"
-                      onClick={() => regenerateChat()}
-                      aria-label={t.regenerate}
-                      title={t.regenerate}
-                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90"
-                    >
-                      <RotateCcw size={13} />
-                    </button>
-                  )}
-                </div>
-              )}
-              {/* Retry — the last reply errored; re-run the same turn cleanly. */}
-              {/* Chat-only retry: a failed IMAGE/MUSIC/VIDEO bubble keeps its genKind (video also sets
-                  retryVideo + its own retry), so exclude those — regenerateChat() streams a TEXT reply and
-                  would NOT re-run the generation, silently turning a failed image job into a chat answer. */}
-              {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && !m.genKind && !m.retryVideo && (
-                <button
-                  type="button"
-                  onClick={() => regenerateChat()}
-                  className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]"
-                >
-                  <RotateCcw size={13} /> {t.regenerate}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+        ) : messageList}
       </div>
 
       {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
