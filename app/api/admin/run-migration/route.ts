@@ -49,6 +49,12 @@ const ALLOWED: Record<string, string> = {
   // without them (they only speed reads). Applied via the runtime gate since local DDL is tokenless.
   '20260711_hot_path_indexes.sql': 'supabase/migrations/20260711_hot_path_indexes.sql',
   '006_gemini_chat_history.sql': 'migrations/006_gemini_chat_history.sql',
+  // Durable chat history — ALTERs the live chat_sessions/chat_messages in place (never re-creates), so
+  // the already-deployed code starts working the moment it lands. APPLIED to production 2026-08-01 and
+  // verified by round-trip (createSession 201 → saveMessage 201 → getMessages 200). Listed here so a
+  // fresh environment can be brought to the same state without hand-pasting SQL. Idempotent; re-running
+  // is a no-op.
+  '20260801_durable_chat_history.sql': 'supabase/migrations/20260801_durable_chat_history.sql',
 };
 
 // Functions each migration installs — used for the pg_proc verification.
@@ -64,6 +70,7 @@ const EXPECTED_FNS: Record<string, string[]> = {
   '20260704_generation_jobs_position.sql': [], // single ADD COLUMN, no new functions
   '20260711_hot_path_indexes.sql': [], // two CREATE INDEX only, no new functions
   '006_gemini_chat_history.sql': [],
+  '20260801_durable_chat_history.sql': [], // ALTERs + indexes + RLS only, no new functions
 };
 
 function extractRef(url: string): string | null {

@@ -1042,7 +1042,15 @@ function upsertConversation(id: string, messages: Msg[]): void {
     if (idx >= 0) { list.splice(idx, 1); saveConversations(list); }
     return;
   }
-  const conv: Conversation = { id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now() };
+  // ⚠️ `serverSid` MUST BE CARRIED FORWARD. This rebuilt the object from scratch and dropped it, so the
+  // one place it is ever written was erased by the very next autosave. conversationSync dedups cloud
+  // against local BY serverSid, so with it missing every mount re-imported the same server sessions as
+  // new rows — the history would grow a duplicate of itself on every page load. Invisible until the
+  // schema was fixed, because until then there were no cloud rows to duplicate.
+  const conv: Conversation = {
+    id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now(),
+    ...(idx >= 0 && list[idx]?.serverSid ? { serverSid: list[idx].serverSid } : {}),
+  };
   if (idx >= 0) list[idx] = conv; else list.unshift(conv);
   list.sort((a, b) => b.updatedAt - a.updatedAt);
   saveConversations(list);
@@ -2201,6 +2209,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setCurrentConversationId(id);
     setMessages([]);
     setHistoryOpen(false);
+    // ⚠️ RELEASE THE SERVER SESSION, or every "New Chat" keeps writing into the PREVIOUS one.
+    // ensureChatSession caches one session id per uid in `myavatar:chat-session` and reuses it for the
+    // life of the tab; nothing ever cleared it. So all 40 sidebar conversations would append into a
+    // SINGLE chat_sessions row and the server-side history would be one endless thread with one title.
+    // Harmless while the schema was broken (no rows were written at all) — a guaranteed corruption the
+    // moment it started working.
+    chatSessionIdRef.current = null;
+    try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
   }, [conversationId, messages]);
   const removeConversation = useCallback((id: string) => {
     deleteConversation(id);
@@ -3909,7 +3925,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const { data } = sb.auth.onAuthStateChange(() => { chatSessionIdRef.current = null; });
     return () => { try { data.subscription.unsubscribe(); } catch { /* noop */ } };
   }, []);
-  const ensureChatSession = useCallback((): Promise<string | null> => {
+  // `titleHint` — the first thing the user actually said. Without it every server session is created
+  // with the placeholder title and the sidebar reads as forty rows of "ახალი ჩატი"; `updateSessionTitle`
+  // exists for this and was never called from here. The session is created on the FIRST turn, so the
+  // first user message is exactly the right title and is available at the only moment it is needed.
+  const ensureChatSession = useCallback((titleHint?: string): Promise<string | null> => {
     if (chatSessionIdRef.current) return Promise.resolve(chatSessionIdRef.current);
     // In-flight dedup: two concurrent first-turns share ONE createSession (no duplicate sessions).
     if (chatSessionInflightRef.current) return chatSessionInflightRef.current;
@@ -3925,7 +3945,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (raw) { const p = JSON.parse(raw) as { uid?: string; sid?: string }; if (p?.uid === user.id && p.sid) sid = p.sid; }
         } catch { /* ignore unreadable storage */ }
         if (!sid) {
-          sid = await createSession(user.id, 'agent-g');
+          const title = (titleHint || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+          sid = await createSession(user.id, 'agent-g', title || undefined);
           if (sid) { try { localStorage.setItem('myavatar:chat-session', JSON.stringify({ uid: user.id, sid })); } catch { /* ignore */ } }
         }
         chatSessionIdRef.current = sid;
@@ -3941,7 +3962,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const persistChatTurn = useCallback((role: 'user' | 'assistant', content: string) => {
     const text = (content || '').trim();
     if (!text) return;
-    void ensureChatSession().then((sid) => { if (sid) void saveMessage(sid, role, text); });
+    // The user's own first line becomes the session title — see ensureChatSession.
+    void ensureChatSession(role === 'user' ? text : undefined)
+      .then((sid) => { if (sid) void saveMessage(sid, role, text); });
   }, [ensureChatSession]);
 
   // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────

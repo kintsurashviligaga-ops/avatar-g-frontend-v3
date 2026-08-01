@@ -128,6 +128,10 @@ export async function getConversations(
       .from('chat_sessions')
       .select('session_id, title, updated_at, agent_id')
       .eq('user_id', userId)
+      // ⚠️ EXCLUDE TRASHED SESSIONS. `is_deleted` is the soft-delete flag /api/chat/trash sets; without
+      // this filter a session the user deleted comes straight back into the sidebar on the next mount,
+      // which reads as the delete button not working. Never surfaced before because this query 42703'd.
+      .eq('is_deleted', false)
       .order('updated_at', { ascending: false })
       .limit(50);
 
