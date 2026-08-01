@@ -83,6 +83,10 @@ describe('music', () => {
     ['make me a lofi beat'],
     ['გამიკეთე მუსიკა'],
     ['დამიწერე სიმღერა სიყვარულზე'],
+    // ⚠️ REGRESSION: "write" is how people ask for a song, and the music bank held only
+    // generate/create/make/compose — so the phrasing got a conversational reply about songwriting.
+    ['write me a song about love'],
+    ['write a song about the sea'],
     ['сделай трек в стиле лофай'],
     ['сочини музыку для видео'],
   ])('routes to music: %s', (text) => {

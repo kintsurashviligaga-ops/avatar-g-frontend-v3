@@ -132,7 +132,9 @@ const RULES: IntentRule[] = [
     weight: 0.86,
     contextBoost: ['music'],
     patterns: [
-      /\b(generate|create|make|compose)\b.*\b(music|beat|song|track|soundtrack|melody|instrumental)/i,
+      // `write` belongs here: "write me a song about love" is how people ask for a song, and with only
+      // generate/create/make/compose it classified as text_chat and got a conversational reply.
+      /\b(generate|create|make|compose|write|pen)\b.*\b(music|beat|song|track|soundtrack|melody|instrumental|lyrics)/i,
       /\b(music|beat|song|track|soundtrack)\b.*\b(generat|creat|compos)/i,
       /\bmusicgen\b/i,
       /\b(ambient|cinematic|trap|house|orchestral)\b.*\b(track|beat|music)/i,
@@ -283,7 +285,7 @@ export function isGenerativeCommand(text: string): boolean {
   // generative surface for those users. Unicode-aware end-of-token lookahead instead, `u` flag.
   // (lib/chat/studioIntent.ts documents this same trap in its own header — it was fixed there and not
   // here, which is why Russian worked through the studio panels but never through generation.)
-  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста)\s+){0,3}(make|create|generate|render|compose|design|draw|sketch|illustrate|produce|animate|paint|write\s+me|сделай|создай|сгенерируй|нарисуй|изобрази|набросай|сочини|придумай|собери)(?![\p{L}\p{N}])/iu.test(s);
+  const leadsLatin = /^\s*((please|can|could|would|will|you|u|kindly|пожалуйста)\s+){0,3}(make|create|generate|render|compose|design|draw|sketch|illustrate|produce|animate|paint|write|напиши|сделай|создай|сгенерируй|нарисуй|изобрази|набросай|сочини|придумай|собери)(?![\p{L}\p{N}])/iu.test(s);
   // Georgian imperative generate verbs (stems, so conjugations like -ე/-ავ/-ე match), optionally after a
   // polite "გთხოვ" / "თუ შეიძლება". Georgian script isn't \w, so this leads at ^ without \b. Covers the
   // common phrasings that were silently falling through to plain chat ("გამიკეთე სურათი", "დახატე …",
