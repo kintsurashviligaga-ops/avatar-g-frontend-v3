@@ -1510,6 +1510,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
   const { keyboardOffset } = useKeyboardResilience();
+
+  // ⚠️ PUBLISHED FOR THE FIXED OVERLAYS THAT LIVE OUTSIDE THE SHELL. ChatChrome shrinks the SHELL by
+  // keyboardOffset, but `position: fixed` resolves against the LAYOUT viewport — which does not shrink
+  // for the keyboard — so a fixed tray or toast is not inside that shrunken box and stays pinned behind
+  // the keyboard. One publisher (like --composer-h) rather than a listener per surface, because several
+  // of them need the same number and independent listeners disagree during the open/close animation.
+  //
+  // Its own effect on purpose: the --composer-h publisher is a ResizeObserver with [] deps, so reading
+  // keyboardOffset there would capture 0 forever.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--kb-inset', `${keyboardOffset}px`);
+  }, [keyboardOffset]);
   // Transient toast (e.g. "link copied") shown after a share falls back to clipboard.
   const [shareToast, setShareToast] = useState<string | null>(null);
   // FIX 5 — URLs the user has explicitly filed into the Library (drives the ✓ saved state).
@@ -8132,7 +8144,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       {shareToast && (
         <div
           className="pointer-events-none fixed inset-x-0 z-[110] mx-auto flex w-fit items-center gap-2 rounded-full bg-app-elevated px-4 py-2 text-[13px] font-medium text-app-text shadow-lg ring-1 ring-app-border/20"
-          style={{ bottom: 'max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
+          // ⚠️ position:fixed IS ANCHORED TO THE LAYOUT VIEWPORT, WHICH DOES NOT SHRINK FOR THE
+          // KEYBOARD. ChatChrome shrinks the SHELL by keyboardOffset, but a fixed overlay is not
+          // inside that coordinate space — it stayed pinned to the bottom of the full-height viewport
+          // and so sat behind the keyboard, or half under it, as a stray floating chip. Adding the
+          // offset puts it back above the keyboard, and it is 0 when the keyboard is closed.
+          style={{ bottom: `calc(max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem)) + ${keyboardOffset}px)` }}
         >
           <Check size={14} className="text-app-accent" /> {shareToast}
         </div>
@@ -8143,7 +8160,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         return (
           <div
             className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit max-w-[88vw] animate-[fadeIn_0.2s_ease-out] flex-col gap-1 rounded-2xl bg-app-elevated px-4 py-3 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
-            style={{ bottom: 'max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem))' }}
+            // Same fixed-vs-layout-viewport problem as the share toast above.
+            style={{ bottom: `calc(max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem)) + ${keyboardOffset}px)` }}
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
             <span className="text-app-muted">💳 −{creditToast.credits} {creditsWord} ({formatWalletBalance(creditsToGel(creditToast.credits), locale)})</span>

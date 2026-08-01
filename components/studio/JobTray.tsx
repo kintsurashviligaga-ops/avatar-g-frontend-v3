@@ -189,7 +189,10 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
       // published by OmniStudio from a ResizeObserver, because the composer grows as the text wraps and
       // any fixed offset would be wrong at some height. The fallback keeps this correct on surfaces
       // that mount the tray without a composer.
-      style={{ bottom: 'calc(var(--composer-h, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))' }}
+      // --kb-inset is added for the same reason --composer-h is: this tray is `position: fixed`, so it
+      // resolves against the LAYOUT viewport, which does not shrink when the keyboard opens. Without it
+      // the tray sits behind the keyboard exactly when the user is typing. 0 when the keyboard is shut.
+      style={{ bottom: 'calc(var(--composer-h, 0px) + var(--kb-inset, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))' }}
     >
       <div className="mb-2 flex items-center justify-between px-0.5">
         <p className="text-[12px] font-bold text-app-text">
