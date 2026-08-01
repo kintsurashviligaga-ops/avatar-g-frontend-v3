@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, type LucideIcon } from 'lucide-react';
 import { GenerationProgress, PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
@@ -88,6 +88,26 @@ const SOON_LABEL: Record<Lang, string> = { ka: 'მალე', en: 'Soon', ru: '
 
 /** Services whose parameter controls open INSIDE the chat box rather than on their own route. */
 const PANEL_SERVICES = ['montage', 'dubbing', 'presentation', 'model3d'] as const;
+
+/**
+ * Line icons for the full-studio services, so the service menu uses ONE icon system.
+ *
+ * ⚠️ THE MENU MIXED TWO. The six chat modes above the divider draw crafted lucide line icons; the four
+ * studios below drew the emoji from their catalogue entry (✂️ 🎙 🧊 📊). In a single twelve-item list the
+ * bottom four read as unfinished next to the top six — and worse, emoji are rendered by the OS, so that
+ * half of the menu literally looks different on an iPhone, an Android and a desktop. A product cannot be
+ * "identical at every screen size" while a third of its main picker is drawn by the operating system.
+ *
+ * The catalogue keeps its emoji: it is also consumed by surfaces where a single glyph is the right unit
+ * (page titles, plain-text contexts). This map is the CHAT MENU's opinion, not a replacement for it, and
+ * an unmapped service still falls back to the emoji rather than rendering nothing.
+ */
+const STUDIO_ICON: Record<string, LucideIcon> = {
+  montage: Scissors,
+  dubbing: Mic,
+  presentation: Presentation,
+  model3d: Box,
+};
 
 /** Display names for the chat line that confirms which studio a sentence opened. */
 const SERVICE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
@@ -8418,7 +8438,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
                           title={svc.live ? undefined : SOON_LABEL[locale]}
                         >
-                          <span className="w-[15px] shrink-0 text-center text-[13px] leading-none">{svc.icon}</span>
+                          {(() => {
+                            const StudioIcon = STUDIO_ICON[svc.id];
+                            return StudioIcon
+                              ? <StudioIcon size={15} className="shrink-0" />
+                              : <span className="w-[15px] shrink-0 text-center text-[13px] leading-none">{svc.icon}</span>;
+                          })()}
                           <span className="flex-1 truncate text-left">{serviceName(svc, locale)}</span>
                           {!svc.live && <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wider">{SOON_LABEL[locale]}</span>}
                           {svc.live && panelService === svc.id && <Check size={14} />}
