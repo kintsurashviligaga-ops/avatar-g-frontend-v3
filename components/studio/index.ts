@@ -1,4 +1,3 @@
-export { StudioShell } from './StudioShell';
 export { PipelineProgress } from './PipelineProgress';
 export { WaveRow } from './WaveRow';
 export { NodeBadge } from './NodeBadge';
