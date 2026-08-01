@@ -80,33 +80,24 @@ BEGIN
 END;
 $fn$;
 
--- ─── 2. Take back the 900 that was granted twice ────────────────────────────
--- Scoped deliberately narrowly: ONLY accounts that received the settlement row, and only by the amount
--- that row double-paid. Recorded in the ledger as a correction rather than done silently, because a
--- balance that drops without explanation is worse than the original error.
+-- ─── 2. NOTHING TO REVERSE HERE — AND THE REASON MATTERS ────────────────────
+-- My first attempt at this section inserted a NEGATIVE ledger row to claw back the double grant. That
+-- cannot work, and understanding why is the point of this comment:
 --
--- ⚠️ This ledger insert will ALSO fire the trigger, which is exactly what is wanted here: one negative
--- ledger row, one matching balance decrease. That is the same mechanism the bug misused by adding a
--- second, manual update on top of it.
-DO $$
-DECLARE
-  v_fix text := 'double_credit_fix_20260802b';
-BEGIN
-  IF EXISTS (SELECT 1 FROM public.credit_ledger WHERE metadata->>'kind' = v_fix) THEN
-    RAISE NOTICE 'double-credit correction already applied — skipping';
-    RETURN;
-  END IF;
-
-  INSERT INTO public.credit_ledger (user_id, delta, reason, metadata)
-  SELECT user_id, -delta, 'commit',
-         jsonb_build_object('kind', v_fix,
-                            'note', 'reverses the duplicate grant from 20260802: that migration wrote the ledger row AND updated credits_balance, but an AFTER INSERT trigger already does the second part')
-    FROM public.credit_ledger
-   WHERE metadata->>'kind' = 'denomination_repair_20260802'
-     AND delta > 0;
-
-  RAISE NOTICE 'double-credit correction applied';
-END $$;
+--   the trigger fires on INSERT, so a ledger row moves the ledger AND the balance TOGETHER.
+--   A gap BETWEEN them can therefore never be closed by writing another ledger row — both sides shift
+--   by the same amount and the gap survives. Measured: ledger 901 / balance 1801 (gap 900) became
+--   ledger 1 / balance 901 — still a gap of 900, now with the legitimate grant missing from the history.
+--
+-- What the double-credit actually did was leave the BALANCE right and the LEDGER short: the user paid
+-- 100 GEL, is owed 1000 credits, had spent down to 1 against the old 100-credit grant, and therefore
+-- should hold 901 — which is exactly what the balance already said. The repair was to DELETE the bogus
+-- correction row (the trigger is INSERT-only, so a delete does not disturb the balance), restoring
+-- ledger 901 = balance 901. That has been done on production and reconciles across every real account.
+--
+-- ⚠️ IF YOU EVER NEED TO CORRECT A BALANCE THAT DISAGREES WITH ITS LEDGER, adjust profiles.credits_balance
+-- DIRECTLY. Do not write a compensating ledger row — the trigger will move the balance with it and you
+-- will end up exactly where you started, having also falsified the history.
 
 COMMIT;
 
