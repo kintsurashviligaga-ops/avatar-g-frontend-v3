@@ -187,7 +187,22 @@ export function getEnvWarnings(): string[] {
   return warnings;
 }
 
-/** Returns true when Stripe is configured. */
+/**
+ * Returns true when Stripe is configured.
+ *
+ * ⚠️ THIS READ A NAME NOTHING SETS. It checked `NEXT_PUBLIC_STRIPE_PUBLISHABLE` while every other read
+ * site — lib/billing/stripe.ts, lib/env/public.ts and .env.example — uses the `_KEY` suffix. This
+ * schema's own runtimeEnv entry already aliases the two; this helper bypassed that and read the bare
+ * name, so a correctly-configured deployment reported Stripe as MISSING.
+ *
+ * It matters precisely now: the sole consumer is /api/validate-env, the endpoint used to verify a
+ * production deploy. Going live with Stripe and then being told by your own health check that Stripe is
+ * not configured is the kind of false negative that gets chased for an hour, or worse, gets "fixed" by
+ * changing something that was already right.
+ *
+ * Both names are accepted so neither spelling can break it again.
+ */
 export function isStripeEnabled(): boolean {
-  return !!(process.env.STRIPE_SECRET_KEY && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE);
+  const publishable = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE;
+  return !!(process.env.STRIPE_SECRET_KEY && publishable);
 }

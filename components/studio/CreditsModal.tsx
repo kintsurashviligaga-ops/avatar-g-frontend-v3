@@ -95,24 +95,24 @@ const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
 // primary video engine.
 const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
   free: {
-    ka: ['6 სურათი თვეში (Imagen 4)', 'AI ჩატი (Gemini)', 'ვიდეო და მუსიკა — ფასიან გეგმებზე'],
-    en: ['6 images a month (Imagen 4)', 'AI chat (Gemini)', 'Video & music on paid plans'],
-    ru: ['6 изображений в месяц (Imagen 4)', 'AI-чат (Gemini)', 'Видео и музыка — на платных планах'],
+    ka: ['6 სურათი თვეში', 'AI ჩატი (Gemini)', 'ვიდეო და მუსიკა — ფასიან გეგმებზე'],
+    en: ['6 images a month', 'AI chat (Gemini)', 'Video & music on paid plans'],
+    ru: ['6 изображений в месяц', 'AI-чат (Gemini)', 'Видео и музыка — на платных планах'],
   },
   basic: {
-    ka: ['4 ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)', '40 კინემატოგრაფიული სურათი (Imagen 4)', '10 მუსიკალური ტრეკი (Lyria 3)', 'ხმის სინთეზი ქართულად'],
-    en: ['4 video clips up to 8s (Veo 3.1, native audio)', '40 cinematic images (Imagen 4)', '10 music tracks (Lyria 3)', 'Georgian voice synthesis'],
-    ru: ['4 видеоклипа до 8с (Veo 3.1, нативное аудио)', '40 кинематографичных изображений (Imagen 4)', '10 музыкальных треков (Lyria 3)', 'Синтез голоса на грузинском'],
+    ka: ['4 ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)', '40 კინემატოგრაფიული სურათი', '10 მუსიკალური ტრეკი (Lyria 3)', 'ხმის სინთეზი ქართულად'],
+    en: ['4 video clips up to 8s (Veo 3.1, native audio)', '40 cinematic images', '10 music tracks (Lyria 3)', 'Georgian voice synthesis'],
+    ru: ['4 видеоклипа до 8с (Veo 3.1, нативное аудио)', '40 кинематографичных изображений', '10 музыкальных треков (Lyria 3)', 'Синтез голоса на грузинском'],
   },
   pro: {
-    ka: ['8 ვიდეო კლიპი (Veo 3.1)', '100 უზადო სურათი (Imagen 4)', '25 მუსიკალური ტრეკი (Lyria 3)', 'დუბლაჟი და ავატარები', 'სრული წვდომა Agent G-ზე'],
-    en: ['8 video clips (Veo 3.1)', '100 flawless images (Imagen 4)', '25 music tracks (Lyria 3)', 'Dubbing & avatars', 'Full access to Agent G'],
-    ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений (Imagen 4)', '25 музыкальных треков (Lyria 3)', 'Дубляж и аватары', 'Полный доступ к Agent G'],
+    ka: ['8 ვიდეო კლიპი (Veo 3.1)', '100 უზადო სურათი', '25 მუსიკალური ტრეკი (Lyria 3)', 'დუბლაჟი და ავატარები', 'სრული წვდომა Agent G-ზე'],
+    en: ['8 video clips (Veo 3.1)', '100 flawless images', '25 music tracks (Lyria 3)', 'Dubbing & avatars', 'Full access to Agent G'],
+    ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений', '25 музыкальных треков (Lyria 3)', 'Дубляж и аватары', 'Полный доступ к Agent G'],
   },
   business: {
-    ka: ['16 ვიდეო კლიპი (Veo 3.1)', '200 დეტალური სურათი (Imagen 4)', '50 მუსიკალური ტრეკი (Lyria 3)', 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
-    en: ['16 video clips (Veo 3.1)', '200 detailed images (Imagen 4)', '50 music tracks (Lyria 3)', 'Shared team libraries', 'Priority render queue', 'VIP support'],
-    ru: ['16 видеоклипов (Veo 3.1)', '200 детальных изображений (Imagen 4)', '50 музыкальных треков (Lyria 3)', 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
+    ka: ['16 ვიდეო კლიპი (Veo 3.1)', '200 დეტალური სურათი', '50 მუსიკალური ტრეკი (Lyria 3)', 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
+    en: ['16 video clips (Veo 3.1)', '200 detailed images', '50 music tracks (Lyria 3)', 'Shared team libraries', 'Priority render queue', 'VIP support'],
+    ru: ['16 видеоклипов (Veo 3.1)', '200 детальных изображений', '50 музыкальных треков (Lyria 3)', 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
   },
 };
 
