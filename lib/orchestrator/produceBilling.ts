@@ -23,21 +23,7 @@ export interface Reservation {
   balance?: number;
 }
 
-/** Stable, per-operation idempotency ref. Prefer a client-supplied key; else the server pipelineId. */
-export function produceRef(kind: string, key: string): string {
-  return `${kind}:${key}`;
-}
-
-/**
- * Derive the reservation ref from a client-supplied `idempotencyKey` (stable across HTTP retries of the
- * SAME logical job) when present, falling back to the per-request pipelineId. The client should send one
- * stable key per user-initiated generation and reuse it on retry so deduct_credits collapses the repeat.
- */
-export function idemRef(kind: string, pipelineId: string, body: unknown): string {
-  const k = (body as { idempotencyKey?: unknown } | null | undefined)?.idempotencyKey;
-  const key = typeof k === 'string' && k.trim() ? k.trim().slice(0, 80) : pipelineId;
-  return produceRef(kind, key);
-}
+export { produceRef, bodyFingerprint, idemRef } from './idemRef';
 
 /**
  * Reserve `amount` credits BEFORE the render. Returns whether the route may proceed and whether a real

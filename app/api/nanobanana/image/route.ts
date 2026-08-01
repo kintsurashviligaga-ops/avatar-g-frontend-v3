@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -155,7 +156,11 @@ export async function POST(req: NextRequest) {
       }
       if (rUser?.id) {
         reservedUid = rUser.id;
-        reserveRef = `image:nanobanana:${clientJobId || randomUUID()}:${rUser.id}`;
+        // ⚠️ CLIENT-KEYED BILLING REF — same exploit shape as produceBilling.idemRef: deduct_credits
+        // dedupes on (user_id, ref) forever, so a constant clientJobId with a changing prompt was
+        // charged once and rendered free thereafter. The body fingerprint is server-derived, so a real
+        // retry (same job, same request) still collapses while a new render always pays.
+        reserveRef = `image:nanobanana:${clientJobId || randomUUID()}:${bodyFingerprint(body)}:${rUser.id}`;
         const debit = await deductCredits(rUser.id, creditCostFor('image'), reserveRef);
         if (!debit.ok && debit.reason === 'insufficient') {
           await refundReserve(); // releases the mutex (nothing reserved yet) so a top-up retry works

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusicCover, generateVoiceSong, generateMusic } from '@/lib/ai/replicate';
@@ -238,9 +239,12 @@ export async function POST(req: NextRequest) {
   // under this id (converging with the client's placeholder) so a track produces ONE
   // generation_jobs row, not a client + server duplicate.
   let clientJobId = '';
+  // Captured where `body` is in scope; used far below to bind the billing ref to the actual request.
+  let bodyFp = '';
   try {
     const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; jobId?: unknown };
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
+    bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
     if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
@@ -349,7 +353,10 @@ export async function POST(req: NextRequest) {
     }
     if (rUser?.id) {
       reservedUid = rUser.id;
-      reserveRef = `music:${clientJobId || randomUUID()}:${rUser.id}`;
+      // ⚠️ CLIENT-KEYED BILLING REF — see produceBilling.idemRef. A fixed clientJobId with a changed
+      // brief was charged once and free forever after; the server-derived fingerprint closes that while
+      // preserving genuine retry collapsing.
+      reserveRef = `music:${clientJobId || randomUUID()}:${bodyFp}:${rUser.id}`;
       const debit = await deductCredits(rUser.id, creditCostFor('music', { seconds: billSeconds }), reserveRef);
       if (!debit.ok && debit.reason === 'insufficient') {
         await refundReserve(); // releases the mutex (nothing reserved) so a top-up retry works
