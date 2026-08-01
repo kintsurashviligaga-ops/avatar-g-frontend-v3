@@ -31,7 +31,7 @@ import { TAP_MIN_PX } from './ui/tokens';
 import { PresetRow } from './ui/controls';
 import { VIDEO_PRESETS, matchVideoPreset, videoPresetValues } from '@/lib/video/videoPresets';
 import { IMAGE_PRESETS, matchImagePreset, imagePresetValues } from '@/lib/image/imagePresets';
-import SurgicalEditor from '@/components/studio/SurgicalEditor';
+const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
@@ -46,7 +46,7 @@ const RemixStudioConsole = dynamic(() => import('./RemixStudioConsole'), { ssr: 
 import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, type FilmAgentStatus } from '@/lib/chat/filmAgentRoster';
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
-import { MotionControlPanel } from './MotionControlPanel';
+const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m) => m.MotionControlPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { extractOverlayText } from '@/lib/video/remixCaption';
@@ -76,7 +76,8 @@ import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // removed. Anything with a `path` target is a full studio on its own route; the `hash` ones are the
 // in-chat MODES below. Reading the catalogue means a new service appears here automatically.
 import { SERVICE_CATALOGUE, serviceHref, serviceName } from '@/lib/services/serviceCatalogue';
-import { ServiceParamsPanel, type PanelService } from './ServiceParamsPanel';
+import type { PanelService } from './ServiceParamsPanel';
+const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -3785,7 +3786,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const aborted = signal.aborted || (e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message)));
           if (!aborted) updateBubble(bubbleId, { text: `⚠️ ${t.imageFailed}` });
           throw e;
-        });
+        }).finally(() => { window.clearInterval(hb); });
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
