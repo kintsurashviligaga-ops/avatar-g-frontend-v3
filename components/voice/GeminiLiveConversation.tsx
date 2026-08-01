@@ -12,7 +12,9 @@
  * a paid key + real mic/camera before production use.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Mic, MicOff, PhoneOff, SwitchCamera } from 'lucide-react';
+// Volume2, not AudioLines — this lucide version does not export the latter (verified against the
+// installed package, the same trap that once cost a build over `Waves` vs `AudioLines`).
+import { Camera, CameraOff, Mic, MicOff, PhoneOff, SwitchCamera, Volume2 } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GeminiLiveSession, GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
@@ -468,7 +470,12 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
 
       {/* Sticky premium control bar */}
       <div
-        className="fixed bottom-0 left-0 right-0 flex items-center justify-center gap-3 border-t border-white/10 bg-black/40 px-5 py-4 backdrop-blur-xl"
+        // Wraps, with a tighter gap. Five controls appear at once when the camera is on — mute, camera,
+        // flip, voice and end-call — and the row had no wrap and no shrink, so any future addition (or a
+        // longer voice label in another language) would have pushed one off the edge with nothing to
+        // catch it. I did NOT reproduce an overflow at 320px with today's control set; this is a
+        // safeguard against a fragile layout, not a fix for a measured defect.
+        className="fixed bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-2 border-t border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
         <button type="button" onClick={toggleMute} aria-label="mute"
@@ -488,22 +495,32 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
             <SwitchCamera size={20} />
           </button>
         )}
-        {/* Voice selector — a clear segmented ♀ | ♂ toggle (Google Aoede vs Charon). Tapping the OTHER gender
-            switches + reconnects with that voice; tapping the current one is a no-op (setState bails → no
-            needless reconnect). Both options are always visible so it's obvious which voice is active. */}
-        <div role="group" aria-label={locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}
-          className="flex h-12 items-center gap-0.5 rounded-full bg-white/[0.08] p-1">
-          <button type="button" aria-pressed={voiceGender === 'female'} onClick={() => setVoiceGender('female')}
-            aria-label={locale === 'en' ? 'Female voice' : locale === 'ru' ? 'Женский голос' : 'ქალის ხმა'}
-            className={`flex h-9 w-9 touch-manipulation items-center justify-center rounded-full text-[19px] font-bold transition ${voiceGender === 'female' ? 'bg-pink-400/25 text-pink-200 shadow-[0_0_0_1px_rgba(244,114,182,0.45)]' : 'text-app-muted hover:text-app-text'}`}>
-            ♀
-          </button>
-          <button type="button" aria-pressed={voiceGender === 'male'} onClick={() => setVoiceGender('male')}
-            aria-label={locale === 'en' ? 'Male voice' : locale === 'ru' ? 'Мужской голос' : 'კაცის ხმა'}
-            className={`flex h-9 w-9 touch-manipulation items-center justify-center rounded-full text-[19px] font-bold transition ${voiceGender === 'male' ? 'bg-sky-400/25 text-sky-200 shadow-[0_0_0_1px_rgba(56,189,248,0.45)]' : 'text-app-muted hover:text-app-text'}`}>
-            ♂
-          </button>
-        </div>
+        {/* ⚠️ WAS A ♀ | ♂ GLYPH PAIR, COLOUR-CODED PINK AND BLUE. Three problems, and none of them were
+            styling. The control does not choose a GENDER, it chooses a VOICE (Google Aoede vs Charon) —
+            naming it after a gender symbol describes the wrong thing. The glyphs are typographic
+            characters, so they rendered at whatever weight the system font gave them and sat visually
+            apart from every lucide icon beside them. And pink-for-female / blue-for-male is a crude
+            convention this product has no reason to adopt.
+
+            Replaced with one labelled control that says, in the user's own language, which voice is
+            speaking — a voice icon plus the word. The label IS the affordance: nothing has to be decoded.
+            Tapping switches to the other voice and reconnects; the aria-label announces the destination,
+            not the current state, because that is what activating it does. */}
+        <button
+          type="button"
+          onClick={() => setVoiceGender((v) => (v === 'female' ? 'male' : 'female'))}
+          aria-label={voiceGender === 'female'
+            ? (locale === 'en' ? 'Switch to the male voice' : locale === 'ru' ? 'Переключить на мужской голос' : 'გადართე კაცის ხმაზე')
+            : (locale === 'en' ? 'Switch to the female voice' : locale === 'ru' ? 'Переключить на женский голос' : 'გადართე ქალის ხმაზე')}
+          className="flex h-12 min-w-[44px] shrink-0 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-3.5 text-app-text transition hover:bg-white/[0.14] active:scale-[0.97]"
+        >
+          <Volume2 size={18} className="shrink-0 text-app-accent" />
+          <span className="whitespace-nowrap text-[13px] font-semibold">
+            {voiceGender === 'female'
+              ? (locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის')
+              : (locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის')}
+          </span>
+        </button>
         <button type="button" onClick={endCall} aria-label="end call"
           className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-full bg-app-danger text-white shadow-lg transition hover:brightness-110">
           <PhoneOff size={22} />
