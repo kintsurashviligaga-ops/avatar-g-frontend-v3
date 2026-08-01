@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { acceptTranscript } from '@/lib/voice/sttAccept';
 import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
 import { transcribeWithGemini, hasGeminiSttKey } from '@/lib/voice-v2v/geminiStt';
 import { transcribeWithReplicateWhisper, hasReplicateSttKey } from '@/lib/voice-v2v/replicateStt';
@@ -55,14 +56,38 @@ export async function POST(req: NextRequest) {
     let primaryErrMsg: string | null = null;
     let geminiErrMsg: string | null = null;
     let replicateErrMsg: string | null = null;
-    try {
-      const result = await transcribeRealtimePcmChunk({ audioBase64, language, mimeType });
-      text = (result.text ?? '').trim();
-      provider = result.provider;
-    } catch (primaryErr) {
-      primaryErrMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-      // eslint-disable-next-line no-console
-      console.warn('[transcribe] primary STT failed:', primaryErrMsg);
+    // ⚠️ GEORGIAN GOES TO THE ONLY ENGINE THAT CAN DO IT — FIRST. The cascade below advances on
+    // `!accept(...)`, and for every other language that is still "first non-empty wins". But Georgian
+    // was reaching Replicate whisper-large-v3 (the sole ka-capable engine here, and the one this file
+    // already calls out as what "rescues the REAL mic") only if BOTH earlier legs came back empty — and
+    // they never do. OpenAI gpt-4o-mini-transcribe does not list Georgian as supported and Gemini is an
+    // LLM being asked to transcribe; on Georgian audio both return HTTP 200 with a fluent, confident,
+    // WRONG string. Non-empty, so the cascade stopped there, every time.
+    const georgianFirst = language === 'ka-GE' && hasReplicateSttKey();
+    if (georgianFirst) {
+      try {
+        text = await transcribeWithReplicateWhisper(audioBase64, mimeType, language);
+        if (acceptTranscript(text, language)) provider = 'replicate-whisper';
+        else text = '';
+      } catch (kaErr) {
+        replicateErrMsg = kaErr instanceof Error ? kaErr.message : String(kaErr);
+        // eslint-disable-next-line no-console
+        console.warn('[transcribe] replicate (ka-first) failed:', replicateErrMsg);
+      }
+    }
+    // Skipped entirely when the ka-first leg already produced an ACCEPTED transcript.
+    if (!text) {
+      try {
+        const result = await transcribeRealtimePcmChunk({ audioBase64, language, mimeType });
+        const t = (result.text ?? '').trim();
+        // ⚠️ NON-EMPTY IS NOT SUCCESS FOR GEORGIAN — see lib/voice/sttAccept. A transliteration or an
+        // English rendering is a MISS, and treating it as an answer is what buried the working engine.
+        if (acceptTranscript(t, language)) { text = t; provider = result.provider; }
+      } catch (primaryErr) {
+        primaryErrMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+        // eslint-disable-next-line no-console
+        console.warn('[transcribe] primary STT failed:', primaryErrMsg);
+      }
     }
 
     // Fallback 1 — Gemini (always configured for chat). Fast when it works, but
@@ -72,8 +97,8 @@ export async function POST(req: NextRequest) {
     const geminiKeyPresent = hasGeminiSttKey();
     if (!text && geminiKeyPresent) {
       try {
-        text = await transcribeWithGemini(audioBase64, mimeType, language);
-        provider = 'gemini';
+        const t = await transcribeWithGemini(audioBase64, mimeType, language);
+        if (acceptTranscript(t, language)) { text = t; provider = 'gemini'; }
       } catch (geminiErr) {
         geminiErrMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
         // eslint-disable-next-line no-console
@@ -87,10 +112,10 @@ export async function POST(req: NextRequest) {
     // dictation works with no new operator secret. Slower (it polls), so it's
     // the last resort after the instant paths.
     const replicateKeyPresent = hasReplicateSttKey();
-    if (!text && replicateKeyPresent) {
+    if (!text && replicateKeyPresent && !georgianFirst) {
       try {
-        text = await transcribeWithReplicateWhisper(audioBase64, mimeType, language);
-        provider = 'replicate-whisper';
+        const t = await transcribeWithReplicateWhisper(audioBase64, mimeType, language);
+        if (acceptTranscript(t, language)) { text = t; provider = 'replicate-whisper'; }
       } catch (replicateErr) {
         replicateErrMsg = replicateErr instanceof Error ? replicateErr.message : String(replicateErr);
         // eslint-disable-next-line no-console
