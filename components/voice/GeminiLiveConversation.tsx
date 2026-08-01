@@ -412,7 +412,18 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
   const showAvatar = !!avatarPoster && !camOn;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
+    // ⚠️ CONTENT WAS CENTRED IN THE FULL VIEWPORT WHILE THE CONTROL BAR IS `fixed bottom-0`. The bar is
+    // roughly 90px tall with its safe-area padding, and nothing reserved that space — so `justify-center`
+    // computed its midpoint against a height the bar was already occupying, and on a short screen (a
+    // landscape phone, or a small device with the browser chrome showing) the status line and any error
+    // message were laid out underneath it. Reserving the bar's height makes the centring honest: the
+    // avatar and its caption now centre within the space the user can actually see.
+    <div
+      className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)' }}
+      role="dialog"
+      aria-label={t.title}
+    >
       {/* FULL-SCREEN camera (like the Gemini app): when on, the video fills the whole screen behind the
           floating controls, with a scrim so the label stays readable. Off → hidden, and the waveform
           takes center stage instead. The frame-capture canvas is never displayed. */}
@@ -460,13 +471,19 @@ export default function GeminiLiveConversation({ userId, locale = 'ka', systemIn
         </div>
       )}
 
-      <span className="relative z-10 mb-6 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.title}</span>
+      {/* Eyebrow: deliberately quiet. It names the screen, which the user already knows — it should not
+          compete with the one line that changes. */}
+      <span className="relative z-10 mb-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-app-muted/70">{t.title}</span>
 
       {/* Frequency waveform — hidden while the full-screen camera OR the enrolled avatar is showing. */}
       <canvas ref={vizCanvasRef} width={320} height={120} className={`relative z-10 mb-6 w-[min(80vw,320px)] ${camOn || showAvatar ? 'hidden' : ''}`} />
 
-      <span className="relative z-10 mb-1 text-[14px] font-medium text-app-text">{label}</span>
-      {err && <span className="relative z-10 mb-2 max-w-xs px-6 text-center text-[12px] text-app-danger">{err}</span>}
+      {/* THE HERO LINE. "Listening" / "Speaking" / "Connecting" is the only thing on this screen that
+          changes, and it was set at 14px medium — quieter than the static eyebrow above it, which
+          inverted the hierarchy. It now reads as the primary signal, with tighter tracking at the larger
+          size so it stays crisp rather than loose. */}
+      <span className="relative z-10 mb-1.5 text-[17px] font-semibold tracking-tight text-app-text">{label}</span>
+      {err && <span className="relative z-10 mb-2 max-w-xs px-6 text-center text-[12.5px] leading-snug text-app-danger">{err}</span>}
 
       {/* Sticky premium control bar */}
       <div
