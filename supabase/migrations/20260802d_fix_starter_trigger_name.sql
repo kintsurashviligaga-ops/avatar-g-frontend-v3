@@ -41,8 +41,14 @@ SET search_path = public, pg_temp
 AS $fn$
 BEGIN
   -- The profiles row must exist before the credit_ledger trigger tries to move its balance.
-  INSERT INTO public.profiles (id, credits_balance)
-  VALUES (NEW.id, 0)
+  -- ⚠️ `email` IS NOT NULL AND OMITTING IT TOOK REGISTRATION DOWN. The first version of this file
+  -- inserted only (id, credits_balance); the constraint violation aborted the trigger, and because this
+  -- is an AFTER INSERT trigger on auth.users, aborting it aborted the whole signup — every attempt came
+  -- back "Database error creating new user". The bug was not new: the same INSERT sat in the old
+  -- function all along and never fired, because nothing called it (see the header). Wiring the trigger
+  -- correctly is what finally executed it.
+  INSERT INTO public.profiles (id, email, credits_balance)
+  VALUES (NEW.id, COALESCE(NEW.email, NEW.id::text || '@placeholder.local'), 0)
   ON CONFLICT (id) DO NOTHING;
 
   -- Idempotent on the marker, so a re-fired trigger cannot stack grants on one account.
@@ -62,6 +68,15 @@ BEGIN
                                'note', 'free trial: 50 credits, max 1 video (free_films_remaining)'));
   END IF;
 
+  RETURN NEW;
+
+-- ⚠️ A SIGNUP BONUS MUST NEVER BE A PRECONDITION FOR HAVING AN ACCOUNT. This handler exists because the
+-- omission above proved the point the hard way: a failed grant took the entire registration with it.
+-- Whatever goes wrong in here now, the user still gets their account; the grant is simply skipped and
+-- the backfill at the end of this file (re-runnable) picks it up. The WARNING keeps it diagnosable
+-- instead of silent — the mistake that hid the dead function for three migrations.
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'starter grant skipped for %: % (%)', NEW.id, SQLERRM, SQLSTATE;
   RETURN NEW;
 END;
 $fn$;
