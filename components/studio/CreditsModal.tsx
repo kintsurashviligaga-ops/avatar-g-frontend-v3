@@ -300,7 +300,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         <div className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-1 px-5 pb-4 pt-1 text-[11px]">
           {[
             { href: `/${lang}/terms`, label: lang === 'en' ? 'Terms' : lang === 'ru' ? 'Условия' : 'პირობები' },
-            { href: `/${lang}/refund`, label: lang === 'en' ? 'Refunds' : lang === 'ru' ? 'Возврат' : 'დაბრუნება' },
+            // 'დაბრუნება' alone is the Georgian for "go back" — read as a back button next to a payment
+            // form, which is the worst possible place to mislead someone. See ChatViews for the report.
+            { href: `/${lang}/refund`, label: lang === 'en' ? 'Refunds' : lang === 'ru' ? 'Возврат' : 'თანხის დაბრუნება' },
             { href: `/${lang}/privacy`, label: lang === 'en' ? 'Privacy' : lang === 'ru' ? 'Приватность' : 'კონფიდენციალურობა' },
           ].map((l) => (
             <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"

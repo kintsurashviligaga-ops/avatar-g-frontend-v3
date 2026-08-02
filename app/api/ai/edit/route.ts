@@ -18,6 +18,8 @@
  * Every op is FAIL-OPEN: a miss returns { url: null, error } (never a 500 dead-end).
  */
 import { NextRequest, NextResponse } from 'next/server';
+// Provider bodies must never reach the client — see lib/api/providerError.
+import { providerErrorBody } from '@/lib/api/providerError';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
@@ -201,7 +203,8 @@ export async function POST(req: NextRequest) {
         ...(dropped.length ? { droppedClips: dropped, renderedClips: seq.length - dropped.length } : {}),
       });
     } catch (e) {
-      return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'concat failed' }, { status: 502 });
+      const safe = providerErrorBody(e);
+      return NextResponse.json({ url: null, error: safe.error, message: safe.message }, { status: safe.status });
     }
   }
 
@@ -277,7 +280,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ url, error: url ? undefined : 'fade failed' });
       }
     } catch (e) {
-      return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'edit failed' }, { status: 502 });
+      const safe = providerErrorBody(e);
+      return NextResponse.json({ url: null, error: safe.error, message: safe.message }, { status: safe.status });
     }
   }
 
@@ -353,7 +357,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {}); // refund only a real charge
-    return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'inpaint failed' }, { status: 502 });
+    const safe = providerErrorBody(e);
+    return NextResponse.json({ url: null, error: safe.error, message: safe.message }, { status: safe.status });
   }
 }
 

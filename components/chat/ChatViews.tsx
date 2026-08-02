@@ -552,7 +552,12 @@ export function AccountSection({
               { href: `/${locale}/support`, label: locale === 'ka' ? 'მხარდაჭერა' : locale === 'ru' ? 'Поддержка' : 'Support' },
               { href: `/${locale}/privacy`, label: locale === 'ka' ? 'კონფიდენც.' : locale === 'ru' ? 'Приватность' : 'Privacy' },
               { href: `/${locale}/terms`, label: locale === 'ka' ? 'პირობები' : locale === 'ru' ? 'Условия' : 'Terms' },
-              { href: `/${locale}/refund`, label: locale === 'ka' ? 'დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds' },
+              // ⚠️ THE KA LABEL WAS 'დაბრუნება', WHICH IS THE WORD FOR "GO BACK". Users read it as a back
+              // button, clicked it expecting the previous page, and were thrown into a new tab on the
+              // refund policy — reported as "the back button goes to a foreign address". The href was
+              // always right; the word was wrong. 'თანხის დაბრუნება' ("return of funds") can only be read
+              // as a refund. Same fix in CreditsModal.
+              { href: `/${locale}/refund`, label: locale === 'ka' ? 'თანხის დაბრუნება' : locale === 'ru' ? 'Возврат' : 'Refunds' },
             ].map((lnk, i, arr) => (
               <span key={lnk.href} className="inline-flex items-center gap-2.5">
                 <a

@@ -2830,7 +2830,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${res.error || t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
+            : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
@@ -4790,7 +4790,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const next = [...prev]; const last = next[next.length - 1];
           // A silent engine downgrade is stated instead of being passed off as a clean result — a
           // Ken-Burns pan over one still is not the restyled video that was asked for.
-          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
+          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
           return next;
         });
         if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -4934,7 +4934,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(sj.videoId)}`, { credentials: 'include', signal: ac.signal });
               const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
               // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              if (pj.done) { if (pj.url) url = pj.url; else failReason = pj.error || t.lipsyncFailed; break; }
+              if (pj.done) { if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
             }
           }
           // HeyGen unavailable / unpaid package → fall back to Replicate SadTalker: the default
@@ -5137,7 +5137,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') next[next.length - 1] = j.url
           ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: remixAspect === '16:9' ? 'landscape' : 'vertical' }
-          : { role: 'assistant', text: `⚠️ ${j.error || t.remixFailed}` };
+          : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
         return next;
       });
       if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5200,7 +5200,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           autoSaveToLibrary(j.url, 'film');
           return j.url;
         }
-        updateBubble(bubbleId, { text: `⚠️ ${j.error || t.remixFailed}` });
+        updateBubble(bubbleId, { text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` });
         throw new Error(j.error || 'character swap failed');
       },
     });
@@ -6030,7 +6030,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last && last.role === 'assistant') next[next.length - 1] = j.success && j.url ? { role: 'assistant', text: '', imageUrl: j.url } : { role: 'assistant', text: `⚠️ ${j.error || t.upscaleFailed}` };
+        if (last && last.role === 'assistant') next[next.length - 1] = j.success && j.url ? { role: 'assistant', text: '', imageUrl: j.url } : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.upscaleFailed)}` };
         return next;
       });
     } catch {

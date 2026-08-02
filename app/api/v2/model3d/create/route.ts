@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { randomUUID } from 'node:crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -139,9 +140,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
 
     if (!submitted.ok) {
+      // ⚠️ `submitted.error` IS THE PROVIDER'S BODY — `replicate_http_402: {"title":"Insufficient credit",
+      // …"Go to https://replicate.com/account/billing"}` — and it was being handed to the client as
+      // `message`, which the UI prints as a sentence. Same leak the image lane had. The raw string stays
+      // in the log line below for diagnosis; the user gets a Georgian sentence.
+      console.error('[model3d.create] submit failed:', submitted.error);
+      const safe = providerErrorBody(submitted.error);
       return NextResponse.json(
-        { error: 'submit_failed', message: submitted.error, retryable: submitted.retryable, jobId },
-        { status: submitted.retryable ? 503 : 502 },
+        { error: 'submit_failed', message: safe.message, retryable: submitted.retryable, jobId },
+        { status: submitted.retryable ? 503 : safe.status },
       );
     }
 

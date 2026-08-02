@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardGeneration, type GenKind } from '@/lib/api/generationGuard';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel, isValidService, type ServiceType } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
@@ -94,7 +95,9 @@ export async function POST(req: NextRequest) {
       message: `${input.service} generation started. Poll with predictionId to check status.`,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
+    // Never echo a provider body — see lib/api/providerError.
+    const safe = providerErrorBody(err);
+    const message = safe.message;
 
     if (message.includes('429') || message.includes('rate limit')) {
       return NextResponse.json({

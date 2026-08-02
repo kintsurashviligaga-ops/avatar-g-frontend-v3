@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardGeneration } from '@/lib/api/generationGuard';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction, pollUntilDone } from '@/lib/replicate/client';
@@ -66,7 +67,9 @@ export async function POST(req: NextRequest) {
       normalizeOutput('avatar', model.label, model.outputType, completed.id, completed.status, completed.output, completed.error ?? null, completed.metrics),
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Avatar generation failed';
+    // Never echo a provider body — see lib/api/providerError.
+    const safe = providerErrorBody(err);
+    const message = safe.message;
     return NextResponse.json(
       { success: false, service: 'avatar', outputType: 'image', url: null, error: message, metadata: {} },
       { status: /token|configured/i.test(message) ? 500 : 502 },

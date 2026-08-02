@@ -1,4 +1,5 @@
 import Replicate from 'replicate';
+import { providerError } from '@/lib/api/providerError';
 
 let _client: Replicate | null = null;
 const _modelVersionCache = new Map<string, string>();
@@ -70,10 +71,10 @@ export async function createPrediction(
       continue;
     }
 
-    throw new Error(`Replicate API ${res.status}: ${errText}`);
+    throw providerError(res.status, errText);
   }
 
-  throw new Error('Replicate API 429: retry exhausted');
+  throw providerError(429, 'retry exhausted');
 }
 
 export async function pollPrediction(predictionId: string): Promise<PredictionResult> {
@@ -125,7 +126,7 @@ async function resolveModelVersion(modelId: string, token: string): Promise<stri
 
   if (!modelRes.ok) {
     const errText = await modelRes.text();
-    throw new Error(`Replicate model lookup ${modelRes.status}: ${errText}`);
+    throw providerError(modelRes.status, errText); // body stays off .message — see lib/api/providerError
   }
 
   const modelData = await modelRes.json() as {

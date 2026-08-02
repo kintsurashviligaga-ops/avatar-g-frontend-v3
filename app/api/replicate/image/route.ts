@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { reportError } from '@/lib/observability/report-error';
 import { validateInput, buildModelInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
@@ -137,10 +138,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     reportError(err, { route: 'replicate.image' }); // whole-route failure was invisible to Sentry
-    const message = err instanceof Error ? err.message : 'Image generation failed';
+    // ⚠️ THIS USED TO HAND THE USER THE PROVIDER'S RAW RESPONSE. lib/replicate/client.ts throws
+    // `Replicate API ${status}: ${body}`, so a Georgian user pressing Generate was shown, in English:
+    // `Replicate API 402: {"title":"Insufficient credit", … "Go to https://replicate.com/account/billing"}`
+    // — untranslated, JSON, and inviting our customer to go and top up OUR supplier's account. Nobody
+    // should learn who our providers are from an error message. The real reason is logged above.
+    const safe = providerErrorBody(err, req.headers.get('x-locale') || undefined);
     return NextResponse.json(
-      { success: false, service: 'image', outputType: 'image', url: null, error: message, metadata: {} },
-      { status: /token|configured/i.test(message) ? 500 : 502 },
+      { success: false, service: 'image', outputType: 'image', url: null, error: safe.error, message: safe.message, metadata: {} },
+      { status: safe.status },
     );
   }
 }

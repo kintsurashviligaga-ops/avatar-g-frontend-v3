@@ -10,6 +10,8 @@
  * feature is safe to ship before the operator has pinned/verified their exact checkpoints.
  */
 import { NextRequest, NextResponse } from 'next/server';
+// Provider bodies must never reach the client — see lib/api/providerError.
+import { providerErrorBody } from '@/lib/api/providerError';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
@@ -182,6 +184,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: displayUrl, path: finalHosted?.path, actions: CHAIN });
   } catch (e) {
     if (debit.ok) await refundCredits(guard.userId, totalCost, ref).catch(() => {}); // ATOMIC refund of the whole chain
-    return NextResponse.json({ url: null, error: e instanceof Error ? e.message.slice(0, 200) : 'chain failed' }, { status: 502 });
+    const safe = providerErrorBody(e);
+    return NextResponse.json({ url: null, error: safe.error, message: safe.message }, { status: safe.status });
   }
 }
