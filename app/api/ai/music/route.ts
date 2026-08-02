@@ -24,6 +24,7 @@ import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/o
 import { creditCostFor } from '@/lib/credits/pricing';
 import { settleMusicCharge } from '@/lib/credits/musicSettlement';
 import { buildMusicBrief, flattenMusicBrief, type MusicBrief } from '@/lib/ai/musicBrief';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 
 /**
@@ -77,7 +78,14 @@ async function hostAudioReference(dataUrl: string): Promise<string | null> {
 // so it runs in PARALLEL with the (slower) track and still lands before the song.
 async function generateCoverArt(songPrompt: string, style: string): Promise<string | null> {
   try {
-    const coverPrompt = `Album cover art for a ${style || 'cinematic'} music track. Mood and theme: ${songPrompt.slice(0, 220)}. Evocative, atmospheric, striking, professional album artwork, square composition, high detail. No text, no words, no letters, no captions, no logos.`;
+    // ⚠️ THE BRIEF USED TO GO TO FLUX IN WHATEVER ALPHABET THE USER TYPED. FLUX reads English; a Georgian
+    // sentence is noise to it, so it ignored the brief and fell back to its priors — which is how
+    // "inspirational Spanish hip-hop duet, good vibe beat" produced an anime portrait with letters on it.
+    // The template was never the problem: the model could not read the alphabet. Latin briefs skip this
+    // entirely (no call, no latency) and any failure returns the original, so the worst case is exactly
+    // today's behaviour.
+    const themeEn = await promptToEnglish(songPrompt, 'music');
+    const coverPrompt = `Album cover art for a ${style || 'cinematic'} music track. Mood and theme: ${themeEn.slice(0, 220)}. Evocative, atmospheric, striking, professional album artwork, square composition, high detail. No text, no words, no letters, no captions, no logos.`;
     // Deterministic-ish seed for variety run-to-run; flux model for quality.
     const seed = Math.floor(Math.random() * 1_000_000);
     const url =
@@ -378,6 +386,18 @@ export async function POST(req: NextRequest) {
     // the two, so it adds no latency) and themed to the song's brief + genre.
     const coverArtPromise = generateCoverArt(capped, style);
 
+    // ⚠️ AND THE SAME PROBLEM REACHED THE MUSIC ENGINE ITSELF, where it is invisible rather than absurd.
+    // Udio, ElevenLabs Music and MusicGen all read English; a Georgian brief was arriving as noise, so
+    // the engine composed from its priors and returned a competent track with no relationship to the
+    // request. That is the whole of "I wrote a prompt and none of it matched".
+    //
+    // ⚠️ THE DESCRIPTION IS TRANSLATED, THE LYRICS ARE NOT. `lyrics` is what the singer must SING and is
+    // passed through untouched — and a brief that asks for a song "ესპანურად" keeps that instruction in
+    // English ("in Spanish"), so the engine is told which language to sing in rather than being handed a
+    // translated substitute for the words. Latin briefs skip the call entirely; any failure falls back
+    // to `capped`, which is exactly today's behaviour.
+    const cappedEn = await promptToEnglish(capped, 'music');
+
     // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
     // re-imagines it in the requested style (conditioned on the track's melody);
     // otherwise Udio composes a fresh track from the brief.
@@ -393,7 +413,7 @@ export async function POST(req: NextRequest) {
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
       const composed = await composeTrackUrl(
-        buildMusicBrief({ prompt: capped, style, lyrics, instrumental: false }),
+        buildMusicBrief({ prompt: cappedEn, style, lyrics, instrumental: false }),
         style, false, durationSec,
       );
       try {
@@ -450,7 +470,7 @@ export async function POST(req: NextRequest) {
       // vocal descriptor (female/male/duet) is appended for a sung track.
       // Structured, not concatenated: the brief, the style, the vocal descriptor and the LYRICS each
       // stay their own field, so the boilerplate can never push the user's words out of the budget.
-      const brief = buildMusicBrief({ prompt: capped, style, vocalDescriptor, lyrics, instrumental: makeInstrumental });
+      const brief = buildMusicBrief({ prompt: cappedEn, style, vocalDescriptor, lyrics, instrumental: makeInstrumental });
       // If anything STILL had to be cut, the user is told. Silently shortening the words someone chose
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.
