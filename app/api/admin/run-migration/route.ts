@@ -27,6 +27,9 @@ const norm = (v: string | null | undefined) => String(v || '').trim();
 
 // Allow-list: only these migrations may be applied via the runtime gate.
 const ALLOWED: Record<string, string> = {
+  // Support live chat. Registered so it can be applied without hand-pasting 294 lines into the SQL
+  // editor — the file is idempotent and self-verifying, so a re-run is a no-op.
+  '20260802_support_live_chat.sql': 'supabase/migrations/20260802_support_live_chat.sql',
   '20260523_wallet_and_onboarding.sql': 'supabase/migrations/20260523_wallet_and_onboarding.sql',
   '20260523_generation_jobs.sql': 'supabase/migrations/20260523_generation_jobs.sql',
   '20260602_free_film_promo.sql': 'supabase/migrations/20260602_free_film_promo.sql',
