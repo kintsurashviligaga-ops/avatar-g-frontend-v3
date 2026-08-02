@@ -15,8 +15,7 @@ export default async function OnlineShopOrdersPage({ params }: OrdersPageProps) 
     <section className="space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <OnlineShopHeader
         locale={locale}
-        title="Online Shop Orders"
-        subtitle="Track paid orders and trigger automated fulfillment jobs."
+        page="orders"
       />
 
       <Card className="border-white/10 bg-white/5">

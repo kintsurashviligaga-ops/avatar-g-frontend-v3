@@ -55,12 +55,40 @@ function IconStudio() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
 }
 
-const BOTTOM_NAV = [
-  { path: '/', icon: IconHome, label: { en: 'Home', ka: 'მთავარი', ru: 'Главная' } },
-  { path: '/services', icon: IconGrid, label: { en: 'Services', ka: 'სერვისები', ru: 'Сервисы' } },
-  { path: '/hub', icon: IconStudio, label: { en: 'Studio', ka: 'სტუდია', ru: 'Студия' } },
-  { path: '/services/agent-g', icon: IconChat, label: { en: 'Agent G', ka: 'Agent G', ru: 'Агент G' } },
+/**
+ * ⚠️ ONE SOURCE OF TRUTH FOR ALL THREE NAV SURFACES. The header, the burger drawer and the bottom bar
+ * each carried their own hand-written list, and they had drifted apart on almost every item:
+ *   · /hub was labelled "Studio" (hardcoded English, even on ka/ru) in the header, "AI სტუდია" in the
+ *     drawer and "სტუდია" in the bottom bar — ONE destination wearing three different names, one of
+ *     which was not translated at all in a Georgian-primary product.
+ *   · Pricing existed only inside the burger drawer. A desktop visitor had no path to the page that
+ *     takes their money without first opening a mobile-style menu.
+ * Labels and paths live here; each surface still owns its own presentation. That is the part that
+ * actually drifts — three hardcoded copies of the same string cannot stay in agreement by hand.
+ */
+const NAV_ITEMS = [
+  { path: '/',                 icon: IconHome,   emoji: '🏠', label: { en: 'Home',         ka: 'მთავარი',       ru: 'Главная' },     surfaces: ['bottom'] },
+  { path: '/services/agent-g', icon: IconChat,   emoji: '🤖', label: { en: 'Agent G',      ka: 'Agent G',       ru: 'Агент G' },     surfaces: ['bottom', 'drawer'] },
+  // `short` exists ONLY because the bottom bar fits four labels across a phone; it is a width
+  // concession, not a second name. Everything else reads the full label.
+  { path: '/hub',              icon: IconStudio, emoji: '⚡', label: { en: 'AI Studio',    ka: 'AI სტუდია',     ru: 'AI Студия' },   short: { en: 'Studio', ka: 'სტუდია', ru: 'Студия' }, surfaces: ['bottom', 'drawer', 'header'] },
+  { path: '/services',         icon: IconGrid,   emoji: '📋', label: { en: 'All Services', ka: 'ყველა სერვისი', ru: 'Все сервисы' }, short: { en: 'Services', ka: 'სერვისები', ru: 'Сервисы' }, surfaces: ['bottom', 'drawer'] },
+  { path: '/pricing',          icon: IconGrid,   emoji: '💰', label: { en: 'Pricing',      ka: 'ფასები',        ru: 'Цены' },        surfaces: ['drawer', 'header'] },
 ] as const
+
+/**
+ * The bottom bar shows a subset, in ITS OWN ORDER — deliberately not NAV_ITEMS order. The drawer leads
+ * with Agent G as its primary CTA; the bottom bar has always read Home · Services · Studio · Agent G, and
+ * a thumb navigating by position rather than by reading is exactly what a silent reorder would break.
+ */
+const BOTTOM_ORDER = ['/', '/services', '/hub', '/services/agent-g'] as const
+const BOTTOM_NAV = BOTTOM_ORDER.map((p) => NAV_ITEMS.find((i) => i.path === p)!)
+
+const navLabel = (path: string, locale: string): string => {
+  const item = NAV_ITEMS.find((i) => i.path === path)
+  if (!item) return ''
+  return item.label[(locale === 'en' || locale === 'ru' ? locale : 'ka')]
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    TopNavbar — modern, clean, theme-aware
@@ -237,14 +265,24 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
           ))}
         </div>
 
-        {/* Studio CTA */}
+        {/* Pricing — was reachable ONLY from inside the burger drawer, so a desktop visitor had no route
+            to the page that takes their money without opening a mobile-style menu first. */}
+        <Link
+          href={lh('/pricing')}
+          className="hidden md:flex items-center text-[13px] font-medium px-3 py-2 rounded-lg transition-colors hover:bg-[var(--card-hover)]"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {navLabel('/pricing', locale)}
+        </Link>
+
+        {/* Studio CTA — label comes from NAV_ITEMS so it cannot drift from the drawer and bottom bar again. */}
         <Link
           href={lh('/hub')}
           className="hidden sm:flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2 rounded-xl transition-all duration-200 hover:scale-105"
           style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(14,165,233,0.15))', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.25)' }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          Studio
+          {navLabel('/hub', locale)}
         </Link>
 
         {/* Login/Account */}
@@ -379,7 +417,10 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 h-16 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
-          <BrandLogo size="nav" showText compact={false} />
+          {/* The logo is a home link in the top bar and in the bottom nav; here alone it was inert —
+              BrandLogo only wraps itself in a <Link> when given an href. Tapping a brand mark to get home
+              is universal, so the one surface where it silently did nothing was the mobile drawer. */}
+          <BrandLogo href={lh('/')} size="nav" showText compact={false} />
           <button onClick={onClose} aria-label={locale === 'en' ? 'Close menu' : locale === 'ru' ? 'Закрыть меню' : 'მენიუს დახურვა'} className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors" style={{ color: 'var(--color-text-secondary)' }}>
             <IconX />
           </button>
@@ -414,7 +455,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
             }}
           >
             <span className="text-lg">⚡</span>
-            {locale === 'ka' ? 'AI სტუდია' : locale === 'ru' ? 'AI Студия' : 'AI Studio'}
+            {navLabel('/hub', locale)}
           </Link>
 
           {/* All Services */}
@@ -428,7 +469,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
             }}
           >
             <span className="text-lg">📋</span>
-            {locale === 'ka' ? 'ყველა სერვისი' : locale === 'ru' ? 'Все сервисы' : 'All Services'}
+            {navLabel('/services', locale)}
           </Link>
 
           <div className="h-px my-3" style={{ backgroundColor: 'var(--color-border)' }} />
@@ -444,7 +485,7 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
             }}
           >
             <span className="text-lg">💰</span>
-            {locale === 'ka' ? 'ფასები' : locale === 'ru' ? 'Цены' : 'Pricing'}
+            {navLabel('/pricing', locale)}
           </Link>
         </div>
 
@@ -541,7 +582,7 @@ export function BottomNavigation() {
           >
             <Icon />
             <span className="text-[11px] font-medium">
-              {item.label[locale as keyof typeof item.label] || item.label.en}
+              {(('short' in item ? item.short : item.label) as Record<string, string>)[locale] || item.label.en}
             </span>
           </Link>
         )

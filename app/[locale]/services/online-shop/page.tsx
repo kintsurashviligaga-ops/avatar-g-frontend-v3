@@ -18,8 +18,7 @@ export default async function OnlineShopDashboardPage({ params }: OnlineShopDash
 		<section className="space-y-6 px-4 py-8 sm:px-6 lg:px-8">
 			<OnlineShopHeader
 				locale={locale}
-				title="Online Shop — C: AI Auto-Dropshipping"
-				subtitle="Manage suppliers, import products, optimize pricing, and automate fulfillment."
+				page="home"
 			/>
 
 			<div className="grid grid-cols-1 gap-4 md:grid-cols-3">

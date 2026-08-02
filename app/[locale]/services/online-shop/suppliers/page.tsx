@@ -14,8 +14,7 @@ export default async function OnlineShopSuppliersPage({ params }: SuppliersPageP
     <section className="space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <OnlineShopHeader
         locale={locale}
-        title="Online Shop Suppliers"
-        subtitle="Compare supplier quality and select the best source for your dropshipping pipeline."
+        page="suppliers"
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -19,7 +19,7 @@ import ReferralPanel from '@/components/dashboard/ReferralPanel';
  * Six sections wired to the REAL systems already in the app:
  *   • Rendering mode    → localStorage (consumed by future render-quality gating)
  *   • Aspect ratio       → localStorage (consumed by film/video composers)
- *   • Language          → NEXT_LOCALE cookie + router.push (same pattern as GlobalNavbar)
+ *   • Language          → NEXT_LOCALE cookie + router.push (same pattern as ModernShell's locale switcher)
  *   • Theme             → ThemeContext (data-theme attr + .dark class)
  *   • Profile + Usage    → /api/credits/balance (authenticated GET)
  *   • Delete Account    → /api/account/delete (Apple §5.1.1(v) compliant flow)

@@ -12,8 +12,7 @@ export default async function OnlineShopSettingsPage({ params }: SettingsPagePro
     <section className="space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <OnlineShopHeader
         locale={locale}
-        title="Online Shop Settings"
-        subtitle="Configure pricing rules, risk tolerance, and fulfillment automation defaults."
+        page="settings"
       />
 
       <Card className="border-white/10 bg-white/5">
