@@ -32,7 +32,7 @@ import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { creditWalletGel, getOnboardingState } from '@/lib/billing/wallet-ledger';
+import { creditWalletGel, consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { PipelineTimer } from '@/lib/pipeline/timing';
@@ -40,6 +40,7 @@ import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
+import { deriveFilmTokenId, recordFreeFilmWaiver } from './filmStatusStore';
 import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import { enrichSfxBrief } from './sfxTriggers';
@@ -774,15 +775,27 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // Hoisted to function scope so the per-clip billing step below can waive charges for a
   // FREE (promo) or founder/admin film (they bypass the pre-flight gate but were still charged).
   let clipBillingWaived = false;
+  // Tracked so a film that dispatches nothing can hand the slot back (see the restore below).
+  let freeFilmConsumed = false;
   if (input.userId && input.userId !== 'anonymous') {
     // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
     // gate entirely — otherwise a 0.00 ₾ wallet would block the very first free
-    // film (the regression the no-row→0 balance change introduced). We only PEEK
-    // the slot here (read, never consume); the actual waiver happens at the
-    // charge step. Fail-open: an unreadable slot just falls through to the
-    // balance check below.
-    const onboarding = await getOnboardingState(input.userId).catch(() => null);
-    const hasFreeFilm = (onboarding?.freeFilmsRemaining ?? 0) > 0;
+    // film (the regression the no-row→0 balance change introduced).
+    //
+    // ⚠️ THIS USED TO *PEEK* THE SLOT — READ IT, WAIVE EVERY CLIP, AND NEVER SPEND IT. The counter was
+    // decremented only by /api/video/assemble, which the CLIENT calls afterwards. So anyone who ran the
+    // film pipeline and simply never assembled kept `free_films_remaining` at its starting value and got
+    // the expensive half free every single time: the clips ARE the cost ($0.96 of Veo each, up to 12 per
+    // film), while the stitch is 20 credits. A one-video quota that is never consumed is not a quota.
+    //
+    // Consumed ATOMICALLY here instead, at the moment the waiver is granted, via the race-safe
+    // consume_free_film RPC — and restored below if the film fails to dispatch a single clip, so a
+    // broken render never eats someone's only free video. The waiver is then recorded SERVER-SIDE
+    // (recordFreeFilmWaiver) so /assemble honours the same slot for the stitch rather than taking a
+    // second one; that marker deliberately does not travel in the client-held `film:` token.
+    const consumed = await consumeFreeFilm(input.userId).catch(() => null);
+    const hasFreeFilm = typeof consumed === 'number' && consumed >= 0;
+    freeFilmConsumed = hasFreeFilm;
     // Founder/admin renders on the platform's own provider budget → bypass the
     // wallet gate (their personal wallet may legitimately be 0 while the platform
     // LTX balance funds the real render). Checked only when no free film applies.
@@ -932,6 +945,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // localized "balance protected" halt instead of a half-charged dead pipeline.
   if (!anyClip) {
     await rollbackFilmDebits(clips);
+    // ⚠️ HAND THE FREE VIDEO BACK. The slot is spent up front (see the waiver above) so it cannot be
+    // reused, which means a film that dispatched nothing must return it — otherwise a provider outage
+    // silently costs the user their only free video and they have nothing to show for it.
+    if (freeFilmConsumed && input.userId) await restoreFreeFilm(input.userId).catch(() => {});
     // Bubble up WHY every clip failed (first distinct upstream reason) so the
     // failure is actionable instead of an opaque "couldn't connect".
     const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
@@ -1172,9 +1189,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
   // full matrix in lock-step instead of tracking a single clip.
+  // Hoisted: deriveFilmTokenId() must hash the SAME createdAt the token carries, or /assemble would
+  // look up a different record and bill a free film.
+  const filmCreatedAt = Date.now();
   const filmToken = encodeFilmRef({
     sessionId: input.sessionId,
-    createdAt: Date.now(),
+    createdAt: filmCreatedAt,
     seed: plan.shared.seed,
     sceneCount,
     // The real per-scene length (4–8s) — the assembler derives the master timeline from it, so a 6s grid
@@ -1188,6 +1208,18 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // authed client, which forwards them to /api/video/assemble. Absent → single-voice.
     ...(dialogueStems && dialogueStems.length ? { dialogueStems } : {}),
   });
+
+  // ⚠️ TELL /assemble THAT THIS FILM IS ALREADY PAID FOR, SERVER-SIDE. The free slot was spent above to
+  // waive the clips; without this marker the stitch would either take a SECOND slot or charge
+  // ASSEMBLE_COST (20 credits) for a film the user was told is free. Written to the film status store
+  // — never into `filmToken`, which the client holds and could forge into unlimited free assembles.
+  // Owner-bound and single-use on the assemble side. Fail-open: a store miss just bills normally.
+  if (freeFilmConsumed && input.userId) {
+    await recordFreeFilmWaiver(
+      deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
+      input.userId,
+    ).catch(() => {});
+  }
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so
   // they are reported as queued (the async assembler picks them up) — never

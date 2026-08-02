@@ -292,7 +292,14 @@ async function assembleImpl(req: NextRequest) {
   let filmAlreadyBilled = false;
   if (billedTokenForCheck && uid) {
     const prior = await getFilmStatus(billedTokenForCheck);
-    filmAlreadyBilled = !!prior?.masterUrl && prior.payerUid === uid && prior.billingConsumed !== true;
+    // ⚠️ TWO WAYS A FILM CAN ARRIVE ALREADY PAID FOR, AND BOTH ARE OWNER-BOUND + SINGLE-USE:
+    //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
+    //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
+    //     Without honouring it, the free film would either consume a SECOND slot here or be charged
+    //     ASSEMBLE_COST (20 credits) — for a film the product told the user is free.
+    // Both markers live in the server-side status store, never in the client-held `film:` token.
+    const paidUpstream = !!prior?.masterUrl || prior?.freeFilmWaived === true;
+    filmAlreadyBilled = paidUpstream && prior?.payerUid === uid && prior?.billingConsumed !== true;
     // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it.
     if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
   }

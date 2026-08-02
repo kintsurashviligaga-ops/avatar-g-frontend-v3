@@ -75,6 +75,15 @@ export interface FilmStatusRecord {
    *  spent. A paid token maps 1:1 to one downstream assemble (the ad's overlay pass, or a film's
    *  lip-sync re-stitch); after that the waiver is consumed and further assembles bill normally. */
   billingConsumed?: boolean;
+  /** ⚠️ SERVER-AUTHORITATIVE FREE-FILM WAIVER. True when the film pipeline already spent this user's
+   *  free-video slot (consume_free_film) to waive the CLIP charges. /assemble reads it so the same slot
+   *  also covers the stitch, instead of consuming a second one or billing 20 credits for a film the
+   *  user was told is free.
+   *  ⚠️ THIS LIVES HERE, NOT IN THE `film:` TOKEN, ON PURPOSE. The token is base64url JSON that the
+   *  CLIENT holds and sends back; a "this one is free" flag inside it would be forgeable into unlimited
+   *  free assembles. This project has already shipped that exact mistake once with the film refund
+   *  token. Owner-bound by payerUid and single-use via billingConsumed, like every other waiver here. */
+  freeFilmWaived?: boolean;
   updatedAt: number;
   error?: string | null;
 }
@@ -228,6 +237,21 @@ export async function recordFilmAssembling(tokenId: string): Promise<void> {
 export async function recordFilmMaster(tokenId: string, masterUrl: string, qa: FilmQaSummary | null = null, payerUid: string | null = null): Promise<void> {
   const prev = await getFilmStatus(tokenId);
   await putFilmStatus(mergeMaster(prev, tokenId, masterUrl, qa, undefined, payerUid));
+}
+
+/**
+ * Record that this film's clips were paid for by the user's free-video slot, so the downstream
+ * /assemble can waive its own charge for the SAME film rather than taking a second slot or billing
+ * ASSEMBLE_COST. Owner-bound (payerUid) and single-use (billingConsumed) exactly like the paid-master
+ * waiver. Fails open: a store miss simply means assemble bills normally, which is the safe direction.
+ */
+export async function recordFreeFilmWaiver(tokenId: string, payerUid: string): Promise<void> {
+  const prev = await getFilmStatus(tokenId);
+  const base: FilmStatusRecord = prev ?? {
+    tokenId, phase: 'rendering', clips: [], audioReady: false, masterUrl: null,
+    updatedAt: Date.now(), error: null,
+  };
+  await putFilmStatus({ ...base, freeFilmWaived: true, payerUid, billingConsumed: false, updatedAt: Date.now() });
 }
 
 /** Spend a token's ONE assemble-waiver (single-use billing skip). Idempotent; fails open. After
