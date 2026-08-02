@@ -256,8 +256,18 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                   : (lang === 'en' ? '/ mo' : lang === 'ru' ? '/ мес' : '/ თვეში');
                 const popular = lang === 'en' ? 'Popular' : lang === 'ru' ? 'Популярный' : 'პოპულარული';
                 return (
+                  // ⚠️ THE WHOLE CARD IS THE TARGET, NOT JUST THE BUTTON. On a phone the button is a ~46px
+                  // strip at the bottom of a ~200px card; everything above it looked tappable and did
+                  // nothing. The inner <button> stays the ACCESSIBLE control (keyboard, screen reader,
+                  // disabled state) and stops its own click from bubbling, so exactly one checkout starts
+                  // whether the finger lands on the button or anywhere else on the card.
                   <div key={p.id}
-                    className={`relative rounded-2xl border p-4 ${highlight ? 'border-cyan-400/30 bg-app-elevated' : 'border-app-border/15 bg-app-bg/40'}`}
+                    role="button"
+                    tabIndex={busyId !== null ? -1 : 0}
+                    onClick={() => { if (busyId === null) void startCheckout(p); }}
+                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && busyId === null) { e.preventDefault(); void startCheckout(p); } }}
+                    aria-label={`${TIER_NAME[p.id][lang]} — $${p.priceUsd}`}
+                    className={`relative cursor-pointer rounded-2xl border p-4 transition-transform active:scale-[0.99] ${highlight ? 'border-cyan-400/30 bg-app-elevated' : 'border-app-border/15 bg-app-bg/40'}`}
                     style={highlight ? { boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(6,182,212,0.14), 0 22px 48px -26px rgba(6,182,212,0.42)' } : undefined}>
                     {highlight && (
                       <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg"
@@ -282,7 +292,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                         </li>
                       ))}
                     </ul>
-                    <button type="button" onClick={() => startCheckout(p)} disabled={busyId !== null}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); void startCheckout(p); }} disabled={busyId !== null}
                       className={`mt-3.5 inline-flex min-h-[46px] w-full touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 ${highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15'}`}>
                       {busyId === p.id ? <><Loader2 size={13} className="animate-spin" /> {t.redirecting}</> : <>{t.pay} · ${p.priceUsd}</>}
                     </button>
@@ -295,8 +305,15 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         )}
 
         {/* PHASE 39.5 (Master Contract V2) — legal-compliance links, always visible at the bottom of the
-            billing modal (a mandatory checklist item for the Georgian bank e-commerce approval). Open in a
-            new tab so the user never loses their place in the studio. */}
+            billing modal (a mandatory checklist item for the Georgian bank e-commerce approval).
+
+            ⚠️ THESE USED TO OPEN IN A NEW TAB AND IT WAS REPORTED AS "these buttons go somewhere completely
+            different". On a phone `target="_blank"` does not read as "opened in a background tab" — the
+            whole screen is replaced by a page with different chrome, the back gesture does not return you,
+            and you are left managing Safari tabs mid-payment. The original reasoning ("so the user never
+            loses their place in the studio") is a DESKTOP intuition; on mobile the new tab IS the way you
+            lose your place. Same-tab navigation restores the back gesture, and the bottom nav on those
+            pages now leads back to the chat, so there is a way home either way. */}
         <div className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-1 px-5 pb-4 pt-1 text-[11px]">
           {[
             { href: `/${lang}/terms`, label: lang === 'en' ? 'Terms' : lang === 'ru' ? 'Условия' : 'პირობები' },
@@ -305,7 +322,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             { href: `/${lang}/refund`, label: lang === 'en' ? 'Refunds' : lang === 'ru' ? 'Возврат' : 'თანხის დაბრუნება' },
             { href: `/${lang}/privacy`, label: lang === 'en' ? 'Privacy' : lang === 'ru' ? 'Приватность' : 'კონფიდენციალურობა' },
           ].map((l) => (
-            <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
+            <a key={l.href} href={l.href}
               className="text-app-muted underline-offset-2 transition-colors hover:text-app-text hover:underline">{l.label}</a>
           ))}
         </div>
