@@ -21,7 +21,7 @@ function IconSearch() {
 function IconUser() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 }
-function IconHome() {
+function _IconHome() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
 }
 function IconGrid() {
@@ -39,6 +39,17 @@ function IconSettings() {
 function IconGlobe() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
 }
+/* ⚠️ THE BAR HAD TWO ICONS A USER COULD NOT TELL APART. IconGrid (rx=1) and IconStudio (rx=1.5) are the
+   same four rectangles at the same coordinates, differing by half a pixel of corner radius — and they sat
+   side by side in the bottom bar pointing at two unrelated places. "Two of the icons look the same" was
+   literally true. These two are deliberately different SHAPES, not different radii: a stack of images and
+   a life-ring read apart at 20px. */
+function IconLibrary() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="7" width="14" height="12" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/><circle cx="7.5" cy="11.5" r="1.2"/><path d="m3 16 3.5-3.5 3 3L13 12l4 4"/></svg>
+}
+function IconSupport() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="m5.7 5.7 3.8 3.8M14.5 14.5l3.8 3.8M18.3 5.7l-3.8 3.8M9.5 14.5l-3.8 3.8"/></svg>
+}
 function IconChevronRight() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
 }
@@ -51,7 +62,7 @@ const LOCALES = [
 ] as const
 
 /* ─── Bottom Nav items ─── */
-function IconStudio() {
+function _IconStudio() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
 }
 
@@ -66,22 +77,45 @@ function IconStudio() {
  * Labels and paths live here; each surface still owns its own presentation. That is the part that
  * actually drifts — three hardcoded copies of the same string cannot stay in agreement by hand.
  */
+/**
+ * ⚠️ AND THE ITEMS THEMSELVES WENT TO THE WRONG PLACES — reported twice, from a phone, as "when I press
+ * the icons at the bottom it opens something completely different". Verified by clicking each one:
+ *   · "მთავარი" -> `/ka` -> redirect -> /ka/dashboard          = the chat
+ *   · "Agent G" -> /ka/services/agent-g -> redirect -> /ka/dashboard#agent = the SAME chat.
+ *     Two of four icons landed on one page, differing only by a hash.
+ *   · "სტუდია" -> /ka/hub = a SEPARATE application (AiHubShell) with its own header and sidebar,
+ *     hardcoded English on a /ka route, and no link back to the product.
+ *   · "სერვისები" -> /ka/services = a logged-out marketing funnel ("შენი AI ქარხანა", Get Started Free).
+ * Three of those four also match AppShell's `isImmersiveWorkspace`, so the bar DELETED ITSELF on arrival
+ * and left no way back. A previous attempt fixed a LABEL, which is why nothing the user could feel changed.
+ *
+ * THE BAR ONLY EVER RENDERS ON THE PERIPHERAL PAGES — legal, pricing, settings, support — which is exactly
+ * where they were (/ka/terms, /ka/refund). So its job is "take me back to my work, my files, my account, or
+ * a human". Four real pages, four distinct icons, no redirect hops, and two of the four keep the bar so a
+ * mis-tap is recoverable.
+ *
+ * /hub and /services stay LIVE ROUTES on purpose — app/sitemap.ts indexes them for SEO — they are simply
+ * no longer presented as in-app navigation.
+ */
 const NAV_ITEMS = [
-  { path: '/',                 icon: IconHome,   emoji: '🏠', label: { en: 'Home',         ka: 'მთავარი',       ru: 'Главная' },     surfaces: ['bottom'] },
-  { path: '/services/agent-g', icon: IconChat,   emoji: '🤖', label: { en: 'Agent G',      ka: 'Agent G',       ru: 'Агент G' },     surfaces: ['bottom', 'drawer'] },
-  // `short` exists ONLY because the bottom bar fits four labels across a phone; it is a width
-  // concession, not a second name. Everything else reads the full label.
-  { path: '/hub',              icon: IconStudio, emoji: '⚡', label: { en: 'AI Studio',    ka: 'AI სტუდია',     ru: 'AI Студия' },   short: { en: 'Studio', ka: 'სტუდია', ru: 'Студия' }, surfaces: ['bottom', 'drawer', 'header'] },
-  { path: '/services',         icon: IconGrid,   emoji: '📋', label: { en: 'All Services', ka: 'ყველა სერვისი', ru: 'Все сервисы' }, short: { en: 'Services', ka: 'სერვისები', ru: 'Сервисы' }, surfaces: ['bottom', 'drawer'] },
-  { path: '/pricing',          icon: IconGrid,   emoji: '💰', label: { en: 'Pricing',      ka: 'ფასები',        ru: 'Цены' },        surfaces: ['drawer', 'header'] },
+  { path: '/dashboard', icon: IconChat,     emoji: '💬', label: { en: 'Chat',      ka: 'ჩატი',          ru: 'Чат' },       surfaces: ['bottom', 'drawer', 'header'] },
+  { path: '/library',   icon: IconLibrary,  emoji: '🖼', label: { en: 'Library',   ka: 'ბიბლიოთეკა',    ru: 'Библиотека' }, surfaces: ['bottom', 'drawer'] },
+  // NOT in the drawer: the drawer's own footer already carries a Settings row (with the locale switcher
+  // and sign-in). Listing it here too rendered 'პარამეტრები' twice in one menu.
+  { path: '/settings',  icon: IconSettings, emoji: '⚙',  label: { en: 'Settings',  ka: 'პარამეტრები',   ru: 'Настройки' },  surfaces: ['bottom'] },
+  // 🛟 not 💬 — /dashboard already owns the speech bubble, and two drawer rows wearing the same glyph is
+  // the same defect as the two identical grid icons, just in emoji form.
+  { path: '/support',   icon: IconSupport,  emoji: '🛟', label: { en: 'Support',   ka: 'მხარდაჭერა',    ru: 'Поддержка' },  surfaces: ['bottom', 'drawer'] },
+  { path: '/pricing',   icon: IconGrid,     emoji: '💰', label: { en: 'Pricing',   ka: 'ფასები',        ru: 'Цены' },       surfaces: ['drawer', 'header'] },
 ] as const
 
 /**
- * The bottom bar shows a subset, in ITS OWN ORDER — deliberately not NAV_ITEMS order. The drawer leads
- * with Agent G as its primary CTA; the bottom bar has always read Home · Services · Studio · Agent G, and
- * a thumb navigating by position rather than by reading is exactly what a silent reorder would break.
+ * The bottom bar keeps its own explicit order so it can never be reshuffled by an edit to NAV_ITEMS —
+ * a thumb navigating by position rather than by reading is what a silent reorder breaks.
+ * ⚠️ EVERY PATH HERE MUST EXIST IN NAV_ITEMS. `.find(...)!` hides a typo behind a non-null assertion and
+ * the bar then crashes at runtime on `item.icon`.
  */
-const BOTTOM_ORDER = ['/', '/services', '/hub', '/services/agent-g'] as const
+const BOTTOM_ORDER = ['/dashboard', '/library', '/settings', '/support'] as const
 const BOTTOM_NAV = BOTTOM_ORDER.map((p) => NAV_ITEMS.find((i) => i.path === p)!)
 
 const navLabel = (path: string, locale: string): string => {
@@ -275,14 +309,16 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
           {navLabel('/pricing', locale)}
         </Link>
 
-        {/* Studio CTA — label comes from NAV_ITEMS so it cannot drift from the drawer and bottom bar again. */}
+        {/* The product CTA. It pointed at /hub — a separate application with its own chrome and no way
+            back — so the most prominent button in the header led AWAY from the product. Now it opens the
+            chat, and both the destination and the label come from NAV_ITEMS. */}
         <Link
-          href={lh('/hub')}
+          href={lh('/dashboard')}
           className="hidden sm:flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2 rounded-xl transition-all duration-200 hover:scale-105"
           style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(14,165,233,0.15))', color: 'var(--color-accent)', border: '1px solid rgba(34,211,238,0.25)' }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          {navLabel('/hub', locale)}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          {navLabel('/dashboard', locale)}
         </Link>
 
         {/* Login/Account */}
@@ -426,67 +462,40 @@ export function SidebarMenu({ open, onClose }: { open: boolean; onClose: () => v
           </button>
         </div>
 
-        {/* Navigation — Simplified */}
+        {/* ⚠️ THIS DRAWER USED TO HAND-WRITE ITS OWN FOUR LINKS — Agent G, /hub, /services, /pricing — each
+            with its own hardcoded emoji, its own label, and its own copy of the destination. That is how it
+            drifted out of agreement with the bottom bar and the header in the first place, and how it kept
+            pointing at /hub and /services after those stopped being product surfaces. It now renders from
+            NAV_ITEMS like every other surface, so a destination can only ever be wrong in ONE place. The
+            first item keeps the accent-CTA treatment the drawer has always given its lead entry. */}
         <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1.5">
-          {/* Agent G — Primary CTA */}
-          <Link
-            href={lh('/services/agent-g')}
-            onClick={onClose}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200"
-            style={{
-              color: isActive('/services/agent-g') ? '#fff' : 'var(--color-accent)',
-              backgroundColor: isActive('/services/agent-g') ? 'var(--color-accent)' : 'var(--color-accent-soft)',
-              border: `1px solid ${isActive('/services/agent-g') ? 'var(--color-accent)' : 'rgba(34,211,238,0.15)'}`,
-            }}
-          >
-            <span className="text-lg">🤖</span>
-            Agent G
-          </Link>
-
-          {/* AI Studio Hub */}
-          <Link
-            href={lh('/hub')}
-            onClick={onClose}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200"
-            style={{
-              color: isActive('/hub') ? '#fff' : 'var(--color-accent)',
-              backgroundColor: isActive('/hub') ? 'rgba(34,211,238,0.12)' : 'rgba(34,211,238,0.06)',
-              border: `1px solid ${isActive('/hub') ? 'rgba(34,211,238,0.3)' : 'rgba(34,211,238,0.1)'}`,
-            }}
-          >
-            <span className="text-lg">⚡</span>
-            {navLabel('/hub', locale)}
-          </Link>
-
-          {/* All Services */}
-          <Link
-            href={lh('/services')}
-            onClick={onClose}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-medium transition-all duration-200"
-            style={{
-              color: isActive('/services') ? 'var(--color-text)' : 'var(--color-text-secondary)',
-              backgroundColor: isActive('/services') ? 'var(--color-accent-soft)' : 'transparent',
-            }}
-          >
-            <span className="text-lg">📋</span>
-            {navLabel('/services', locale)}
-          </Link>
-
-          <div className="h-px my-3" style={{ backgroundColor: 'var(--color-border)' }} />
-
-          {/* Pricing */}
-          <Link
-            href={lh('/pricing')}
-            onClick={onClose}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-medium transition-all duration-200"
-            style={{
-              color: isActive('/pricing') ? 'var(--color-text)' : 'var(--color-text-secondary)',
-              backgroundColor: isActive('/pricing') ? 'var(--color-accent-soft)' : 'transparent',
-            }}
-          >
-            <span className="text-lg">💰</span>
-            {navLabel('/pricing', locale)}
-          </Link>
+          {NAV_ITEMS.filter((i) => (i.surfaces as readonly string[]).includes('drawer')).map((item, i) => {
+            const active = isActive(item.path)
+            const lead = i === 0
+            return (
+              <Link
+                key={item.path}
+                href={lh(item.path)}
+                onClick={onClose}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] transition-all duration-200 ${lead ? 'font-semibold' : 'font-medium'}`}
+                style={
+                  lead
+                    ? {
+                        color: active ? '#fff' : 'var(--color-accent)',
+                        backgroundColor: active ? 'var(--color-accent)' : 'var(--color-accent-soft)',
+                        border: `1px solid ${active ? 'var(--color-accent)' : 'rgba(34,211,238,0.15)'}`,
+                      }
+                    : {
+                        color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                        backgroundColor: active ? 'var(--color-accent-soft)' : 'transparent',
+                      }
+                }
+              >
+                <span className="text-lg">{item.emoji}</span>
+                {navLabel(item.path, locale)}
+              </Link>
+            )
+          })}
         </div>
 
         {/* Bottom section — settings */}

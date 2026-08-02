@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Film, ImageIcon, Music2, Star, Download, Trash2, Play, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Film, ImageIcon, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -68,21 +68,21 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
-    tabs: { video: '🎬 ვიდეო', image: '🖼 სურათი', music: '🎵 მუსიკა', favorites: '⭐ ფავორიტი' },
+    tabs: { video: 'ვიდეო', image: 'სურათი', music: 'მუსიკა', favorites: 'ფავორიტი' },
     empty: 'ჯერ არაფერი შექმენით',
     download: 'ჩამოტვირთვა', del: 'წაშლა', play: 'დაკვრა',
     confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
   },
   en: {
     title: 'Library',
-    tabs: { video: '🎬 Video', image: '🖼 Image', music: '🎵 Music', favorites: '⭐ Favorites' },
+    tabs: { video: 'Video', image: 'Image', music: 'Music', favorites: 'Favorites' },
     empty: 'Nothing created yet',
     download: 'Download', del: 'Delete', play: 'Play',
     confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
   },
   ru: {
     title: 'Библиотека',
-    tabs: { video: '🎬 Видео', image: '🖼 Фото', music: '🎵 Музыка', favorites: '⭐ Избранное' },
+    tabs: { video: 'Видео', image: 'Фото', music: 'Музыка', favorites: 'Избранное' },
     empty: 'Пока ничего не создано',
     download: 'Скачать', del: 'Удалить', play: 'Воспроизвести',
     confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
@@ -210,6 +210,9 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         {TABS.map((tb) => (
           <button key={tb} type="button" onClick={() => onTab(tb)}
             className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-4 text-[13px] font-semibold transition ${tab === tb ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-muted hover:text-app-text'}`}>
+            {/* Icon comes from tabIcon (lucide, matching the rest of the studio). The label strings
+                used to carry an emoji as well, so every chip rendered TWO icons — a film glyph next to
+                🎬, a star next to ⭐. Labels are text only; the icon lives here. */}
             {tabIcon(tb)} {t.tabs[tb]}
           </button>
         ))}
