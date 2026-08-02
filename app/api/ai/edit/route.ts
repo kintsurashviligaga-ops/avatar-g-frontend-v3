@@ -25,6 +25,7 @@ import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadB
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { maxrateForTarget } from '@/lib/services/montage/montagePlan';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
@@ -322,7 +323,12 @@ export async function POST(req: NextRequest) {
     );
   }
   try {
-    const created = await createPrediction(model, { image: src, mask, prompt: body?.prompt || '' });
+    // The inpaint prompt DESCRIBES what to synthesise inside the mask ("ზღვის ფონი დაუყენე") and the
+    // checkpoint reading it is English-only — a Georgian description was noise, so the model invented
+    // something unrelated inside the mask and the credit was spent on it. Nothing on this path is
+    // reproduced verbatim: the mask region is generated pixels, never text. Fail-open by construction.
+    const inpaintPrompt = await promptToEnglish(typeof body?.prompt === 'string' ? body.prompt : '', 'image');
+    const created = await createPrediction(model, { image: src, mask, prompt: inpaintPrompt });
     let out = created;
     if (created.status !== 'succeeded' && created.status !== 'failed') {
       // ⚠️ THIS WAS A SINGLE `pollPrediction`, AND IT MADE OBJECT REMOVAL FAIL 100% OF THE TIME.

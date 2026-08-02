@@ -26,6 +26,7 @@ import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
@@ -516,19 +517,40 @@ export async function POST(req: NextRequest) {
           const swapped = await roopFaceSwapVideo(videoUrl, swapPhoto);
           if (swapped) return await finishOk(swapped, { method: 'faceswap' });
         }
+        // ⚠️ TRANSLATED HERE AND NOWHERE ELSE IN THIS ROUTE, AND THE SCOPE IS THE WHOLE POINT.
+        // On these three ops `text` is a DESCRIPTION of what to generate — the replacement
+        // character, the new visual style, the backdrop to substitute — and it goes to
+        // generateNanoBananaImage and then klingI2v, both trained overwhelmingly on English.
+        // A Georgian description arrived as noise, the model fell back to its priors, and the
+        // user got a competent-looking person or style with no relationship to what they asked
+        // for. Two callers feed Georgian straight in: the Remix panel's `remixText` and, worse,
+        // OmniStudio's chat path, which forwards the RAW user message as `text` for whatever op
+        // /api/video/remix-intent classified.
+        //
+        // The SAME `text` (parsed once above) is SPOKEN verbatim by `voiceover` and `redub` and
+        // BURNED onto the frame by `captions`. Translating it there would replace the user's own
+        // content with a translation of it, so this deliberately introduces a new local instead of
+        // reassigning `text`.
+        //
+        // FAIL-OPEN and usually free: promptToEnglish returns Latin-script input unchanged with no
+        // network call, and returns the ORIGINAL on any error, missing key or timeout. It also runs
+        // only AFTER the roop early-return above, so the primary face-swap path pays nothing.
+        const editText = text ? await promptToEnglish(text, 'image') : '';
         const editPrompt =
           op === 'restyle'
-            ? `Restyle this exact scene: ${text || 'cinematic, film-grade color grade'}. Keep the composition and subjects, change only the visual style.`
+            ? `Restyle this exact scene: ${editText || 'cinematic, film-grade color grade'}. Keep the composition and subjects, change only the visual style.`
             : op === 'background_remove'
-              ? `Remove the background behind the subject and replace it with ${text || 'a clean, plain neutral studio backdrop'}. Keep the subject exactly as-is.`
-              : `${text || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character${swapPhoto ? ' to the reference person, preserving their face and identity' : ' to match this description'}.`;
+              ? `Remove the background behind the subject and replace it with ${editText || 'a clean, plain neutral studio backdrop'}. Keep the subject exactly as-is.`
+              : `${editText || 'replace the main character with a new person'}. Keep the background, framing and lighting; change the character${swapPhoto ? ' to the reference person, preserving their face and identity' : ' to match this description'}.`;
         const styled = await generateNanoBananaImage({
           prompt: editPrompt,
           referenceImageDataUrl: frame,
           aspectRatio: aspect,
         }).catch(() => null);
         const startImage = styled?.url || frame;
-        const motionPrompt = op === 'restyle' ? (text || 'cinematic motion') : (text || 'natural character motion');
+        // Same brief, same English-only engine (Kling). Reuses editText so the translation costs
+        // one call, not two; the English defaults are unchanged when the user typed nothing.
+        const motionPrompt = op === 'restyle' ? (editText || 'cinematic motion') : (editText || 'natural character motion');
         // Premium i2v if a token is set, else a guaranteed Ken-Burns animation so the
         // user ALWAYS gets a moving, restyled clip. The swap photo (if any) rides along as
         // the kling identity reference.

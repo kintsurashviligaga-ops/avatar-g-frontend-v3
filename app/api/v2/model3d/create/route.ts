@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateModel3dRequest, model3dUnits, QUALITY_MODEL } from '@/lib/services/model3d/model3dPlan';
 import { submitReconstruction, hasReplicate3dProvider } from '@/lib/services/model3d/replicate3dClient';
 import { generateImagenImages, mapImagenAspect, hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
@@ -85,12 +86,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let referenceUrl = request.imageUrl ?? '';
 
     if (request.mode === 'text') {
+      // ⚠️ TEXT-TO-3D IS TEXT-TO-IMAGE-TO-3D, AND IMAGEN READS ENGLISH. A Georgian object description
+      // ("ძველი თიხის დოქი ყვავილებით") arrived as noise, Imagen fell back to its priors, and TRELLIS then
+      // faithfully reconstructed a mesh of something the user never asked for. This is the worst shape of the
+      // bug: the deliverable is always a competent 3D model, so nothing about the result says it is wrong.
+      // Both fields are DESCRIPTIONS — the prompt of the object, the negative prompt of what to keep out —
+      // and a mesh reproduces no text, so there is nothing here that must survive verbatim.
+      const promptEn = await promptToEnglish(request.prompt, 'image');
+      const negativeEn = request.negativePrompt ? await promptToEnglish(request.negativePrompt, 'image') : '';
       const images = await generateImagenImages({
         // A clean, centred, single-subject reference reconstructs far better than a scene.
-        prompt: `${request.prompt}. A single centred object, plain neutral background, even studio lighting, full object visible, product photo.`,
+        prompt: `${promptEn}. A single centred object, plain neutral background, even studio lighting, full object visible, product photo.`,
         aspectRatio: mapImagenAspect('1:1'),
         numberOfImages: 1,
-        ...(request.negativePrompt ? { negativePrompt: request.negativePrompt } : {}),
+        ...(negativeEn ? { negativePrompt: negativeEn } : {}),
       }).catch(() => null);
       const first = images?.[0];
       if (!first) {

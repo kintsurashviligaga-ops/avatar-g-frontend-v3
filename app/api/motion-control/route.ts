@@ -15,6 +15,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import sharp from 'sharp';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { createJob } from '@/lib/orchestrator/jobs';
 import { hasSufficientBalance, deductCredits } from '@/lib/orchestrator/ledger';
@@ -99,7 +100,20 @@ export async function POST(req: Request) {
     '16:9': 'wide horizontal cinematic composition, subject centered and fully in frame',
     '1:1': 'square composition, subject centered and fully in frame',
   };
-  const framedPrompt = `${motionPrompt}, ${ORIENT_HINT[aspectRatio]}`;
+  // ⚠️ THIS FIELD ASKS FOR GEORGIAN BY NAME. The panel's placeholder is literally
+  // "მოძრაობის აღწერა… (ქართულად ან ინგლისურად)" (MotionControlPanel.tsx), and the text went
+  // straight to Kling, which is trained overwhelmingly on English. The render always came back
+  // — a plausible animation of the photo — so the failure was invisible: the user described one
+  // motion and got whatever the model's priors produced.
+  //
+  // Safe to translate: this is a DESCRIPTION of the motion to generate. Nothing spoken or burned
+  // on screen passes through here — the panel's "AI will speak it" line is a separate field that
+  // goes to /api/video/lipsync as TTS copy and never touches this prompt.
+  //
+  // FAIL-OPEN: Latin-script input returns immediately with no network call, and any error,
+  // missing key or timeout returns the original text. The job row below deliberately keeps the
+  // user's OWN words (motionPrompt), so the Library shows them what they actually typed.
+  const framedPrompt = `${await promptToEnglish(motionPrompt, 'video')}, ${ORIENT_HINT[aspectRatio]}`;
 
   // Bake the photo's EXIF orientation into its pixels BEFORE Kling (iPhone photos are
   // sideways pixels + a rotate tag Kling ignores). Fail-open → original photo.

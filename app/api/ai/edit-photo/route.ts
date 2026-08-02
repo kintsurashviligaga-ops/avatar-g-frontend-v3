@@ -15,6 +15,7 @@ import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generatio
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
 
 export const dynamic = 'force-dynamic';
@@ -145,11 +146,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
   }
 
+  // ⚠️ ONLY `background_replace` CONSUMES THIS, AND WHAT IT CONSUMES IS A DESCRIPTION. The panel asks for
+  // the new backdrop ("ზღვის სანაპირო მზის ჩასვლისას") and inputFor() hands it to Bria as BOTH `prompt` and
+  // `bg_prompt`; that checkpoint is English-only, so a Georgian description arrived as noise and it composited
+  // a background nobody asked for — at 5 credits, with a result that looks like a success.
+  //
+  // Placed AFTER the debit deliberately: an anonymous or insufficient-balance request never spends a
+  // translation call, and the chain pays for one translation rather than one per link. The other four actions
+  // (remove_bg, upscale, face_restore, colorize) take no prompt at all, so they skip it entirely.
+  const promptEn = CHAIN.includes('background_replace') ? await promptToEnglish(prompt, 'image') : prompt;
+
   try {
     let curUrl = src;                                   // fetchable URL fed into each model in turn
     let finalHosted: { url: string; path: string } | null = null;
     for (const act of CHAIN) {
-      const created = await createPrediction(modelFor(act), inputFor(act, curUrl, prompt));
+      const created = await createPrediction(modelFor(act), inputFor(act, curUrl, promptEn));
       let out = created;
       // ⚠️ WAS A SINGLE `pollPrediction` — see the long note in /api/ai/edit. createPrediction sends
       // `Prefer: respond-async` and returns 'starting'; one poll milliseconds later still reads

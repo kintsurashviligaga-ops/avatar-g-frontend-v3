@@ -17,6 +17,7 @@
 import 'server-only';
 import { Resvg } from '@resvg/resvg-js';
 import { generateImagenImages, mapImagenAspect, hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { overlayFontFiles } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { updateJobStage } from '@/lib/orchestrator/jobs';
@@ -126,8 +127,20 @@ export async function runDeckBuild(
         // Fall back to the title when the model gave no imagePrompt — better than skipping the visual.
         const prompt = slide.imagePrompt || slide.title;
         if (!prompt) { imagesMissing += 1; return; }
+        // ⚠️ THE IMAGE PROMPT ONLY — NEVER THE SLIDE'S OWN WORDS.
+        //
+        // deckOutline asks the model for an ENGLISH `imagePrompt` "even though the deck is in ${lang}", but
+        // that is a request, not a guarantee, and TWO paths bypass it outright: the `|| slide.title` fallback
+        // above (titles are Georgian by design) and every slide from `fallbackOutline()`, which carries no
+        // imagePrompt at all — so Imagen was handed "შესავალი" and answered with whatever its priors made of
+        // it. Translating here makes the illustration match the slide on all three paths instead of only the
+        // one where the outline model happened to comply.
+        //
+        // The deck's title, bullets and speaker notes are the deliverable the user paid for and stay in their
+        // language, untouched — they are rendered from `slide.*` further down and never pass through here.
+        const promptEn = await promptToEnglish(prompt, 'image');
         const images = await generateImagenImages({
-          prompt: `${prompt}. Clean editorial illustration, no text, no words, no letters.`,
+          prompt: `${promptEn}. Clean editorial illustration, no text, no words, no letters.`,
           aspectRatio: mapImagenAspect('16:9'),
           numberOfImages: 1,
         }).catch(() => null);
