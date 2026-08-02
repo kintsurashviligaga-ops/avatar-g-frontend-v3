@@ -43,9 +43,14 @@ describe('PricingSection — SSoT pin', () => {
     const text = container.textContent || '';
     for (const expected of [
       '$0', '$19.99', '$39.99', '$79.99',
+      // Free is a 50-credit TRIAL now, not "6 images": one video, one track, ten images — a ceiling that
+      // sums to exactly the grant, so the displayed credit total stays derived rather than hardcoded.
+      '1 ვიდეო', '1 მუსიკის ტრეკი', '10 სთორიბორდ სურათი', '50 კრედიტი შედის',
       '4 ვიდეო', '10 მუსიკის ტრეკი', '40 სთორიბორდ სურათი',
       '8 ვიდეო', '25 მუსიკის ტრეკი', '100 სთორიბორდ სურათი',
-      '16 ვიდეო', '50 მუსიკის ტრეკი', '200 სთორიბორდ სურათი',
+      // Business gained music + images (NOT video, the loss-making medium) so a bigger pack finally buys
+      // more per dollar than Pro. Price unchanged.
+      '16 ვიდეო', '60 მუსიკის ტრეკი', '250 სთორიბორდ სურათი',
     ]) {
       expect(text).toContain(expected);
     }
@@ -59,10 +64,10 @@ describe('PricingSection — SSoT pin', () => {
   it('is bound to the PRICING_TIERS source of truth', () => {
     expect(PRICING_TIERS.map((t) => t.priceUsd)).toEqual([0, 19.99, 39.99, 79.99]);
     expect(PRICING_TIERS.map((t) => t.creditCeiling)).toEqual([
-      { videos: 0, music: 0, images: 6 },
+      { videos: 1, music: 1, images: 10 },
       { videos: 4, music: 10, images: 40 },
       { videos: 8, music: 25, images: 100 },
-      { videos: 16, music: 50, images: 200 },
+      { videos: 16, music: 60, images: 250 },
     ]);
   });
 });

@@ -94,16 +94,20 @@ const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
 // Engine names are Gemini-era — the old copy advertised "Runway Gen-4" to users long after Veo became the
 // primary video engine.
 const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
-  // ⚠️ THIS SAID VIDEO WAS PAID-ONLY WHILE THE PRODUCT WAS GIVING IT AWAY. The welcome modal tells every
-  // new signup "3 უფასო ვიდეო გელოდება" and it is TELLING THE TRUTH — I checked the live table, and
-  // free_films_remaining is 3 on every recent account. This bullet said the opposite, and a new user met
-  // both claims within about a minute of registering. A product that contradicts itself about what costs
-  // money is not read as buggy, it is read as untrustworthy — so the copy was corrected to match what the
-  // database actually grants, not the other way round.
+  // ⚠️ THIS BLOCK ONCE ARGUED THE OPPOSITE — that the card must advertise "3 უფასო ვიდეო" because
+  // free_films_remaining really was 3 on every account. That was true then and is wrong now: the
+  // three uncounted videos were 94% of the cost of a free signup ($2.88 of $3.06) and have been
+  // folded into one 50-credit grant with a 1-video cap. Kept as a note because the underlying rule
+  // has not changed — this copy must state what the DATABASE actually grants, not the other way round.
+  // ⚠️ THIS CARD USED TO CONTRADICT THE DATABASE AND THE PRICING PAGE AT THE SAME TIME. It promised
+  // "3 free videos + 10 starter credits" while the pricing card said 6 images (12 credits) and the signup
+  // trigger actually inserted 10 — three numbers, none of which agreed, plus a video allowance that the
+  // credit ledger did not know existed. One trial now: 50 credits, of which at most one video, and the
+  // video cap is enforced by free_films_remaining rather than promised in copy.
   free: {
-    ka: ['3 უფასო ვიდეო', '10 კრედიტი სასტარტოდ (5 სურათი)', 'AI ჩატი (Gemini)'],
-    en: ['3 free videos', '10 starter credits (5 images)', 'AI chat (Gemini)'],
-    ru: ['3 бесплатных видео', '10 стартовых кредитов (5 изображений)', 'AI-чат (Gemini)'],
+    ka: ['50 უფასო კრედიტი სასტარტოდ', 'მათ შორის 1 ვიდეო (8 წმ)', 'ან 25 სურათი / 10 მუსიკა', 'AI ჩატი (Gemini)'],
+    en: ['50 free starter credits', 'including 1 video (8s)', 'or 25 images / 10 music tracks', 'AI chat (Gemini)'],
+    ru: ['50 бесплатных стартовых кредитов', 'включая 1 видео (8 с)', 'или 25 изображений / 10 треков', 'AI-чат (Gemini)'],
   },
   basic: {
     ka: ['4 ვიდეო კლიპი 8 წამამდე (Veo 3.1, ნატიური აუდიო)', '40 კინემატოგრაფიული სურათი', '10 მუსიკალური ტრეკი (Lyria 3)', 'ხმის სინთეზი ქართულად'],

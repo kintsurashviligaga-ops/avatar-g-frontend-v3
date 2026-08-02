@@ -4,7 +4,7 @@
  * WelcomeOnboarding — a 3-step first-login welcome (PHASE 3 Task 2).
  *
  * Step 1 welcomes + shows what the platform does; Step 2 lets the user pick a
- * service; Step 3 highlights the 3 free videos + balance and launches the chosen
+ * service; Step 3 highlights the 50-credit trial + balance and launches the chosen
  * panel by dispatching the existing `omni:set-mode` window event (which OmniStudio
  * listens for). Completion is stored in localStorage (`myavatar:welcomed`) so it
  * never shows again on this device — no migration needed. Leaves the separate
@@ -31,8 +31,8 @@ const COPY: Record<Lang, {
     s2Title: 'რა გინდა შექმნა?',
     video: 'ვიდეო', music: 'მუსიკა', image: 'სურათი',
     videoSub: 'კინო და რეკლამა', musicSub: 'სიმღერა და ბითი', imageSub: 'ილუსტრაცია',
-    s3Title: '3 უფასო ვიდეო გელოდება! 🎬',
-    s3Sub: 'დაიწყე ახლავე — პირველი ვიდეო უფასოა.',
+    s3Title: '50 უფასო კრედიტი გელოდება! 🎬',
+    s3Sub: 'დაიწყე ახლავე — მათ შორის 1 უფასო ვიდეო.',
     balance: 'ბალანსი', createFirst: 'პირველი ვიდეოს შექმნა', skip: 'გამოტოვება',
   },
   en: {
@@ -42,8 +42,8 @@ const COPY: Record<Lang, {
     s2Title: 'What do you want to create?',
     video: 'Video', music: 'Music', image: 'Image',
     videoSub: 'Films & ads', musicSub: 'Songs & beats', imageSub: 'Illustration',
-    s3Title: '3 free videos are waiting! 🎬',
-    s3Sub: 'Start now — your first video is on us.',
+    s3Title: '50 free credits are waiting! 🎬',
+    s3Sub: 'Start now — one video is on us.',
     balance: 'Balance', createFirst: 'Create my first video', skip: 'Skip',
   },
   ru: {
@@ -53,8 +53,8 @@ const COPY: Record<Lang, {
     s2Title: 'Что вы хотите создать?',
     video: 'Видео', music: 'Музыка', image: 'Фото',
     videoSub: 'Фильмы и реклама', musicSub: 'Песни и биты', imageSub: 'Иллюстрации',
-    s3Title: 'Вас ждут 3 бесплатных видео! 🎬',
-    s3Sub: 'Начните сейчас — первое видео бесплатно.',
+    s3Title: 'Вас ждут 50 бесплатных кредитов! 🎬',
+    s3Sub: 'Начните сейчас — включая 1 бесплатное видео.',
     balance: 'Баланс', createFirst: 'Создать первое видео', skip: 'Пропустить',
   },
 };

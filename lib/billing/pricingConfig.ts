@@ -189,10 +189,32 @@ function makeTier(id: PricingTierId, name: string, priceUsd: number, billing: 'm
  * instead of silently drifting from a hardcoded total.
  */
 export const PRICING_TIERS: PricingTier[] = [
-  makeTier('free', 'Free', 0, 'monthly', { videos: 0, music: 0, images: 6 }, tierCreditPool({ videos: 0, music: 0, images: 6 })),
+  // ⚠️ THE FREE TIER WAS THREE CONTRADICTORY PROMISES. The card advertised 6 images (12 credits), the DB
+  // trigger granted 10, and `profiles.free_films_remaining` handed out 3 free VIDEOS that the credit
+  // ledger knew nothing about — so a new user was told three different numbers and none of them was what
+  // they got. One grant now: 50 credits, with the video quota expressed IN the ceiling.
+  //
+  // The ceiling sums to exactly 50 (1x25 + 1x5 + 10x2), so `creditsIncluded` stays DERIVED rather than a
+  // hardcoded total that can drift — the property the test below pins. It is also a real allocation: a
+  // user can genuinely do one video, one track and ten images, or spend the same 50 on 25 images instead.
+  //
+  // ⚠️ THE 1-VIDEO CAP IS THE WHOLE COST CONTROL, AND IT IS ENFORCED — `free_films_remaining` (default 1)
+  // via the race-safe consume_free_film RPC, not by this number. Video is the one medium sold BELOW cost
+  // (25 credits = $0.926 of revenue against $0.96 of Veo), so an uncapped free grant spendable on video
+  // is a cash transfer. Worst-case provider spend per signup is now $1.46 (1 video + 5 tracks), against
+  // $3.06 for the 6-images-plus-3-films it replaces.
+  makeTier('free', 'Free', 0, 'monthly', { videos: 1, music: 1, images: 10 }, tierCreditPool({ videos: 1, music: 1, images: 10 })),
   makeTier('basic', 'Basic', 19.99, 'monthly', { videos: 4, music: 10, images: 40 }, tierCreditPool({ videos: 4, music: 10, images: 40 })),
   makeTier('pro', 'Pro', 39.99, 'monthly', { videos: 8, music: 25, images: 100 }, tierCreditPool({ videos: 8, music: 25, images: 100 })),
-  makeTier('business', 'Business', 79.99, 'monthly', { videos: 16, music: 50, images: 200 }, tierCreditPool({ videos: 16, music: 50, images: 200 })),
+  // ⚠️ BUSINESS WAS PRO x2 EXACTLY — 16=2x8 videos, 50=2x25 music, 200=2x100 images, at 2x the price — so
+  // it delivered 13.1266 credits/$ against Pro's 13.1283. Paying twice as much bought you very slightly
+  // FEWER credits per dollar, because the price ratio (2.00025) beat the credit ratio (2.00000). A
+  // three-rung ladder that was really two rungs, with no economic reason to climb the last one.
+  // Music and images carry the bonus, NOT video: video is the loss-making medium, so buying the same
+  // ~1200 credits with 5 extra videos instead would have pushed the margin to 2.57x and made the richer
+  // tier worse for the platform. Now 15.00 credits/$ (+14.3% over Pro), margin 2.772x — inside the
+  // 2.5-4.5 corridor, price untouched at $79.99.
+  makeTier('business', 'Business', 79.99, 'monthly', { videos: 16, music: 60, images: 250 }, tierCreditPool({ videos: 16, music: 60, images: 250 })),
 ]
 
 /**

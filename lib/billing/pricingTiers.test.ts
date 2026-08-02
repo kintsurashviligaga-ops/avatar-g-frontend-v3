@@ -18,9 +18,26 @@ describe('PRICING_TIERS — the 4-tier ladder', () => {
     for (const tier of PRICING_TIERS) {
       expect(tier.creditsIncluded).toBe(tierCreditPool(tier.creditCeiling));
     }
-    // Free grants images + chat only — no video, no music (matches the §2.5.1 free-tier rate limits).
+    // ⚠️ THE FREE TIER IS ONE GRANT NOW, NOT THREE PROMISES. It used to advertise 6 images (12 credits)
+    // while the DB trigger granted 10 and free_films_remaining handed out 3 uncounted videos. The trial
+    // is 50 credits, and the ceiling is chosen so it SUMS to exactly 50 — keeping creditsIncluded derived
+    // rather than a hardcoded total that drifts.
     const free = PRICING_TIERS.find((t) => t.id === 'free')!;
-    expect(free.creditCeiling).toEqual({ videos: 0, music: 0, images: 6 });
+    expect(free.creditCeiling).toEqual({ videos: 1, music: 1, images: 10 });
+    expect(free.creditsIncluded).toBe(50);
+  });
+
+  it('gives a bigger pack MORE credits per dollar — the reason to buy up', () => {
+    // ⚠️ THIS IS THE DEFECT THIS TEST EXISTS TO PREVENT COMING BACK. Business was Pro doubled in every
+    // dimension at twice the price, so it delivered 13.1266 credits/$ against Pro's 13.1283 — paying
+    // twice as much bought marginally FEWER credits per dollar, because the price ratio (2.00025) beat
+    // the credit ratio (2.00000). Three tiers, two of which were the same offer.
+    const paid = PRICING_TIERS.filter((t) => t.priceUsd > 0).sort((a, b) => a.priceUsd - b.priceUsd);
+    const perDollar = paid.map((t) => t.creditsIncluded / t.priceUsd);
+    for (let i = 1; i < perDollar.length; i += 1) {
+      // STRICTLY greater, and by a margin a customer would notice — not a rounding artefact.
+      expect(perDollar[i]!).toBeGreaterThan(perDollar[i - 1]! * 1.05);
+    }
   });
 
   it('keeps the ~200% margin structure: provider cost of a fully-consumed tier is near ⅓ of its price', () => {
