@@ -2412,7 +2412,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // inline there, not an overlay.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!optionsOpen || window.innerWidth >= 640) return;
+    // ⚠️ 640 WAS THE WRONG BOUNDARY ONCE THE TABLET GAINED THE ACCORDION. This guard is paired with the
+    // panel's always-open breakpoint (now `lg`), not with `sm` — an iPad opening the drawer needs the page
+    // pinned for exactly the same reason a phone does. Keeping 640 here would have left the one device that
+    // reported the bug as the only one whose drawer does not pin the page behind it.
+    if (!optionsOpen || window.innerWidth >= 1024) return;
     const scrollY = window.scrollY;
     const body = document.body;
     const prev = { overflow: body.style.overflow, position: body.style.position, top: body.style.top, width: body.style.width };
@@ -6837,20 +6841,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             dropdown (Chat ⌄ / Video ⌄) is the single, canonical mode switcher. The empty
             state is now just the heading + subtitle (no pills, no templates). */}
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
-            never covered and the input stays reachable; on desktop (sm:) they're always
-            open. When open on mobile they're capped to 58dvh (keyboard-aware) and scroll internally. */}
+            never covered and the input stays reachable; on a real desktop (lg:) they're always
+            open. Phone AND tablet open them on demand, capped to 52svh (keyboard-aware) with their own scroll. */}
         {mode !== 'chat' && (
           <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
             style={{ minHeight: TAP_MIN_PX }}
-            className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition active:scale-[0.99] sm:hidden">
+            // ⚠️ `sm:hidden` TOOK THIS AWAY FROM TABLETS while the panel below stayed forced open — the
+            // control and the thing it controls disappeared at the same breakpoint, from opposite sides.
+            // Must stay in lockstep with the panel's `lg:block`: whatever width the panel stops being
+            // always-open at is the width this button has to exist down to.
+            className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition active:scale-[0.99] lg:hidden">
             <span className="inline-flex items-center gap-1.5"><Sparkles size={14} className="text-app-accent" /> {locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}</span>
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
         )}
-        {/* Mobile: collapsible sheet capped at 52dvh with its OWN internal scroll — so however tall
-            the params get (file-upload zones, script slots) the panel can never grow the column past
+        {/* Phone AND tablet: collapsible sheet capped at 52svh with its OWN internal scroll — so however
+            tall the params get (file-upload zones, script slots) the panel can never grow the column past
             the viewport and shove the composer dock off-screen behind the mobile nav bar. The dock
-            stays locked at the bottom. Desktop (lg+): 58dvh + own scroll. */}
+            stays locked at the bottom. Desktop (lg+): always open, 58svh + own scroll. */}
         <div
           /* ⚠️ EVERY TABLET FELL THROUGH A HOLE BETWEEN THE BREAKPOINTS. This used to read
              `sm:max-h-none sm:overflow-visible` with the cap only returning at `lg:` — so from 640px to
@@ -6859,11 +6867,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
              does not scroll, the page does not scroll either, and 1791px of it sat below the fold with
              no way to reach it. Not awkward — genuinely unusable, and only in that band, which is why it
              looked fine on a phone and fine on a desktop.
-             The cap is now CONTINUOUS: 52dvh while the mobile accordion is open, 58dvh from sm upward.
-             `lg:` needs no variants of its own — sm cascades — and leaving them would just recreate the
-             chance of a gap. Video is the tallest panel here, so it is the one that exposed this, but
-             the container is shared and every service was affected. */
-          className={`${optionsOpen ? 'max-h-[52dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-[58dvh] sm:overflow-y-auto sm:overscroll-contain sm:touch-pan-y sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden`}
+             The cap is now CONTINUOUS: the panel is never visible-and-uncapped at any width.
+
+             ⚠️ AND THAT FIX WAS ONLY HALF OF IT — THE TABLET WAS STILL UNUSABLE, REPORTED AGAIN FROM A REAL
+             iPad. Capping the panel stopped it being CLIPPED, but `sm:block` still pinned it permanently
+             OPEN from 640px up, while the "პარამეტრები" accordion button that controls it is hidden at
+             exactly the same breakpoint. So a phone user opens the panel deliberately and closes it again,
+             and an iPad user gets a permanently-open panel with no toggle: measured 594px of a 2472px panel
+             (76% below the fold) leaving ~214px of actual chat. "The interface is stuck / the panels are not
+             visible." The always-open behaviour now begins at `lg`, where there is genuinely room for it, so
+             phone and tablet share the one model that already worked. Still no gap: below lg the panel is
+             either `hidden` or capped-and-scrollable, never visible-and-uncapped.
+
+             ⚠️ svh, NOT dvh — LOAD-BEARING. dvh is re-evaluated continuously while iOS/iPadOS Safari
+             collapses its toolbar, which is precisely when the reported drag happens: the scroller's height
+             animates mid-gesture, scrollTop re-clamps, and content slides under the finger. svh is the
+             stable small-viewport unit and does not move. */
+          className={`${optionsOpen ? 'max-h-[52svh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} lg:block lg:max-h-[58svh] lg:overflow-y-auto lg:overscroll-contain lg:touch-pan-y lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
           // VECTOR 3 — keyboard open: cap to what's left below it (header+composer buffer ≈ 220px) so
           // the panel scrolls internally and the composer dock never gets pushed under the keyboard.
           style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}

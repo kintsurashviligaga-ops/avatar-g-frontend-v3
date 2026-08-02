@@ -356,7 +356,28 @@ button,
   overflow-x: hidden;
   overscroll-behavior: none;
 }
-@media (max-width: 767px) {
+/* ⚠️ THIS LOCK IS THE ONLY THING THAT LETS A FINGER SCROLL AN INNER PANEL, AND IT USED TO SAY
+   `max-width: 767px` — one pixel short of every iPad.
+
+   `touch-action: pan-y` on the full-viewport shell is what tells iOS Safari "a vertical drag starting in
+   here belongs to an inner scroller". Below 768px it was declared, and the phone worked. At 768px — iPad
+   portrait, exactly — the shell fell back to `touch-action: auto`, Safari was free to read the same drag as
+   a page/visual-viewport pan, and the whole screen moved instead of the panel. Reported twice from a real
+   iPad as "the panel does not move at all" and "when I scroll, the whole screen goes up".
+
+   ⚠️ AND IT IS INVISIBLE TO EVERY DESKTOP CHECK. `touch-action` does not affect wheel events, so the panel
+   scrolled perfectly in a browser at 768x1024 while the device stayed broken. That is precisely how this
+   shipped as "fixed" twice. Verify on hardware or with a synthesized touch drag — never with a wheel.
+
+   Keyed to the POINTER now rather than the width: a touch device gets the lock at any size (iPad portrait,
+   landscape, split-view, and desktop-mode Safari, which still reports a coarse pointer), while a mouse or
+   trackpad keeps native pinch-zoom and horizontal panning — which is what the width query was reaching for
+   and missing. Trade-off, taken knowingly: pinch-zoom inside the studio shell is now off on tablets as it
+   already was on phones. That is the price of the drag belonging to the panel.
+
+   ⚠️ MUST STAY IN SYNC WITH THE `.app-native-shell` BLOCK BELOW — that one carries the pan-x escape hatch
+   for horizontal rails. Widening one without the other freezes every carousel and chip strip. */
+@media (hover: none) and (pointer: coarse) {
   .ag-fixed-shell { touch-action: pan-y; }
 }
 
@@ -370,10 +391,13 @@ button,
   -webkit-overflow-scrolling: touch;
 }
 
-/* Mobile hard-lock on the app shell: pin to vertical-only touch, forbid horizontal
-   drift + overscroll rubber-band. Scoped to touch-width viewports so desktop pinch/
-   zoom + trackpad behaviour are untouched. */
-@media (max-width: 767px) {
+/* Touch hard-lock on the app shell: pin to vertical-only touch, forbid horizontal drift + overscroll
+   rubber-band. Scoped to touch POINTERS so desktop pinch/zoom + trackpad behaviour are untouched.
+   ⚠️ This said "scoped to touch-width viewports" and used `max-width: 767px`, which is not the same claim
+   and misses every iPad by a pixel — see the `.ag-fixed-shell` block above for what that cost. The two
+   blocks are a PAIR and must carry the same query: this one owns the pan-x escape hatch below, so widening
+   the lock without it would freeze every horizontal rail on tablets. */
+@media (hover: none) and (pointer: coarse) {
   .app-native-shell {
     max-width: 100vw;
     overflow-x: hidden;
