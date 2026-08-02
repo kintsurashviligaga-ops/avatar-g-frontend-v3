@@ -6852,7 +6852,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             the viewport and shove the composer dock off-screen behind the mobile nav bar. The dock
             stays locked at the bottom. Desktop (lg+): 58dvh + own scroll. */}
         <div
-          className={`${optionsOpen ? 'max-h-[52dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-none sm:overflow-visible lg:max-h-[58dvh] lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
+          /* ⚠️ EVERY TABLET FELL THROUGH A HOLE BETWEEN THE BREAKPOINTS. This used to read
+             `sm:max-h-none sm:overflow-visible` with the cap only returning at `lg:` — so from 640px to
+             1023px the panel had NO height limit and NO scroll container. Measured on iPad portrait
+             (768x1024) with the video options open: the panel rendered 2698px tall inside a parent that
+             does not scroll, the page does not scroll either, and 1791px of it sat below the fold with
+             no way to reach it. Not awkward — genuinely unusable, and only in that band, which is why it
+             looked fine on a phone and fine on a desktop.
+             The cap is now CONTINUOUS: 52dvh while the mobile accordion is open, 58dvh from sm upward.
+             `lg:` needs no variants of its own — sm cascades — and leaving them would just recreate the
+             chance of a gap. Video is the tallest panel here, so it is the one that exposed this, but
+             the container is shared and every service was affected. */
+          className={`${optionsOpen ? 'max-h-[52dvh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} sm:block sm:max-h-[58dvh] sm:overflow-y-auto sm:overscroll-contain sm:touch-pan-y sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden`}
           // VECTOR 3 — keyboard open: cap to what's left below it (header+composer buffer ≈ 220px) so
           // the panel scrolls internally and the composer dock never gets pushed under the keyboard.
           style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}
