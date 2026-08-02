@@ -427,9 +427,15 @@ async function generateImage(
   const style = String(answers.style ?? 'photorealistic');
 
   const refImage = mediaFiles.find(f => f.type === 'image');
+  // ⚠️ BOTH BRANCHES BELOW READ ENGLISH ONLY (NanoBanana, then Replicate/FLUX). The brief was
+  // interpolated verbatim, so a Georgian prompt reached the model as noise and it rendered its priors.
+  // Only the DESCRIPTION is translated — this lane carries no text the image must reproduce. The
+  // English reference-image note stays English. Fail-open: a miss returns the ORIGINAL text.
+  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+  const promptEn = await promptToEnglish(prompt, 'image');
   const enhancedPrompt = refImage
-    ? `${prompt} [Reference image provided for composition/style guidance]`
-    : prompt;
+    ? `${promptEn} [Reference image provided for composition/style guidance]`
+    : promptEn;
 
   if (provider === 'nanobanana') {
     try {

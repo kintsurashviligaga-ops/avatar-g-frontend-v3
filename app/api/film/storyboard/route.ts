@@ -32,6 +32,7 @@ import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import { withRetry } from '@/lib/utils/withRetry';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -377,9 +378,19 @@ export async function POST(req: NextRequest) {
       // three frame providers (flux-schnell takes no negative_prompt), fixing the reported split-screen /
       // grid / comic-panel storyboard frames. The selfie branch also tightens the identity lock so the
       // uploaded character photo is actually honoured per frame.
+      // ⚠️ THE FRAME PROVIDERS READ ENGLISH ONLY. nano-banana, flux-schnell and FLUX 1.1 Pro are trained
+      // overwhelmingly on English, so a Georgian shot description arrived as noise, the model fell back to its
+      // priors, and the tile came back as a competent image of something else. That is not cosmetic here: this
+      // frame becomes the i2v START IMAGE for the scene's Veo clip, so a wrong frame propagates into the whole
+      // 8-second shot and into the final film.
+      // ONLY the provider copy is translated. The board's own captions (`scene.prompt`, returned to the client
+      // as `prompt`/`framePrompt`) are deliberately left alone, so the user still reads their storyboard in
+      // their own language and can still edit it there.
+      // FAIL-OPEN, and free for a Latin-script brief (promptToEnglish returns immediately, no network call).
+      const sceneEn = await promptToEnglish(scenePrompt, 'image');
       const framePrompt = selfie
-        ? `Cinematic film still, ${aspect} composition. ${scenePrompt} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
-        : `Cinematic film still, ${aspect} composition. ${scenePrompt} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
+        ? `Cinematic film still, ${aspect} composition. ${sceneEn} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
+        : `Cinematic film still, ${aspect} composition. ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
       // Primary = NanoBanana (via ServiceManager). ISOLATE its failure: if it throws
       // (e.g. the key is absent on this deployment, which left storyboards blank) or
       // returns nothing, we still fall through to the Replicate FLUX fallback below —

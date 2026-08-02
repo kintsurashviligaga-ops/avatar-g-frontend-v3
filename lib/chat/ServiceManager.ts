@@ -27,6 +27,7 @@ import { hasGeminiVeoProvider, geminiVeoModel, createGeminiVeoClip, pollGeminiVe
 import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withColorScience } from '@/lib/video/colorScience';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
@@ -341,7 +342,17 @@ export class ServiceManager {
     return this.pollLtxTask(decoded, taskRefOrPredictionId);
   }
 
-  private async runTextToImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+  private async runTextToImage(rawRequest: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+    // ⚠️ ONE TRANSLATION FOR ALL FOUR LEGS. Imagen, NanoBanana, Grok and FLUX each read
+    // `request.userPrompt` verbatim, and every one of them is trained overwhelmingly on English — so a
+    // Georgian brief was noise to all four and each fell back to its priors, returning a competent
+    // image unrelated to the request. Rebinding the request here fixes the whole cascade at its single
+    // entry point rather than at four call sites (and at the fifth engine added tomorrow). Only the
+    // DESCRIPTION passes through — this path carries no lyrics, dialogue or on-screen copy. Fail-open:
+    // any error/missing key/timeout returns the ORIGINAL text, so this can never break generation.
+    const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+    const request: ServiceManagerRequest = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
+
     // IMAGEN 4 — the Master Task's specified image engine (§1.6.2), tried FIRST. On any miss (no key, no
     // access, quota, timeout) it returns null and the proven FLUX → NanoBanana cascade below runs
     // byte-identical, so adding a primary engine cannot break image generation.
@@ -450,13 +461,40 @@ export class ServiceManager {
       return this.runHeygenAvatarVideo(request);
     }
 
+    // ⚠️ ENGLISH FOR THE ENGINE. Veo, Runway, Kling, Seedance and LTX are trained overwhelmingly on English,
+    // and EVERY leg below reads `request.userPrompt`: tryI2vClip (Veo → Runway → Kling → cascade), runLtxVideo
+    // and runReplicateLtxVideo. expandCinematicPrompt does not rescue this — its deterministic fallback merely
+    // APPENDS an English suffix to the untouched base. So a Georgian chat brief reached the engine as noise,
+    // the model fell back to its priors, and the clip came back competent and unrelated. On video that failure
+    // is invisible: it plays fine, it just is not the video that was asked for.
+    //
+    // ⚠️ TWO EXEMPTIONS, BOTH BECAUSE THE PROMPT CARRIES WORDS THAT MUST BE REPRODUCED VERBATIM:
+    //   · `spokenLine` is set by buildFilmClipRequest on exactly the film clips whose prompt EMBEDS the
+    //     character's line for Veo to speak aloud. Translating that prompt would swap the user's own words for
+    //     a translation of them — and filmComposite has already dropped the ElevenLabs dialogue leg on the
+    //     promise that Veo says them verbatim, so nobody would ever speak them. Those clips already had their
+    //     VISUAL text translated upstream in filmComposite, BEFORE the line was spliced in, so this is not a
+    //     gap: it is the same fix applied at the only point where the two can still be told apart.
+    //   · an avatar request, whose prompt is a SCRIPT to be spoken. It normally leaves via the heygen branch
+    //     above; this covers the explicit `provider=ltx` override, which would otherwise route a to-be-spoken
+    //     script through here.
+    //
+    // FAIL-OPEN, and free for Latin-script text (promptToEnglish returns immediately, no network call).
+    const carriesVerbatimSpeech =
+      !!this.getOption(request.selectedOptions || {}, ['spokenLine'])
+      || request.intent === 'avatar_generation'
+      || request.serviceContext === 'avatar';
+    const videoRequest: ServiceManagerRequest = carriesVerbatimSpeech
+      ? request
+      : { ...request, userPrompt: await promptToEnglish(request.userPrompt, 'video') };
+
     // PHOTOREALISTIC i2v — try the premium image-to-video model (Kling/Seedance)
     // FIRST: it animates the clip FROM this scene's identity frame, so motion is
     // smooth + photorealistic and the character never drifts. Returns null when
     // disabled, no Replicate token, no start image, or the create failed → fall
     // straight through to the proven LTX engine below (the upgrade never breaks a
     // render). The returned `replicate` task-ref is resolved by the SAME poll path.
-    const i2v = await this.tryI2vClip(request);
+    const i2v = await this.tryI2vClip(videoRequest);
     if (i2v) return i2v;
 
     // VIDEO ENGINE — prefer the DIRECT LTX-2.3 API (api.ltx.video) whenever a

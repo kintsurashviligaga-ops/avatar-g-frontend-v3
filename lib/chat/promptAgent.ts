@@ -162,6 +162,18 @@ CRITICAL RULES:
      "blur, distortion, low quality, different face, inconsistent appearance, yellow tint, sepia,
      oversaturated, muddy colours, amber cast".
 
+3a. OUTPUT LANGUAGE — this is a RENDERER contract, not a style preference. Every image and video model these
+   fields feed (Veo, Kling, Runway, LTX, FLUX, nano-banana) is trained overwhelmingly on ENGLISH, so a scene
+   prompt written in the brief's language reaches them as noise and the model renders its own priors instead
+   of the scene you described.
+   WRITE IN ENGLISH: every scene.imagePrompt, scene.action, scene.location, scene.cameraShot, scene.mood and
+   scene.sfxPrompt; every character description and imagePromptFragment; and every visualStyle field.
+   The "Language:" line in the brief is the language the USER writes in and the language of any SPOKEN
+   output — it is NOT the language of these fields.
+   EXCEPTION — audio.narratorScript is WORDS TO BE SPOKEN ALOUD, not a description of something to draw.
+   Write it in the brief's own language (the "Language:" line), in the user's own words. NEVER translate it.
+   The same rule applies to any line of dialogue you are given: a spoken line is content, not instruction.
+
 SCENE SPECIFICITY RULES (every scene.imagePrompt MUST obey):
    - NEVER write vague actions like "standing", "walking", "doing something".
    - ALWAYS specify: WHO (+ exact clothing) + WHAT GESTURE + WHERE EXACTLY + EXPRESSION.

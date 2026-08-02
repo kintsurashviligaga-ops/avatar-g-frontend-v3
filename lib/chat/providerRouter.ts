@@ -828,8 +828,15 @@ async function handleInteriorRedesign(input: OrchestratorInput): Promise<ChatRes
     .filter(Boolean)
     .join(', ');
 
+  // ⚠️ THE DEPTH-CONTROLNET MODEL READS ENGLISH ONLY. `iterative.prompt` is the user's own words and
+  // it LEADS this composed brief, so a Georgian request ("დაამატე ხის აქცენტები") arrived as noise and
+  // the engine restyled the room to its priors — geometry preserved, intent gone. The guardrail clause
+  // and `styleAnswers` are already English and pass through untouched. Fail-open: a miss returns the
+  // ORIGINAL text, which is exactly today's behaviour.
+  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+  const briefEn = await promptToEnglish(iterative.prompt.trim(), 'image');
   const prompt = [
-    iterative.prompt.trim(),
+    briefEn,
     styleAnswers,
     'photorealistic interior redesign of the same room, preserve the exact geometry, walls, windows, doorways, proportions and camera perspective, only re-render materials, furniture, decor and lighting, professional architectural visualization, natural light, high detail, 8k',
   ]
@@ -1528,14 +1535,25 @@ async function handleTextIntent(
 // ─── Replicate generation path (direct, no HTTP self-fetch) ──────────────────
 
 async function handleReplicateIntent(
-  input: OrchestratorInput,
+  rawInput: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
   const replicateService = intentToReplicateService(detected.intent);
   if (!replicateService) {
     // Fallback to text if intent mapping fails
-    return handleTextIntent(input, { ...detected, provider: 'text-llm' });
+    return handleTextIntent(rawInput, { ...detected, provider: 'text-llm' });
   }
+
+  // ⚠️ FLUX AND NANOBANANA READ ENGLISH ONLY. `input.message` is the user's brief in their own
+  // language and it reaches the provider verbatim — both in the `raw.prompt` below AND in
+  // handleNanoBananaIntent, which receives this same object. So a Georgian request produced a
+  // competent image of whatever the model's priors suggested. Rebinding once here covers both paths.
+  // ONLY the image service is translated: video and music briefs are composed elsewhere and are not
+  // this lane's to touch. Fail-open — a miss returns the ORIGINAL message.
+  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+  const input: OrchestratorInput = replicateService === 'image'
+    ? { ...rawInput, message: await promptToEnglish(rawInput.message, 'image') }
+    : rawInput;
 
   const opts = input.selectedOptions || {};
   const selectedProvider = String(

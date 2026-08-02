@@ -71,6 +71,7 @@ import {
 import { filmBalanceDecision } from './filmBalanceGate';
 import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
 import { runPromptAgent, type MasterFilmSfxCue } from './promptAgent';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 const serviceManager = new ServiceManager();
 
@@ -714,7 +715,37 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     console.log(`[filmComposite] dialogue from ${dialogueSource} NOT delegated to Veo (nativeSpeech=${nativeSpeech}, complete=${dialogueComplete}) → ElevenLabs keeps every line`);
   }
 
-  const plan = planFilmScenes(input.message, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLock ? { characterLock } : {}), ...(sceneScripts?.length ? { sceneScripts, totalSec: sceneScripts.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegative ? { negativePrompt: filmNegative } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}) });
+  // ⚠️ ENGLISH FOR THE RENDERER — VERBATIM FOR THE VOICE. Veo, Runway, Kling and LTX are trained
+  // overwhelmingly on English, so a Georgian visual brief reached them as noise, the model fell back to its
+  // priors, and the user got a competent-looking film unrelated to the one they asked for. On video that
+  // failure is INVISIBLE: it plays fine and simply is not what was requested.
+  //
+  // TRANSLATED (all four are DESCRIPTIONS of what to render):
+  //   · the brief, which becomes every scene's `subject`
+  //   · the per-scene shot text (Prompt-Agent imagePrompts, Master-Script actions, pasted scene sheets)
+  //   · the character appearance LOCK, stamped verbatim on every clip
+  //   · the Director's negative list, which lands on Veo's dedicated negativePrompt field
+  //
+  // NOT TRANSLATED — `sceneDialogue`. Those are the words a character SPEAKS. buildSpeechDirection splices
+  // them into the scene prompt verbatim BELOW this point, which is the entire reason lib/chat/sceneDialogue.ts
+  // exists: Veo says the user's line, in the user's language, with synced lips. Translating them would replace
+  // the user's line with a translation of it — and worse, the ElevenLabs dialogue leg has already been dropped
+  // on the promise that Veo speaks them verbatim, so those words would be spoken by nobody at all.
+  //
+  // POSITION IS LOAD-BEARING. This sits AFTER every dialogue-source and scene-order check above, each of which
+  // compares against the ORIGINAL text (`structuredScenes[i].prompt === sceneScripts[i]`). Translating any
+  // earlier would break that equality and silently switch Veo's native speech back off.
+  //
+  // FAIL-OPEN, and free for a Latin-script brief (promptToEnglish returns immediately, no network call).
+  const [messageEn, characterLockEn, filmNegativeEn] = await Promise.all([
+    promptToEnglish(input.message, 'video'),
+    characterLock ? promptToEnglish(characterLock, 'video') : Promise.resolve(characterLock),
+    filmNegative ? promptToEnglish(filmNegative, 'video') : Promise.resolve(filmNegative),
+  ]);
+  const sceneScriptsEn: string[] | undefined = sceneScripts?.length
+    ? await Promise.all(sceneScripts.map((s) => promptToEnglish(s, 'video')))
+    : undefined;
+  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}) });
   // `grid.totalSec` (not a bare pinnedSceneCount × clipSec) is what the plan splits, so plan.sceneCount
   // and grid.sceneCount can never disagree — a mismatch would slide every dialogue line one scene off.
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
@@ -847,10 +878,15 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // Source for the anchor portrait: the Prompt Agent's character fragment is often EMPTY
     // (the character lives in the scene scripts), so fall back to the first scene prompt,
     // then the raw brief — otherwise the anchor silently skips and clips drop to LTX.
+    // ⚠️ THE ANCHOR IS DRAWN BY AN IMAGE MODEL, SO IT NEEDS THE ENGLISH. All three fallbacks here had the
+    // raw Georgian while the scene prompts beside them were translated — and this one matters more than a
+    // single clip: the anchor portrait is what LOCKS the character's appearance across the whole film, so a
+    // wrong anchor makes every clip consistently wrong. Uses the same values already computed above; each
+    // is a DESCRIPTION of who to draw, never spoken content.
     const anchorDesc =
-      (characterLock && characterLock.trim()) ||
-      (Array.isArray(sceneScripts) && sceneScripts.find((s) => typeof s === 'string' && s.trim())) ||
-      input.message.slice(0, 400);
+      (characterLockEn && characterLockEn.trim()) ||
+      (Array.isArray(sceneScriptsEn) && sceneScriptsEn.find((s) => typeof s === 'string' && s.trim())) ||
+      messageEn.slice(0, 400);
     if (autoAnchorOn && anchorDesc && hostedCount === 0 && !sceneFrames.some(Boolean)) {
       const tAnchor = Date.now();
       const anchor = await generateAnchorFrame(anchorDesc, orientation === 'vertical' ? '9:16' : '16:9');
@@ -1027,6 +1063,17 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     console.warn('[film][qa] gate errored (fail-open, skipping):', err instanceof Error ? err.message : err);
   }
 
+  // ⚠️ ElevenLabs sound-generation is an English text→audio model, and this brief FALLS BACK TO THE RAW USER
+  // MESSAGE whenever the Prompt Agent produced no per-scene cues — so a Georgian film brief was going to it
+  // verbatim and the film's whole ambience bed was whatever the model's priors invented. A sound DESCRIPTION
+  // is never reproduced content, so translating it is safe. It also makes enrichSfxBrief work: that matcher
+  // keys off English triggers (stadium / goal / gunshot / storm / birds) and could never fire on Georgian.
+  // Computed HERE rather than inside the Promise.all literal so the voice leg still dispatches in parallel.
+  const sfxCueText = sfxCues?.length
+    ? sfxCues.map((c) => c.sfxPrompt).filter(Boolean).join('. ').slice(0, 280)
+    : '';
+  const sfxBriefEn = sfxCueText ? await promptToEnglish(sfxCueText, 'video') : messageEn;
+
   const [voiceResult, sfxUrl] = await Promise.all([
     // DAY-6 multi-voice: when the Master-Script dialogue is multi-voice-viable (≥2 DISTINCT
     // TIMECODED speakers), render per-speaker STEMS ONCE (generateDialogueStems) so the assembler
@@ -1107,9 +1154,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       // PHASE 25 (VECTOR 1) — enrichSfxBrief prepends precise, curated cues for high-impact
       // triggers (stadium/goal/gunshot/storm/birds…). Pure + no-op when nothing matches; this
       // fixes the Prompt-Agent-bypassed path where the brief was the raw user message.
-      brief: enrichSfxBrief((sfxCues?.length
-        ? sfxCues.map((c) => c.sfxPrompt).filter(Boolean).join('. ').slice(0, 280)
-        : '') || input.message),
+      brief: enrichSfxBrief(sfxBriefEn),
       totalSec: plan.shared.totalSec,
       compositeId,
     }).catch((err) => {

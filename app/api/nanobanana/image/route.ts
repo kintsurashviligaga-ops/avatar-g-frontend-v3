@@ -180,10 +180,21 @@ export async function POST(req: NextRequest) {
     const styleSuffix = STYLE_SUFFIXES[styleLabel] ?? styleLabel;
     // A style brings its own quality descriptors; an un-styled ("Auto") prompt gets a
     // light universal boost so every image is crisp + detailed, not flat.
-    const base        = styleSuffix ? `${prompt}, ${styleSuffix}` : `${prompt}, ultra detailed, sharp focus, professional quality`;
+    // ⚠️ EVERY ENGINE THIS ROUTE CAN REACH READS ENGLISH ONLY — NanoBanana, Grok and FLUX 1.1 Pro are
+    // all trained overwhelmingly on English text. Nothing here translated anything, so a Georgian brief
+    // arrived as noise, each engine fell back to its priors, and the user was handed a competent image
+    // of something they never asked for. Only the DESCRIPTION is translated (subject, style, colours,
+    // camera) — this route carries no text the image must reproduce verbatim. `prompt` itself is left
+    // alone on purpose: it is what recordCompletedAsset files below and what the Library shows back.
+    // FAIL-OPEN by construction — any error, missing key or timeout returns the ORIGINAL text, so a
+    // translation outage can never turn a working render into a failed one.
+    const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+    const promptEn    = await promptToEnglish(prompt, 'image');
+    const base        = styleSuffix ? `${promptEn}, ${styleSuffix}` : `${promptEn}, ultra detailed, sharp focus, professional quality`;
     // P7 — negative prompt: NanoBanana has no dedicated negative field, so the things to
     // avoid are appended as an explicit exclusion clause the model honours.
-    const negative    = typeof body.negativePrompt === 'string' ? body.negativePrompt.trim().slice(0, 400) : '';
+    const negativeRaw = typeof body.negativePrompt === 'string' ? body.negativePrompt.trim().slice(0, 400) : '';
+    const negative    = negativeRaw ? await promptToEnglish(negativeRaw, 'image') : '';
     const enriched    = negative ? `${base}. Do NOT include: ${negative}.` : base;
     // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'image' config, apply its learned
     // prompt directive as a suffix so the loop's improvement actually reaches generation. Fail-soft

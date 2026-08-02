@@ -74,6 +74,14 @@ export async function POST(req: NextRequest) {
     }
 
     const input = validation.sanitized;
+    // ⚠️ SAME BUG AS THE MUSIC ROUTE, SAME FIX. Both legs below read English only: NanoBanana first,
+    // then Replicate/FLUX via buildModelInput. The brief was passed through verbatim, so a Georgian
+    // prompt reached the model as noise and it rendered its priors instead of the request. Only the
+    // DESCRIPTION (and the negative, which is also a description) is translated — this route carries
+    // no text the image must reproduce. Fail-open: any miss returns the ORIGINAL string.
+    const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+    input.prompt = await promptToEnglish(input.prompt, 'image');
+    if (input.negativePrompt) input.negativePrompt = await promptToEnglish(input.negativePrompt, 'image');
     const nanoBananaKey = process.env.NANOBANANA_API_KEY;
 
     // ── Primary: NanoBanana ────────────────────────────────────────────
