@@ -86,11 +86,52 @@ export interface CreditPackage {
   credits: number;
   highlight: boolean;
 }
+/**
+ * The top-up ladder.
+ *
+ * ⚠️ EVERY TIER USED TO BE THE SAME PRICE. starter/pro/max were 90/290/890 credits for 9/29/89 GEL —
+ * exactly 10.00 credits per lari at all three. The "pro" pack was rendered with a recommended badge
+ * while offering nothing whatsoever over buying the small one three times, which is not a ladder, it is
+ * three copies of one product. A buyer who does the arithmetic finds no reason to spend more, and a
+ * buyer who doesn't is being quietly nudged toward the option with no advantage.
+ *
+ * The rate now IMPROVES with size, which is what makes a bigger purchase a decision rather than a risk:
+ *     9 GEL ->   90 cr = 10.0 cr/GEL   (baseline)
+ *    29 GEL ->  320 cr = 11.0 cr/GEL   (+10%)
+ *    89 GEL -> 1070 cr = 12.0 cr/GEL   (+20%)
+ * The baseline is unchanged, so nothing gets more expensive — the two larger packs simply became worth
+ * choosing. `bonusPct` is what the UI shows; deriving it here keeps the badge honest if these move.
+ */
 export const CREDIT_PACKAGES: ReadonlyArray<CreditPackage> = [
   { id: 'starter', gel: 9, credits: 90, highlight: false },
-  { id: 'pro', gel: 29, credits: 290, highlight: true },
-  { id: 'max', gel: 89, credits: 890, highlight: false },
+  { id: 'pro', gel: 29, credits: 320, highlight: true },
+  { id: 'max', gel: 89, credits: 1070, highlight: false },
 ];
+
+/** How much better a pack's rate is than the smallest one, as a whole percent (0 for the baseline). */
+export function packageBonusPct(pkg: { gel: number; credits: number }): number {
+  const base = CREDIT_PACKAGES[0];
+  if (!base || pkg.gel <= 0 || base.credits <= 0) return 0;
+  const baseRate = base.credits / base.gel;
+  const rate = pkg.credits / pkg.gel;
+  return Math.max(0, Math.round(((rate - baseRate) / baseRate) * 100));
+}
+
+/**
+ * What a credit amount actually BUYS, in the unit a person thinks in.
+ *
+ * ⚠️ "901 CREDITS" IS NOT A QUANTITY ANYONE CAN REASON ABOUT. The balance, the packages and the price
+ * tags were all denominated in a token whose worth the user has to work out from a second number
+ * somewhere else on the screen. "450 images" needs no arithmetic and no second number. This is the one
+ * translation that makes the whole system legible, so it is defined next to the costs it derives from
+ * and can never drift from them.
+ */
+export function creditsBuyImages(credits: number): number {
+  return Math.floor(Math.max(0, credits) / CREDIT_COSTS.image_generate);
+}
+export function creditsBuyVideos(credits: number): number {
+  return Math.floor(Math.max(0, credits) / CREDIT_COSTS.video_30s);
+}
 
 /** USD value of a credit amount. */
 export function creditsToUsd(credits: number): number {
