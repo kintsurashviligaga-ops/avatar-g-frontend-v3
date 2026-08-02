@@ -13,11 +13,12 @@ import BillingConfig from '@/components/admin/BillingConfig';
 import JobsMonitor from '@/components/admin/JobsMonitor';
 import ReliabilityPanel from '@/components/admin/ReliabilityPanel';
 import LaunchHealthCard from '@/components/admin/LaunchHealthCard';
+import SupportInbox from '@/components/admin/SupportInbox';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
 
-type Tab = 'overview' | 'reliability' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags';
+type Tab = 'overview' | 'reliability' | 'users' | 'activity' | 'billing' | 'jobs' | 'flags' | 'support';
 type Accent = 'default' | 'green' | 'red' | 'cyan' | 'amber';
 
 const ACCENT: Record<Accent, string> = {
@@ -71,6 +72,9 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
     { id: 'billing', label: ka ? 'ბილინგი' : 'Billing' },
     { id: 'jobs', label: ka ? 'რიგი' : 'Queue' },
     { id: 'flags', label: ka ? 'დროშები' : 'Flags' },
+    // Support sits LAST but is the only tab a customer is waiting on — the unread badge is what makes
+    // an unanswered message visible without opening the tab.
+    { id: 'support', label: ka ? 'მხარდაჭერა' : 'Support' },
   ];
 
   return (
@@ -120,6 +124,7 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
         {tab === 'billing' && <BillingConfig ka={ka} />}
         {tab === 'jobs' && <JobsMonitor ka={ka} />}
         {tab === 'flags' && <FeatureFlags ka={ka} />}
+        {tab === 'support' && <SupportInbox />}
       </div>
     </main>
   );

@@ -6,6 +6,7 @@ import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { PageEnvironment } from './ui/PageEnvironment';
 import CookieConsent from './CookieConsent';
+import SupportWidgetMount from './support/SupportWidgetMount';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -184,6 +185,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           was the reported "red phone button". No external redirect existed (it opened an in-app CallScreen);
           Agent G is still reachable at /services/agent-g. */}
       {!isEmbed && !isAdmin && !isAvatarEnroll && <CookieConsent />}
+      {/* Support chat. It decides for itself whether this route should show it — notably NOT the studio,
+          whose composer dock owns the bottom-right corner (see the PHASE 37.1 note above: a floating
+          button in that corner has been reported before). */}
+      {!isEmbed && !isAdmin && !isAvatarEnroll && <SupportWidgetMount />}
     </div>
   );
 }
