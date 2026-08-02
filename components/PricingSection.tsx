@@ -88,8 +88,8 @@ export function PricingSection() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
                 className={isPopular
-                  ? 'group relative z-10 flex flex-col rounded-[22px] p-8 md:p-10 order-first md:order-none transition-transform duration-300 md:scale-[1.04] md:-translate-y-2'
-                  : 'group relative flex flex-col rounded-[22px] p-7 md:p-9 transition-transform duration-300 hover:-translate-y-1'}
+                  ? 'group relative z-10 flex cursor-pointer flex-col rounded-[22px] p-8 md:p-10 order-first md:order-none transition-transform duration-300 active:scale-[0.99] md:scale-[1.04] md:-translate-y-2'
+                  : 'group relative flex cursor-pointer flex-col rounded-[22px] p-7 md:p-9 transition-transform duration-300 active:scale-[0.99] hover:-translate-y-1'}
                 style={isPopular
                   ? {
                       border: '1px solid transparent',

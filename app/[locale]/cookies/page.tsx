@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LegalDocChrome } from '@/components/legal/LegalDocChrome';
 import type { Metadata } from 'next';
 import { localeAlternates } from '@/lib/seo/hreflang';
 
@@ -35,6 +36,8 @@ export default async function CookiesPage({ params }: { params: Promise<{ locale
   return (
     <section className="min-h-screen bg-transparent text-white flex items-center justify-center px-6">
       <div className="max-w-3xl space-y-6 text-center">
+        {/* Sticky ✕ — AppShell strips every nav bar on these routes, so this is the only way out. */}
+        <LegalDocChrome title={t.title} locale={locale} />
         <h1 className="text-3xl md:text-4xl font-bold">{t.title}</h1>
         <p className="text-white/70 leading-relaxed">{t.body}</p>
         <Link href={`/${locale}`} className="inline-block text-cyan-300 hover:text-cyan-200 text-sm">

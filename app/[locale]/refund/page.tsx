@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LegalDocChrome } from '@/components/legal/LegalDocChrome';
 import type { Metadata } from 'next';
 import { localeAlternates } from '@/lib/seo/hreflang';
 
@@ -141,8 +142,10 @@ export default async function RefundPage({ params }: { params: Promise<{ locale:
   const t = copy[lang];
 
   return (
-    <section className="min-h-screen bg-black text-white px-6 py-16">
+    <section className="min-h-screen bg-black px-6 pb-16 pt-0 text-white">
       <div className="max-w-3xl mx-auto space-y-10">
+        {/* Sticky ✕ — AppShell strips every nav bar on these routes, so this is the only way out. */}
+        <LegalDocChrome title={t.title} locale={locale} />
         <header className="space-y-3">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{t.title}</h1>
           <p className="text-sm text-white/55">{t.effective}</p>

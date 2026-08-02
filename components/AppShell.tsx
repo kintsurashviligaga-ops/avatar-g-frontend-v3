@@ -141,7 +141,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // the marketing nav (fixed z-200 top + bottom) would sit over its own overlay and hide the Save bar.
   const isAvatarEnroll = !!pathname && /\/avatar\/enroll\/?$/.test(pathname);
 
-  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed;
+  // ⚠️ A LEGAL DOCUMENT IS SOMETHING YOU OPEN, READ AND CLOSE — NOT A PLACE IN THE NAVIGATION. These
+  // pages are reached from inside the billing sheet and the footers, and they used to render with the
+  // full marketing shell on top: the fixed bottom nav covered the last paragraph, the top bar offered
+  // "დაწყება" to someone already mid-payment, and the only way back was a link buried under a long
+  // document. Reported as "it opens wrong, the bars collide with the content".
+  // Stripping the chrome here is what lets LegalDocChrome's ✕ be the single, obvious way out.
+  const isLegalDoc = !!pathname && /\/(terms|privacy|refund|refund-policy|cookies|licenses)\/?$/.test(pathname);
+
+  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed || isLegalDoc;
 
   return (
     <div
@@ -166,7 +174,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         style={
           isImmersiveWorkspace
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
-            : (isLandingOrAuth || isEmbed || isAdmin)
+            // ⚠️ isLegalDoc BELONGS HERE TOO. The else-branch below reserves 4rem at the top for the
+            // TopNavbar and 60px at the bottom for the BottomNavigation — neither of which renders on a
+            // legal route any more. Leaving it reserved put a band of empty black above the sticky ✕ and
+            // made the header look detached from the top of the screen.
+            : (isLandingOrAuth || isEmbed || isAdmin || isLegalDoc)
             ? { zIndex: 2 }
             : {
                 paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))',
@@ -184,11 +196,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           cyan chat button bottom-right). They floated at z-[9999] over the production dashboard; the red one
           was the reported "red phone button". No external redirect existed (it opened an in-app CallScreen);
           Agent G is still reachable at /services/agent-g. */}
-      {!isEmbed && !isAdmin && !isAvatarEnroll && <CookieConsent />}
+      {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <CookieConsent />}
       {/* Support chat. It decides for itself whether this route should show it — notably NOT the studio,
           whose composer dock owns the bottom-right corner (see the PHASE 37.1 note above: a floating
           button in that corner has been reported before). */}
-      {!isEmbed && !isAdmin && !isAvatarEnroll && <SupportWidgetMount />}
+      {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <SupportWidgetMount />}
     </div>
   );
 }
