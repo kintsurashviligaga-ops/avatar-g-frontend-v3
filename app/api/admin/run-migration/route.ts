@@ -27,6 +27,8 @@ const norm = (v: string | null | undefined) => String(v || '').trim();
 
 // Allow-list: only these migrations may be applied via the runtime gate.
 const ALLOWED: Record<string, string> = {
+  '20260802d_fix_starter_trigger_name.sql': 'supabase/migrations/20260802d_fix_starter_trigger_name.sql',
+  '20260802c_unified_free_trial.sql': 'supabase/migrations/20260802c_unified_free_trial.sql',
   // Support live chat. Registered so it can be applied without hand-pasting 294 lines into the SQL
   // editor — the file is idempotent and self-verifying, so a re-run is a no-op.
   '20260802_support_live_chat.sql': 'supabase/migrations/20260802_support_live_chat.sql',
