@@ -35,8 +35,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
     }
 
+    // ⚠️ REACHABLE FROM THE UI (CommandCenter) AND FROM AGENT G, and Udio reads English — so a Georgian
+    // brief arrived as noise and the track came back unrelated to the request. Same defect as the chat
+    // music lane; this is the third entry point into the same provider. Fail-open: a miss sends the
+    // original, which is exactly the old behaviour.
+    const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+    const promptEn = await promptToEnglish(prompt, 'music');
+
     const result = await generateUdioTrack({
-      prompt,
+      prompt: promptEn,
       style: body.style,
       genre: body.genre,
       mood: body.mood,

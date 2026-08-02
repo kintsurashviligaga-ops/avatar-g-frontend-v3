@@ -1146,6 +1146,27 @@ async function handleMusicIntent(
   const lyricsMode = String(opts.lyrics_mode || opts.lyricsMode || '').toLowerCase();
   const styleTags = parseOptionList(opts.style_tags || opts.styleTags || opts.tags);
 
+  // ⚠️ THIS IS THE MUSIC LANE THE CHAT ACTUALLY USES, AND IT WAS THE ONE STILL BROKEN. There are TWO:
+  // /api/ai/music serves the Music panel and was translated; this one serves a prompt TYPED INTO THE CHAT
+  // and was not. So "the song has nothing to do with what I asked" kept happening after the panel was
+  // fixed, and the code that was inspected each time was the other lane.
+  //
+  // It failed TWICE over, which is why the result was so far off:
+  //   1. Udio reads English. A Georgian brief arrived as noise and it composed from its priors.
+  //   2. buildEnforcedMusicStyle mirrors the user's words into the style anchor by matching ENGLISH
+  //      keyword lists (MUSIC_GENRE / MOOD / TEMPO / INSTRUMENT in outputEnforcement.ts). Georgian text
+  //      matches NOTHING, so `style` came back undefined and the one mechanism meant to stop a prompt
+  //      drifting into a generic bed was silently switched off — on exactly the prompts that needed it.
+  // Translating first fixes both: the provider can read the brief AND the mirroring can find the genre.
+  //
+  // LYRICS ARE NOT TRANSLATED — `opts.lyrics` is passed through untouched below. Those are the words to be
+  // SUNG; a brief asking for a song "ესპანურად" keeps that as an English instruction, so the singer is
+  // told which language to sing in rather than handed a translation of the user's own words.
+  // Dynamic import, matching handleReplicateIntent below — promptToEnglish is server-only and this
+  // module is reached from paths that must not pull it into a client bundle.
+  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+  const promptEn = await promptToEnglish(iterative.prompt, 'music');
+
   // PHASE 52 TASK 5 — strict prompt mirroring. Force the genre/tempo/mood/
   // instrumentation the user TYPED into the Udio style anchor (their words go
   // first so the provider weights them highest), and honor an explicit
@@ -1153,7 +1174,7 @@ async function handleMusicIntent(
   // drifting into a generic ambient bed. Any UI-selected style/genre/mood and
   // tags are merged in AFTER the typed keywords, so nothing is lost.
   const enforced = buildEnforcedMusicStyle(
-    iterative.prompt,
+    promptEn,
     [opts.style, opts.genre, opts.mood].filter(Boolean).join(', '),
     styleTags,
   );
@@ -1162,7 +1183,9 @@ async function handleMusicIntent(
 
   try {
     const started = await startUdioGeneration({
-      prompt: iterative.prompt,
+      // The English brief — Udio cannot read the alphabet the user typed in. `opts.lyrics` on the next
+      // line stays in the user's own language ON PURPOSE: those are the words to be sung.
+      prompt: promptEn,
       lyrics: opts.lyrics,
       // `style` now carries the mirrored anchor (typed keywords ∪ UI tags); we
       // intentionally omit the separate genre/mood/styleTags fields so they are

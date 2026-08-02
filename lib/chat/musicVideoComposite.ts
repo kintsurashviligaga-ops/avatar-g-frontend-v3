@@ -220,9 +220,16 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           deduct: true,
           deductRef: `${compositeId}:music`,
         },
-        () =>
+        // ⚠️ THE USER'S BRIEF WAS INTERPOLATED INTO AN ENGLISH SENTENCE IN WHATEVER ALPHABET THEY TYPED.
+        // Udio reads English, so "…based on: <Georgian text>" gave it a well-formed instruction ending in
+        // noise — it kept the English scaffolding and invented the part that mattered. Same defect as the
+        // chat music lane, in the music-VIDEO path. `plan.lyrics` stays untranslated: those are sung.
+        async () =>
           startUdioGeneration({
-            prompt: `${baseStyle} 30 second instrumental with vocal hook based on: ${input.message}`,
+            prompt: `${baseStyle} 30 second instrumental with vocal hook based on: ${await (async () => {
+              const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+              return promptToEnglish(input.message, 'music');
+            })()}`,
             lyrics: plan.lyrics ?? undefined,
             style: baseStyle,
             genre: baseStyle,
