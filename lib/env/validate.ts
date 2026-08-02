@@ -23,6 +23,13 @@ interface EnvVar {
 const CRITICAL_VARS = [
   'OPENAI_API_KEY',
   'REPLICATE_API_TOKEN',
+  // ⚠️ CRITICAL DESPITE FAILING OPEN. Every generative provider this product calls reads English, so a
+  // Georgian or Russian brief is translated by lib/ai/promptToEnglish before it is sent. That step falls
+  // back to the ORIGINAL text when this key is missing — nothing errors, nothing 500s, and the user simply
+  // gets a competent image/track/film unrelated to what they asked for. Reported three times as "no
+  // service follows the prompt" and invisible from the code, because the code was right and the
+  // environment was not. Absent here, the product silently stops honouring every non-Latin prompt.
+  'ANTHROPIC_API_KEY',
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',

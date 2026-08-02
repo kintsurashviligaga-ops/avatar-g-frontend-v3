@@ -1,5 +1,6 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
+import { reportError } from '@/lib/observability/report-error';
 
 /**
  * Render a generation brief into English for the model that will execute it.
@@ -40,6 +41,33 @@ function isLatinScript(s: string): boolean {
 const MODEL = process.env.ANTHROPIC_TRANSLATE_MODEL || 'claude-haiku-4-5-20251001';
 
 /**
+ * Why a translation did not happen. `ok` means the provider returned a real one.
+ *
+ * ⚠️ THIS EXISTS BECAUSE A FAIL-OPEN WITH NO TELEMETRY IS UNDEBUGGABLE. The fallback is correct — a
+ * translation outage must never fail a paid render — but the first version reported NOTHING, so a missing
+ * or rejected key in production looked EXACTLY like a working translation: the user got a competent result
+ * unrelated to their prompt and no log said why. The prompt bug was reported three times; each time the
+ * call site read correctly, because the code IS correct and only the environment could have been wrong —
+ * and nothing recorded which. A silent fallback is now a logged one.
+ */
+export type TranslateOutcome = 'ok' | 'skipped_latin' | 'no_key' | 'empty_result' | 'provider_error';
+
+const lastOutcome = new Map<string, TranslateOutcome>();
+/** What the most recent call for this medium actually did — so a route can report it honestly. */
+export function lastTranslateOutcome(kind: string): TranslateOutcome | undefined {
+  return lastOutcome.get(kind);
+}
+
+function note(kind: string, outcome: TranslateOutcome, detail?: string): void {
+  lastOutcome.set(kind, outcome);
+  if (outcome === 'ok' || outcome === 'skipped_latin') return;
+  // Loud on purpose: every one of these means a non-Latin prompt reached an English-only model verbatim.
+  console.warn(`[promptToEnglish] ${kind}: NOT TRANSLATED (${outcome})${detail ? ` — ${detail}` : ''}`);
+  if (outcome === 'no_key') return; // config, not an incident — the warn above is the signal
+  reportError(new Error(`promptToEnglish ${outcome}`), { where: 'promptToEnglish', kind, detail: detail ?? '' });
+}
+
+/**
  * @param text  the DESCRIPTION of what to generate — never lyrics, never dialogue.
  * @param kind  what is being made, so the translation keeps the vocabulary of that medium.
  */
@@ -48,10 +76,10 @@ export async function promptToEnglish(
   kind: 'music' | 'image' | 'video' = 'image',
 ): Promise<string> {
   const raw = String(text ?? '').trim();
-  if (!raw || isLatinScript(raw)) return raw;
+  if (!raw || isLatinScript(raw)) { note(kind, 'skipped_latin'); return raw; }
 
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
-  if (!key) return raw;
+  if (!key) { note(kind, 'no_key', 'ANTHROPIC_API_KEY is unset on this deployment'); return raw; }
 
   try {
     const client = new Anthropic({ apiKey: key });
@@ -78,8 +106,11 @@ export async function promptToEnglish(
       .trim();
 
     // A suspiciously empty or truncated answer is worse than the original — keep what the user wrote.
-    return out.length >= 3 ? out : raw;
-  } catch {
+    if (out.length >= 3) { note(kind, 'ok'); return out; }
+    note(kind, 'empty_result', `provider returned ${out.length} chars`);
+    return raw;
+  } catch (e) {
+    note(kind, 'provider_error', e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120));
     return raw;
   }
 }

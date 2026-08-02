@@ -24,7 +24,7 @@ import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/o
 import { creditCostFor } from '@/lib/credits/pricing';
 import { settleMusicCharge } from '@/lib/credits/musicSettlement';
 import { buildMusicBrief, flattenMusicBrief, type MusicBrief } from '@/lib/ai/musicBrief';
-import { promptToEnglish } from '@/lib/ai/promptToEnglish';
+import { promptToEnglish, lastTranslateOutcome } from '@/lib/ai/promptToEnglish';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 
 /**
@@ -564,6 +564,13 @@ export async function POST(req: NextRequest) {
       ...(settledSec !== billSeconds ? { billedSec: settledSec, requestedSec: billSeconds, refunded: true } : {}),
       ...((briefTruncated.prompt || briefTruncated.lyrics) ? { truncated: briefTruncated } : {}),
       ...(coverUrl ? { coverUrl } : {}),
+      // ⚠️ REPORTED SO "THE MUSIC IGNORED MY PROMPT" IS DIAGNOSABLE FROM THE OUTSIDE. The engines read
+      // English; a Georgian brief is translated first and that step FAILS OPEN, so a missing or rejected
+      // key on the deployment produced a competent track unrelated to the request with nothing in the
+      // response to say so. It was reported three times and the code read correctly every time, because
+      // the code was correct and the environment was not. Anything other than 'ok'/'skipped_latin' means
+      // the raw prompt went to the provider verbatim.
+      translation: lastTranslateOutcome('music') ?? 'unknown',
     });
   } catch (err) {
     await refundReserve(); // mid-render throw → give the reserved credit back + release the mutex

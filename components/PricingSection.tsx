@@ -18,14 +18,14 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 type Lang = 'en' | 'ka' | 'ru'
 
 const LABELS: Record<Lang, {
-  badge: string; month: string; year: string; popular: string; focus: string; cta: string;
+  badge: string; month: string; year: string; popular: string; focus: string; ctaFree: string; ctaPaid: string;
   videos: string; music: string; images: string; credits: string; perMonth: string;
 }> = {
-  en: { badge: 'Pricing', month: '/mo', year: '/yr', popular: 'Most Popular', focus: 'Choose the plan that fits your workflow and scale.', cta: 'Get started',
+  en: { badge: 'Pricing', month: '/mo', year: '/yr', popular: 'Most Popular', focus: 'Choose the plan that fits your workflow and scale.', ctaFree: 'Start free', ctaPaid: 'Choose',
         videos: 'Videos', music: 'Music tracks', images: 'Storyboard images', credits: 'credits included', perMonth: 'per month' },
-  ka: { badge: 'ფასები', month: '/თვე', year: '/წელ', popular: 'ყველაზე პოპულარული', focus: 'აირჩიე გეგმა, რომელიც შენს სამუშაო პროცესსა და მასშტაბს შეესაბამება.', cta: 'დაწყება',
+  ka: { badge: 'ფასები', month: '/თვე', year: '/წელ', popular: 'ყველაზე პოპულარული', focus: 'აირჩიე გეგმა, რომელიც შენს სამუშაო პროცესსა და მასშტაბს შეესაბამება.', ctaFree: 'უფასოდ დაწყება', ctaPaid: 'არჩევა',
         videos: 'ვიდეო', music: 'მუსიკის ტრეკი', images: 'სთორიბორდ სურათი', credits: 'კრედიტი შედის', perMonth: 'თვეში' },
-  ru: { badge: 'Тарифы', month: '/мес', year: '/год', popular: 'Самый популярный', focus: 'Выберите план под ваш рабочий процесс и масштаб.', cta: 'Начать',
+  ru: { badge: 'Тарифы', month: '/мес', year: '/год', popular: 'Самый популярный', focus: 'Выберите план под ваш рабочий процесс и масштаб.', ctaFree: 'Начать бесплатно', ctaPaid: 'Выбрать',
         videos: 'видео', music: 'музыкальных трека', images: 'storyboard-изображений', credits: 'кредитов включено', perMonth: 'в месяц' },
 }
 
@@ -144,15 +144,24 @@ export function PricingSection() {
                   ))}
                 </ul>
 
+                {/* ⚠️ EVERY TIER SHOWED THE SAME WORD. A $0 card and a $79.99 card both said "დაწყება", so
+                    nothing on any card told you which one takes money — which is exactly why the packages
+                    read as "this one needs paying, that one doesn't, at random". The free tier now says it
+                    is free and a paid tier names its price on the button itself.
+                    ⚠️ AND THE WHOLE CARD IS THE TAP TARGET. `after:absolute after:inset-0` stretches this
+                    ONE link over the entire card (the card is `relative`), so a finger anywhere on it
+                    works — without nesting interactive elements inside each other, which would break
+                    keyboard and screen-reader navigation. One card, one link, one accessible name. */}
                 <Link
                   href={`/${locale}/signup?plan=${tier.id}`}
                   data-iap-external
-                  className={`mt-auto block w-full text-center rounded-xl min-h-[52px] leading-[52px] text-[15px] transition-all duration-200 active:scale-[0.98] hover:-translate-y-[1px] ${isPopular ? 'font-bold hover:brightness-110' : 'font-semibold'}`}
+                  aria-label={`${name} — ${tier.priceUsd > 0 ? `$${tier.priceUsd}${period}` : labels.ctaFree}`}
+                  className={`mt-auto block w-full text-center rounded-xl min-h-[52px] leading-[52px] text-[15px] transition-all duration-200 active:scale-[0.98] hover:-translate-y-[1px] after:absolute after:inset-0 after:rounded-[inherit] after:content-[''] ${isPopular ? 'font-bold hover:brightness-110' : 'font-semibold'}`}
                   style={isPopular
                     ? { background: 'linear-gradient(180deg, rgb(34,211,238) 0%, rgb(6,182,212) 100%)', color: '#04121a', boxShadow: '0 10px 26px -6px rgba(6,182,212,0.5), 0 1px 0 0 rgba(255,255,255,0.4) inset' }
                     : { color: 'var(--color-text)', border: '1px solid var(--pricing-contour-pop)', background: 'rgba(255,255,255,0.025)' }}
                 >
-                  {labels.cta}
+                  {tier.priceUsd > 0 ? `${labels.ctaPaid} — $${tier.priceUsd}${period}` : labels.ctaFree}
                 </Link>
               </motion.div>
             )
