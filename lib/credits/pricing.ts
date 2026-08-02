@@ -95,17 +95,22 @@ export interface CreditPackage {
  * three copies of one product. A buyer who does the arithmetic finds no reason to spend more, and a
  * buyer who doesn't is being quietly nudged toward the option with no advantage.
  *
- * The rate now IMPROVES with size, which is what makes a bigger purchase a decision rather than a risk:
- *     9 GEL ->   90 cr = 10.0 cr/GEL   (baseline)
- *    29 GEL ->  320 cr = 11.0 cr/GEL   (+10%)
- *    89 GEL -> 1070 cr = 12.0 cr/GEL   (+20%)
- * The baseline is unchanged, so nothing gets more expensive — the two larger packs simply became worth
- * choosing. `bonusPct` is what the UI shows; deriving it here keeps the badge honest if these move.
+ * ⚠️ I BRIEFLY "FIXED" THIS BY MAKING THE BIG PACKS MORE GENEROUS (11 and 12 cr/GEL) AND THAT WAS WRONG.
+ * A credit spent on VIDEO costs us 0.104 GEL in provider fees (video_30s = 25 cr against $0.96 of
+ * inference, at 2.7 GEL/USD) while a credit SELLS for 0.10 GEL. So the flat ladder below already runs at
+ * a 0.96x margin on video-heavy spend — a loss — and sweetening the larger packs took it to 0.80x. The
+ * numbers are back where they were, and the flat rate is now a KNOWN problem rather than an accident.
+ *
+ * ⚠️ THE REAL DEFECT IS THAT CREDIT_VALUE_GEL IS TOO LOW, not that the ladder lacks a discount. Fixing
+ * it means either charging more per credit, or capping what top-up credits may be spent on, and both
+ * are commercial decisions. Do not add a volume bonus here until the base rate covers video.
+ * lib/billing/pricingTiers.test.ts guards the SUBSCRIPTION side with a 2.5x-4.5x margin band; the
+ * top-ups have no such guard, which is how this went unnoticed.
  */
 export const CREDIT_PACKAGES: ReadonlyArray<CreditPackage> = [
   { id: 'starter', gel: 9, credits: 90, highlight: false },
-  { id: 'pro', gel: 29, credits: 320, highlight: true },
-  { id: 'max', gel: 89, credits: 1070, highlight: false },
+  { id: 'pro', gel: 29, credits: 290, highlight: true },
+  { id: 'max', gel: 89, credits: 890, highlight: false },
 ];
 
 /** How much better a pack's rate is than the smallest one, as a whole percent (0 for the baseline). */
