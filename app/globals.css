@@ -4146,3 +4146,12 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
 @media (prefers-reduced-motion: reduce) {
   .animate-progress-indeterminate { animation: none; }
 }
+
+/* ⚠️ A HOVER-REVEALED CONTROL DOES NOT EXIST ON A TOUCH DEVICE.
+   The chat-history delete button was `opacity-0 group-hover:opacity-100`, which on every phone and
+   tablet meant permanently invisible and unhittable — the owner pressing "delete" and seeing nothing
+   happen was, on those devices, pressing nothing at all. Keyed on the POINTER, not a width breakpoint:
+   an iPad in portrait is exactly 768px and slipped through a max-width rule once already. */
+@media (hover: none) and (pointer: coarse) {
+  .reveal-on-hover { opacity: 1 !important; }
+}

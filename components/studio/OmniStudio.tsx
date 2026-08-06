@@ -69,6 +69,10 @@ import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { computeCloudAdditions } from '@/lib/chat/conversationSync';
+import {
+  historyBucketOf, HISTORY_BUCKET_ORDER, HISTORY_BUCKET_LABEL, HISTORY_SEARCH_PLACEHOLDER, HISTORY_NO_MATCH,
+  type HistoryBucket,
+} from '@/lib/chat/historyBuckets';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
@@ -1067,6 +1071,7 @@ function serverSidOf(c: { id?: string; serverSid?: string } | null | undefined):
   if (typeof c.id === 'string' && c.id.startsWith('cloud:')) return c.id.slice('cloud:'.length) || null;
   return null;
 }
+
 /**
  * ONE-SHOT resume handoff. The app must land on a FRESH, EMPTY chat on every open and every refresh —
  * the way ChatGPT and Gemini do — instead of dropping the user back inside whatever they last said.
@@ -1647,6 +1652,31 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Chat-history panel (list of past conversations) open state.
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyList, setHistoryList] = useState<Conversation[]>([]);
+  const [historyQuery, setHistoryQuery] = useState('');
+  // The bucket labels ship in ka/en/ru only; any other locale reads Georgian, like the rest of the shell.
+  const histLang: 'ka' | 'en' | 'ru' = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  /**
+   * The history list, filtered by the search box and grouped into date buckets.
+   *
+   * Grouping is by CALENDAR day (see historyBucketOf), so "yesterday" means yesterday rather than
+   * "26 hours ago" — a rolling window mislabels everything for a few hours either side of midnight.
+   * Empty buckets are dropped, so the panel never shows a heading with nothing under it.
+   */
+  const historyGroups = useMemo<Array<[HistoryBucket, Conversation[]]>>(() => {
+    const q = historyQuery.trim().toLowerCase();
+    const rows = q ? historyList.filter((c) => (c.title || '').toLowerCase().includes(q)) : historyList;
+    if (!rows.length) return [];
+    const now = Date.now();
+    const byBucket = new Map<HistoryBucket, Conversation[]>();
+    for (const c of rows) {
+      const b = historyBucketOf(c.updatedAt ?? now, now);
+      const bucket = byBucket.get(b);
+      if (bucket) bucket.push(c); else byBucket.set(b, [c]);
+    }
+    return HISTORY_BUCKET_ORDER
+      .map((b) => [b, byBucket.get(b) ?? []] as [HistoryBucket, Conversation[]])
+      .filter(([, list]) => list.length > 0);
+  }, [historyList, historyQuery]);
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
@@ -9009,19 +9039,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <MessageSquarePlus className="h-[18px] w-[18px]" /> {t.historyNew}
               </button>
             </div>
+            {historyList.length > 4 && (
+              <div className="px-3 pb-2">
+                <input
+                  type="search"
+                  value={historyQuery}
+                  onChange={(e) => setHistoryQuery(e.target.value)}
+                  placeholder={HISTORY_SEARCH_PLACEHOLDER[histLang]}
+                  aria-label={HISTORY_SEARCH_PLACEHOLDER[histLang]}
+                  className="w-full rounded-xl bg-app-elevated px-3 py-2 !text-[13px] !text-app-text placeholder:text-app-muted focus:outline-none focus:ring-1 focus:ring-app-accent"
+                />
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
               {historyList.length === 0 ? (
                 <p className="px-3 py-6 text-center text-[13px] text-app-muted">{t.historyEmpty}</p>
+              ) : historyGroups.length === 0 ? (
+                <p className="px-3 py-6 text-center text-[13px] text-app-muted">{HISTORY_NO_MATCH[histLang]}</p>
               ) : (
-                historyList.map((c) => (
-                  <div key={c.id} className={`group flex items-center gap-1 rounded-xl pr-1 transition-colors hover:bg-app-elevated ${c.id === conversationId ? 'bg-app-elevated' : ''}`}>
-                    <button type="button" onClick={() => resumeConversation(c.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-left">
-                      <MessageSquare className="h-4 w-4 shrink-0 text-app-muted" />
-                      <span className="truncate text-[13px] text-app-text">{c.title}</span>
-                    </button>
-                    <button type="button" onClick={() => removeConversation(c.id)} aria-label={t.deleteLabel} title={t.deleteLabel} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-app-muted opacity-0 transition-opacity hover:text-app-accent group-hover:opacity-100">
-                      <Trash2 className="h-[15px] w-[15px]" />
-                    </button>
+                historyGroups.map(([bucket, rows]) => (
+                  <div key={bucket}>
+                    {/* Sticky so the label stays readable while its own section scrolls past. */}
+                    <p className="sticky top-0 z-[1] bg-app-surface px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-app-muted">
+                      {HISTORY_BUCKET_LABEL[histLang][bucket]}
+                    </p>
+                    {rows.map((c) => (
+                      <div key={c.id} className={`group flex items-center gap-1 rounded-xl pr-1 transition-colors hover:bg-app-elevated ${c.id === conversationId ? 'bg-app-elevated' : ''}`}>
+                        <button type="button" onClick={() => resumeConversation(c.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-left">
+                          <MessageSquare className="h-4 w-4 shrink-0 text-app-muted" />
+                          <span className="truncate text-[13px] text-app-text">{c.title}</span>
+                        </button>
+                        {/* ⚠️ `reveal-on-hover` IS LOAD-BEARING ON TOUCH. This was opacity-0 until group-hover,
+                            and a touch device has no hover — so on every phone and tablet the delete button
+                            was invisible and unhittable. The user pressing "delete" and seeing nothing happen
+                            was, on those devices, the user pressing nothing at all. The class forces it
+                            visible under (hover: none); see globals.css. */}
+                        <button type="button" onClick={() => removeConversation(c.id)} aria-label={t.deleteLabel} title={t.deleteLabel} className="reveal-on-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-app-muted opacity-0 transition-opacity hover:text-app-accent group-hover:opacity-100 touch-manipulation sm:h-7 sm:w-7">
+                          <Trash2 className="h-[15px] w-[15px]" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
