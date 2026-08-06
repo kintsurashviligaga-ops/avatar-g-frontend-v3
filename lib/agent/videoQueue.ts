@@ -6,6 +6,7 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { createGeminiVeoClip, pollGeminiVeoTask, fetchVeoVideoBuffer, hasGeminiVeoProvider } from '@/lib/ai/geminiVeo';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { addWatermark } from '@/lib/video/remixOps';
+import { shouldWatermark } from '@/lib/billing/entitlements';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 /**
@@ -41,14 +42,15 @@ const COLS = 'id, batch_id, ordinal, prompt, aspect, watermark, status, operatio
 /** Enqueue a batch. Charges NOTHING — see the header. */
 export async function enqueueBatch(
   svc: Svc, userId: string,
-  prompts: string[], opts: { aspect?: string; watermark?: boolean } = {},
+  prompts: string[], opts: { aspect?: string } = {},
 ): Promise<{ batchId: string; count: number }> {
   const batchId = randomUUID();
   const rows = prompts.map((prompt, ordinal) => ({
     batch_id: batchId, user_id: userId, ordinal,
     prompt: prompt.slice(0, 2000),
     aspect: opts.aspect ?? '16:9',
-    watermark: opts.watermark !== false,
+    // `watermark` is left at its column default. The row does not decide — shouldWatermark() does, at
+    // render time, so a customer who pays mid-batch gets clean clips from the next one on.
   }));
   const { error } = await svc.from('agent_video_queue').insert(rows);
   if (error) throw error;
@@ -132,7 +134,12 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
     // ⚠️ WATERMARK LAST. Anything that crops or scales must happen before it — stripVeoWatermark crops
     // the bottom of the frame and would cut off a mark applied earlier. Fail-open: an unmarked clip is
     // better than losing a render the user has already paid for.
-    if (item.watermark) url = (await addWatermark(url).catch(() => null)) ?? url;
+    //
+    // ⚠️ THE SERVER DECIDES, NOT THE ROW. This used to read `item.watermark`, which came straight from
+    // the enqueue request body — so `{"prompts":[…],"watermark":false}` bought an unmarked render for
+    // nothing. Entitlement is read here, at render time, from the payment record; that also means a
+    // customer who pays midway through a batch gets clean clips from the next one on.
+    if (await shouldWatermark(userId)) url = (await addWatermark(url).catch(() => null)) ?? url;
 
     await svc.from('agent_video_queue')
       .update({ status: 'done', video_url: url, updated_at: new Date().toISOString() })

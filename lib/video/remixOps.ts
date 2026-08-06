@@ -22,6 +22,9 @@ import { join } from 'node:path';
 import { withRetry } from '@/lib/utils/withRetry';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+// The pipeline's SVG→PNG overlay compositor — the one text path that renders on Vercel (no system
+// fonts, and ffmpeg-static is built without libfreetype, so `drawtext` does not exist there).
+import { applyMarketingOverlays } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 
@@ -646,80 +649,51 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
   }
 }
 
-/**
- * The mark asset, in preference order.
- *
- * ⚠️ `public/logo.png` IS NOT A PNG — it is a JPEG carrying a .png filename (`mjpeg / yuvj420p`), so it has
- * NO alpha channel at all. Overlaying it burns an OPAQUE dark rectangle onto the frame, and because more
- * than half the asset is the logo's own empty padding (376px of dead space above the ink, 429px below, in
- * a 1536px-tall image) that block is far bigger than the artwork inside it. `public/watermark.png` is a
- * real RGBA PNG, tight-cropped to the ink, with alpha derived from luminance so the dark backdrop
- * disappears on light and dark footage alike.
- *
- * logo.png stays as the fallback: an environment that somehow lacks the new asset still marks its clips
- * rather than silently shipping them unmarked.
- *
- * ⚠️ BOTH FILES MUST BE IN `outputFileTracingIncludes` for EVERY route that reaches this function
- * (`/api/video/remix` and `/api/agent/video-queue/drain`). Next only bundles what it can statically trace;
- * a path read at runtime is invisible to it, the lambda's `existsSync` returns false, and this fail-open
- * returns null — every clip ships unmarked, with no error anywhere.
- */
-const WATERMARK_ASSETS = ['public/watermark.png', 'public/logo.png'] as const;
+/** The free-tier brand mark. Latin, so it reads the same in every locale, and set uppercase by the
+ *  renderer's own casing rule. */
+export const WATERMARK_TEXT = 'MYAVATAR.GE';
 
 /**
- * Burn the MyAvatar mark into the bottom-right corner of a clip.
+ * Burn the MyAvatar mark into the bottom-left of a clip — the lower-third band: a left→right fading
+ * scrim, the cyan accent bar, then MYAVATAR.GE in tracked white caps.
+ *
+ * ⚠️ IT DRAWS TEXT, NOT AN IMAGE ASSET, AND THAT IS THE WHOLE POINT. The previous version overlaid
+ * `public/logo.png` in the bottom-RIGHT corner — a file that is a JPEG wearing a .png name (`mjpeg /
+ * yuvj420p`, no alpha), so it burnt an opaque dark rectangle onto every clip. Rendering the mark means
+ * there is no asset to be the wrong format, no alpha to lose, and no file to fall out of the bundle.
+ *
+ * ⚠️ IT REUSES THE PIPELINE'S OWN OVERLAY RENDERER rather than a second implementation. resvg with the
+ * FiraGO buffers is the only text path that works on Vercel — the container ships no system fonts and
+ * ffmpeg-static is built WITHOUT libfreetype, so `drawtext` does not exist there at all. Measured against
+ * a real production master: `buildOverlaySvg({ overlayText: 'MYAVATAR.GE' }, 720, 1136)` reproduces it
+ * exactly — band top at y=1027 in both, accent bar 4px at x=36, cap height 22px.
  *
  * ⚠️ THE COUNTERPART TO stripVeoWatermark ABOVE, AND THEY MUST NOT FIGHT. That one crops the provider's
  * mark off the bottom of the frame; this one adds OURS afterwards. Run in the other order and the crop
  * removes the brand mark that was just applied — so watermarking belongs at the END of a pipeline, after
  * every crop, scale and concat has happened.
  *
- * ⚠️ `shortest=1` IS LOAD-BEARING. The logo is a still image fed with `-loop 1`, which is an INFINITE
- * input; `overlay` defaults to shortest=0, so without this the filter graph never reaches an end and the
- * encode runs until the function is killed. This exact mistake has already cost a production incident
- * here (see the note on surgicalOps' overlay chain).
+ * ⚠️ WHO GETS MARKED IS NOT DECIDED HERE. Call `shouldWatermark(userId)` (lib/billing/entitlements) —
+ * never a flag off a request body.
  *
- * Bounded to 12% of the frame width AND 18% of its height, so one asset works on a 9:16 phone clip and a
- * 16:9 master alike, inset by ~2.5% of the width from each edge. Fail-open: any error returns null and the
- * caller keeps the unmarked clip — a missing watermark must never lose someone the render they paid for.
+ * Fail-open: any error returns null and the caller keeps the unmarked clip. A missing mark must never
+ * lose someone the render they paid for.
  */
-export async function addWatermark(videoUrl: string, logoPath?: string): Promise<string | null> {
+export async function addWatermark(videoUrl: string): Promise<string | null> {
   if (!BIN) return null;
   let dir: string | null = null;
   try {
-    const { existsSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const logo = (logoPath ? [logoPath] : WATERMARK_ASSETS)
-      .map((p) => resolve(process.cwd(), p))
-      .find((p) => existsSync(p));
-    if (!logo) return null;
-
     dir = await mkdtemp(join(tmpdir(), 'wm-'));
     const out = join(dir, 'out.mp4');
-    // ⚠️ format=rgba FIRST. The mark's transparency has to survive the scale — without it the overlay
-    // pastes the asset's background as a solid block, which is exactly what shipped: an opaque dark
-    // rectangle in the corner of every marked clip.
-    // ⚠️ scale2ref, NOT scale. `main_w` exists only inside OVERLAY's expressions — a `scale` that
-    // references it fails the whole graph with "Error initializing filters", which is what my first
-    // version did. scale2ref takes the frame as a REFERENCE input, so `iw` here is the VIDEO's width and
-    // the mark lands at 12% of it on a 9:16 phone clip and a 16:9 master alike.
-    // ⚠️ AND NOT AN ffprobe MEASUREMENT EITHER: ffmpeg-static ships ffmpeg ONLY, so probing the width
-    // silently failed and fell back to a default — a 154px mark burnt onto a 480px-wide frame, a third of
-    // the picture.
-    // ⚠️ BOUNDED ON BOTH AXES. Width alone was not enough: the mark is portrait, so 12% of the width made
-    // it 32% of the HEIGHT of a 16:9 clip. The `ih*0.18*mdar` term caps it. Measured on real frames after
-    // this change — 1280x720 → 17.4% tall, 720x1132 → 8.1% tall, both insets equal.
-    const filter =
-      '[1:v]format=rgba[lg];' +
-      "[lg][0:v]scale2ref=w='min(iw*0.12,ih*0.18*mdar)':h='ow/mdar'[wm][base];" +
-      '[base][wm]overlay=W-w-W*0.025:H-h-W*0.025:shortest=1,format=yuv420p[v]';
-    await exec(BIN, [
-      '-y', '-i', videoUrl,
-      '-loop', '1', '-i', logo,
-      '-filter_complex', filter,
-      '-map', '[v]', '-map', '0:a?',
-      ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
-    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    // applyMarketingOverlays probes the real pixel dimensions off `ffmpeg -i` stderr (there is no
+    // ffprobe in ffmpeg-static) and renders the band at that exact size, so it lands pixel-for-pixel on
+    // a 9:16 phone clip and a 16:9 master alike. It accepts a URL as the input path.
+    const res = await applyMarketingOverlays(videoUrl, out, { overlayText: WATERMARK_TEXT, lang: 'en' });
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn('[remix.watermark] overlay failed → keeping original:', res.error);
+      return null;
+    }
     const buf = await readFile(out);
     return await hostMp4(buf, 'wm');
   } catch (err) {

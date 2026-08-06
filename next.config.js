@@ -95,8 +95,13 @@ const nextConfig = {
     // so the CPU FFmpeg fallback (Option B) has its binary in production.
     serverComponentsExternalPackages: ['ffmpeg-static', 'sharp', '@resvg/resvg-js', 'mammoth', 'unpdf'],
     outputFileTracingIncludes: {
-      '/api/video/assemble': ['./node_modules/ffmpeg-static/**'],
-      '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**'],
+      // ⚠️ @resvg RIDES WITH BOTH. Each route rasterises text through resvg — assemble via
+      // overlayMasterUrl (the marketing lower-third) and now the free-tier MYAVATAR.GE mark, produce via
+      // the same overlay path. Without it `new Resvg(...)` throws inside a try/catch that returns null,
+      // so the overlay simply never appears and nothing anywhere reports a problem. This entry was
+      // missing for assemble the whole time the marketing overlay was shipping.
+      '/api/video/assemble': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      '/api/orchestrator/produce': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Surgical Editor: deterministic ops shell out to ffmpeg-static (lib/video/{trimClip,surgicalOps}); text
       // overlays rasterise via @resvg (drawtext is unavailable on Vercel — no libfreetype). Both binaries must ride.
       '/api/ai/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
@@ -139,16 +144,16 @@ const nextConfig = {
       // Video Remix: EVERY ffmpeg op (color_grade/speed/trim/mux/Ken-Burns) + captions
       // (overlayMasterUrl → resvg SVG→PNG) runs here. Without the binary + resvg the
       // lambda ENOENTs and every remix silently fails — the users' "broken remix".
-      // ⚠️ THE MARK ASSETS RIDE TOO — addWatermark() reads them off the FILESYSTEM. Next serves
-      // public/ statically, which does NOT put them inside the lambda bundle: without this the
-      // existsSync() guard returns false in production and every clip ships unmarked, silently and
-      // with no error anywhere. Same class of trap as ffmpeg-static itself.
-      // BOTH files: watermark.png is the real RGBA mark, logo.png is the fallback (and is a JPEG with no
-      // alpha — see WATERMARK_ASSETS in lib/video/remixOps.ts).
-      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**', './public/watermark.png', './public/logo.png'],
-      // The agent queue watermarks each finished clip through the same addWatermark() — so it needs the
-      // binary AND the mark in its own lambda, or every batch clip ships unmarked and silently.
-      '/api/agent/video-queue/drain': ['./node_modules/ffmpeg-static/**', './public/watermark.png', './public/logo.png'],
+      // ⚠️ @resvg IS WHAT DRAWS THE WATERMARK NOW. addWatermark() renders the MYAVATAR.GE lower-third as
+      // SVG→PNG, because ffmpeg-static is built WITHOUT libfreetype — `drawtext` does not exist on
+      // Vercel at all — and the container ships no system fonts. No image asset is read from disk any
+      // more (the fonts are base64 inside lib/pipeline/compositing/font-data-firago.ts, so Next traces
+      // them as ordinary imports).
+      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // The agent queue marks each finished clip through that same addWatermark(), so it needs the ffmpeg
+      // binary AND @resvg in its own lambda — miss either and every batch clip ships unmarked, silently
+      // and with no error anywhere.
+      '/api/agent/video-queue/drain': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Motion Control: the optional background-music pass muxes a MusicGen bed onto the
       // Kling clip via ffmpeg-static (muxAudioOntoVideo). The mux now runs in the async
       // /status finalize poll (not the submit-only POST), so the binary must ride along

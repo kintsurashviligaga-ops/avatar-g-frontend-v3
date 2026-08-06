@@ -28,6 +28,7 @@ import { readRunPodConfig, dispatchRunPod, type RunPodManifest } from '@/lib/orc
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
+import { markFreeOutput } from '@/lib/billing/entitlements';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
@@ -850,6 +851,17 @@ async function assembleImpl(req: NextRequest) {
       /* keep the clean master */
     }
   }
+
+  // FREE-TIER MARK — burn MYAVATAR.GE into the bottom-left unless this account has paid.
+  //
+  // ⚠️ HERE, NOT LATER. Everything below stamps, stores or serves `resultUrl` — the film tracker, the
+  // library row, the response — so marking after any of them leaves an unmarked copy somewhere a user
+  // can still reach. And it must come after the marketing overlay above, which composites its own
+  // lower-third onto the same corner.
+  //
+  // ⚠️ ANONYMOUS RENDERS ARE ALWAYS MARKED. `uid === null` skips billing entirely (see skipBilling), so
+  // an unauthenticated render is by definition a free one.
+  if (resultUrl) resultUrl = (await markFreeOutput(uid ?? '', resultUrl)) ?? resultUrl;
 
   // PHASE 47 §1 — stamp the finished hosted master onto the unified tracker so a
   // reload / second device can recover the playable 30s film without re-rendering.

@@ -32,7 +32,11 @@ export async function POST(req: NextRequest) {
   const limited = await checkRateLimit(req, RATE_LIMITS.WRITE, user.id);
   if (limited) return limited;
 
-  const body = (await req.json().catch(() => ({}))) as { prompts?: unknown; aspect?: unknown; watermark?: unknown };
+  // ⚠️ `watermark` IS DELIBERATELY NOT READ FROM THE BODY. It used to be (`body.watermark !== false`),
+  // which meant a free account could post {"watermark": false} and buy an unmarked render for nothing.
+  // Whether the mark is applied is decided at RENDER time from the payment record — see shouldWatermark()
+  // in lib/billing/entitlements.
+  const body = (await req.json().catch(() => ({}))) as { prompts?: unknown; aspect?: unknown };
   const raw = Array.isArray(body.prompts) ? body.prompts : [];
   const prompts = raw
     .map((p) => (typeof p === 'string' ? p.trim() : ''))
@@ -44,11 +48,10 @@ export async function POST(req: NextRequest) {
   }
 
   const aspect = typeof body.aspect === 'string' && ASPECTS.has(body.aspect) ? body.aspect : '16:9';
-  const watermark = body.watermark !== false;
 
   try {
     const svc = createServiceRoleClient();
-    const { batchId, count } = await enqueueBatch(svc, user.id, prompts, { aspect, watermark });
+    const { batchId, count } = await enqueueBatch(svc, user.id, prompts, { aspect });
     return NextResponse.json({ batchId, count, status: 'queued' });
   } catch (e) {
     reportError(e, { route: 'agent.video-queue.POST' });
