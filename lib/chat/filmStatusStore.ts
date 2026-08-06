@@ -262,6 +262,25 @@ export async function consumeFilmBilling(tokenId: string): Promise<void> {
   await putFilmStatus({ ...prev, billingConsumed: true, updatedAt: Date.now() });
 }
 
+/**
+ * Hand the one-time billing waiver BACK when the assemble it was spent on fails.
+ *
+ * ⚠️ THE WAIVER WAS SPENT UP FRONT AND NEVER RETURNED. consumeFilmBilling runs before the render so a
+ * concurrent or replayed assemble cannot reuse it — that part is right — but no failure path undid it.
+ * A film whose stitch then died had already burnt the marker, so the retry the user was invited to make
+ * was charged ASSEMBLE_COST (20 credits) for a film the product had told them was free, or spent a
+ * second free-video slot. The user paid for the outage.
+ *
+ * ⚠️ RESTORES ONLY THE CONSUMED FLAG, never the underlying `masterUrl` / `freeFilmWaived` evidence —
+ * those are what PROVE the upstream payment happened and they are not this function's to invent. A token
+ * that was never legitimately paid for therefore cannot be turned into a waiver here.
+ */
+export async function restoreFilmBilling(tokenId: string): Promise<void> {
+  const prev = await getFilmStatus(tokenId);
+  if (!prev || prev.billingConsumed !== true) return;
+  await putFilmStatus({ ...prev, billingConsumed: false, updatedAt: Date.now() });
+}
+
 /** Mark the film failed with a short reason. Fails open. */
 export async function recordFilmFailed(tokenId: string, error: string): Promise<void> {
   const prev = await getFilmStatus(tokenId);

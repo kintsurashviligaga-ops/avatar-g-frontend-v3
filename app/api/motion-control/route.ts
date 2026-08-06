@@ -17,7 +17,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
-import { createJob } from '@/lib/orchestrator/jobs';
+import { createJob, updateJobStage } from '@/lib/orchestrator/jobs';
 import { hasSufficientBalance, deductCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
@@ -131,12 +131,33 @@ export async function POST(req: Request) {
     // Reserve the credits now that the paid render is accepted — idempotent by ref, so a client retry of
     // an already-submitted jobId can't double-charge. /status refunds `motion:charge:<jobId>:refund` if the
     // render fails. Fail-open on a reserve miss (rare balance race past the gate) → the render still runs.
-    await deductCredits(user.id, MOTION_COST, `motion:charge:${jobId}`).catch(() => {});
-    // TRACK 1 — motion was invisible to telemetry (wrote no generation_jobs row). File a `pending` row
+    const chargeRef = `motion:charge:${jobId}`;
+    const debit = await deductCredits(user.id, MOTION_COST, chargeRef).catch(() => null);
+    // TRACK 1 — motion was invisible to telemetry (wrote no generation_jobs row). File a row
     // (service_type stays a CHECK-allowed 'film'; the real label rides in params.subtype) so the render is
     // measured, the reliability dashboard shows a "motion" service, and the drainer can reap it if abandoned.
     // Fire-and-forget + fail-open — never blocks the fast submit response. The /status route finalizes it.
-    void createJob({ id: `motion:${jobId}`, userId: user.id, serviceType: 'film', params: { subtype: 'motion', method, prompt: motionPrompt.slice(0, 200) } });
+    //
+    // ⚠️ THE ROW SAID "the drainer can reap it if abandoned" AND THE DRAINER COULD NOT SEE IT — TWICE OVER.
+    // The only refund for motion lives in /status, which runs solely because the CLIENT polled; close the
+    // tab on a failing render and the charge stranded forever. The drainer exists precisely for that, but
+    // (a) it refunds from `params._reserve`, which this row never carried, and (b) isReapable() only
+    // considers rows in `processing`, while createJob files them as `pending` and nothing here moved it on.
+    // Both are fixed below, so an abandoned motion render is now reaped and credited back.
+    //
+    // ⚠️ `_reserve` IS STAMPED ONLY IF THE DEBIT ACTUALLY LANDED. Stamping it unconditionally would let the
+    // drainer refund a render that was never charged — minting credits out of a failed reserve.
+    // The ref is shared with /status and refundCredits is idempotent on it, so a user who polls AND a
+    // drainer that later reaps produce exactly one refund between them.
+    const reserve = debit?.ok ? { _reserve: { ref: chargeRef, credits: MOTION_COST } } : {};
+    void createJob({
+      id: `motion:${jobId}`, userId: user.id, serviceType: 'film',
+      params: { subtype: 'motion', method, prompt: motionPrompt.slice(0, 200), ...reserve },
+    }).then(() => {
+      // Move it to `processing` — the only status the drainer will look at. Chained after createJob so
+      // the patch cannot race the insert.
+      void updateJobStage(`motion:${jobId}`, 'rendering', 5);
+    });
     return NextResponse.json({ success: true, jobId, method });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

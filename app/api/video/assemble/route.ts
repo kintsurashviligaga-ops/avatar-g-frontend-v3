@@ -39,7 +39,7 @@ import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, consumeFilmBilling } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
@@ -717,6 +717,15 @@ async function assembleImpl(req: NextRequest) {
         return lock;
       },
       compensate: async (_r, ctx) => {
+        // ⚠️ THIS MUST RUN BEFORE THE skipBilling EARLY RETURN — skipBilling is TRUE in exactly the case
+        // that spent the waiver. consumeFilmBilling() burns the token's one-time billing skip up front so
+        // a replay cannot reuse it, but nothing ever handed it back: a stitch that then failed left the
+        // marker spent, and the retry the user was invited to make was charged ASSEMBLE_COST (20 credits)
+        // for a film the product had told them was free. Returning it restores only the consumed flag —
+        // the masterUrl / freeFilmWaived evidence of the upstream payment is untouched.
+        if (filmAlreadyBilled && billedTokenForCheck) {
+          await restoreFilmBilling(billedTokenForCheck).catch(() => {});
+        }
         if (skipBilling || uid === null) return; // anon / founder reserved nothing to roll back
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);
