@@ -645,3 +645,59 @@ export async function klingI2v(startImage: string, prompt: string, aspect: '9:16
     return null;
   }
 }
+
+/**
+ * Burn the MyAvatar mark into the bottom-right corner of a clip.
+ *
+ * ⚠️ THE COUNTERPART TO stripVeoWatermark ABOVE, AND THEY MUST NOT FIGHT. That one crops the provider's
+ * mark off the bottom of the frame; this one adds OURS afterwards. Run in the other order and the crop
+ * removes the brand mark that was just applied — so watermarking belongs at the END of a pipeline, after
+ * every crop, scale and concat has happened.
+ *
+ * ⚠️ `shortest=1` IS LOAD-BEARING. The logo is a still image fed with `-loop 1`, which is an INFINITE
+ * input; `overlay` defaults to shortest=0, so without this the filter graph never reaches an end and the
+ * encode runs until the function is killed. This exact mistake has already cost a production incident
+ * here (see the note on surgicalOps' overlay chain).
+ *
+ * Scaled to 12% of the frame width, so one asset works on a 9:16 phone clip and a 16:9 master alike, and
+ * inset by ~2.5% of the width from each edge. Fail-open: any error returns null and the caller keeps the
+ * unmarked clip — a missing watermark must never lose someone the render they paid for.
+ */
+export async function addWatermark(videoUrl: string, logoPath = 'public/logo.png'): Promise<string | null> {
+  if (!BIN) return null;
+  let dir: string | null = null;
+  try {
+    const { existsSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const logo = resolve(process.cwd(), logoPath);
+    if (!existsSync(logo)) return null;
+
+    dir = await mkdtemp(join(tmpdir(), 'wm-'));
+    const out = join(dir, 'out.mp4');
+    // ⚠️ scale2ref, NOT scale. `main_w` exists only inside OVERLAY's expressions — a `scale` that
+    // references it fails the whole graph with "Error initializing filters", which is what my first
+    // version did. scale2ref takes the frame as a REFERENCE input, so `iw` here is the VIDEO's width and
+    // the mark lands at 12% of it on a 9:16 phone clip and a 16:9 master alike.
+    // ⚠️ AND NOT AN ffprobe MEASUREMENT EITHER: ffmpeg-static ships ffmpeg ONLY, so probing the width
+    // silently failed and fell back to a default — a 154px mark burnt onto a 480px-wide frame, a third of
+    // the picture. Measured both orientations after this change; the mark scales, the encode terminates.
+    const filter =
+      '[1:v][0:v]scale2ref=w=iw*0.12:h=ow/mdar[wm][base];' +
+      '[base][wm]overlay=W-w-W*0.025:H-h-W*0.025:shortest=1,format=yuv420p[v]';
+    await exec(BIN, [
+      '-y', '-i', videoUrl,
+      '-loop', '1', '-i', logo,
+      '-filter_complex', filter,
+      '-map', '[v]', '-map', '0:a?',
+      ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    const buf = await readFile(out);
+    return await hostMp4(buf, 'wm');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.watermark] add failed → keeping original:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}

@@ -139,7 +139,11 @@ const nextConfig = {
       // Video Remix: EVERY ffmpeg op (color_grade/speed/trim/mux/Ken-Burns) + captions
       // (overlayMasterUrl → resvg SVG→PNG) runs here. Without the binary + resvg the
       // lambda ENOENTs and every remix silently fails — the users' "broken remix".
-      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // ⚠️ ./public/logo.png RIDES TOO — addWatermark() reads it off the FILESYSTEM. Next serves
+      // public/ statically, which does NOT put it inside the lambda bundle: without this the
+      // existsSync() guard returns false in production and every clip ships unmarked, silently and
+      // with no error anywhere. Same class of trap as ffmpeg-static itself.
+      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**', './public/logo.png'],
       // Motion Control: the optional background-music pass muxes a MusicGen bed onto the
       // Kling clip via ffmpeg-static (muxAudioOntoVideo). The mux now runs in the async
       // /status finalize poll (not the submit-only POST), so the binary must ride along
