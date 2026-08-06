@@ -12,8 +12,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
-import { UploadCloud, Film, Music2, Wand2, Loader2, Download, X, AlertTriangle } from 'lucide-react';
+import { UploadCloud, Film, Music2, Wand2, Loader2, X, AlertTriangle } from 'lucide-react';
 import { GenerationProgress } from './ui/GenerationProgress';
+import { describeServiceError } from './ui/serviceError';
+import { ResultActions } from './ui/ResultActions';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -180,7 +182,9 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
         setError(
           code === 'insufficient_credits' ? t.noCredits
             : code === 'provider_not_configured' ? t.engineOff
-            : t.failed,
+            // Anything else goes through the shared table, which knows more codes than these two and
+            // never echoes an unrecognised string back at the user.
+            : describeServiceError(code, locale, t.failed),
         );
         return;
       }
@@ -200,7 +204,10 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
         if (pj.done) {
           settled = true;
           if (pj.url && pj.url.startsWith('https://')) setResultUrl(pj.url);
-          else setError(pj.error || t.failed);
+          // ⚠️ THE START PATH WAS HARDENED AGAINST RAW CODES TWENTY LINES ABOVE AND THIS ONE WAS NOT.
+          // A poll failure printed the server's string verbatim, so a Georgian screen showed English
+          // provider prose or a bare code like duplicate_request.
+          else setError(describeServiceError(pj.error, locale, t.failed));
           break;
         }
       }
@@ -261,12 +268,13 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-app-muted">{t.result}</p>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video src={resultUrl} controls playsInline className="w-full rounded-xl border border-app-border/10 bg-app-bg" />
-          <a
-            href={resultUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[rgb(var(--app-accent))]/30 bg-[rgb(var(--app-accent))]/10 px-4 py-2.5 text-xs font-semibold text-[rgb(var(--app-accent))] transition-colors hover:bg-[rgb(var(--app-accent))]/20"
-          >
-            <Download size={13} /> {t.download}
-          </a>
+          {/* ⚠️ THIS WAS AN `<a target="_blank">` WITH NO download AT ALL — so "ჩამოტვირთვა" opened the
+              MP4 in a new tab instead of saving it, which on a phone means leaving the app to stare at a
+              video with no obvious way back. Adding `download` would not have fixed it either: the
+              browser ignores that attribute on a cross-origin href, and this is a signed storage link.
+              ResultActions fetches the bytes into a Blob and offers the iOS share sheet, the only route
+              to the Photos library. */}
+          <ResultActions url={resultUrl} kind="avatar" locale={locale} />
         </div>
       )}
     </div>

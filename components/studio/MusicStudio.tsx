@@ -29,6 +29,7 @@ import {
 import { TextArea } from './ui/controls';
 import { CreditBadge } from '@/components/ui/CreditBadge';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
+import { describeServiceError } from './ui/serviceError';
 
 // ─── i18n ───────────────────────────────────────────────────────────────────
 type Lang = 'ka' | 'en' | 'ru';
@@ -415,7 +416,8 @@ export function MusicStudio() {
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; coverUrl?: string; error?: string; engine?: string };
       if (j.success && j.url) { creditsUpdated(); setResult({ url: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}) }); }
-      else setError(j.error || t.failed);
+      // Never echo the server's string: it is English provider prose or a machine code.
+      else setError(describeServiceError(j.error, lang, t.failed));
     } catch {
       setError(t.failed);
     } finally {
