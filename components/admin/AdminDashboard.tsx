@@ -15,6 +15,7 @@ import ReliabilityPanel from '@/components/admin/ReliabilityPanel';
 import LaunchHealthCard from '@/components/admin/LaunchHealthCard';
 import SupportInbox from '@/components/admin/SupportInbox';
 import AdminsPanel from '@/components/admin/AdminsPanel';
+import LiveVisitors from '@/components/admin/LiveVisitors';
 import type { AdminStats } from '@/lib/admin/stats';
 import type { AdminUserPage, AdminUserRow } from '@/lib/admin/users';
 import type { PipelineHealth } from '@/lib/pipeline/statusAgent';
@@ -137,11 +138,16 @@ export default function AdminDashboard({ locale, stats, initialUsers, pipelineHe
 function Overview({ ka, stats, top, pipelineHealth, fmt }: { ka: boolean; stats: AdminStats; top?: { kind: string; count: number }; pipelineHealth: PipelineHealth | null; fmt: (s: string) => string }) {
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Live presence first: the only number on this page that is about RIGHT NOW rather than
+          cumulative history, and the one an owner checks during a launch. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,240px)_1fr]">
+        <LiveVisitors ka={ka} />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-2 xl:grid-cols-4">
         <Stat label={ka ? 'მომხმარებლები' : 'Users'} value={stats.totalUsers} sub={ka ? 'სულ რეგისტრირებული' : 'total registered'} accent="cyan" />
         <Stat label={ka ? 'შემოსავალი' : 'Revenue'} value={`${stats.revenueGel.toFixed(2)} ₾`} sub={ka ? 'შევსებები' : 'top-ups'} accent="green" />
         <Stat label={ka ? 'გენერაცია (სულ)' : 'Generations'} value={stats.gensAllTime} sub={ka ? `${stats.gensWeek} კვირაში` : `${stats.gensWeek} this week`} />
         <Stat label={ka ? 'წარმატება' : 'Success rate'} value={`${stats.successRate}%`} sub={ka ? 'შესრულდა / სულ' : 'done / terminal'} accent={stats.successRate >= 90 ? 'green' : stats.successRate >= 70 ? 'amber' : 'red'} />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <MiniStat label={ka ? 'დღეს' : 'Today'} value={stats.gensToday} sub={ka ? 'გენერაცია' : 'generations'} />

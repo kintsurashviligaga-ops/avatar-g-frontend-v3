@@ -7,6 +7,7 @@ import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { PageEnvironment } from './ui/PageEnvironment';
 import CookieConsent from './CookieConsent';
 import SupportWidgetMount from './support/SupportWidgetMount';
+import PresenceHeartbeat from './presence/PresenceHeartbeat';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -196,6 +197,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           cyan chat button bottom-right). They floated at z-[9999] over the production dashboard; the red one
           was the reported "red phone button". No external redirect existed (it opened an in-app CallScreen);
           Agent G is still reachable at /services/agent-g. */}
+      {/* Live presence for the admin panel. Mounted for EVERY visitor including anonymous ones —
+          "how many people are on the site" is mostly people who have not signed in. Renders nothing;
+          it only pings while the tab is visible. */}
+      {!isEmbed && <PresenceHeartbeat />}
       {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <CookieConsent />}
       {/* Support chat. It decides for itself whether this route should show it — notably NOT the studio,
           whose composer dock owns the bottom-right corner (see the PHASE 37.1 note above: a floating
