@@ -32,29 +32,40 @@ export const PRICING_PLANS: PricingPlan[] = [
     price: 0,
     priceDisplay: 'უფასო',
     currency: 'GEL',
+    // `monthly` is typed as the literal `true` (it keys the monthly/annual toggle), so the trial
+    // stays in that bucket structurally — but it is a ONE-OFF grant, which the copy above now says.
     monthly: true,
     description: 'For exploration and getting started with AI creation.',
     descriptionKa: 'AI შემოქმედებასთან გასაცნობად.',
+    // ⚠️ THIS ADVERTISED A FIFTH, CONTRADICTORY FREE TIER — "200 credits/month", renewing forever, next
+    // to a product that grants 50 credits ONCE. The free tier already disagreed with itself in four
+    // places (pricing card 12, DB trigger 10, free_films_remaining 3 videos, CreditsModal its own
+    // version); all four were reconciled to one 50-credit trial, and this was the one left.
+    //
+    // ⚠️ IT IS ALSO A LANDMINE RATHER THAN A LIVE BUG: only getDailyLimit() is imported from this file
+    // today, so these strings render nowhere. That is exactly why it is worth correcting now — the next
+    // person to wire this array into a page would ship a promise the database has never honoured, and it
+    // would look authoritative because it lives in something called canonicalPricing.
     features: [
-      '200 credits/month',
+      '50 free credits, one-off',
+      'including 1 video (8s)',
+      'or 25 images / 10 music tracks',
       '50 generations/day limit',
-      '5 image generations',
-      '3 music tracks',
-      '2 voice clips',
-      'Basic chat (Gemini Flash)',
+      'AI chat (Gemini)',
       'Community support',
     ],
     featuresKa: [
-      '200 კრედიტი/თვეში',
+      '50 უფასო კრედიტი ერთჯერადად',
+      'მათ შორის 1 ვიდეო (8 წმ)',
+      'ან 25 სურათი / 10 მუსიკა',
       '50 გენერაცია/დღეში (ლიმიტი)',
-      '5 სურათი',
-      '3 მუსიკალური ტრეკი',
-      '2 ხმოვანი კლიპი',
-      'ბაზისური ჩატი (Gemini Flash)',
+      'AI ჩატი (Gemini)',
       'Community Support',
     ],
     dailyLimit: 50,
-    monthlyCredits: 200,
+    // One-off, not a monthly allowance — see the note above. Kept as the grant size so anything reading
+    // this number gets the figure the signup trigger actually inserts.
+    monthlyCredits: 50,
     cta: 'Get Started Free',
     ctaKa: 'დაიწყე უფასოდ',
     popular: false,
