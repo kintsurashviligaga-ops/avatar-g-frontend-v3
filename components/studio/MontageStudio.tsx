@@ -28,6 +28,7 @@ import {
   Note, Hint, ProgressBar,
 } from './ui/controls';
 import { FIELD } from './ui/tokens';
+import { ResultActions } from './ui/ResultActions';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -365,7 +366,12 @@ export function MontageStudio({ locale }: { locale: string }) {
             </div>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video src={result.videoUrl} controls className="w-full rounded-xl" />
-            <a href={result.videoUrl} download className="inline-block text-xs text-app-accent hover:underline">MP4</a>
+            {/* ⚠️ WAS `<a href={url} download>`, WHICH DOES NOT DOWNLOAD. A browser ignores the `download`
+            attribute on a CROSS-ORIGIN href, and every one of these is a signed storage link — so the tap
+            navigated away from the app to the raw file instead of saving it. ResultActions fetches the
+            bytes into a Blob, offers the iOS share sheet (the only route to Photos), and files the asset
+            into the Library, which several services never did server-side. */}
+            <ResultActions url={result.videoUrl} kind="film" locale={(locale === 'en' || locale === 'ru' ? locale : 'ka')} />
             {result.warnings?.musicRequestedButMissing && (
               <p className="text-xs text-amber-400">{t.noMusic}</p>
             )}

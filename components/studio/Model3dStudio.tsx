@@ -21,6 +21,7 @@ import {
   type Model3dMode,
   type Model3dQuality,
 } from '@/lib/services/model3d/model3dPlan';
+import { ResultActions } from './ui/ResultActions';
 import {
   ChipGroup, Label, Field, TextArea, LabelledField, ToggleRow, PrimaryButton, ProgressBar,
 } from './ui/controls';
@@ -217,7 +218,12 @@ export function Model3dStudio({ locale }: { locale: string }) {
         {glbUrl && (
           <div className="mt-6 space-y-3">
             <GlbViewer url={glbUrl} />
-            <a href={glbUrl} download className="inline-block text-xs text-app-accent hover:underline">{t.download}</a>
+            {/* ⚠️ WAS `<a href={url} download>`, WHICH DOES NOT DOWNLOAD. A browser ignores the `download`
+            attribute on a CROSS-ORIGIN href, and every one of these is a signed storage link — so the tap
+            navigated away from the app to the raw file instead of saving it. ResultActions fetches the
+            bytes into a Blob, offers the iOS share sheet (the only route to Photos), and files the asset
+            into the Library, which several services never did server-side. */}
+            <ResultActions url={glbUrl} kind="model3d" locale={(locale === 'en' || locale === 'ru' ? locale : 'ka')} />
           </div>
         )}
       </div>

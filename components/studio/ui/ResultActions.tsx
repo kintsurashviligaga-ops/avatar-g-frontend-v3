@@ -36,6 +36,36 @@ function extFor(url: string, kind: string): string {
   return kind === 'music' ? 'mp3' : kind === 'image' ? 'png' : kind === 'model3d' ? 'glb' : 'mp4';
 }
 
+
+/**
+ * Save a cross-origin URL to disk, properly.
+ *
+ * ⚠️ `<a href={url} download>` DOES NOTHING ACROSS ORIGINS. The browser silently drops the `download`
+ * attribute and just navigates, so the tap opens the raw file instead of saving it. Every asset URL here
+ * is a signed storage link, i.e. cross-origin, i.e. always the broken case. Exported so the SECONDARY
+ * files a panel offers — a dub's audio stem, its subtitle track, a music video — get the same treatment
+ * as the primary result without each panel re-implementing it.
+ *
+ * Fail-open: a CORS block or an offline tab falls back to opening the file, which is still better than
+ * a button that appears to do nothing.
+ */
+export async function downloadFile(url: string, filename: string): Promise<void> {
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 4000);
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
 export function ResultActions({
   url, kind, locale, prompt, onNote,
 }: {

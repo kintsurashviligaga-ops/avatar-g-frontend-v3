@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import { Group, Label, Field, ToggleRow, PrimaryButton, Note, ProgressBar, Select } from './ui/controls';
+import { ResultActions, downloadFile } from './ui/ResultActions';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -223,10 +224,15 @@ export function DubbingStudio({ locale }: { locale: string }) {
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video src={result.videoUrl} controls className="w-full rounded-xl" />
             <div className="flex flex-wrap gap-4 text-xs">
-              <a href={result.videoUrl} download className="text-app-accent hover:underline">MP4</a>
-              <a href={result.audioUrl} download className="text-app-accent hover:underline">{t.audioLink}</a>
+              {/* ⚠️ WAS `<a href={url} download>`, WHICH DOES NOT DOWNLOAD. A browser ignores the `download`
+              attribute on a CROSS-ORIGIN href, and every one of these is a signed storage link — so the tap
+              navigated away from the app to the raw file instead of saving it. ResultActions fetches the
+              bytes into a Blob, offers the iOS share sheet (the only route to Photos), and files the asset
+              into the Library, which several services never did server-side. */}
+              <ResultActions url={result.videoUrl} kind="film" locale={(locale === 'en' || locale === 'ru' ? locale : 'ka')} />
+              <button type="button" onClick={() => { void downloadFile(result.audioUrl!, 'myavatar-dub-audio.mp3'); }} className="text-app-accent hover:underline">{t.audioLink}</button>
               {result.subtitlesUrl && (
-                <a href={result.subtitlesUrl} download className="text-app-accent hover:underline">{t.subsLink}</a>
+                <button type="button" onClick={() => { void downloadFile(result.subtitlesUrl!, 'myavatar-dub.srt'); }} className="text-app-accent hover:underline">{t.subsLink}</button>
               )}
             </div>
             {/* Partial results are stated, never presented as clean. */}
