@@ -10,6 +10,7 @@
  * i18n follows the studio-tree convention — a module-level COPY table, not a translation hook.
  */
 import { useState } from 'react';
+import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import { Group, Label, Field, ToggleRow, PrimaryButton, Note, ProgressBar, Select } from './ui/controls';
 
@@ -133,6 +134,7 @@ export function DubbingStudio({ locale }: { locale: string }) {
         setError(res.status === 413 ? t.tooLong : [t.failed, j?.step, j?.message].filter(Boolean).join(' · '));
         return;
       }
+      creditsUpdated(); // the dub is dispatched and billed — refresh the header pill
       setResult(j as DubResult);
     } catch {
       setError(t.failed);

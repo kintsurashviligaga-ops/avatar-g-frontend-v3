@@ -14,6 +14,7 @@
  * i18n follows the studio-tree convention: a module-level COPY table, not a translation hook.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
 import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import {
@@ -166,6 +167,7 @@ export function SlidesStudio({ locale }: { locale: string }) {
         setError([t.failed, j?.step, j?.message].filter(Boolean).join(' · '));
         return;
       }
+      creditsUpdated(); // the deck is built and billed — refresh the header pill
       setDeck(j as DeckResponse);
     } catch {
       setError(t.failed);

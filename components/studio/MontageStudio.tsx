@@ -13,6 +13,7 @@
  * i18n follows the studio-tree convention: a module-level COPY table, not a translation hook.
  */
 import { useMemo, useState } from 'react';
+import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import {
   MAX_SHOTS,
   MIN_SHOTS,
@@ -214,6 +215,7 @@ export function MontageStudio({ locale }: { locale: string }) {
         setError([t.failed, j?.step, j?.message].filter(Boolean).join(' · '));
         return;
       }
+      creditsUpdated(); // the montage rendered and billed — refresh the header pill
       setResult(j as Result);
     } catch {
       setError(t.failed);

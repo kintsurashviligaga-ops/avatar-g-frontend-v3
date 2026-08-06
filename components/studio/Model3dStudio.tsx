@@ -12,6 +12,7 @@
  * is shown: the user can see what the mesh is actually being built from.
  */
 import dynamic from 'next/dynamic';
+import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   pollDelayMs,
@@ -154,6 +155,7 @@ export function Model3dStudio({ locale }: { locale: string }) {
         setError(j?.error === 'provider_not_configured' ? t.notConfigured : [t.failed, j?.message].filter(Boolean).join(' · '));
         return;
       }
+      creditsUpdated(); // the reconstruction is submitted and billed — refresh the header pill
       await poll(j.predictionId, j.jobId);
     } catch {
       setError(t.failed);

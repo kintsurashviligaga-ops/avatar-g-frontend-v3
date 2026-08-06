@@ -18,6 +18,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -413,7 +414,7 @@ export function MusicStudio() {
         credentials: 'include',
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; coverUrl?: string; error?: string; engine?: string };
-      if (j.success && j.url) setResult({ url: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}) });
+      if (j.success && j.url) { creditsUpdated(); setResult({ url: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}) }); }
       else setError(j.error || t.failed);
     } catch {
       setError(t.failed);

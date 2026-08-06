@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { UploadCloud, Film, Music2, Wand2, Loader2, Download, X, AlertTriangle } from 'lucide-react';
 import { GenerationProgress } from './ui/GenerationProgress';
 
@@ -170,6 +171,8 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
         body: JSON.stringify({ videoUrl: v.url, audioUrl: a.url, kind: isVideoFace ? 'film' : 'photo' }), credentials: 'include',
       });
       const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null; code?: string | null };
+      // A jobId means the lipsync was accepted and billed — refresh the header pill.
+      if (startJson.jobId) creditsUpdated();
       if (!startJson.jobId) {
         // Machine codes must not reach the screen: 'insufficient_credits' was printed verbatim into a
         // Georgian UI, and a missing operator key was reported as a problem with the user's files.
