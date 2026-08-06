@@ -53,3 +53,18 @@ describe('Ken-Burns fallback is not charged', () => {
     }
   });
 });
+
+describe('the product-ad is filed into the Library', () => {
+  it('returns through finishAd, not a bare ok()', () => {
+    // ⚠️ productad IS in PERSIST_OPS, but the persistence lives in finishOk() — declared ~70 lines BELOW
+    // the productad block, so it is in the temporal dead zone there and could never have been called.
+    // The ad is one of the most expensive things this route sells (25–45 credits) and it existed only as
+    // a URL in a live HTTP response: a dropped socket lost the paid asset outright, unrefunded.
+    const block = src.slice(src.indexOf('Product ad generation failed.'), src.indexOf('const videoUrl = await resolveMedia'));
+    expect(block).toContain('const finishAd = async');
+    expect(block).toContain('recordCompletedFilm');
+    // Every exit from the branch must go through it.
+    expect(block).not.toMatch(/return ok\(url, \{ engine: adEngine/);
+    expect(block).not.toMatch(/return ok\(scored, \{ engine: adEngine/);
+  });
+});

@@ -354,6 +354,36 @@ export async function POST(req: NextRequest) {
       // plainly what produced it) but it is delivered free: kenBurnsClip is local ffmpeg, so giving it
       // away costs no provider spend.
       if (!animated) await refundCharge('fallback-kenburns');
+      /**
+       * File the finished ad into the durable Library, then return it.
+       *
+       * ⚠️ THIS BRANCH RETURNED THROUGH `ok()` AND NEVER TOUCHED THE LIBRARY. `productad` IS in
+       * PERSIST_OPS, but the persistence lives in finishOk() — declared ~70 lines BELOW this block, so it
+       * is in the temporal dead zone here and could not have been called even by accident. The ad is one
+       * of the most expensive things this route sells (25–45 credits) and it existed only as a URL in a
+       * live HTTP response: a dropped socket, a closed tab, a client that never read the body, and the
+       * paid asset was simply gone — not in the Library, and not refunded either.
+       *
+       * Duplicated rather than hoisted on purpose: finishOk() closes over `aspect`, which is declared
+       * after this block for the video ops. This path has its own `aspectP`.
+       */
+      const finishAd = async (mediaUrl: string, extra: Record<string, unknown>): Promise<NextResponse> => {
+        if (mediaUrl && remixUid) {
+          try {
+            const suffix = jobId ?? (await hashPayload({ u: remixUid, url: mediaUrl })).slice(0, 20);
+            await recordCompletedFilm({
+              id: `vremix:productad:${suffix}`,
+              userId: remixUid,
+              url: mediaUrl,
+              prompt: 'Video remix — productad',
+              orientation: aspectP === '9:16' ? 'vertical' : 'landscape',
+              result: { url: mediaUrl, kind: 'video', remix: true, op: 'productad', ...extra },
+              subtype: 'product',
+            });
+          } catch { /* Library filing is best-effort — never blocks the paid response */ }
+        }
+        return ok(mediaUrl, { ...extra, charged });
+      };
       // ⚠️ THE REPORTED ENGINE WAS THE STRING 'Kling AI' ON EVERY PATH, INCLUDING THE ONE WHERE KLING
       // DID NOT RUN. When the generative legs miss, kenBurnsClip produces a slow pan over the product
       // STILL — not a generated video at all — and the response still claimed Kling rendered it.
@@ -394,11 +424,11 @@ export async function POST(req: NextRequest) {
           // [0:a], and on a source with no audio track the exec throws and it falls through to the same
           // clean replace. So a silent Kling clip produces byte-identical output to before.
           const scored = await muxAudioOntoVideo(url, music, 'under', 12);
-          if (scored) return ok(scored, { engine: adEngine, music: true, clipSec: adClipSec });
+          if (scored) return await finishAd(scored, { engine: adEngine, music: true, clipSec: adClipSec });
         }
-        return ok(url, { engine: adEngine, music: false, clipSec: adClipSec });
+        return await finishAd(url, { engine: adEngine, music: false, clipSec: adClipSec });
       }
-      return ok(url, { engine: adEngine, clipSec: adClipSec });
+      return await finishAd(url, { engine: adEngine, clipSec: adClipSec });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[video/remix] productad', err instanceof Error ? err.message : err);
