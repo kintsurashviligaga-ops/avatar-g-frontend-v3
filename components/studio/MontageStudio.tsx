@@ -31,6 +31,7 @@ import { FIELD } from './ui/tokens';
 import { ResultActions } from './ui/ResultActions';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { useUpload } from './ui/useUpload';
+import { describeServiceError } from './ui/serviceError';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -231,7 +232,13 @@ export function MontageStudio({ locale }: { locale: string }) {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) {
-        setError([t.failed, j?.step, j?.message].filter(Boolean).join(' · '));
+        // ⚠️ THIS PASTED THE PIPELINE'S ENGLISH MACHINE STEP AND THE PROVIDER'S ENGLISH SENTENCE INTO
+        // GEORGIAN COPY. `[t.failed, j.step, j.message].join(' · ')` produced things like
+        // "ვერ მოხერხდა · stitch · Request failed with status 502" — three registers at once, none of
+        // them telling the user what to do. The step was never user-facing value either: the progress
+        // card names the stage in Georgian while the run is happening. What is left is the actionable
+        // part, and an unrecognised message falls back rather than being echoed.
+        setError(describeServiceError(j?.message ?? j?.step, locale, t.failed));
         return;
       }
       creditsUpdated(); // the montage rendered and billed — refresh the header pill

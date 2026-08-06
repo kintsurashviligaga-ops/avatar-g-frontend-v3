@@ -22,6 +22,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { describeServiceError } from './ui/serviceError';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes,
@@ -148,10 +149,13 @@ function filterMatches(kind: string, f: FilterKey): boolean {
 // card re-renders on each page merge. Props are stable (t is a constant COPY object, onDeleted is a
 // useCallback), so memo skips re-rendering the settled grid. Pure render perf; no behaviour change.
 const LibraryCard = memo(function LibraryCard({
-  item, t, onDeleted, isNew = false,
+  item, t, locale, onDeleted, isNew = false,
 }: {
   item: LibraryItem;
   t: (typeof COPY)['ka'];
+  /** Needed to localize a delete failure — `t` alone cannot say which language it is. A constant
+   *  string, so memo stays effective. */
+  locale: Lang;
   onDeleted: (id: string) => void;
   /** VECTOR 6 — a subtle badge when this asset was just added via a live library refresh. */
   isNew?: boolean;
@@ -225,7 +229,8 @@ const LibraryCard = memo(function LibraryCard({
         method: 'DELETE', credentials: 'include',
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!j.success) { setDeleteErr(j.error || t.deleteFailed); setDeleting(false); return; }
+      // A delete failure is the one moment a user most needs plain language, not the server's string.
+      if (!j.success) { setDeleteErr(describeServiceError(j.error, locale, t.deleteFailed)); setDeleting(false); return; }
       onDeleted(item.id);
     } catch {
       setDeleteErr(t.deleteFailed); setDeleting(false);
@@ -587,7 +592,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
           <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence mode="popLayout">
               {visible.map((item) => (
-                <LibraryCard key={item.id} item={item} t={t} onDeleted={handleDeleted} isNew={newIds.has(item.id)} />
+                <LibraryCard locale={locale} key={item.id} item={item} t={t} onDeleted={handleDeleted} isNew={newIds.has(item.id)} />
               ))}
             </AnimatePresence>
           </div>

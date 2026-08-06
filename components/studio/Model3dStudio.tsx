@@ -25,6 +25,7 @@ import { ResultActions } from './ui/ResultActions';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { Dropzone } from './ui/controls';
 import { useUpload } from './ui/useUpload';
+import { describeServiceError } from './ui/serviceError';
 import {
   ChipGroup, Label, Field, TextArea, LabelledField, ToggleRow, PrimaryButton, SecondaryButton,
 } from './ui/controls';
@@ -146,7 +147,9 @@ export function Model3dStudio({ locale }: { locale: string }) {
         return;
       }
       if (j.status === 'failed') {
-        setError(j.message ? `${t.failed} · ${j.message}` : t.failed);
+        // Same defect, shorter form: `${t.failed} · ${j.message}` still pastes the provider's English
+        // sentence onto Georgian copy. The mapper keeps an unrecognised one off the screen.
+        setError(describeServiceError(j.message, locale, t.failed));
         return;
       }
     }

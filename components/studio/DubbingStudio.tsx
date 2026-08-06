@@ -17,6 +17,7 @@ import { useUpload } from './ui/useUpload';
 import { Film } from 'lucide-react';
 import { ResultActions, downloadFile } from './ui/ResultActions';
 import { GenerationProgress } from './ui/GenerationProgress';
+import { describeServiceError } from './ui/serviceError';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -148,7 +149,13 @@ export function DubbingStudio({ locale }: { locale: string }) {
       const j = await res.json().catch(() => null);
       if (!res.ok) {
         // The route names the leg that failed — showing it beats a generic "something went wrong".
-        setError(res.status === 413 ? t.tooLong : [t.failed, j?.step, j?.message].filter(Boolean).join(' · '));
+        // ⚠️ THIS PASTED THE PIPELINE'S ENGLISH MACHINE STEP AND THE PROVIDER'S ENGLISH SENTENCE INTO
+        // GEORGIAN COPY. `[t.failed, j.step, j.message].join(' · ')` produced things like
+        // "ვერ მოხერხდა · stitch · Request failed with status 502" — three registers at once, none of
+        // them telling the user what to do. The step was never user-facing value either: the progress
+        // card names the stage in Georgian while the run is happening. What is left is the actionable
+        // part, and an unrecognised message falls back rather than being echoed.
+        setError(res.status === 413 ? t.tooLong : describeServiceError(j?.message ?? j?.step, locale, t.failed));
         return;
       }
       creditsUpdated(); // the dub is dispatched and billed — refresh the header pill

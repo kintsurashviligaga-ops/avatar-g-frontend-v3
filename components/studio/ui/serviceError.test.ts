@@ -7,6 +7,8 @@
  * MusicStudio never had the guard at all. So a Georgian panel could display `duplicate_request`, or a
  * sentence written for an American developer, as if it were user-facing copy.
  */
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describeServiceError } from './serviceError';
 
 const KA_FALLBACK = 'ვერ მოხერხდა';
@@ -47,5 +49,34 @@ describe('describeServiceError', () => {
     for (const code of ['insufficient_credits', 'timeout', 'too_large', 'unsupported_format']) {
       expect(describeServiceError(code, 'en', 'x')).toMatch(/try|top up|wait|sign in/i);
     }
+  });
+});
+
+describe('no surface pastes a raw server string any more', () => {
+  const dir = join(__dirname, '..');
+  const files = readdirSync(dir).filter((f) => f.endsWith('.tsx'));
+  /** Comments stripped — each fix quotes the pattern it removed, and would otherwise match itself. */
+  const codeOf = (f: string) =>
+    readFileSync(join(dir, f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+
+  it('has no [t.failed, j.step, j.message].join left', () => {
+    // ⚠️ THE SHAPE THIS REPLACED produced "ვერ მოხერხდა · stitch · Request failed with status 502" —
+    // three registers in one line, none of them telling the user what to do. The step was never
+    // user-facing value either: the progress card names the stage in Georgian while the run happens.
+    const offenders = files.filter((f) => /\[t\.failed,\s*j\??\.step/.test(codeOf(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  it('has no `${t.failed} · ${j.message}` left', () => {
+    const offenders = files.filter((f) => /\$\{t\.failed\}\s*·\s*\$\{j\.message\}/.test(codeOf(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  it('routes setError through the mapper wherever a server string is involved', () => {
+    // A bare `setError(j.error || t.failed)` is the original defect in its smallest form.
+    const offenders = files.filter((f) => /setError\((?:p?j)\.(error|message)\s*\|\|/.test(codeOf(f)));
+    expect(offenders).toEqual([]);
   });
 });

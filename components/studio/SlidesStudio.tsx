@@ -18,6 +18,7 @@ import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
 import { downloadDeckZip } from '@/lib/services/presentation/deckZip';
 import { GenerationProgress } from './ui/GenerationProgress';
+import { describeServiceError } from './ui/serviceError';
 import {
   Group, Grid, Label, Field, TextArea, ToggleRow, PrimaryButton, SecondaryButton, IconButton,
   Note, Select,
@@ -177,7 +178,13 @@ export function SlidesStudio({ locale }: { locale: string }) {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) {
-        setError([t.failed, j?.step, j?.message].filter(Boolean).join(' · '));
+        // ⚠️ THIS PASTED THE PIPELINE'S ENGLISH MACHINE STEP AND THE PROVIDER'S ENGLISH SENTENCE INTO
+        // GEORGIAN COPY. `[t.failed, j.step, j.message].join(' · ')` produced things like
+        // "ვერ მოხერხდა · stitch · Request failed with status 502" — three registers at once, none of
+        // them telling the user what to do. The step was never user-facing value either: the progress
+        // card names the stage in Georgian while the run is happening. What is left is the actionable
+        // part, and an unrecognised message falls back rather than being echoed.
+        setError(describeServiceError(j?.message ?? j?.step, locale, t.failed));
         return;
       }
       creditsUpdated(); // the deck is built and billed — refresh the header pill
