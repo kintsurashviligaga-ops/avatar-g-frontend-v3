@@ -29,6 +29,15 @@ const norm = (v: string | null | undefined) => String(v || '').trim();
 const ALLOWED: Record<string, string> = {
   '20260802d_fix_starter_trigger_name.sql': 'supabase/migrations/20260802d_fix_starter_trigger_name.sql',
   '20260802c_unified_free_trial.sql': 'supabase/migrations/20260802c_unified_free_trial.sql',
+  // The rest of the August batch. All idempotent + self-verifying, so a re-run is a no-op.
+  // ⚠️ REGISTERED BUT NOT CURRENTLY APPLIABLE. Probed 2026-08-06: BOTH DDL channels are dead in
+  // production — SUPABASE_ACCESS_TOKEN returns 401 (expired) and no exec_sql RPC exists, so this gate
+  // answers "management_api: 401 | exec_sql_rpc: 404" for every file, including the ones already listed.
+  // Listing them costs nothing and makes the documented curl work the moment a fresh token is set in
+  // Vercel; until then they go into the SQL editor by hand.
+  '20260802e_admin_emails.sql': 'supabase/migrations/20260802e_admin_emails.sql',
+  '20260802f_active_visitors.sql': 'supabase/migrations/20260802f_active_visitors.sql',
+  '20260802g_agent_video_queue.sql': 'supabase/migrations/20260802g_agent_video_queue.sql',
   // Support live chat. Registered so it can be applied without hand-pasting 294 lines into the SQL
   // editor — the file is idempotent and self-verifying, so a re-run is a no-op.
   '20260802_support_live_chat.sql': 'supabase/migrations/20260802_support_live_chat.sql',
@@ -74,6 +83,9 @@ const EXPECTED_FNS: Record<string, string[]> = {
   '20260627_pipeline_checkpoints.sql': [], // tables + columns only, no new functions
   '20260704_generation_jobs_position.sql': [], // single ADD COLUMN, no new functions
   '20260711_hot_path_indexes.sql': [], // two CREATE INDEX only, no new functions
+  '20260802e_admin_emails.sql': [], // table + RLS only, no new functions
+  '20260802f_active_visitors.sql': [], // table + RLS only, no new functions
+  '20260802g_agent_video_queue.sql': [], // table + indexes + RLS only, no new functions
   '006_gemini_chat_history.sql': [],
   '20260801_durable_chat_history.sql': [], // ALTERs + indexes + RLS only, no new functions
 };

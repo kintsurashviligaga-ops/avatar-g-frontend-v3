@@ -139,14 +139,16 @@ const nextConfig = {
       // Video Remix: EVERY ffmpeg op (color_grade/speed/trim/mux/Ken-Burns) + captions
       // (overlayMasterUrl → resvg SVG→PNG) runs here. Without the binary + resvg the
       // lambda ENOENTs and every remix silently fails — the users' "broken remix".
-      // ⚠️ ./public/logo.png RIDES TOO — addWatermark() reads it off the FILESYSTEM. Next serves
-      // public/ statically, which does NOT put it inside the lambda bundle: without this the
+      // ⚠️ THE MARK ASSETS RIDE TOO — addWatermark() reads them off the FILESYSTEM. Next serves
+      // public/ statically, which does NOT put them inside the lambda bundle: without this the
       // existsSync() guard returns false in production and every clip ships unmarked, silently and
       // with no error anywhere. Same class of trap as ffmpeg-static itself.
-      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**', './public/logo.png'],
+      // BOTH files: watermark.png is the real RGBA mark, logo.png is the fallback (and is a JPEG with no
+      // alpha — see WATERMARK_ASSETS in lib/video/remixOps.ts).
+      '/api/video/remix': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**', './public/watermark.png', './public/logo.png'],
       // The agent queue watermarks each finished clip through the same addWatermark() — so it needs the
-      // binary AND the logo in its own lambda, or every batch clip ships unmarked and silently.
-      '/api/agent/video-queue/drain': ['./node_modules/ffmpeg-static/**', './public/logo.png'],
+      // binary AND the mark in its own lambda, or every batch clip ships unmarked and silently.
+      '/api/agent/video-queue/drain': ['./node_modules/ffmpeg-static/**', './public/watermark.png', './public/logo.png'],
       // Motion Control: the optional background-music pass muxes a MusicGen bed onto the
       // Kling clip via ffmpeg-static (muxAudioOntoVideo). The mux now runs in the async
       // /status finalize poll (not the submit-only POST), so the binary must ride along
