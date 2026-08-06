@@ -23,6 +23,8 @@ import {
 } from '@/lib/services/model3d/model3dPlan';
 import { ResultActions } from './ui/ResultActions';
 import { GenerationProgress } from './ui/GenerationProgress';
+import { Dropzone } from './ui/controls';
+import { useUpload } from './ui/useUpload';
 import {
   ChipGroup, Label, Field, TextArea, LabelledField, ToggleRow, PrimaryButton, SecondaryButton,
 } from './ui/controls';
@@ -40,7 +42,7 @@ const COPY = {
     modeImage: 'ფოტოდან',
     prompt: 'აღწერა',
     promptPlaceholder: 'მაგ. კერამიკული ჩაიდანი, ქართული ორნამენტით',
-    imageUrl: 'ფოტოს ბმული',
+    imageUrl: 'ფოტოს ბმული', picked: 'სურათი არჩეულია', pick: 'აირჩიე სურათი', pickHint: 'ან ჩასვი ბმული ქვემოთ',
     quality: 'ხარისხი',
     draft: 'სწრაფი',
     standard: 'სტანდარტული',
@@ -60,7 +62,7 @@ const COPY = {
     modeImage: 'From photo',
     prompt: 'Description',
     promptPlaceholder: 'e.g. a ceramic teapot with Georgian ornament',
-    imageUrl: 'Photo URL',
+    imageUrl: 'Photo URL', picked: 'Image selected', pick: 'Choose an image', pickHint: 'or paste a link below',
     quality: 'Quality',
     draft: 'Draft',
     standard: 'Standard',
@@ -80,7 +82,7 @@ const COPY = {
     modeImage: 'Из фото',
     prompt: 'Описание',
     promptPlaceholder: 'напр. керамический чайник с грузинским орнаментом',
-    imageUrl: 'Ссылка на фото',
+    imageUrl: 'Ссылка на фото', picked: 'Изображение выбрано', pick: 'Выберите изображение', pickHint: 'или вставьте ссылку ниже',
     quality: 'Качество',
     draft: 'Черновик',
     standard: 'Стандарт',
@@ -105,6 +107,7 @@ export function Model3dStudio({ locale }: { locale: string }) {
   const [quality, setQuality] = useState<Model3dQuality>('draft');
   const [removeBackground, setRemoveBackground] = useState(true);
   const [busy, setBusy] = useState(false);
+  const { upload: uploadFile, busy: uploading, error: uploadError } = useUpload(locale);
   // ⚠️ A 1px INDETERMINATE BAR IS NOT PROGRESS. This render is measured in MINUTES, and against that a
   // bar with one static label is indistinguishable from a hang — so the reasonable response, reload or
   // press it again, either loses the render or pays for a second one. The shared card shows the stage,
@@ -196,8 +199,26 @@ export function Model3dStudio({ locale }: { locale: string }) {
               <TextArea rows={3} value={prompt} maxLength={MAX_PROMPT_CHARS} onChange={(e) => setPrompt(e.target.value)} placeholder={t.promptPlaceholder} />
             </LabelledField>
           ) : (
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-2">
               <Label>{t.imageUrl}</Label>
+              {/* ⚠️ A TYPED https URL IS NOT AVAILABLE TO A PHONE. The photo lives in the camera roll,
+                  not on a server the user controls — the same gap Dubbing had, while the in-chat panel
+                  drove this route with a real picker all along. The URL field stays for a link to
+                  something already online; both write the same state. */}
+              <Dropzone
+                id="m3d-image"
+                accept="image/*"
+                disabled={busy || uploading}
+                filled={Boolean(imageUrl)}
+                title={imageUrl ? t.picked : t.pick}
+                hint={t.pickHint}
+                onFiles={(files) => {
+                  const f = files[0];
+                  if (!f) return;
+                  void (async () => { const path = await uploadFile(f); if (path) setImageUrl(path); })();
+                }}
+              />
+              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
               <Field type="url" inputMode="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/photo.jpg" />
             </div>
           )}

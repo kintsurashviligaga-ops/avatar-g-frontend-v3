@@ -65,7 +65,7 @@ describe('mobile parity — a file picker, not a typed URL', () => {
    * unusable, while the in-chat panel drove the very same route with a real picker. The URL field stays
    * for the case it was actually good at: a link to something already online.
    */
-  const WITH_PICKER = ['DubbingStudio.tsx'];
+  const WITH_PICKER = ['DubbingStudio.tsx', 'MontageStudio.tsx', 'Model3dStudio.tsx'];
 
   it.each(WITH_PICKER)('%s offers a Dropzone', (f) => {
     expect(src(f)).toContain('<Dropzone');
@@ -85,10 +85,18 @@ describe('mobile parity — a file picker, not a typed URL', () => {
     expect(src(f)).toContain('uploadError');
   });
 
-  it('records the studios still demanding a typed URL', () => {
-    // A ledger, not an assertion — shrinking it is the work; this stops it growing unseen.
-    const remaining = ['MontageStudio.tsx', 'Model3dStudio.tsx']
-      .filter((f) => !src(f).includes('<Dropzone'));
-    expect(remaining.length).toBeLessThanOrEqual(2);
+  it('every studio that takes a media URL now offers a picker', () => {
+    // The ledger is empty: Dubbing, Montage and 3D were the three that demanded a typed URL, and all
+    // three are migrated. Kept as an assertion rather than deleted, so a new URL-only studio is caught.
+    const urlOnly = ['DubbingStudio.tsx', 'MontageStudio.tsx', 'Model3dStudio.tsx']
+      .filter((f) => src(f).includes('type="url"') && !src(f).includes('<Dropzone'));
+    expect(urlOnly).toEqual([]);
+  });
+
+  it('Montage offers a picker per row AND for the music bed', () => {
+    // A montage is several files; one picker at the top would not have been the fix.
+    const s = src('MontageStudio.tsx');
+    expect(s).toContain('id={`mtg-${row.key}`}');
+    expect(s).toContain('id="mtg-music"');
   });
 });

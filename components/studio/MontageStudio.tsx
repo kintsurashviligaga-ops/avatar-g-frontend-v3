@@ -25,10 +25,12 @@ import {
 } from '@/lib/services/montage/montagePlan';
 import {
   Row, Grid, Label, Field, Select, ToggleRow, PrimaryButton, SecondaryButton, IconButton,
-  Note, Hint, } from './ui/controls';
+  Note, Hint, Dropzone,
+} from './ui/controls';
 import { FIELD } from './ui/tokens';
 import { ResultActions } from './ui/ResultActions';
 import { GenerationProgress } from './ui/GenerationProgress';
+import { useUpload } from './ui/useUpload';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -54,6 +56,7 @@ const COPY = {
     down: 'ჩამოწევა',
     aspect: 'ფორმატი',
     music: 'ფონური მუსიკა (არჩევითი)',
+    picked: 'ფაილი არჩეულია', pick: 'აირჩიე ფაილი', pickHint: 'ან ჩასვი ბმული ქვემოთ',
     musicOnly: 'მხოლოდ მუსიკა (კადრების ხმის გარეშე)',
     total: 'ხანგრძლივობა',
     submit: 'მონტაჟის დაწყება',
@@ -87,6 +90,7 @@ const COPY = {
     down: 'Down',
     aspect: 'Aspect',
     music: 'Music bed (optional)',
+    picked: 'File selected', pick: 'Choose a file', pickHint: 'or paste a link below',
     musicOnly: 'Music only (drop clip audio)',
     total: 'Duration',
     submit: 'Start montage',
@@ -120,6 +124,7 @@ const COPY = {
     down: 'Вниз',
     aspect: 'Формат',
     music: 'Фоновая музыка (необязательно)',
+    picked: 'Файл выбран', pick: 'Выберите файл', pickHint: 'или вставьте ссылку ниже',
     musicOnly: 'Только музыка (без звука кадров)',
     total: 'Длительность',
     submit: 'Начать монтаж',
@@ -165,6 +170,7 @@ export function MontageStudio({ locale }: { locale: string }) {
   const [musicUrl, setMusicUrl] = useState('');
   const [musicOnly, setMusicOnly] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { upload: uploadFile, busy: uploading, error: uploadError } = useUpload(locale);
   // ⚠️ A 1px INDETERMINATE BAR IS NOT PROGRESS. This render is measured in MINUTES, and against that a
   // bar with one static label is indistinguishable from a hang — so the reasonable response, reload or
   // press it again, either loses the render or pays for a second one. The shared card shows the stage,
@@ -264,6 +270,24 @@ export function MontageStudio({ locale }: { locale: string }) {
                 </div>
               </div>
 
+              {/* ⚠️ EVERY ROW ASKED FOR A TYPED https URL, AND A MONTAGE IS MADE OF THE USER'S OWN
+                  FOOTAGE — which lives in a camera roll, not on a server they control. On a phone this
+                  studio could not be used at all, while the in-chat panel drove the same route with a
+                  real picker. The URL field stays for a link to something already online; both write the
+                  same row. */}
+              <Dropzone
+                id={`mtg-${row.key}`}
+                accept={row.kind === 'image' ? 'image/*' : 'video/*'}
+                disabled={busy || uploading}
+                filled={Boolean(row.url)}
+                title={row.url ? t.picked : t.pick}
+                hint={t.pickHint}
+                onFiles={(files) => {
+                  const f = files[0];
+                  if (!f) return;
+                  void (async () => { const path = await uploadFile(f); if (path) patch(row.key, { url: path }); })();
+                }}
+              />
               <input
                 type="url"
                 value={row.url}
@@ -353,6 +377,19 @@ export function MontageStudio({ locale }: { locale: string }) {
 
           <div className="min-w-0">
             <Label>{t.music}</Label>
+            <Dropzone
+              id="mtg-music"
+              accept="audio/*"
+              disabled={busy || uploading}
+              filled={Boolean(musicUrl)}
+              title={musicUrl ? t.picked : t.pick}
+              hint={t.pickHint}
+              onFiles={(files) => {
+                const f = files[0];
+                if (!f) return;
+                void (async () => { const path = await uploadFile(f); if (path) setMusicUrl(path); })();
+              }}
+            />
             <Field type="url" inputMode="url" value={musicUrl} onChange={(e) => setMusicUrl(e.target.value)} placeholder="https://…/track.mp3" />
           </div>
           {musicUrl.trim() && <ToggleRow on={musicOnly} onChange={setMusicOnly} label={t.musicOnly} />}
@@ -371,6 +408,9 @@ export function MontageStudio({ locale }: { locale: string }) {
               had to work out for themselves that the primary button doubles as the retry and that their
               inputs had survived. Everything the run needs is still in component state, so retrying is
               one call — it just was never offered. */}
+          {/* An upload failure is its own thing — the render never started, so it must not be dressed
+              up as a failed montage with a retry beside it. useUpload already localizes this. */}
+          {uploadError && <Note tone="error">{uploadError}</Note>}
           {error && (
             <div className="space-y-2">
               <Note tone="error">{error}</Note>
