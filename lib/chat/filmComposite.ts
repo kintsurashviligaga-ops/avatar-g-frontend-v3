@@ -385,11 +385,25 @@ async function renderClip(
       // for this leg — flag it even when no taskRef came back, so a downstream
       // total-failure rollback refunds exactly what was billed.
       if (billable) debited = true;
-      if (taskRef) {
+      // ⚠️ A REFERENCE IS NOT AN ACCEPTANCE. This checked only that SOMETHING came back, so a dispatch
+      // that handed over an id while reporting a terminal failure was filed as `queued` — which did three
+      // wrong things at once: the leg kept its charge, it counted toward `anyClip` and so suppressed the
+      // whole-film rollback for its siblings, and the poller was left waiting on a job that was already
+      // dead. ServiceManager.execute() reports exactly this shape (`predictionStatus: 'failed'` /
+      // `success: false`, ServiceManager.ts:277) and its own retry loop already refuses it the same way
+      // (line 371) — this call site was the one that did not.
+      const dispatchDead = dispatched.success === false
+        || dispatched.predictionStatus === 'failed'
+        || dispatched.predictionStatus === 'canceled'
+        || dispatched.predictionStatus === 'error';
+      if (taskRef && !dispatchDead) {
         return { ordinal: scene.ordinal, taskRef, status: 'queued', attempts: attempt, debited, engine };
       }
-      // No provider job materialised — treat as a soft failure and retry.
-      lastErr = new Error('dispatch returned no task reference');
+      // No usable provider job — treat as a soft failure and retry. Naming which of the two it was keeps
+      // "the provider refused it" distinguishable from "nothing came back at all" in the leg's error.
+      lastErr = new Error(dispatchDead
+        ? `dispatch reported ${dispatched.predictionStatus ?? 'failure'} without a usable job`
+        : 'dispatch returned no task reference');
     } catch (err) {
       lastErr = err;
       // eslint-disable-next-line no-console

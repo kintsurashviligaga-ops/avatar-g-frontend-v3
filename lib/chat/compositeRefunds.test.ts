@@ -64,3 +64,22 @@ describe('film composite', () => {
     expect(src).toMatch(/\$\{compositeId\}:clip:\$\{c\.ordinal\}:refund/);
   });
 });
+
+describe('film dispatch acceptance', () => {
+  const src = readFileSync(join(__dirname, '..', '..', 'lib/chat/filmComposite.ts'), 'utf8');
+
+  it('does not file a terminally-failed dispatch as queued', () => {
+    // ⚠️ A REFERENCE IS NOT AN ACCEPTANCE. The check used to be `if (taskRef)` alone, so a dispatch that
+    // handed back an id while reporting failure was filed as `queued` — the leg kept its charge, it
+    // counted toward `anyClip` and so suppressed the rollback for its siblings, and the poller waited on
+    // a job that was already dead. ServiceManager's own retry loop refuses the same shape.
+    expect(src).toContain('if (taskRef && !dispatchDead)');
+    expect(src).toMatch(/dispatched\.success === false/);
+    expect(src).toMatch(/dispatched\.predictionStatus === 'failed'/);
+  });
+
+  it('treats canceled and error as dead too', () => {
+    expect(src).toMatch(/predictionStatus === 'canceled'/);
+    expect(src).toMatch(/predictionStatus === 'error'/);
+  });
+});
