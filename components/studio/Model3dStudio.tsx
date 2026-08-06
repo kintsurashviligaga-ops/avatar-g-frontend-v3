@@ -22,8 +22,9 @@ import {
   type Model3dQuality,
 } from '@/lib/services/model3d/model3dPlan';
 import { ResultActions } from './ui/ResultActions';
+import { GenerationProgress } from './ui/GenerationProgress';
 import {
-  ChipGroup, Label, Field, TextArea, LabelledField, ToggleRow, PrimaryButton, ProgressBar,
+  ChipGroup, Label, Field, TextArea, LabelledField, ToggleRow, PrimaryButton, SecondaryButton,
 } from './ui/controls';
 
 // three touches `window` on import — it cannot be server-rendered.
@@ -104,6 +105,18 @@ export function Model3dStudio({ locale }: { locale: string }) {
   const [quality, setQuality] = useState<Model3dQuality>('draft');
   const [removeBackground, setRemoveBackground] = useState(true);
   const [busy, setBusy] = useState(false);
+  // ⚠️ A 1px INDETERMINATE BAR IS NOT PROGRESS. This render is measured in MINUTES, and against that a
+  // bar with one static label is indistinguishable from a hang — so the reasonable response, reload or
+  // press it again, either loses the render or pays for a second one. The shared card shows the stage,
+  // the elapsed clock and a realistic remaining estimate, the same as every other service.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!busy) { setElapsed(0); return; }
+    const t0 = Date.now();
+    const id = window.setInterval(() => setElapsed((Date.now() - t0) / 1000), 500);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
@@ -210,9 +223,20 @@ export function Model3dStudio({ locale }: { locale: string }) {
           {/* `progress` is still wired from the poll, so the bar becomes determinate the moment the
               endpoint starts reporting one. Until then it animates rather than sitting frozen at 0%,
               which is what made a multi-minute reconstruction look like a hung page. */}
-          {busy && <ProgressBar label={t.working} {...(progress > 0 ? { pct: progress } : {})} />}
+          {busy && <GenerationProgress kind="model3d" elapsed={elapsed} locale={(locale === 'en' || locale === 'ru' ? locale : 'ka')} {...(progress > 0 ? { pct: progress } : {})} />}
           {busy && <p className="text-center text-xs text-app-muted">{t.warn}</p>}
-          {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>}
+          {/* ⚠️ A FAILURE WAS A DEAD END. The error rendered alone, with no control beside it, so the user
+              had to work out for themselves that the primary button doubles as the retry and that their
+              inputs had survived. Everything the run needs is still in component state, so retrying is
+              one call — it just was never offered. */}
+          {error && (
+            <div className="space-y-2">
+              <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</p>
+              <SecondaryButton onClick={submit} disabled={busy}>
+                {locale === 'en' ? 'Try again' : locale === 'ru' ? 'Попробовать снова' : 'ხელახლა ცდა'}
+              </SecondaryButton>
+            </div>
+          )}
         </div>
 
         {glbUrl && (

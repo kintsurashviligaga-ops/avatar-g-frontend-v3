@@ -9,11 +9,12 @@
  *
  * i18n follows the studio-tree convention — a module-level COPY table, not a translation hook.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
-import { Group, Label, Field, ToggleRow, PrimaryButton, Note, ProgressBar, Select } from './ui/controls';
+import { Group, Label, Field, ToggleRow, PrimaryButton, Note, Select, SecondaryButton } from './ui/controls';
 import { ResultActions, downloadFile } from './ui/ResultActions';
+import { GenerationProgress } from './ui/GenerationProgress';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -115,6 +116,18 @@ export function DubbingStudio({ locale }: { locale: string }) {
   const [preserveBackgroundAudio, setPreserveBg] = useState(true);
   const [subtitles, setSubtitles] = useState(true);
   const [busy, setBusy] = useState(false);
+  // ⚠️ A 1px INDETERMINATE BAR IS NOT PROGRESS. This render is measured in MINUTES, and against that a
+  // bar with one static label is indistinguishable from a hang — so the reasonable response, reload or
+  // press it again, either loses the render or pays for a second one. The shared card shows the stage,
+  // the elapsed clock and a realistic remaining estimate, the same as every other service.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!busy) { setElapsed(0); return; }
+    const t0 = Date.now();
+    const id = window.setInterval(() => setElapsed((Date.now() - t0) / 1000), 500);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DubResult | null>(null);
 
@@ -206,11 +219,22 @@ export function DubbingStudio({ locale }: { locale: string }) {
 
           {busy && (
             <>
-              <ProgressBar label={t.working} />
+              <GenerationProgress kind="dubbing" elapsed={elapsed} locale={(locale === 'en' || locale === 'ru' ? locale : 'ka')} />
               <p className="text-center text-[11px] text-app-muted">{t.warn}</p>
             </>
           )}
-          {error && <Note tone="error">{error}</Note>}
+          {/* ⚠️ A FAILURE WAS A DEAD END. The error rendered alone, with no control beside it, so the user
+              had to work out for themselves that the primary button doubles as the retry and that their
+              inputs had survived. Everything the run needs is still in component state, so retrying is
+              one call — it just was never offered. */}
+          {error && (
+            <div className="space-y-2">
+              <Note tone="error">{error}</Note>
+              <SecondaryButton onClick={submit} disabled={busy}>
+                {locale === 'en' ? 'Try again' : locale === 'ru' ? 'Попробовать снова' : 'ხელახლა ცდა'}
+              </SecondaryButton>
+            </div>
+          )}
         </div>
 
         {result && (
