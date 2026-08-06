@@ -592,16 +592,39 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const handleDeleteConversation = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setConversations((prev) => prev.filter((c) => c.id !== id)); // optimistic
+
+    /** Remove the row from storage ourselves. Returns false when there was nothing left to remove. */
+    const purgeLocally = (): boolean => {
+      try {
+        const raw = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as Array<{ id?: string }>;
+        if (!Array.isArray(raw) || !raw.some((c) => c?.id === id)) return false;
+        window.localStorage.setItem(OMNI_CONVERSATIONS_KEY, JSON.stringify(raw.filter((c) => c?.id !== id)));
+        if (window.localStorage.getItem(OMNI_CURRENT_ID_KEY) === id) window.localStorage.removeItem(OMNI_CURRENT_ID_KEY);
+        return true;
+      } catch { return false; }
+    };
+
     if (onDashboard) {
+      // ⚠️ THIS USED TO DISPATCH AND RETURN, WRITING NOTHING. The delete then depended entirely on
+      // OmniStudio being mounted with its listener attached — and when it was not, the click was purely
+      // optimistic: the row vanished from this component's state and came back on the next read. Caught
+      // by an E2E test, not by reading: every unit involved was correct on its own.
+      //
+      // ⚠️ ORDER MATTERS. OmniStudio is still asked FIRST, because it reads the row to get its serverSid
+      // before deleting — that id is what tombstones the chat and deletes it server-side, and it is
+      // unrecoverable once the row is gone. Only if the row SURVIVES the round trip do we purge it here,
+      // so the user's click always sticks even when nobody was listening.
       window.dispatchEvent(new CustomEvent('myavatar:delete-conversation', { detail: { id } }));
+      window.setTimeout(() => {
+        if (purgeLocally()) {
+          // eslint-disable-next-line no-console
+          console.warn('[chrome] delete fell back to a local purge — the studio was not listening');
+          window.dispatchEvent(new Event('myavatar:conversations-updated'));
+        }
+      }, 0);
       return;
     }
-    try {
-      const raw = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as Array<{ id?: string }>;
-      const next = Array.isArray(raw) ? raw.filter((c) => c?.id !== id) : [];
-      window.localStorage.setItem(OMNI_CONVERSATIONS_KEY, JSON.stringify(next));
-      if (window.localStorage.getItem(OMNI_CURRENT_ID_KEY) === id) window.localStorage.removeItem(OMNI_CURRENT_ID_KEY);
-    } catch { /* ignore */ }
+    purgeLocally();
     window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, [onDashboard]);
   // Wipe ALL conversations (confirm first — irreversible). Resets the active chat too.
