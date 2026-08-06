@@ -1419,7 +1419,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -1896,8 +1896,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
   // P5 — Chat: response language (auto = reply in the user's language) + model tier.
-  const [chatLang, setChatLang] = useState<'auto' | 'ka' | 'en' | 'ru'>('auto');
-  const [chatTier, setChatTier] = useState<'standard' | 'pro'>('standard');
+  const [chatLang, _setChatLang] = useState<'auto' | 'ka' | 'en' | 'ru'>('auto');
+  const [chatTier, _setChatTier] = useState<'standard' | 'pro'>('standard');
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
   const [imgNegativeOpen, setImgNegativeOpen] = useState(false);

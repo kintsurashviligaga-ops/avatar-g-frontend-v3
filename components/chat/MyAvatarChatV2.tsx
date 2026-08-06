@@ -69,7 +69,6 @@ import {
   Menu,
   MessageSquare,
   Mic,
-  MicOff,
   Minimize2,
   MoreHorizontal,
   Music,
@@ -4868,7 +4867,7 @@ function FilmLegGlyph({ state, accent, size = 14 }: { state: StageState; accent:
 }
 
 function FilmStoryboardSkeleton({
-  stages, lang, accent, labels,
+  stages, lang: _lang, accent, labels,
 }: {
   stages: PipelineStage[];
   lang: 'en' | 'ka' | 'ru';

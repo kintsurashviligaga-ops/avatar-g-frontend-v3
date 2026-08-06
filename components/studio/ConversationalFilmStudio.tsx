@@ -31,7 +31,6 @@ import {
   Loader2,
   AlertTriangle,
   X,
-  ArrowRight,
   LogIn,
   Menu,
   Plus,
@@ -61,7 +60,6 @@ import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { analytics } from '@/components/analytics/PostHogProvider';
 import { reportError } from '@/lib/observability/report-error';
 import { formatGEL } from '@/lib/billing/gel';
-import { FILM_SCENE_COUNT } from '@/lib/chat/filmPipeline';
 import {
   driveFilmStudio,
   estimateFilmCostGel,

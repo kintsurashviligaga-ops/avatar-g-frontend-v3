@@ -378,7 +378,7 @@ async function pollTaskResult(baseUrl: string, apiKey: string, taskId: string, o
   // MEASURED: NanoBanana was still processing at 48s. 20x1500 = 30s abandoned a HEALTHY render.
   const budgetMs = opts?.budgetMs ?? parsePositiveInt(process.env.NANOBANANA_POLL_BUDGET_MS, 150_000);
   const maxAttempts = opts?.maxAttempts ?? Math.max(4, Math.ceil(budgetMs / (pollIntervalMs + 400)));
-  const deadline = Date.now() + budgetMs;
+  const _deadline = Date.now() + budgetMs;
 
   // WALL-CLOCK CAP. Attempts alone do NOT bound this leg: every status GET can additionally burn its
   // own socket timeout, so "40 × 2.5s" is a FLOOR, not a ceiling, and a hung provider stretches it past

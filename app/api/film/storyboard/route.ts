@@ -55,12 +55,12 @@ const SINGLE_SHOT_CLAUSE =
   'A single, unified, continuous cinematic film still. One isolated focused shot. Strictly single frame — ' +
   'NOT a collage, not split-screen, no grid, no multiple panels, no side-by-side frames, no borders, no ' +
   'dividers, no picture-in-picture. Every object is realistically grounded and held by human hands where held.';
-const STORYBOARD_FRAME_NEGATIVE =
+const _STORYBOARD_FRAME_NEGATIVE =
   'split screen, collage, grid, panels, comic templates, comic book style, diptych, triptych, multiple ' +
   'angles, floating objects, ungrounded physics, borders, dividers, picture-in-picture, deformed face, ' +
   'extra limbs, watermark, text';
 
-const serviceManager = new ServiceManager();
+const _serviceManager = new ServiceManager();
 
 /**
  * Script Agent — turn the brief into EXACTLY `count` sequential, brief-specific

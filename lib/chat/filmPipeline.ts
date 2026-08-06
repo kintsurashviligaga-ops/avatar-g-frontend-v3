@@ -25,7 +25,6 @@ import {
   deterministicBreakdown,
   planSegmentCount,
 } from '@/lib/orchestrator/script-breakdown';
-import { SEGMENT_DURATION_SEC } from '@/lib/orchestrator/types';
 import { extractPromptTraits, enrichVideoPrompt } from './promptTraits';
 import { extractSceneDialogue, MAX_SPOKEN_LINE_CHARS, MAX_LINES_PER_SCENE, type SceneSpokenLine } from './sceneDialogue';
 

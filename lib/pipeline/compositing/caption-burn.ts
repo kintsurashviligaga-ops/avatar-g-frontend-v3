@@ -15,7 +15,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { renderSubtitleCardPng, subtitleStripHeight } from './ffmpeg-overlay';
+import { renderSubtitleCardPng } from './ffmpeg-overlay';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   buildCaptionOverlayFilter,

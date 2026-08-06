@@ -107,7 +107,7 @@ export interface ChatResponse {
 
 // ─── Agent selection ─────────────────────────────────────────────────────────
 
-const CONTEXT_TO_AGENT: Record<string, string> = {
+const _CONTEXT_TO_AGENT: Record<string, string> = {
   global: 'main-assistant',
   music: 'music-agent',
   video: 'video-agent',

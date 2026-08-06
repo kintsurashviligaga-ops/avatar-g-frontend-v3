@@ -11,7 +11,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Camera, Video, X, RotateCcw, Maximize, Minimize, Check, RefreshCw } from 'lucide-react';
+import { X, RotateCcw, Check, RefreshCw } from 'lucide-react';
 import type { ServiceChatAttachment } from './types';
 
 type CameraMode = 'photo' | 'video';
@@ -33,7 +33,7 @@ const COPY = {
   ru: { photo: 'Фото', video: 'Видео', capture: 'Снять', record: 'Запись', stop: 'Стоп', retake: 'Заново', attach: 'Прикрепить', switchCam: 'Камера', fullscreen: 'Полный экран', noCamera: 'Камера недоступна', denied: 'Доступ к камере запрещён', align: 'Выровняйте лицо' },
 };
 
-export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGuide = false, fullScreen = false }: CameraModalProps) {
+export function CameraModal({ isOpen, accentColor: _accentColor, onClose, onAttach, showFaceGuide: _showFaceGuide = false, fullScreen = false }: CameraModalProps) {
   const [mode, setMode] = useState<CameraMode>('photo');
   const [state, setState] = useState<CameraState>('idle');
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
@@ -57,7 +57,7 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
   const c = COPY[lang] || COPY.en;
   // Immersive = either the browser fullscreen API is engaged OR the caller asked
   // for the absolute-black full-viewport chat layer.
-  const immersive = isFullscreen || fullScreen;
+  const _immersive = isFullscreen || fullScreen;
 
   /* ── Start camera ── */
   const startCamera = useCallback(async (facingMode?: 'user' | 'environment') => {
@@ -133,7 +133,7 @@ export function CameraModal({ isOpen, accentColor, onClose, onAttach, showFaceGu
   }, [facing, startCamera]);
 
   /* ── Toggle fullscreen ── */
-  const toggleFullscreen = useCallback(async () => {
+  const _toggleFullscreen = useCallback(async () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
       await containerRef.current.requestFullscreen().catch(() => {});
