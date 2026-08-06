@@ -1014,6 +1014,59 @@ function isMusicVideoIntent(s: string): boolean {
  */
 export const omniConversationsKey = (uid?: string | null) => conversationsKey(uid);
 export const OMNI_CURRENT_ID_KEY = 'myavatar-omni-current';
+
+/**
+ * TOMBSTONES — the server session ids this device has deleted.
+ *
+ * ⚠️ WITHOUT THESE, DELETING A CHAT BROUGHT IT BACK. computeCloudAdditions decides what to re-import by
+ * asking which server sessions are NOT in the local list — so removing a conversation removed the very
+ * evidence that it was already known, and the next sync pulled it down again as a fresh `cloud:` row.
+ * "Clear all" wiped the whole local key and so restored every chat the account had ever had. The delete
+ * button worked; the sync undid it a moment later, which is why it read as "nothing happens".
+ *
+ * Kept per-uid and separate from the conversation list, because the list is exactly what gets emptied.
+ * Bounded — a tombstone only has to outlive the server row, and the server delete is attempted too.
+ */
+const MAX_TOMBSTONES = 500;
+const omniDeletedSidsKey = (uid?: string | null) => `${conversationsKey(uid)}:deleted-sids`;
+
+function loadDeletedSids(uid?: string | null): string[] {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(omniDeletedSidsKey(uid)) ?? '[]') as unknown;
+    return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string' && !!s) : [];
+  } catch { return []; }
+}
+
+function rememberDeletedSids(uid: string | null | undefined, sids: readonly string[]): void {
+  const fresh = sids.filter((s) => typeof s === 'string' && !!s);
+  if (!fresh.length) return;
+  try {
+    const next = Array.from(new Set([...fresh, ...loadDeletedSids(uid)])).slice(0, MAX_TOMBSTONES);
+    window.localStorage.setItem(omniDeletedSidsKey(uid), JSON.stringify(next));
+  } catch { /* private mode — the server delete below is the other half of the guarantee */ }
+}
+
+/**
+ * Soft-delete the server-side chat session so the chat is gone on EVERY device, not just this one.
+ * Fire-and-forget: the tombstone above already keeps it out of this device's sidebar, so a network miss
+ * degrades to "deleted here, still on the server" rather than failing the user's click.
+ */
+function deleteServerSession(sid: string): void {
+  if (!sid) return;
+  void fetch('/api/chat/trash', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'delete', id: sid }),
+  }).catch(() => { /* tombstoned locally regardless */ });
+}
+
+/** The server session id behind a sidebar row — either a synced local chat or a `cloud:` entry. */
+function serverSidOf(c: { id?: string; serverSid?: string } | null | undefined): string | null {
+  if (!c) return null;
+  if (typeof c.serverSid === 'string' && c.serverSid) return c.serverSid;
+  if (typeof c.id === 'string' && c.id.startsWith('cloud:')) return c.id.slice('cloud:'.length) || null;
+  return null;
+}
 /**
  * ONE-SHOT resume handoff. The app must land on a FRESH, EMPTY chat on every open and every refresh —
  * the way ChatGPT and Gemini do — instead of dropping the user back inside whatever they last said.
@@ -2304,6 +2357,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
   }, [conversationId, messages]);
   const removeConversation = useCallback((id: string) => {
+    // ⚠️ TOMBSTONE + SERVER DELETE BEFORE THE LOCAL ONE. Removing the local row erases its serverSid,
+    // and that id is the only thing that could have told the sync not to re-import this chat. Read it
+    // while the row still exists, or the delete resurrects the chat one sync later — which is exactly
+    // what the user was seeing.
+    const sid = serverSidOf(loadConversations().find((c) => c.id === id));
+    if (sid) { rememberDeletedSids(currentUid(), [sid]); deleteServerSession(sid); }
     deleteConversation(id);
     // Deleting the OPEN chat → discard it to a FRESH EMPTY conversation WITHOUT re-saving.
     // (startNewConversation upserts the current first, and the idle auto-save effect would
@@ -2319,7 +2378,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, [conversationId]);
   const clearAllConversations = useCallback(() => {
-    try { window.localStorage.removeItem(omniConversationsKey(currentUid())); } catch { /* ignore */ }
+    // ⚠️ COLLECT THE SERVER IDS FIRST — wiping the key destroys them, and they are what stops the sync
+    // from pulling every one of these chats back down. Clearing the list was the WORST case of the
+    // resurrection bug: it removed every serverSid at once, so the next sync re-imported the account's
+    // entire history and the button looked like it did nothing at all.
+    const uid = currentUid();
+    const sids = loadConversations().map(serverSidOf).filter((s): s is string => !!s);
+    rememberDeletedSids(uid, sids);
+    for (const sid of sids) deleteServerSession(sid);
+    try { window.localStorage.removeItem(omniConversationsKey(uid)); } catch { /* ignore */ }
     const fresh = newConversationId();
     setConversationId(fresh);
     setCurrentConversationId(fresh);
@@ -4165,7 +4232,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         const server = await getConversations(user.id); // [{ session_id, title, updated_at }]
         if (!alive || !server.length) return;
         const localList = loadConversations();
-        const additions = computeCloudAdditions(localList, server);
+        // The tombstones are what keep a deleted chat deleted — see loadDeletedSids.
+        const additions = computeCloudAdditions(localList, server, loadDeletedSids(user.id));
         if (!additions.length) return;
         const merged = [...localList, ...additions.map((a) => ({ ...a, messages: [] as Msg[] }))]
           .sort((x, y) => (y.updatedAt ?? 0) - (x.updatedAt ?? 0))

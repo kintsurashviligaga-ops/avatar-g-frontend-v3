@@ -40,15 +40,28 @@ const norm = (t: string | null | undefined) => (t || '').trim().toLowerCase();
 export function computeCloudAdditions(
   local: readonly SyncConversation[],
   server: readonly ServerSession[],
+  deletedSids: readonly string[] = [],
 ): SyncConversation[] {
   const localList = Array.isArray(local) ? local : [];
   const knownSids = new Set(localList.map((c) => c?.serverSid).filter((s): s is string => typeof s === 'string' && !!s));
   const localTitles = new Set(localList.map((c) => norm(c?.title)).filter((t) => t && !GENERIC_TITLES.has(t)));
+  // ⚠️ DELETING A CHAT USED TO BRING IT STRAIGHT BACK, AND THIS IS WHERE. `knownSids` is built from the
+  // LOCAL list, so removing a conversation also removed its serverSid from that set — which made its
+  // server session "not known here" and re-imported it as a fresh `cloud:` row on the very next sync.
+  // Deleting one chat resurrected exactly that chat. "Clear all" wiped the whole local key, so it
+  // resurrected EVERYTHING. The delete was working; this was undoing it.
+  //
+  // Tombstones are the memory of what the user deleted, and they are consulted FIRST — independently of
+  // the local list — because the local row being gone is precisely the condition that caused the bug.
+  const tombstoned = new Set(
+    (Array.isArray(deletedSids) ? deletedSids : []).filter((s): s is string => typeof s === 'string' && !!s),
+  );
 
   const out: SyncConversation[] = [];
   const seen = new Set<string>();
   for (const s of Array.isArray(server) ? server : []) {
     if (!s || typeof s.session_id !== 'string' || !s.session_id) continue;
+    if (tombstoned.has(s.session_id)) continue;
     if (knownSids.has(s.session_id) || seen.has(s.session_id)) continue;
     const tkey = norm(s.title);
     if (tkey && !GENERIC_TITLES.has(tkey) && localTitles.has(tkey)) continue; // same-device duplicate by title
