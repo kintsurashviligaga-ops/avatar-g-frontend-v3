@@ -12,7 +12,9 @@
 import { useState, useEffect } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
-import { Group, Label, Field, ToggleRow, PrimaryButton, Note, Select, SecondaryButton } from './ui/controls';
+import { Group, Label, Field, ToggleRow, PrimaryButton, Note, Select, SecondaryButton, Dropzone } from './ui/controls';
+import { useUpload } from './ui/useUpload';
+import { Film } from 'lucide-react';
 import { ResultActions, downloadFile } from './ui/ResultActions';
 import { GenerationProgress } from './ui/GenerationProgress';
 
@@ -25,7 +27,7 @@ const COPY = {
     title: 'დუბლაჟის სტუდია',
     subtitle: 'თარგმნე და გაახმოვანე ვიდეო სხვა ენაზე — ორიგინალის ტაიმინგით',
     source: 'ვიდეოს ბმული',
-    sourcePlaceholder: 'https://…/video.mp4',
+    sourcePlaceholder: 'https://…/video.mp4', sourcePicked: 'ვიდეო არჩეულია', sourcePick: 'აირჩიე ვიდეო', sourceHint: 'ან ჩასვი ბმული ქვემოთ',
     from: 'ორიგინალის ენა',
     to: 'სამიზნე ენა',
     auto: 'ავტომატური ამოცნობა',
@@ -48,7 +50,7 @@ const COPY = {
     title: 'Dubbing Studio',
     subtitle: 'Translate and re-voice a video in another language, on the original timing',
     source: 'Video URL',
-    sourcePlaceholder: 'https://…/video.mp4',
+    sourcePlaceholder: 'https://…/video.mp4', sourcePicked: 'Video selected', sourcePick: 'Choose a video', sourceHint: 'or paste a link below',
     from: 'Source language',
     to: 'Target language',
     auto: 'Auto-detect',
@@ -71,7 +73,7 @@ const COPY = {
     title: 'Студия дубляжа',
     subtitle: 'Переведите и озвучьте видео на другом языке — с таймингом оригинала',
     source: 'Ссылка на видео',
-    sourcePlaceholder: 'https://…/video.mp4',
+    sourcePlaceholder: 'https://…/video.mp4', sourcePicked: 'Видео выбрано', sourcePick: 'Выберите видео', sourceHint: 'или вставьте ссылку ниже',
     from: 'Язык оригинала',
     to: 'Целевой язык',
     auto: 'Автоопределение',
@@ -111,6 +113,7 @@ export function DubbingStudio({ locale }: { locale: string }) {
   const t = COPY[lang];
 
   const [sourceVideoUrl, setSourceVideoUrl] = useState('');
+  const { upload: uploadFile, busy: uploading, error: uploadError } = useUpload(locale);
   const [sourceLanguage, setSourceLanguage] = useState<string>('auto');
   const [targetLanguage, setTargetLanguage] = useState<DubbingLanguage>(lang === 'ka' ? 'en' : 'ka');
   const [preserveBackgroundAudio, setPreserveBg] = useState(true);
@@ -167,7 +170,31 @@ export function DubbingStudio({ locale }: { locale: string }) {
         <div className="mt-8 space-y-5 rounded-2xl border border-app-border/15 bg-app-elevated/40 p-5">
           {/* SOURCE → LANGUAGES → OPTIONS. Grouped in the order the job is actually thought about,
               rather than as one flat stack of unrelated inputs. */}
+          {/* ⚠️ THIS ASKED THE USER TO TYPE A PUBLIC https URL, WHICH NOBODY CAN DO ON A PHONE. The video
+              they want dubbed is in their camera roll, not on a web server they control — so on mobile
+              this studio was not merely awkward, it was unusable, while the in-chat panel drove the very
+              same route with a real file picker. The URL field stays underneath for the case it was
+              actually good at: a link to something already online. */}
           <Group title={`🎬 ${t.source}`}>
+            <Dropzone
+              id="dub-source"
+              accept="video/*"
+              disabled={busy || uploading}
+              filled={Boolean(sourceVideoUrl)}
+              icon={<Film className="h-5 w-5" />}
+              title={sourceVideoUrl ? t.sourcePicked : t.sourcePick}
+              hint={t.sourceHint}
+              onFiles={(files) => {
+                const f = files[0];
+                if (!f) return;
+                void (async () => {
+                  const path = await uploadFile(f);
+                  // The routes resolve a storage path server-side, so the picked file needs no public URL.
+                  if (path) setSourceVideoUrl(path);
+                })();
+              }}
+            />
+            {uploadError && <Note tone="error">{uploadError}</Note>}
             <Field
               type="url"
               inputMode="url"

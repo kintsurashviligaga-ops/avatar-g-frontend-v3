@@ -57,3 +57,38 @@ describe('retry parity', () => {
     expect(s.slice(at, at + 120)).toContain('disabled={busy}');
   });
 });
+
+describe('mobile parity — a file picker, not a typed URL', () => {
+  /**
+   * ⚠️ THESE STUDIOS ASKED THE USER TO TYPE A PUBLIC https URL. The video someone wants dubbed is in
+   * their camera roll, not on a web server they control — so on a phone the page was not awkward, it was
+   * unusable, while the in-chat panel drove the very same route with a real picker. The URL field stays
+   * for the case it was actually good at: a link to something already online.
+   */
+  const WITH_PICKER = ['DubbingStudio.tsx'];
+
+  it.each(WITH_PICKER)('%s offers a Dropzone', (f) => {
+    expect(src(f)).toContain('<Dropzone');
+  });
+
+  it.each(WITH_PICKER)('%s uploads through the shared hook', (f) => {
+    // Not a bespoke fetch: useUpload already localizes its own failures.
+    expect(src(f)).toContain('useUpload(');
+  });
+
+  it.each(WITH_PICKER)('%s keeps the URL field as well', (f) => {
+    // Removing it would break the workflow the field was genuinely good for.
+    expect(src(f)).toMatch(/type="url"/);
+  });
+
+  it.each(WITH_PICKER)('%s surfaces an upload failure', (f) => {
+    expect(src(f)).toContain('uploadError');
+  });
+
+  it('records the studios still demanding a typed URL', () => {
+    // A ledger, not an assertion — shrinking it is the work; this stops it growing unseen.
+    const remaining = ['MontageStudio.tsx', 'Model3dStudio.tsx']
+      .filter((f) => !src(f).includes('<Dropzone'));
+    expect(remaining.length).toBeLessThanOrEqual(2);
+  });
+});
