@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { trimClip } from '@/lib/video/trimClip';
-import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, roopFaceSwapVideo, fitImageToAspect, fitAspect, type GradeStyle } from '@/lib/video/remixOps';
+import { muxAudioOntoVideo, extractFrame, kenBurnsClip, klingI2v, colorGrade, changeSpeed, changeSpeedRamp, stabilizeClip, addWatermark, roopFaceSwapVideo, fitImageToAspect, fitAspect, type GradeStyle } from '@/lib/video/remixOps';
 import { renderVeoClipSync } from '@/lib/ai/veoClipSync';
 import { overlayMasterUrl } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
   // AUTH + CREDIT GATE (audit HIGH): remix reached paid providers with NO auth or credit
   // check — an anonymous free bypass. Paid ops now REQUIRE a signed-in user; the standard
   // paid edits debit CREDIT_COSTS.remix_video up front (matching the client's on-submit credit
-  // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize) are untouched.
+  // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize/watermark) are untouched.
   // productad ALSO debits now (audit: it reached paid Kling with zero server-side charge) — see
   // the once-per-ad gate below; it keeps its opt-in ad-budget guard (checkAdBudget) on top.
   const PAID_REMIX_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
   // ── IN-FLIGHT MUTEX (V1) ─────────────────────────────────────────────────────
   // A short-TTL Redis lock keyed on the FULL request signature instantly blocks a double-click from
   // spawning a SECOND paid roop/Kling render. Claimed ONLY for PAID ops — the free local-ffmpeg ops
-  // (trim/captions/color_grade/speed/stabilize) spawn no paid provider call, so they need no guard
+  // (trim/captions/color_grade/speed/stabilize/watermark) spawn no paid provider call, so they need no guard
   // (and skipping them avoids a failed free-op holding the lock, since they return via fail() not
   // refundCharge). The sig carries EVERY intent-bearing param (op, source media, sceneIndex, aspect,
   // text, characterRef, preset) so two DIFFERENT edits of the same op+clip don't false-collide (409);
@@ -499,6 +499,16 @@ export async function POST(req: NextRequest) {
         // vidstab two-pass; fail-open keeps the original if stabilization can't run.
         const url = await stabilizeClip(videoUrl);
         return url ? ok(url) : fail('ვიდეოს სტაბილიზაცია ვერ მოხერხდა.');
+      }
+
+      // ⚠️ FREE, LIKE stabilize — a local ffmpeg pass with no provider call, so it takes no billing guard
+      // and returns through ok() without `charged`.
+      // ⚠️ AND IT BELONGS LAST IN A CHAIN. stripVeoWatermark crops the bottom of the frame; running that
+      // after this would cut off the mark just burnt in. Anything that crops, scales or concats must
+      // happen BEFORE the watermark, never after.
+      case 'watermark': {
+        const url = await addWatermark(videoUrl);
+        return url ? ok(url) : fail('ვოთერმარკის დადება ვერ მოხერხდა.');
       }
 
       case 'restyle':
