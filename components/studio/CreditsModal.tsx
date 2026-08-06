@@ -93,7 +93,7 @@ const TIER_NAME: Record<PricingTierId, Record<Lang, string>> = {
 // pricingConfig, so a hardcoded "150 credits" here would silently drift the moment a media cost changes.
 // Engine names are Gemini-era — the old copy advertised "Runway Gen-4" to users long after Veo became the
 // primary video engine.
-const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
+export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
   // ⚠️ THIS BLOCK ONCE ARGUED THE OPPOSITE — that the card must advertise "3 უფასო ვიდეო" because
   // free_films_remaining really was 3 on every account. That was true then and is wrong now: the
   // three uncounted videos were 94% of the cost of a free signup ($2.88 of $3.06) and have been
@@ -119,10 +119,15 @@ const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
     en: ['8 video clips (Veo 3.1)', '100 flawless images', '25 music tracks (Lyria 3)', 'Dubbing & avatars', 'Full access to Agent G'],
     ru: ['8 видеоклипов (Veo 3.1)', '100 безупречных изображений', '25 музыкальных треков (Lyria 3)', 'Дубляж и аватары', 'Полный доступ к Agent G'],
   },
+  // ⚠️ THESE NUMBERS MUST TRACK PRICING_TIERS[business].creditCeiling, AND ONCE THEY DID NOT. When Business
+  // was rebalanced to {16, 60, 250} to give it a real per-dollar advantage over Pro, this hand-written
+  // copy kept saying 200 images / 50 tracks — so the pricing PAGE advertised 250/60 while the billing
+  // MODAL, the screen someone reads with their card out, advertised less. Caught by opening the modal as a
+  // signed-in user, not by reading the diff. If a ceiling moves, this block moves in the same edit.
   business: {
-    ka: ['16 ვიდეო კლიპი (Veo 3.1)', '200 დეტალური სურათი', '50 მუსიკალური ტრეკი (Lyria 3)', 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
-    en: ['16 video clips (Veo 3.1)', '200 detailed images', '50 music tracks (Lyria 3)', 'Shared team libraries', 'Priority render queue', 'VIP support'],
-    ru: ['16 видеоклипов (Veo 3.1)', '200 детальных изображений', '50 музыкальных треков (Lyria 3)', 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
+    ka: ['16 ვიდეო კლიპი (Veo 3.1)', '250 დეტალური სურათი', '60 მუსიკალური ტრეკი (Lyria 3)', 'გუნდური ბიბლიოთეკები', 'პრიორიტეტული რენდერი', 'VIP მხარდაჭერა'],
+    en: ['16 video clips (Veo 3.1)', '250 detailed images', '60 music tracks (Lyria 3)', 'Shared team libraries', 'Priority render queue', 'VIP support'],
+    ru: ['16 видеоклипов (Veo 3.1)', '250 детальных изображений', '60 музыкальных треков (Lyria 3)', 'Командные библиотеки', 'Приоритетная очередь', 'VIP-поддержка'],
   },
 };
 
