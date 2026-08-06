@@ -346,6 +346,14 @@ export async function POST(req: NextRequest) {
       const animated = veoAd?.url || (await klingI2v(startImg, adPrompt, aspectP));
       const url = animated || (await kenBurnsClip(startImg, 5, aspectP));
       if (!url) return failRefund('Product ad generation failed.', 'render-null');
+      // ⚠️ A STILL PAN IS NOT A GENERATED AD, SO IT MUST NOT COST ONE. When both paid engines miss and
+      // the local ffmpeg fallback answers, `url` is truthy — so failRefund never ran and the user paid
+      // the FULL video tier (25–45 credits) for a slow pan over their own photograph. The note above
+      // already spelled out that this happens "for the full price of a video ad"; it just never acted
+      // on it. The clip is still delivered (better than nothing, and the engine string below says
+      // plainly what produced it) but it is delivered free: kenBurnsClip is local ffmpeg, so giving it
+      // away costs no provider spend.
+      if (!animated) await refundCharge('fallback-kenburns');
       // ⚠️ THE REPORTED ENGINE WAS THE STRING 'Kling AI' ON EVERY PATH, INCLUDING THE ONE WHERE KLING
       // DID NOT RUN. When the generative legs miss, kenBurnsClip produces a slow pan over the product
       // STILL — not a generated video at all — and the response still claimed Kling rendered it.
@@ -574,6 +582,12 @@ export async function POST(req: NextRequest) {
         const animated = await klingI2v(startImage, motionPrompt, aspect, swapPhoto ? [swapPhoto] : undefined);
         const url = animated || (await kenBurnsClip(startImage, 5, aspect));
         if (!url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.');
+        // ⚠️ SAME CHARGE, DIFFERENT PRODUCT — SO DO NOT CHARGE. The comment above already says these two
+        // outcomes "are not the same product": klingI2v re-animates, kenBurnsClip pans over one still.
+        // Naming the engine in the response fixed the honesty of the label but not the invoice — the
+        // 15-credit charge stood either way, because a Ken-Burns url is still a url. It does not stand
+        // any more. The pan still ships; it is just free.
+        if (!animated) await refundCharge('fallback-kenburns');
         const method = animated ? 'reanimated' : 'stillPan';
         // Kling v2.1 (the locked default) infers the output ratio from the START IMAGE and IGNORES
         // aspect_ratio (remixOps only sets it for v1.6). So a requested aspect that differs from the
