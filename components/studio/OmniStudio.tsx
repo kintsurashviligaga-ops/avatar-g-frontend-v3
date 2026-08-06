@@ -2403,6 +2403,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setConversationId(fresh);
       setCurrentConversationId(fresh);
       setMessages([]);
+      // ⚠️ DROP THE SERVER SESSION POINTER TOO. ensureChatSession caches one session id per uid in
+      // `myavatar:chat-session` and reuses it for the next turn — so deleting the chat you are IN while
+      // leaving that pointer behind silently re-attached the fresh conversation to the session that was
+      // just deleted, and the next message wrote the chat straight back onto the server.
+      chatSessionIdRef.current = null;
+      try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
     }
     setHistoryList(loadConversations());
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
@@ -2417,11 +2423,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     rememberDeletedSids(uid, sids);
     for (const sid of sids) deleteServerSession(sid);
     try { window.localStorage.removeItem(omniConversationsKey(uid)); } catch { /* ignore */ }
+    // ⚠️ AND THE SERVER SESSION POINTER — the second, independent way "clear all" failed to clear.
+    // ensureChatSession caches one session id per uid in `myavatar:chat-session`; leaving it behind meant
+    // the very next message re-attached to a session that had just been wiped from the list, writing the
+    // conversation back onto the server. The list looked cleared and then refilled itself.
+    chatSessionIdRef.current = null;
+    try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
     const fresh = newConversationId();
     setConversationId(fresh);
     setCurrentConversationId(fresh);
     setMessages([]);
     setHistoryList([]);
+    setHistoryQuery('');
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, []);
   // Bridge: the persistent left sidebar (ChatChrome) drives chat-history resume + new-chat
