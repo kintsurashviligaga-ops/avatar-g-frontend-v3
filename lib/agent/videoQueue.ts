@@ -63,13 +63,44 @@ export async function batchStatus(svc: Svc, batchId: string, userId: string): Pr
   return (data ?? []) as QueueItem[];
 }
 
+/**
+ * Mark an item failed and give back whatever it was actually charged.
+ *
+ * ⚠️ THE AMOUNT IS RE-READ FROM THE ROW, NEVER TAKEN FROM THE CALLER'S COPY. The first version trusted
+ * the `item` snapshot drainOnce reads at the top of the request — but on the SUBMIT path the charge is
+ * written *after* that read, so `item.credits` was still 0, the `> 0` guard never fired, and a failed clip
+ * silently kept the user's money. Worse, the row was then stamped `credits: 0`, so it *looked* refunded.
+ *
+ * Verified live on 2026-08-06: a Veo refusal took 25 credits off a real balance and wrote no refund entry
+ * to `credit_ledger` at all. The poll path happened to work — its `item` comes from a later read — which
+ * is exactly why reading the code did not reveal it.
+ *
+ * ⚠️ `credits` IS ZEROED ONLY IF THE REFUND ACTUALLY LANDED. Zeroing regardless erases the evidence that
+ * the user is still owed money, and a retry would then find nothing to give back.
+ */
 async function fail(svc: Svc, item: QueueItem, userId: string, reason: string): Promise<void> {
-  // Refund only what was actually charged for THIS item, under its own ref.
-  if (item.credits > 0) {
-    await refundCredits(userId, item.credits, `agentq:${item.id}`).catch(() => {});
+  const { data: fresh } = await svc.from('agent_video_queue').select('credits').eq('id', item.id).maybeSingle();
+  const charged = Number((fresh as { credits?: number } | null)?.credits ?? item.credits ?? 0);
+
+  let refunded = true;
+  if (charged > 0) {
+    // Same ref as the debit: probed live against refund_credits — it credits the balance rather than
+    // being swallowed as a replay of the charge.
+    const res = await refundCredits(userId, charged, `agentq:${item.id}`).catch(() => ({ ok: false as const }));
+    refunded = res.ok;
+    if (!refunded) {
+      // eslint-disable-next-line no-console
+      console.warn(`[agentq] refund MISSED for item ${item.id} (${charged} credits) — row keeps its charge`);
+    }
   }
+
   await svc.from('agent_video_queue')
-    .update({ status: 'failed', error: reason.slice(0, 300), credits: 0, updated_at: new Date().toISOString() })
+    .update({
+      status: 'failed',
+      error: reason.slice(0, 300),
+      ...(refunded ? { credits: 0 } : {}),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', item.id);
 }
 
