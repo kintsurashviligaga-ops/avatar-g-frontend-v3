@@ -100,3 +100,32 @@ describe('mobile parity — a file picker, not a typed URL', () => {
     expect(s).toContain('id="mtg-music"');
   });
 });
+
+describe('the history a user can actually reach', () => {
+  /**
+   * ⚠️ I POLISHED THE WRONG SURFACE FIRST. OmniStudio has a history panel whose only trigger carries
+   * `className="hidden"`; the list a user sees is ChatChrome's sidebar. The delete FIXES were live
+   * either way — the sidebar drives OmniStudio's handlers through window events — but the grouping and
+   * search went into markup nobody renders. This asserts the reachable one has them.
+   */
+  const chrome = () => readFileSync(join(dir, 'ChatChrome.tsx'), 'utf8');
+
+  it('the sidebar groups by date', () => {
+    expect(chrome()).toContain('convGroups');
+  });
+
+  it('the sidebar can be searched', () => {
+    expect(chrome()).toContain('convQuery');
+    expect(chrome()).toContain('convMatches');
+  });
+
+  it('the sidebar filters BEFORE grouping', () => {
+    // Grouping the unfiltered list would show empty date headings for a query that matches nothing.
+    expect(chrome()).toContain('for (const c of convMatches)');
+  });
+
+  it('the sidebar delete stays tappable without hover', () => {
+    // opacity-100 by default, hidden only from md up — the inverse of the trap in the hidden panel.
+    expect(chrome()).toMatch(/opacity-100[^"]*md:opacity-0/);
+  });
+});

@@ -680,6 +680,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
   const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
+  const tSearch = locale === 'en' ? 'Search chats…' : locale === 'ru' ? 'Поиск по чатам…' : 'ძებნა ჩატებში…';
+  const tNoMatch = locale === 'en' ? 'Nothing found' : locale === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
   const tClearAll = locale === 'en' ? 'Clear all' : locale === 'ru' ? 'Очистить' : 'გასუფთავება';
   const tDelete = locale === 'en' ? 'Delete' : locale === 'ru' ? 'Удалить' : 'წაშლა';
@@ -687,13 +689,27 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // FIX 6E — bucket the history into Today / Yesterday / Previous 7 days / Older so the
   // sidebar reads like ChatGPT/Claude. Only non-empty groups render (each already sorted
   // newest-first by refreshConversations). Recomputed when the list changes.
+  /**
+   * Search over the history list.
+   *
+   * ⚠️ THE SIDEBAR ALREADY GROUPED BY DATE AND STILL HAD NO WAY TO FIND ANYTHING. Grouping helps you
+   * scan the last few days; it does nothing for a chat from three weeks ago whose title you half
+   * remember, which is exactly when a user reaches for history at all. Shown only past a handful of
+   * chats, so a new account is not given a search box for four rows.
+   */
+  const [convQuery, setConvQuery] = useState('');
+  const convMatches = useMemo(() => {
+    const q = convQuery.trim().toLowerCase();
+    return q ? conversations.filter((c) => (c.title || '').toLowerCase().includes(q)) : conversations;
+  }, [conversations, convQuery]);
+
   const convGroups = useMemo(() => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const today = start.getTime();
     const yesterday = today - 86_400_000;
     const week = today - 7 * 86_400_000;
     const buckets: Record<'today' | 'yesterday' | 'week' | 'older', typeof conversations> = { today: [], yesterday: [], week: [], older: [] };
-    for (const c of conversations) {
+    for (const c of convMatches) {
       if (c.updatedAt >= today) buckets.today.push(c);
       else if (c.updatedAt >= yesterday) buckets.yesterday.push(c);
       else if (c.updatedAt >= week) buckets.week.push(c);
@@ -711,7 +727,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return (['today', 'yesterday', 'week', 'older'] as const)
       .filter((k) => buckets[k].length > 0)
       .map((k) => ({ key: k, label: label(k), items: buckets[k] }));
-  }, [conversations, lang]);
+  }, [convMatches, lang]);
 
   // ── Back control — the recurring "stuck on /library" bug ────────────────────────
   // ChatChrome is the shared shell for the dashboard assistant (ServiceHub passes
@@ -826,8 +842,20 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               </button>
             )}
           </div>
+          {conversations.length > 5 && (
+            <input
+              type="search"
+              value={convQuery}
+              onChange={(e) => setConvQuery(e.target.value)}
+              placeholder={tSearch}
+              aria-label={tSearch}
+              className="mb-2 w-full rounded-lg bg-app-elevated px-2.5 py-2 !text-[13px] !text-app-text placeholder:text-app-muted/70 focus:outline-none focus:ring-1 focus:ring-app-accent"
+            />
+          )}
           {conversations.length === 0 ? (
             <p className="px-2 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
+          ) : convMatches.length === 0 ? (
+            <p className="px-2 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
             <div className="space-y-2 pb-2">
               {convGroups.map((g) => (

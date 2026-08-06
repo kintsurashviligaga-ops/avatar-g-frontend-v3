@@ -9039,7 +9039,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         />
       )}
 
-      {/* Chat history — the list of past conversations: resume, start new, delete. */}
+      {/* Chat history — resume, start new, delete.
+        *
+        * ⚠️ THIS PANEL IS CURRENTLY UNREACHABLE, AND I POLISHED IT BEFORE NOTICING. Its only trigger is
+        * the `openHistory` button below, which carries `className="hidden"`. The history a user actually
+        * sees is ChatChrome's sidebar, which renders its own list and drives THIS component's
+        * removeConversation / clearAllConversations through window events — so the delete FIXES here are
+        * live even though this markup is not.
+        *
+        * Left in place rather than deleted because the two surfaces share every handler and unpicking
+        * that deserves its own change. If you are about to improve something here, improve
+        * ChatChrome's list instead — or unhide the trigger first and decide deliberately that this
+        * product has two history UIs. */}
       {historyOpen && (
         <div className="fixed inset-0 z-[95] flex justify-start bg-black/40 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <aside onClick={(e) => e.stopPropagation()} className="flex h-full w-80 max-w-[86vw] flex-col bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.35)] animate-[slideIn_0.2s_ease-out]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
