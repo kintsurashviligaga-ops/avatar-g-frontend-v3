@@ -226,7 +226,7 @@ const COPY = {
 const XCOPY = {
   en: {
     newChat: 'New chat', rename: 'Rename', delete: 'Delete', open: 'Open',
-    deleteTitle: 'Delete chat?', deleteBody: 'This conversation will be permanently removed from this device. This can’t be undone.',
+    deleteTitle: 'Move chat to Trash?', deleteBody: 'It moves to Trash and is kept for 30 days — you can restore it from there. After that it is deleted for good.',
     cancel: 'Cancel', save: 'Save', done: 'Done', close: 'Close', noChats: 'No conversations yet.',
     account: 'Account', preferences: 'Preferences', signedInAs: 'Signed in as', guest: 'Guest (not signed in)',
     submitOnEnter: 'Send with Enter', submitOnEnterHint: 'Off: Enter adds a new line, ⌘/Ctrl+Enter sends',
@@ -259,7 +259,7 @@ const XCOPY = {
   },
   ka: {
     newChat: 'ახალი ჩატი', rename: 'გადარქმევა', delete: 'წაშლა', open: 'გახსნა',
-    deleteTitle: 'წავშალო ჩატი?', deleteBody: 'ეს საუბარი სამუდამოდ წაიშლება ამ მოწყობილობიდან. დაბრუნება შეუძლებელია.',
+    deleteTitle: 'ურნაში გადავიტანო ჩატი?', deleteBody: 'გადავა ურნაში და 30 დღე შეინახება — იქიდან შეგიძლია აღადგინო. შემდეგ სამუდამოდ წაიშლება.',
     cancel: 'გაუქმება', save: 'შენახვა', done: 'მზადაა', close: 'დახურვა', noChats: 'ჯერ საუბრები არ არის.',
     account: 'ანგარიში', preferences: 'პარამეტრები', signedInAs: 'შესული ხართ', guest: 'სტუმარი (არ ხართ შესული)',
     submitOnEnter: 'გაგზავნა Enter-ით', submitOnEnterHint: 'გამორთულზე: Enter ახალ ხაზს ამატებს, ⌘/Ctrl+Enter აგზავნის',
@@ -292,7 +292,7 @@ const XCOPY = {
   },
   ru: {
     newChat: 'Новый чат', rename: 'Переименовать', delete: 'Удалить', open: 'Открыть',
-    deleteTitle: 'Удалить чат?', deleteBody: 'Этот разговор будет навсегда удалён с этого устройства. Отменить нельзя.',
+    deleteTitle: 'Переместить чат в корзину?', deleteBody: 'Он попадёт в корзину и хранится 30 дней — оттуда можно восстановить. Потом удаляется навсегда.',
     cancel: 'Отмена', save: 'Сохранить', done: 'Готово', close: 'Закрыть', noChats: 'Пока нет разговоров.',
     account: 'Аккаунт', preferences: 'Настройки', signedInAs: 'Вы вошли как', guest: 'Гость (не выполнен вход)',
     submitOnEnter: 'Отправка по Enter', submitOnEnterHint: 'Выкл.: Enter — новая строка, ⌘/Ctrl+Enter — отправка',
@@ -1763,6 +1763,11 @@ export default function MyAvatarChatV2({ locale, userName, isAuthenticated, user
   }, []);
 
   const removeConvo = useCallback((id: string) => {
+    // ⚠️ THE CONFIRM DIALOG USED TO PROMISE THE OPPOSITE OF WHAT THIS LINE DOES. It said the chat was
+    // "permanently removed… this can't be undone" while the call below moves it to a Trash Bin that
+    // keeps it for 30 days and can restore it. Reported as "Delete does not actually delete" — and the
+    // user was right to say so: they were told it was gone and it was not. The copy now describes the
+    // soft delete truthfully. If this ever becomes a hard delete, change the copy back in the SAME edit.
     setConversations(softDeleteConversation(id)); // VECTOR 8 — soft delete → Trash Bin (restorable)
     setDeleteTarget(null);
     if (id === conversationId) startNewChat();
