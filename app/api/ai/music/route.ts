@@ -193,6 +193,7 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   // its own ~180s internal poll cap so a normal run is UNAFFECTED — the budget only trips on
   // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
+  const cascadeStartedAt = Date.now();
   const providers: ProviderAttempt<Track>[] = [];
   // LYRIA 3 is the PRIMARY engine for ALL music — vocal songs AND instrumentals alike. Lyria 3 generates
   // full songs (vocals + timed [Verse]/[Chorus] lyrics + arrangement), so there is NO vocal/instrumental
@@ -215,7 +216,30 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   const trippedSet = new Set<string>();
   await Promise.all(providers.map(async (p) => { try { if (await isProviderTripped(p.name)) trippedSet.add(p.name); } catch { /* fail-open */ } }));
 
-  const res = await runWithLatencyFailover<Track>(providers, {
+  // ⚠️ THE CASCADE COULD OUTLIVE THE FUNCTION, AND A PLATFORM-KILLED LAMBDA REFUNDS NOTHING. The
+  // per-provider budgets are 160 + 190 + 90 + 100 = 540s of worst case against maxDuration = 300s, so a
+  // run that fell all the way down the chain was hard-killed — skipping the route's own rollback and
+  // stranding the user's reserve. A timeout the code chooses can refund; one the platform imposes cannot.
+  //
+  // Allocate every provider from ONE shared wall-clock pool, so the worst case is the POOL and not the
+  // sum. A provider left too little time to finish anything is dropped rather than handed a stub budget
+  // that only guarantees a miss — and at least one attempt always survives, so a slow start never turns
+  // into "no providers ran at all".
+  const poolMs = num(process.env.MUSIC_CASCADE_BUDGET_MS, 250_000); // 50s of headroom under maxDuration
+  let remainingMs = Math.max(0, poolMs - (Date.now() - cascadeStartedAt));
+  const bounded = providers
+    .map((p) => {
+      const budgetMs = Math.min(p.budgetMs ?? poolMs, remainingMs);
+      remainingMs = Math.max(0, remainingMs - budgetMs);
+      return { ...p, budgetMs };
+    })
+    .filter((p) => p.budgetMs >= 20_000);
+  if (bounded.length < providers.length) {
+    // eslint-disable-next-line no-console
+    console.warn(`[ai/music] cascade bounded to ${poolMs}ms — ${providers.length - bounded.length} provider(s) dropped for want of time`);
+  }
+
+  const res = await runWithLatencyFailover<Track>(bounded.length ? bounded : providers.slice(0, 1), {
     isTripped: (n) => trippedSet.has(n),
     record: (n, ok) => { void recordProviderResult(n, ok); },
     onReroute: ({ from, to, reason }) => {

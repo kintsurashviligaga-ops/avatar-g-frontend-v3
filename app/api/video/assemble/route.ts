@@ -569,12 +569,30 @@ async function assembleImpl(req: NextRequest) {
         const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
         if (captioned) master = captioned;
       }
-      // Master produced → COMMIT the credit reservation (the charge is now earned).
-      if (scLock) await commitTokenLock(scLock).catch(() => {});
+      // ⚠️ NOTHING CHANGED MEANS NOTHING TO CHARGE FOR. This used to commit the reservation
+      // unconditionally, and every step above it is fail-open: the conform, the music mux, the
+      // voiceover, the overlay, the captions. When they all missed, `master` was still `clipUrl` — the
+      // route handed back the caller's own file, byte for byte, and kept ASSEMBLE_COST (20 credits) for
+      // it. The log line beside this even computed `master !== clipUrl` to describe the outcome while
+      // the billing ignored it.
+      //
+      // The same rule covers the honest case where the caller asked for nothing at all: no music, no
+      // voiceover, no overlay, no captions, and a clip already in the right shape. That is not work
+      // either. Bill for a changed master or do not bill.
+      const producedSomething = master !== clipUrl;
+      if (producedSomething) {
+        if (scLock) await commitTokenLock(scLock).catch(() => {});
+      } else if (!scSkipBilling && uid) {
+        if (scLock) await releaseTokenLock(scLock).catch(() => {});
+        if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
+        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `assemble-single-rollback:${idemKey}`).catch(() => {});
+      }
       // eslint-disable-next-line no-console
-      console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: !scSkipBilling && !scFreeFilm }));
+      console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
       if (filmTokenId) await recordFilmMaster(filmTokenId, master, null, uid).catch(() => {});
-      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm, single: true });
+      // `freeFilm` reports whether the slot was actually SPENT. When nothing was produced it was handed
+      // back above, so saying true here would tell the client their one free video is gone when it is not.
+      return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, single: true });
     } catch (err) {
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
       if (!scSkipBilling && uid) {

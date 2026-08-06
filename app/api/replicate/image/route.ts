@@ -52,8 +52,17 @@ export async function POST(req: NextRequest) {
       );
       // FINANCIAL SHIELD — charge exactly ONCE when the async image completes, keyed on the predictionId so
       // repeated polls of a finished render are ref-idempotent no-ops. Never bills a failed/pending poll.
-      if (result.status === 'succeeded') {
+      //
+      // ⚠️ `succeeded` IS THE PROVIDER'S VERDICT, NOT PROOF OF AN IMAGE. Charging on the status alone
+      // billed the user whenever Replicate marked a prediction succeeded but the normalizer could not
+      // read a URL out of the output — an empty array, a null entry, a changed output schema. The client
+      // receives `normalized.url`, so that is what the charge is for. This route has no refund path at
+      // all, which makes not charging the only correction available here.
+      if (result.status === 'succeeded' && normalized.url) {
         await deductCredits(guard.userId, creditCostFor('image'), `image:${result.id}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
+      } else if (result.status === 'succeeded') {
+        // eslint-disable-next-line no-console
+        console.warn(`[replicate.image] prediction ${result.id} succeeded with no readable url — NOT charging`);
       }
       return NextResponse.json(normalized);
     }

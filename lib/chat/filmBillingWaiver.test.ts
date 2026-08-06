@@ -7,6 +7,8 @@
  * stitch then died left the marker spent, so the retry the user was invited to make was charged
  * ASSEMBLE_COST (20 credits) for a film the product had told them was free. The user paid for the outage.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 jest.mock('../supabase/server', () => ({ createServiceRoleClient: () => null }));
 
 // eslint-disable-next-line import/first
@@ -50,9 +52,7 @@ describe('restoreFilmBilling', () => {
 });
 
 describe('the assemble route returns it on the failure path', () => {
-  const src = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', '..', 'app/api/video/assemble/route.ts'), 'utf8',
-  ) as string;
+  const src = readFileSync(join(__dirname, '..', '..', 'app/api/video/assemble/route.ts'), 'utf8');
 
   it('restores BEFORE the skipBilling early return', () => {
     // skipBilling is TRUE in exactly the case that spent the waiver, so a restore placed after that
