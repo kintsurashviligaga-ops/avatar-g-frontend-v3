@@ -831,7 +831,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const billed = legs.filter((c) => c.debited);
     if (billed.length === 0) return;
     // eslint-disable-next-line no-console
-    console.warn(`[film] scene synthesis failed — refunding ${billed.length} billed clip leg(s) for ${input.userId}`);
+    console.warn(`[film] refunding ${billed.length} billed clip leg(s) that produced nothing, for ${input.userId}`);
     await Promise.all(
       billed.map((c) =>
         creditWalletGel(input.userId as string, clipForecast.retailGel, `${compositeId}:clip:${c.ordinal}:refund`),
@@ -954,6 +954,24 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const reason = clips.map((c) => c.error).find((e): e is string => Boolean(e)) ?? null;
     return connectionFailed(reason);
   }
+
+  // ── PARTIAL FAILURE — refund the legs that were billed and produced nothing ──
+  //
+  // ⚠️ THE ROLLBACK ABOVE ONLY RUNS WHEN *NOTHING* QUEUED, AND THAT WAS THE HOLE. A leg is billed the
+  // moment withTrace's inner call resolves (`if (billable) debited = true`, above) — including when the
+  // dispatch came back with NO task reference and every retry was exhausted. So a five-scene film where
+  // three clips queued and two died kept the money for the two that produced nothing: `anyClip` was
+  // true, this whole branch was skipped, and no other code path in the pipeline credits a clip leg.
+  //
+  // ⚠️ THIS IS SAFE TO DO HERE AND ONLY HERE. The refund is decided from state THIS request owns — the
+  // legs it just dispatched and their task references — so there is no client-supplied token, no
+  // caller-declared "it failed", and nothing to farm. That distinction is why the ASYNC failure (a clip
+  // that queues and then dies at the provider) is deliberately still not refunded: `film:` is an
+  // unsigned, client-held token and a transient 429 can read as 'failed', so refunding on a poll result
+  // would let anyone mint credits. Closing that one needs the server-authoritative per-clip charge
+  // record; it is not a missing function call.
+  const strandedLegs = clips.filter((c) => c.debited && c.status !== 'queued');
+  if (strandedLegs.length) await rollbackFilmDebits(strandedLegs);
 
   // ── DOUBLE-VOICE GUARD ──────────────────────────────────────────────────────
   // The stitch PRESERVES each clip's native audio (nativeAudio[] → the filtergraph's diegetic lane), so a

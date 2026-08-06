@@ -41,6 +41,7 @@ import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasVideoProvider } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
+import { creditWalletGel } from '@/lib/billing/wallet-ledger';
 
 const serviceManager = new ServiceManager();
 
@@ -205,6 +206,17 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const opts = input.selectedOptions || {};
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
+  // ⚠️ A LEG THAT RESOLVES WITH NOTHING HAS STILL BEEN CHARGED. withTrace issues its debit the moment the
+  // inner call RESOLVES — it never looks at what came back — so a provider that answers without a task
+  // reference bills the user and then returns null here. These flags record that a debit actually
+  // happened, so the refund below can tell three cases apart that all look like `null`:
+  //   · provider not configured  → the ternary never ran the traced call, nothing was charged
+  //   · the call THREW           → withTrace marks the trace failed and issues no debit
+  //   · the call RESOLVED EMPTY  → CHARGED, and nothing was produced ← the only one to refund
+  // Refunding on `null` alone would credit users who were never billed.
+  let musicDebited = false;
+  let videoDebited = false;
+
   // Music leg — Udio.
   const musicPromise: Promise<string | null> = hasUdioApiKey()
     ? withTrace(
@@ -236,7 +248,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
             makeInstrumental: false,
           }),
       )
-        .then((r) => r.workId)
+        .then((r) => { musicDebited = true; return r.workId; })
         .catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[composite] music leg failed:', err instanceof Error ? err.message : err);
@@ -280,7 +292,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           }),
         (r) => r.assetUrl || r.predictionId || null,
       )
-        .then((r) => r.predictionId || r.assetUrl || null)
+        .then((r) => { videoDebited = true; return r.predictionId || r.assetUrl || null; })
         .catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[composite] video leg failed:', err instanceof Error ? err.message : err);
@@ -289,6 +301,32 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
     : Promise.resolve(null);
 
   const [musicWorkId, videoTaskRef] = await Promise.all([musicPromise, videoPromise]);
+
+  // ── Refund the legs that were billed and produced nothing ────────────────
+  //
+  // ⚠️ THIS FILE HAD NO REFUND OF ANY KIND. Both legs are debited by withTrace the instant their inner
+  // call resolves, and both then map the result down to `null` when no task reference came back — at
+  // which point the user is told the video was "skipped" and keeps paying for it. A music-video where
+  // the video leg answered empty charged for a clip that was never queued, every time.
+  //
+  // Server-authoritative and safe: the decision uses only what THIS request did — whether it issued a
+  // debit, and whether that call produced a reference. No client token, nothing to farm. The refs carry
+  // a `:refund` suffix and credit_wallet_gel is idempotent on its ref, so a retry cannot over-credit.
+  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
+  if (realUser) {
+    const stranded: Array<[string, number]> = [];
+    if (musicDebited && !musicWorkId) stranded.push(['music', forecast.legs.music.retail]);
+    if (videoDebited && !videoTaskRef) stranded.push(['video', forecast.legs.video.retail]);
+    if (stranded.length) {
+      // eslint-disable-next-line no-console
+      console.warn(`[composite] refunding ${stranded.map(([l]) => l).join('+')} leg(s) billed with no output for ${input.userId}`);
+      await Promise.all(
+        stranded.map(([leg, retail]) =>
+          creditWalletGel(input.userId as string, retail, `${compositeId}:${leg}:refund`).catch(() => null),
+        ),
+      );
+    }
+  }
 
   plan.musicPredictionId = musicWorkId;
   plan.videoTaskRef = videoTaskRef;
