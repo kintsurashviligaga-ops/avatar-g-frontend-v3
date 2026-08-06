@@ -18,6 +18,8 @@ export interface AdminUserRow {
   full_name: string | null;
   credits_balance: number;
   created_at: string;
+  /** How many generations this account has run. null when the count could not be read. */
+  generations: number | null;
 }
 
 export interface AdminUserPage {
@@ -56,7 +58,25 @@ export async function listUsers(client: Client, opts: { q?: string; page?: numbe
       full_name: (r.full_name as string | null) ?? null,
       credits_balance: Number(r.credits_balance) || 0,
       created_at: String(r.created_at),
+      generations: null as number | null,
     }));
+
+    // ⚠️ ONE GROUPED QUERY FOR THE PAGE, NOT ONE PER USER. The admin list is 25 rows; a per-row count
+    // would be 25 extra round-trips on every keystroke of the search box. Counted only for the ids on
+    // screen, and FAIL-SOFT: if generation_jobs is unreadable the column shows "—" rather than taking
+    // the whole user list down with it — the list is what an admin needs in an incident.
+    try {
+      const ids = users.map((u) => u.id);
+      if (ids.length) {
+        const { data: jobs } = await client.from('generation_jobs').select('user_id').in('user_id', ids);
+        const tally = new Map<string, number>();
+        for (const j of (jobs ?? []) as { user_id: string }[]) {
+          tally.set(j.user_id, (tally.get(j.user_id) ?? 0) + 1);
+        }
+        for (const u of users) u.generations = tally.get(u.id) ?? 0;
+      }
+    } catch { /* leave null → the UI renders an em-dash */ }
+
     return { users, total: typeof count === 'number' ? count : users.length };
   } catch {
     return { users: [], total: 0 };

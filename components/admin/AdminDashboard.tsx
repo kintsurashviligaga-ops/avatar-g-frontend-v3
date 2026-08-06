@@ -293,7 +293,13 @@ function UserRow({ ka, user, fmt, onGranted }: { ka: boolean; user: AdminUserRow
     <li className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 text-[12.5px]">
       <div className="min-w-0">
         <p className="truncate text-gray-200">{user.email ?? <span className="text-gray-600">—</span>}</p>
-        <p className="truncate text-[11px] text-gray-500">{user.full_name || `${user.id.slice(0, 8)}…`} · {fmt(user.created_at)}</p>
+        {/* Registration date, then how much this account has actually USED — the two numbers that say
+            whether a row is a real customer or a dormant signup. An unread count renders as "—" rather
+            than 0, because "we could not count" and "they generated nothing" are different facts. */}
+        <p className="truncate text-[11px] text-gray-500">
+          {user.full_name || `${user.id.slice(0, 8)}…`} · {fmt(user.created_at)} · {ka ? 'გენერაცია' : 'gen'}{' '}
+          <span className="tabular-nums text-gray-400">{user.generations ?? '—'}</span>
+        </p>
       </div>
       <span className="text-right font-semibold tabular-nums text-cyan-400">{user.credits_balance}</span>
       <div className="flex flex-wrap items-center justify-end gap-2">

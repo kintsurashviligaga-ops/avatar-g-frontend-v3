@@ -35,7 +35,10 @@ describe('listUsers', () => {
     const client = makeClient({ listResult: { data: [{ id: 'u1', email: 'a@b.com', full_name: 'A', credits_balance: 5, created_at: '2026-07-01' }], count: 42, error: null } });
     const res = await listUsers(client, { page: 0 });
     expect(res.total).toBe(42);
-    expect(res.users[0]).toEqual({ id: 'u1', email: 'a@b.com', full_name: 'A', credits_balance: 5, created_at: '2026-07-01' });
+    // `generations` is null here on purpose: this mock has no generation_jobs table, and the count is
+    // FAIL-SOFT — an unreadable job table must not take the whole user list down with it. null means
+    // "could not count", which the UI renders as an em-dash rather than a misleading 0.
+    expect(res.users[0]).toEqual({ id: 'u1', email: 'a@b.com', full_name: 'A', credits_balance: 5, created_at: '2026-07-01', generations: null });
   });
 
   it('fails open to an empty page on error', async () => {
