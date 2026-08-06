@@ -271,8 +271,14 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                     onClick={() => { if (busyId === null) void startCheckout(p); }}
                     onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && busyId === null) { e.preventDefault(); void startCheckout(p); } }}
                     aria-label={`${TIER_NAME[p.id][lang]} — $${p.priceUsd}`}
-                    className={`relative cursor-pointer rounded-2xl border p-4 transition-transform active:scale-[0.99] ${highlight ? 'border-cyan-400/30 bg-app-elevated' : 'border-app-border/15 bg-app-bg/40'}`}
-                    style={highlight ? { boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(6,182,212,0.14), 0 22px 48px -26px rgba(6,182,212,0.42)' } : undefined}>
+                    // ⚠️ THE MIDDLE CARD USED TO BE A DIFFERENT COMPONENT TO LOOK AT. Only `pro` got the cyan
+                    // border, the lifted background and a 48px glow, while its neighbours sat flat and grey —
+                    // so the three packages read as one offer and two afterthoughts, and the row looked
+                    // unbalanced rather than deliberate. All three now share one frame and one elevation;
+                    // the ONLY thing that still marks the popular tier is the small badge above it, which is
+                    // information rather than a different visual class.
+                    className="relative cursor-pointer rounded-2xl border border-app-border/15 bg-app-elevated p-4 transition-transform active:scale-[0.99]"
+                    style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(6,182,212,0.14), 0 22px 48px -26px rgba(6,182,212,0.42)' }}>
                     {highlight && (
                       <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg"
                         style={{ background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', boxShadow: '0 6px 16px -5px rgba(6,182,212,0.6)' }}>
@@ -297,7 +303,9 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                       ))}
                     </ul>
                     <button type="button" onClick={(e) => { e.stopPropagation(); void startCheckout(p); }} disabled={busyId !== null}
-                      className={`mt-3.5 inline-flex min-h-[46px] w-full touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-60 ${highlight ? 'bg-app-accent text-app-bg' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15'}`}>
+                      // Same accent treatment on every tier — a muted button on two of three cards was the
+                      // other half of the imbalance, and it made the cheaper packages look unavailable.
+                      className="mt-3.5 inline-flex min-h-[46px] w-full touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-60">
                       {busyId === p.id ? <><Loader2 size={13} className="animate-spin" /> {t.redirecting}</> : <>{t.pay} · ${p.priceUsd}</>}
                     </button>
                   </div>
