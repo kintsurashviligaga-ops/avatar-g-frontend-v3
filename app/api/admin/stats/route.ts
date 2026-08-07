@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { structuredLog } from '@/lib/logger'
+import { isAdmin } from '@/lib/auth/adminGuard'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -29,14 +30,16 @@ export async function GET(): Promise<NextResponse> {
       )
     }
 
-    // Check admin role in profiles
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || profile.role !== 'admin') {
+    // ⚠️ THIS GATE CHECKED A COLUMN THAT DOES NOT EXIST. `profiles.role` is not in the schema, so the
+    // select errored, `profile` came back null, and the check was true for EVERYONE — this endpoint
+    // returned 403 to real admins and had been dead for as long as it has existed. It failed CLOSED, so
+    // nothing leaked; it simply never worked.
+    //
+    // Replaced with the gate the other sixteen admin routes use: isAdmin() reads the signed-in email
+    // from the SESSION and checks it against the server-side allowlist (env + admin_emails table).
+    // Deliberately NOT a database flag on the user's own row and NOT user_metadata — both are writable
+    // by the user they describe, which would make admin self-grantable.
+    if (!(await isAdmin())) {
       return NextResponse.json(
         { error: { code: 'FORBIDDEN', message: 'Admin access required' } },
         { status: 403 }

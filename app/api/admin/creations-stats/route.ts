@@ -2,7 +2,7 @@
  * GET /api/admin/creations-stats
  * Admin-only: Returns generation analytics across all users.
  * - Total generations, credits used, daily breakdown, top services.
- * - Restricted to admin email OR admin role in profiles.
+ * - Restricted to the admin email allowlist. Nothing else — see the note on the gate below.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
@@ -21,17 +21,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const isAdmin = ADMIN_EMAILS.includes(user.email ?? '');
+    // ⚠️ THE SECOND HALF OF THIS GATE WAS A FALLBACK TO `profiles.role`, A COLUMN THAT DOES NOT EXIST.
+    // The select errored, `profile` came back null, and the branch always denied — so the allowlist was
+    // doing all the work and the fallback was dead weight. Removed rather than repaired: a role flag on
+    // the user's OWN row is writable by the very person it describes unless RLS forbids it exactly, so
+    // "allowlist OR row flag" is only ever as strong as the row flag. One gate, and it is the session
+    // email against the server-side list.
     if (!isAdmin) {
-      // Also check role in profiles
-      const supabase = createServiceRoleClient();
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      if (!profile || profile.role !== 'admin') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const supabase = createServiceRoleClient();

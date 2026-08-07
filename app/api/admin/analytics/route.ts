@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { normalizePlanTier } from '@/lib/billing/plans';
 import { getAccessToken } from '@/lib/auth/server';
+import { isAdmin } from '@/lib/auth/adminGuard';
 
 type SubscriptionRow = {
   plan: string | null;
@@ -36,12 +37,16 @@ export async function GET() {
 
     const supabase = createSupabaseServerClient();
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', token.sub)
-      .single();
-    if (profile?.role !== 'admin') {
+    // ⚠️ THIS GATE CHECKED A COLUMN THAT DOES NOT EXIST. `profiles.role` is not in the schema, so the
+    // select errored, `profile` came back null, and `profile?.role !== 'admin'` was true for EVERYONE —
+    // this endpoint returned 403 to real admins and had been dead for as long as it has existed. It
+    // failed CLOSED, so nothing leaked; it simply never worked.
+    //
+    // Replaced with the gate the other sixteen admin routes use: isAdmin() reads the signed-in email
+    // from the SESSION and checks it against the server-side allowlist (env + admin_emails table).
+    // Deliberately NOT a database flag on the user's own row and NOT user_metadata — both are writable
+    // by the user they describe, which would make admin self-grantable.
+    if (!(await isAdmin())) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
