@@ -48,22 +48,27 @@ describe('components/ui primitives are actually used', () => {
   });
 
   /**
-   * ⚠️ A QUARANTINE, NOT A CLEAN BILL. Nineteen exported primitives are rendered nowhere — an entire
-   * design system that was built and never adopted. They are listed rather than deleted because some may
-   * be intentional (a Skeleton kept for a page not written yet) and deciding that one by one is its own
-   * change, not a footnote to a card cleanup.
+   * ⚠️ WHAT IS LEFT AFTER THE CLEAROUT, AND IT MAY ONLY SHRINK.
    *
-   * The list may only SHRINK. Wiring one in or deleting it is the work; adding a twentieth is the thing
-   * this stops. GlassCard and GlowCard were the first two out — both were card components, which is how
-   * this was found: "improve the cards" turned up two nobody could see.
+   * Twenty-one exported primitives were rendered nowhere — an entire design system built and never
+   * adopted. Fifteen files are gone: GlassCard, GlowCard, AnimatedCounter, CommandInput, CreditBalance,
+   * EmptyState, GlowButton, GridBackground, LoadingScreen, Modal, NeonBadge, NeonButton, NoiseOverlay,
+   * RocketLogo and the whole tabs set. Verified dead twice over — nothing renders them as JSX and
+   * nothing imports their module.
+   *
+   * They were deleted rather than kept "in case": git remembers them, and "we might need it" is the
+   * exact reasoning that let twenty-one accumulate. Anyone who needs a Modal later will write a better
+   * one against the current design than the one that sat here unused.
+   *
+   * Adding a twenty-second is what this stops.
    */
   const QUARANTINE = [
-    'AnimatedCounter.tsx:AnimatedCounter', 'CommandInput.tsx:CommandInput', 'CreditBalance.tsx:CreditBalance',
-    'EmptyState.tsx:EmptyState', 'GlowButton.tsx:GlowButton', 'GridBackground.tsx:GridBackground',
-    'LoadingScreen.tsx:LoadingScreen', 'Modal.tsx:Modal', 'NeonBadge.tsx:NeonBadge', 'NeonButton.tsx:NeonButton',
-    'NoiseOverlay.tsx:NoiseOverlay', 'RocketLogo.tsx:RocketLogo', 'Skeleton.tsx:CardSkeleton',
-    'Skeleton.tsx:DashboardSkeleton', 'tabs.tsx:Tabs', 'tabs.tsx:TabsContent', 'tabs.tsx:TabsList',
-    'tabs.tsx:TabsOld', 'tabs.tsx:TabsTrigger',
+    // Skeleton.tsx itself IS used — three files import it — so the module stays and only these two
+    // named exports are unrendered. Deleting a live file to remove two exports is the wrong trade; they
+    // are cheap, they belong to a component that is real, and a loading skeleton for a page not yet
+    // written is the one case where "not used yet" is a plausible answer rather than an excuse.
+    'Skeleton.tsx:CardSkeleton',
+    'Skeleton.tsx:DashboardSkeleton',
   ];
 
   const dead = () => primitives
