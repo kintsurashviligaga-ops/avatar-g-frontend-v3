@@ -874,7 +874,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         {/* Chat history list */}
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex items-center justify-between gap-1.5 px-2 pb-1.5">
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3" /> {tHistory}</span>
+            {/* ⚠️ THIS HEADING WRAPPED TO TWO LINES. The clear-all button sits beside it and squeezed the
+                label to 76px, so "ჩატების ისტორია" broke across two rows and pushed the whole list down —
+                measured in a browser, not guessed. Georgian words are long; a heading that fits in English
+                is not evidence it fits here. `min-w-0` lets it shrink and `truncate` makes it end in an
+                ellipsis instead of reflowing, with the full text still available on hover. */}
+            <span title={tHistory} className="flex min-w-0 items-center gap-1.5 truncate text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3 shrink-0" /> <span className="truncate">{tHistory}</span></span>
             {conversations.length > 0 && (
               <button type="button" onClick={handleClearAll} title={tClearAll}
                 className="tap-44 relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-app-muted/80 transition-colors hover:bg-red-500/10 hover:text-red-400 touch-manipulation">
