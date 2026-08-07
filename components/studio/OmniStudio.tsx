@@ -77,6 +77,7 @@ import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // in-chat MODES below. Reading the catalogue means a new service appears here automatically.
 import { SERVICE_CATALOGUE, serviceHref, serviceName } from '@/lib/services/serviceCatalogue';
 import type { PanelService } from './ServiceParamsPanel';
+import { describeServiceError } from './ui/serviceError';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -3874,7 +3875,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // user "Image generation failed. Try again." is not merely vague, it is the OPPOSITE of the
         // truth, and it invites exactly the retry that will 409 again. Every sibling flow in this file
         // (video, remix, lipsync, upscale, and image's own regenerate) already surfaces the reason.
-        const reason = j.code === 'insufficient_credits' ? (j.message || j.error) : j.message;
+        // ⚠️ BUT THE REASON MUST STILL BE OURS, NOT THE PROVIDER'S. The note above is right that a vague
+        // "try again" is worse than useless here — and the fix reached for whatever the server said,
+        // which is how English provider prose and codes like `insufficient_credits` landed in a Georgian
+        // chat bubble. describeServiceError keeps the specificity and drops the wrong voice; anything it
+        // does not recognise falls back rather than being echoed.
+        const reason = describeServiceError(j.message || j.error, locale, t.imageFailed);
         // A refusal for want of credits is the one failure with an obvious next step — offer it.
         updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'image failed');
@@ -3940,7 +3946,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // Keep the reason ON THE TILE. It was received here, rethrown, and then dropped — and the
             // floating tray that would have shown it unmounts once the batch stops being active, which
             // is exactly when the failure becomes visible. Net result was a bare X and no explanation.
-            updateTile(tileIdx, { status: 'failed', jobId, error: j.message || j.error });
+            // The tile shows this to the user — same rule as the bubble above.
+            updateTile(tileIdx, { status: 'failed', jobId, error: describeServiceError(j.message || j.error, locale, t.imageFailed) });
             throw new Error(j.error || 'image failed');
           } catch (e) {
             updateTile(tileIdx, { status: 'failed', jobId, error: e instanceof Error ? e.message : undefined });
@@ -4081,7 +4088,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
           return j.url;
         }
-        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${j.code === 'insufficient_credits' && j.error ? j.error : t.musicFailed}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
+        // The copyright case keeps its own copy — it is the one refusal with a specific, already-written
+        // Georgian explanation. Everything else goes through the shared mapper instead of printing
+        // whatever the music provider wrote in English.
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeServiceError(j.error, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'music failed');
       },
     });

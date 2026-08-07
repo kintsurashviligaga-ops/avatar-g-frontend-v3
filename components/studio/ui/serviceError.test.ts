@@ -74,6 +74,18 @@ describe('no surface pastes a raw server string any more', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('the product chat shows no raw server string in a bubble or tile', () => {
+    // ⚠️ OmniStudio IS the product. Its image bubble printed `j.message || j.error`, its image TILE the
+    // same, and the music bubble printed `j.error` verbatim on an insufficient-credits refusal — so the
+    // most-used screen in the app was the one still speaking English provider prose. The comment above
+    // the image site was even right that a vague message is worse than useless; it just reached for the
+    // server's words to be specific.
+    const omni = readFileSync(join(dir, 'OmniStudio.tsx'), 'utf8');
+    expect(omni).not.toMatch(/updateBubble\([^)]*\$\{[^}]*j\.(error|message)[^}]*\}/);
+    expect(omni).not.toMatch(/error: j\.message \|\| j\.error/);
+    expect(omni).toContain('describeServiceError');
+  });
+
   it('routes setError through the mapper wherever a server string is involved', () => {
     // A bare `setError(j.error || t.failed)` is the original defect in its smallest form.
     const offenders = files.filter((f) => /setError\((?:p?j)\.(error|message)\s*\|\|/.test(codeOf(f)));
