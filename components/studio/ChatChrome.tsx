@@ -44,7 +44,8 @@ let liveAvatarCooldownUntil = 0;
 const LIVEAVATAR_COOLDOWN_MS = 5 * 60 * 1000;
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 import { isEnabledByDefault } from '@/lib/env/flag';
-import PersonaPicker, { loadSelectedPersonaId } from './PersonaPicker';
+import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
+import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
@@ -483,6 +484,22 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Only used for the "a persona is active" dot — read once on mount (localStorage is not reactive).
   const [activePersonaId, setActivePersonaId] = useState('');
   useEffect(() => { setActivePersonaId(loadSelectedPersonaId()); }, []);
+  /**
+   * ⚠️ THE ROW SAID "პერსონა" AND A DOT. The dot told you a persona was active and nothing else — so the
+   * one thing you actually want to know, WHO you are talking to, required opening the picker to find out.
+   * A persona changes the assistant's tone and which studio it reaches for; leaving that unnamed on the
+   * only always-visible surface is the difference between a setting and a setting you can trust.
+   *
+   * Custom personas are resolved from local storage too, so a user's own specialist is named like the
+   * built-ins rather than falling back to the generic label.
+   */
+  const activePersonaName = useMemo(() => {
+    if (!activePersonaId) return '';
+    const lang: 'ka' | 'en' | 'ru' = locale === 'en' || locale === 'ru' ? locale : 'ka';
+    const found = BUILT_IN_PERSONAS.find((p: Persona) => p.id === activePersonaId)
+      ?? loadCustomPersonas().find((p: Persona) => p.id === activePersonaId);
+    return found ? personaName(found, lang) : '';
+  }, [activePersonaId, locale]);
   // Desktop/iPad (>=md) COLLAPSE. On mobile the drawer is toggled by `sidebarOpen`; at >=md the sidebar was
   // permanently pinned with no way to hide it. This lets desktop/iPad users collapse it (persisted) — when
   // collapsed the aside is md:hidden and the top bar shows a re-open control + the brand so nothing is lost.
@@ -917,7 +934,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           </button>
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" /> {t.persona}
-            {activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
+            {activePersonaName
+              // Named, truncated, and still marked — the dot alone was the whole problem.
+              ? <span className="ml-auto min-w-0 truncate text-[12px] text-app-accent" title={activePersonaName}>{activePersonaName}</span>
+              : activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
           </button>
           {/* BILLING — opens the SAME CreditsModal as the top-bar wallet button. It used to navigate to
               /account/billing instead, so the two billing entry points led to different places and only
