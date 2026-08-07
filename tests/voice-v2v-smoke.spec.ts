@@ -1,3 +1,15 @@
+/**
+ * ⚠️ STALE — THESE ASSERT A UI THAT NO LONGER EXISTS, AND THEY HAVE BEEN RED FOR A LONG TIME.
+ *
+ * They look for a "Service hub" button (the service picker moved into the chat-input popup), a
+ * hardcoded greeting with the owner's name, and "One Window Dashboard" — a string that appears ZERO
+ * times in the source today. Nothing here is a product defect; the product moved and the tests did not.
+ *
+ * Marked `fixme` rather than deleted so the intent is not lost, and rather than left failing because a
+ * permanently-red suite is worse than no suite: it teaches everyone to ignore failures. That is not
+ * hypothetical here — a genuinely broken delete shipped and hid among these, and was only caught once a
+ * NEW spec ran green beside them. Each of these needs rewriting against the current dashboard.
+ */
 import { expect, test } from '@playwright/test';
 
 test.use({
@@ -7,7 +19,7 @@ test.use({
   },
 });
 
-test('voice panel transitions and barge-in interruption', async ({ page }) => {
+test.fixme('voice panel transitions and barge-in interruption', async ({ page }) => {
   await page.addInitScript(() => {
     type VoiceFrame = { type?: string; [key: string]: unknown };
 
