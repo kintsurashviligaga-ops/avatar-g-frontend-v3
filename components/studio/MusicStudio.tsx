@@ -30,6 +30,7 @@ import { TextArea } from './ui/controls';
 import { CreditBadge } from '@/components/ui/CreditBadge';
 import { VoiceTrainer } from '@/components/voice/VoiceTrainer';
 import { describeServiceError } from './ui/serviceError';
+import { GenerationProgress } from './ui/GenerationProgress';
 
 // ─── i18n ───────────────────────────────────────────────────────────────────
 type Lang = 'ka' | 'en' | 'ru';
@@ -602,6 +603,17 @@ export function MusicStudio() {
               : <><Sparkles size={17} /> {t.generate}</>}
           </button>
         </motion.div>
+
+        {/* ⚠️ A COUNTER INSIDE THE BUTTON IS NOT PROGRESS. The seconds ticked up on the button label and
+            said nothing else — no stage, no idea whether 90s is normal or a hang. Music renders run to
+            ~250s, so "generating… 140s" against an unknown ceiling reads as broken, and the reasonable
+            response is to press it again and pay twice. Every other studio already had the shared card;
+            this one had the clock and not the card. */}
+        {busy && (
+          <div className="mt-3">
+            <GenerationProgress kind="music" elapsed={elapsed} locale={lang} />
+          </div>
+        )}
 
         {/* Error */}
         <AnimatePresence>

@@ -12,7 +12,7 @@
  * This asserts the parity rather than the pixels: a studio that shows progress uses the shared card, and
  * a studio that can fail offers a way to retry.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dir = join(__dirname, '..');
@@ -21,7 +21,7 @@ const src = (f: string) => readFileSync(join(dir, f), 'utf8');
 /** Studios migrated to the shared progress card. Grow this list; never shrink it. */
 const WITH_PROGRESS = [
   'MontageStudio.tsx', 'DubbingStudio.tsx', 'SlidesStudio.tsx',
-  'Model3dStudio.tsx', 'LipsyncStudio.tsx',
+  'Model3dStudio.tsx', 'LipsyncStudio.tsx', 'MusicStudio.tsx',
 ];
 
 describe('progress parity', () => {
@@ -30,8 +30,10 @@ describe('progress parity', () => {
   });
 
   it.each(WITH_PROGRESS)('%s drives it from a real elapsed clock', (f) => {
-    // A card with a frozen `elapsed` is the same lie as the bar it replaced.
-    expect(src(f)).toMatch(/setElapsed\(\(Date\.now\(\) - t0\) \/ 1000\)/);
+    // A card with a frozen `elapsed` is the same lie as the bar it replaced. Assert the CONTRACT — the
+    // value comes from a wall-clock delta — not one spelling of it: Music floors to whole seconds on a
+    // 250ms interval and is just as correct, and an over-specific regex failed it for no reason.
+    expect(src(f)).toMatch(/setElapsed\([^)]*Date\.now\(\)\s*-/);
   });
 
   it.each(WITH_PROGRESS)('%s resets the clock when the run ends', (f) => {
@@ -127,5 +129,23 @@ describe('the history a user can actually reach', () => {
   it('the sidebar delete stays tappable without hover', () => {
     // opacity-100 by default, hidden only from md up — the inverse of the trap in the hidden panel.
     expect(chrome()).toMatch(/opacity-100[^"]*md:opacity-0/);
+  });
+});
+
+describe('no studio is left with a bare spinner', () => {
+  /**
+   * ⚠️ MUSIC WAS THE LAST ONE, AND IT HID BEHIND A COUNTER. It ticked the seconds inside the button
+   * label — which looks like progress and is not: no stage, and no sense of whether 140s is normal for
+   * a render that runs to ~250s. Against an unknown ceiling that reads as a hang, and the reasonable
+   * response is to press again and pay twice.
+   */
+  const studios = readdirSync(dir).filter((f) => /Studio\.tsx$/.test(f));
+
+  it('every studio with an elapsed clock also renders the shared card', () => {
+    const clockButNoCard = studios.filter((f) => {
+      const s = src(f);
+      return s.includes('setElapsed') && !s.includes('<GenerationProgress');
+    });
+    expect(clockButNoCard).toEqual([]);
   });
 });
