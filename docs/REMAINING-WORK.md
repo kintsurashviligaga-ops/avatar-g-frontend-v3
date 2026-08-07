@@ -1,90 +1,68 @@
-# Remaining work — Agent G automation, Prompt Factory, load testing
+# Remaining work — as of 2026-08-07
 
-Written 2026-08-02, after the day's fixes shipped and were verified live on myavatar.ge.
-Everything below is **not started**. Each item is a money path or needs infrastructure, and each one has a
-trap that this codebase has already sprung at least once.
-
----
-
-## 1. Batch queue API for Agent G (`#7`, second half)
-
-**Goal:** the orchestrator submits N video prompts, they render sequentially, results come back — no
-manual step.
-
-**What already exists (do not rebuild):**
-- `lib/orchestrator/jobs.ts` — `createJob`, capped-parallel engine (3 concurrent)
-- `lib/providers/latencyFailover.ts` — provider failover
-- `addWatermark()` in `lib/video/remixOps.ts`, reachable as `op: 'watermark'` on `/api/video/remix`
-
-**What is missing:** the batch endpoint itself, and its billing.
-
-### ⚠️ Traps, in the order they will bite
-
-1. **Each video costs credits.** `deduct_credits(user, amount, ref)` is verified working (50→25, replay
-   is idempotent, overspend refused). The batch must debit **per item**, not once for the batch, or a
-   partial failure either overcharges or gives work away.
-2. **The idempotency `ref` must be PER TRANSACTION.** A fixed ref across a batch means item 2..N are free
-   — this exact bug shipped before (see `billing-idempotency-and-chat-persistence` in memory).
-3. **Refund on failure, per item.** Follow the saga in `app/api/video/assemble/route.ts`: reserve →
-   dispatch → commit, with rollback releasing both the lock and the durable debit.
-4. **`credit_ledger` has an AFTER INSERT trigger** maintaining `profiles.credits_balance`. Insert the
-   ledger row ONLY. An extra `UPDATE profiles` pays twice — that shipped once.
-5. **`credit_ledger.reason` CHECK** accepts `purchase | commit | refund | admin_adjustment` only.
-   Specifics go in `metadata`.
-6. **Watermark runs LAST.** `stripVeoWatermark` crops the bottom of the frame; running it after
-   `addWatermark` cuts off the mark just applied.
-7. **Never trust a client-supplied id for authorisation.** The `film:` token is base64url JSON the client
-   holds; server-authoritative state lives in `lib/chat/filmStatusStore.ts`.
+Written after a two-day sweep that shipped 49 commits and 2,510 green tests. Everything below is **not
+started**, and each entry says why it was left rather than done — a reason is more useful than a ticket.
 
 ---
 
-## 2. Agent G "Prompt Factory" (`#5`)
+## Blocked on the owner, not on code
 
-**Goal:** watch chat topics, detect ones that consumed 10k+ tokens across users, filter spam, generate
-ready-made 8s video prompts, surface them in the admin panel with a Copy button.
-
-**Nothing exists.** It needs, roughly in order:
-1. Token accounting per conversation topic — check whether `agent_evolution_traces` already records
-   enough (it is what `/api/admin/financials` uses for cost) before adding a table.
-2. Clustering/topic extraction over chat history.
-3. A spam/irrelevance filter.
-4. Prompt generation.
-5. A `Trending Prompts` admin section with Copy.
-
-### ⚠️ Traps
-- **Chat history is localStorage on `/dashboard`**, and `chat_sessions` / `chat_messages` are 0 rows with
-  a schema that does not match the code (`lib/chat-history.ts` documents this). **There is no server-side
-  corpus to analyse yet.** That is the first thing to solve, and it is a bigger job than the factory.
-- Reading user chats server-side is a **privacy decision**, not just an engineering one. Say so out loud
-  before building it.
-- **`\b` never matches after Georgian or Cyrillic.** Any keyword filter must use
-  `(?<![\p{L}\p{N}])` / `(?![\p{L}\p{N}])` with the `u` flag. Georgian is agglutinative — match STEM +
-  `\p{L}*`, never whole words. This has cost multiple wrong diagnoses.
+| | Blocks |
+|---|---|
+| **Vercel billing** — every route returns `402 DEPLOYMENT_DISABLED` | THE WHOLE PRODUCT. None of the 49 commits are reachable by a user. |
+| **Google AI prepayment** — Veo returns `429 RESOURCE_EXHAUSTED` | All video generation. The agent queue's paid `drain` path cannot be proven end to end until this clears. |
+| **`SUPABASE_ACCESS_TOKEN`** — expired; no `exec_sql` RPC | Every migration must be pasted into the SQL editor by hand. `/api/admin/run-migration` documents a "turnkey curl" that answers `management_api: 401 \| exec_sql_rpc: 404`. |
 
 ---
 
-## 3. Load testing & checkout (`#8`)
+## 1. Film async-failure refund
 
-**Not a code change.** Needs k6 or Artillery against a staging deploy, plus a decision about what load to
-target. The checkout rails to exercise: Stripe (`/api/billing/wallet-topup`, `/api/billing/tier-checkout`),
-Bank of Georgia (RSA-signed webhook), Apple IAP.
+A clip that QUEUES and then dies at the provider is still charged. The in-request cases are fixed
+(partial-failure rollback, and a dispatch that returns an id while reporting failure is no longer filed as
+`queued`).
 
-⚠️ **Supabase had unpaid invoices as of 2026-08-02** ("Outstanding invoices" in the dashboard). Load
-testing against a database that may be suspended will produce meaningless results — settle that first.
+⚠️ **Do not "just add a refundCredits call" on the poll path.** `film:` is an unsigned, client-held token
+and a transient 429 reads as `failed`, so a token-driven refund lets anyone mint credits. It needs a
+server-authoritative per-clip charge record (`film_clip_charges` + a `refund_film_clip` RPC gate) — which
+means a migration, which means the DDL blocker above.
+
+## 2. The 14 quarantined E2E specs
+
+`tests/{dashboard-contracts,dashboard-deep-flows,film-studio-nav,smoke,voice,voice-v2v-smoke}.spec.ts` are
+marked `fixme`. They assert a UI that no longer exists — a "Service hub" button (the picker moved into the
+chat-input popup), a hardcoded greeting with the owner's name, and `"One Window Dashboard"`, a string that
+appears **zero** times in the source.
+
+They had been red for a long time, and that is not a footnote: a genuinely broken delete shipped and hid
+among them, caught only once a NEW spec ran green beside them. Rewrite against the current dashboard.
+
+## 3. The 19 quarantined UI primitives
+
+`components/ui/deadPrimitives.test.ts` holds a shrink-only list. Fifteen files were deleted; what remains
+is `Skeleton.tsx`'s two unused exports and the rest of the quarantine. **Wiring one in or deleting it is a
+product decision, not a cleanup** — a Skeleton for a page not yet written is the one case where "not used
+yet" is plausible rather than an excuse.
+
+## 4. Visual audit with real data
+
+A local pass found and fixed a Georgian heading that wrapped to two lines, and disproved a "clipped
+sidebar" that was a screenshot artifact. The rest needs the live site: real balances, real library
+contents, a signed-in session. Empty local screens hide exactly the layout problems worth finding.
+
+⚠️ Measure, do not eyeball. Both of today's layout conclusions were wrong until measured in the browser.
+
+## 5. Admin panel — the remaining audit findings
+
+The auth gate is done (four routes moved to the imported allowlist; a guard walks every `route.ts` under
+`app/api/admin`). Outstanding from the same audit: figures that silently render `0` when their query
+errors, and panels with no loading/empty state. An admin acting on a wrong number is worse than one seeing
+an error.
 
 ---
 
-## Verification rule for all of the above
+## The rule that earned its keep
 
-**Nothing is verified until a real row, request or render has gone through it.** On 2026-08-02, four
-separate changes read correctly and were wrong:
-
-- a migration that "passed" three times while editing a function nothing called — and then took
-  registration down entirely once wired correctly (`profiles.email` is NOT NULL)
-- a watermark filter that type-checked but crashed ffmpeg, then a second version that silently burnt a
-  mark over a third of the frame
-- an audit that reported anonymous users rendering video free, on a route that 401s them on line one
-- a lint fix where renaming a destructured prop in place looked right and would have broken four
-  components
-
-Run it. Read the row back. Then say it works.
+**Run it. Read the row back. Prove the guard fails without the fix.** On 2026-08-06/07 that caught, among
+others: a payout approvable by its own payee, three admin endpoints that had 403'd real admins since they
+were written, three tables the code had always assumed existed, and a chat delete whose every unit was
+correct in isolation. Reading the code found none of them.
