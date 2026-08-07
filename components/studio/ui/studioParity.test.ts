@@ -105,10 +105,11 @@ describe('mobile parity — a file picker, not a typed URL', () => {
 
 describe('the history a user can actually reach', () => {
   /**
-   * ⚠️ I POLISHED THE WRONG SURFACE FIRST. OmniStudio has a history panel whose only trigger carries
-   * `className="hidden"`; the list a user sees is ChatChrome's sidebar. The delete FIXES were live
-   * either way — the sidebar drives OmniStudio's handlers through window events — but the grouping and
-   * search went into markup nobody renders. This asserts the reachable one has them.
+   * ⚠️ THERE IS NOW EXACTLY ONE. OmniStudio used to carry a second history panel behind a trigger with
+   * `className="hidden"` — unreachable, and I polished it before noticing. It is deleted: the list a
+   * user sees is ChatChrome's sidebar, and OmniStudio keeps only the handlers the sidebar drives through
+   * window events. Two UIs for one thing meant every future fix had a coin-flip chance of landing in
+   * the invisible one.
    */
   const chrome = () => readFileSync(join(dir, 'ChatChrome.tsx'), 'utf8');
 
@@ -147,5 +148,23 @@ describe('no studio is left with a bare spinner', () => {
       return s.includes('setElapsed') && !s.includes('<GenerationProgress');
     });
     expect(clockButNoCard).toEqual([]);
+  });
+});
+
+describe('there is only one chat-history UI', () => {
+  it('OmniStudio no longer renders a second panel', () => {
+    // The duplicate is what made "I fixed it" and "the user sees it fixed" two different statements.
+    const s = src('OmniStudio.tsx');
+    expect(s).not.toContain('historyOpen');
+    expect(s).not.toContain('openHistory');
+  });
+
+  it('but it keeps the handlers the sidebar drives', () => {
+    // Deleting these would break the delete for real — the sidebar has no other way to reach them.
+    const s = src('OmniStudio.tsx');
+    expect(s).toContain('myavatar:delete-conversation');
+    expect(s).toContain('myavatar:clear-conversations');
+    expect(s).toContain('const removeConversation');
+    expect(s).toContain('const clearAllConversations');
   });
 });

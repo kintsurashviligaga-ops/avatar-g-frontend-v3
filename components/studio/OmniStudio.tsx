@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, History, Trash2, MessageSquarePlus, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, type LucideIcon } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, type LucideIcon } from 'lucide-react';
 import { GenerationProgress, PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
@@ -69,10 +69,6 @@ import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
 import { computeCloudAdditions } from '@/lib/chat/conversationSync';
-import {
-  historyBucketOf, HISTORY_BUCKET_ORDER, HISTORY_BUCKET_LABEL, HISTORY_SEARCH_PLACEHOLDER, HISTORY_NO_MATCH,
-  type HistoryBucket,
-} from '@/lib/chat/historyBuckets';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
@@ -1650,33 +1646,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const messagesRef = useRef<Msg[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   // Chat-history panel (list of past conversations) open state.
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyList, setHistoryList] = useState<Conversation[]>([]);
-  const [historyQuery, setHistoryQuery] = useState('');
-  // The bucket labels ship in ka/en/ru only; any other locale reads Georgian, like the rest of the shell.
-  const histLang: 'ka' | 'en' | 'ru' = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  /**
-   * The history list, filtered by the search box and grouped into date buckets.
-   *
-   * Grouping is by CALENDAR day (see historyBucketOf), so "yesterday" means yesterday rather than
-   * "26 hours ago" — a rolling window mislabels everything for a few hours either side of midnight.
-   * Empty buckets are dropped, so the panel never shows a heading with nothing under it.
-   */
-  const historyGroups = useMemo<Array<[HistoryBucket, Conversation[]]>>(() => {
-    const q = historyQuery.trim().toLowerCase();
-    const rows = q ? historyList.filter((c) => (c.title || '').toLowerCase().includes(q)) : historyList;
-    if (!rows.length) return [];
-    const now = Date.now();
-    const byBucket = new Map<HistoryBucket, Conversation[]>();
-    for (const c of rows) {
-      const b = historyBucketOf(c.updatedAt ?? now, now);
-      const bucket = byBucket.get(b);
-      if (bucket) bucket.push(c); else byBucket.set(b, [c]);
-    }
-    return HISTORY_BUCKET_ORDER
-      .map((b) => [b, byBucket.get(b) ?? []] as [HistoryBucket, Conversation[]])
-      .filter(([, list]) => list.length > 0);
-  }, [historyList, historyQuery]);
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
@@ -2342,17 +2311,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [messages, busy, conversationId]);
 
-  // Switch to / start / delete conversations (the chat-history panel actions).
-  const openHistory = useCallback(() => {
-    upsertConversation(conversationId, messages); // flush current first
-    setHistoryList(loadConversations());
-    setHistoryOpen(true);
-  }, [conversationId, messages]);
   const resumeConversation = useCallback(async (id: string) => {
     upsertConversation(conversationId, messages); // save current before leaving
     setConversationId(id);
     setCurrentConversationId(id);
-    setHistoryOpen(false);
     const convo = loadConversations().find((c) => c.id === id);
     // A "cloud:" entry (a conversation from ANOTHER device, merged into the sidebar) carries a serverSid
     // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
@@ -2376,7 +2338,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setConversationId(id);
     setCurrentConversationId(id);
     setMessages([]);
-    setHistoryOpen(false);
     // ⚠️ RELEASE THE SERVER SESSION, or every "New Chat" keeps writing into the PREVIOUS one.
     // ensureChatSession caches one session id per uid in `myavatar:chat-session` and reuses it for the
     // life of the tab; nothing ever cleared it. So all 40 sidebar conversations would append into a
@@ -2410,7 +2371,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       chatSessionIdRef.current = null;
       try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
     }
-    setHistoryList(loadConversations());
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, [conversationId]);
   const clearAllConversations = useCallback(() => {
@@ -2433,8 +2393,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setConversationId(fresh);
     setCurrentConversationId(fresh);
     setMessages([]);
-    setHistoryList([]);
-    setHistoryQuery('');
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
   }, []);
   // Bridge: the persistent left sidebar (ChatChrome) drives chat-history resume + new-chat
@@ -4283,7 +4241,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           .slice(0, CONV_MAX);
         saveConversations(merged);
         if (!alive) return;
-        setHistoryList(loadConversations());
         window.dispatchEvent(new Event('myavatar:conversations-updated')); // refresh the persistent sidebar
       } catch { /* fail-open → localStorage sidebar */ }
     })();
@@ -6858,16 +6815,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           </div>
         </div>
       )}
-      {/* Chat-history button — opens the list of past conversations (resume/delete). */}
-      <button
-        type="button"
-        onClick={openHistory}
-        aria-label={t.historyTitle}
-        title={t.historyTitle}
-        className="hidden"
-      >
-        <History size={13} /> <span className="hidden sm:inline">{t.historyTitle}</span>
-      </button>
       <div
         ref={feedRef}
         onScroll={(e) => {
@@ -9039,77 +8986,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         />
       )}
 
-      {/* Chat history — resume, start new, delete.
-        *
-        * ⚠️ THIS PANEL IS CURRENTLY UNREACHABLE, AND I POLISHED IT BEFORE NOTICING. Its only trigger is
-        * the `openHistory` button below, which carries `className="hidden"`. The history a user actually
-        * sees is ChatChrome's sidebar, which renders its own list and drives THIS component's
-        * removeConversation / clearAllConversations through window events — so the delete FIXES here are
-        * live even though this markup is not.
-        *
-        * Left in place rather than deleted because the two surfaces share every handler and unpicking
-        * that deserves its own change. If you are about to improve something here, improve
-        * ChatChrome's list instead — or unhide the trigger first and decide deliberately that this
-        * product has two history UIs. */}
-      {historyOpen && (
-        <div className="fixed inset-0 z-[95] flex justify-start bg-black/40 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <aside onClick={(e) => e.stopPropagation()} className="flex h-full w-80 max-w-[86vw] flex-col bg-app-surface shadow-[0_0_60px_rgba(0,0,0,0.35)] animate-[slideIn_0.2s_ease-out]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-            <div className="flex items-center justify-between px-4 py-3.5">
-              <span className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-app-text"><History size={16} /> {t.historyTitle}</span>
-              <button type="button" onClick={() => setHistoryOpen(false)} aria-label="close" className="flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation sm:h-8 sm:w-8"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="px-2 pb-2">
-              <button type="button" onClick={startNewConversation} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-medium text-app-accent transition-colors hover:bg-app-elevated">
-                <MessageSquarePlus className="h-[18px] w-[18px]" /> {t.historyNew}
-              </button>
-            </div>
-            {historyList.length > 4 && (
-              <div className="px-3 pb-2">
-                <input
-                  type="search"
-                  value={historyQuery}
-                  onChange={(e) => setHistoryQuery(e.target.value)}
-                  placeholder={HISTORY_SEARCH_PLACEHOLDER[histLang]}
-                  aria-label={HISTORY_SEARCH_PLACEHOLDER[histLang]}
-                  className="w-full rounded-xl bg-app-elevated px-3 py-2 !text-[13px] !text-app-text placeholder:text-app-muted focus:outline-none focus:ring-1 focus:ring-app-accent"
-                />
-              </div>
-            )}
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
-              {historyList.length === 0 ? (
-                <p className="px-3 py-6 text-center text-[13px] text-app-muted">{t.historyEmpty}</p>
-              ) : historyGroups.length === 0 ? (
-                <p className="px-3 py-6 text-center text-[13px] text-app-muted">{HISTORY_NO_MATCH[histLang]}</p>
-              ) : (
-                historyGroups.map(([bucket, rows]) => (
-                  <div key={bucket}>
-                    {/* Sticky so the label stays readable while its own section scrolls past. */}
-                    <p className="sticky top-0 z-[1] bg-app-surface px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-app-muted">
-                      {HISTORY_BUCKET_LABEL[histLang][bucket]}
-                    </p>
-                    {rows.map((c) => (
-                      <div key={c.id} className={`group flex items-center gap-1 rounded-xl pr-1 transition-colors hover:bg-app-elevated ${c.id === conversationId ? 'bg-app-elevated' : ''}`}>
-                        <button type="button" onClick={() => resumeConversation(c.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-left">
-                          <MessageSquare className="h-4 w-4 shrink-0 text-app-muted" />
-                          <span className="truncate text-[13px] text-app-text">{c.title}</span>
-                        </button>
-                        {/* ⚠️ `reveal-on-hover` IS LOAD-BEARING ON TOUCH. This was opacity-0 until group-hover,
-                            and a touch device has no hover — so on every phone and tablet the delete button
-                            was invisible and unhittable. The user pressing "delete" and seeing nothing happen
-                            was, on those devices, the user pressing nothing at all. The class forces it
-                            visible under (hover: none); see globals.css. */}
-                        <button type="button" onClick={() => removeConversation(c.id)} aria-label={t.deleteLabel} title={t.deleteLabel} className="reveal-on-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-app-muted opacity-0 transition-opacity hover:text-app-accent group-hover:opacity-100 touch-manipulation sm:h-7 sm:w-7">
-                          <Trash2 className="h-[15px] w-[15px]" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
-          </aside>
-        </div>
-      )}
       </Portal>
     </div>
   );
