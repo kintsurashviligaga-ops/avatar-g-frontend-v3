@@ -41,13 +41,40 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Update payout request status
-    const { data: updated } = await supabase
+    // ⚠️ THE ERROR WAS DISCARDED. `const { data: updated }` dropped `error` on the floor, so a failed
+    // update — a missing table, an RLS refusal, a bad id — returned 200 with `data: undefined` and the
+    // admin read it as "rejected". For a payout that is the worst possible lie: the money decision is
+    // reported as made when nothing changed. Surfaced now.
+    //
+    // ⚠️ AND THE UPDATE WAS UNCONDITIONAL. `.eq('id', …)` alone re-stamps a request that is already
+    // rejected, already settled, or already gone the other way — so a double-click, a retried request or
+    // a reject-then-approve race silently overwrites the earlier decision with no trace. Guarding on the
+    // CURRENT status makes the second call a no-op instead: eq('status', 'pending') matches nothing the
+    // second time, `.maybeSingle()` returns null, and we say so rather than pretending.
+    const { data: updated, error: updateError } = await supabase
       .from('payout_requests')
-      .update({ status: 'rejected', rejection_reason: parsed.data.reason || null })
+      .update({
+        status: 'rejected',
+        // Who decided, and when. A money action with no author is not auditable, and this pair is the
+        // difference between "the payout was rejected" and "somebody rejected the payout".
+        rejected_by: user.id,
+        rejected_at: new Date().toISOString(),
+      })
       .eq('id', parsed.data.payoutRequestId)
+      .eq('status', 'pending')
       .select()
-      .single();
+      .maybeSingle();
+
+    if (updateError) {
+      // eslint-disable-next-line no-console
+      console.error('[admin.payouts.reject] update failed', { id: parsed.data.payoutRequestId, admin: user.id, error: updateError.message });
+      return NextResponse.json({ error: 'Could not reject this payout request' }, { status: 500 });
+    }
+    if (!updated) {
+      // Not an error — the request was already decided, or the id is unknown. Either way nothing changed
+      // and the caller must not be told otherwise.
+      return NextResponse.json({ error: 'not_pending', message: 'This payout request is no longer pending' }, { status: 409 });
+    }
 
     return NextResponse.json({ data: updated });
   } catch (error) {
