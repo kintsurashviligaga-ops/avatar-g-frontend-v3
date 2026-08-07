@@ -42,8 +42,21 @@ const codeOf = (f: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
 
-/** The gates this project accepts. `x-admin-key` is a shared secret for machine callers, not a user. */
-const ACCEPTED = /isAdmin\(|isAdminUser|assertAdminAccess|assertAdmin|requireAdmin|hasValidAdminKey|x-admin-key|ADMIN_EMAILS/;
+/**
+ * The gates this project accepts.
+ *
+ * ⚠️ THE FIRST VERSION OF THIS MATCHED `isAdmin(` ANYWHERE IN THE FILE — and app/api/admin/payouts/
+ * approve defined its OWN `async function isAdmin(userId, supabase)` that read `profiles.role`. So the
+ * guard reported a payout-approval route as gated while it was gated on a flag the payee could write to
+ * their own row. A test that accepts a local function with the right NAME is checking spelling, not
+ * authorization.
+ *
+ * The gate must therefore be IMPORTED from a module that owns the allowlist — or be an explicit shared
+ * secret (`x-admin-key`, for machine callers, not users) or a local email allowlist constant.
+ */
+const IMPORTED_GATE = /import\s*\{[^}]*\b(isAdmin|isAdminUser|isAdminEmail|assertAdminAccess|assertAdmin|requireAdmin|hasValidAdminKey)\b[^}]*\}\s*from\s*['"][^'"]*(adminGuard|admin\/guard)['"]/;
+const LOCAL_SECRET = /x-admin-key|ADMIN_EMAILS/;
+const isGated = (src: string) => IMPORTED_GATE.test(src) || LOCAL_SECRET.test(src);
 
 describe('admin route gate', () => {
   it('finds the admin routes at all', () => {
@@ -51,12 +64,19 @@ describe('admin route gate', () => {
   });
 
   it.each(files.map((f) => [rel(f), f]))('%s is gated', (_name, f) => {
-    expect(readFileSync(f, 'utf8')).toMatch(ACCEPTED);
+    expect(isGated(readFileSync(f, 'utf8'))).toBe(true);
   });
 
   it('no admin route trusts a role flag on the user’s own row', () => {
     // The exact shape that was broken here, and that would be self-grantable if it were not.
     const offenders = files.filter((f) => /profile\??\.role\s*!==?\s*'admin'/.test(codeOf(f)));
+    expect(offenders.map(rel)).toEqual([]);
+  });
+
+  it('no admin route defines its OWN admin check', () => {
+    // A local helper cannot be reviewed once and trusted everywhere; the six that existed all read a
+    // self-grantable row flag. The allowlist lives in one module and is imported.
+    const offenders = files.filter((f) => /(async )?function isAdmin\w*\s*\(/.test(codeOf(f)));
     expect(offenders.map(rel)).toEqual([]);
   });
 

@@ -13,7 +13,10 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
  * more admins). Knowing an email grants nothing — access requires authenticating
  * AS that account through Supabase auth.
  */
-const DEFAULT_ADMIN_EMAILS = ['kintsurashviligaga@gmail.com'];
+// ⚠️ THE SECOND ADDRESS WAS ADMIN ON EXACTLY ONE ROUTE. app/api/admin/creations-stats kept its own
+// local list containing it, so that account could read creation stats and nothing else — admin on one
+// screen and a stranger on the next. Two lists for one question is how that happens; this is the list.
+const DEFAULT_ADMIN_EMAILS = ['kintsurashviligaga@gmail.com', 'kintsurashviligaga-ops@gmail.com'];
 
 /** Resolve the STATIC lowercase allowlist (defaults ∪ ADMIN_EMAILS env). Never empty. */
 export function adminAllowlist(): string[] {
