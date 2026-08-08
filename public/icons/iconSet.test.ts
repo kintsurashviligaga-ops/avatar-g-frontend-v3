@@ -53,6 +53,32 @@ describe('the icon set', () => {
   });
 });
 
+describe('the in-app brand mark', () => {
+  /**
+   * ⚠️ THE SMALL MARK IS A DIFFERENT FILE FROM THE APP ICON, AND IT WAS MISSED TWICE. Nine references
+   * across BrandLogo, ChatChrome and the services page render `/brand/gemini-rocket-clean.png` — the old
+   * one carried visible alpha-compositing artefacts around the fins.
+   *
+   * It is a CROP of the new artwork, not an extraction. Pulling the rocket onto transparency needs a
+   * luminance key, and the tile's gradient overlaps the rocket's own dark tones: a low threshold leaves a
+   * grey haze, a high one turns the shadowed side and left fin semi-transparent. Both were rendered and
+   * rejected. Cropping the flat interior of the tile — centred on the rocket, clear of the rounded
+   * corners and of the wordmark below — needs no key at all and cannot go wrong.
+   */
+  it('is a square 512 crop of the new artwork', () => {
+    const i = png(join(root, 'public/brand/gemini-rocket-clean.png'));
+    expect(i.isPng).toBe(true);
+    expect([i.w, i.h]).toEqual([512, 512]);
+  });
+
+  it('the unused brand files are gone', () => {
+    // Three of the four were referenced nowhere. Keeping spare logos is how a rebrand misses one.
+    for (const f of ['logo-primary-transparent.png', 'rocket-logo-final.png', 'logo.png']) {
+      expect(existsSync(join(root, 'public/brand', f))).toBe(false);
+    }
+  });
+});
+
 describe('favicon.ico', () => {
   it('is a real ICO carrying the new artwork', () => {
     // ⚠️ FOUR PLACES REFERENCE /icons/favicon.ico AND ffmpeg CANNOT WRITE .ico — so a straight
