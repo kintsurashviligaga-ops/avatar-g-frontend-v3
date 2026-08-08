@@ -53,6 +53,20 @@ describe('the icon set', () => {
   });
 });
 
+describe('favicon.ico', () => {
+  it('is a real ICO carrying the new artwork', () => {
+    // ⚠️ FOUR PLACES REFERENCE /icons/favicon.ico AND ffmpeg CANNOT WRITE .ico — so a straight
+    // regeneration of the set silently left this one on the old logo. Built by hand instead: a modern
+    // ICO may embed a PNG verbatim (Vista onward, every current browser), which is 22 bytes of header
+    // plus the PNG.
+    const b = readFileSync(join(root, 'public/icons/favicon.ico'));
+    expect(b.readUInt16LE(0)).toBe(0);   // reserved
+    expect(b.readUInt16LE(2)).toBe(1);   // type: icon
+    expect(b.readUInt16LE(4)).toBe(1);   // one entry
+    expect(b.subarray(22, 26).toString('hex')).toBe('89504e47'); // …and it is a PNG
+  });
+});
+
 describe('the browser tab resolves to the same artwork', () => {
   it('app/icon.png exists and no generated icon overrides it', () => {
     expect(existsSync(join(root, 'app/icon.png'))).toBe(true);
