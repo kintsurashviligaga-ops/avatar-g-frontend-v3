@@ -6,7 +6,7 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
-  CircleHelp,
+  HelpCircle,
   Clock3,
   Copy,
   ExternalLink,
@@ -124,7 +124,7 @@ export default function CalendarLabPage() {
                 onClick={() => setShowGuide(true)}
                 className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:border-cyan-300/30 hover:bg-white/[0.07] active:scale-[0.98]"
               >
-                <CircleHelp className="h-4 w-4 text-cyan-300" />
+                <HelpCircle className="h-4 w-4 text-cyan-300" />
                 How to use it
               </button>
             </div>
