@@ -124,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // the marketing TopNavbar/SidebarMenu/BottomNav would double up on top of it.
   const isImmersiveWorkspace = !!pathname && (
     /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
-    /\/(dashboard|hub|workspace|library)\/?$/.test(pathname)
+    /\/(dashboard|hub|workspace|library|calendar-lab)\/?$/.test(pathname)
   );
 
   // Landing & auth pages manage their own navbar — strip the app shell
