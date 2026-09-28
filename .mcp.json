@@ -1,6 +1,11 @@
 {
   "$comment": "Claude Code project MCP binding — the Main Agent (Claude Code) becomes the MCP CLIENT and dynamically discovers MyAvatar tools from the local server. Build the server once: `npm --prefix apps/myavatar-mcp-server install && npm --prefix apps/myavatar-mcp-server run build`. Set MYAVATAR_API_TOKEN (a Supabase bearer JWT) to unlock the authed produce/jobs tools.",
   "mcpServers": {
+    "higgsfield": {
+      "$comment": "DEVELOPMENT-ONLY (brief D2): model testing, prompt calibration, template samples. Authenticate once in an interactive session: /mcp -> higgsfield -> Authenticate (OAuth, GG's personal subscription). Site users NEVER go through MCP — production uses the server-side API key (HF_API_KEY_ID/SECRET).",
+      "type": "http",
+      "url": "https://mcp.higgsfield.ai/mcp"
+    },
     "myavatar": {
       "command": "node",
       "args": ["apps/myavatar-mcp-server/dist/index.js"],

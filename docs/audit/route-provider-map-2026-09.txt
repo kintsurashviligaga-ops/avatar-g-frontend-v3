@@ -1,0 +1,92 @@
+# route → provider map (generated 2026-09-28, feat/studio-higgsfield @ origin/main 432a0ad)
+# method: each app/api/**/route.ts — provider API hosts referenced directly, plus providers of every lib/* module it imports (one hop, host or env-key signal)
+# format: route | providers
+admin/avatar-providers | ElevenLabs, HeyGen
+admin/flags | HeyGen
+admin/provider-probe | Anthropic, ElevenLabs, Gemini/Veo, HeyGen, Replicate
+admin/reliability | Atlas, DeepSeek, Runway
+ads/tts | ElevenLabs
+agent-g/calls/transcribe | ElevenLabs, OpenAI
+agent-g/calls/tts | ElevenLabs, OpenAI
+agent-g/chat | Anthropic, Gemini/Veo
+agent-g/orchestrate | Gemini/Veo
+ai/chat | OpenAI
+ai/edit-audio | Replicate
+ai/edit-photo | Anthropic, Replicate
+ai/edit | Anthropic, Replicate
+ai/lyrics | Gemini/Veo
+ai/magic-wand | Gemini/Veo
+ai/music | Anthropic, ElevenLabs, Gemini/Veo, NanoBanana, Pollinations, Replicate, Udio
+ai | Anthropic
+ai/upscale | Replicate
+app/health | Anthropic, Gemini/Veo, HeyGen, LTX, OpenAI, Udio, WorldLabs
+app/jobs/[id] | DeepSeek, OpenAI
+audio/isolate | ElevenLabs
+avatar/generate | ElevenLabs, OpenAI, Replicate, Runway
+chat/gemini | Gemini/Veo, OpenAI
+chat/orchestrate | Anthropic, Gemini/Veo, OpenAI
+chat | Gemini/Veo, OpenAI
+chat/stream | Anthropic, Gemini/Veo, OpenAI
+chat/title | Gemini/Veo
+commerce/compliance | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+commerce/orders | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+commerce/wallet | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+diagnostics | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+elevenlabs/sound | ElevenLabs
+elevenlabs/tts | ElevenLabs, Gemini/Veo, Google TTS
+env-check | Anthropic, OpenAI, Replicate
+film/storyboard | Anthropic, Atlas, DeepSeek, Gemini/Veo, HeyGen, LTX, Replicate, Runway
+gemini/chat | Gemini/Veo
+health/config | Anthropic, ElevenLabs, Gemini/Veo, HeyGen, LTX, OpenAI, Replicate, Udio
+health/embed | Gemini/Veo, OpenAI
+health/providers | Atlas, DeepSeek, Gemini/Veo, Runway
+health/public | ElevenLabs, Gemini/Veo, HeyGen, Replicate
+health/services | Anthropic, ElevenLabs, Gemini/Veo, HeyGen, LTX, NanoBanana, OpenAI, Replicate, Udio
+heygen/avatar | HeyGen
+heygen/presenter | ElevenLabs, HeyGen
+jobs/[id] | Runway
+ltx-video | LTX
+matilda | ElevenLabs
+memory | Gemini/Veo, OpenAI
+motion-control | Anthropic, Kling(direct), Replicate
+motion-control/status | Kling(direct), Replicate
+nanobanana/image | NanoBanana, Replicate
+orbit/[service] | ElevenLabs
+orbit/agent | OpenAI
+orchestrator/produce | Anthropic, HeyGen, LTX, Replicate
+orchestrator/script-context | Gemini/Veo
+orchestrator/script | Anthropic
+payouts/accounts | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+payouts/requests | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+pipeline/assets | Anthropic
+pipeline/direct | Anthropic
+pipeline/health | ElevenLabs, HeyGen, NanoBanana, Replicate, Udio
+pipeline/qa | Anthropic
+pipeline/remix | HeyGen, LTX, Replicate, Runway
+pipeline | ElevenLabs, Gemini/Veo, HeyGen, LTX, NanoBanana, Replicate, Udio, WorldLabs
+replicate/avatar | Replicate
+replicate/generate | Replicate
+replicate/image | NanoBanana, Replicate
+router | Gemini/Veo
+shipping/event | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+shipping/select-profile | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+shipping/track | DeepSeek, ElevenLabs, OpenAI, Replicate, Runway
+system/film-readiness | ElevenLabs, Gemini/Veo, LTX, NanoBanana, Replicate, Udio
+system/film-selftest | ElevenLabs, Gemini/Veo, LTX, NanoBanana, Replicate, Udio
+system/video-provider | Gemini/Veo, Replicate
+tts/gemini | Gemini/Veo
+udio/generate | Udio
+v2/model3d/create | Anthropic, Gemini/Veo, Replicate
+v2/model3d/status | Replicate
+validate-env | Anthropic, ElevenLabs, Gemini/Veo, OpenAI, Replicate
+video/assemble | ElevenLabs, Gemini/Veo, HeyGen, LTX, Replicate
+video/lipsync | ElevenLabs, HeyGen, Replicate
+video/remix | Anthropic, ElevenLabs, HeyGen, LTX, NanoBanana, Replicate
+video/voice-narration | Replicate
+voice-lab/jobs | ElevenLabs
+voice/chat | Anthropic, Atlas, DeepSeek, Gemini/Veo
+voice/clone | ElevenLabs
+voice/live | Gemini/Veo
+voice/realtime/session | ElevenLabs, OpenAI
+voice/train | Replicate
+voice/transcribe | ElevenLabs, Gemini/Veo, OpenAI, Replicate
