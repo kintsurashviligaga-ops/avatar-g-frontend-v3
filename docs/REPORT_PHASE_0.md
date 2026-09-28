@@ -30,7 +30,7 @@
 
 ## ღია საკითხები / რისკები
 
-1. 🔴 **prod-ის Supabase პროექტი DNS-ში აღარ არსებობს** (`zwksnayk…` NXDOMAIN; `lejrrde…` INACTIVE და ცარიელი). ეს Higgsfield-ზე დიდი პრობლემაა: sign-in/ბალანსი/ბიბლიოთეკა prod-ზე ახლა ვერ მუშაობს. დეტალები აუდიტის §4.1. **შენი Vercel ინვოისი (ივლისი, $20) Vercel-ისაა; Supabase-ის პაუზას/წაშლას ის არ ხსნის.**
+1. 🔴 **prod-ის Supabase პროექტი (`zwksnayk…`) პაუზაზეა — INACTIVE** (Management API-ით დადასტურდა; DNS-იც ამოღებულია; `lejrrde…` ცარიელი მარკეტპლეისის პროექტია). sign-in/ბალანსი/ბიბლიოთეკა prod-ზე ახლა ვერ მუშაობს. Restore = ერთი მოქმედება — შენი „კი"-ს შემდეგ MCP-ით გავაკეთებ, ან შენ dashboard-იდან. Vercel-ის ინვოისი ამას არ ეხება.
 2. ბრიფის სიაში **Nano Banana, Seedream, GPT Image** Higgsfield-ის კატალოგში არ არის → Nano Banana რჩება არსებულ პროვაიდერზე; registry-ში ისინი `provider: 'nanobanana'`-ით შევა, არა `higgsfield`.
 3. **Soul ID**-ის ენდპოინტი ვერ დავადასტურე — Console-ში ნახე „Soul ID" და გამომიგზავნე endpoint id, ან Phase 1-ში MCP-ით გავარკვევ.
 4. `origin/feat/omni-studio-production-workspace` — შეურწყმელი Studio-UI ბრენჩი main-ზე ახალი; Phase 3-მდე უნდა გადაწყდეს.
@@ -40,7 +40,7 @@
 
 1. **Higgsfield secret** (dev წყვილი ახლა; prod წყვილი Phase 2-ის ბოლოს). ჩატში ჩააგდე — მე მხოლოდ `.env.local`-ში ჩავწერ.
 2. **MCP OAuth** — `/mcp → higgsfield → Authenticate` (Claude Code-ის სესიაში).
-3. **Supabase** — რომელი პროექტი (აუდიტი §6.1) და Restore.
+3. **Supabase** — „კი" Restore-ზე (`zwksnayk…`, აუდიტი §6.1).
 4. GEL მარჟა/კურსი — default `usd × NBG × 1.35`; დღეს `lib/billing/fx.ts`-ის 2.7 ვიყენე. თუ სხვა გინდა, თქვი.
 5. ლოგოს მასტერ-ფაილი (SVG/AI) — Phase 3-ისთვის.
 
