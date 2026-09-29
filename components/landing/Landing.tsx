@@ -12,6 +12,7 @@ import { ArrowRight, Check, ChevronDown, Clapperboard, ShieldCheck, Sparkles, He
 import { Wordmark } from '@/components/brand/Wordmark';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { LANDING_COPY, landingLang, type LandingLang, type ServiceKey } from './copy';
+import { ReelLoop } from './ReelLoop';
 
 const SERVICES: ServiceKey[] = ['video', 'image', 'music', 'avatar'];
 /** Dashboard deep links (OmniStudio reads ?mode= once, then drops it). */
@@ -160,6 +161,27 @@ export function Landing({ locale }: { locale: string }) {
       </section>
 
       <main>
+        {/* ── Reels — the first proof after the hero: this studio makes VIDEO. Three 5 s vertical loops (brand/v1.1,
+            scripts/hf-art-pack.md R1–R3), each a photo that moves. Played only while on screen, never under reduced
+            motion; the copy says exactly what they are — three photos, three five-second shots. ──────────────── */}
+        <section aria-labelledby="reels-title" className="mx-auto max-w-6xl px-4 pt-20 sm:px-6 md:pt-28">
+          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#00E5FF]">{t.reels.kicker}</p>
+          <h2 id="reels-title" className="mt-3 max-w-[20ch] font-display text-[32px] font-bold leading-[1.12] sm:text-[44px]">{t.reels.title}</h2>
+          <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed text-white/70 sm:text-[17px]">{t.reels.sub}</p>
+          {/* Phones: a swipe strip of large tiles (three 110 px phones read as thumbnails, not reels); the one out of
+              view pauses. From `sm`: all three side by side. */}
+          <ul className="-mx-4 mt-10 grid snap-x snap-mandatory scroll-px-4 auto-cols-[62%] grid-flow-col gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-auto sm:max-w-[900px] sm:snap-none sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
+            {BRAND_V1.reels.map((r) => (
+              <li key={r.id} className="snap-start">
+                <div className="aspect-[9/16] overflow-hidden rounded-2xl bg-[#111214] ring-1 ring-white/10 sm:rounded-3xl">
+                  <ReelLoop src={r.src} poster={r.poster} label={t.reels.items[r.id]} />
+                </div>
+                <p className="mt-2.5 truncate text-[12.5px] text-white/60 sm:text-[14px]">{t.reels.items[r.id]}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         {/* ── Services ───────────────────────────────────────────────────────────────────── */}
         <section aria-labelledby="services-title" className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
           <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#00E5FF]">{t.services.kicker}</p>

@@ -10,6 +10,7 @@ describe('brand/v1 — every file the site references exists, and the spend is o
     BRAND_V1.hero16x9.src, BRAND_V1.hero9x16.src, BRAND_V1.plate.src, BRAND_V1.world.src, BRAND_V1.og.src,
     ...Object.values(BRAND_V1.cards).map((c) => c.src),
     ...(BRAND_V1.heroLoop ? [BRAND_V1.heroLoop.src, BRAND_V1.heroLoop.poster] : []),
+    ...BRAND_V1.reels.flatMap((r) => [r.src, r.poster]),
   ];
   test.each(files)('%s exists', (src) => {
     expect(existsSync(pub(src))).toBe(true);

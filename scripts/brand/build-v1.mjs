@@ -5,7 +5,8 @@
  * where the brand lockup from GG's sheet is laid over the world still in code (docs/DESIGN.md: no text is ever
  * baked into a generated image).
  *
- *   node scripts/brand/build-v1.mjs            writes public/brand/v1/*.jpg (+ hero-loop.mp4 when B1 is selected)
+ *   node scripts/brand/build-v1.mjs            writes public/brand/v1/*.jpg (+ hero-loop.mp4 when B1 is selected,
+ *                                              + reel-*.mp4/jpg when R1–R3 are)
  *
  * Sizes never upscale past the source; the script prints the real dimensions so lib/brand/v1.ts can match them.
  */
@@ -105,6 +106,18 @@ async function main() {
       execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-an', '-c:v', 'libx264', '-preset', 'slow', '-crf', '24', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-vf', 'scale=1280:-2', join(OUT, 'hero-loop.mp4')]);
       report.push('B1 → hero-loop.mp4 (1280w, silent, faststart)');
     }
+  }
+  // R1–R3 — the landing reels (brand/v1.1): 720 px wide, silent, faststart, ~1 MB each; the poster is the loop's
+  // own first frame, so nothing jumps when playback starts.
+  const REELS = { R1: 'street', R2: 'product', R3: 'portrait' };
+  for (const [shot, name] of Object.entries(REELS)) {
+    const pick = sel[shot];
+    if (!pick) { report.push(`${shot}: not selected — skipped`); continue; }
+    const src = source(pick);
+    if (!existsSync(src)) { report.push(`${shot}: source missing — skipped`); continue; }
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-an', '-c:v', 'libx264', '-preset', 'slow', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-vf', 'scale=720:-2', join(OUT, `reel-${name}.mp4`)]);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-frames:v', '1', '-vf', 'scale=720:-2', '-q:v', '3', join(OUT, `reel-${name}.jpg`)]);
+    report.push(`${shot} → reel-${name}.mp4 + reel-${name}.jpg (720w, silent)`);
   }
   console.log(report.join('\n'));
 }

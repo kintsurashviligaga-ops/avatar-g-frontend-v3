@@ -7,12 +7,15 @@ export type LandingLang = 'ka' | 'en' | 'ru';
 export const landingLang = (locale: string): LandingLang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
 
 export type ServiceKey = 'video' | 'image' | 'music' | 'avatar';
+/** The three landing reels (brand/v1.1 — scripts/hf-art-pack.md R1–R3). */
+export type ReelKey = 'street' | 'product' | 'portrait';
 
 export interface LandingCopy {
   metaTitle: string;
   metaDescription: string;
   nav: { pricing: string; signIn: string; openStudio: string; menu: string };
   hero: { eyebrow: string; title: string; sub: string; cta: string; secondary: string; note: string };
+  reels: { kicker: string; title: string; sub: string; items: Record<ReelKey, string> };
   services: { kicker: string; title: string; main: string; open: string; items: Record<ServiceKey, { name: string; line: string; alt: string }> };
   steps: { kicker: string; title: string; items: Array<{ name: string; line: string }> };
   pricing: { kicker: string; title: string; line: string; cta: string };
@@ -33,6 +36,12 @@ export const LANDING_COPY: Record<LandingLang, LandingCopy> = {
       cta: 'შექმენი ვიდეო',
       secondary: 'შესვლა',
       note: 'ფასი ჩანს, სანამ დაიწყებ',
+    },
+    reels: {
+      kicker: 'ფოტოდან ვიდეო',
+      title: 'ერთი კადრი — და ის მოძრაობს.',
+      sub: 'ატვირთე ფოტო და აღწერე მოძრაობა — მიიღებ ვერტიკალურ კადრს. ქვემოთ: სამი ფოტო, სამი ხუთწამიანი კადრი.',
+      items: { street: 'ქუჩა, წვიმის შემდეგ', product: 'პროდუქტი', portrait: 'პორტრეტი' },
     },
     services: {
       kicker: 'სტუდია',
@@ -77,6 +86,12 @@ export const LANDING_COPY: Record<LandingLang, LandingCopy> = {
       secondary: 'Sign in',
       note: 'You see the price before you start',
     },
+    reels: {
+      kicker: 'Photo to video',
+      title: 'One frame — and it moves.',
+      sub: 'Upload a photo and describe the motion; you get a vertical shot. Below: three photos, three five-second shots.',
+      items: { street: 'A street after rain', product: 'Product', portrait: 'Portrait' },
+    },
     services: {
       kicker: 'Studio',
       title: 'Everything one reel needs.',
@@ -119,6 +134,12 @@ export const LANDING_COPY: Record<LandingLang, LandingCopy> = {
       cta: 'Создать видео',
       secondary: 'Войти',
       note: 'Цена видна до старта',
+    },
+    reels: {
+      kicker: 'Видео из фото',
+      title: 'Один кадр — и он движется.',
+      sub: 'Загрузите фото и опишите движение — получите вертикальный кадр. Ниже: три фото, три пятисекундных кадра.',
+      items: { street: 'Улица после дождя', product: 'Продукт', portrait: 'Портрет' },
     },
     services: {
       kicker: 'Студия',
