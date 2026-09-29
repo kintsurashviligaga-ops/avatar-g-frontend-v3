@@ -47,6 +47,7 @@ Every still is the same world with the same grade and the same seed family. Shot
 - A phone screen shows **footage**, never interface.
 - Images carry depth. The UI stays flat: hairlines and shadowless panels.
 - Generated only from `scripts/hf-art-pack.md`, all costs logged in `public/brand/v1/manifest.json`. The hard cap is $7 and generation stops at $6.50.
+- **brand/v1.1 — reels.** Three 5-second vertical loops (R1 street, R2 product, R3 portrait), made by image-to-video from the brand/v1 masters, with no new stills, silent, and the last frame = the first. They are the landing's first proof that this is a video studio. They play only while on screen, never under reduced motion, and sit on their posters until then. Spend: $0.693, first attempt each; the manifest total is $1.437 of the $6.50 stop line.
 
 ## 5. Motion and density
 
@@ -84,6 +85,16 @@ Only the ka column is locked by the brief; en and ru keep the product's existing
 - The primary CTA is **„შექმენი ვიდეო“** and goes to `/{lang}/dashboard`, signed in or not. The secondary is **„შესვლა“**.
 
 **The three proof steps:** დაწერე → დაარენდერე → გამოაქვეყნე.
+
+**Landing order:**
+1. hero;
+2. **reels** („ერთი კადრი — და ის მოძრაობს.“: three photos, three five-second shots);
+3. the four services, video first;
+4. the three steps;
+5. the price teaser;
+6. closing.
+
+The price teaser states only what is true for every visitor: the price is on the button before you confirm. It makes no claim about the currency (the product shows USD) and no refund promise.
 
 ## 8. Components
 

@@ -2,7 +2,7 @@
   "job": "brand/v1 art pack",
   "capUsd": 7,
   "stopAtUsd": 6.5,
-  "spentUsd": 0.744,
+  "spentUsd": 1.437,
   "attempts": [
     {
       "shot": "A1",
@@ -383,6 +383,75 @@
         }
       ],
       "at": "2026-09-29T10:23:24.945Z"
+    },
+    {
+      "shot": "R1",
+      "attempt": 1,
+      "endpoint": "kling-video/v3.0/std/image-to-video",
+      "input": {
+        "prompt": "A living photograph: light rain keeps falling, reflections ripple on the wet cobblestones, thin mist drifts through the streetlight, the phone screen glows; the woman keeps filming, only breathing with a slight shift of weight; the camera holds with an imperceptible slow push-in. No cuts, no new people, no text.",
+        "image_url": "https://myavatar.ge/brand/v1/src/reel-street.jpg",
+        "last_image_url": "https://myavatar.ge/brand/v1/src/reel-street.jpg",
+        "duration": 5,
+        "sound": "off"
+      },
+      "requestId": "fc07109d-ee59-49c4-b58a-bf1771f4b186",
+      "usd": 0.231,
+      "listUsd": 0.42,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/76098381-aa58-449e-910c-e455a5b35bb3.mp4",
+          "file": "raw/R1-1-0.mp4"
+        }
+      ],
+      "at": "2026-09-29T13:19:24.939Z"
+    },
+    {
+      "shot": "R2",
+      "attempt": 1,
+      "endpoint": "kling-video/v3.0/std/image-to-video",
+      "input": {
+        "prompt": "A premium product shot that breathes: a slow, smooth push-in toward the bottle and the glass; a thin warm light glides across the glass and the shoulder of the bottle; fine droplets glisten on the dark stone; the wine barely moves. Calm and locked, no cuts, no hands, no text, no labels.",
+        "image_url": "https://myavatar.ge/brand/v1/src/reel-product.jpg",
+        "last_image_url": "https://myavatar.ge/brand/v1/src/reel-product.jpg",
+        "duration": 5,
+        "sound": "off"
+      },
+      "requestId": "95c5e5a3-c7c6-4973-ae5c-05956b4739c3",
+      "usd": 0.231,
+      "listUsd": 0.42,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/e6515ca1-bd10-4487-bf6b-edfccfc8f465.mp4",
+          "file": "raw/R2-1-0.mp4"
+        }
+      ],
+      "at": "2026-09-29T13:23:44.062Z"
+    },
+    {
+      "shot": "R3",
+      "attempt": 1,
+      "endpoint": "kling-video/v3.0/std/image-to-video",
+      "input": {
+        "prompt": "A living portrait: she breathes, blinks once and gives a faint, calm smile; a loose strand of hair stirs; the phone's screen light flickers softly on her face; mist drifts in the rainy street behind her. The camera is still. No cuts, no speech, no new people, no text.",
+        "image_url": "https://myavatar.ge/brand/v1/src/reel-portrait.jpg",
+        "last_image_url": "https://myavatar.ge/brand/v1/src/reel-portrait.jpg",
+        "duration": 5,
+        "sound": "off"
+      },
+      "requestId": "dc85a652-bfc4-4f88-a1a0-caa0b0fd9c98",
+      "usd": 0.231,
+      "listUsd": 0.42,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/db8f4149-b2e0-4778-8d39-c03d53288438.mp4",
+          "file": "raw/R3-1-0.mp4"
+        }
+      ],
+      "at": "2026-09-29T13:25:42.415Z"
     }
   ],
   "selected": {
@@ -452,6 +521,24 @@
       "file": "raw/B1-1-0.mp4",
       "attempt": 1,
       "master": "design/brand/v1/B1.mp4"
+    },
+    "R1": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/76098381-aa58-449e-910c-e455a5b35bb3.mp4",
+      "file": "raw/R1-1-0.mp4",
+      "attempt": 1,
+      "master": "design/brand/v1/R1.mp4"
+    },
+    "R2": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/e6515ca1-bd10-4487-bf6b-edfccfc8f465.mp4",
+      "file": "raw/R2-1-0.mp4",
+      "attempt": 1,
+      "master": "design/brand/v1/R2.mp4"
+    },
+    "R3": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/db8f4149-b2e0-4778-8d39-c03d53288438.mp4",
+      "file": "raw/R3-1-0.mp4",
+      "attempt": 1,
+      "master": "design/brand/v1/R3.mp4"
     }
   }
 }

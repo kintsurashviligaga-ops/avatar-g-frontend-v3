@@ -75,6 +75,20 @@ for (const vp of VIEWPORTS) {
       for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) expect(overlaps(boxes[i]!, boxes[j]!)).toBe(false);
     });
 
+    test('three reels follow the hero: each a 9:16 loop with its poster, sources answering 200', async ({ page, request }) => {
+      await page.goto('/ka');
+      const reels = page.locator('section[aria-labelledby="reels-title"] video');
+      await expect(reels).toHaveCount(3);
+      for (const v of await reels.all()) {
+        const src = (await v.getAttribute('src'))!;
+        const poster = (await v.getAttribute('poster'))!;
+        expect((await request.get(src)).status(), src).toBe(200);
+        expect((await request.get(poster)).status(), poster).toBe(200);
+        const box = (await v.boundingBox())!;
+        expect(Math.abs(box.width / box.height - 9 / 16)).toBeLessThan(0.02);
+      }
+    });
+
     test('en and ru are video-first too', async ({ page }) => {
       await page.goto('/en');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video from a single idea.');
@@ -96,6 +110,17 @@ test('the studio server HTML carries the video-first copy, and never the old lin
   expect(html).not.toContain('შექმენი სურათი ან მუსიკა');
   expect(html).not.toContain('ჰკითხე ნებისმიერი');
   expect(html).not.toContain('🇬🇪');
+});
+
+test.describe('landing · reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' });
+  test('the reels stay on their posters', async ({ page }) => {
+    await page.goto('/ka');
+    await page.locator('#reels-title').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
+    const playing = await page.locator('section[aria-labelledby="reels-title"] video').evaluateAll((vs) => vs.filter((v) => !(v as HTMLVideoElement).paused).length);
+    expect(playing).toBe(0);
+  });
 });
 
 test.describe('landing · 320 px', () => {

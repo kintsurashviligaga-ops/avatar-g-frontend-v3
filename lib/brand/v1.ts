@@ -18,4 +18,10 @@ export const BRAND_V1 = {
   og: { src: '/brand/v1/og.jpg', width: 1200, height: 630 },
   /** 5 s silent loop of the hero (B1 — last frame = first frame), desktop only, off under reduced motion. */
   heroLoop: { src: '/brand/v1/hero-loop.mp4', poster: '/brand/v1/hero-16x9.jpg' } as null | { src: string; poster: string },
+  /** R1–R3 — three 5 s vertical loops for the landing (scripts/hf-art-pack.md), 720×1280, poster = first frame. */
+  reels: [
+    { id: 'street', src: '/brand/v1/reel-street.mp4', poster: '/brand/v1/reel-street.jpg' },
+    { id: 'product', src: '/brand/v1/reel-product.mp4', poster: '/brand/v1/reel-product.jpg' },
+    { id: 'portrait', src: '/brand/v1/reel-portrait.mp4', poster: '/brand/v1/reel-portrait.jpg' },
+  ] as ReadonlyArray<{ id: 'street' | 'product' | 'portrait'; src: string; poster: string }>,
 } as const;
