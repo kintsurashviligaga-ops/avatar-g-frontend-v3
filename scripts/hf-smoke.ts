@@ -274,9 +274,19 @@ async function runModel(m: SmokeModel, auth: string, ctx: Ctx, submit: boolean):
     const est = await hf('POST', `${BASE}/estimate/${m.endpoint}`, auth, input);
     row.correlationId = est.correlationId;
     if (est.status !== 200) { row.status = `http-${est.status}`; row.note = explain(est.status, est.json?.detail); row.latencyMs = Date.now() - t0; return row; }
-    row.estimate = { credits: String(est.json.credits), usd: String(est.json.usd) };
-    row.estimateGel = toGel(est.json.usd);
-    row.status = 'estimated';
+    if (est.json?.type === 'description') {
+      // Token-priced (Seedance 2.5): no number, only prose. The studio prices these itself
+      // (lib/providers/higgsfield/tokenPricing.ts); here the 720p per-second rate is shown for reference.
+      const m = String(est.json.pricing_description ?? '').match(/\$([0-9.]+) at 720p/);
+      row.note = `token-priced — ~$${m?.[1] ?? '?'}/s at 720p before discount`;
+      row.status = 'estimated';
+      row.latencyMs = Date.now() - t0;
+      if (!submit) return row;
+    } else {
+      row.estimate = { credits: String(est.json.credits), usd: String(est.json.usd) };
+      row.estimateGel = toGel(est.json.usd);
+      row.status = 'estimated';
+    }
   } catch (e) {
     row.status = 'error'; row.note = `estimate: ${(e as Error).message}`; row.latencyMs = Date.now() - t0; return row;
   }

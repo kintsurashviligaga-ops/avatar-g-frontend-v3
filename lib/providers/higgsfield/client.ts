@@ -182,13 +182,24 @@ export function createHfClient(opts: HfClientOptions) {
     async estimate(endpoint: string, input: Record<string, unknown>): Promise<ProviderEstimate> {
       const r = await retryable('POST', `/estimate${endpointPath(endpoint)}`, input);
       if (r.status !== 200) fail(r);
-      const j = (r.json ?? {}) as { credits?: unknown; usd?: unknown };
+      const j = (r.json ?? {}) as {
+        type?: unknown; credits?: unknown; usd?: unknown; pricing_description?: unknown; discount?: { usd?: unknown } | null;
+      };
+      // Token-priced models describe their pricing instead of pricing the request (see ProviderEstimate).
+      if (j.type === 'description' || (j.usd === undefined && typeof j.pricing_description === 'string')) {
+        const text = typeof j.pricing_description === 'string' ? j.pricing_description.slice(0, 2000) : '';
+        return { usd: null, providerCredits: null, listUsd: null, pricingDescription: text || null, correlationId: r.correlationId };
+      }
       const usd = Number(j.usd);
       const providerCredits = Number(j.credits);
       if (!Number.isFinite(usd) || usd < 0 || !Number.isFinite(providerCredits)) {
         throw new ProviderError('bad_response', { httpStatus: r.status, correlationId: r.correlationId, detail: r.text });
       }
-      return { usd, providerCredits, correlationId: r.correlationId };
+      // `usd` is what is charged; `discount.usd` is the amount taken OFF (verified: Kling 3 std 5 s with sound →
+      // usd 0.347, discount 45 % = 0.284 → list 0.631).
+      const discount = Number(j.discount?.usd);
+      const listUsd = Number.isFinite(discount) && discount > 0 ? Math.round((usd + discount) * 1e6) / 1e6 : usd;
+      return { usd, providerCredits, listUsd, pricingDescription: null, correlationId: r.correlationId };
     },
 
     /**

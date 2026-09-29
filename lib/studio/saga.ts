@@ -123,6 +123,13 @@ export function createStudioSaga(deps: SagaDeps) {
     }
   }
 
+  /** The provider's number when it gives one; otherwise the model's own price from the provider's description. */
+  function costUsd(model: ModelEntry, input: Record<string, unknown>, estimate: ProviderEstimate): number | null {
+    if (typeof estimate.usd === 'number' && Number.isFinite(estimate.usd)) return estimate.usd;
+    const local = model.priceUsd?.(input, estimate.pricingDescription) ?? null;
+    return typeof local === 'number' && Number.isFinite(local) && local > 0 ? local : null;
+  }
+
   async function quote(modelId: string, params: unknown): Promise<Quote> {
     if (!deps.provider) return { ok: false, code: 'not_configured' };
     const model = getModel(modelId);
@@ -131,7 +138,12 @@ export function createStudioSaga(deps: SagaDeps) {
     if (!parsed.ok) return { ok: false, code: 'invalid_input', issues: parsed.issues };
     try {
       const estimate = await deps.provider.estimate(model.endpoint, parsed.input);
-      return { ok: true, model, input: parsed.input, price: priceFromUsd(estimate.usd, pricing), estimate };
+      const usd = costUsd(model, parsed.input, estimate);
+      if (usd === null) {
+        deps.alert('hf_unpriced_model', { model: model.id });
+        return { ok: false, code: 'provider_unavailable' };
+      }
+      return { ok: true, model, input: parsed.input, price: priceFromUsd(usd, pricing), estimate: { ...estimate, usd } };
     } catch (e) {
       return { ok: false, code: classifyQuoteError(e, model) };
     }
@@ -180,13 +192,15 @@ export function createStudioSaga(deps: SagaDeps) {
       tried.add(f.id);
       try {
         const est = await deps.provider.estimate(f.endpoint, job.input);
-        const p = priceFromUsd(est.usd, pricing);
+        const usd = costUsd(f, job.input, est);
+        if (usd === null) continue;
+        const p = priceFromUsd(usd, pricing);
         if (p.credits > job.charge_credits) continue; // never charge more than the user confirmed
         const moved = await deps.store.transition(job.id, ['submitting'], {
           status: 'reserved',
           model_id: f.id,
           provider_endpoint: f.endpoint,
-          estimate_usd: est.usd,
+          estimate_usd: usd,
           estimate_provider_credits: est.providerCredits,
           error_code: null,
           error_detail: null,

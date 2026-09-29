@@ -21,6 +21,7 @@ import {
   seedanceT2vInput,
   soul2Input,
 } from '@/lib/providers/higgsfield/models';
+import { videoTokensUsd } from '@/lib/providers/higgsfield/tokenPricing';
 import type { ModelTier, OutputKind, ProviderId, StudioService } from '@/lib/providers/types';
 
 export type ModelMode = 'text-to-image' | 'text-to-video' | 'image-to-video' | 'reference-to-video' | 'motion-transfer';
@@ -46,6 +47,11 @@ export interface ModelEntry {
   schema: 'page' | 'family';
   /** Application deadline for one request of this model (polling / reconciliation). */
   timeoutMs: number;
+  /**
+   * Local price for a model the provider only DESCRIBES (no numeric estimate) — USD from the validated input
+   * and the provider's pricing text. Absent → such a model cannot be priced and is refused (D5).
+   */
+  priceUsd?: (input: Record<string, unknown>, pricingDescription: string | null) => number | null;
 }
 
 const MIN = 60_000;
@@ -152,6 +158,7 @@ export const MODELS: readonly ModelEntry[] = [
     input: seedanceT2vInput,
     schema: 'page',
     timeoutMs: 20 * MIN,
+    priceUsd: videoTokensUsd,
   },
   {
     id: 'hf/seedance-2.5-r2v',
@@ -161,7 +168,7 @@ export const MODELS: readonly ModelEntry[] = [
     mode: 'reference-to-video',
     family: 'seedance-2.5-r2v',
     label_ka: 'Seedance 2.5 — ვიდეო რეფერენსებით',
-    description_ka: 'ფოტოები, ვიდეო ან ხმა როგორც ნიმუში — ერთი თანმიმდევრული კადრი.',
+    description_ka: 'ფოტოები ან ხმა როგორც ნიმუში — ერთი თანმიმდევრული კადრი.',
     label_en: 'Seedance 2.5 — reference to video',
     tier: 'standard',
     output: 'video',
@@ -169,6 +176,7 @@ export const MODELS: readonly ModelEntry[] = [
     input: seedanceR2vInput,
     schema: 'page',
     timeoutMs: 20 * MIN,
+    priceUsd: videoTokensUsd,
   },
   {
     id: 'hf/kling-3-motion-std',
