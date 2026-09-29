@@ -448,6 +448,71 @@ describe('provider errors', () => {
   });
 });
 
+/* ─── §7: the prompt the user wrote vs the prompt the model reads ─────────────────────────── */
+
+describe('prompt translation', () => {
+  function withTranslator(translate: (t: string, m: 'image' | 'video') => Promise<string>, script: Script = {}) {
+    const ctx = setup(script);
+    const calls: Array<{ text: string; medium: string }> = [];
+    const saga = createStudioSaga({
+      store: ctx.store,
+      provider: fakeProvider(script).provider,
+      ledger: ctx.ledger.port,
+      semaphore: ctx.sem,
+      copyOutputs: async () => null,
+      fileInLibrary: async () => undefined,
+      webhookUrlFor: () => null,
+      alert: () => undefined,
+      translatePrompt: async (t, m) => { calls.push({ text: t, medium: m }); return translate(t, m); },
+      now: () => clock,
+      newId: () => '00000000-0000-4000-8000-00000000abcd',
+      env: { HF_USD_GEL_RATE: '2.7', HF_GEL_MARGIN: '1.35' } as NodeJS.ProcessEnv,
+    });
+    return { ...ctx, saga, calls };
+  }
+
+  test('the model gets English, the user keeps Georgian, and both are shown', async () => {
+    const t = withTranslator(async () => 'Tbilisi at night, cinematic');
+    const r = await t.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
+    if (!r.ok) throw new Error('create failed');
+    const row = t.rows.get(r.job.id)!;
+    expect(row.input.prompt).toBe('Tbilisi at night, cinematic');
+    expect(row.prompt_original).toBe('თბილისი ღამით, კინემატოგრაფიული');
+    expect(t.calls).toEqual([{ text: 'თბილისი ღამით, კინემატოგრაფიული', medium: 'video' }]);
+    expect(publicJob(row)).toMatchObject({ promptOriginal: 'თბილისი ღამით, კინემატოგრაფიული', promptSent: 'Tbilisi at night, cinematic' });
+  });
+
+  test('live estimates never pay for a translation — only the confirmed create does', async () => {
+    const t = withTranslator(async () => 'x');
+    await t.saga.quote(T2V.modelId, T2V.params);
+    await t.saga.quote(T2V.modelId, T2V.params);
+    await t.saga.create({ userId: USER, ...T2V }); // unconfirmed → no translation either
+    expect(t.calls).toEqual([]);
+  });
+
+  test('a translation the schema refuses (over-long) is dropped — the original is sent, never a truncation', async () => {
+    const t = withTranslator(async () => 'x'.repeat(3000));
+    const r = await t.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
+    if (!r.ok) throw new Error('create failed');
+    expect(t.rows.get(r.job.id)!.input.prompt).toBe(T2V.params.prompt);
+  });
+
+  test('a translator that throws never blocks a paid generation', async () => {
+    const t = withTranslator(async () => { throw new Error('translator down'); });
+    const r = await t.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(t.rows.get(r.job.id)!.input.prompt).toBe(T2V.params.prompt);
+  });
+
+  test('images are translated as images', async () => {
+    const t = withTranslator(async () => 'a red apple');
+    const q = await t.saga.quote('hf/soul-2', { prompt: 'წითელი ვაშლი' });
+    if (!q.ok) throw new Error('quote failed');
+    await t.saga.create({ userId: USER, modelId: 'hf/soul-2', params: { prompt: 'წითელი ვაშლი' }, confirmedGel: q.price.gel });
+    expect(t.calls[0]).toEqual({ text: 'წითელი ვაშლი', medium: 'image' });
+  });
+});
+
 /* ─── events and cancel ────────────────────────────────────────────────────────────────────── */
 
 describe('events and cancel', () => {

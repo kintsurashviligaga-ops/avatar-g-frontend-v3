@@ -12,9 +12,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { studioV2Enabled } from '@/lib/studio/flags';
-import { getStudioRuntime } from '@/lib/studio/runtime';
+import { getStudioRuntime, signUploadedReference } from '@/lib/studio/runtime';
 import { publicJob } from '@/lib/studio/saga';
-import { notFound, publicPrice, readJson, sagaError, unauthorized } from '@/lib/studio/http';
+import { mediaParams, notFound, publicPrice, readJson, sagaError, unauthorized } from '@/lib/studio/http';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
   const rt = getStudioRuntime();
   if (!rt) return sagaError('not_configured');
 
-  const res = await rt.saga.create({ userId: user.id, modelId, params: body.params ?? {}, confirmedGel, promptOriginal });
+  const media = await mediaParams(body.params, user.id, signUploadedReference);
+  if (!media.ok) return media.res;
+  const res = await rt.saga.create({ userId: user.id, modelId, params: media.params, confirmedGel, promptOriginal });
   if (!res.ok) return sagaError(res.code, { price: res.price, issues: res.issues });
   return NextResponse.json({ job: publicJob(res.job), price: publicPrice(res.price) }, { status: 202 });
 }

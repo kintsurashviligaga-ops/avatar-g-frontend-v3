@@ -7,8 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { studioV2Enabled } from '@/lib/studio/flags';
-import { getStudioRuntime } from '@/lib/studio/runtime';
-import { notFound, publicPrice, readJson, sagaError, unauthorized, withinEstimateBudget } from '@/lib/studio/http';
+import { getStudioRuntime, signUploadedReference } from '@/lib/studio/runtime';
+import { mediaParams, notFound, publicPrice, readJson, sagaError, unauthorized, withinEstimateBudget } from '@/lib/studio/http';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
 
   const rt = getStudioRuntime();
   if (!rt) return sagaError('not_configured');
-  const q = await rt.saga.quote(modelId, body.params ?? {});
+  const media = await mediaParams(body.params, user.id, signUploadedReference);
+  if (!media.ok) return media.res;
+  const q = await rt.saga.quote(modelId, media.params);
   if (!q.ok) return sagaError(q.code, { issues: q.issues });
   return NextResponse.json({ modelId: q.model.id, price: publicPrice(q.price) });
 }

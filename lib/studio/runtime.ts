@@ -9,12 +9,15 @@ import { getRedisClient } from '@/lib/platform/redis';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { reportError } from '@/lib/observability/report-error';
+import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { opsMarker } from '@/lib/observability/reliability';
 import { createHiggsfieldAdapter } from '@/lib/providers/higgsfield/adapter';
 import { webhookUrlForJob } from '@/lib/providers/higgsfield/webhookAuth';
 import { createStudioSaga, type StudioSaga } from '@/lib/studio/saga';
 import { createRedisSemaphore, type SemaphoreRedis } from '@/lib/studio/semaphore';
 import { copyOutputsToStorage, signOutputs } from '@/lib/studio/outputs';
+import { createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import type { Signer } from '@/lib/studio/media';
 import { createSupabaseStudioStore, type StoredOutput, type StudioJob, type StudioStore } from '@/lib/studio/store';
 import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
 
@@ -67,6 +70,7 @@ export function getStudioRuntime(): StudioRuntime | null {
       });
     },
     webhookUrlFor: (jobId) => webhookUrlForJob(jobId),
+    translatePrompt: (text, medium) => promptToEnglish(text, medium),
     alert(marker, data) {
       opsMarker('error', marker, data);
       reportError(new Error(marker), data);
@@ -77,3 +81,7 @@ export function getStudioRuntime(): StudioRuntime | null {
 
   return { saga, store, signOutputs: (o) => signOutputs(o) };
 }
+
+/** Signs a reference the browser uploaded through /api/upload/sign (the `uploads` bucket). */
+export const signUploadedReference: Signer = (path, expiresSec) =>
+  createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', path, expiresSec);
