@@ -126,8 +126,9 @@ export function Landing({ locale }: { locale: string }) {
             gutters tighten so logo, language and „შესვლა“ still fit a 320 px screen. z-20, one above the hero
             copy (z-10, later in the DOM): the phone language menu opens over it. */}
         <header className="relative z-20 mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 pt-[max(16px,env(safe-area-inset-top))] max-[359px]:px-3 sm:px-6">
-          <Link href={`/${lang}`} className="flex min-h-[44px] shrink-0 items-center gap-2" aria-label="MyAvatar.ge">
-            <Image src="/brand/gemini-rocket-clean.png" alt="" width={28} height={28} priority className="h-7 w-7 rounded-lg object-contain" />
+          {/* ONE mark — the name. The rocket tile beside it read as a second logo (and the PNG has no alpha, so it is
+              an opaque square); the rocket stays the app icon, favicon and social card, where it stands alone. */}
+          <Link href={`/${lang}`} className="flex min-h-[44px] shrink-0 items-center" aria-label="MyAvatar.ge">
             <Wordmark size="sm" tone="onDark" />
           </Link>
           <div className="flex items-center gap-1 sm:gap-3">
@@ -272,8 +273,7 @@ export function Landing({ locale }: { locale: string }) {
       <footer className="border-t border-white/10">
         <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 pb-[max(32px,env(safe-area-inset-bottom))] pt-12 sm:px-6 md:flex-row md:items-start md:justify-between">
           <div>
-            <Link href={`/${lang}`} className="inline-flex min-h-[44px] items-center gap-2" aria-label="MyAvatar.ge">
-              <Image src="/brand/gemini-rocket-clean.png" alt="" width={24} height={24} className="h-6 w-6 rounded-md object-contain" />
+            <Link href={`/${lang}`} className="inline-flex min-h-[44px] items-center" aria-label="MyAvatar.ge">
               <Wordmark size="sm" tone="onDark" />
             </Link>
             <p className="mt-3 max-w-[32ch] text-[14px] text-[#A1A1AA]">{t.footer.tagline}</p>

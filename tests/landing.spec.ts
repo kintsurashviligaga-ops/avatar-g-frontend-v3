@@ -89,6 +89,12 @@ for (const vp of VIEWPORTS) {
       }
     });
 
+    test('one mark: the name, with no rocket tile beside it in the header or the footer', async ({ page }) => {
+      await page.goto('/ka');
+      await expect(page.locator('header').getByRole('img', { name: /MyAvatar/ })).toBeVisible();
+      await expect(page.locator('img[src*="gemini-rocket"]')).toHaveCount(0);
+    });
+
     test('en and ru are video-first too', async ({ page }) => {
       await page.goto('/en');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video from a single idea.');
@@ -157,6 +163,19 @@ async function openDashboard(page: Page, path = '/ka/dashboard') {
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
 }
 
+/**
+ * The settings: on a desktop a panel on the right, open by default (Google AI Studio); on a phone a sheet the tool chip
+ * opens (Gemini). Either way the chip's aria-expanded says which, and this returns the visible container.
+ */
+async function openSettings(page: Page) {
+  const toggle = page.getByTestId('options-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const settings = page.locator('#studio-settings, [data-testid="options-sheet"]').filter({ visible: true });
+  await expect(settings).toHaveCount(1);
+  return settings;
+}
+
 for (const vp of VIEWPORTS) {
   test.describe(`guest dashboard · ${vp.name}`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
@@ -168,7 +187,8 @@ for (const vp of VIEWPORTS) {
       const line = (await sub.textContent()) ?? '';
       expect(line.indexOf('ვიდეო')).toBeGreaterThanOrEqual(0);
       expect(line.indexOf('ვიდეო')).toBeLessThan(line.indexOf('სურათი')); // video is named first
-      await expect(page.getByRole('button', { name: 'ვიდეო', exact: true })).toBeVisible(); // the mode control
+      // The tool chip names what you make and its shape — its text is its accessible name.
+      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
       const chips = page.getByRole('group', { name: 'დაიწყე' }).getByRole('button');
       await expect(chips).toHaveCount(4);
       for (let i = 0; i < 4; i++) await expect(chips.nth(i)).toBeVisible();
@@ -180,15 +200,31 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
-    test('the service menu lists Video first, and image, music and avatar are one click away', async ({ page }) => {
+    test('„+“ opens photos, camera, files and the tools — Video first, image, music and avatar one tap away', async ({ page }) => {
       await openDashboard(page);
-      await page.getByRole('button', { name: 'ვიდეო', exact: true }).click();
-      const items = page.getByRole('menuitemradio');
-      await expect(items.nth(0)).toContainText('ვიდეო');
-      await expect(items.nth(0)).toHaveAttribute('aria-checked', 'true');
-      await expect(items.nth(1)).toContainText('სურათი');
-      await expect(items.nth(2)).toContainText('მუსიკა');
-      await expect(items.nth(3)).toContainText('ავატარი');
+      await page.getByTestId('plus').click();
+      const sheet = page.getByTestId('tool-sheet');
+      await expect(sheet).toBeVisible();
+      for (const tile of ['ფოტოები', 'კამერა', 'ფაილები']) await expect(sheet.getByRole('button', { name: tile })).toBeVisible();
+      const tools = sheet.getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button');
+      await expect(tools.nth(0)).toContainText('ვიდეო');
+      await expect(tools.nth(0)).toHaveAttribute('aria-pressed', 'true');
+      await expect(tools.nth(1)).toContainText('სურათი');
+      await expect(tools.nth(2)).toContainText('მუსიკა');
+      await expect(tools.nth(3)).toContainText('ავატარი');
+      // Nothing is lost one level down: the product ad, the swap, motion and the four studios.
+      await expect(sheet.getByRole('list', { name: 'მეტი' }).getByRole('button').first()).toContainText('პროდუქტის რეკლამა');
+    });
+
+    test('a service in the sidebar switches the studio and is marked as the active one', async ({ page }) => {
+      await openDashboard(page);
+      if (vp.name === 'phone') await page.locator('header').getByRole('button', { name: 'მენიუ' }).click();
+      const nav = page.locator('aside[aria-label="მენიუ"]');
+      await nav.getByRole('button', { name: 'მუსიკა', exact: true }).click();
+      await expect(page.getByTestId('options-toggle')).toHaveText('მუსიკა');
+      if (vp.name === 'phone') await page.locator('header').getByRole('button', { name: 'მენიუ' }).click();
+      await expect(nav.getByRole('button', { name: 'მუსიკა', exact: true })).toHaveAttribute('aria-current', 'true');
+      await expect(nav.getByRole('button', { name: 'ვიდეო', exact: true })).not.toHaveAttribute('aria-current', 'true');
     });
 
     test('a chip switches the service and sends nothing', async ({ page }) => {
@@ -217,23 +253,24 @@ for (const vp of VIEWPORTS) {
     });
 
     // docs/DESIGN.md §11 LIVE_GAP: both of these used to drop a guest into „ჩატი“, as if chat were home.
-    test('closing the options with ✕ keeps the service', async ({ page }) => {
+    test('closing the settings with ✕ keeps the service', async ({ page }) => {
       await openDashboard(page);
       const toggle = page.getByTestId('options-toggle');
-      await toggle.click();
-      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-      await page.getByRole('button', { name: 'დახურვა' }).first().click();
+      await openSettings(page);
+      await page.getByRole('button', { name: 'დახურვა' }).filter({ visible: true }).first().click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await expect(page.getByRole('button', { name: 'ვიდეო', exact: true })).toBeVisible();
+      await expect(toggle).toHaveText('ვიდეო · 9:16 · 24წმ');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
-    test('picking the service that is already on keeps it', async ({ page }) => {
+    test('picking the tool that is already on keeps it', async ({ page }) => {
       await openDashboard(page);
-      await page.getByRole('button', { name: 'ვიდეო', exact: true }).click();
-      await page.getByRole('menuitemradio').first().click(); // „ვიდეო“, already checked
-      await expect(page.getByRole('menuitemradio')).toHaveCount(0); // the menu closed
-      await expect(page.getByRole('button', { name: 'ვიდეო', exact: true })).toBeVisible();
+      await page.getByTestId('plus').click();
+      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button').first();
+      await expect(video).toHaveAttribute('aria-pressed', 'true');
+      await video.click();
+      await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
+      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
@@ -253,9 +290,12 @@ for (const vp of VIEWPORTS) {
     // The guest gate is lifted in this browser only — it is the sign-in wall, not what is under test.
     async function startImageJob(page: Page) {
       await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });
-      await page.getByRole('group', { name: 'დაიწყე' }).getByRole('button').nth(1).click(); // product image
-      await page.locator('select[aria-label="ფორმატი"]:visible').selectOption('9:16');
-      await page.locator('textarea').last().fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
+      await page.getByRole('group', { name: 'დაიწყე' }).getByRole('button').nth(1).click(); // the image tool
+      const settings = await openSettings(page);
+      await settings.getByRole('button', { name: '9:16', exact: true }).first().click();
+      if (vp.name === 'phone') await page.getByRole('button', { name: 'დახურვა' }).filter({ visible: true }).first().click();
+      await expect(page.getByTestId('options-toggle')).toHaveText('სურათი · 9:16');
+      await page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…').fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
       await page.getByRole('button', { name: 'სურათის შექმნა' }).click();
     }
 
@@ -286,26 +326,38 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('result-card')).toHaveCount(0);
     });
 
-    test('one composer: the price sits inside it, next to the format and length, and follows the length', async ({ page }) => {
+    test('the price sits under the composer, once, and follows the length set in the settings', async ({ page }) => {
       await openDashboard(page);
-      const price = page.getByTestId('price-tag').filter({ visible: true });
+      const price = page.getByTestId('price-tag');
       await expect(price).toHaveCount(1);
       await expect(price).toContainText('კრედიტი');
-      await page.locator('select[aria-label="ხანგრძლივობა"]:visible').selectOption('8');
+      const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
+      const chip = (await page.getByTestId('options-toggle').boundingBox())!;
+      const tag = (await price.boundingBox())!;
+      expect(chip.y).toBeGreaterThanOrEqual(pill.y); // the tool chip is IN the composer
+      expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
+      expect(tag.y).toBeGreaterThanOrEqual(pill.y + pill.height - 1); // the price is under it
+      const settings = await openSettings(page);
+      const length = settings.getByRole('radiogroup', { name: 'ხანგრძლივობა' });
+      await length.getByRole('radio', { name: '8წმ', exact: true }).click();
       await expect(price).toContainText('~2 წთ');
-      await page.locator('select[aria-label="ხანგრძლივობა"]:visible').selectOption('48');
+      await length.getByRole('radio', { name: '48წმ', exact: true }).click();
       await expect(price).toContainText('~7 წთ');
-      // Options are a control IN the composer, not a bar above it.
-      const composer = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
-      const toggle = (await page.getByTestId('options-toggle').boundingBox())!;
-      expect(toggle.y).toBeGreaterThanOrEqual(composer.y);
-      expect(toggle.y + toggle.height).toBeLessThanOrEqual(composer.y + composer.height + 1);
+      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 48წმ');
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {
       await openDashboard(page);
       await page.locator('header').getByRole('button', { name: 'შესვლა' }).click();
       await expect(page.locator('input[type="email"]')).toBeVisible();
+    });
+
+    test('one mark: the name — no rocket tile and no "M" badge beside it', async ({ page }) => {
+      // „ორი ლოგო არ უნდა ჩანდეს" — the rocket raster beside the wordmark (an opaque tile: the PNG has no alpha) and
+      // an "M" circle styled like the account initial read as a second logo.
+      await openDashboard(page);
+      await expect(page.locator('img[src*="gemini-rocket"]')).toHaveCount(0);
+      await expect(page.getByText('M', { exact: true })).toHaveCount(0);
     });
 
     test('the brand plate loads, and nothing overlaps or leaves the screen', async ({ page, request }) => {
@@ -315,7 +367,7 @@ for (const vp of VIEWPORTS) {
       await expect.poll(() => plate.evaluate((i: HTMLImageElement) => (i.complete ? i.naturalWidth : 0))).toBeGreaterThan(0);
       expect((await request.get('/brand/v1/dashboard-plate.jpg')).status()).toBe(200);
 
-      const header = (await page.locator('header').first().boundingBox())!;
+      const header = (await page.locator('header').filter({ visible: true }).first().boundingBox())!;
       const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!;
       const composer = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).boundingBox())!;
       const options = (await page.getByTestId('options-toggle').boundingBox())!;
@@ -333,3 +385,29 @@ for (const vp of VIEWPORTS) {
     });
   });
 }
+
+test.describe('guest dashboard · desktop is a studio', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('navigation, the session and its settings side by side — Google AI Studio’s three columns', async ({ page }) => {
+    await openDashboard(page);
+    const nav = (await page.locator('aside[aria-label="მენიუ"]').boundingBox())!;
+    const bar = page.locator('header').filter({ visible: true });
+    await expect(bar).toHaveCount(1); // the studio's own title bar; the phone header steps aside
+    await expect(bar.getByRole('heading', { name: 'ახალი სესია' })).toBeVisible();
+    const title = (await bar.boundingBox())!;
+    const settings = page.locator('#studio-settings');
+    await expect(settings).toBeVisible();
+    await expect(settings.getByRole('heading', { name: 'პარამეტრები' })).toBeVisible();
+    const right = (await settings.boundingBox())!;
+    expect(nav.x + nav.width).toBeLessThanOrEqual(title.x + 1);
+    expect(title.x + title.width).toBeLessThanOrEqual(right.x + 1);
+    expect(right.x + right.width).toBeLessThanOrEqual(1280);
+    // The settings panel closes from the title bar and comes back from it.
+    await page.getByTestId('settings-panel-toggle').click();
+    await expect(settings).toBeHidden();
+    await page.getByTestId('settings-panel-toggle').click();
+    await expect(settings).toBeVisible();
+    await noHorizontalScroll(page);
+  });
+});

@@ -168,7 +168,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
-      className="pointer-events-auto fixed right-3 z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      className="pointer-events-auto fixed z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md"
       // ⚠️ ABOVE THE COMPOSER, NOT ON IT. This used to be `bottom-3`, which is precisely where the
       // composer sits — so an active render covered "Describe…" and the Options row and made the input
       // unreachable, while duplicating progress the chat already showed inline. --composer-h is
@@ -178,7 +178,8 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
       // --kb-inset is added for the same reason --composer-h is: this tray is `position: fixed`, so it
       // resolves against the LAYOUT viewport, which does not shrink when the keyboard opens. Without it
       // the tray sits behind the keyboard exactly when the user is typing. 0 when the keyboard is shut.
-      style={{ bottom: 'calc(var(--composer-h, 0px) + var(--kb-inset, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))' }}
+      // --settings-w: on a desktop the studio's settings column is on the right edge; the tray floats beside it, not over it.
+      style={{ bottom: 'calc(var(--composer-h, 0px) + var(--kb-inset, 0px) + 1.25rem + env(safe-area-inset-bottom, 0px))', right: 'calc(var(--settings-w, 0px) + 0.75rem)' }}
     >
       <div className="mb-2 flex items-center justify-between px-0.5">
         <p className="text-[12px] font-bold text-app-text">

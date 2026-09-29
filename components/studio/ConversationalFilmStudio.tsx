@@ -1441,12 +1441,7 @@ export function ConversationalFilmStudio({
             </button>
           )}
           <Link href={`/${locale}/dashboard`} aria-label="MyAvatar.ge" className="group flex h-11 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden">
-            {/* The brand rocket (the supplied artwork — never an emoji stand-in), gentle hover tilt. */}
-            <span className="flex h-11 items-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={24} height={24} decoding="async"
-                className="h-6 w-6 shrink-0 rounded-lg object-contain drop-shadow-[0_0_12px_rgba(0,229,255,0.25)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105 motion-reduce:transition-none" />
-            </span>
+            {/* One mark: the name (docs/DESIGN.md §6) — the rocket tile beside it read as a second logo. */}
             {/* All-or-nothing, never "MyAvata…" (brief §8): a 44 px row that wraps — a wordmark that does not
                 fit whole drops to the clipped second line instead of being truncated. */}
             <span className="flex h-11 items-center"><Wordmark size="sm" tone="onDark" /></span>

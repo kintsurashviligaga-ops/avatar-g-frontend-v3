@@ -37,7 +37,8 @@ const COPY = {
   ru: { install: 'Установить', title: 'На главный экран — без строки браузера' },
 } as const;
 
-export function InstallAppButton({ locale = 'ka' }: { locale?: 'ka' | 'en' | 'ru' }) {
+/** `iconOnly` — in the studio sidebar's account row the Georgian label (≈150 px) crushed the account button beside it. */
+export function InstallAppButton({ locale = 'ka', iconOnly = false }: { locale?: 'ka' | 'en' | 'ru'; iconOnly?: boolean }) {
   const [deferred, setDeferred] = useState<InstallPromptEvent | null>(null);
   const t = COPY[locale] ?? COPY.ka;
 
@@ -83,7 +84,7 @@ export function InstallAppButton({ locale = 'ka' }: { locale?: 'ka' | 'en' | 'ru
     >
       <Download size={15} className="shrink-0" />
       {/* Icon-only on phones: in the chat header the label pushed the wordmark out ("MyAvata", brief §8). */}
-      <span className="hidden whitespace-nowrap sm:inline">{t.install}</span>
+      {!iconOnly && <span className="hidden whitespace-nowrap sm:inline">{t.install}</span>}
     </button>
   );
 }
