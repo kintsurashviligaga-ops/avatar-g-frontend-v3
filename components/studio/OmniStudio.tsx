@@ -7020,12 +7020,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}
         >
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
-            affordance on desktop (sm:block keeps it open); ✕ returns to chat mode and
-            collapses it. Lives at the top of the scroll area so it's always reachable. */}
+            affordance on desktop (sm:block keeps it open). Lives at the top of the scroll area so it's always
+            reachable.
+            ⚠️ ✕ CLOSES THE PANEL; IT DOES NOT LEAVE THE SERVICE. It used to switch to chat everywhere, which
+            made chat the "home" a guest fell back to: open პარამეტრები, tap ✕, and the video studio had become
+            a chat box (docs/DESIGN.md §11 LIVE_GAP). Where the panel is a collapsible sheet — phones, tablets,
+            and any empty conversation — ✕ just collapses it. Only where it is pinned open (desktop, a
+            conversation under way) does ✕ still fall back to chat, the one mode without a panel. */}
         {mode !== 'chat' && (
           <div className="mb-2 flex items-center justify-between px-0.5">
             <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t[activeModeKey]}</span>
-            <button type="button" onClick={() => { setMode('chat'); setOptionsOpen(false); }}
+            <button type="button" onClick={() => {
+              const pinnedOpen = messages.length > 0 && window.matchMedia('(min-width: 1024px)').matches;
+              if (pinnedOpen) setMode('chat');
+              setOptionsOpen(false);
+            }}
               aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'}
               className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text active:scale-95">
               <X size={17} />
@@ -8720,7 +8729,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         type="button"
                         role="menuitemradio"
                         aria-checked={mode === id}
-                        onClick={() => { if (id === mode) { setMode('chat'); setOptionsOpen(false); } else { setMode(id); } setModeMenuOpen(false); }}
+                        // Picking the service that is already on keeps it (a radio item does not un-check itself).
+                        // It used to toggle back to chat — so re-confirming „ვიდეო“ turned the studio into a chat.
+                        onClick={() => { if (id !== mode) setMode(id); setModeMenuOpen(false); }}
                         className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
                       >
                         <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
