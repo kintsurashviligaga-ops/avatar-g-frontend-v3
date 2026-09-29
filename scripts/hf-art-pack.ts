@@ -164,10 +164,19 @@ async function main() {
   for (const s of queue) {
     const tries = m.attempts.filter((a) => a.shot === s.id).length;
     if (tries >= MAX_ATTEMPTS) { console.log(`${s.id}: ${MAX_ATTEMPTS} attempts used — skipped (brief: ≤ 2 retries per shot)`); continue; }
-    for (const need of s.needs ?? []) if (!m.selected[need]) throw new Error(`${s.id} needs ${need} selected first`);
+    const unmet = (s.needs ?? []).filter((need) => !m.selected[need]);
+    if (unmet.length) { console.log(`${s.id}: waits for ${unmet.join(', ')} to be selected — skipped for now`); continue; }
 
     const input = substitute(s.input, m.selected) as Record<string, unknown>;
-    const est = await hf.estimate(s.endpoint, input);
+    let est: Awaited<ReturnType<typeof hf.estimate>>;
+    try {
+      est = await hf.estimate(s.endpoint, input);
+    } catch (e) {
+      // The provider's own words (ProviderError keeps them off the enumerable fields) — local tool, so print them.
+      const detail = (e as { detail?: unknown }).detail;
+      console.log(`${s.id}: estimate refused — ${(e as { code?: string }).code ?? (e as Error).message}${detail ? ` · ${String(detail).slice(0, 400)}` : ''}`);
+      continue;
+    }
     const usd = est.usd;
     const before = spent(m);
     console.log(`${s.id} ${s.title}: quote ${usd === null ? `(described) ${est.pricingDescription?.slice(0, 80)}` : `$${usd.toFixed(4)}`}${est.listUsd && usd !== null && est.listUsd > usd ? ` (list $${est.listUsd.toFixed(4)})` : ''} · spent so far $${before.toFixed(4)}`);

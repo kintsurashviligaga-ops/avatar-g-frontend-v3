@@ -14,7 +14,7 @@
 
 Nano Banana, Seedream and Flux are **not** in the Higgsfield API; they exist only in the consumer app. Soul v2 takes no reference image, so consistency between Soul shots comes from the shared bible, the shared `seed` and the default style.
 
-**Seed:** `20260929` for every Soul and Qwen request.
+**Seed:** `260929` for every Soul and Qwen request. Soul caps the seed at 1,000,000; the first dry run refused `20260929`.
 
 ## The world bible, appended to every prompt
 
@@ -40,7 +40,7 @@ The hero. The left half is quiet negative space for the headline, which is set i
     "prompt": "Wide cinematic establishing shot. A young Georgian woman videographer in her late twenties, dark hair tied back, black raincoat, stands in the right third of the frame on a narrow wet cobblestone street, holding a smartphone vertically at chest height and filming; the phone screen glows with a vertical video of the same glittering street. Her face is softly lit by the screen and a warm streetlamp, three-quarter profile, calm focus. The left half of the frame is open dark street receding into mist with long reflections, quiet negative space. Night in Old Tbilisi, Georgia, just after rain. Wet dark cobblestones mirror warm sodium streetlights and a few cool cyan practical lights. Carved wooden balconies and old brick facades, a light mist in the air. Shot on a 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no signage, no logos, no watermark, no user interface.",
     "aspect_ratio": "16:9",
     "resolution": "1080p",
-    "seed": 20260929,
+    "seed": 260929,
     "batch_size": 4,
     "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
     "enhance_prompt": false
@@ -63,7 +63,7 @@ The same frame, recomposed vertically from the selected A1. It is not a new pict
     "negative_prompt": "text, letters, words, signage, logo, watermark, user interface, extra people, distorted hands, cartoon, illustration",
     "aspect_ratio": "9:16",
     "resolution": "2k",
-    "seed": 20260929,
+    "seed": 260929,
     "prompt_extend": false,
     "enable_thinking": false
   }
@@ -82,7 +82,7 @@ It is shown at 8% opacity behind the greeting, so it must work as a mood with no
     "prompt": "Abstract, almost entirely dark frame: the lights of an Old Tbilisi street at night seen through a rain-covered window, large soft out-of-focus bokeh in warm amber with a few cyan points, raindrops sharp on the glass, very low key, most of the frame near black, calm and minimal. The same night in Tbilisi after rain: warm tungsten practical light against cool cyan light, 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no visible labels, no logos, no watermark, no user interface.",
     "aspect_ratio": "16:9",
     "resolution": "1080p",
-    "seed": 20260929,
+    "seed": 260929,
     "batch_size": 4,
     "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
     "enhance_prompt": false
@@ -101,7 +101,7 @@ It is shown at 8% opacity behind the greeting, so it must work as a mood with no
     "prompt": "A compact cinema camera on a small handheld gimbal held low above the wet cobblestones of a narrow Old Tbilisi street at night, the lens in sharp focus catching reflections, a small warm on-camera light, streetlight bokeh and mist behind, the feeling of a film crew at work, no face visible. Night in Old Tbilisi, Georgia, just after rain. Wet dark cobblestones mirror warm sodium streetlights and a few cool cyan practical lights. Carved wooden balconies and old brick facades, a light mist in the air. Shot on a 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no signage, no logos, no watermark, no user interface.",
     "aspect_ratio": "3:4",
     "resolution": "1080p",
-    "seed": 20260929,
+    "seed": 260929,
     "batch_size": 4,
     "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
     "enhance_prompt": false
@@ -120,7 +120,7 @@ It is shown at 8% opacity behind the greeting, so it must work as a mood with no
     "prompt": "Premium product photograph on a set in a dark studio: a dark unlabeled glass bottle of red wine and a single wine glass on a wet black stone slab, fine water droplets, a warm amber key light from the side and a thin cyan rim light, dramatic shadows, clean minimal composition, advertising still life. The same night in Tbilisi after rain: warm tungsten practical light against cool cyan light, 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no visible labels, no logos, no watermark, no user interface.",
     "aspect_ratio": "3:4",
     "resolution": "1080p",
-    "seed": 20260929,
+    "seed": 260929,
     "batch_size": 4,
     "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
     "enhance_prompt": false
@@ -139,7 +139,7 @@ It is shown at 8% opacity behind the greeting, so it must work as a mood with no
     "prompt": "A vintage analogue synthesizer and a studio condenser microphone on a stand in a dim home studio at night, a large window behind showing the Old Tbilisi skyline with the lit Narikala fortress in rain mist, raindrops on the glass, a warm desk lamp and cool cyan light from a monitor out of frame, no visible labels or writing on the equipment. The same night in Tbilisi after rain: warm tungsten practical light against cool cyan light, 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no visible labels, no logos, no watermark, no user interface.",
     "aspect_ratio": "3:4",
     "resolution": "1080p",
-    "seed": 20260929,
+    "seed": 260929,
     "batch_size": 4,
     "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
     "enhance_prompt": false
@@ -162,7 +162,7 @@ The same woman as the hero, in close-up, edited from the selected A1.
     "negative_prompt": "text, letters, words, signage, logo, watermark, user interface, different person, distorted face, extra fingers, cartoon, illustration",
     "aspect_ratio": "3:4",
     "resolution": "2k",
-    "seed": 20260929,
+    "seed": 260929,
     "prompt_extend": false,
     "enable_thinking": false
   }
@@ -181,7 +181,7 @@ The share image, 1200×630, is this still with the logo lockup composited in cod
     "prompt": "Aerial wide establishing shot of Tbilisi at night just after rain: the Old Town rooftops and carved balconies, the Mtkvari river reflecting the city lights, the illuminated Narikala fortress on its hill and the softly glowing Bridge of Peace, low mist drifting over the river, calm and cinematic. Shot on a 35mm anamorphic cinema lens, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no signage, no logos, no watermark, no user interface.",
     "aspect_ratio": "16:9",
     "resolution": "1080p",
-    "seed": 20260929,
+    "seed": 260929,
     "batch_size": 4,
     "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
     "enhance_prompt": false
