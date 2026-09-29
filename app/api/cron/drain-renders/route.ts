@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { failJob } from '@/lib/orchestrator/jobs';
-import { refundCredits } from '@/lib/orchestrator/ledger';
+import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { selectReapable, reapReserve, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from '@/lib/pipeline/renderDrainer';
 import { reportError } from '@/lib/observability/report-error';
 import { opsMarker } from '@/lib/observability/reliability';
@@ -60,9 +60,14 @@ async function handle(req: NextRequest) {
       // the in-route refundProduce uses — so this collapses to EXACTLY ONE credit-back whether the in-route
       // finally ran, this drainer ran, or (after a failJob miss) a later tick re-runs it. Only charged
       // reservations carry `_reserve`; free-slot / skipped renders yield null → never minted.
+      //
+      // ⚠️ THE ROW'S `_reserve.credits` IS A CLAIM, NOT A FACT. generation_jobs is owner-writable, so a user
+      // could insert a stale `processing` row claiming any amount under a fresh ref and this loop paid it.
+      // refundDebitByRef pays back only what the LEDGER shows was debited under that ref (capped at the
+      // claim), still as `${ref}:refund` — so the collapse-to-one-refund guarantee above is unchanged.
       const rr = reapReserve(j);
       if (rr) {
-        const res = await refundCredits(rr.userId, rr.credits, `${rr.ref}:refund`).catch(() => null);
+        const res = await refundDebitByRef(rr.userId, rr.ref, rr.credits).catch(() => null);
         if (res?.ok) refunded++;
       }
       await failJob(j.id, 'render abandoned (tab closed) — reaped by drainer');

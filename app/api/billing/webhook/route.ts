@@ -138,7 +138,11 @@ async function handleWalletTopup(session: Stripe.Checkout.Session) {
   // Idempotent on `stripe:<session.id>` (the RPC dedupes; the outer event-id
   // guard dedupes re-delivered events) → never double-credits. Same crediting
   // path for founder verification and organic top-ups (single source of truth).
-  await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
+  // ⚠️ A null here is a credit that did NOT land (from 2026-08-02 every call failed on an ambiguous RPC
+  // overload, fixed in 20260929a). Throwing reaches the handler's 500, skips markProcessed, and Stripe
+  // re-delivers; the ref above keeps the retry exactly-once.
+  const balance = await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
+  if (balance === null) throw new Error(`wallet credit failed for stripe:${session.id}`);
 }
 
 async function handleTierTopup(session: Stripe.Checkout.Session) {

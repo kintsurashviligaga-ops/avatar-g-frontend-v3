@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizePlanTier } from '@/lib/billing/plans';
 import { getAccessToken } from '@/lib/auth/server';
 import { isAdmin } from '@/lib/auth/adminGuard';
@@ -35,8 +35,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = createSupabaseServerClient();
-
     // ⚠️ THIS GATE CHECKED A COLUMN THAT DOES NOT EXIST. `profiles.role` is not in the schema, so the
     // select errored, `profile` came back null, and `profile?.role !== 'admin'` was true for EVERYONE —
     // this endpoint returned 403 to real admins and had been dead for as long as it has existed. It
@@ -50,8 +48,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // ⚠️ The platform-wide figures below need the SERVICE client. Through the admin's own session RLS
+    // shows only the admin's own rows — it looked right only while `jobs` had a USING (true) policy for
+    // everyone, which 20260929a removed. The gate above is what makes this safe.
+    const db = createServiceRoleClient();
+
     // Fetch users stats
-    const { data: users, error: usersError } = await supabase
+    const { data: users, error: usersError } = await db
       .from('subscriptions')
       .select('plan');
     
@@ -65,7 +68,7 @@ export async function GET() {
     }, {} as Record<string, number>);
 
     // Fetch jobs stats
-    const { data: jobs, error: jobsError } = await supabase
+    const { data: jobs, error: jobsError } = await db
       .from('jobs')
       .select('status, agent_id, cost_credits');
     
@@ -93,7 +96,7 @@ export async function GET() {
     const totalCreditsSpent = typedJobs.reduce((sum: number, jobRow) => sum + (jobRow.cost_credits || 0), 0);
 
     // Fetch credit transactions for more accurate stats
-    const { data: creditTxs, error: creditError } = await supabase
+    const { data: creditTxs, error: creditError } = await db
       .from('credit_transactions')
       .select('amount, type');
 
