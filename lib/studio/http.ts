@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/platform/redis';
 import { formatGel, type Price } from '@/lib/providers/pricing';
 import type { SagaCode } from '@/lib/studio/saga';
+import { MediaRefError, resolveStudioMedia, type Signer } from '@/lib/studio/media';
 
 const STATUS: Record<SagaCode, number> = {
   not_configured: 503,
@@ -64,5 +65,19 @@ export async function withinEstimateBudget(userId: string, perMinute = 60, now =
     return n <= perMinute;
   } catch {
     return true;
+  }
+}
+
+/** Swap the caller's own upload paths for signed URLs, or answer 422 naming the field. */
+export async function mediaParams(
+  raw: unknown,
+  userId: string,
+  sign: Signer,
+): Promise<{ ok: true; params: unknown } | { ok: false; res: Response }> {
+  try {
+    return { ok: true, params: await resolveStudioMedia(raw ?? {}, userId, sign) };
+  } catch (e) {
+    if (e instanceof MediaRefError) return { ok: false, res: sagaError('invalid_input', { issues: [{ path: e.field, message: e.reason }] }) };
+    throw e;
   }
 }

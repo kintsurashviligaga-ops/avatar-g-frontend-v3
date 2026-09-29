@@ -46,6 +46,11 @@ export interface SagaDeps {
   fileInLibrary(job: StudioJob, outputs: StoredOutput[]): Promise<void>;
   webhookUrlFor(jobId: string): string | null;
   alert(marker: string, data: Record<string, unknown>): void;
+  /**
+   * §7: Georgian → English for the model (lib/ai/promptToEnglish in production — fail-open, returns the
+   * original on any error). Optional: without it the prompt is sent as written.
+   */
+  translatePrompt?(text: string, medium: 'image' | 'video'): Promise<string>;
   now(): number;
   newId(): string;
   env?: NodeJS.ProcessEnv;
@@ -279,6 +284,20 @@ export function createStudioSaga(deps: SagaDeps) {
     if (req.confirmedGel === undefined || req.confirmedGel === null) return { ok: false, code: 'confirmation_required', price: q.price };
     if (!samePrice(req.confirmedGel, q.price)) return { ok: false, code: 'price_changed', price: q.price };
 
+    // §7: the user's prompt is kept exactly as written; the MODEL receives an English rendering (these models
+    // read English — a Georgian brief arrives as noise). Only after the price is confirmed, so live estimates
+    // never pay for a translation. The price cannot move: it depends on duration/resolution, not on words.
+    const original = typeof q.input.prompt === 'string' ? q.input.prompt : null;
+    let input = q.input;
+    if (original && deps.translatePrompt) {
+      const en = await deps.translatePrompt(original, q.model.output === 'video' ? 'video' : 'image').catch(() => original);
+      if (typeof en === 'string' && en.trim() && en !== original) {
+        // A translation the schema refuses (over-long, emptied) is dropped — never sent, never guessed at.
+        const re = parseModelInput(q.model, { ...q.input, prompt: en.trim() });
+        if (re.ok) input = re.input;
+      }
+    }
+
     const id = deps.newId();
     const job = await deps.store.insert({
       id,
@@ -287,8 +306,8 @@ export function createStudioSaga(deps: SagaDeps) {
       model_id: q.model.id,
       provider: q.model.provider,
       provider_endpoint: q.model.endpoint,
-      input: q.input,
-      prompt_original: req.promptOriginal ? req.promptOriginal.slice(0, 4000) : null,
+      input,
+      prompt_original: (req.promptOriginal ?? original)?.slice(0, 4000) ?? null,
       estimate_provider_credits: q.estimate.providerCredits,
       estimate_usd: q.estimate.usd,
       estimate_gel: q.price.gel,
@@ -504,6 +523,9 @@ export function publicJob(job: StudioJob, signedUrls: string[] = []) {
     credits: job.charge_credits,
     refunded: job.refund_state === 'done',
     errorCode: job.error_code,
+    /** §7: both versions are shown (the UI folds the English one away). */
+    promptOriginal: job.prompt_original,
+    promptSent: typeof job.input?.prompt === 'string' ? (job.input.prompt as string) : null,
     outputUrls: job.status === 'completed' ? signedUrls : [],
     createdAt: job.created_at,
     completedAt: job.completed_at,
