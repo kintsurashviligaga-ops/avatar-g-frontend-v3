@@ -4,6 +4,7 @@ import "./globals.css";
 import Providers from "@/app/providers";
 import { AppShell } from "@/components/AppShell";
 import { logStartupEnvValidation } from "@/lib/env/startupValidation";
+import { studioV2Enabled } from "@/lib/studio/flags";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { PostHogProvider } from "@/components/analytics/PostHogProvider";
@@ -261,6 +262,8 @@ export default async function RootLayout({
 		<html
 			lang={documentLocale}
 			data-theme="dark"
+			// Published for the client shell: the chat sidebar shows its Studio row only where the studio exists.
+			data-studio-v2={studioV2Enabled() ? '1' : undefined}
 			suppressHydrationWarning
 			className={`dark ${inter.variable} ${montserrat.variable} ${notoGeorgian.variable}`}
 			style={{
@@ -308,7 +311,7 @@ export default async function RootLayout({
 			<body className="font-sans antialiased">
 				<PostHogProvider>
 					<Providers>
-						<AppShell>
+						<AppShell studioV2={studioV2Enabled()}>
 							{children}
 						</AppShell>
 					</Providers>

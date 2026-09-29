@@ -16,7 +16,7 @@ import { SupportWidget } from './SupportWidget';
  * `md:hidden`. Sitting the launcher at bottom-4 would bury it under that bar on every phone. 76px clears
  * it with a margin; from md upward the bar is gone and 24px is enough.
  */
-export function SupportWidgetMount() {
+export function SupportWidgetMount({ hidden = false }: { /** The shell knows a route is immersive when the URL alone cannot say (/studio with STUDIO_V2). */ hidden?: boolean } = {}) {
   const pathname = usePathname() || '';
   // Locale comes from the path rather than a prop — AppShell has no locale in scope and threading one
   // through only for this would add a parameter to a component that already takes none.
@@ -27,7 +27,7 @@ export function SupportWidgetMount() {
   const authOrLanding = /\/(login|signup|reset|auth)(\/|$)/.test(pathname) || /^\/[a-z]{2}\/?$/.test(pathname);
   const admin = pathname.includes('/admin');
 
-  if (immersive || authOrLanding || admin) return null;
+  if (hidden || immersive || authOrLanding || admin) return null;
 
   return (
     <>

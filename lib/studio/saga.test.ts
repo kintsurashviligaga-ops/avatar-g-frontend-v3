@@ -52,6 +52,9 @@ function memoryStore() {
         .map((r) => ({ ...r }));
     },
     async listRefundPending() { return [...rows.values()].filter((r) => r.refund_state === 'pending').map((r) => ({ ...r })); },
+    async listForUser(userId, limit = 12) {
+      return [...rows.values()].filter((r) => r.user_id === userId).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit).map((r) => ({ ...r }));
+    },
     async recordEvent(ev) {
       const k = `${ev.provider}|${ev.requestId}|${ev.status}`;
       if (events.has(k)) return false;

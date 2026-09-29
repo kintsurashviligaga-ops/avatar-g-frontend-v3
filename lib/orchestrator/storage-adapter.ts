@@ -23,6 +23,62 @@ function client(): ReturnType<typeof createServiceRoleClient> | null {
 
 /** Best-effort delete of scratch objects (e.g. single-use lip-sync inputs) so they never bloat the
  *  bucket. Fail-open no-op when storage is unconfigured; a miss is harmless (objects expire on TTL). */
+type BucketApi = {
+  storage: {
+    createBucket: (id: string, opts: { public: boolean; fileSizeLimit?: string }) => Promise<{ error: { message: string } | null }>;
+  };
+};
+
+/**
+ * Make sure a private bucket exists before an upload — idempotent.
+ *
+ * ⚠️ THE STUDIO'S RESULTS NEVER REACHED A USER BECAUSE THIS USED TO BE `try { createBucket(...) } catch {}`.
+ * supabase-js does not THROW on failure, it RETURNS `{ error }` — so the catch never fired and every failure
+ * was silent. And it did fail: a per-bucket `fileSizeLimit` above the project's GLOBAL upload limit is refused
+ * with "The object exceeded the maximum allowed size". The `studio` bucket was therefore never created; every
+ * finished generation was copied to a bucket that did not exist ("Bucket not found") and sat in `finalizing`
+ * with the user already charged (found by the first real end-to-end run, 2026-09-29).
+ *
+ * Now: "already exists" is success; a limit the project refuses is retried WITHOUT a per-bucket limit (the
+ * bucket then inherits the global one); anything else is logged, and the upload reports the real failure.
+ */
+/** Buckets this instance has seen exist — an upload does not pay a create round-trip (or two) every time. */
+const knownBuckets = new Set<string>();
+
+export async function ensureBucket(sb: BucketApi, bucket: string, fileSizeLimit?: string): Promise<'created' | 'exists' | 'failed'> {
+  if (knownBuckets.has(bucket)) return 'exists';
+  const result = await createOnce(sb, bucket, fileSizeLimit);
+  if (result !== 'failed') knownBuckets.add(bucket);
+  return result;
+}
+
+/** Test seam: forget what this instance has seen. */
+export function __resetKnownBuckets(): void {
+  knownBuckets.clear();
+}
+
+async function createOnce(sb: BucketApi, bucket: string, fileSizeLimit?: string): Promise<'created' | 'exists' | 'failed'> {
+  const attempt = async (limit?: string) => {
+    try {
+      const { error } = await sb.storage.createBucket(bucket, limit ? { public: false, fileSizeLimit: limit } : { public: false });
+      return error ? error.message : null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  };
+  let err = await attempt(fileSizeLimit);
+  if (err === null) return 'created';
+  if (/already exists|duplicate/i.test(err)) return 'exists';
+  if (fileSizeLimit && /maximum allowed size|exceeded|too large/i.test(err)) {
+    err = await attempt(undefined);
+    if (err === null) return 'created';
+    if (/already exists|duplicate/i.test(err)) return 'exists';
+  }
+  // eslint-disable-next-line no-console
+  console.warn(`[storage] could not create bucket ${bucket}:`, err);
+  return 'failed';
+}
+
 export async function removeStorageObjects(bucket: string, paths: string[]): Promise<void> {
   if (!paths.length) return;
   const sb = client();
@@ -112,12 +168,9 @@ export async function uploadAndSign(
 ): Promise<string | null> {
   const sb = client();
   if (!sb) return null;
-  try {
-    // Self-provision a private bucket on first use (idempotent — the service
-    // role can create it; an "already exists" result is ignored). Removes the
-    // manual "create the renders bucket" step.
-    await sb.storage.createBucket(bucket, { public: false });
-  } catch { /* exists / no perms — upload will surface any real failure */ }
+  // Self-provision a private bucket on first use (idempotent). Removes the manual "create the renders
+  // bucket" step; see ensureBucket for why the result is now actually read.
+  await ensureBucket(sb as unknown as BucketApi, bucket);
   try {
     const bytes = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
     const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
@@ -158,9 +211,7 @@ export async function uploadBufferAndSign(
   // break that let 30s masters (~16MB) deliver while 60s masters never could.
   // Create new buckets generous, and self-heal an existing too-small one below.
   const LARGE_FILE_LIMIT = '256MB';
-  try {
-    await sb.storage.createBucket(bucket, { public: false, fileSizeLimit: LARGE_FILE_LIMIT });
-  } catch { /* exists / no perms — upload surfaces any real failure */ }
+  await ensureBucket(sb as unknown as BucketApi, bucket, LARGE_FILE_LIMIT);
   // The Supabase storage client takes no AbortSignal, so bound each attempt with
   // a race-timeout: a stalled upload (the master is tens of MB) must not pin the
   // serverless function until the platform hard-kills it at maxDuration — the
