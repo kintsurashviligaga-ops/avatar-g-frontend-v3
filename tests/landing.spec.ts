@@ -84,6 +84,12 @@ for (const vp of VIEWPORTS) {
   });
 }
 
+test('the landing is in the server HTML: `curl /ka` returns the headline', async ({ request }) => {
+  const res = await request.get('/ka', { headers: { accept: 'text/html' } });
+  expect(res.status()).toBe(200);
+  expect(await res.text()).toContain('ვიდეო ერთი იდეიდან');
+});
+
 test.describe('landing · 320 px', () => {
   test.use({ viewport: { width: 320, height: 640 } });
 
@@ -124,9 +130,15 @@ for (const vp of VIEWPORTS) {
 
     test('opens on video: the reel chip is first and pressed, the composer asks for a shot', async ({ page }) => {
       await openDashboard(page);
-      await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toBeVisible();
+      const sub = page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.');
+      await expect(sub).toBeVisible();
+      const line = (await sub.textContent()) ?? '';
+      expect(line.indexOf('ვიდეო')).toBeGreaterThanOrEqual(0);
+      expect(line.indexOf('ვიდეო')).toBeLessThan(line.indexOf('სურათი')); // video is named first
+      await expect(page.getByRole('button', { name: 'ვიდეო', exact: true })).toBeVisible(); // the mode control
       const chips = page.getByRole('group', { name: 'დაიწყე' }).getByRole('button');
       await expect(chips).toHaveCount(4);
+      for (let i = 0; i < 4; i++) await expect(chips.nth(i)).toBeVisible();
       await expect(chips.nth(0)).toHaveText('კინო რილი 9:16');
       await expect(chips.nth(0)).toHaveAttribute('aria-pressed', 'true');
       await expect(chips.nth(1)).toHaveText('პროდუქტის სურათი');
@@ -159,6 +171,27 @@ for (const vp of VIEWPORTS) {
       await page.waitForTimeout(800);
       expect(posts).toEqual([]);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible(); // still the empty state: nothing was sent
+    });
+
+    // docs/DESIGN.md §11 LIVE_GAP: both of these used to drop a guest into „ჩატი“, as if chat were home.
+    test('closing the options with ✕ keeps the service', async ({ page }) => {
+      await openDashboard(page);
+      const toggle = page.getByTestId('options-toggle');
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await page.getByRole('button', { name: 'დახურვა' }).first().click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByRole('button', { name: 'ვიდეო', exact: true })).toBeVisible();
+      await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
+    });
+
+    test('picking the service that is already on keeps it', async ({ page }) => {
+      await openDashboard(page);
+      await page.getByRole('button', { name: 'ვიდეო', exact: true }).click();
+      await page.getByRole('menuitemradio').first().click(); // „ვიდეო“, already checked
+      await expect(page.getByRole('menuitemradio')).toHaveCount(0); // the menu closed
+      await expect(page.getByRole('button', { name: 'ვიდეო', exact: true })).toBeVisible();
+      await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
     test('with text in the box, Send takes the live-voice slot', async ({ page }) => {

@@ -130,3 +130,32 @@ The full studios, Montage, Dubbing, 3D and Presentation, stay below a divider in
 **Left for a follow-up.** Deliberately out of this pass, because they are message copy and panel copy rather than the empty state:
 - About 290 emoji characters remain in `OmniStudio.tsx` strings: 🎵 in notices, ⚠️ in warnings, 🎥 in the storyboard title, ✓ in labels, and the like. They should become line icons, or plain words, surface by surface.
 - `AuthModal` still uses a cyan-to-blue gradient badge and a tinted drop-shadow, and has no `role="dialog"`. It was left alone because auth is an invariant of this pass (§9).
+
+## 11. LIVE_GAP — the guest dashboard, verified on production (2026-09-29)
+
+**The report.** „https://myavatar.ge/ka still has the old empty-state copy «შექმენი სურათი ან მუსიკა» and a visible mode «ჩატი».“
+
+**What production actually serves.**
+
+- `main` is `7f96506`. `vercel ls --prod -m githubCommitSha=7f96506…` returns deployment `4k9kll1fk` (`dpl_HGQsP3ah2B7FGvHrLupYdb2JNJJv`). That deployment carries the aliases `myavatar.ge`, `www.myavatar.ge` and `avatar-g-frontend-v3.vercel.app`. **Production = main.**
+- The old copy („ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა…“) is not in `main`, and it is not in any of the 41 scripts the live `/ka/dashboard` loads. Both the literal and the `\u`-escaped forms were searched. The new copy, the video placeholder and the chips are in chunk `84.*.js`.
+- For a guest, `/ka` is the landing, which has no empty state; a signed-in visitor at `/ka` is sent to `/ka/dashboard`.
+- The report matches the previous production deployment exactly. That deployment was live until 15:12, when the first landing deploy took over.
+
+| guest `/ka/dashboard`, fresh browser (= hard refresh) | Before: `5vxn6r59l` (main `962e552`) | After: `4k9kll1fk` (main `7f96506`) |
+|---|---|---|
+| Subtitle | ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — … | **შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.** |
+| Mode on load | ჩატი | **ვიდეო** |
+| Placeholder | დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი… | **აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი…** |
+| Starter chips | none | **4**: კინო რილი 9:16 · პროდუქტის სურათი · საუნდთრექი · ავატარის პორტრეტი |
+| Header language | a flag emoji | **ქარ ⌄** |
+
+![Before and after, 390 and 1280 px](live-gap-2026-09-29.jpg)
+
+**Why someone can still see „before“.** A tab opened before 15:12 keeps running the bundle it loaded, because Vercel's skew protection pins chunk URLs to their deployment (`?dpl=`). One reload fixes that tab. The service worker is not the cause: navigations and scripts are network-first, and its cache name carries the commit (`avatar-g-shell-7f96506`), so a deploy replaces it and reloads the pages it controls.
+
+**The real gap that remained: two ways back into „ჩატი“.** Both treated chat as home.
+- The options panel's ✕ switched the service to chat. A guest who opened „პარამეტრები“ and closed it was left in a chat box. ✕ now only collapses the panel. It still falls back to chat in one case: on desktop, with a conversation under way, where the panel is pinned open and chat is the only mode without one.
+- Picking the already-checked service in the menu toggled it off, to chat. A radio item no longer un-checks itself.
+
+Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f96506`, the production build before this fix. Chat stays in the menu, last among the modes, and is never the default.
