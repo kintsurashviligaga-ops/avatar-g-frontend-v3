@@ -84,6 +84,28 @@ for (const vp of VIEWPORTS) {
   });
 }
 
+test.describe('landing · 320 px', () => {
+  test.use({ viewport: { width: 320, height: 640 } });
+
+  // The segmented language pill pushed „შესვლა“ 35 px off a 320 px screen; phones now get a compact menu.
+  test('the header fits: the wordmark whole, „შესვლა“ on screen, and the language menu switches the page', async ({ page }) => {
+    await page.goto('/ka');
+    const wordmark = (await page.locator('header [role="img"]').boundingBox())!;
+    const menu = page.locator('header summary');
+    const menuBox = (await menu.boundingBox())!;
+    const signIn = (await page.locator('header').getByRole('link', { name: 'შესვლა' }).boundingBox())!;
+    expect(wordmark.x + wordmark.width).toBeLessThanOrEqual(menuBox.x);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(signIn.x);
+    expect(signIn.x + signIn.width).toBeLessThanOrEqual(320);
+    expect(menuBox.height).toBeGreaterThanOrEqual(44);
+    await noHorizontalScroll(page);
+    await menu.click();
+    await page.getByRole('link', { name: 'English' }).click();
+    await expect(page).toHaveURL(/\/en$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video from a single idea.');
+  });
+});
+
 /**
  * The guest dashboard. The cookie choice is pre-set to "necessary only" so the banner never sits over the composer.
  * The TanStack devtools button is development-only (the package exports a no-op in production) and is ignored.
