@@ -17,6 +17,14 @@ import { useEffect, useRef } from 'react';
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
+/**
+ * The open dialogs, oldest first. ⚠️ EVERY OPEN DIALOG USED TO ANSWER THE SAME KEY. Each one adds its own window
+ * listener, so with a sheet opened FROM another sheet (the studio's settings → „შეცვლა“ → the tool list) one Escape
+ * closed both, and focus fell to <body>. Only the top-most dialog answers Escape and traps Tab now; the one under it
+ * takes over again when the top closes, with focus back on the control that opened it.
+ */
+const openStack: { token: object; node: HTMLElement | null }[] = [];
+
 export function useDialogA11y<T extends HTMLElement = HTMLElement>(
   open: boolean,
   onClose: () => void,
@@ -29,6 +37,12 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(
   useEffect(() => {
     if (!open || typeof window === 'undefined') return;
     const node = ref.current;
+    const token = {};
+    // Effects run child-first, so a dialog mounted in the same commit as one NESTED inside it registers second. It
+    // still belongs UNDER that child: insert it before the first open dialog it contains; otherwise on top.
+    const inner = openStack.findIndex((d) => !!node && !!d.node && d.node !== node && node.contains(d.node));
+    if (inner >= 0) openStack.splice(inner, 0, { token, node });
+    else openStack.push({ token, node });
     // Remember the trigger so focus can return to it on close.
     restoreRef.current = (document.activeElement as HTMLElement) ?? null;
 
@@ -41,6 +55,7 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(
     });
 
     const onKey = (e: KeyboardEvent) => {
+      if (openStack[openStack.length - 1]?.token !== token) return; // a dialog above this one owns the keyboard
       if (e.key === 'Escape') {
         e.preventDefault();
         onCloseRef.current();
@@ -67,6 +82,8 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onKey);
+      const at = openStack.findIndex((d) => d.token === token);
+      if (at >= 0) openStack.splice(at, 1);
       const prev = restoreRef.current;
       if (prev && typeof prev.focus === 'function') prev.focus({ preventScroll: true });
     };

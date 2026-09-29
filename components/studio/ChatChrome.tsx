@@ -19,8 +19,9 @@ import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard, Clapperboard,
+  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
 } from 'lucide-react';
+import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
 import dynamic from 'next/dynamic';
 
 // DAY-5 — the real-time voice node. Lazy-loaded so it (and its media plumbing) never enters the initial
@@ -57,7 +58,6 @@ import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { useTheme } from '@/lib/theme/ThemeContext';
-import { AppToggle } from '@/components/ui/AppToggle';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
@@ -109,12 +109,6 @@ interface ChatChromeProps {
   children: React.ReactNode;
 }
 
-// On/off switch used by the Settings → Notifications + Generation-defaults toggles.
-// Delegates to the inline-styled AppToggle so it can never render "washed out" again.
-function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
-  return <AppToggle on={on} onChange={() => onClick()} label={label} />;
-}
-
 // Top-bar flag language switcher (replaces the old Settings → Language list). Preserves
 // the current path, just swaps the locale segment.
 const LANGS = [
@@ -123,7 +117,7 @@ const LANGS = [
   { code: 'ru', flag: '🇷🇺', label: 'РУС' },
 ] as const;
 
-function LanguageSwitcher({ locale }: { locale: string }) {
+function LanguageSwitcher({ locale, up = false }: { locale: string; up?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -178,7 +172,7 @@ function LanguageSwitcher({ locale }: { locale: string }) {
               each label were off-screen. `right-0` anchors this to the language BUTTON, which sits well
               inside the header, and `max-w-[calc(100vw-1rem)]` cannot help because it caps WIDTH (the
               menu is 153px against a 304px cap) while the defect is POSITION. Shared clamp. */}
-          <div role="menu" {...langClamp.props} className="absolute right-0 top-full z-[61] mt-1.5 w-36 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl">
+          <div role="menu" {...langClamp.props} className={`absolute right-0 z-[61] w-36 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl ${up ? 'bottom-full mb-1.5' : 'top-full mt-1.5'}`}>
             {LANGS.map((l) => (
               <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === locale} onClick={() => go(l.code)}
                 className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${l.code === locale ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}>
@@ -270,15 +264,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // helper outlived it as dead code and went with it.
   const { theme, setTheme } = useTheme();
   // Settings prefs (Notifications + Generation defaults) — localStorage only, no API.
-  const [emailNotif, setEmailNotif] = useState(false);
-  const [autoSave, setAutoSave] = useState(true);
-  useEffect(() => {
-    try {
-      setEmailNotif(localStorage.getItem('mya:notif-email') === '1');
-      setAutoSave(localStorage.getItem('mya:autosave') !== '0');
-    } catch { /* private mode — defaults stand */ }
-  }, []);
-  const persist = useCallback((key: string, val: string) => { try { localStorage.setItem(key, val); } catch { /* ignore */ } }, []);
+  // The „სიახლეები“ and „ავტო-შენახვა“ toggles were removed: nothing read either key (mya:notif-email,
+  // mya:autosave) — two switches that changed nothing are the definition of superfluous.
 
   // Reactive auth — flips Guest⇄User instantly (no reload) on sign in/out.
   useEffect(() => {
@@ -383,7 +370,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // open sign-in. This replaces the old shape where the request went out, the route answered 401, and
   // the user met an error for something the UI could have known before spending the round-trip.
   useEffect(() => {
-    const needAuth = () => { setAuthMode('register'); setAuthOpen(true); };
+    // A spend gate asks for an account (register); a plain „შესვლა" button passes detail 'login'.
+    const needAuth = (e: Event) => { setAuthMode((e as CustomEvent<unknown>).detail === 'login' ? 'login' : 'register'); setAuthOpen(true); };
     window.addEventListener('myavatar:auth-required', needAuth);
     return () => window.removeEventListener('myavatar:auth-required', needAuth);
   }, []);
@@ -486,7 +474,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const settingsDivider = 'my-2 border-t border-app-border/10';
   // 44px, not the 38px it was. These rows ARE the app's primary navigation — Library, Persona,
   // Billing, Settings — and they were the smallest targets on the screen. Measured at 242×38.
-  const sideRow = 'flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] font-medium text-app-text transition-colors hover:bg-app-elevated';
+  const sideRow = 'flex min-h-[44px] [@media(pointer:fine)]:min-h-[40px] w-full items-center gap-3 rounded-full px-3 text-left text-[13.5px] text-app-text transition-colors hover:bg-app-elevated touch-manipulation';
+  const sideHdr = 'px-3 pb-1 pt-3 text-[11.5px] font-medium text-app-muted';
+  const railBtn = 'flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation';
 
   // ── Left sidebar: chat-history list (mirrors OmniStudio's localStorage) + mobile drawer ──
   // uid-scoped, and OUTSIDE the sign-out wipe — see lib/chat/historyKeys.ts. It was a single global slot
@@ -551,12 +541,16 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string')
           .map((c) => ({ id: c.id, title: (c.title || 'New chat').trim() || 'New chat', updatedAt: c.updatedAt ?? 0 }))
           .sort((a, b) => b.updatedAt - a.updatedAt)
-          .slice(0, 20), // FIX 7D — cap the history list to the 20 most recent
+          // Every chat the studio keeps (OmniStudio's CONV_MAX, 40). At 20 the search could not find chats 21–40 that
+          // still existed — a search box that misses what is there is worse than none.
+          .slice(0, 40),
       );
     } catch {
       /* ignore corrupt history */
     }
-  }, []);
+    // ⚠️ THIS HAD NO DEPENDENCIES, so it kept the FIRST render's key — the guest archive (`::anon`, userId is null
+    // until auth resolves). A signed-in user's recent list showed the guest's chats, not their own.
+  }, [OMNI_CONVERSATIONS_KEY]);
   useEffect(() => {
     refreshConversations();
     const onUpd = () => refreshConversations();
@@ -597,6 +591,38 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     }
     setSidebarOpen(false);
   }, [onNewChat, router, locale]);
+  // The studio's active tool, published by OmniStudio (`omni:tool-changed`) so the sidebar can mark it.
+  const [activeTool, setActiveTool] = useState<ToolId | null>(null);
+  useEffect(() => {
+    // A child's effects run before its parent's, so OmniStudio's FIRST announcement lands before this listener
+    // exists — it also leaves the tool on <html data-tool>, read here once.
+    const initial = document.documentElement.dataset.tool;
+    if (isToolId(initial)) setActiveTool(initial);
+    const on = (e: Event) => { const d = (e as CustomEvent<unknown>).detail; if (isToolId(d)) setActiveTool(d); };
+    window.addEventListener('omni:tool-changed', on as EventListener);
+    return () => window.removeEventListener('omni:tool-changed', on as EventListener);
+  }, []);
+  // On a desktop the header is hidden and the studio draws its own top bar; its new-session button asks through this.
+  useEffect(() => {
+    const on = () => handleNewChat();
+    window.addEventListener('myavatar:open-new-chat', on);
+    return () => window.removeEventListener('myavatar:open-new-chat', on);
+  }, [handleNewChat]);
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => { if (activeTool && (MORE_TOOLS as readonly string[]).includes(activeTool)) setMoreOpen(true); }, [activeTool]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Picking a service from the sidebar: in the studio it switches the tool in place; anywhere else it opens the
+  // studio on that tool (`?tool=`, read once by OmniStudio).
+  const onStudioHome = (pathname ?? '').includes('/dashboard') && !onBack;
+  const selectTool = useCallback((id: ToolId) => {
+    setSidebarOpen(false);
+    if (onStudioHome) { window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: id })); return; }
+    const url = `/${locale}/dashboard?tool=${id}`;
+    // ⚠️ On the dashboard's own #lipsync / #agent surfaces a client push is a no-op: Next keys the page without the
+    // query and pushState fires no hashchange, so ServiceHub stayed where it was. A document load lands on the studio.
+    if ((pathname ?? '').includes('/dashboard')) window.location.assign(url);
+    else router.push(url);
+  }, [onStudioHome, router, locale, pathname]);
   const handleSelectConversation = useCallback((id: string) => {
     // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
@@ -657,7 +683,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     }
     purgeLocally();
     window.dispatchEvent(new Event('myavatar:conversations-updated'));
-  }, [onDashboard]);
+    // ⚠️ The key is a dependency: it is uid-scoped and starts as the guest's (userId is null until auth resolves).
+    // With `[onDashboard]` alone a signed-in user's delete purged `::anon` and the row came straight back.
+  }, [onDashboard, OMNI_CONVERSATIONS_KEY]);
   // Wipe ALL conversations (confirm first — irreversible). Resets the active chat too.
   const handleClearAll = useCallback(() => {
     const msg = locale === 'en' ? 'Delete ALL conversations? This cannot be undone.' : locale === 'ru' ? 'Удалить ВСЕ чаты? Это необратимо.' : 'ყველა ჩატი წაიშლება და ვერ აღდგება. გავაგრძელო?';
@@ -672,7 +700,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       window.localStorage.removeItem(OMNI_CURRENT_ID_KEY);
     } catch { /* ignore */ }
     window.dispatchEvent(new Event('myavatar:conversations-updated'));
-  }, [onDashboard, locale]);
+  }, [onDashboard, locale, OMNI_CONVERSATIONS_KEY]);
 
   // Save the display name to Supabase user_metadata (#3).
   const saveProfile = useCallback(async () => {
@@ -732,13 +760,22 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return () => clearTimeout(id);
   }, [avatarError]);
 
-  const tHistory = locale === 'en' ? 'Chat History' : locale === 'ru' ? 'История чатов' : 'ჩატების ისტორია';
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
   const tSearch = locale === 'en' ? 'Search chats…' : locale === 'ru' ? 'Поиск по чатам…' : 'ძებნა ჩატებში…';
   const tNoMatch = locale === 'en' ? 'Nothing found' : locale === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
   const tClearAll = locale === 'en' ? 'Clear all' : locale === 'ru' ? 'Очистить' : 'გასუფთავება';
   const tDelete = locale === 'en' ? 'Delete' : locale === 'ru' ? 'Удалить' : 'წაშლა';
+  const tNewSession = locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია';
+  const tSearchRow = locale === 'en' ? 'Search' : locale === 'ru' ? 'Поиск' : 'ძებნა';
+  const tMore = locale === 'en' ? 'More' : locale === 'ru' ? 'Ещё' : 'მეტი';
+  const tRecent = locale === 'en' ? 'Recent' : locale === 'ru' ? 'Недавние' : 'ბოლო';
+  const tBalance = locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი';
+  const tCollapse = locale === 'en' ? 'Collapse sidebar' : locale === 'ru' ? 'Свернуть панель' : 'გვერდითი პანელის დაკეცვა';
+  const tExpand = locale === 'en' ? 'Expand sidebar' : locale === 'ru' ? 'Развернуть панель' : 'გვერდითი პანელის გაშლა';
+  // „ძებნა“ opens the search field on demand; past a handful of chats it is simply always there.
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
 
   // FIX 6E — bucket the history into Today / Yesterday / Previous 7 days / Older so the
   // sidebar reads like ChatGPT/Claude. Only non-empty groups render (each already sorted
@@ -850,13 +887,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           {genService && (
             <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full border border-app-border/15 bg-app-surface/95 px-3 py-1 text-[11px] font-medium text-app-text shadow-lg backdrop-blur-sm">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-app-accent align-middle motion-safe:animate-pulse" />
-              {genService === 'video' ? `🎬 ${lang === 'en' ? 'Video' : lang === 'ru' ? 'Видео' : 'ვიდეო'}`
-                : genService === 'image' ? `🖼 ${lang === 'en' ? 'Image' : lang === 'ru' ? 'Фото' : 'სურათი'}`
-                : genService === 'music' ? `🎵 ${lang === 'en' ? 'Music' : lang === 'ru' ? 'Музыка' : 'მუსიკა'}`
-                : genService === 'lipsync' ? `👄 ${lang === 'en' ? 'Avatar' : lang === 'ru' ? 'Аватар' : 'ავატარი'}`
-                : genService === 'product' ? `📦 ${lang === 'en' ? 'Product ad' : lang === 'ru' ? 'Реклама' : 'რეკლამა'}`
-                : genService === 'remix' ? `✂️ ${lang === 'en' ? 'Remix' : lang === 'ru' ? 'Ремикс' : 'რემიქსი'}`
-                : `💬 ${lang === 'en' ? 'Working' : lang === 'ru' ? 'Работаю' : 'მუშავდება'}`}…
+              {genService === 'video' ? (lang === 'en' ? 'Video' : lang === 'ru' ? 'Видео' : 'ვიდეო')
+                : genService === 'image' ? (lang === 'en' ? 'Image' : lang === 'ru' ? 'Фото' : 'სურათი')
+                : genService === 'music' ? (lang === 'en' ? 'Music' : lang === 'ru' ? 'Музыка' : 'მუსიკა')
+                : genService === 'lipsync' ? (lang === 'en' ? 'Avatar' : lang === 'ru' ? 'Аватар' : 'ავატარი')
+                : genService === 'product' ? (lang === 'en' ? 'Product ad' : lang === 'ru' ? 'Реклама' : 'რეკლამა')
+                : genService === 'remix' ? (lang === 'en' ? 'Remix' : lang === 'ru' ? 'Ремикс' : 'რემიქსი')
+                : (lang === 'en' ? 'Working' : lang === 'ru' ? 'Работаю' : 'მუშავდება')}…
             </div>
           )}
         </div>
@@ -866,79 +903,122 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} aria-hidden />
       )}
 
-      {/* ── Left sidebar — persistent on desktop, swipe-from-left drawer on mobile ── */}
+      {/* ── Left navigation — Google AI Studio's grammar on a desktop, Gemini's drawer on a phone (docs/DESIGN.md §8).
+          Four parts, top to bottom, and nothing else: the name · what you do next (new session, search, library,
+          persona) · what you can make („სერვისები“) and what you made („ბოლო“) · who you are and what you have. ── */}
       <aside
         ref={sidebarDialogRef}
         role={sidebarOpen ? 'dialog' : undefined}
         aria-modal={sidebarOpen ? true : undefined}
         aria-label={t.menu}
-        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[260px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[272px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="flex items-center justify-between px-3 py-3.5">
-          <span className="flex min-w-0 items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={22} height={22} decoding="async" className="h-[22px] w-[22px] shrink-0 object-contain" />
-            <Wordmark size="sm" />
-          </span>
-          {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. Visible on every breakpoint now. */}
+        {/* ONE mark: the name, set as text. ⚠️ „ორი ლოგო“ — the rocket raster sat here AND in the header, and the
+            owner's own profile photo (the same rocket) sat beside it: three rockets on one screen. The brand is
+            the name; the rocket stays the app icon and the social card, where it is the only mark. */}
+        <div className="flex items-center justify-between py-2.5 pl-4 pr-2">
+          {/* Not a link: from the studio a document load to /{lang} (and back) would drop the jobs in flight and the draft. */}
+          <span className="flex h-11 min-w-0 items-center"><Wordmark size="sm" /></span>
+          {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. */}
           <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
-            aria-label={locale === 'en' ? 'Collapse sidebar' : locale === 'ru' ? 'Свернуть панель' : 'გვერდითი პანელის დაკეცვა'}
+            aria-label={tCollapse} title={tCollapse}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeftClose className="h-[18px] w-[18px]" /></button>
         </div>
 
-        {/* New chat */}
-        <div className="px-2">
-          <button type="button" onClick={handleNewChat} className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl bg-app-elevated px-3 text-[13.5px] font-semibold text-app-text ring-1 ring-app-border/15 transition-colors hover:bg-app-border/10 active:scale-[0.99]">
-            <MessageSquarePlus className="h-[17px] w-[17px] text-app-accent" /> {t.newChat}
+        <div className="space-y-0.5 px-2">
+          <button type="button" onClick={handleNewChat} className={sideRow}>
+            <PenSquare className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tNewSession}
+          </button>
+          <button type="button" onClick={() => { if (searchOpen) setConvQuery(''); setSearchOpen((v) => !v); }} aria-expanded={searchOpen} className={sideRow}>
+            <Search className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tSearchRow}
+          </button>
+          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
+            <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
+          </button>
+          <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
+            <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
+            {activePersonaName
+              // Named, truncated, and still marked — the dot alone was the whole problem.
+              ? <span className="ml-auto min-w-0 truncate text-[12px] text-app-accent" title={activePersonaName}>{activePersonaName}</span>
+              : activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
           </button>
         </div>
 
-        {/* Chat history list */}
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex items-center justify-between gap-1.5 px-2 pb-1.5">
-            {/* ⚠️ THIS HEADING WRAPPED TO TWO LINES. The clear-all button sits beside it and squeezed the
-                label to 76px, so "ჩატების ისტორია" broke across two rows and pushed the whole list down —
-                measured in a browser, not guessed. Georgian words are long; a heading that fits in English
-                is not evidence it fits here. `min-w-0` lets it shrink and `truncate` makes it end in an
-                ellipsis instead of reflowing, with the full text still available on hover. */}
-            <span title={tHistory} className="flex min-w-0 items-center gap-1.5 truncate text-[11px] font-semibold uppercase tracking-wider text-app-muted"><History className="h-3 w-3 shrink-0" /> <span className="truncate">{tHistory}</span></span>
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* „სერვისები“ — every tool the studio has, from ONE list (lib/studio/tools.ts). In the studio a row
+              switches the tool in place; anywhere else it opens the studio on it. The composer's „+“ sheet
+              reads the same list, so a service can never be reachable from one door and missing from the other. */}
+          <p className={sideHdr}>{t.services}</p>
+          <div className="space-y-0.5">
+            {PRIMARY_TOOLS.map((id) => {
+              const { Icon } = TOOL_META[id];
+              const on = onStudioHome && activeTool === id;
+              return (
+                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
+                  className={`${sideRow} ${on ? 'bg-app-elevated' : ''}`}>
+                  <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
+                  <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} className={`${sideRow} text-app-muted`}>
+              <ChevronRight className={`h-[17px] w-[17px] transition-transform ${moreOpen ? 'rotate-90' : ''}`} aria-hidden="true" /> {tMore}
+            </button>
+            {moreOpen && MORE_TOOLS.map((id) => {
+              const { Icon } = TOOL_META[id];
+              const on = onStudioHome && activeTool === id;
+              return (
+                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
+                  className={`${sideRow} pl-5 ${on ? 'bg-app-elevated' : ''}`}>
+                  <Icon className={`h-4 w-4 ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
+                  <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* „ბოლო“ — the chat history. */}
+          <div className="mt-3 flex items-center justify-between gap-1.5 pr-1">
+            <p className={sideHdr}>{tRecent}</p>
             {conversations.length > 0 && (
               <button type="button" onClick={handleClearAll} title={tClearAll}
                 className="tap-44 relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-app-muted/80 transition-colors hover:bg-red-500/10 hover:text-red-400 touch-manipulation">
-                <Trash2 className="h-3 w-3" /> {tClearAll}
+                <Trash2 className="h-3 w-3" aria-hidden="true" /> {tClearAll}
               </button>
             )}
           </div>
-          {conversations.length > 5 && (
+          {(searchOpen || conversations.length > 5) && (
             <input
+              ref={searchRef}
               type="search"
               value={convQuery}
               onChange={(e) => setConvQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') { setConvQuery(''); setSearchOpen(false); } }}
               placeholder={tSearch}
               aria-label={tSearch}
               className="mb-2 w-full rounded-lg bg-app-elevated px-2.5 py-2 !text-[13px] !text-app-text placeholder:text-app-muted/70 focus:outline-none focus:ring-1 focus:ring-app-accent"
             />
           )}
           {conversations.length === 0 ? (
-            <p className="px-2 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
+            <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
           ) : convMatches.length === 0 ? (
-            <p className="px-2 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
+            <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
             <div className="space-y-2 pb-2">
               {convGroups.map((g) => (
                 <div key={g.key} className="space-y-0.5">
-                  <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-app-muted/70">{g.label}</p>
+                  <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium text-app-muted/70">{g.label}</p>
                   {g.items.map((c) => (
                     <div key={c.id} className="group relative">
-                      {/* pr-8 leaves room for the delete control so the title never sits under it. */}
-                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="flex min-h-[44px] w-full items-center truncate rounded-lg pl-2.5 pr-9 text-left text-[14px] text-app-text/90 transition-colors hover:bg-app-elevated">
+                      {/* pr-9 leaves room for the delete control so the title never sits under it. */}
+                      <button type="button" onClick={() => handleSelectConversation(c.id)} title={c.title} className="flex min-h-[44px] [@media(pointer:fine)]:min-h-[38px] w-full items-center truncate rounded-lg pl-2.5 pr-9 text-left text-[13.5px] text-app-text/90 transition-colors hover:bg-app-elevated">
                         {c.title}
                       </button>
                       {/* Delete: always tappable on mobile; hover-reveal on desktop (md). */}
                       <button type="button" onClick={(e) => handleDeleteConversation(c.id, e)} aria-label={tDelete} title={tDelete}
-                        className="tap-44 absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-app-muted/70 opacity-100 transition-colors hover:bg-red-500/15 hover:text-red-400 touch-manipulation md:opacity-0 md:group-hover:opacity-100">
-                        <X className="h-3.5 w-3.5" />
+                        className="tap-44 absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-app-muted/70 opacity-100 transition-colors hover:bg-red-500/15 hover:text-red-400 touch-manipulation md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
                   ))}
@@ -948,42 +1028,76 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           )}
         </div>
 
-        {/* Bottom — Library · Persona · Billing · Settings.
-            STATIC BY CONSTRUCTION: a fixed list of four rows, identical on every route. No collapsibles,
-            no route-dependent items, no rows that appear or disappear with click state. The two things
-            that used to break that rule are gone:
-              · the Services list — service selection now lives in ONE place, the picker in the chat input
-                box. Two entry points meant two lists to keep in sync and two places to forget a service.
-              · Favorites — it pointed at `/library?tab=favorites`, the same view Library already opens,
-                so it was a second door to one room. */}
-        <div className="space-y-0.5 border-t border-app-border/10 px-2 py-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
+        {/* Who you are and what you have — the balance, language and account live HERE now, not in a header row
+            that had five controls fighting the wordmark for 390 px. */}
+        <div className="space-y-1 border-t border-app-border/10 px-2 pt-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
           {studioV2 && (
             <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/studio`); }} className={sideRow}>
-              <Clapperboard className="h-[17px] w-[17px] text-app-muted" /> {tStudio}
+              <Clapperboard className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tStudio}
               <span className="ml-auto rounded-full bg-app-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent">{tBeta}</span>
             </button>
           )}
-          <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
-            <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
-          </button>
-          <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
-            <Sparkles className="h-[17px] w-[17px] text-app-muted" /> {t.persona}
-            {activePersonaName
-              // Named, truncated, and still marked — the dot alone was the whole problem.
-              ? <span className="ml-auto min-w-0 truncate text-[12px] text-app-accent" title={activePersonaName}>{activePersonaName}</span>
-              : activePersonaId && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-app-accent" aria-hidden />}
-          </button>
-          {/* BILLING — opens the SAME CreditsModal as the top-bar wallet button. It used to navigate to
-              /account/billing instead, so the two billing entry points led to different places and only
-              the header's worked. One destination now, reached from both. */}
-          <button type="button" onClick={() => { setSidebarOpen(false); setCreditsOpen(true); }} className={sideRow}>
-            <CreditCard className="h-[17px] w-[17px] text-app-muted" /> {t.billing}
-          </button>
-          <button type="button" onClick={() => { setMenuOpen((v) => !v); setSidebarOpen(false); }} className={sideRow}>
-            <Settings className="h-[17px] w-[17px] text-app-muted" /> {t.settings}
-          </button>
+          {authed ? (
+            // The balance and the way to raise it are one control — the SAME CreditsModal from everywhere.
+            <button type="button" onClick={() => { setSidebarOpen(false); setCreditsOpen(true); }} data-iap-external
+              aria-label={`${t.topUp} · ${formatCreditBalance(balanceGel, locale)}`}
+              className="flex min-h-[48px] w-full items-center gap-2.5 rounded-xl px-2.5 text-left transition-colors hover:bg-app-elevated touch-manipulation">
+              <Wallet className="h-[17px] w-[17px] shrink-0 text-app-muted" aria-hidden="true" />
+              <span className="min-w-0 flex-1" aria-hidden="true">
+                <span className="block text-[11px] leading-tight text-app-muted">{tBalance}</span>
+                <span className="block truncate text-[13.5px] font-semibold tabular-nums text-app-text">{formatCreditBalance(balanceGel, locale)}</span>
+              </span>
+              <span className="shrink-0 rounded-full bg-app-accent/10 px-2.5 py-1 text-[11.5px] font-semibold text-app-accent" aria-hidden="true">{t.topUp}</span>
+            </button>
+          ) : (
+            <button type="button" onClick={() => { setSidebarOpen(false); setAuthMode('login'); setAuthOpen(true); }}
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-app-accent text-[13.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation">
+              <LogIn className="h-4 w-4" aria-hidden="true" /> {t.login}
+            </button>
+          )}
+          <div className="flex items-center gap-0.5">
+            <button type="button" onClick={() => { setMenuOpen(true); setSidebarOpen(false); }} aria-label={t.settings} title={authed ? (userEmail ?? t.settings) : t.settings}
+              className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 text-left transition-colors hover:bg-app-elevated touch-manipulation">
+              {authed ? (
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[12px] font-bold uppercase text-app-accent" aria-hidden="true">
+                  {avatarUrl && !avatarBroken ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
+                  ) : (userName?.[0] || userEmail?.[0] || 'U')}
+                </span>
+              ) : (
+                <Settings className="h-[17px] w-[17px] shrink-0 text-app-muted" aria-hidden="true" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-[13px] text-app-text" aria-hidden="true">{authed ? (userName || userEmail) : t.settings}</span>
+              {authed && <Settings className="h-4 w-4 shrink-0 text-app-muted" aria-hidden="true" />}
+            </button>
+            <InstallAppButton locale={lang} iconOnly />
+            <LanguageSwitcher locale={locale} up />
+          </div>
         </div>
       </aside>
+
+      {/* Collapsed on a desktop/iPad: a rail of icons, never nothing — the way back is always on screen. */}
+      {sidebarCollapsed && (
+        <nav aria-label={t.menu} className="hidden w-[60px] shrink-0 flex-col items-center gap-1 border-r border-app-border/10 bg-app-surface py-2.5 md:flex"
+          style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}>
+          <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={tExpand} title={tExpand} className={railBtn}><PanelLeft className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+          <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession} className={railBtn}><PenSquare className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+          <span className="my-1 h-px w-6 bg-app-border/15" aria-hidden="true" />
+          {PRIMARY_TOOLS.map((id) => {
+            const { Icon } = TOOL_META[id];
+            const on = onStudioHome && activeTool === id;
+            const name = TOOL_META[id].name[lang];
+            return (
+              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined}
+                className={`${railBtn} ${on ? 'bg-app-elevated !text-app-accent' : ''}`}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+            );
+          })}
+          <span className="flex-1" aria-hidden="true" />
+          <button type="button" onClick={() => router.push(`/${locale}/library`)} aria-label={tLibrary} title={tLibrary} className={railBtn}><FolderOpen className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+          <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.settings} title={t.settings} className={railBtn}><Settings className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+        </nav>
+      )}
 
       <PersonaPicker
         locale={locale}
@@ -994,7 +1108,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
       {/* ── Main column (header + chat) ──────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        {/* The header is a phone's (and a tablet's): [☰] name … [new session] [you] — Gemini's row, nothing else.
+            On a desktop the studio draws its own title bar inside the centre column (AI Studio), so this one steps
+            aside there; secondary surfaces (/library) keep it for their back control. */}
+        <header className={`sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl ${onStudioHome && activeTool !== 'montage' ? 'lg:hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
             <div className="flex min-w-0 items-center gap-1.5">
               {/* Back to chat / hub — shown on a secondary surface (e.g. /library) or
@@ -1019,37 +1136,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
-              {/* Desktop/iPad: re-open the collapsed sidebar + keep the brand visible while it is hidden. */}
-              {sidebarCollapsed && (
-                <div className="hidden items-center gap-1.5 md:flex">
-                  <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={t.menu}
-                    className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><PanelLeft className="h-[18px] w-[18px]" /></button>
-                  {!showBack && !title && (
-                    <span className="inline-flex items-center gap-1.5 text-[16px] font-semibold tracking-tight text-app-text">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain" />
-                      <Wordmark size="sm" />
-                    </span>
-                  )}
-                </div>
-              )}
-              <span className={`min-w-0 text-[16px] font-semibold tracking-tight text-app-text ${title ? 'shrink-0' : ''} ${showBack ? 'hidden' : 'md:hidden'}`}>
+              {/* The name — shown where no sidebar carries it: phones, and a desktop whose sidebar is a rail. */}
+              <span className={`min-w-0 text-[16px] font-semibold tracking-tight text-app-text ${title ? 'shrink-0' : ''} ${showBack ? 'hidden' : sidebarCollapsed && !title ? '' : 'md:hidden'}`}>
                 {title ?? (
-                  // ⚠️ "MyAvata" (brief §8): this row used to let the wordmark sit UNDER the right-hand cluster
-                  // on 360–390 px phones — the left side shrank, the wordmark (shrink-0) did not, nothing
-                  // clipped it cleanly. Now it is all-or-nothing: rocket and wordmark are two 44 px-tall
-                  // items in a 44 px-tall wrapping row, so when the wordmark does not fit WHOLE it wraps to
-                  // the second line, which is clipped away. It is shown entire or not at all — never cut.
-                  <span className="flex h-11 min-w-0 flex-wrap items-center gap-x-1.5 overflow-hidden">
-                    <span className="flex h-11 items-center">
-                    {/* Brand Rocket lockup — the OFFICIAL premium mark (same asset the Admin Panel's
-                        BrandLogo renders: /brand/gemini-rocket-clean.png), for a unified corporate
-                        identity. Decorative (the wordmark IS the accessible name); scoped to the
-                        wordmark branch so a page title still truncates normally. object-contain keeps it
-                        crisp at 18px; no drop-shadow (docs/DESIGN.md §6 — no glow on the mark). */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain" />
-                    </span>
+                  // All-or-nothing (brief §8, "MyAvata"): a 44 px-tall wrapping row, so when the name does not fit
+                  // WHOLE it wraps to the clipped second line — shown entire or not at all, never cut.
+                  <span className="flex h-11 min-w-0 flex-wrap items-center overflow-hidden">
                     <span className="flex h-11 items-center"><Wordmark size="sm" /></span>
                   </span>
                 )}
@@ -1058,44 +1150,26 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             </div>
 
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-              {/* FIX 3 — language switcher moved here from Settings (flag dropdown). */}
-              {/* Only renders when the app is genuinely installable — see InstallAppButton. Installing is
-                  the one thing that removes the browser's address-bar pill above the mobile keyboard,
-                  because a page cannot hide its own browser's chrome. */}
-              <InstallAppButton locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} />
-              <LanguageSwitcher locale={locale} />
-              {/* The balance pill — SIGNED-IN ONLY.
-                  ⚠️ A GUEST WAS SHOWN A ZERO BALANCE BEFORE THEY HAD AN ACCOUNT. The first number a
-                  first-time visitor met on the page was their own emptiness — "you are broke", at the
-                  exact moment the screen should be saying "try this". It also cost the 83px that was
-                  truncating the wordmark to "MyAv" on a 390px phone: hiding it for guests is what lets
-                  the brand name fit. A signed-out visitor who wants prices has the Sign in button and
-                  the pricing link; they do not need a balance they cannot have. */}
-              {authed && (
-                <button type="button" onClick={() => setCreditsOpen(true)} aria-label={`${t.topUp} · ${formatCreditBalance(balanceGel, locale)}`} title={t.topUp} data-iap-external
-                  className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-full px-2 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0 sm:justify-start sm:pl-2.5 sm:pr-1.5">
-                  {/* Phones get the number alone — the unit and the + cost the width the wordmark needs. */}
-                  <span className="text-[14px] font-semibold tabular-nums" aria-hidden="true">
-                    {formatCreditBalance(balanceGel, locale).split(' ')[0]}
-                    <span className="hidden sm:inline"> {formatCreditBalance(balanceGel, locale).split(' ').slice(1).join(' ')}</span>
-                  </span>
-                  <span className="hidden h-5 w-5 items-center justify-center text-app-accent sm:flex"><Plus className="h-4 w-4" /></span>
+              {onStudioHome && (
+                <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession}
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation">
+                  <PenSquare className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
               )}
-              {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an
-                  avatar initial (→ settings) once signed in. The modal itself is AuthModal. */}
+              {/* A "Sign in" button for guests, or the account (→ settings) once signed in. */}
               {authed ? (
                 <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.account} title={userEmail ?? t.account}
-                  className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25 touch-manipulation sm:h-9 sm:w-9">
-                  {avatarUrl && !avatarBroken ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
-                  ) : (userName?.[0] || userEmail?.[0] || 'U')}
+                  className="flex h-11 w-11 items-center justify-center rounded-full touch-manipulation">
+                  <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[13px] font-bold uppercase text-app-accent transition-colors hover:bg-app-accent/25">
+                    {avatarUrl && !avatarBroken ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
+                    ) : (userName?.[0] || userEmail?.[0] || 'U')}
+                  </span>
                 </button>
               ) : (
                 <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} aria-label={t.login}
-                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation sm:min-h-0">
-                  {/* Icon from `sm` up only: on a 360 px phone its 20 px is what keeps the wordmark whole. */}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation sm:min-h-0">
                   <LogIn className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" /> {t.login}
                 </button>
               )}
@@ -1133,10 +1207,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               {authed ? (
                 <>
                   <div className="mb-1 flex items-center gap-3 px-2 py-1.5">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-[16px] font-bold uppercase text-app-accent">{userName?.[0] || userEmail?.[0] || 'U'}</span>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-app-accent/15 text-[16px] font-bold uppercase text-app-accent">
+                      {avatarUrl && !avatarBroken ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarBroken(true)} className="h-full w-full object-cover" />
+                      ) : (userName?.[0] || userEmail?.[0] || 'U')}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[14px] font-medium text-app-text">{userName || userEmail}</p>
-                      <span className="mt-0.5 inline-flex items-center rounded-full bg-app-elevated px-2 py-0.5 text-[11px] font-medium text-app-muted">{locale === 'en' ? 'Plan: Free' : locale === 'ru' ? 'План: Free' : 'გეგმა: Free'}</span>
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
@@ -1167,26 +1245,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               </div>
 
               <div className={settingsDivider} />
-              {/* SECTION 3 — NOTIFICATIONS */}
-              <p className={sectionHdr}>{locale === 'en' ? 'Notifications' : locale === 'ru' ? 'Уведомления' : 'შეტყობინებები'}</p>
-              <div className="flex items-center justify-between gap-3 px-2 py-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] text-app-text">{locale === 'en' ? 'Updates' : locale === 'ru' ? 'Новости' : 'სიახლეები'}</p>
-                  <p className="text-[12px] text-app-muted">{locale === 'en' ? 'Receive news about new features' : locale === 'ru' ? 'Новости о новых функциях' : 'მიიღე სიახლეები ახალ ფუნქციებზე'}</p>
-                </div>
-                <Toggle on={emailNotif} label="Email updates" onClick={() => { const v = !emailNotif; setEmailNotif(v); persist('mya:notif-email', v ? '1' : '0'); }} />
-              </div>
-
-              <div className={settingsDivider} />
-              {/* SECTION 4 — GENERATION DEFAULTS */}
-              <p className={sectionHdr}>{locale === 'en' ? 'Generation defaults' : locale === 'ru' ? 'Параметры генерации' : 'გენერაციის პარამეტრები'}</p>
-              <div className="flex items-center justify-between gap-3 px-2 py-2">
-                <p className="text-[14px] text-app-text">{locale === 'en' ? 'Auto-save generations' : locale === 'ru' ? 'Автосохранение' : 'ავტო-შენახვა'}</p>
-                <Toggle on={autoSave} label="Auto-save" onClick={() => { const v = !autoSave; setAutoSave(v); persist('mya:autosave', v ? '1' : '0'); }} />
-              </div>
-
-              <div className={settingsDivider} />
-              {/* SECTION 5 — ABOUT (instant legal modals · mailto support) */}
+              {/* SECTION 3 — ABOUT (instant legal modals · mailto support) */}
               <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
               <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v{process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0'}</p>
               <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>

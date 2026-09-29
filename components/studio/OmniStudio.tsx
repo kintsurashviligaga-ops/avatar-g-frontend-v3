@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, Repeat, SlidersHorizontal, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -29,7 +29,6 @@ import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
-import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { PresetRow } from './ui/controls';
@@ -76,14 +75,14 @@ import { computeCloudAdditions } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
-// THE service picker lives in this composer menu and nowhere else — the sidebar's duplicate list was
-// removed. Anything with a `path` target is a full studio on its own route; the `hash` ones are the
-// in-chat MODES below. Reading the catalogue means a new service appears here automatically.
-import { SERVICE_CATALOGUE, serviceHref, serviceName } from '@/lib/services/serviceCatalogue';
+// The catalogue says which studios are live (a „მალე" tag otherwise); the tool list itself is lib/studio/tools.
+import { SERVICE_CATALOGUE } from '@/lib/services/serviceCatalogue';
 import type { PanelService } from './ServiceParamsPanel';
+import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
+import { Segmented } from './ui/Segmented';
+import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { describeServiceError } from './ui/serviceError';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -91,29 +90,6 @@ type Lang = 'ka' | 'en' | 'ru';
 /** "Soon" badge for a service that has no working backend yet. Kept as a local three-key map rather than
  *  widening this file's 100-key COPY interface for a single word. */
 const SOON_LABEL: Record<Lang, string> = { ka: 'მალე', en: 'Soon', ru: 'Скоро' };
-
-/** Services whose parameter controls open INSIDE the chat box rather than on their own route. */
-const PANEL_SERVICES = ['montage', 'dubbing', 'presentation', 'model3d'] as const;
-
-/**
- * Line icons for the full-studio services, so the service menu uses ONE icon system.
- *
- * ⚠️ THE MENU MIXED TWO. The six chat modes above the divider draw crafted lucide line icons; the four
- * studios below drew the emoji from their catalogue entry (✂️ 🎙 🧊 📊). In a single twelve-item list the
- * bottom four read as unfinished next to the top six — and worse, emoji are rendered by the OS, so that
- * half of the menu literally looks different on an iPhone, an Android and a desktop. A product cannot be
- * "identical at every screen size" while a third of its main picker is drawn by the operating system.
- *
- * The catalogue keeps its emoji: it is also consumed by surfaces where a single glyph is the right unit
- * (page titles, plain-text contexts). This map is the CHAT MENU's opinion, not a replacement for it, and
- * an unmapped service still falls back to the emoji rather than rendering nothing.
- */
-const STUDIO_ICON: Record<string, LucideIcon> = {
-  montage: Scissors,
-  dubbing: Mic,
-  presentation: Presentation,
-  model3d: Box,
-};
 
 /** Display names for the chat line that confirms which studio a sentence opened. */
 const SERVICE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
@@ -347,32 +323,6 @@ const TypingDots = memo(function TypingDots() {
     </span>
   );
 });
-
-// The five generative modes — declared once, rendered as a clean borderless chip
-// row (no bordered container, no dividers — minimalist, Grok-style).
-/**
- * MODES — every in-chat mode. `surgical` (the full-screen clip editor) stays here so `activeMode`
- * lookup and the programmatic `setMode('surgical')` call sites keep working.
- */
-const MODES = [
-  // VIDEO FIRST (docs/DESIGN.md §1, the owner's 2026-09-29 brief): the studio is a video studio; the other
-  // services stay one click away in the same menu, the assistant chat last.
-  { id: 'video', Icon: Film, key: 'modeVideo' },
-  { id: 'image', Icon: ImageIcon, key: 'modeImage' },
-  { id: 'music', Icon: Music2, key: 'modeMusic' },
-  // ScanFace, not a speaker: the service is "ავატარი" — the same icon as its starter chip and the landing's card.
-  { id: 'lipsync', Icon: ScanFace, key: 'modeLipsync' },
-  { id: 'remix', Icon: Wand2, key: 'modeRemix' },
-  { id: 'chat', Icon: MessageSquare, key: 'modeChat' },
-  { id: 'surgical', Icon: Scissors, key: 'modeSurgical' },
-] as const;
-
-/**
- * What the composer's service menu SHOWS. `surgical` is deliberately absent: the Montage entry below
- * opens the editing tools, and offers a button into this same full-screen editor. Listing both put two
- * editors in one menu — the duplicate this removes.
- */
-const MENU_MODES = MODES.filter((m) => m.id !== 'surgical');
 
 /** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
 const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
@@ -1665,7 +1615,6 @@ function Portal({ children }: { children: React.ReactNode }) {
 
 export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const t = COPY[locale] ?? COPY.ka;
-  const router = useRouter();
   // Full studios reachable from the composer's service picker. Derived from the catalogue, so a service
   // added there shows up here without touching this file.
   const studioServices = useMemo(() => SERVICE_CATALOGUE.filter((s) => s.target.kind === 'path'), []);
@@ -1745,10 +1694,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const setMode = useCallback((m: 'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical') => {
     setModeRaw(m);
     if (m !== 'chat') { setPanelServiceRaw(null); setStudioPrefill(undefined); }
+    // ⚠️ THE TAB IS PART OF THE TOOL NOW. A product / swap / motion tab left over from earlier turned the Image→Video
+    // bridge, a starter chip, ?mode= or the intent release into that tool — Run then charged a new product ad of the
+    // OLD photo instead of animating the frame just sent. Entering a mode lands on its main tool; selectTool sets the
+    // sub-tool AFTER this in the same batch, so the product / swap / motion choices still win.
+    if (m === 'video') setVideoTab('cinema');
+    if (m === 'lipsync') setLipTab('avatar');
   }, []);
   const setPanelService = useCallback((svc: PanelService | null) => {
     setPanelServiceRaw(svc);
-    if (svc) { setModeRaw('chat'); setOptionsOpen(false); }
+    // The studio's controls live in the settings (the right panel on a desktop, the sheet on a phone), so opening
+    // one shows them — it used to close the options because the panel rendered in a separate box of its own.
+    if (svc) { setModeRaw('chat'); setOptionsOpen(true); }
   }, []);
   /** The starter a chip wrote into the box, while it is still untouched — such a box has nothing to send. */
   const [chipStarter, setChipStarter] = useState<string | null>(null);
@@ -1813,7 +1770,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // A failed pick used to leave NO trace — see the note in pickRemixMedia.
   const [remixError, setRemixError] = useState<string | null>(null);
   const [remixOp, setRemixOp] = useState<'restyle' | 'character' | 'captions' | 'voiceover' | 'music' | 'redub' | 'trim'>('restyle');
-  const [remixText, setRemixText] = useState('');
   const [remixGender, setRemixGender] = useState<'female' | 'male'>('female');
   const [remixAspect, setRemixAspect] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [remixTrack, setRemixTrack] = useState<{ name: string; url: string } | null>(null);
@@ -1996,12 +1952,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const lipsyncStageRef = useRef<FilmAgentStatus>('idle');
   // Scroll-to-bottom affordance — shown only when the user scrolled up.
   const [showJump, setShowJump] = useState(false);
-  // Inline mode selector popover (the Gemini "Flash ⌄" analog).
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
-
-  // Both floating menus use the shared clamp — see lib/ui/useViewportClamp for why measuring the
-  // element (not its width class) is the only version of this that is correct.
-  const modeMenuClamp = useViewportClamp(modeMenuOpen);
   // Per-service generation options.
   const [imgAspect, setImgAspect] = useState<ImgAspect>('1:1');
   // Default to the 2K tier for sharper, higher-fidelity output. The wider provider
@@ -2032,9 +1982,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // prompt). Describe "instrumental …" in the prompt for an instrumental bed.
   const [musicInstrumental, setMusicInstrumental] = useState(false);
   const [musicGenre, setMusicGenre] = useState<string>('r&b');
-  // Redesigned Music-panel prompt (Section C) — its OWN field so it never mirrors the
-  // shared composer pill; the Generate button threads it into send() as promptOverride.
-  const [musicPrompt, setMusicPrompt] = useState('');
   // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
@@ -2501,17 +2448,108 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
-  // v330 — bridge with the ChatChrome hamburger's Services list. The hamburger
-  // dispatches 'omni:set-mode' to switch the active service; we mirror back the current
-  // mode via 'omni:mode-changed' so the hamburger can highlight it. Switching also opens
-  // the options drawer so the chosen service's controls are immediately visible.
+  // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
+  // Not new state: derived from what the studio already has — the mode, the video tab (cinema · product ·
+  // swap), the avatar tab (avatar · motion), the studio panel, the editor. One id for every surface that names
+  // it: the sidebar's „სერვისები", the composer's „+" sheet and chip, and the settings' service card.
+  const activeTool: ToolId = mode === 'surgical' ? 'montage'
+    : panelService ? panelService
+      : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : 'video')
+        : mode === 'lipsync' ? (lipTab === 'motion' ? 'motion' : 'avatar')
+          : mode;
+  const selectTool = useCallback((id: ToolId) => {
+    switch (id) {
+      case 'video': setMode('video'); setVideoTab('cinema'); break;
+      case 'product': setMode('video'); setVideoTab('product'); break;
+      case 'swap': setMode('video'); setVideoTab('videoswap'); break;
+      case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
+      case 'motion': setMode('lipsync'); setLipTab('motion'); break;
+      case 'montage': setPanelService(null); setEditorMode('video'); setMode('surgical'); break;
+      case 'dubbing': case 'model3d': case 'presentation': setStudioPrefill(undefined); setPanelService(id); break;
+      // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
+      // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
+      case 'chat': setPanelService(null); setStudioPrefill(undefined); setMode('chat'); break;
+      default: setMode(id); // image · music · remix
+    }
+    // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
+    // open their settings, so the next step is on screen instead of behind a second tap.
+    if (id === 'product' || id === 'swap' || id === 'remix' || id === 'motion') setOptionsOpen(true);
+  }, [setMode, setPanelService]);
+
+  // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
+  // closed only on request. Below `lg` they are a sheet (Gemini) that opens on demand.
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const on = () => setIsDesktop(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const [panelOpen, setPanelOpen] = useState(true);
+  // Every existing "show the options" call site (a deep link, a studio sentence, a bridge hand-off) keeps working on
+  // a desktop: there it reveals the panel instead of opening the phone's sheet.
+  useEffect(() => {
+    if (isDesktop && optionsOpen) { setPanelOpen(true); setOptionsOpen(false); }
+  }, [isDesktop, optionsOpen]);
+  const openSettings = useCallback(() => {
+    if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
+  }, [isDesktop]);
+  useEffect(() => { if (mode === 'surgical') setOptionsOpen(false); }, [mode]);
+  // The JobTray floats at the right edge; on a desktop it moves left of the settings column instead of over it.
+  const settingsSurfaceRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = settingsSurfaceRef.current;
+    if (!isDesktop || !el) { root.style.setProperty('--settings-w', '0px'); return; }
+    const set = () => root.style.setProperty('--settings-w', `${el.offsetWidth}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => { ro.disconnect(); root.style.setProperty('--settings-w', '0px'); };
+  }, [isDesktop, mode]);
+  // Below `lg` the settings are a modal sheet: focus in, Tab trapped, Escape closes, focus back to the chip.
+  const settingsSheetRef = useDialogA11y<HTMLDivElement>(!isDesktop && optionsOpen, () => setOptionsOpen(false));
+  // The „+" sheet: what you bring (photos · camera · files) and what you make (the tools). `toolPickOnly` is the
+  // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
+  const [toolSheetOpen, setToolSheetOpen] = useState(false);
+  const [toolPickOnly, setToolPickOnly] = useState(false);
+  // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
+  // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
+  const photoRef = useRef<HTMLInputElement | null>(null);
+  const productPhotoRef = useRef<HTMLInputElement | null>(null);
+  const remixVideoRef = useRef<HTMLInputElement | null>(null);
+  // A guest sees „შესვლა" in the desktop title bar. ChatChrome publishes the session on <html data-authed>.
+  const [guest, setGuest] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    const read = () => setGuest(el.dataset.authed === '0');
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(el, { attributes: true, attributeFilter: ['data-authed'] });
+    return () => mo.disconnect();
+  }, []);
+  // The sidebar picks a tool through `omni:set-tool`; it learns which one is active from `omni:tool-changed` and
+  // from <html data-tool> (read on its mount — a child's first effect runs before its parent's listener exists).
+  useEffect(() => {
+    const onSet = (e: Event) => { const d = (e as CustomEvent<unknown>).detail; if (isToolId(d)) selectTool(d); };
+    window.addEventListener('omni:set-tool', onSet);
+    return () => window.removeEventListener('omni:set-tool', onSet);
+  }, [selectTool]);
+  useEffect(() => {
+    document.documentElement.dataset.tool = activeTool;
+    window.dispatchEvent(new CustomEvent('omni:tool-changed', { detail: activeTool }));
+  }, [activeTool]);
+  useEffect(() => () => { delete document.documentElement.dataset.tool; }, []);
+
+  // `omni:set-mode` — the older, mode-level switch (kept for any caller that still speaks modes). Switching also
+  // opens the options so the chosen service's controls are immediately visible.
   useEffect(() => {
     const onSet = (e: Event) => {
       const d = (e as CustomEvent).detail;
-      if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync') {
+      if (d === 'chat' || d === 'image' || d === 'music' || d === 'video' || d === 'lipsync' || d === 'remix') {
         setMode(d);
         if (d !== 'chat') setOptionsOpen(true);
-        setModeMenuOpen(false);
       }
     };
     window.addEventListener('omni:set-mode', onSet);
@@ -2522,6 +2560,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => {
     try {
       const url = new URL(window.location.href);
+      // `?tool=` — any tool, by the id the sidebar uses (/dashboard?tool=product from a page outside the studio).
+      const tl = url.searchParams.get('tool');
+      if (isToolId(tl)) {
+        selectTool(tl);
+        url.searchParams.delete('tool');
+        window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+        return;
+      }
       const d = url.searchParams.get('mode');
       if (d !== 'image' && d !== 'music' && d !== 'video' && d !== 'lipsync') return;
       setMode(d);
@@ -2530,9 +2576,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     } catch { /* no URL API — the chat simply opens in its default mode */ }
   }, []);
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
-  }, [mode]);
   // GLOBAL LOADING BAR — surface the active generation to the ChatChrome shell so a thin
   // top progress bar shows during ANY generation (chat/image/music/video/storyboard/
   // product), regardless of which panel is open. Event-driven (no prop/context refactor):
@@ -3262,8 +3305,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   // PHASE 2 L1 — Product-Ad generate: product photo + commercial preset → one i2v
   // clip via the /api/video/remix `productad` op (Kling, product as start_image).
-  const generateProductAd = useCallback(() => {
+  // `hookOverride` — the composer's words (the one field on screen on a phone); the panel's hook field is the fallback.
+  const generateProductAd = useCallback((hookOverride?: string) => {
     if (!productImage) return;
+    const hook = (hookOverride?.trim() || productHook.trim()).slice(0, AD_HOOK_MAX_CHARS);
     void ensureNotificationPermission(); // PHASE 20 — permission on the generate gesture
     // The product ad renders PER-JOB in its OWN chat bubble (by id) through the Cap-3 queue —
     // NO productBusy gate, so N product ads run CONCURRENTLY, each fully self-contained (its inputs
@@ -3285,12 +3330,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // ── Brand context → marketing overlay + auto voiceover (all snapshotted). ────────────────
     const ctaText = productCtaText(productCta, productCtaCustom, locale);
     const lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
-    const overlayText = (productBrand.trim() || productHook.trim()) || undefined;
-    const marketing = (productBrand.trim() || productHook.trim() || productPrice.trim() || ctaText)
+    const overlayText = (productBrand.trim() || hook) || undefined;
+    const marketing = (productBrand.trim() || hook || productPrice.trim() || ctaText)
       ? { overlayText, priceTag: productPrice.trim() || undefined, cta: ctaText || undefined, lang }
       : null;
     const voiceoverScript = productVoiceover
-      ? generateVoiceoverScript({ brandName: productBrand, productPrice, productHook, ctaText, locale })
+      ? generateVoiceoverScript({ brandName: productBrand, productPrice, productHook: hook, ctaText, locale })
       : '';
     const enrich = Boolean(marketing || voiceoverScript.trim());
     const scorePrompt = `${preset} product commercial, premium, uplifting`;
@@ -4692,7 +4737,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // render is in flight. A batch decomposes into ONE queue job PER TILE (each with its own
     // jobId + durable row), so a ×4 shows "3 rendering + In Queue: #1" and the 4th promotes
     // as a slot frees — instead of the old shared-ref Promise.all-of-4.
-    if (mode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
+    // ⚠️ effMode, not mode, in the three generative branches: the release above flipped the CHIP to Image but this
+    // very send still built a VIDEO storyboard — the new mode only took effect on the next message.
+    if (effMode === 'image' && text && !attachments.some((a) => !isImage(a.mimeType))) {
       setOptionsOpen(false);
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
@@ -4709,14 +4756,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // renders alongside images/product/swap. An attached AUDIO is a cover/voice source; a
     // non-audio attachment falls through to multimodal chat (unchanged).
     {
-      const mAudioRef = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
-      const mAudioMime = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
-      const mBlocked = mode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
+      const mAudioRef = effMode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.dataUrl : undefined;
+      const mAudioMime = effMode === 'music' ? attachments.find((a) => isAudio(a.mimeType))?.mimeType : undefined;
+      const mBlocked = effMode === 'music' && attachments.some((a) => !isAudio(a.mimeType));
       // Trained voice sings — it's meaningless for an INSTRUMENTAL track, and useMyVoice
       // persists across a Song→Instrumental switch (B4 just un-renders), so guard it here so
       // an explicit Instrumental choice is never silently overridden into a sung trained track.
-      const mUseTrained = mode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice && !musicInstrumental;
-      if (mode === 'music' && (text || mAudioRef || mUseTrained) && !mBlocked) {
+      const mUseTrained = effMode === 'music' && (useMyVoice || !!opts?.forceMyVoice) && hasTrainedVoice && !musicInstrumental;
+      if (effMode === 'music' && (text || mAudioRef || mUseTrained) && !mBlocked) {
         setOptionsOpen(false);
         const musicPrompt = text || musicLyrics.trim() || `${musicGenre} music`;
         const userBubble = text || (mUseTrained ? t.voiceMode : mAudioRef ? `🎤 ${musicAudioMode === 'voice' ? t.voiceMode : t.coverMode}` : musicPrompt);
@@ -4981,11 +5028,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // only request, READS the attached script (.md/.txt) into the brief, and passes the
     // images through as anchors (≥2 → ordered per-scene anchors, handled server-side).
     // The dedicated video-panel script slot wins; fall back to a chat-composer text attachment.
-    let videoScript = mode === 'video' ? (videoScriptDoc?.text?.trim() || extractScriptText(attachments)) : '';
+    let videoScript = effMode === 'video' ? (videoScriptDoc?.text?.trim() || extractScriptText(attachments)) : '';
     // extractScriptText only decodes PLAIN text (.txt/.md). For a BINARY script — PDF or
     // DOCX — decode it server-side so the Director still reads it. Fail-open: any miss
     // leaves videoScript empty and the film proceeds from the typed brief as before.
-    if (mode === 'video' && !videoScript) {
+    if (effMode === 'video' && !videoScript) {
       const binScript = attachments.find((a) => /pdf|wordprocessingml|officedocument|msword/.test(a.mimeType));
       if (binScript) {
         try {
@@ -4998,17 +5045,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         } catch { /* fail-open — no script */ }
       }
     }
-    const videoHasImages = mode === 'video' && (videoCharacterRefs.length > 0 || attachments.some((a) => isImage(a.mimeType)));
+    const videoHasImages = effMode === 'video' && (videoCharacterRefs.length > 0 || attachments.some((a) => isImage(a.mimeType)));
     // VECTOR 1 — a quick chat command ("გააკეთე") must NOT drop the manual panel fields. Pull the
     // typed Master Script + Character Dialogue from live state and fold them into the brief as
     // AUTHORITATIVE context, so the storyboard / character extractor respects them instead of
     // inventing a fallback character. (The Generate button already did this; chat-send did not.)
-    const videoMaster = mode === 'video' ? videoMasterScript.trim() : '';
-    const videoDlg = mode === 'video' ? videoDialogue.trim() : '';
+    const videoMaster = effMode === 'video' ? videoMasterScript.trim() : '';
+    const videoDlg = effMode === 'video' ? videoDialogue.trim() : '';
     // PHASE 19 — music-video LYRICS (videoSpeech in that mode): fold the user's exact words into the
     // brief so the AI singer performs THEM (EL Music sings literal ka lyrics) instead of auto-writing.
-    const videoLyrics = mode === 'video' && videoMode === 'musicvideo' ? videoSpeech.trim() : '';
-    if (mode === 'video' && (text || videoScript || videoMaster || videoDlg || videoLyrics || videoHasImages)) {
+    const videoLyrics = effMode === 'video' && videoMode === 'musicvideo' ? videoSpeech.trim() : '';
+    if (effMode === 'video' && (text || videoScript || videoMaster || videoDlg || videoLyrics || videoHasImages)) {
       // v330 — the dedicated Character Reference slot leads the identity-lock refs,
       // followed by any generic image attachments (back-compat).
       const refs = [
@@ -5266,7 +5313,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     redub: { ka: 'ხელახალი გახმოვანება', en: 'Redub (lip-sync)', ru: 'Переозвучка' },
     trim: { ka: 'მოჭრა', en: 'Trim', ru: 'Обрезка' },
   };
-  const runRemix = useCallback(async () => {
+  const runRemix = useCallback(async (text = '') => {
     if (!remixVideo || remixBusy || busy) return;
     void ensureNotificationPermission(); // PHASE 20 — permission on the generate gesture
     const label = REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en;
@@ -5279,7 +5326,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setRemixBusy(true); setBusy(true);
     try {
       const payload: Record<string, unknown> = { op: remixOp, videoUrl: remixVideo.url };
-      if (['captions', 'voiceover', 'redub', 'restyle', 'character'].includes(remixOp)) payload.text = remixText.trim();
+      if (['captions', 'voiceover', 'redub', 'restyle', 'character'].includes(remixOp)) payload.text = text.trim();
       if (remixOp === 'voiceover' || remixOp === 'redub') payload.gender = remixGender;
       if (remixOp === 'restyle' || remixOp === 'character') payload.aspect = remixAspect;
       if ((remixOp === 'music' || remixOp === 'redub') && remixTrack?.url) payload.audioUrl = remixTrack.url;
@@ -5305,7 +5352,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       if (mine()) { setRemixBusy(false); setBusy(false); }
     }
-  }, [remixVideo, remixBusy, busy, remixOp, remixText, remixGender, remixAspect, remixTrack, remixTrimStart, remixTrimDur, locale, notifyCredit, t.remixRunning, t.remixFailed]);
+  }, [remixVideo, remixBusy, busy, remixOp, remixGender, remixAspect, remixTrack, remixTrimStart, remixTrimDur, locale, notifyCredit, t.remixRunning, t.remixFailed]);
 
   // TASK 1 — Character swap: source video + new-character PHOTO → the remix `character` op
   // (frame → swap → re-animate via Kling, identity anchored by the photo). The result lands
@@ -6022,9 +6069,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).
-  const activeMode = MODES.find((mm) => mm.id === mode) ?? MODES[0];
-  const ActiveModeIcon = activeMode.Icon;
-  const activeModeKey = activeMode.key;
   // Chat can send on text OR attachments alone; the generative modes need a text
   // prompt (this also prevents an image/music/video send with only files from
   // silently falling through to the chat branch).
@@ -6047,16 +6091,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
    */
   const priceTag = (() => {
     if (busy) return null;
-    const priced: Record<string, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }> = {
+    const priced: Partial<Record<ToolId, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }>> = {
       image: { kind: 'image', n: imgCount, secs: imgTargetFor(imgQuality) },
       music: { kind: 'music', n: 1, secs: PROGRESS_TARGET.music },
       video: { kind: 'video', n: 1, secs: videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video },
-      lipsync: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
+      avatar: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
       remix: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
+      // A character swap is the remix route's `character` op — priced and timed as a remix.
+      swap: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
     };
-    const p = priced[mode];
+    const p = priced[activeTool];
     if (!p) return null;
-    const credits = creditCostFor(p.kind, mode === 'video' ? { seconds: videoDuration } : undefined) * p.n;
+    const credits = creditCostFor(p.kind, activeTool === 'video' ? { seconds: videoDuration } : undefined) * p.n;
     if (credits <= 0) return null;
     const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი';
     const wait = p.secs >= 90
@@ -6067,55 +6113,71 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   })();
 
   /**
-   * The composer's second line — the Imagine grammar: WHAT you make (the mode pill), in what SHAPE and for how
-   * LONG, and what it COSTS, all next to Send. The ratio for video / image / avatar, the length for video.
-   * Native <select>s: a real picker on iOS, keyboard-complete, 44 px tall, 16 px text on phones (below 16 iOS
-   * zooms the page on tap). They write the SAME state as the options panel, so the two can never disagree. The
-   * length offers the pipeline's real ones (8 / 24 / 48 s — the Veo scene grid); anything else would be a new
-   * generation contract. Phones: its own thin row under the text. From `sm`: inline, between mode and mic.
+   * The composer's tool chip — WHAT you make and in what SHAPE, in one control: „ვიდეო · 9:16 · 24წმ ⌄". It opens
+   * the settings (the sheet on a phone, the right panel on a desktop). The shape itself is chosen THERE, once —
+   * the composer used to carry its own ratio and length selects, a second copy of the same two controls.
    */
-  const composerMeta = (where: 'row' | 'inline') => {
-    const hasFormat = mode === 'video' || mode === 'image' || mode === 'lipsync';
-    if (!hasFormat && !priceTag) return null;
-    const aspect: string = mode === 'video' ? ORIENT_ASPECT[videoOrientation] : mode === 'image' ? imgAspect : lipFormat;
-    const options = Array.from(new Set([...(mode === 'video' ? ['9:16', '1:1', '16:9', '4:5'] : ['9:16', '1:1', '16:9']), aspect]));
-    // A music video is always vertical — the options panel disables its format for the same reason.
-    const lockedVertical = mode === 'video' && videoMode === 'musicvideo';
-    const onAspect = (v: string) => {
-      if (mode === 'video') { const o = ASPECT_ORIENT[v]; if (o) setVideoOrientation(o); }
-      else if (mode === 'image') setImgAspect(v as ImgAspect);
-      else if (v === '9:16' || v === '16:9' || v === '1:1') setLipFormat(v);
-    };
-    const pill = `h-11 cursor-pointer appearance-none rounded-full border-0 bg-app-surface/60 pl-3.5 pr-8 font-medium tabular-nums text-app-text transition-colors hover:bg-app-surface focus:shadow-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-50 ${where === 'row' ? 'text-[16px]' : 'text-[12.5px]'}`;
-    const secs = locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ';
-    return (
-      <div data-testid={`composer-meta-${where}`} className={where === 'row' ? 'mt-1 flex items-center gap-1.5 sm:hidden' : 'hidden shrink-0 items-center gap-1 sm:flex'}>
-        {hasFormat && (
-          <span className="relative inline-flex">
-            <select aria-label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} value={aspect} disabled={lockedVertical}
-              onChange={(e) => onAspect(e.target.value)} className={pill}>
-              {options.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-            <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
-          </span>
-        )}
-        {mode === 'video' && (
-          <span className="relative inline-flex">
-            <select aria-label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} value={videoDuration}
-              onChange={(e) => setVideoDuration(Number(e.target.value) as 8 | 24 | 48)} className={pill}>
-              {([8, 24, 48] as const).map((d) => <option key={d} value={d}>{`${d}${secs}`}</option>)}
-            </select>
-            <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
-          </span>
-        )}
-        {priceTag && (
-          <span data-testid="price-tag" title={priceTag.long} className={`whitespace-nowrap tabular-nums text-app-muted ${where === 'row' ? 'ml-auto pr-1 text-[12.5px]' : 'px-1.5 text-[12px]'}`}>
-            <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
-          </span>
-        )}
-      </div>
-    );
+  const ToolIcon = TOOL_META[activeTool].Icon;
+  const toolLabel = toolName(activeTool, locale);
+  const secsWord = locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ';
+  const toolSummary = activeTool === 'video' ? `${ORIENT_ASPECT[videoOrientation]} · ${videoDuration}${secsWord}`
+    : activeTool === 'swap' ? ORIENT_ASPECT[videoOrientation]
+    : activeTool === 'image' ? `${imgAspect}${imgCount > 1 ? ` · ×${imgCount}` : ''}`
+      : activeTool === 'avatar' ? lipFormat
+        : activeTool === 'product' ? `${productAspect} · ${productDuration}${secsWord}`
+          : '';
+
+  /**
+   * ONE Run for every tool (AI Studio's grammar: the composer runs, the panel configures). Product ad, character
+   * swap and remix used to be reachable ONLY through a Generate button at the foot of their panel — composer Send
+   * silently built a cinema storyboard on the product tab, and in remix mode it went to plain chat. Motion keeps its
+   * own button inside MotionControlPanel (its state is private to that component); the composer opens it instead.
+   */
+  const remixNeedsText = (['captions', 'voiceover', 'restyle', 'character'] as string[]).includes(remixOp) || (remixOp === 'redub' && !remixTrack);
+  const canRun = activeTool === 'product' ? !!productImage
+    : activeTool === 'swap' ? !!swapSourceVideo && !!videoCharacterRef
+      : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
+        : activeTool === 'motion' || mode === 'surgical' ? false
+          : canSend;
+  const runTool = () => {
+    if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
+      // send() stops a guest before any request; these three never pass through it, so the same gate is here.
+      if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+        window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+        return;
+      }
+      if (!canRun) { openSettings(); return; }
+      // The words are consumed (product: its hook; remix: the edit's text) or have no use (swap) — the box empties
+      // either way, so a second tap cannot start a second paid job with the same leftover text.
+      if (activeTool === 'product') generateProductAd(input);
+      else if (activeTool === 'swap') runVideoSwap();
+      else void runRemix(remixNeedsText ? input : '');
+      setInput('');
+      stopDictationEcho();
+      return;
+    }
+    if (activeTool === 'motion') { openSettings(); return; }
+    void send();
   };
+  const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
+    : activeTool === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა')
+      : activeTool === 'music' ? (locale === 'en' ? 'Create music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის შექმნა')
+        : activeTool === 'product' ? (locale === 'en' ? 'Create the ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა')
+          : activeTool === 'swap' ? (locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა')
+            : activeTool === 'remix' ? (REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en)
+              : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა');
+  const composerPlaceholder = recording ? t.recording
+    : activeTool === 'product' ? (locale === 'en' ? 'A tagline (optional) — the product photo goes in with „+“' : locale === 'ru' ? 'Слоган (необязательно) — фото товара через „+“' : 'სლოგანი (არასავალდებულო) — პროდუქტის ფოტო „+“-ით')
+      : activeTool === 'swap' ? (locale === 'en' ? 'Add the video and the new face with „+“' : locale === 'ru' ? 'Добавьте видео и новое лицо через „+“' : 'დაამატე ვიდეო და ახალი სახე „+“-ით')
+        : activeTool === 'motion' ? (locale === 'en' ? 'Motion runs from its settings' : locale === 'ru' ? 'Движение запускается в настройках' : 'მოძრაობა პარამეტრებიდან იწყება')
+          : activeTool === 'remix' ? (
+            remixOp === 'restyle' ? (locale === 'en' ? 'New look (e.g. cinematic, anime, vintage)…' : locale === 'ru' ? 'Новый стиль (кино, аниме, винтаж)…' : 'ახალი სტილი (კინო, ანიმე, ვინტაჟი)…')
+              : remixOp === 'character' ? (locale === 'en' ? 'Describe the character to swap in / insert…' : locale === 'ru' ? 'Опишите нового персонажа…' : 'აღწერე ახალი პერსონაჟი…')
+                : remixOp === 'captions' ? (locale === 'en' ? 'Caption text to burn on the video…' : locale === 'ru' ? 'Текст субтитров…' : 'სუბტიტრის ტექსტი…')
+                  : remixOp === 'voiceover' ? (locale === 'en' ? 'Narration to speak over the video…' : locale === 'ru' ? 'Текст озвучки…' : 'ნარაციის ტექსტი…')
+                    : remixOp === 'redub' ? (locale === 'en' ? 'New dialogue to lip-sync…' : locale === 'ru' ? 'Новый текст для синхрона…' : 'ახალი დიალოგი ლიპ-სინქისთვის…')
+                      : t.remixUploadHint)
+            : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder;
 
   // Force a REAL download. The <a download> attribute is ignored cross-origin (Supabase
   // signed URLs), so the old button just opened the file in a new tab. Fetch → blob →
@@ -6257,7 +6319,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // Theme priority: the Music panel's own Prompt (Section C) → the shared composer input →
     // any lyrics already typed → the genre. The panel's prompt is the field the user actually
     // fills, so a "✨ Write lyrics" tap writes ABOUT their song, not a generic genre stub.
-    const theme = musicPrompt.trim() || input.trim() || musicLyrics.trim() || musicGenre;
+    const theme = input.trim() || musicLyrics.trim() || musicGenre;
     setWritingLyrics(true);
     try {
       const r = await fetch('/api/ai/lyrics', {
@@ -6268,7 +6330,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       if (j.success && j.lyrics) setMusicLyrics(j.lyrics);
     } catch { /* fail-soft */ }
     setWritingLyrics(false);
-  }, [writingLyrics, musicPrompt, input, musicLyrics, musicGenre, locale]);
+  }, [writingLyrics, input, musicLyrics, musicGenre, locale]);
 
   // ⬆ Upscale a generated image to HD (Real-ESRGAN) → a fresh image bubble.
   const upscale = useCallback(async (url: string) => {
@@ -6314,11 +6376,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
    */
   const messageList = useMemo(() => (
           messages.map((m, i) => (
-            <div key={i} className={`group flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start gap-2.5'}`}>
-              {/* Assistant avatar — a small "M" brand circle to the left, Claude.ai-style. */}
-              {m.role === 'assistant' && (
-                <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-app-accent/15 text-[12px] font-bold text-app-accent">M</span>
-              )}
+            <div key={i} className={`group flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {/* ⚠️ No "M" badge beside a reply. It was styled exactly like the account initial in the header, so the
+                  screen carried two identical brand circles — the „ორი ლოგო" report. A reply is the model's text, as in
+                  Gemini: the page already says whose studio it is. */}
               <div className={`text-[16px] leading-[1.7] ${
                 m.role === 'user'
                   ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
@@ -6925,222 +6986,46 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }
 
 
-  return (
-    <div
-      // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
-      // scroll as a whole, the message pane scrolls internally — but it clips with NO way to reach what
-      // is cut. Measured on an iPad in LANDSCAPE (1024×768) with the video panel open: this box is 314px
-      // tall around 734px of content, so 420px was simply unreachable. That is "the panels do not open
-      // fully": nothing is broken visually, the rest of the panel is just gone.
-      //
-      // Portrait (768×1024) fits and is unaffected. The escape hatch is therefore scoped to SHORT
-      // viewports by height, so the fixed-shell behaviour that is correct everywhere else is untouched.
-      className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden [@media(max-height:820px)]:overflow-y-auto [@media(max-height:820px)]:overscroll-contain px-4 pt-2 text-app-text"
-      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
-      onDragEnter={onChatDragEnter}
-      onDragOver={onChatDragOver}
-      onDragLeave={onChatDragLeave}
-      onDrop={onChatDrop}
-    >
-      {/* V3 — premium drag-over overlay: frosted glass + high-contrast dashed emerald frame,
-          shown whenever a file is dragged over the chat. Pointer-events-none so the drop lands
-          on the real surface underneath (which bubbles to onChatDrop); fades out on ingestion. */}
-      {dragActive && (
-        <div className="mya-drop-overlay pointer-events-none absolute inset-0 z-[55] flex items-center justify-center p-5" style={{ animation: 'mya-drop-in 0.16s ease-out' }}>
-          <div className="absolute inset-0 bg-app-bg/55 backdrop-blur-md" />
-          <div
-            className="mya-drop-card relative flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-emerald-400 bg-app-elevated/70 px-8 py-10 text-center"
-            style={{ animation: 'mya-drop-card 0.2s ease-out', boxShadow: '0 0 60px -12px rgba(16,185,129,0.55)' }}
-          >
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-400 ring-1 ring-emerald-400/40">
-              <Upload size={26} />
-            </span>
-            <div className="text-[17px] font-bold text-app-text">
-              {mode === 'video'
-                ? (locale === 'en' ? 'Drop Script File Here' : locale === 'ru' ? 'Перетащите файл сценария' : 'ჩააგდეთ ფაილი სცენარისთვის')
-                : (locale === 'en' ? 'Drop file here' : locale === 'ru' ? 'Перетащите файл сюда' : 'ჩააგდეთ ფაილი')}
-            </div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-emerald-400/90">
-              {mode === 'video'
-                ? 'TXT · MD · PDF · DOCX'
-                : (locale === 'en' ? 'Image · Audio · Video' : locale === 'ru' ? 'Фото · Аудио · Видео' : 'სურათი · აუდიო · ვიდეო')}
-            </div>
-          </div>
-        </div>
+  // ── The settings (AI Studio's „Run settings") — ONE body, rendered in the right panel on a desktop and in a
+  // sheet on a phone. It used to grow inside the composer column, which on a phone pushed its text over the
+  // greeting (the owner's screenshots); a panel and a sheet each own their own layer.
+  const settingsWord = locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები';
+  const closeWord = locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა';
+  const liveTool = (id: ToolId) => studioServices.find((sv) => sv.id === id)?.live ?? true;
+  const toolEntry = (id: ToolId): ToolEntry => ({
+    id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
+    ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
+  });
+  const attachTargets: { onPhotos?: () => void; onCamera?: () => void; onFiles?: () => void } =
+    activeTool === 'product' ? { onPhotos: () => productPhotoRef.current?.click() }
+      : activeTool === 'swap' ? { onPhotos: () => { charReplaceRef.current = true; charFileRef.current?.click(); }, onFiles: () => swapVideoRef.current?.click() }
+        : activeTool === 'avatar' ? { onPhotos: () => lipsyncFaceRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
+          // Music reads an AUDIO attachment (a voice or a cover source) — a photo would turn the song into a chat reply.
+          : activeTool === 'music' ? { onFiles: () => voiceFileRef.current?.click() }
+            // An image request needs every attachment to be an image; a PDF or audio would turn it into chat.
+            : activeTool === 'image' ? { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click() }
+          : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
+            : activeTool === 'motion' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
+              : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
+  const settingsBody = (
+    <div className="space-y-3">
+      {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
+      <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
+        className="flex w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14.5px] font-semibold leading-tight text-app-text">{toolLabel}</span>
+          <span className="mt-0.5 block truncate text-[12px] text-app-muted">{toolSub(activeTool, locale)}</span>
+        </span>
+        <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
+      </button>
+      {activeTool === 'chat' && (
+        <p className="px-1 text-[12.5px] leading-relaxed text-app-muted">
+          {locale === 'en' ? 'Chat needs no settings — write or speak. „+“ adds a photo or a file.'
+            : locale === 'ru' ? 'Чату не нужны настройки — пишите или говорите. „+“ добавит фото или файл.'
+              : 'ჩატს პარამეტრები არ სჭირდება — დაწერე ან ჩაილაპარაკე. „+“ ფოტოს ან ფაილს დაამატებს.'}
+        </p>
       )}
-      {/* Agent G — glowing transition overlay while the router classifies a chat submission with an attached asset. */}
-      {agentGBusy && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-app-bg/80 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4 px-6 text-center">
-            {/* Pulsating gradient orb — a rotating conic ring + breathing glow behind a
-                calm core. Replaces the flat spinner square with a living "thinking" state. */}
-            <span className="relative flex h-20 w-20 items-center justify-center">
-              <span className="mya-orb-glow absolute inset-0 rounded-full bg-app-accent/25 blur-xl" style={{ animation: 'mya-orb-breathe 2.4s ease-in-out infinite' }} />
-              <span
-                className="mya-orb-ring absolute inset-0 rounded-full opacity-80"
-                style={{
-                  background: 'conic-gradient(from 0deg, rgba(6,210,255,0) 0deg, rgba(6,210,255,0.95) 130deg, rgba(16,185,129,0.9) 250deg, rgba(6,210,255,0) 360deg)',
-                  WebkitMaskImage: 'radial-gradient(circle, transparent 57%, #000 60%)',
-                  maskImage: 'radial-gradient(circle, transparent 57%, #000 60%)',
-                  animation: 'mya-orb-spin 2.6s linear infinite',
-                }}
-              />
-              <span className="mya-orb-core relative flex h-14 w-14 items-center justify-center rounded-full bg-app-bg ring-1 ring-app-accent/40" style={{ animation: 'mya-orb-breathe 2.4s ease-in-out infinite', boxShadow: '0 0 44px -6px rgba(6,210,255,0.6)' }}>
-                <Sparkles size={24} className="text-app-accent" />
-              </span>
-            </span>
-            <div className="text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent">G-Agent</div>
-            <div className="flex w-[min(88vw,320px)] flex-col gap-2">
-              {AGENT_G_PHASES.map((ph, i) => {
-                const state = i < agentGPhase ? 'done' : i === agentGPhase ? 'active' : 'pending';
-                return (
-                  <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all duration-300 ease-out ${state === 'active' ? 'bg-app-accent/15 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
-                    <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
-                    <span className="min-w-0 flex-1 font-medium">{locale === 'en' ? ph.en : locale === 'ru' ? ph.ru : ph.ka}</span>
-                    {state === 'active' && (
-                      <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-app-accent/60" />
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-app-accent" />
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-      <div
-        ref={feedRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-          nearBottomRef.current = dist < 160;
-          setShowJump(dist > 160);
-        }}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
-      >
-        {messages.length === 0 ? (
-          <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-2 py-6 text-center">
-            {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
-                the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
-            </div>
-            <div className="relative space-y-2">
-              {/* The locked copy (docs/DESIGN.md §7) — the same greeting and line in every mode. */}
-              <h1 className="font-display text-[30px] font-bold leading-tight tracking-[-0.01em] text-app-text sm:text-[36px]">{t.greeting}</h1>
-              <p className="mx-auto max-w-lg text-balance text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
-            </div>
-            {/* Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two at
-                every width: on a phone that keeps the composer above the fold (what got the old chips removed);
-                on a desktop a free-wrapping row broke 3 + 1, which reads as an accident. */}
-            <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
-              className="relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem]">
-              {STARTER_CHIPS.map((chip) => {
-                // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
-                const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
-                return (
-                  <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
-                    className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
-                    <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
-                    <span className="min-w-0 sm:whitespace-nowrap">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : messageList}
-      </div>
-
-      {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
-      {showJump && messages.length > 0 && (
-        <button
-          type="button"
-          onClick={() => scrollToBottom()}
-          aria-label={t.scrollDown}
-          title={t.scrollDown}
-          className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
-          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${Math.min(composerH, 180) + 12}px)` }}
-        >
-          <ChevronDown size={18} />
-        </button>
-      )}
-
-      {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
-          mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
-      <div ref={composerRef} className="shrink-0 pt-1">
-        {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
-            fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
-            fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so
-            the mic kept pulsing while text stopped arriving and the user talked into a void.
-            Shown only after the SECOND consecutive failure, so one flaky pass stays invisible. */}
-        {dictationWarn && (
-          <div role="status" className="mb-2 rounded-xl border border-app-warning/25 bg-app-warning/10 px-3 py-2 text-[12px] leading-snug text-app-text">
-            <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
-          </div>
-        )}
-        {/* The price moved INTO the composer (see `priceTag`) — same rule, one block instead of three. */}
-        {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
-            canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
-            that never send; see their definition for why the old prompt chips were removed). */}
-        {/* Per-service options, on demand at EVERY width, capped (52svh phones / 58svh desktop, keyboard-aware)
-            with their own scroll. ⚠️ Desktop used to pin them open once a conversation started — a 58svh panel
-            over the result feed, so the ResultCard of the job you had just started rendered behind it. The feed
-            is the centre of the studio (docs/DESIGN.md §8); ratio and length now live in the composer's format
-            pills, and the full panel is one tap away. */}
-        {/* Phone AND tablet: collapsible sheet capped at 52svh with its OWN internal scroll — so however
-            tall the params get (file-upload zones, script slots) the panel can never grow the column past
-            the viewport and shove the composer dock off-screen behind the mobile nav bar. The dock
-            stays locked at the bottom. Desktop (lg+): the same on-demand sheet, 58svh + own scroll. */}
-        <div
-          /* ⚠️ EVERY TABLET FELL THROUGH A HOLE BETWEEN THE BREAKPOINTS. This used to read
-             `sm:max-h-none sm:overflow-visible` with the cap only returning at `lg:` — so from 640px to
-             1023px the panel had NO height limit and NO scroll container. Measured on iPad portrait
-             (768x1024) with the video options open: the panel rendered 2698px tall inside a parent that
-             does not scroll, the page does not scroll either, and 1791px of it sat below the fold with
-             no way to reach it. Not awkward — genuinely unusable, and only in that band, which is why it
-             looked fine on a phone and fine on a desktop.
-             The cap is now CONTINUOUS: the panel is never visible-and-uncapped at any width.
-
-             ⚠️ AND THAT FIX WAS ONLY HALF OF IT — THE TABLET WAS STILL UNUSABLE, REPORTED AGAIN FROM A REAL
-             iPad. Capping the panel stopped it being CLIPPED, but `sm:block` still pinned it permanently
-             OPEN from 640px up, while the "პარამეტრები" accordion button that controls it is hidden at
-             exactly the same breakpoint. So a phone user opens the panel deliberately and closes it again,
-             and an iPad user gets a permanently-open panel with no toggle: measured 594px of a 2472px panel
-             (76% below the fold) leaving ~214px of actual chat. "The interface is stuck / the panels are not
-             visible." The always-open behaviour now begins at `lg`, where there is genuinely room for it, so
-             phone and tablet share the one model that already worked. Still no gap: below lg the panel is
-             either `hidden` or capped-and-scrollable, never visible-and-uncapped.
-
-             ⚠️ svh, NOT dvh — LOAD-BEARING. dvh is re-evaluated continuously while iOS/iPadOS Safari
-             collapses its toolbar, which is precisely when the reported drag happens: the scroller's height
-             animates mid-gesture, scrollTop re-clamps, and content slides under the finger. svh is the
-             stable small-viewport unit and does not move. */
-          // Never pinned open (no `lg:block`): on desktop too it is the toggle above — see its comment.
-          className={`${optionsOpen ? 'max-h-[52svh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} lg:max-h-[58svh] lg:overflow-y-auto lg:overscroll-contain lg:touch-pan-y lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
-          // VECTOR 3 — keyboard open: cap to what's left below it (header+composer buffer ≈ 220px) so
-          // the panel scrolls internally and the composer dock never gets pushed under the keyboard.
-          style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}
-        >
-        {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
-            affordance on desktop (sm:block keeps it open). Lives at the top of the scroll area so it's always
-            reachable.
-            ⚠️ ✕ CLOSES THE PANEL; IT DOES NOT LEAVE THE SERVICE. It used to switch to chat, which made chat the
-            "home" a guest fell back to: open პარამეტრები, tap ✕, and the video studio had become a chat box
-            (docs/DESIGN.md §11 LIVE_GAP). The panel is a collapsible sheet at every width now, so ✕ only
-            collapses it. */}
-        {mode !== 'chat' && (
-          <div className="mb-2 flex items-center justify-between px-0.5">
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t[activeModeKey]}</span>
-            <button type="button" onClick={() => setOptionsOpen(false)}
-              aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'}
-              className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text active:scale-95">
-              <X size={17} />
-            </button>
-          </div>
-        )}
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -7297,16 +7182,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
         {mode === 'lipsync' && (
           <div className="mb-2 space-y-2">
-            <div className="grid grid-cols-2 gap-1.5">
-              <button type="button" onClick={() => setLipTab('avatar')}
-                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'avatar' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                {t.modeLipsync}
-              </button>
-              <button type="button" onClick={() => setLipTab('motion')}
-                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'motion' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                {locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}
-              </button>
-            </div>
             {lipTab === 'motion' ? (
               <MotionControlPanel locale={locale} onVideoGenerated={(url) => setMessages((prev) => [...prev, { role: 'assistant', text: '', videoUrl: url, orientation: 'vertical' }])} />
             ) : (<>
@@ -7347,7 +7222,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   These are aspect-square, so the column count IS the touch-target size: there is no
                   padding to add. Five columns puts them over the 44px floor at the narrowest width and
                   back to six once there is room for it. */}
-              <div className="grid grid-cols-5 gap-1.5 min-[380px]:grid-cols-6">
+              <div className="grid grid-cols-5 gap-1.5 min-[380px]:grid-cols-6 lg:grid-cols-5">
                 {AVATAR_PRESETS.map((p, i) => {
                   const selected = lipPreset === p.src;
                   return (
@@ -7415,22 +7290,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
-            {/* PHASE 2 L1 — Cinema / Product-Ad / Character-Swap tabs (TASK 1 adds swap). */}
-            <div className="grid grid-cols-3 gap-1.5">
-              <button type="button" onClick={() => setVideoTab('cinema')}
-                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                <span className="inline-flex items-center justify-center gap-1.5"><Clapperboard size={14} aria-hidden="true" /> {locale === 'en' ? 'Cinema' : locale === 'ru' ? 'Кино' : 'კინო'}</span>
-              </button>
-              <button type="button" onClick={() => setVideoTab('product')}
-                className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                <span className="inline-flex items-center justify-center gap-1.5"><Package size={14} aria-hidden="true" /> {locale === 'en' ? 'Product' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}</span>
-              </button>
-              <button type="button" onClick={() => setVideoTab('videoswap')}
-                className={`relative min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'videoswap' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                <span className="inline-flex items-center justify-center gap-1.5"><Repeat size={14} aria-hidden="true" /> {locale === 'en' ? 'Swap' : locale === 'ru' ? 'Замена' : 'შეცვლა'}</span>
-              </button>
-            </div>
             {videoTab === 'cinema' && (<>
+            {/* Essentials — the two choices every video makes: its shape and its length (the Veo scene grid's
+                real lengths, 8 / 24 / 48 s). They were composer selects; the composer now names them in its chip
+                and this is the one place they are set. A music video is always vertical. */}
+            <div className="space-y-3 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5">
+              <Segmented label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} cols="grid-cols-4"
+                options={['9:16', '1:1', '16:9', '4:5'] as const} value={ORIENT_ASPECT[videoOrientation] as '9:16' | '1:1' | '16:9' | '4:5'}
+                isDisabled={(a) => videoMode === 'musicvideo' && a !== '9:16'}
+                onChange={(a) => { const o = ASPECT_ORIENT[a]; if (o) setVideoOrientation(o); }} />
+              <Segmented label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} cols="grid-cols-3"
+                options={[8, 24, 48] as const} value={videoDuration} onChange={setVideoDuration} format={(d) => `${d}${secsWord}`} />
+            </div>
             {/* 0 · START HERE — one tap sets mode, length, format and look together.
                 The panel has 57 controls. Each is reasonable; the combination is not, because a
                 first-time user must decide four things before anything happens and has no opinion yet
@@ -7461,7 +7332,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text"><SlidersHorizontal size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="mt-2 grid grid-cols-1 gap-2">
                 {([
                   ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'A sung music clip' : locale === 'ru' ? 'Клип с песней' : 'მუსიკალური კლიპი'],
                   ['documentary', Mic, locale === 'en' ? 'Documentary' : locale === 'ru' ? 'Документальный' : 'დოკუმენტური', locale === 'en' ? 'A narrated film' : locale === 'ru' ? 'Фильм с диктором' : 'ნაწერიანი ფილმი'],
@@ -7469,8 +7340,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   const on = videoMode === id;
                   return (
                     <button key={id} type="button" onClick={() => setVideoMode(id)}
-                      className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${on ? 'border-app-accent/60 bg-app-accent/15 ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 hover:bg-app-bg/60'}`}>
-                      <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${on ? 'text-app-accent' : 'text-app-text'}`}><Icon size={14} /> {label}</span>
+                      className={`flex min-w-0 flex-col items-start gap-0.5 rounded-xl border px-2.5 py-2.5 text-left transition active:scale-[0.99] ${on ? 'border-app-accent/60 bg-app-accent/15 ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 hover:bg-app-bg/60'}`}>
+                      {/* One column: the settings are 300 px wide on a desktop, and „დოკუმენტური" beside „მუსიკ. ვიდეო" clipped. */}
+                      <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${on ? 'text-app-accent' : 'text-app-text'}`}><Icon size={14} className="shrink-0" /> {label}</span>
                       <span className="text-[10.5px] leading-tight text-app-muted">{sub}</span>
                     </button>
                   );
@@ -7878,14 +7750,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </label>
               </div>
             </Section>
-            {/* HAPPY-PATH FINISH — a prominent full-width Generate button (the Cinema tab previously had no
-                obvious "go", forcing users to hunt for the tiny composer send arrow). Reuses send() + the
-                existing videoReadyToSend gate; additive, no pipeline change. */}
-            <button type="button" disabled={!videoReadyToSend} onClick={() => void send()}
-              className={`mt-1 flex w-full items-center justify-center gap-2 rounded-xl p-3.5 text-[14px] font-semibold transition active:scale-[0.99] ${!videoReadyToSend ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)] hover:brightness-110'}`}>
-              {locale === 'en' ? 'Generate video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს გენერაცია'}
-            </button>
-            {!videoReadyToSend && <p className="text-center text-[11.5px] text-app-muted">{locale === 'en' ? 'Add a photo above to start' : locale === 'ru' ? 'Добавьте фото выше, чтобы начать' : 'დაამატე ფოტო ზემოთ დასაწყებად'}</p>}
             </>)}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
@@ -8011,15 +7875,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <Chip active={productDuration === 48} onClick={() => setProductDuration(48)}>48{locale === 'en' ? 's' : 'წმ'}</Chip>
                   </div>
                 </div>
-                {/* Generate — always enabled once a product photo is set (no busy gate). Progress +
-                    the finished ad land in the CHAT (a per-job bubble) + the tray, so several product
-                    ads can render concurrently without clobbering one shared panel slot. */}
-                <button type="button" disabled={!productImage} onClick={generateProductAd}
-                  className={`flex w-full items-center justify-center gap-2 rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  {locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}
-                </button>
-                {/* Upload hint — the Generate button is gated on a product photo (the locked
-                    foreground); say so instead of leaving the button silently disabled. */}
+                {/* Upload hint — Run is gated on a product photo (the locked foreground); say so instead of leaving
+                    it silently disabled. */}
                 {!productImage && (
                   <p className="text-center text-[11px] text-app-muted">
                     {locale === 'en' ? 'Please upload a product photo first' : locale === 'ru' ? 'Сначала загрузите фото продукта' : 'ჯერ ატვირთეთ პროდუქტის ფოტო'}
@@ -8031,6 +7888,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* TASK 1 — Character-Swap panel: source video + new-character photo → ~5s clip. */}
             {videoTab === 'videoswap' && (
               <div className="space-y-3">
+                {/* The swap's shape — runVideoSwap reads the video's orientation; it lost its control with the composer pills. */}
+                <Segmented label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} cols="grid-cols-3"
+                  options={['9:16', '1:1', '16:9'] as const} value={ORIENT_ASPECT[videoOrientation] as '9:16' | '1:1' | '16:9'}
+                  onChange={(a) => { const o = ASPECT_ORIENT[a]; if (o) setVideoOrientation(o); }} />
                 <p className="rounded-lg bg-app-elevated/40 px-3 py-2 text-[10.5px] leading-snug text-app-muted">
                   {locale === 'en'
                     ? 'Upload a video + a character photo → AI swaps the face in your video (motion preserved). If it can’t, it regenerates a short clip instead.'
@@ -8106,13 +7967,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                 )}
 
-                {/* 4 — generate. NO `busy` gate: a character swap runs PER-JOB through the Cap-3
-                    queue (its own bubble by id), so it's always available + N swaps run concurrently
-                    (independent of the legacy single-render `busy` used by chat/storyboard/lipsync). */}
-                <button type="button" disabled={!swapSourceVideo || !videoCharacterRef} onClick={() => void runVideoSwap()}
-                  className={`min-h-[44px] w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  {locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა'}
-                </button>
               </div>
             )}
           </div>
@@ -8308,48 +8162,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             )}
 
-            {/* C — Prompt (max 300 chars, live counter bottom-right) */}
-            <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Prompt' : locale === 'ru' ? 'Описание' : 'აღწერა'}</span>
-              <div className="relative">
-                <textarea
-                  value={musicPrompt}
-                  onChange={(e) => setMusicPrompt(e.target.value.slice(0, 300))}
-                  maxLength={300}
-                  rows={3}
-                  placeholder={t.musicPlaceholder}
-                  className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 pb-6 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
-                />
-                <span className="pointer-events-none absolute bottom-2 right-3 text-[11px] tabular-nums text-app-muted/60">{musicPrompt.length}/300</span>
-              </div>
-            </div>
-
-            {/* D — Generate (full width). Label reflects the active path: trained voice →
-                one-shot clone → cover → instrumental/vocal-gender. A voice sample or trained
-                toggle lets it fire with NO typed prompt (the lyrics/genre become the brief). */}
-            {(() => {
-              const trainedActive = useMyVoice && hasTrainedVoice && !musicInstrumental;
-              const genLabel = trainedActive
-                ? `${t.voiceMode}`
-                : hasVoiceSample && musicAudioMode === 'voice'
-                  ? `${t.voiceMode}`
-                  : hasVoiceSample && musicAudioMode === 'cover'
-                    ? t.coverMode
-                    : musicInstrumental
-                      ? `${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
-                      : musicVoiceType === 'duet'
-                        ? `${locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'}`
-                        : musicVoiceType === 'male'
-                          ? `${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
-                          : `${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
-              return (
-                <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || (!musicPrompt.trim() && !hasVoiceSample && !trainedActive)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
-                  {busy ? <Loader2 size={16} className="animate-spin" /> : <>{genLabel}</>}
-                </button>
-              );
-            })()}
-
             {/* E — Result (hidden until a track exists): audio player + download/share */}
             {lastMusic?.audioUrl && (
               <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
@@ -8404,18 +8216,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* 3 — Per-op parameters */}
-            {(remixOp === 'restyle' || remixOp === 'character' || remixOp === 'captions' || remixOp === 'voiceover' || remixOp === 'redub') && (
-              <textarea value={remixText} onChange={(e) => setRemixText(e.target.value.slice(0, 600))} rows={2}
-                placeholder={
-                  remixOp === 'restyle' ? (locale === 'en' ? 'New look (e.g. cinematic, anime, vintage)…' : locale === 'ru' ? 'Новый стиль (кино, аниме, винтаж)…' : 'ახალი სტილი (კინო, ანიმე, ვინტაჟი)…')
-                    : remixOp === 'character' ? (locale === 'en' ? 'Describe the character to swap in / insert…' : locale === 'ru' ? 'Опишите нового персонажа…' : 'აღწერე ახალი პერსონაჟი…')
-                      : remixOp === 'captions' ? (locale === 'en' ? 'Caption text to burn on the video…' : locale === 'ru' ? 'Текст субтитров…' : 'სუბტიტრის ტექსტი…')
-                        : remixOp === 'voiceover' ? (locale === 'en' ? 'Narration to speak over the video…' : locale === 'ru' ? 'Текст озвучки…' : 'ნარაციის ტექსტი…')
-                          : (locale === 'en' ? 'New dialogue to lip-sync…' : locale === 'ru' ? 'Новый текст для синхрона…' : 'ახალი დიალოგი ლიპ-სინქისთვის…')
-                }
-                className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-            )}
+            {/* 3 — The words for this edit (a new look, caption text, narration, dialogue) are typed in the composer;
+                its placeholder names what to write for the chosen edit. */}
 
             {/* ⚠️ SAY WHAT THESE OPS ACTUALLY DO. Restyle and Change-character do NOT edit the source
                 video: they take ONE frame at 0.5s, restyle it, and re-animate it into a brand-new clip
@@ -8464,22 +8266,248 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             )}
 
-            {/* 4 — Run */}
-            {(() => {
-              const needsText = (['captions', 'voiceover', 'restyle', 'character'] as string[]).includes(remixOp) || (remixOp === 'redub' && !remixTrack);
-              const needsTrack = remixOp === 'music' && !remixTrack;
-              const disabled = remixBusy || busy || !remixVideo || (needsText && !remixText.trim()) || needsTrack;
-              return (
-                <button type="button" onClick={() => void runRemix()} disabled={disabled}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
-                  {remixBusy ? <><Loader2 size={16} className="animate-spin" /> {t.remixRunning}</> : <>{REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en}</>}
-                </button>
-              );
-            })()}
           </div>
         )}
 
-        </div>{/* /collapsible options */}
+        {/* SERVICE PARAMETERS — opens in place when a full studio is picked from the service menu, so
+            Montage/Dubbing/Presentation/3D are driven without leaving the conversation. */}
+        {panelService && (
+          <ServiceParamsPanel
+            service={panelService}
+            locale={locale}
+            prefill={studioPrefill}
+            // ⚠️ FOUR LIVE SERVICES DELIVERED INTO A DISMISSIBLE BOX. Montage, dubbing, decks and 3D all
+            // rendered into the panel's own local state, and the panel has a ✕ on it — so a user could
+            // wait out a five-minute dub, look at it, tap ✕ to return to the conversation, and the video
+            // was gone from the screen with nothing in the chat to show it ever existed. The chat is
+            // supposed to be where the user RECEIVES things; these were the four that never arrived.
+            // Posting the result as a real message also means it survives a panel switch and a reload,
+            // and picks up the video branch's player, download, share, save and edit affordances for free.
+            onDelivered={(svc, r) => {
+              const en = locale === 'en', ru = locale === 'ru';
+              const label = SERVICE_LABEL[svc]?.[en ? 'en' : ru ? 'ru' : 'ka'] ?? svc;
+              const done = en ? `**${label}** — ready.` : ru ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
+              if (r.videoUrl) {
+                setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl: r.videoUrl }]);
+                return;
+              }
+              if (r.slides?.length) {
+                // The deck's own cover carries the thumbnail; the slide count is the honest summary, and
+                // the panel keeps the full ZIP. Without this the deck existed only until the panel closed.
+                const n = r.slides.length;
+                const summary = en ? `${done} ${n} slides${r.title ? ` · ${r.title}` : ''}`
+                  : ru ? `${done} ${n} слайдов${r.title ? ` · ${r.title}` : ''}`
+                    : `${done} ${n} სლაიდი${r.title ? ` · ${r.title}` : ''}`;
+                setMessages((prev) => [...prev, { role: 'assistant', text: summary, ...(r.coverUrl ? { imageUrl: r.coverUrl } : {}) }]);
+                return;
+              }
+              if (r.glbUrl) {
+                // No 3D branch exists in the message renderer, so this is a link rather than a viewer —
+                // a link that persists beats a viewer that is destroyed the moment the panel closes.
+                setMessages((prev) => [...prev, { role: 'assistant', text: `${done}\n\n[${en ? 'Open the 3D model' : ru ? 'Открыть 3D-модель' : '3D მოდელის გახსნა'}](${r.glbUrl})`, ...(r.referenceUrl ? { imageUrl: r.referenceUrl } : {}) }]);
+              }
+            }}
+            onClose={() => { setPanelService(null); setStudioPrefill(undefined); setOptionsOpen(false); }}
+            // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
+            // separately — one entry, both depths of editing.
+            // Straight into the VIDEO workspace. Choosing Montage and pressing "full editor" has already
+            // said "video" — making the user pick it again from a three-card menu was a step that
+            // answered a question they had just answered.
+            onOpenFullEditor={() => { setPanelService(null); setEditorMode('video'); setMode('surgical'); }}
+          />
+        )}
+
+    </div>
+  );
+  const sessionTitle = (() => {
+    const first = messages.find((m) => m.role === 'user' && m.text?.trim())?.text?.trim();
+    if (!first) return locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია';
+    return first.length > 90 ? `${first.slice(0, 90)}…` : first;
+  })();
+
+  return (
+    // Drag-and-drop covers the whole studio. ⚠️ With the settings beside the centre column, a video dropped on the
+    // swap's „ჩააგდე ვიდეო“ zone had no dragover handler under it — the browser opened the file and left the page.
+    <div className="flex h-full w-full min-w-0 text-app-text" onDragEnter={onChatDragEnter} onDragOver={onChatDragOver} onDragLeave={onChatDragLeave} onDrop={onChatDrop}>
+    <div className="flex min-w-0 flex-1 flex-col">
+      {/* Desktop title bar (AI Studio): the session's name, and the three things you do to a session. ChatChrome's
+          header steps aside at this width; this bar is a <header> of its own, so sign-in stays in one. */}
+      <header className="hidden h-14 shrink-0 items-center gap-1 border-b border-app-border/10 pl-6 pr-3 lg:flex">
+        <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium text-app-text" title={sessionTitle}>{sessionTitle}</h2>
+        {guest && (
+          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'login' }))}
+            className="tap-44 relative mr-1 inline-flex h-9 items-center rounded-full bg-app-accent px-4 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
+            {locale === 'en' ? 'Sign in' : locale === 'ru' ? 'Войти' : 'შესვლა'}
+          </button>
+        )}
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:open-new-chat'))}
+          aria-label={locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია'}
+          title={locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია'}
+          className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+          <PenSquare size={18} aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} aria-controls="studio-settings"
+          aria-label={settingsWord} title={settingsWord} data-testid="settings-panel-toggle"
+          className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-app-elevated hover:text-app-text ${panelOpen ? 'bg-app-elevated text-app-text' : 'text-app-muted'}`}>
+          <SlidersHorizontal size={18} aria-hidden="true" />
+        </button>
+      </header>
+    <div
+      // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
+      // scroll as a whole, the message pane scrolls internally — but it clips with NO way to reach what
+      // is cut. Measured on an iPad in LANDSCAPE (1024×768) with the video panel open: this box is 314px
+      // tall around 734px of content, so 420px was simply unreachable. That is "the panels do not open
+      // fully": nothing is broken visually, the rest of the panel is just gone.
+      //
+      // Portrait (768×1024) fits and is unaffected. The escape hatch is therefore scoped to SHORT
+      // viewports by height, so the fixed-shell behaviour that is correct everywhere else is untouched.
+      className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden [@media(max-height:820px)]:overflow-y-auto [@media(max-height:820px)]:overscroll-contain px-4 pt-2 text-app-text"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
+      {/* V3 — premium drag-over overlay: frosted glass + high-contrast dashed emerald frame,
+          shown whenever a file is dragged over the chat. Pointer-events-none so the drop lands
+          on the real surface underneath (which bubbles to onChatDrop); fades out on ingestion. */}
+      {dragActive && (
+        <div className="mya-drop-overlay pointer-events-none absolute inset-0 z-[55] flex items-center justify-center p-5" style={{ animation: 'mya-drop-in 0.16s ease-out' }}>
+          <div className="absolute inset-0 bg-app-bg/55 backdrop-blur-md" />
+          <div
+            className="mya-drop-card relative flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-emerald-400 bg-app-elevated/70 px-8 py-10 text-center"
+            style={{ animation: 'mya-drop-card 0.2s ease-out', boxShadow: '0 0 60px -12px rgba(16,185,129,0.55)' }}
+          >
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-400 ring-1 ring-emerald-400/40">
+              <Upload size={26} />
+            </span>
+            <div className="text-[17px] font-bold text-app-text">
+              {mode === 'video'
+                ? (locale === 'en' ? 'Drop Script File Here' : locale === 'ru' ? 'Перетащите файл сценария' : 'ჩააგდეთ ფაილი სცენარისთვის')
+                : (locale === 'en' ? 'Drop file here' : locale === 'ru' ? 'Перетащите файл сюда' : 'ჩააგდეთ ფაილი')}
+            </div>
+            <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-emerald-400/90">
+              {mode === 'video'
+                ? 'TXT · MD · PDF · DOCX'
+                : (locale === 'en' ? 'Image · Audio · Video' : locale === 'ru' ? 'Фото · Аудио · Видео' : 'სურათი · აუდიო · ვიდეო')}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Agent G — glowing transition overlay while the router classifies a chat submission with an attached asset. */}
+      {agentGBusy && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-app-bg/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 px-6 text-center">
+            {/* Pulsating gradient orb — a rotating conic ring + breathing glow behind a
+                calm core. Replaces the flat spinner square with a living "thinking" state. */}
+            <span className="relative flex h-20 w-20 items-center justify-center">
+              <span className="mya-orb-glow absolute inset-0 rounded-full bg-app-accent/25 blur-xl" style={{ animation: 'mya-orb-breathe 2.4s ease-in-out infinite' }} />
+              <span
+                className="mya-orb-ring absolute inset-0 rounded-full opacity-80"
+                style={{
+                  background: 'conic-gradient(from 0deg, rgba(6,210,255,0) 0deg, rgba(6,210,255,0.95) 130deg, rgba(16,185,129,0.9) 250deg, rgba(6,210,255,0) 360deg)',
+                  WebkitMaskImage: 'radial-gradient(circle, transparent 57%, #000 60%)',
+                  maskImage: 'radial-gradient(circle, transparent 57%, #000 60%)',
+                  animation: 'mya-orb-spin 2.6s linear infinite',
+                }}
+              />
+              <span className="mya-orb-core relative flex h-14 w-14 items-center justify-center rounded-full bg-app-bg ring-1 ring-app-accent/40" style={{ animation: 'mya-orb-breathe 2.4s ease-in-out infinite', boxShadow: '0 0 44px -6px rgba(6,210,255,0.6)' }}>
+                <Sparkles size={24} className="text-app-accent" />
+              </span>
+            </span>
+            <div className="text-[12px] font-bold uppercase tracking-[0.15em] text-app-accent">G-Agent</div>
+            <div className="flex w-[min(88vw,320px)] flex-col gap-2">
+              {AGENT_G_PHASES.map((ph, i) => {
+                const state = i < agentGPhase ? 'done' : i === agentGPhase ? 'active' : 'pending';
+                return (
+                  <div key={i} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] transition-all duration-300 ease-out ${state === 'active' ? 'bg-app-accent/15 text-app-text ring-1 ring-app-accent/30' : state === 'done' ? 'text-app-muted/70' : 'text-app-muted/40'}`}>
+                    <span className="text-[15px] leading-none">{state === 'done' ? '✅' : ph.icon}</span>
+                    <span className="min-w-0 flex-1 font-medium">{locale === 'en' ? ph.en : locale === 'ru' ? ph.ru : ph.ka}</span>
+                    {state === 'active' && (
+                      <span className="relative flex h-2.5 w-2.5 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-app-accent/60" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-app-accent" />
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+      <div
+        ref={feedRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+          nearBottomRef.current = dist < 160;
+          setShowJump(dist > 160);
+        }}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
+      >
+        {messages.length === 0 ? (
+          <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-2 py-6 text-center">
+            {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
+                the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
+            </div>
+            <div className="relative space-y-2">
+              {/* The locked copy (docs/DESIGN.md §7) — the same greeting and line in every mode. */}
+              <h1 className="font-display text-[30px] font-bold leading-tight tracking-[-0.01em] text-app-text sm:text-[36px]">{t.greeting}</h1>
+              <p className="mx-auto max-w-lg text-balance text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
+            </div>
+            {/* Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two: on a
+                phone that keeps the composer above the fold (what got the old chips removed); on a desktop a
+                free-wrapping row broke 3 + 1, which reads as an accident. ONE column from 1024 to 1279: there the
+                centre sits between the navigation and the open settings (~400 px) and „ავატარის პორტრეტი" clipped. */}
+            <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
+              className="relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem] lg:max-w-[22rem] lg:grid-cols-1 xl:max-w-[34rem] xl:grid-cols-2">
+              {STARTER_CHIPS.map((chip) => {
+                // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
+                const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
+                return (
+                  <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
+                    className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
+                    <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
+                    <span className="min-w-0 sm:truncate">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : messageList}
+      </div>
+
+      {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
+      {showJump && messages.length > 0 && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom()}
+          aria-label={t.scrollDown}
+          title={t.scrollDown}
+          className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
+          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${Math.min(composerH, 180) + 12}px)` }}
+        >
+          <ChevronDown size={18} />
+        </button>
+      )}
+
+      {/* Composer — refined, Gemini-style: one rounded pill, [+] attach, an inline
+          mode selector (the "Flash ⌄" analog) and mic-when-empty / send-when-typing. */}
+      <div ref={composerRef} className="shrink-0 pt-1">
+        {/* ⚠️ DICTATION USED TO DIE IN SILENCE. Interim transcription failures were swallowed by a bare
+            fail-soft catch: a 429 (the route shares the 100-req/60s READ bucket while a long dictation
+            fires a pass every 1.2s), a 500 or an offline blip produced no toast and no state change, so
+            the mic kept pulsing while text stopped arriving and the user talked into a void.
+            Shown only after the SECOND consecutive failure, so one flaky pass stays invisible. */}
+        {dictationWarn && (
+          <div role="status" className="mb-2 rounded-xl border border-app-warning/25 bg-app-warning/10 px-3 py-2 text-[12px] leading-snug text-app-text">
+            <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
+          </div>
+        )}
+        {/* The price moved INTO the composer (see `priceTag`) — same rule, one block instead of three. */}
+        {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
+            canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
+            that never send; see their definition for why the old prompt chips were removed). */}
 
         {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
             indicator + quick-action chips that pre-fill the right request. */}
@@ -8681,213 +8709,68 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: small, mimeType: f.type || 'image/jpeg' }]);
           } catch { /* ignore unreadable capture */ }
         }} />
+        {/* „+" → Photos: images into the composer's attachments (the tools that read them). */}
+        <input ref={photoRef} type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          for (const f of files) {
+            try {
+              const small = await downscaleDataUrl(await fileToDataUrl(f));
+              setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: small, mimeType: f.type || 'image/jpeg' }]);
+            } catch { /* ignore unreadable image */ }
+          }
+        }} />
+        {/* „+" → Photos on the product tool: the product photo (then extra angles). */}
+        <input ref={productPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          if (productImage) addProductShot(f); else onProductPhoto(f);
+        }} />
+        {/* „+" → Files on the remix tool: the source video. */}
+        <input ref={remixVideoRef} type="file" accept="video/*" className="hidden" onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.currentTarget.value = '';
+          if (f) void pickRemixMedia(f, 'video');
+        }} />
         {/* One clean rounded pill — min-height 52px, padding 12px 16px; the prompt sits on
             its own line so a long brief is never squeezed, and ALL controls live inside. */}
-        {/* SERVICE PARAMETERS — opens in place when a full studio is picked from the service menu, so
-            Montage/Dubbing/Presentation/3D are driven without leaving the conversation. */}
-        {panelService && (
-          <ServiceParamsPanel
-            service={panelService}
-            locale={locale}
-            prefill={studioPrefill}
-            // ⚠️ FOUR LIVE SERVICES DELIVERED INTO A DISMISSIBLE BOX. Montage, dubbing, decks and 3D all
-            // rendered into the panel's own local state, and the panel has a ✕ on it — so a user could
-            // wait out a five-minute dub, look at it, tap ✕ to return to the conversation, and the video
-            // was gone from the screen with nothing in the chat to show it ever existed. The chat is
-            // supposed to be where the user RECEIVES things; these were the four that never arrived.
-            // Posting the result as a real message also means it survives a panel switch and a reload,
-            // and picks up the video branch's player, download, share, save and edit affordances for free.
-            onDelivered={(svc, r) => {
-              const en = locale === 'en', ru = locale === 'ru';
-              const label = SERVICE_LABEL[svc]?.[en ? 'en' : ru ? 'ru' : 'ka'] ?? svc;
-              const done = en ? `**${label}** — ready.` : ru ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
-              if (r.videoUrl) {
-                setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl: r.videoUrl }]);
-                return;
-              }
-              if (r.slides?.length) {
-                // The deck's own cover carries the thumbnail; the slide count is the honest summary, and
-                // the panel keeps the full ZIP. Without this the deck existed only until the panel closed.
-                const n = r.slides.length;
-                const summary = en ? `${done} ${n} slides${r.title ? ` · ${r.title}` : ''}`
-                  : ru ? `${done} ${n} слайдов${r.title ? ` · ${r.title}` : ''}`
-                    : `${done} ${n} სლაიდი${r.title ? ` · ${r.title}` : ''}`;
-                setMessages((prev) => [...prev, { role: 'assistant', text: summary, ...(r.coverUrl ? { imageUrl: r.coverUrl } : {}) }]);
-                return;
-              }
-              if (r.glbUrl) {
-                // No 3D branch exists in the message renderer, so this is a link rather than a viewer —
-                // a link that persists beats a viewer that is destroyed the moment the panel closes.
-                setMessages((prev) => [...prev, { role: 'assistant', text: `${done}\n\n[${en ? 'Open the 3D model' : ru ? 'Открыть 3D-модель' : '3D მოდელის გახსნა'}](${r.glbUrl})`, ...(r.referenceUrl ? { imageUrl: r.referenceUrl } : {}) }]);
-              }
-            }}
-            onClose={() => { setPanelService(null); setStudioPrefill(undefined); }}
-            // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
-            // separately — one entry, both depths of editing.
-            // Straight into the VIDEO workspace. Choosing Montage and pressing "full editor" has already
-            // said "video" — making the user pick it again from a three-card menu was a step that
-            // answered a question they had just answered.
-            onOpenFullEditor={() => { setPanelService(null); setEditorMode('video'); setMode('surgical'); }}
-          />
-        )}
-
-        <div className="rounded-[24px] border border-app-border/15 bg-app-elevated px-4 py-3 min-h-[52px] shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40">
+        <div className="rounded-[24px] border border-app-border/15 bg-app-elevated px-3 py-3 min-h-[52px] sm:px-4 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40">
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
           <textarea
             ref={taRef}
             value={input}
             onChange={(e) => { inputSourceRef.current = 'text'; setInput(e.target.value); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runTool(); } }}
             onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
             rows={1}
             disabled={enhancing}
-            placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : mode === 'remix' ? t.remixUploadHint : t.placeholder}
+            placeholder={composerPlaceholder}
             className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60"
           />
-          {/* Phones: the format pills get their own thin row — the controls row below has ~70 px to spare. */}
-          {composerMeta('row')}
-
-          {/* Controls row — a single clean line on every viewport: [+][📷] locked FAR-LEFT, a
-              flex-1 spacer, then the mode chip + mic + live-voice + send clustered FAR-RIGHT. To fit
-              375px without wrapping, mobile trims width (the mode chip is icon-only + the desktop-only
-              Wand is hidden) — see below. NO wrap, so Send never drops to a broken second row. */}
+          {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
+              mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
+              all five. */}
           <div className="mt-1 flex items-center gap-1">
-            {/* [+] add / attach */}
-            <button type="button" onClick={() => fileRef.current?.click()} aria-label={t.attachHint} title={t.attachHint}
+            <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
+              aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
+              aria-label={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
+              title={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
-              <Plus size={20} />
+              <Plus size={20} aria-hidden="true" />
             </button>
-            {/* [📷] camera — image/camera capture specifically (rear camera on mobile);
-                the selected photo previews in the attachment tray above and rides the next
-                generation (core to image-to-video). Sits right of [+], left of the spacer. */}
-            <button type="button" onClick={() => cameraRef.current?.click()}
-              aria-label={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
-              title={locale === 'en' ? 'Take a photo' : locale === 'ru' ? 'Сделать фото' : 'გადაიღე ფოტო'}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
-              <Camera size={19} />
+            {/* The tool chip — its visible text IS its accessible name (what, and in what shape). */}
+            <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
+              aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
+              data-testid="options-toggle" title={settingsWord}
+              className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface sm:px-3.5 sm:text-[13px]">
+              <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
+              <span className="min-w-0 truncate whitespace-nowrap">{toolLabel}{toolSummary ? <span className="text-app-muted"> · {toolSummary}</span> : null}</span>
+              {/* The chevron is from `sm` up: on a 390 px phone its 19 px is what keeps „ვიდეო · 9:16 · 24წმ" whole. */}
+              <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
             </button>
-            {/* The service's options — an icon in the composer, not a full-width bar above it. The sheet itself
-                still opens above the composer (capped, own scroll); chat has no options. */}
-            {mode !== 'chat' && (
-              <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
-                data-testid="options-toggle"
-                aria-label={locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}
-                title={locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-app-surface ${optionsOpen ? 'bg-app-text text-app-bg hover:bg-app-text' : 'text-app-muted hover:text-app-text'}`}>
-                <SlidersHorizontal size={18} aria-hidden="true" />
-              </button>
-            )}
-
-            {/* Spacer — pushes the mode selector + mic/live/send to the FAR-RIGHT on EVERY viewport
-                so [+]/📷 stay far-left (the asymmetric split the design calls for). */}
             <div className="flex-1" />
-
-            {/* Inline mode selector — the "Flash ⌄" analog. Tap to pick what to create. */}
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setModeMenuOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={modeMenuOpen}
-                // ⚠️ ON MOBILE THIS BUTTON HAD NO ACCESSIBLE NAME AT ALL. Its only text is
-                // `hidden sm:inline`, so below the sm breakpoint the control is a bare icon and a screen
-                // reader announced nothing but "button" — for the composer's PRIMARY service picker, on
-                // the viewport where most of this product is used. `aria-haspopup`/`aria-expanded`
-                // already convey that it opens a menu; what was missing is WHICH service is selected,
-                // which is exactly what a sighted user reads off the icon.
-                aria-label={t[activeModeKey]}
-                className="flex h-11 shrink-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] font-medium text-app-muted transition-colors hover:bg-app-surface hover:text-app-text"
-              >
-                <ActiveModeIcon size={15} />
-                {/* Icon-only on mobile (the label would blow the single-row budget); label returns at sm+. */}
-                <span className="hidden sm:inline">{t[activeModeKey]}</span>
-                <ChevronDown size={13} className={`transition-transform ${modeMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {modeMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />
-                  {/* ⚠️ THIS WALKED OFF THE LEFT EDGE ON A SMALL PHONE. `right-0` anchors the menu to the
-                      MODE BUTTON, which is not at the viewport edge — the mic, live-voice chip and send
-                      button all sit to its right. At 320px the button's right edge lands around 174px,
-                      so a 192px-wide menu starts at roughly -18 and its first characters are simply gone.
-                      `max-w-[calc(100vw-1.5rem)]` never helped because it caps WIDTH (192 < 296 at 320px)
-                      and the defect is POSITION. Nudged back inside with a measured offset — CSS alone
-                      cannot express "stay within the viewport" for an element anchored to a mid-row
-                      element, and the offset is recomputed on open, resize and orientation change. */}
-                  <div
-                    role="menu"
-                    {...modeMenuClamp.props}
-                    className="absolute bottom-full right-0 z-20 mb-2 w-48 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-app-border/10 bg-app-surface p-1 shadow-2xl"
-                  >
-                    {MENU_MODES.map(({ id, Icon, key: lk }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={mode === id}
-                        // Picking the service that is already on keeps it (a radio item does not un-check itself).
-                        // It used to toggle back to chat — so re-confirming „ვიდეო“ turned the studio into a chat.
-                        onClick={() => { if (id !== mode) setMode(id); setModeMenuOpen(false); }}
-                        className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${mode === id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
-                      >
-                        <Icon size={15} /> <span className="flex-1 text-left">{t[lk]}</span> {mode === id && <Check size={14} />}
-                      </button>
-                    ))}
-
-                    {/* FULL STUDIOS — services that live on their own route rather than as a chat mode.
-                        They sit in this same menu because this is now the ONLY service picker in the app;
-                        the sidebar's duplicate list was removed. Selecting one navigates. */}
-                    {studioServices.length > 0 && (
-                      <div className="my-1 border-t border-app-border/10" role="separator" />
-                    )}
-                    {studioServices.map((svc) => {
-                      // These open their own parameter controls IN the chat box. The standalone routes
-                      // still exist and call the same APIs; selecting here just saves leaving the
-                      // conversation to run one.
-                      const inline = (PANEL_SERVICES as readonly string[]).includes(svc.id);
-                      return (
-                        <button
-                          key={svc.id}
-                          type="button"
-                          role="menuitem"
-                          disabled={!svc.live}
-                          onClick={() => {
-                            setModeMenuOpen(false);
-                            if (inline) {
-                              setStudioPrefill(undefined);
-                              // ⚠️ MONTAGE SKIPS THE PARAMS PANEL AND OPENS THE EDITOR DIRECTLY. The panel's
-                              // montage view was a staging step whose only forward action was a
-                              // "Full editor →" chip performing exactly this transition — so every montage
-                              // began with a tap that had one possible outcome. Editing video is what the
-                              // service IS; the drop target belongs on screen immediately, not one tap in.
-                              // This is the same state that chip set, reached without the detour.
-                              if (svc.id === 'montage') { setPanelService(null); setEditorMode('video'); setMode('surgical'); }
-                              else setPanelService(svc.id as PanelService);
-                            }
-                            else router.push(serviceHref(svc, locale));
-                          }}
-                          className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${!svc.live ? 'cursor-not-allowed text-app-muted opacity-45' : panelService === svc.id ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}
-                          title={svc.live ? undefined : SOON_LABEL[locale]}
-                        >
-                          {(() => {
-                            const StudioIcon = STUDIO_ICON[svc.id];
-                            return StudioIcon
-                              ? <StudioIcon size={15} className="shrink-0" />
-                              : <span className="w-[15px] shrink-0 text-center text-[13px] leading-none">{svc.icon}</span>;
-                          })()}
-                          <span className="flex-1 truncate text-left">{serviceName(svc, locale)}</span>
-                          {!svc.live && <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wider">{SOON_LABEL[locale]}</span>}
-                          {svc.live && panelService === svc.id && <Check size={14} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-            {/* Tablet and up: the format pills sit inline, between what you make and Send. */}
-            {composerMeta('inline')}
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
@@ -8908,6 +8791,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
                 <Square size={15} className="fill-current" />
+              </button>
+            )}
+            {/* A product ad and a swap render through the Cap-3 queue, not `busy`: their Run stays on screen beside Stop
+                while another render runs (their panel buttons never had a busy gate; Stop must not be the only choice). */}
+            {busy && !recording && !transcribing && canRun && (activeTool === 'product' || activeTool === 'swap') && (
+              <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
+                <Send size={17} aria-hidden="true" />
               </button>
             )}
             {/* Dictation state wins the primary slot: while recording, Stop must mean "stop the mic". */}
@@ -8951,7 +8842,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     voice call-to-action. Reduced-motion falls the bars back to static (see .voice-eq). */}
                 {/* SEND-WHEN-TEXT: the live-voice button and Send share ONE slot. With something to send, Send
                     replaces it — the composer never shows two primary actions side by side. */}
-                {!canSend && (
+                {!canRun && (
                 <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
@@ -8967,10 +8858,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}
-                {canSend && (
-                  <button type="button" onClick={() => void send()}
-                    aria-label={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : mode === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა') : mode === 'music' ? (locale === 'en' ? 'Create music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
-                    title={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
+                {canRun && (
+                  <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
                     className="ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                     <Send size={17} />
                   </button>
@@ -8979,6 +8868,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
           </div>
         </div>
+        {/* The price, once, under the composer — on screen before the spend, for every priced tool. */}
+        {priceTag && (
+          <p data-testid="price-tag" title={priceTag.long} className="mt-1.5 px-3 text-center text-[12px] tabular-nums text-app-muted">
+            <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
+          </p>
+        )}
       </div>
 
       {/* All full-screen overlays portal to document.body so they render above
@@ -9178,6 +9073,66 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       )}
 
       </Portal>
+    </div>
+    </div>
+
+    {/* „პარამეტრები" — ONE element at ONE position in the tree for every width: the right column of AI Studio on a
+        desktop (open by default), Gemini's bottom sheet below `lg`. Only its classes change with the width.
+        ⚠️ TWO PARENTS (an <aside> for desktop, a portaled sheet for phones) REMOUNTED THE PANELS ON EVERY CROSSING OF
+        1024 px — an iPad rotated mid-job lost ServiceParamsPanel's 3D poll (the paid model never reached the chat) and
+        MotionControlPanel's picked files. Mounted while hidden, for the same reason: closing is not discarding. */}
+    <div
+      ref={settingsSurfaceRef}
+      className={isDesktop
+        ? `${panelOpen ? 'flex' : 'hidden'} w-[300px] shrink-0 flex-col border-l border-app-border/10 bg-app-surface/40 xl:w-[340px]`
+        : `${optionsOpen ? 'flex' : 'hidden'} fixed inset-0 z-[95] items-end justify-center sm:pb-28`}
+      onClick={isDesktop ? undefined : () => setOptionsOpen(false)}
+    >
+      {isDesktop ? null : <div aria-hidden="true" className="sheet-fade absolute inset-0 bg-black/55" />}
+      <div
+        ref={settingsSheetRef}
+        id="studio-settings"
+        role={isDesktop ? 'complementary' : 'dialog'}
+        aria-modal={isDesktop ? undefined : true}
+        aria-label={settingsWord}
+        data-testid={isDesktop ? 'settings-panel' : 'options-sheet'}
+        onClick={(e) => e.stopPropagation()}
+        className={isDesktop
+          ? 'flex min-h-0 flex-1 flex-col'
+          : 'sheet-rise relative flex max-h-[86svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)] sm:max-h-[72svh] sm:max-w-[440px] sm:rounded-[28px]'}
+        style={isDesktop ? undefined : { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        {isDesktop ? null : (
+          <div className="flex shrink-0 justify-center pt-2.5 sm:hidden" aria-hidden="true">
+            <span className="h-1 w-10 rounded-full bg-app-border/25" />
+          </div>
+        )}
+        <div className={isDesktop
+          ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
+          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>
+          <h2 className="text-[14.5px] font-semibold text-app-text">{settingsWord}</h2>
+          <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
+            className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            <X size={17} aria-hidden="true" />
+          </button>
+        </div>
+        <div className={isDesktop
+          ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin]'
+          : 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}>
+          {settingsBody}
+        </div>
+      </div>
+    </div>
+    <ToolSheet
+      open={toolSheetOpen}
+      onClose={() => setToolSheetOpen(false)}
+      locale={locale}
+      {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTargets)}
+      tools={PRIMARY_TOOLS.map(toolEntry)}
+      studios={MORE_TOOLS.map(toolEntry)}
+      activeId={activeTool}
+      onTool={(id) => { if (isToolId(id)) selectTool(id); }}
+    />
     </div>
   );
 }

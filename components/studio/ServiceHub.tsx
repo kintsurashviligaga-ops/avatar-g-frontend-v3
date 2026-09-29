@@ -177,9 +177,8 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     // below (the "opens broken / dead space" report). Mirrors the film studio shell.
     <div className="fixed inset-0 z-[2] overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
-        <div className="mb-8 flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={22} height={22} decoding="async" className="h-[22px] w-[22px] shrink-0 object-contain" />
+        {/* One mark: the name (docs/DESIGN.md §6). */}
+        <div className="mb-8 flex items-center">
           <Wordmark size="sm" />
         </div>
 
