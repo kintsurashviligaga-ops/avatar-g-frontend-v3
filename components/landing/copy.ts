@@ -57,8 +57,8 @@ export const LANDING_COPY: Record<LandingLang, LandingCopy> = {
     },
     pricing: {
       kicker: 'ფასები',
-      title: 'იხდი მხოლოდ იმაში, რასაც ქმნი.',
-      line: 'ბალანსი ლარშია და ფასი ყოველი გენერაციის წინ ჩანს. თუ გენერაცია ვერ შესრულდა, თანხა ბრუნდება.',
+      title: 'ფასი — სანამ დაიწყებ.',
+      line: 'ყოველ გენერაციას ფასი ღილაკზე აწერია, სანამ დაადასტურებ. გეგმები და კრედიტები — ფასების გვერდზე.',
       cta: 'ფასების ნახვა',
     },
     closing: { title: 'პირველი რილი დღეს.', cta: 'შექმენი ვიდეო' },
@@ -100,8 +100,8 @@ export const LANDING_COPY: Record<LandingLang, LandingCopy> = {
     },
     pricing: {
       kicker: 'Pricing',
-      title: 'Pay only for what you make.',
-      line: 'Your balance is in lari and every generation shows its price first. If one fails, the money comes back.',
+      title: 'The price, before you start.',
+      line: 'Every generation shows its price on the button before you confirm. Plans and credits are on the pricing page.',
       cta: 'See pricing',
     },
     closing: { title: 'Your first reel, today.', cta: 'Create a video' },
@@ -143,8 +143,8 @@ export const LANDING_COPY: Record<LandingLang, LandingCopy> = {
     },
     pricing: {
       kicker: 'Цены',
-      title: 'Платите только за то, что создаёте.',
-      line: 'Баланс в лари, цена видна перед каждой генерацией. Если генерация не удалась, деньги возвращаются.',
+      title: 'Цена — до начала.',
+      line: 'Цена каждой генерации видна на кнопке до подтверждения. Планы и кредиты — на странице цен.',
       cta: 'Смотреть цены',
     },
     closing: { title: 'Первый рилс — сегодня.', cta: 'Создать видео' },

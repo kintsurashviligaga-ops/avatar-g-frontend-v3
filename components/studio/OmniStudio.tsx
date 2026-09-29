@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, Repeat, SlidersHorizontal, CreditCard, Wallet, type LucideIcon } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, Repeat, SlidersHorizontal, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -6039,17 +6039,47 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const canSend = (!!input.trim() && !onlyStarter) || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
 
   /**
-   * The composer's format pills — the Imagine grammar: WHAT you make (the mode pill), in what SHAPE and for how
-   * LONG, next to Send. The ratio for video / image / avatar, the length for video. Native <select>s: a real
-   * picker on iOS, keyboard-complete, 44 px tall, 16 px text on phones (below 16 iOS zooms the page on tap).
-   * They write the SAME state as the options panel, so the two can never disagree. The length offers the
-   * pipeline's real ones (8 / 24 / 48 s — the Veo scene grid); anything else would be a new generation contract.
+   * ⚠️ THE PRICE MUST BE ON SCREEN BEFORE THE SPEND, IN EVERY STUDIO — NOT JUST IMAGE. A cost line was added for
+   * image and nowhere else, so video, music, avatar and remix still charged an amount the user could only discover
+   * by watching the balance drop afterwards. One expression covers all five, so a new mode cannot quietly ship
+   * without a price. It now lives INSIDE the composer, next to what sets it (format, length, count), instead of a
+   * separate line above it; and a video's wait follows its length — it said "~440s" for an 8-second clip.
    */
-  const formatPills = (where: 'row' | 'inline') => {
-    if (mode !== 'video' && mode !== 'image' && mode !== 'lipsync') return null;
+  const priceTag = (() => {
+    if (busy) return null;
+    const priced: Record<string, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }> = {
+      image: { kind: 'image', n: imgCount, secs: imgTargetFor(imgQuality) },
+      music: { kind: 'music', n: 1, secs: PROGRESS_TARGET.music },
+      video: { kind: 'video', n: 1, secs: videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video },
+      lipsync: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
+      remix: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
+    };
+    const p = priced[mode];
+    if (!p) return null;
+    const credits = creditCostFor(p.kind, mode === 'video' ? { seconds: videoDuration } : undefined) * p.n;
+    if (credits <= 0) return null;
+    const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი';
+    const wait = p.secs >= 90
+      ? `~${Math.round(p.secs / 60)} ${locale === 'en' ? 'min' : locale === 'ru' ? 'мин' : 'წთ'}`
+      : `~${p.secs} ${locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ'}`;
+    const label = `${credits} ${unit} · ${wait}`;
+    return { label, long: `${locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: ${label}` };
+  })();
+
+  /**
+   * The composer's second line — the Imagine grammar: WHAT you make (the mode pill), in what SHAPE and for how
+   * LONG, and what it COSTS, all next to Send. The ratio for video / image / avatar, the length for video.
+   * Native <select>s: a real picker on iOS, keyboard-complete, 44 px tall, 16 px text on phones (below 16 iOS
+   * zooms the page on tap). They write the SAME state as the options panel, so the two can never disagree. The
+   * length offers the pipeline's real ones (8 / 24 / 48 s — the Veo scene grid); anything else would be a new
+   * generation contract. Phones: its own thin row under the text. From `sm`: inline, between mode and mic.
+   */
+  const composerMeta = (where: 'row' | 'inline') => {
+    const hasFormat = mode === 'video' || mode === 'image' || mode === 'lipsync';
+    if (!hasFormat && !priceTag) return null;
     const aspect: string = mode === 'video' ? ORIENT_ASPECT[videoOrientation] : mode === 'image' ? imgAspect : lipFormat;
-    const options = Array.from(new Set(['9:16', '1:1', '16:9', aspect]));
-    // A music video is always vertical — the options panel disables its format buttons for the same reason.
+    const options = Array.from(new Set([...(mode === 'video' ? ['9:16', '1:1', '16:9', '4:5'] : ['9:16', '1:1', '16:9']), aspect]));
+    // A music video is always vertical — the options panel disables its format for the same reason.
     const lockedVertical = mode === 'video' && videoMode === 'musicvideo';
     const onAspect = (v: string) => {
       if (mode === 'video') { const o = ASPECT_ORIENT[v]; if (o) setVideoOrientation(o); }
@@ -6059,14 +6089,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const pill = `h-11 cursor-pointer appearance-none rounded-full border-0 bg-app-surface/60 pl-3.5 pr-8 font-medium tabular-nums text-app-text transition-colors hover:bg-app-surface focus:shadow-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-50 ${where === 'row' ? 'text-[16px]' : 'text-[12.5px]'}`;
     const secs = locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ';
     return (
-      <div data-testid={`format-pills-${where}`} className={where === 'row' ? 'mt-1 flex items-center gap-1.5 sm:hidden' : 'hidden shrink-0 items-center gap-1 sm:flex'}>
-        <span className="relative inline-flex">
-          <select aria-label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} value={aspect} disabled={lockedVertical}
-            onChange={(e) => onAspect(e.target.value)} className={pill}>
-            {options.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
-          <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
-        </span>
+      <div data-testid={`composer-meta-${where}`} className={where === 'row' ? 'mt-1 flex items-center gap-1.5 sm:hidden' : 'hidden shrink-0 items-center gap-1 sm:flex'}>
+        {hasFormat && (
+          <span className="relative inline-flex">
+            <select aria-label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} value={aspect} disabled={lockedVertical}
+              onChange={(e) => onAspect(e.target.value)} className={pill}>
+              {options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
+          </span>
+        )}
         {mode === 'video' && (
           <span className="relative inline-flex">
             <select aria-label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} value={videoDuration}
@@ -6074,6 +6106,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               {([8, 24, 48] as const).map((d) => <option key={d} value={d}>{`${d}${secs}`}</option>)}
             </select>
             <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
+          </span>
+        )}
+        {priceTag && (
+          <span data-testid="price-tag" title={priceTag.long} className={`whitespace-nowrap tabular-nums text-app-muted ${where === 'row' ? 'ml-auto pr-1 text-[12.5px]' : 'px-1.5 text-[12px]'}`}>
+            <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
           </span>
         )}
       </div>
@@ -6311,23 +6348,24 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 )}
                 {m.imageUrl && (
                   <div className="space-y-1.5">
-                    <div className="group relative">
-                      <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-full cursor-zoom-in" aria-label="open fullscreen">
+                    {/* THE IMAGE IN ITS OWN SHAPE. It was `w-full object-contain` — a 4:5 portrait sat in a wide dark
+                        frame with bars down both sides, and two "send to video" buttons (a 🎬 badge AND a 🎬 pill)
+                        sat on top. Now the frame is the picture (docs/DESIGN.md §8), with one quiet action on it. */}
+                    <div className="group relative w-fit max-w-full">
+                      <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block cursor-zoom-in" aria-label={locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა'}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={m.imageUrl} alt="generated" loading="lazy" decoding="async" className="max-h-96 w-full rounded-xl object-contain ring-1 ring-app-border/10 transition-opacity hover:opacity-90" />
+                        <img src={m.imageUrl} alt={locale === 'en' ? 'Generated image' : locale === 'ru' ? 'Созданное изображение' : 'შექმნილი სურათი'} loading="lazy" decoding="async"
+                          // The image takes its height only once it has loaded — after the feed already stuck to the bottom,
+                          // which left the new picture and its toolbar under the composer. Re-stick, if the user was there.
+                          onLoad={() => { if (nearBottomRef.current) scrollToBottom(); }}
+                          className="block h-auto max-h-[min(70vh,520px)] w-auto max-w-full rounded-2xl ring-1 ring-app-border/10 transition-opacity hover:opacity-95" />
                       </button>
-                      {/* Cross-service bridge — send this image to the Video studio as the character ref.
-                          Corner badge (always visible) + a hover pill (always shown on touch). */}
-                      <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
-                        title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
-                        onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
-                        className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/70 text-[15px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation before:absolute before:-inset-2 before:content-['']">
-                        🎬
-                      </button>
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                      {/* Cross-service bridge — this image as the Video studio's character ref. Always shown on touch,
+                          on hover/focus with a pointer. */}
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-start p-2 transition-opacity duration-200 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100">
                         <button type="button" onClick={(e) => { e.stopPropagation(); sendImageToVideo(m.imageUrl!); }}
-                          className="pointer-events-auto inline-flex min-h-[44px] sm:min-h-0 items-center gap-1.5 rounded-full bg-app-bg/85 px-3.5 py-1.5 text-[12px] font-semibold text-app-text shadow-lg backdrop-blur ring-1 ring-app-border/15 transition-colors hover:bg-app-elevated hover:text-app-accent active:scale-[0.98]">
-                          🎬 <span>{locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}</span>
+                          className="pointer-events-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-black/55 px-3.5 text-[12.5px] font-semibold text-white backdrop-blur-sm ring-1 ring-white/15 transition-colors hover:bg-black/70">
+                          <Clapperboard size={14} aria-hidden="true" /> <span>{locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}</span>
                         </button>
                       </div>
                     </div>
@@ -7043,31 +7081,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
-        {/* ⚠️ THE PRICE MUST BE ON SCREEN BEFORE THE SPEND, IN EVERY STUDIO — NOT JUST IMAGE.
-            A cost line was added for image and nowhere else, so video, music, avatar and remix still
-            charged an amount the user could only discover by watching the balance drop afterwards. For
-            the two expensive ones that is the difference between a considered purchase and a nasty
-            surprise, and a nasty surprise on a first generation is a refund request, not a customer.
-            One expression covers all five, so a new mode cannot quietly ship without a price again. */}
-        {!busy && (() => {
-          const priced: Record<string, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }> = {
-            image: { kind: 'image', n: imgCount, secs: imgTargetFor(imgQuality) },
-            music: { kind: 'music', n: 1, secs: PROGRESS_TARGET.music },
-            video: { kind: 'video', n: 1, secs: PROGRESS_TARGET.video },
-            lipsync: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
-            remix: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
-          };
-          const p = priced[mode];
-          if (!p) return null;
-          const credits = creditCostFor(p.kind, mode === 'video' ? { seconds: videoDuration } : undefined) * p.n;
-          if (credits <= 0) return null;
-          const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი';
-          return (
-            <div className="mb-2 text-center text-[11.5px] text-app-muted">
-              {locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: {credits} {unit} · ~{p.secs}s
-            </div>
-          );
-        })()}
+        {/* The price moved INTO the composer (see `priceTag`) — same rule, one block instead of three. */}
         {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
             canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
             that never send; see their definition for why the old prompt chips were removed). */}
@@ -7076,22 +7090,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             over the result feed, so the ResultCard of the job you had just started rendered behind it. The feed
             is the centre of the studio (docs/DESIGN.md §8); ratio and length now live in the composer's format
             pills, and the full panel is one tap away. */}
-        {mode !== 'chat' && (
-          <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
-            data-testid="options-toggle"
-            style={{ minHeight: TAP_MIN_PX }}
-            // ⚠️ `sm:hidden` TOOK THIS AWAY FROM TABLETS while the panel below stayed forced open — the
-            // control and the thing it controls disappeared at the same breakpoint, from opposite sides. The
-            // panel is never forced open now, so this toggle exists at every width.
-            className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated">
-            <span className="inline-flex items-center gap-1.5"><Sparkles size={14} className="text-app-accent" /> {locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}</span>
-            <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
-          </button>
-        )}
         {/* Phone AND tablet: collapsible sheet capped at 52svh with its OWN internal scroll — so however
             tall the params get (file-upload zones, script slots) the panel can never grow the column past
             the viewport and shove the composer dock off-screen behind the mobile nav bar. The dock
-            stays locked at the bottom. Desktop (lg+): always open, 58svh + own scroll. */}
+            stays locked at the bottom. Desktop (lg+): the same on-demand sheet, 58svh + own scroll. */}
         <div
           /* ⚠️ EVERY TABLET FELL THROUGH A HOLE BETWEEN THE BREAKPOINTS. This used to read
              `sm:max-h-none sm:overflow-visible` with the cap only returning at `lg:` — so from 640px to
@@ -7149,7 +7151,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 requests, and a chip that quadruples a bill is not a chip. */}
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">
-                ✨ {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
+                {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
               </span>
               <PresetRow
                 presets={IMAGE_PRESETS.map((pr) => ({
@@ -7163,7 +7165,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               />
             </div>
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
               {/* WRAPS rather than scrolls. A horizontal scroller was survivable at six ratios; at ten it
                   hides four of them behind the edge with no affordance that they exist, on exactly the
                   narrow screens where discoverability matters most. Two rows on a phone, one on desktop. */}
@@ -7187,20 +7189,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🔢 {locale === 'en' ? 'Count' : locale === 'ru' ? 'Количество' : 'რაოდენობა'}</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Count' : locale === 'ru' ? 'Количество' : 'რაოდენობა'}</span>
                 <div className="flex gap-1.5">
                   {([1, 2, 4] as const).map((n) => <Chip key={n} active={imgCount === n} onClick={() => setImgCount(n)}>{n === 1 ? '1' : `×${n}`}</Chip>)}
                 </div>
               </div>
               <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⚡ {locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'}</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
                 </div>
               </div>
             </div>
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎨 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
               {/* Horizontal-scroll strip (13 styles) — one calm row instead of a 4-5 row wrap wall.
                   Chips are shrink-0 so they scroll; matches the music Style + aspect strips. */}
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -7211,7 +7213,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgNegativeOpen((v) => !v)} aria-expanded={imgNegativeOpen}
                 style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
-                <span className="inline-flex items-center gap-1.5">🚫 {locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
+                <span className="inline-flex items-center gap-1.5">{locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
                 <ChevronDown size={15} className={`transition-transform ${imgNegativeOpen ? 'rotate-180' : ''}`} />
               </button>
               {imgNegativeOpen && (
@@ -7228,7 +7230,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgBoardOpen((v) => !v)} aria-expanded={imgBoardOpen}
                 style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
-                <span className="inline-flex items-center gap-1.5">🎬 {locale === 'en' ? 'Script → Storyboard' : locale === 'ru' ? 'Сценарий → Раскадровка' : 'სცენარი → სცენარიუმი'}{imgBoardScript.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
+                <span className="inline-flex items-center gap-1.5">{locale === 'en' ? 'Script → Storyboard' : locale === 'ru' ? 'Сценарий → Раскадровка' : 'სცენარი → სცენარიუმი'}{imgBoardScript.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
                 <ChevronDown size={15} className={`transition-transform ${imgBoardOpen ? 'rotate-180' : ''}`} />
               </button>
               {imgBoardOpen && (
@@ -7260,8 +7262,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     {imgBoardBusy
                       ? `${locale === 'en' ? 'Rendering scenes' : locale === 'ru' ? 'Рендер сцен' : 'სცენების რენდერი'} ${imgBoardScenes.filter((c) => c.frameUrl).length}/${imgBoardScenes.length || (imgBoardDuration === 48 ? 6 : 3)}…`
                       : imgBoardScenes.length
-                        ? `🔄 ${locale === 'en' ? 'Re-generate frames' : locale === 'ru' ? 'Пересоздать кадры' : 'კადრების ხელახლა გენერაცია'}`
-                        : `🎬 ${locale === 'en' ? 'Generate storyboard frames' : locale === 'ru' ? 'Создать кадры раскадровки' : 'კადრების გენერაცია'}`}
+                        ? `${locale === 'en' ? 'Re-generate frames' : locale === 'ru' ? 'Пересоздать кадры' : 'კადრების ხელახლა გენერაცია'}`
+                        : `${locale === 'en' ? 'Generate storyboard frames' : locale === 'ru' ? 'Создать кадры раскадровки' : 'კადრების გენერაცია'}`}
                   </button>
 
                   {/* STEP 2 — the rendered thumbnails + a single "Export to Video Studio" button (packs the
@@ -7280,7 +7282,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                         </div>
                         <button type="button" onClick={exportImageStoryboardToVideo} disabled={imgBoardBusy || done === 0}
                           className={`flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12.5px] font-semibold transition active:scale-[0.98] min-h-[44px] ${imgBoardBusy || done === 0 ? 'cursor-not-allowed bg-app-surface/50 text-app-muted' : 'bg-app-accent text-white hover:bg-app-accent/90'}`}>
-                          🎥 {locale === 'en' ? 'Export storyboard to Video Studio' : locale === 'ru' ? 'Экспорт в видео-студию' : 'ექსპორტი ვიდეო სტუდიაში'}
+                          {locale === 'en' ? 'Export storyboard to Video Studio' : locale === 'ru' ? 'Экспорт в видео-студию' : 'ექსპორტი ვიდეო სტუდიაში'}
                           {done < imgBoardScenes.length && <span className="text-[10px] font-normal opacity-80">({done}/{imgBoardScenes.length})</span>}
                         </button>
                       </div>
@@ -7298,11 +7300,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" onClick={() => setLipTab('avatar')}
                 className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'avatar' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                👄 {t.modeLipsync}
+                {t.modeLipsync}
               </button>
               <button type="button" onClick={() => setLipTab('motion')}
                 className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${lipTab === 'motion' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                🎭 {locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}
+                {locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}
               </button>
             </div>
             {lipTab === 'motion' ? (
@@ -7393,13 +7395,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             </div>
             {(attachments.some((a) => isAudio(a.mimeType)) || hasTrainedVoice) && (
               <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'My audio' : locale === 'ru' ? 'Моё аудио' : 'ჩემი აუდიო'}</span>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'My audio' : locale === 'ru' ? 'Моё аудио' : 'ჩემი აუდიო'}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {attachments.some((a) => isAudio(a.mimeType)) && (
-                    <Chip active onClick={() => fileRef.current?.click()}>🎵 {t.lipAudioLabel} ✓</Chip>
+                    <Chip active onClick={() => fileRef.current?.click()}>{t.lipAudioLabel} ✓</Chip>
                   )}
                   {hasTrainedVoice && (
-                    <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                    <Chip active={lipMyVoice} onClick={() => setLipMyVoice((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
                   )}
                 </div>
               </div>
@@ -7508,7 +7510,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           onClick={isAdd ? () => { charReplaceRef.current = false; charFileRef.current?.click(); } : undefined}
                           onKeyDown={isAdd ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charReplaceRef.current = false; charFileRef.current?.click(); } } : undefined}
                           className={`relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed text-center transition ${isAdd ? 'cursor-pointer border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70 active:scale-[0.99]' : 'border-app-border/15 bg-app-elevated/20'}`}>
-                          {isAdd ? <span className="flex h-7 w-7 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Plus size={14} /></span> : <span className="text-[11px]">🤖</span>}
+                          {isAdd ? <span className="flex h-7 w-7 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Plus size={14} /></span> : <Sparkles size={12} aria-hidden="true" className="text-app-muted" />}
                           <span className="text-[8.5px] font-medium text-app-muted">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
                         </div>
                       )}
@@ -7527,6 +7529,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <p className="px-0.5 text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.'}</p>
             </div>
 
+            {/* ⚠️ THE PANEL WAS FIFTEEN SECTIONS DEEP, all open at once — script, track, mix, voices, ducking, master
+                script — so a first-time user met the whole film pipeline before writing a word. The path to a
+                film is: preset → mode → photos → effect → Generate. Everything below is still here, one tap
+                away, and opens by itself when it matters: a music video needs its track, and anything already
+                loaded (a script, a track, a master script) stays in view. */}
+            <details className="group/adv" open={videoMode === 'musicvideo' || !!videoScriptDoc || !!videoSoundtrack || !!videoMasterScript.trim()}>
+              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-xl border border-app-border/15 px-3.5 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated/60 [&::-webkit-details-marker]:hidden">
+                <span>{locale === 'en' ? 'Script, audio and voices' : locale === 'ru' ? 'Сценарий, звук и голоса' : 'სცენარი, აუდიო და ხმები'}</span>
+                <ChevronDown size={15} aria-hidden="true" className="text-app-muted transition-transform group-open/adv:rotate-180" />
+              </summary>
+              <div className="mt-2 space-y-2">
             {/* 2-script · SCRIPT ingest slot — the Director follows this verbatim. Lives in the
                 video panel (not the chat composer) so the script ALWAYS reaches the storyboard,
                 independent of chat mode. .txt/.md/.pdf/.docx. */}
@@ -7612,7 +7625,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 pipeline still derives a face if none is given, so generation is never blocked. */}
             {videoMode === 'musicvideo' && !videoCharacterRef && (
               <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] px-3 py-2.5 text-[11.5px] leading-snug text-amber-600 dark:text-amber-400">
-                <span className="shrink-0">📸</span>
+                <Camera size={14} aria-hidden="true" className="shrink-0 text-app-accent" />
                 <span>{locale === 'en'
                   ? 'Add a character photo above for accurate lip-sync (otherwise a face is auto-generated).'
                   : locale === 'ru'
@@ -7621,53 +7634,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             )}
 
-            {/* 3 · Length + Format, side by side */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Length' : locale === 'ru' ? 'Длина' : 'ხანგრძლივობა'}</span>
-                <div className="flex gap-1.5">
-                  <Chip active={videoDuration === 8} onClick={() => setVideoDuration(8)}>8{locale === 'en' ? 's' : 'წმ'}</Chip>
-                  <Chip active={videoDuration === 24} onClick={() => setVideoDuration(24)}>24{locale === 'en' ? 's' : 'წმ'}</Chip>
-                  <Chip active={videoDuration === 48} onClick={() => setVideoDuration(48)}>48{locale === 'en' ? 's' : 'წმ'}</Chip>
-                </div>
-              </div>
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}{videoMode === 'musicvideo' && <span className="ml-1 text-[10px] font-normal text-app-muted">· {locale === 'en' ? '9:16 locked' : locale === 'ru' ? '9:16 фикс.' : '9:16 ფიქს.'}</span>}</span>
-                {/* ISSUE 4 — flex-wrap so all 4 formats (16:9·9:16·1:1·4:5) stay visible in
-                    the half-width grid column on a 375px phone (1:1 + 4:5 were clipping off-screen). */}
-                <div className={`flex flex-wrap items-end gap-x-3 gap-y-2 ${videoMode === 'musicvideo' ? 'opacity-70' : ''}`}>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('landscape')} aria-label="16:9" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 38, height: 22 }} />
-                    <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'landscape' ? 'text-app-accent' : 'text-app-muted'}`}>16:9</span>
-                  </button>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('vertical')} aria-label="9:16" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 22, height: 38 }} />
-                    <span className={`text-[10.5px] font-medium ${(videoMode === 'musicvideo' ? 'vertical' : videoOrientation) === 'vertical' ? 'text-app-accent' : 'text-app-muted'}`}>9:16</span>
-                  </button>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('square')} aria-label="1:1" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${videoMode !== 'musicvideo' && videoOrientation === 'square' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 30, height: 30 }} />
-                    <span className={`text-[10.5px] font-medium ${videoMode !== 'musicvideo' && videoOrientation === 'square' ? 'text-app-accent' : 'text-app-muted'}`}>1:1</span>
-                  </button>
-                  <button type="button" disabled={videoMode === 'musicvideo'} onClick={() => setVideoOrientation('portrait')} aria-label="4:5" className="flex min-h-[44px] flex-col items-center justify-center gap-1 px-1 transition active:scale-95 disabled:cursor-not-allowed touch-manipulation">
-                    <span className={`block rounded-[3px] border-2 transition-colors ${videoMode !== 'musicvideo' && videoOrientation === 'portrait' ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: 26, height: 32 }} />
-                    <span className={`text-[10.5px] font-medium ${videoMode !== 'musicvideo' && videoOrientation === 'portrait' ? 'text-app-accent' : 'text-app-muted'}`}>4:5</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            {/* 3 · Length + Format used to live here. They are the composer's format pills now (ratio incl. 4:5,
+                and 8 / 24 / 48 s) — one control, always in view, instead of a second copy in the panel. */}
 
             {/* 4 · Audio mix — adapts to the chosen mode (the voice-overlap fix made visible) */}
             {videoMode === 'documentary' ? (
               <>
                 <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Music & voice' : locale === 'ru' ? 'Музыка и голос' : 'მუსიკა და ხმა'}</span>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Chip active={videoMusic} onClick={() => setVideoMusic(true)}>{locale === 'en' ? 'Music on' : locale === 'ru' ? 'Музыка вкл' : 'მუსიკა ჩართ.'}</Chip>
                     <Chip active={!videoMusic} onClick={() => setVideoMusic(false)}>{locale === 'en' ? 'Off' : locale === 'ru' ? 'Выкл' : 'გამორთ.'}</Chip>
                     <span className="mx-1 h-4 w-px bg-app-border/15" />
-                    <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>🎙 {t.narration}</Chip>
+                    <Chip active={videoNarration} onClick={() => setVideoNarration((v) => !v)}>{t.narration}</Chip>
                     {hasTrainedVoice && (
-                      <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>🎤 {locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
+                      <Chip active={videoMyVoiceNarration} onClick={() => setVideoMyVoiceNarration((v) => !v)}>{locale === 'en' ? 'My voice' : locale === 'ru' ? 'Мой голос' : 'ჩემი ხმით'}</Chip>
                     )}
                   </div>
                   {/* Character voice — female/male cloned Georgian voice, or "Both"
@@ -7677,9 +7658,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {videoNarration && !videoMyVoiceNarration && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                       <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Character voice:' : locale === 'ru' ? 'Голос персонажа:' : 'პერსონაჟის ხმა:'}</span>
-                      <Chip active={!videoMultiChar && videoNarratorGender === 'female'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('female'); }}>👩 {locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
-                      <Chip active={!videoMultiChar && videoNarratorGender === 'male'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('male'); }}>👨 {locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
-                      <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>👫 {locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
+                      <Chip active={!videoMultiChar && videoNarratorGender === 'female'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('female'); }}>{locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'}</Chip>
+                      <Chip active={!videoMultiChar && videoNarratorGender === 'male'} onClick={() => { setVideoMultiChar(false); setVideoNarratorGender('male'); }}>{locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი'}</Chip>
+                      <Chip active={videoMultiChar} onClick={() => setVideoMultiChar(true)}>{locale === 'en' ? 'Both' : locale === 'ru' ? 'Оба' : 'ორივე'}</Chip>
                     </div>
                   )}
                   {/* PHASE 2 L1 — Character Voice DETAILS: language + persona + tone → VOICE_MAP.
@@ -7687,28 +7668,28 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       view stays calm; the primary female/male/both choice above stays visible. */}
                   {videoNarration && !videoMyVoiceNarration && (
                     <Section
-                      title={`🎙 ${locale === 'en' ? 'Voice details' : locale === 'ru' ? 'Детали голоса' : 'ხმის დეტალები'}`}
-                      badge={`${voiceLanguage === 'ka' ? '🇬🇪' : voiceLanguage === 'en' ? '🇬🇧' : '🇷🇺'} ${voicePersona === 'male' ? '👨' : voicePersona === 'female' ? '👩' : voicePersona === 'child' ? '👶' : '👴'} ${voiceTone === 'epic' ? '🎭' : voiceTone === 'emotional' ? '💫' : '⚡'}`}
+                      title={`${locale === 'en' ? 'Voice details' : locale === 'ru' ? 'Детали голоса' : 'ხმის დეტალები'}`}
+                      badge={`${voiceLanguage.toUpperCase()} · ${voicePersona === 'male' ? (locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი') : voicePersona === 'female' ? (locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი') : voicePersona === 'child' ? (locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი') : (locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმ.')}`}
                     >
                     <div className="flex flex-col gap-1.5">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Language:' : locale === 'ru' ? 'Язык:' : 'ენა:'}</span>
-                        <Chip active={voiceLanguage === 'ka'} onClick={() => setVoiceLanguage('ka')}>🇬🇪 KA</Chip>
-                        <Chip active={voiceLanguage === 'en'} onClick={() => setVoiceLanguage('en')}>🇬🇧 EN</Chip>
-                        <Chip active={voiceLanguage === 'ru'} onClick={() => setVoiceLanguage('ru')}>🇷🇺 RU</Chip>
+                        <Chip active={voiceLanguage === 'ka'} onClick={() => setVoiceLanguage('ka')}>KA</Chip>
+                        <Chip active={voiceLanguage === 'en'} onClick={() => setVoiceLanguage('en')}>EN</Chip>
+                        <Chip active={voiceLanguage === 'ru'} onClick={() => setVoiceLanguage('ru')}>RU</Chip>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Persona:' : locale === 'ru' ? 'Персона:' : 'პერსონა:'}</span>
-                        <Chip active={voicePersona === 'male'} onClick={() => setVoicePersona('male')}>👨 {locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი'}</Chip>
-                        <Chip active={voicePersona === 'female'} onClick={() => setVoicePersona('female')}>👩 {locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი'}</Chip>
-                        <Chip active={voicePersona === 'child'} onClick={() => setVoicePersona('child')}>👶 {locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი'}</Chip>
-                        <Chip active={voicePersona === 'elderly'} onClick={() => setVoicePersona('elderly')}>👴 {locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმული'}</Chip>
+                        <Chip active={voicePersona === 'male'} onClick={() => setVoicePersona('male')}>{locale === 'en' ? 'Man' : locale === 'ru' ? 'Муж' : 'კაცი'}</Chip>
+                        <Chip active={voicePersona === 'female'} onClick={() => setVoicePersona('female')}>{locale === 'en' ? 'Woman' : locale === 'ru' ? 'Жен' : 'ქალი'}</Chip>
+                        <Chip active={voicePersona === 'child'} onClick={() => setVoicePersona('child')}>{locale === 'en' ? 'Child' : locale === 'ru' ? 'Ребёнок' : 'ბავშვი'}</Chip>
+                        <Chip active={voicePersona === 'elderly'} onClick={() => setVoicePersona('elderly')}>{locale === 'en' ? 'Elder' : locale === 'ru' ? 'Пожилой' : 'ხანდაზმული'}</Chip>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Tone:' : locale === 'ru' ? 'Тон:' : 'ტონი:'}</span>
-                        <Chip active={voiceTone === 'epic'} onClick={() => setVoiceTone('epic')}>🎭 {locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпично' : 'ეპიკური'}</Chip>
-                        <Chip active={voiceTone === 'emotional'} onClick={() => setVoiceTone('emotional')}>💫 {locale === 'en' ? 'Emotional' : locale === 'ru' ? 'Эмоц.' : 'ემოციური'}</Chip>
-                        <Chip active={voiceTone === 'energetic'} onClick={() => setVoiceTone('energetic')}>⚡ {locale === 'en' ? 'Energetic' : locale === 'ru' ? 'Энерг.' : 'ენერგიული'}</Chip>
+                        <Chip active={voiceTone === 'epic'} onClick={() => setVoiceTone('epic')}>{locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпично' : 'ეპიკური'}</Chip>
+                        <Chip active={voiceTone === 'emotional'} onClick={() => setVoiceTone('emotional')}>{locale === 'en' ? 'Emotional' : locale === 'ru' ? 'Эмоц.' : 'ემოციური'}</Chip>
+                        <Chip active={voiceTone === 'energetic'} onClick={() => setVoiceTone('energetic')}>{locale === 'en' ? 'Energetic' : locale === 'ru' ? 'Энерг.' : 'ენერგიული'}</Chip>
                       </div>
                     </div>
                     </Section>
@@ -7718,7 +7699,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {videoMusic && (
                     <div className="flex flex-col gap-1.5 border-t border-app-border/10 pt-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-app-muted">🎚 {locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
+                        <span className="text-[11px] text-app-muted">{locale === 'en' ? 'Smart ducking' : locale === 'ru' ? 'Авто-приглушение' : 'ჭკვიანი ჩაჩუმება'}</span>
                         <AppToggle on={videoSmartDuck} onChange={setVideoSmartDuck} label="smart ducking" />
                       </div>
                       {videoSmartDuck && (
@@ -7738,7 +7719,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <button type="button" onClick={() => setVideoMultiChar((v) => !v)} aria-pressed={videoMultiChar}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoMultiChar ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
                   <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">💬 {locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Multiple characters' : locale === 'ru' ? 'Несколько персонажей' : 'მრავალი პერსონაჟი'}</span>
                     <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Each speaker gets their own voice.' : locale === 'ru' ? 'У каждого говорящего свой голос.' : 'თითო პერსონაჟს თავისი ხმა.'}</span>
                   </span>
                   {/* Inline-styled visual track (the card button handles the click). */}
@@ -7750,14 +7731,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                   {videoMultiChar ? (
                     <>
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'Dialogue script' : locale === 'ru' ? 'Сценарий диалога' : 'დიალოგის სცენარი'}</span>
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Dialogue script' : locale === 'ru' ? 'Сценарий диалога' : 'დიალოგის სცენარი'}</span>
                       <textarea value={videoDialogue} onChange={(e) => setVideoDialogue(e.target.value)} rows={4}
                         placeholder={locale === 'en' ? 'Woman: Hello, how are you?\nMan: I am well, thanks!' : locale === 'ru' ? 'Женщина: Привет, как дела?\nМужчина: Хорошо, спасибо!' : 'ქალი: გამარჯობა, როგორ ხარ?\nკაცი: კარგად ვარ, გმადლობ!'}
                         className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
                     </>
                   ) : (
                     <>
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🗣 {locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'What the character says' : locale === 'ru' ? 'Что говорит персонаж' : 'რას ამბობს პერსონაჟი'}</span>
                       <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={2}
                         placeholder={locale === 'en' ? 'Type the dialogue — spoken verbatim (empty = auto)…' : locale === 'ru' ? 'Введите реплику — произнесётся дословно (пусто = авто)…' : 'ჩაწერე რას იტყვის — ზუსტად ისე ილაპარაკებს (ცარიელი = ავტომატური)…'}
                         className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
@@ -7769,18 +7750,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <>
                 {/* Vocal gender — steers the ElevenLabs Music singer (big touch targets) */}
                 <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     {([
-                      ['female', '👩‍🎤', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
-                      ['male', '👨‍🎤', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
-                      ['duet', '👫', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
-                    ] as const).map(([id, emoji, label]) => {
+                      ['female', '', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
+                      ['male', '', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
+                      ['duet', '', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
+                    ] as const).map(([id, , label]) => {
                       const on = videoVocalGender === id;
                       return (
                         <button key={id} type="button" onClick={() => setVideoVocalGender(id)}
                           className={`flex min-h-[52px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-[14px] font-semibold transition active:scale-[0.98] ${on ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-text hover:bg-app-bg/60'}`}>
-                          <span className="text-[19px] leading-none">{emoji}</span> {label}
+                          {label}
                         </button>
                       );
                     })}
@@ -7788,7 +7769,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </div>
                 {/* Song-master info */}
                 <div className="space-y-1 rounded-xl border border-app-accent/25 bg-app-accent/10 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">🎚 {locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-accent">{locale === 'en' ? 'Song-master mix' : locale === 'ru' ? 'Песня — мастер' : 'სიმღერა — მთავარი'}</span>
                   <p className="text-[11px] leading-relaxed text-app-muted">
                     {locale === 'en'
                       ? 'The song rules the master — no narrator, backing ducked −12 dB under the vocal, forced 9:16 vertical. Upload a beat in the Audio Track slot, or one is generated for you.'
@@ -7801,7 +7782,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <button type="button" onClick={() => setVideoLipsync((v) => !v)} aria-pressed={videoLipsync}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoLipsync ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
                   <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
                     <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'A lip-sync pass after the film assembles (adds time).' : locale === 'ru' ? 'Липсинк после сборки фильма (дольше).' : 'ლიპსინკი ფილმის აწყობის შემდეგ (დრო ემატება).'}</span>
                   </span>
                   {/* Inline-styled visual track (the card button handles the click). */}
@@ -7813,7 +7794,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     sang auto-written lyrics. Bound to videoSpeech (folded into the brief in send()), so the
                     AI performs THESE Georgian lyrics. Empty = auto-written. */}
                 <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст песни' : 'ლირიკა'}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст песни' : 'ლირიკა'}</span>
                   <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'What the singer sings (Georgian works). Empty = auto-written.' : locale === 'ru' ? 'Что поёт исполнитель (можно на грузинском). Пусто = авто.' : 'რას მღერის შემსრულებელი (ქართული მუშაობს). ცარიელი = ავტომატური.'}</span>
                   <textarea value={videoSpeech} onChange={(e) => setVideoSpeech(e.target.value)} rows={3}
                     placeholder={locale === 'en' ? 'Paste the song lyrics…' : locale === 'ru' ? 'Вставьте текст песни…' : 'ჩასვი სიმღერის ტექსტი…'}
@@ -7827,16 +7808,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 the storyboard then invented its own. When filled it drives the scenes + per-speaker
                 casting; empty = auto. Folded into the brief in send() for every video mode. */}
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎬 {locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
               <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
               <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
                 placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
                 className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
             </div>
 
+              </div>
+            </details>
+
             {/* 5 · Effect — the primary creative control, kept fully visible. */}
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
               {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
                   reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -7847,7 +7831,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* Advanced — transition + engine folded together (both are set-and-forget defaults);
                 the collapsed badge surfaces the current transition glyph + engine so nothing hides. */}
             <Section
-              title={`⚙️ ${locale === 'en' ? 'Advanced' : locale === 'ru' ? 'Дополнительно' : 'დამატებითი'}`}
+              title={`${locale === 'en' ? 'Advanced' : locale === 'ru' ? 'Дополнительно' : 'დამატებითი'}`}
               badge={`${videoTransition === 'crossfade' ? '⤫' : videoTransition === 'cut' ? '▮' : videoTransition === 'dissolve' ? '◈' : videoTransition === 'zoom' ? '⊕' : '▷'} · ${videoModel === 'kling' ? 'Kling' : videoModel === 'hailuo' ? 'Hailuo' : 'Veo'}`}
             >
               <div className="space-y-2">
@@ -7863,7 +7847,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     fallbacks only (the ServiceManager cascade), so they're no longer competing UI choices. */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Engine:' : locale === 'ru' ? 'Движок:' : 'ძრავა:'}</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-app-accent/15 px-2.5 py-1 text-[12px] font-semibold text-app-accent ring-1 ring-app-accent/30">✨ Google Veo</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-app-accent/15 px-2.5 py-1 text-[12px] font-semibold text-app-accent ring-1 ring-app-accent/30">Google Veo</span>
                   <span className="text-[10.5px] text-app-muted">{locale === 'en' ? 'auto-fallback if busy' : locale === 'ru' ? 'авто-резерв при загрузке' : 'ავტო-სარეზერვო დატვირთვისას'}</span>
                 </div>
               </div>
@@ -7872,7 +7856,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* PHASE 2 L1 — Camera controls folded (advanced; 'Auto' + intensity 5 are the sensible
                 defaults). Badge appears only when the user has moved off the defaults. */}
             <Section
-              title={`🎥 ${locale === 'en' ? 'Camera' : locale === 'ru' ? 'Камера' : 'კამერა'}`}
+              title={`${locale === 'en' ? 'Camera' : locale === 'ru' ? 'Камера' : 'კამერა'}`}
               badge={(videoCameraMove !== 'auto' || videoMotionIntensity !== 5)
                 ? `${videoCameraMove === 'pan_left' ? '←' : videoCameraMove === 'pan_right' ? '→' : videoCameraMove === 'zoom_in' ? '＋' : videoCameraMove === 'zoom_out' ? '－' : videoCameraMove === 'tilt_up' ? '↑' : videoCameraMove === 'tilt_down' ? '↓' : ''} ${videoMotionIntensity}/10`.trim()
                 : false}
@@ -7899,7 +7883,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 existing videoReadyToSend gate; additive, no pipeline change. */}
             <button type="button" disabled={!videoReadyToSend} onClick={() => void send()}
               className={`mt-1 flex w-full items-center justify-center gap-2 rounded-xl p-3.5 text-[14px] font-semibold transition active:scale-[0.99] ${!videoReadyToSend ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)] hover:brightness-110'}`}>
-              🎬 {locale === 'en' ? 'Generate video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს გენერაცია'}
+              {locale === 'en' ? 'Generate video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს გენერაცია'}
             </button>
             {!videoReadyToSend && <p className="text-center text-[11.5px] text-app-muted">{locale === 'en' ? 'Add a photo above to start' : locale === 'ru' ? 'Добавьте фото выше, чтобы начать' : 'დაამატე ფოტო ზემოთ დასაწყებად'}</p>}
             </>)}
@@ -7914,7 +7898,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <img src={productImage} alt="product" loading="lazy" decoding="async" className="max-h-32 rounded-lg object-contain" />
                   ) : (
                     <>
-                      <span className="text-2xl">📦</span>
+                      <Package size={24} aria-hidden="true" className="text-app-muted" />
                       <span className="text-[12px] font-medium text-app-text">{locale === 'en' ? 'Upload product photo' : locale === 'ru' ? 'Загрузите фото продукта' : 'ატვირთეთ პროდუქტის ფოტო'}</span>
                       <span className="text-[10.5px] text-app-muted">{locale === 'en' ? 'It becomes the locked foreground' : locale === 'ru' ? 'Станет фиксированным передним планом' : 'დარჩება ფიქსირებულ წინა პლანზე'}</span>
                     </>
@@ -7926,7 +7910,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {productImage && (
                   <div>
                     <span className="mb-1.5 block text-[11px] text-app-muted">
-                      📸 {locale === 'en' ? `Shots ${1 + productImages.length}/${MAX_AD_IMAGES} — more angles (30/60s)` : locale === 'ru' ? `Кадры ${1 + productImages.length}/${MAX_AD_IMAGES} — больше ракурсов` : `კადრები ${1 + productImages.length}/${MAX_AD_IMAGES} — მეტი რაკურსი (30/60წმ)`}
+                      {locale === 'en' ? `Shots ${1 + productImages.length}/${MAX_AD_IMAGES} — more angles (30/60s)` : locale === 'ru' ? `Кадры ${1 + productImages.length}/${MAX_AD_IMAGES} — больше ракурсов` : `კადრები ${1 + productImages.length}/${MAX_AD_IMAGES} — მეტი რაკურსი (30/60წმ)`}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -7950,7 +7934,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 )}
                 {/* Output format — dedicated to the product ad (9:16 default). */}
                 <div>
-                  <span className="mb-1.5 block text-[11px] text-app-muted">📐 {locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+                  <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'}</span>
                   <div className="grid grid-cols-3 gap-1.5">
                     {([['9:16', 'h-4 w-2.5'], ['1:1', 'h-3.5 w-3.5'], ['16:9', 'h-3 w-5']] as const).map(([id, box]) => (
                       <button key={id} type="button" onClick={() => setProductAspect(id)}
@@ -7965,10 +7949,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 <div>
                   <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Commercial style' : locale === 'ru' ? 'Стиль рекламы' : 'რეკლამის სტილი'}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    <Chip active={productPreset === 'splash'} onClick={() => setProductPreset('splash')}>💧 {locale === 'en' ? 'Splash' : locale === 'ru' ? 'Всплеск' : 'შხეფა'}</Chip>
-                    <Chip active={productPreset === 'epic'} onClick={() => setProductPreset('epic')}>🎬 {locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпик' : 'ეპიკური'}</Chip>
-                    <Chip active={productPreset === 'luxury'} onClick={() => setProductPreset('luxury')}>✨ {locale === 'en' ? 'Luxury' : locale === 'ru' ? 'Люкс' : 'ლუქსი'}</Chip>
-                    <Chip active={productPreset === 'nature'} onClick={() => setProductPreset('nature')}>🍃 {locale === 'en' ? 'Nature' : locale === 'ru' ? 'Природа' : 'ბუნება'}</Chip>
+                    <Chip active={productPreset === 'splash'} onClick={() => setProductPreset('splash')}>{locale === 'en' ? 'Splash' : locale === 'ru' ? 'Всплеск' : 'შხეფა'}</Chip>
+                    <Chip active={productPreset === 'epic'} onClick={() => setProductPreset('epic')}>{locale === 'en' ? 'Epic' : locale === 'ru' ? 'Эпик' : 'ეპიკური'}</Chip>
+                    <Chip active={productPreset === 'luxury'} onClick={() => setProductPreset('luxury')}>{locale === 'en' ? 'Luxury' : locale === 'ru' ? 'Люкс' : 'ლუქსი'}</Chip>
+                    <Chip active={productPreset === 'nature'} onClick={() => setProductPreset('nature')}>{locale === 'en' ? 'Nature' : locale === 'ru' ? 'Природа' : 'ბუნება'}</Chip>
                   </div>
                 </div>
                 {/* Brand context → price/CTA overlay (burned) + auto Georgian voiceover.
@@ -7976,7 +7960,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     and the ad gets a price chip, a CTA pill, a brand lower-third and a
                     short spoken voiceover (cloned KA voice), applied by /api/video/assemble. */}
                 <Section
-                  title={`🏷️ ${locale === 'en' ? 'Brand & voiceover' : locale === 'ru' ? 'Бренд и озвучка' : 'ბრენდი და გახმოვანება'}`}
+                  title={`${locale === 'en' ? 'Brand & voiceover' : locale === 'ru' ? 'Бренд и озвучка' : 'ბრენდი და გახმოვანება'}`}
                   badge={(productBrand.trim() || productHook.trim() || productPrice.trim() || productCtaCustom.trim())
                     ? '✓'
                     : (locale === 'en' ? 'optional' : locale === 'ru' ? 'опц.' : 'არჩ.')}
@@ -7996,7 +7980,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <div className="flex flex-wrap gap-1.5">
                     {(['shop_now', 'order_now', 'book_now', 'learn_more', 'try_free', 'custom'] as ProductCtaOption[]).map((opt) => (
                       <Chip key={opt} active={productCta === opt} onClick={() => setProductCta(opt)}>
-                        {opt === 'custom' ? (locale === 'en' ? '✏️ Custom' : locale === 'ru' ? '✏️ Свой' : '✏️ სხვა') : productCtaText(opt, '', locale)}
+                        {opt === 'custom' ? (locale === 'en' ? 'Custom' : locale === 'ru' ? 'Свой' : 'სხვა') : productCtaText(opt, '', locale)}
                       </Chip>
                     ))}
                   </div>
@@ -8009,7 +7993,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button type="button" onClick={() => setProductVoiceover((v) => !v)}
                     className="flex w-full items-center justify-between rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-left transition active:scale-[0.99]">
                     <span className="flex items-center gap-1.5 text-[12px] font-medium text-app-text">
-                      🎙️ {locale === 'en' ? 'Auto voiceover' : locale === 'ru' ? 'Авто-озвучка' : 'ავტო-გახმოვანება'}
+                      {locale === 'en' ? 'Auto voiceover' : locale === 'ru' ? 'Авто-озвучка' : 'ავტო-გახმოვანება'}
                     </span>
                     {/* Inline-styled visual track (the row button handles the click). */}
                     <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: productVoiceover ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
@@ -8032,7 +8016,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     ads can render concurrently without clobbering one shared panel slot. */}
                 <button type="button" disabled={!productImage} onClick={generateProductAd}
                   className={`flex w-full items-center justify-center gap-2 rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${!productImage ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-app-accent text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  📦 {locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}
+                  {locale === 'en' ? 'Generate product ad' : locale === 'ru' ? 'Создать рекламу' : 'რეკლამის შექმნა'}
                 </button>
                 {/* Upload hint — the Generate button is gated on a product photo (the locked
                     foreground); say so instead of leaving the button silently disabled. */}
@@ -8048,7 +8032,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {videoTab === 'videoswap' && (
               <div className="space-y-3">
                 <p className="rounded-lg bg-app-elevated/40 px-3 py-2 text-[10.5px] leading-snug text-app-muted">
-                  🔄 {locale === 'en'
+                  {locale === 'en'
                     ? 'Upload a video + a character photo → AI swaps the face in your video (motion preserved). If it can’t, it regenerates a short clip instead.'
                     : locale === 'ru'
                       ? 'Загрузите видео + фото персонажа → ИИ заменит лицо в вашем видео (движение сохраняется). Если не получится — создаст короткий клип.'
@@ -8057,7 +8041,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
                 {/* 1 — source video */}
                 <div>
-                  <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">📹 {locale === 'en' ? 'Source video' : locale === 'ru' ? 'Исходное видео' : 'წყარო ვიდეო'}</span>
+                  <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">{locale === 'en' ? 'Source video' : locale === 'ru' ? 'Исходное видео' : 'წყარო ვიდეო'}</span>
                   {!swapSourceVideo ? (
                     <div role="button" tabIndex={0}
                       onClick={() => { if (!swapSourceVideoBusy) swapVideoRef.current?.click(); }}
@@ -8066,7 +8050,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       {swapSourceVideoBusy ? (
                         <><Loader2 size={18} className="animate-spin text-orange-400" /><span className="text-[11px] text-app-muted">{locale === 'en' ? 'Uploading…' : locale === 'ru' ? 'Загрузка…' : 'იტვირთება…'}</span></>
                       ) : (
-                        <><span className="text-2xl">📹</span>
+                        <><Video size={24} aria-hidden="true" className="text-app-muted" />
                         <span className="text-[12px] font-medium text-app-text">{locale === 'en' ? 'Drop a video or tap' : locale === 'ru' ? 'Перетащите видео' : 'ჩააგდე ვიდეო ან დააწკაპე'}</span>
                         <span className="text-[10px] text-app-muted">.mp4 .mov — {locale === 'en' ? 'max 100MB' : locale === 'ru' ? 'макс 100МБ' : 'მაქს 100MB'}</span></>
                       )}
@@ -8084,7 +8068,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
                 {/* 2 — new character photo (reuses charFileRef + videoCharacterRef) */}
                 <div>
-                  <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">👤 {locale === 'en' ? 'New character (photo)' : locale === 'ru' ? 'Новый персонаж (фото)' : 'ახალი პერსონაჟი (ფოტო)'}</span>
+                  <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-app-muted">{locale === 'en' ? 'New character (photo)' : locale === 'ru' ? 'Новый персонаж (фото)' : 'ახალი პერსონაჟი (ფოტო)'}</span>
                   <div role="button" tabIndex={0} onClick={() => { charReplaceRef.current = true; charFileRef.current?.click(); }}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); charReplaceRef.current = true; charFileRef.current?.click(); } }}
                     className={`relative flex min-h-[80px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-3 text-center transition active:scale-[0.99] ${videoCharacterRef ? 'border-orange-400/50 bg-orange-500/[0.06]' : 'border-app-border/30 bg-app-elevated/40 hover:bg-app-elevated/70'}`}>
@@ -8108,17 +8092,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     rather than leaving it silently disabled. */}
                 {!swapSourceVideo && (
                   <div className="flex items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.08] px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
-                    <span>⚠️</span><span>{locale === 'en' ? 'Please upload a source video first.' : locale === 'ru' ? 'Сначала загрузите исходное видео.' : 'ჯერ ატვირთეთ საწყისი ვიდეო.'}</span>
+                    <AlertTriangle size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-app-warning" /><span>{locale === 'en' ? 'Please upload a source video first.' : locale === 'ru' ? 'Сначала загрузите исходное видео.' : 'ჯერ ატვირთეთ საწყისი ვიდეო.'}</span>
                   </div>
                 )}
                 {swapSourceVideo && !videoCharacterRef && (
                   <div className="flex items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.08] px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
-                    <span>⚠️</span><span>{locale === 'en' ? 'A character photo is required to swap.' : locale === 'ru' ? 'Нужно фото персонажа для замены.' : 'პერსონაჟის შესაცვლელად საჭიროა ფოტო.'}</span>
+                    <AlertTriangle size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-app-warning" /><span>{locale === 'en' ? 'A character photo is required to swap.' : locale === 'ru' ? 'Нужно фото персонажа для замены.' : 'პერსონაჟის შესაცვლელად საჭიროა ფოტო.'}</span>
                   </div>
                 )}
                 {swapSourceVideo && videoCharacterRef && (
                   <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-2 text-[11px] text-emerald-600 dark:text-emerald-400">
-                    <span>✅</span><span>{locale === 'en' ? 'Ready — video + character set.' : locale === 'ru' ? 'Готово — видео + персонаж заданы.' : 'მზადაა! ვიდეო + პერსონაჟი დაყენებულია.'}</span>
+                    <Check size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-app-accent" /><span>{locale === 'en' ? 'Ready — video + character set.' : locale === 'ru' ? 'Готово — видео + персонаж заданы.' : 'მზადაა! ვიდეო + პერსონაჟი დაყენებულია.'}</span>
                   </div>
                 )}
 
@@ -8127,7 +8111,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     (independent of the legacy single-render `busy` used by chat/storyboard/lipsync). */}
                 <button type="button" disabled={!swapSourceVideo || !videoCharacterRef} onClick={() => void runVideoSwap()}
                   className={`min-h-[44px] w-full rounded-xl p-3 text-[13px] font-semibold transition active:scale-[0.99] ${(!swapSourceVideo || !videoCharacterRef) ? 'cursor-not-allowed bg-app-border/20 text-app-muted' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-[0_2px_12px_rgba(0,0,0,0.18)]'}`}>
-                  🔄 {locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა'}
+                  {locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა'}
                 </button>
               </div>
             )}
@@ -8168,7 +8152,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             ? (locale === 'en' ? 'Full' : locale === 'ru' ? 'Полная' : 'სრული')
             : `${musicDuration}${locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}`;
           const tempoBadge = tempos.find(([v]) => v === musicTempo)?.[1] ?? musicTempo;
-          const vocalBadge = musicInstrumental ? '🎹' : musicVoiceType === 'male' ? '♂' : musicVoiceType === 'duet' ? '👫' : '♀';
+          const vocalBadge = musicInstrumental
+            ? (locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრ.')
+            : musicVoiceType === 'male' ? (locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცის') : musicVoiceType === 'duet' ? (locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი') : (locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალის');
           const fineTuneBadge = `${durBadge} · ${tempoBadge} · ${vocalBadge}`;
           return (
           <div className="mb-2 space-y-4">
@@ -8176,7 +8162,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 pill is derived from the live parameter state. Above Style so most users tap a vibe
                 and never need to open Fine-tune. */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">✨ {locale === 'en' ? 'Presets' : locale === 'ru' ? 'Пресеты' : 'პრესეტები'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Presets' : locale === 'ru' ? 'Пресеты' : 'პრესეტები'}</span>
               {/* Migrated to the shared PresetRow: it WRAPS instead of scrolling — a scroller hides the
                   later presets behind an edge with no affordance — and its buttons carry a 44px floor,
                   which the local Chip only gained recently. The derived `activePresetId` is unchanged:
@@ -8195,7 +8181,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* A — Style (single select, horizontal scroll) */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
               <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {MUSIC_STYLES.map(([val, label]) => (
                   <Chip key={val} active={musicGenre === val} onClick={() => setMusicGenre(val)}>{label[locale] ?? label.en}</Chip>
@@ -8207,10 +8193,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 Your-voice / Vocal subtrees render below, so hiding it would hide the cause of those
                 sections appearing and disappearing. */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎙 {locale === 'en' ? 'Track type' : locale === 'ru' ? 'Тип трека' : 'ტიპი'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Track type' : locale === 'ru' ? 'Тип трека' : 'ტიპი'}</span>
               <div className="flex gap-1.5">
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>🎵 {locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრუმენტული'}</Chip>
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>🎤 {locale === 'en' ? 'Song' : locale === 'ru' ? 'Песня' : 'სიმღერა'}</Chip>
+                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრუმენტული'}</Chip>
+                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{locale === 'en' ? 'Song' : locale === 'ru' ? 'Песня' : 'სიმღერა'}</Chip>
               </div>
             </div>
 
@@ -8218,19 +8204,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 Section so the default panel stays calm. Every preset already writes these, so most users
                 never open it; the badge surfaces the live values. The Vocal sub-row renders only for a
                 sung track (the same !instrumental gate as before). */}
-            <Section title={<>⚙️ {locale === 'en' ? 'Fine-tune' : locale === 'ru' ? 'Настройка' : 'დახვეწა'}</>} badge={fineTuneBadge}>
+            <Section title={<>{locale === 'en' ? 'Fine-tune' : locale === 'ru' ? 'Настройка' : 'დახვეწა'}</>} badge={fineTuneBadge}>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">⏱ {locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                     <div className="flex flex-wrap gap-1.5">
                       {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
                       {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
-                      <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>🎵 {locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
+                      <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>{locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
                     </div>
                   </div>
                   <div>
-                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎵 {locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
+                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
                     <div className="flex flex-wrap gap-1.5">
                       {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
                     </div>
@@ -8239,14 +8225,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Vocal gender — only meaningful for a sung track */}
               {!musicInstrumental && (
                 <div>
-                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎤 {locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
+                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
                   <div className="flex flex-wrap gap-1.5">
                     {([
-                      ['female', '👩', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
-                      ['male', '👨', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
-                      ['duet', '👫', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
-                    ] as const).map(([id, emoji, label]) => (
-                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{emoji} {label}</Chip>
+                      ['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
+                      ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
+                      ['duet', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
+                    ] as const).map(([id, label]) => (
+                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{label}</Chip>
                     ))}
                   </div>
                 </div>
@@ -8260,7 +8246,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {!musicInstrumental && (
               <div>
                 <span className="mb-1.5 flex items-center justify-between gap-2 text-[12.5px] font-semibold text-app-text">
-                  <span>📝 {locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ლირიკა'} <span className="font-normal text-app-muted/60">({locale === 'en' ? 'optional' : locale === 'ru' ? 'необязательно' : 'არჩევითი'})</span></span>
+                  <span>{locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ლირიკა'} <span className="font-normal text-app-muted/60">({locale === 'en' ? 'optional' : locale === 'ru' ? 'необязательно' : 'არჩევითი'})</span></span>
                   <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics}
                     className="inline-flex shrink-0 items-center gap-1 min-h-[44px] rounded-full border border-app-accent/40 px-2.5 py-1 text-[11px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 disabled:opacity-50">
                     {writingLyrics ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t.writeLyricsBtn}
@@ -8306,7 +8292,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </button>
                   {/* Trained RVC toggle — ONLY when a completed trained model exists (probed on mount). */}
                   {hasTrainedVoice && (
-                    <Chip active={useMyVoice} onClick={() => setUseMyVoice((v) => !v)}>🎙 {t.voiceMode}</Chip>
+                    <Chip active={useMyVoice} onClick={() => setUseMyVoice((v) => !v)}>{t.voiceMode}</Chip>
                   )}
                 </div>
                 {/* With a sample attached (and NOT overridden by the trained toggle): pick how it's used. */}
@@ -8324,7 +8310,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* C — Prompt (max 300 chars, live counter bottom-right) */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">✍️ {locale === 'en' ? 'Prompt' : locale === 'ru' ? 'Описание' : 'აღწერა'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Prompt' : locale === 'ru' ? 'Описание' : 'აღწერა'}</span>
               <div className="relative">
                 <textarea
                   value={musicPrompt}
@@ -8344,18 +8330,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {(() => {
               const trainedActive = useMyVoice && hasTrainedVoice && !musicInstrumental;
               const genLabel = trainedActive
-                ? `🎙 ${t.voiceMode}`
+                ? `${t.voiceMode}`
                 : hasVoiceSample && musicAudioMode === 'voice'
-                  ? `🎤 ${t.voiceMode}`
+                  ? `${t.voiceMode}`
                   : hasVoiceSample && musicAudioMode === 'cover'
                     ? t.coverMode
                     : musicInstrumental
-                      ? `🎵 ${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
+                      ? `${locale === 'en' ? 'Generate Music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის გენერაცია'}`
                       : musicVoiceType === 'duet'
-                        ? `🎤 ${locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'}`
+                        ? `${locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'}`
                         : musicVoiceType === 'male'
-                          ? `🎤 ${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
-                          : `🎤 ${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
+                          ? `${locale === 'en' ? 'Male Song' : locale === 'ru' ? 'Мужская песня' : 'კაცის სიმღერა'}`
+                          : `${locale === 'en' ? 'Female Song' : locale === 'ru' ? 'Женская песня' : 'ქალის სიმღერა'}`;
               return (
                 <button type="button" onClick={() => void send({ promptOverride: musicPrompt })} disabled={busy || (!musicPrompt.trim() && !hasVoiceSample && !trainedActive)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
@@ -8367,7 +8353,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {/* E — Result (hidden until a track exists): audio player + download/share */}
             {lastMusic?.audioUrl && (
               <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="block text-[12.5px] font-semibold text-app-text">🎧 {locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
+                <span className="block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
                 {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
                 <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} />
                 <div className="flex flex-wrap gap-1.5">
@@ -8383,8 +8369,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   {/* Cross-service bridge — turn this track into a music video. The 🎤 IS the icon. */}
                   <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, 'Generated Track')}
                     title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-[16px] leading-none transition hover:bg-app-elevated active:scale-90 sm:h-9 sm:w-9">
-                    🎤
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-text transition-colors hover:bg-app-elevated sm:h-9 sm:w-9">
+                    <Clapperboard size={16} aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -8398,7 +8384,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div className="mb-2 space-y-4">
             {/* 1 — Source video */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🎬 {locale === 'en' ? 'Source video' : locale === 'ru' ? 'Исходное видео' : 'საწყისი ვიდეო'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Source video' : locale === 'ru' ? 'Исходное видео' : 'საწყისი ვიდეო'}</span>
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-app-border/30 bg-app-bg/40 px-4 py-5 text-[12.5px] font-medium text-app-muted transition-colors hover:border-app-accent/50 hover:text-app-text">
                 <input type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickRemixMedia(f, 'video'); e.currentTarget.value = ''; }} />
                 {remixVideoBusy ? <><Loader2 size={15} className="animate-spin" /> {t.remixRunning}</> : remixVideo ? <><Check size={15} className="text-app-accent" /> <span className="max-w-[200px] truncate">{remixVideo.name}</span></> : <><Upload size={15} /> {t.remixUploadHint}</>}
@@ -8410,10 +8396,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* 2 — Edit operation */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">🛠 {locale === 'en' ? 'Edit' : locale === 'ru' ? 'Редактирование' : 'რედაქტირება'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Edit' : locale === 'ru' ? 'Редактирование' : 'რედაქტირება'}</span>
               <div className="flex flex-wrap gap-1.5">
-                {([['restyle', '🎨'], ['character', '🧑‍🎤'], ['captions', '💬'], ['voiceover', '🎙'], ['music', '🎵'], ['redub', '👄'], ['trim', '✂️']] as const).map(([id, emoji]) => (
-                  <Chip key={id} active={remixOp === id} onClick={() => setRemixOp(id)}>{emoji} {REMIX_OP_LABELS[id][locale] ?? REMIX_OP_LABELS[id].en}</Chip>
+                {([['restyle', Palette], ['character', User], ['captions', Subtitles], ['voiceover', Mic], ['music', Music2], ['redub', Languages], ['trim', Scissors]] as const).map(([id, OpIcon]) => (
+                  <Chip key={id} active={remixOp === id} onClick={() => setRemixOp(id)}><OpIcon size={13} aria-hidden="true" className="-ml-0.5 mr-1 inline-block align-[-2px]" />{REMIX_OP_LABELS[id][locale] ?? REMIX_OP_LABELS[id].en}</Chip>
                 ))}
               </div>
             </div>
@@ -8448,8 +8434,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             {(remixOp === 'voiceover' || remixOp === 'redub') && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Voice:' : locale === 'ru' ? 'Голос:' : 'ხმა:'}</span>
-                <Chip active={remixGender === 'female'} onClick={() => setRemixGender('female')}>👩 {locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'}</Chip>
-                <Chip active={remixGender === 'male'} onClick={() => setRemixGender('male')}>👨 {locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი'}</Chip>
+                <Chip active={remixGender === 'female'} onClick={() => setRemixGender('female')}>{locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'}</Chip>
+                <Chip active={remixGender === 'male'} onClick={() => setRemixGender('male')}>{locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი'}</Chip>
               </div>
             )}
 
@@ -8486,7 +8472,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               return (
                 <button type="button" onClick={() => void runRemix()} disabled={disabled}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-app-accent px-4 py-3 text-[14px] font-bold text-app-bg shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:opacity-90 disabled:opacity-50">
-                  {remixBusy ? <><Loader2 size={16} className="animate-spin" /> {t.remixRunning}</> : <>✨ {REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en}</>}
+                  {remixBusy ? <><Loader2 size={16} className="animate-spin" /> {t.remixRunning}</> : <>{REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en}</>}
                 </button>
               );
             })()}
@@ -8500,20 +8486,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && (
           <div className="mb-2 space-y-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
-              🎬 {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}
+              {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {([
-                ['📝', locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრები', locale === 'en' ? 'add subtitles: ' : locale === 'ru' ? 'добавь субтитры: ' : 'სუბტიტრები დაამატე: '],
-                ['🎨', locale === 'en' ? 'Color' : locale === 'ru' ? 'Цвет' : 'ფერი', locale === 'en' ? 'cinematic color grade' : locale === 'ru' ? 'кинематографичный цвет' : 'ფერი შეცვალე — კინემატოგრაფიული'],
-                ['🎵', locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', locale === 'en' ? 'add background music (attach an audio file too)' : locale === 'ru' ? 'добавь музыку (прикрепите аудиофайл)' : 'მუსიკა ჩაამატე (აუდიო ფაილიც მიამაგრე)'],
-                ['✏️', locale === 'en' ? 'Text' : locale === 'ru' ? 'Текст' : 'ტექსტი', locale === 'en' ? 'add a text overlay: ' : locale === 'ru' ? 'добавь текст: ' : 'ტექსტი დაამატე: '],
-                ['✂️', locale === 'en' ? 'Trim' : locale === 'ru' ? 'Обрезка' : 'მოჭრა', locale === 'en' ? 'trim the first 10 seconds' : locale === 'ru' ? 'обрежь первые 10 секунд' : 'მოჭერი პირველი 10 წამი'],
-                ['⚡', locale === 'en' ? 'Speed' : locale === 'ru' ? 'Скорость' : 'სიჩქარე', locale === 'en' ? 'speed it up 2x' : locale === 'ru' ? 'ускорь в 2 раза' : 'სიჩქარე გაზარდე 2x'],
-              ] as const).map(([emoji, label, fill]) => (
+                [Subtitles, locale === 'en' ? 'Subtitles' : locale === 'ru' ? 'Субтитры' : 'სუბტიტრები', locale === 'en' ? 'add subtitles: ' : locale === 'ru' ? 'добавь субтитры: ' : 'სუბტიტრები დაამატე: '],
+                [Palette, locale === 'en' ? 'Color' : locale === 'ru' ? 'Цвет' : 'ფერი', locale === 'en' ? 'cinematic color grade' : locale === 'ru' ? 'кинематографичный цвет' : 'ფერი შეცვალე — კინემატოგრაფიული'],
+                [Music2, locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა', locale === 'en' ? 'add background music (attach an audio file too)' : locale === 'ru' ? 'добавь музыку (прикрепите аудиофайл)' : 'მუსიკა ჩაამატე (აუდიო ფაილიც მიამაგრე)'],
+                [Type, locale === 'en' ? 'Text' : locale === 'ru' ? 'Текст' : 'ტექსტი', locale === 'en' ? 'add a text overlay: ' : locale === 'ru' ? 'добавь текст: ' : 'ტექსტი დაამატე: '],
+                [Scissors, locale === 'en' ? 'Trim' : locale === 'ru' ? 'Обрезка' : 'მოჭრა', locale === 'en' ? 'trim the first 10 seconds' : locale === 'ru' ? 'обрежь первые 10 секунд' : 'მოჭერი პირველი 10 წამი'],
+                [Gauge, locale === 'en' ? 'Speed' : locale === 'ru' ? 'Скорость' : 'სიჩქარე', locale === 'en' ? 'speed it up 2x' : locale === 'ru' ? 'ускорь в 2 раза' : 'სიჩქარე გაზარდე 2x'],
+              ] as const).map(([ChipIcon, label, fill]) => (
                 <button key={label} type="button" onClick={() => { setInput(fill); taRef.current?.focus(); }}
                   className="inline-flex items-center gap-1 rounded-full border border-app-border/20 bg-app-bg/40 px-2.5 py-1 text-[12px] font-medium text-app-text transition-colors hover:border-app-accent/50 hover:text-app-accent">
-                  {emoji} {label}
+                  <ChipIcon size={13} aria-hidden="true" /> {label}
                 </button>
               ))}
             </div>
@@ -8760,7 +8746,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60"
           />
           {/* Phones: the format pills get their own thin row — the controls row below has ~70 px to spare. */}
-          {formatPills('row')}
+          {composerMeta('row')}
 
           {/* Controls row — a single clean line on every viewport: [+][📷] locked FAR-LEFT, a
               flex-1 spacer, then the mode chip + mic + live-voice + send clustered FAR-RIGHT. To fit
@@ -8781,6 +8767,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
               <Camera size={19} />
             </button>
+            {/* The service's options — an icon in the composer, not a full-width bar above it. The sheet itself
+                still opens above the composer (capped, own scroll); chat has no options. */}
+            {mode !== 'chat' && (
+              <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
+                data-testid="options-toggle"
+                aria-label={locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}
+                title={locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-app-surface ${optionsOpen ? 'bg-app-text text-app-bg hover:bg-app-text' : 'text-app-muted hover:text-app-text'}`}>
+                <SlidersHorizontal size={18} aria-hidden="true" />
+              </button>
+            )}
 
             {/* Spacer — pushes the mode selector + mic/live/send to the FAR-RIGHT on EVERY viewport
                 so [+]/📷 stay far-left (the asymmetric split the design calls for). */}
@@ -8890,7 +8887,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               )}
             </div>
             {/* Tablet and up: the format pills sit inline, between what you make and Send. */}
-            {formatPills('inline')}
+            {composerMeta('inline')}
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
@@ -8997,7 +8994,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           // inside that coordinate space — it stayed pinned to the bottom of the full-height viewport
           // and so sat behind the keyboard, or half under it, as a stray floating chip. Adding the
           // offset puts it back above the keyboard, and it is 0 when the keyboard is closed.
-          style={{ bottom: `calc(max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem)) + ${keyboardOffset}px)` }}
+          // Just above the MEASURED composer (it grows: a format-pill row on phones, a long prompt, the options sheet) —
+          // a fixed offset put this toast on top of the composer's own controls.
+          style={{ bottom: `calc(env(safe-area-inset-bottom) + ${composerH + 16 + keyboardOffset}px)` }}
         >
           <Check size={14} className="text-app-accent" /> {shareToast}
         </div>
@@ -9009,7 +9008,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <div
             className="pointer-events-none fixed inset-x-0 z-[111] mx-auto flex w-fit max-w-[88vw] animate-[fadeIn_0.2s_ease-out] flex-col gap-1 rounded-2xl bg-app-elevated px-4 py-3 text-[13px] font-semibold tabular-nums text-app-text shadow-lg ring-1 ring-app-accent/30"
             // Same fixed-vs-layout-viewport problem as the share toast above.
-            style={{ bottom: `calc(max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem)) + ${keyboardOffset}px)` }}
+            style={{ bottom: `calc(env(safe-area-inset-bottom) + ${composerH + 16 + keyboardOffset}px)` }}
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
             {/* Line icons, not 💳/💰 (docs/DESIGN.md bans emoji as UI) — this toast follows every paid generation. */}

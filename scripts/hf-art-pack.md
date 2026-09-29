@@ -274,6 +274,62 @@ The last frame is the first frame, so it loops. The poster is A1. Desktop only, 
 }
 ```
 
+## R — reels for the landing (brand/v1.1, 2026-09-29)
+
+The owner's follow-up: the site must feel like the studio it is, and the studio makes VIDEO — yet the landing
+showed motion only in the desktop hero. Three 5-second vertical loops, made from brand/v1 masters we already
+own (no new stills): what "a photo becomes a shot" looks like. Same world, same grade; the last frame is the
+first frame so each loops; silent. Sources are the committed masters cropped to 9:16 and served from the site
+(`public/brand/v1/src/`), because only A2 is 9:16 already and A5r's retouch exists only locally.
+
+Budget: this job shares the manifest's $7 cap and $6.50 stop line with brand/v1 ($0.744 spent). Three shots at
+the Kling std price ≈ $0.69; at most two retries per shot.
+
+```json shot
+{
+  "id": "R1",
+  "title": "reel · the street (from A2)",
+  "endpoint": "kling-video/v3.0/std/image-to-video",
+  "input": {
+    "prompt": "A living photograph: light rain keeps falling, reflections ripple on the wet cobblestones, thin mist drifts through the streetlight, the phone screen glows; the woman keeps filming, only breathing with a slight shift of weight; the camera holds with an imperceptible slow push-in. No cuts, no new people, no text.",
+    "image_url": "https://myavatar.ge/brand/v1/src/reel-street.jpg",
+    "last_image_url": "https://myavatar.ge/brand/v1/src/reel-street.jpg",
+    "duration": 5,
+    "sound": "off"
+  }
+}
+```
+
+```json shot
+{
+  "id": "R2",
+  "title": "reel · the product (from A5r)",
+  "endpoint": "kling-video/v3.0/std/image-to-video",
+  "input": {
+    "prompt": "A premium product shot that breathes: a slow, smooth push-in toward the bottle and the glass; a thin warm light glides across the glass and the shoulder of the bottle; fine droplets glisten on the dark stone; the wine barely moves. Calm and locked, no cuts, no hands, no text, no labels.",
+    "image_url": "https://myavatar.ge/brand/v1/src/reel-product.jpg",
+    "last_image_url": "https://myavatar.ge/brand/v1/src/reel-product.jpg",
+    "duration": 5,
+    "sound": "off"
+  }
+}
+```
+
+```json shot
+{
+  "id": "R3",
+  "title": "reel · the portrait (from A7)",
+  "endpoint": "kling-video/v3.0/std/image-to-video",
+  "input": {
+    "prompt": "A living portrait: she breathes, blinks once and gives a faint, calm smile; a loose strand of hair stirs; the phone's screen light flickers softly on her face; mist drifts in the rainy street behind her. The camera is still. No cuts, no speech, no new people, no text.",
+    "image_url": "https://myavatar.ge/brand/v1/src/reel-portrait.jpg",
+    "last_image_url": "https://myavatar.ge/brand/v1/src/reel-portrait.jpg",
+    "duration": 5,
+    "sound": "off"
+  }
+}
+```
+
 ## C — never
 
 - no buttons, logos, page mockups or UI;
