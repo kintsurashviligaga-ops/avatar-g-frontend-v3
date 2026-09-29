@@ -8,7 +8,7 @@
  */
 import Image, { getImageProps } from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, Clapperboard, ShieldCheck, Sparkles, Heart } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Clapperboard, ShieldCheck, Sparkles, Heart } from 'lucide-react';
 import { Wordmark } from '@/components/brand/Wordmark';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { LANDING_COPY, landingLang, type LandingLang, type ServiceKey } from './copy';
@@ -37,21 +37,59 @@ function HeroPicture({ alt }: { alt: string }) {
   );
 }
 
-function LangSwitch({ lang, path }: { lang: LandingLang; path: (l: LandingLang) => string }) {
+/** Each language in its own name, for the phone menu. */
+const LANG_NAMES: Record<LandingLang, string> = { ka: 'ქართული', en: 'English', ru: 'Русский' };
+
+/**
+ * The segmented switch (tablet and up, and the footer). It draws 32 px tall, but every link's hit area is
+ * stretched to 44 px by an empty ::after, so the target meets docs/DESIGN.md §5 without a chunky pill.
+ */
+function LangSwitch({ lang, path, label, className = '' }: { lang: LandingLang; path: (l: LandingLang) => string; label: string; className?: string }) {
   return (
-    <nav aria-label="Language" className="flex w-fit items-center rounded-full border border-white/15 p-0.5 text-[12px] font-medium">
+    <nav aria-label={label} className={`w-fit items-center rounded-full border border-white/15 p-0.5 text-[12px] font-medium ${className || 'flex'}`}>
       {LANGS.map((l) => (
         <Link
           key={l.code}
           href={path(l.code)}
           hrefLang={l.code}
           aria-current={l.code === lang ? 'true' : undefined}
-          className={`flex min-h-[32px] min-w-[36px] items-center justify-center rounded-full px-2 transition-colors ${l.code === lang ? 'bg-white text-[#0A0A0A]' : 'text-white/75 hover:text-white'}`}
+          className={`relative flex min-h-[32px] min-w-[36px] items-center justify-center rounded-full px-2 transition-colors after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[''] ${l.code === lang ? 'bg-white text-[#0A0A0A]' : 'text-white/75 hover:text-white'}`}
         >
           {l.label}
         </Link>
       ))}
     </nav>
+  );
+}
+
+/**
+ * The phone header's language control: the current language and a chevron, like the studio's header. The
+ * segmented pill needs ~130 px, and next to the wordmark and „შესვლა“ it pushed the header off a 320 px
+ * screen. A native <details> works before and without JavaScript, and every row is a 44 px target.
+ */
+function LangMenu({ lang, path, label }: { lang: LandingLang; path: (l: LandingLang) => string; label: string }) {
+  const currentLabel = LANGS.find((l) => l.code === lang)?.label ?? 'ქარ';
+  return (
+    <details className="group relative sm:hidden">
+      <summary aria-label={`${label}: ${LANG_NAMES[lang]}`} className="flex min-h-[44px] cursor-pointer list-none items-center gap-1 rounded-full px-2 text-[13px] font-semibold text-white/90 transition-colors hover:bg-white/10 [&::-webkit-details-marker]:hidden">
+        {currentLabel}
+        <ChevronDown size={14} aria-hidden="true" className="text-white/60 transition-transform duration-200 group-open:rotate-180" />
+      </summary>
+      <nav aria-label={label} className="absolute right-0 top-full z-20 mt-1 w-44 rounded-2xl border border-white/10 bg-[#16161A] p-1 shadow-2xl">
+        {LANGS.map((l) => (
+          <Link
+            key={l.code}
+            href={path(l.code)}
+            hrefLang={l.code}
+            aria-current={l.code === lang ? 'true' : undefined}
+            className={`flex min-h-[44px] items-center justify-between rounded-xl px-3 text-[14px] transition-colors ${l.code === lang ? 'text-[#00E5FF]' : 'text-white hover:bg-white/5'}`}
+          >
+            {LANG_NAMES[l.code]}
+            {l.code === lang && <Check size={14} aria-hidden="true" />}
+          </Link>
+        ))}
+      </nav>
+    </details>
   );
 }
 
@@ -83,17 +121,21 @@ export function Landing({ locale }: { locale: string }) {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/55 to-[#0A0A0A]/10" aria-hidden="true" />
         <div className="pointer-events-none absolute inset-0 hidden bg-gradient-to-r from-[#0A0A0A]/70 via-transparent to-transparent md:block" aria-hidden="true" />
 
-        <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 pt-[max(16px,env(safe-area-inset-top))] sm:px-6">
-          <Link href={`/${lang}`} className="flex min-h-[44px] items-center gap-2" aria-label="MyAvatar.ge">
+        {/* The wordmark never shrinks (the "MyAvata" bug); the controls give way instead, and under 360 px the
+            gutters tighten so logo, language and „შესვლა“ still fit a 320 px screen. z-20, one above the hero
+            copy (z-10, later in the DOM): the phone language menu opens over it. */}
+        <header className="relative z-20 mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 pt-[max(16px,env(safe-area-inset-top))] max-[359px]:px-3 sm:px-6">
+          <Link href={`/${lang}`} className="flex min-h-[44px] shrink-0 items-center gap-2" aria-label="MyAvatar.ge">
             <Image src="/brand/gemini-rocket-clean.png" alt="" width={28} height={28} priority className="h-7 w-7 rounded-lg object-contain" />
             <Wordmark size="sm" tone="onDark" />
           </Link>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1 sm:gap-3">
             <Link href={`/${lang}/pricing`} className="hidden min-h-[44px] items-center px-2 text-[14px] text-white/80 transition-colors hover:text-white sm:flex">
               {t.nav.pricing}
             </Link>
-            <LangSwitch lang={lang} path={(l) => `/${l}`} />
-            <Link href={signIn} className="flex min-h-[44px] items-center rounded-full px-3 text-[14px] font-medium text-white transition-colors hover:bg-white/10">
+            <LangMenu lang={lang} path={(l) => `/${l}`} label={t.footer.language} />
+            <LangSwitch lang={lang} path={(l) => `/${l}`} label={t.footer.language} className="hidden sm:flex" />
+            <Link href={signIn} className="flex min-h-[44px] items-center rounded-full px-2.5 text-[14px] font-medium text-white transition-colors hover:bg-white/10 sm:px-3">
               {t.nav.signIn}
             </Link>
           </div>
@@ -226,7 +268,7 @@ export function Landing({ locale }: { locale: string }) {
               <Link href={`/${lang}/privacy`} className="min-h-[44px] content-center hover:text-white">{t.footer.privacy}</Link>
               <Link href={`/${lang}/refund`} className="min-h-[44px] content-center hover:text-white">{t.footer.refund}</Link>
             </nav>
-            <LangSwitch lang={lang} path={(l) => `/${l}`} />
+            <LangSwitch lang={lang} path={(l) => `/${l}`} label={t.footer.language} />
             <p className="text-[13px] text-white/45">© 2026 MyAvatar.ge · {t.footer.rights}</p>
           </div>
         </div>
