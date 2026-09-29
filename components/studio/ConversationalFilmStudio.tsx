@@ -71,6 +71,7 @@ import { composeMusicVideoPrompt, MV_GENRES, MV_SHOTS, MV_CAMERA_MOVES, MV_LIGHT
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
+import { Wordmark } from '@/components/brand/Wordmark';
 
 interface Slot {
   dataUrl: string;
@@ -1439,18 +1440,16 @@ export function ConversationalFilmStudio({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <Link href={`/${locale}/dashboard`} className="group flex items-center gap-2.5 min-w-0">
-            {/* 3D rocket mark — cyan halo, ambient pulse, gentle hover tilt. */}
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 shadow-[0_0_15px_rgba(0,210,255,0.25)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105">
-              <span className="text-[15px] leading-none animate-pulse motion-reduce:animate-none" aria-hidden="true">
-                🚀
-              </span>
+          <Link href={`/${locale}/dashboard`} aria-label="MyAvatar.ge" className="group flex h-11 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden">
+            {/* The brand rocket (the supplied artwork — never an emoji stand-in), gentle hover tilt. */}
+            <span className="flex h-11 items-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={24} height={24} decoding="async"
+                className="h-6 w-6 shrink-0 rounded-lg object-contain drop-shadow-[0_0_12px_rgba(0,229,255,0.25)] transition-transform duration-500 ease-out group-hover:rotate-12 group-hover:scale-105 motion-reduce:transition-none" />
             </span>
-            {/* Clean brand name only — no subtitle. Decluttered per the
-                App-Store-grade header spec. */}
-            <span className="block truncate text-sm font-bold tracking-wide text-white">
-              MyAvatar<span className="text-[#00D2FF]">.ge</span>
-            </span>
+            {/* All-or-nothing, never "MyAvata…" (brief §8): a 44 px row that wraps — a wordmark that does not
+                fit whole drops to the clipped second line instead of being truncated. */}
+            <span className="flex h-11 items-center"><Wordmark size="sm" tone="onDark" /></span>
           </Link>
 
           <div className="flex items-center gap-1.5 shrink-0">

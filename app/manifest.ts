@@ -12,14 +12,14 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'MyAvatar — AI Chat',
-    short_name: 'MyAvatar',
+    short_name: 'MyAvatar.ge',
     description: 'Georgian AI creative studio — chat, image, video, music, voice, avatar, interior, app builder in one window.',
     start_url: '/ka/dashboard',
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
-    background_color: '#000000',
-    theme_color: '#000000',
+    background_color: '#0A0A0A',
+    theme_color: '#0A0A0A',
     lang: 'ka',
     dir: 'ltr',
     categories: ['productivity', 'social', 'utilities', 'photo', 'entertainment'],

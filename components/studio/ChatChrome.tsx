@@ -62,6 +62,7 @@ import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 import { adoptLegacyArchive, conversationsKey } from '@/lib/chat/historyKeys';
+import { Wordmark } from '@/components/brand/Wordmark';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -857,7 +858,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex items-center justify-between px-3 py-3.5">
-          <span className="truncate text-[16px] font-semibold tracking-tight text-app-text">My<span className="text-app-accent">Avatar</span></span>
+          <span className="flex min-w-0 items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={22} height={22} decoding="async" className="h-[22px] w-[22px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]" />
+            <Wordmark size="sm" />
+          </span>
           {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. Visible on every breakpoint now. */}
           <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
             aria-label={locale === 'en' ? 'Collapse sidebar' : locale === 'ru' ? 'Свернуть панель' : 'გვერდითი პანელის დაკეცვა'}
@@ -998,30 +1003,37 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   {!showBack && !title && (
                     <span className="inline-flex items-center gap-1.5 text-[16px] font-semibold tracking-tight text-app-text">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]" />
-                      <span>My<span className="text-app-accent">Avatar</span></span>
+                      <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]" />
+                      <Wordmark size="sm" />
                     </span>
                   )}
                 </div>
               )}
-              <span className={`shrink-0 text-[16px] font-semibold tracking-tight text-app-text ${showBack ? 'hidden' : 'md:hidden'}`}>
+              <span className={`min-w-0 text-[16px] font-semibold tracking-tight text-app-text ${title ? 'shrink-0' : ''} ${showBack ? 'hidden' : 'md:hidden'}`}>
                 {title ?? (
-                  <span className="inline-flex items-center gap-1.5">
+                  // ⚠️ "MyAvata" (brief §8): this row used to let the wordmark sit UNDER the right-hand cluster
+                  // on 360–390 px phones — the left side shrank, the wordmark (shrink-0) did not, nothing
+                  // clipped it cleanly. Now it is all-or-nothing: rocket and wordmark are two 44 px-tall
+                  // items in a 44 px-tall wrapping row, so when the wordmark does not fit WHOLE it wraps to
+                  // the second line, which is clipped away. It is shown entire or not at all — never cut.
+                  <span className="flex h-11 min-w-0 flex-wrap items-center gap-x-1.5 overflow-hidden">
+                    <span className="flex h-11 items-center">
                     {/* Brand Rocket lockup — the OFFICIAL premium mark (same asset the Admin Panel's
                         BrandLogo renders: /brand/gemini-rocket-clean.png), for a unified corporate
                         identity. Decorative (the wordmark IS the accessible name); scoped to the
                         wordmark branch so a page title still truncates normally. object-contain +
                         the admin's subtle cyan drop-shadow keep it crisp + premium at 18px. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(34,211,238,0.15)]" />
-                    <span>My<span className="text-app-accent">Avatar</span></span>
+                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]" />
+                    </span>
+                    <span className="flex h-11 items-center"><Wordmark size="sm" /></span>
                   </span>
                 )}
               </span>
               {title && <span className="hidden truncate text-[16px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
             </div>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
               {/* FIX 3 — language switcher moved here from Settings (flag dropdown). */}
               {/* Only renders when the app is genuinely installable — see InstallAppButton. Installing is
                   the one thing that removes the browser's address-bar pill above the mobile keyboard,
@@ -1036,10 +1048,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   the brand name fit. A signed-out visitor who wants prices has the Sign in button and
                   the pricing link; they do not need a balance they cannot have. */}
               {authed && (
-                <button type="button" onClick={() => setCreditsOpen(true)} aria-label={t.topUp} title={t.topUp} data-iap-external
-                  className="flex min-h-[44px] items-center gap-1 rounded-full py-1.5 pl-2.5 pr-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
-                  <span className="text-[14px] font-semibold tabular-nums">{formatCreditBalance(balanceGel, locale)}</span>
-                  <span className="flex h-5 w-5 items-center justify-center text-app-accent"><Plus className="h-4 w-4" /></span>
+                <button type="button" onClick={() => setCreditsOpen(true)} aria-label={`${t.topUp} · ${formatCreditBalance(balanceGel, locale)}`} title={t.topUp} data-iap-external
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-full px-2 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0 sm:justify-start sm:pl-2.5 sm:pr-1.5">
+                  {/* Phones get the number alone — the unit and the + cost the width the wordmark needs. */}
+                  <span className="text-[14px] font-semibold tabular-nums" aria-hidden="true">
+                    {formatCreditBalance(balanceGel, locale).split(' ')[0]}
+                    <span className="hidden sm:inline"> {formatCreditBalance(balanceGel, locale).split(' ').slice(1).join(' ')}</span>
+                  </span>
+                  <span className="hidden h-5 w-5 items-center justify-center text-app-accent sm:flex"><Plus className="h-4 w-4" /></span>
                 </button>
               )}
               {/* FEATURE 4 — visible auth entry: a "Sign in" button for guests, or an

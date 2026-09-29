@@ -85,11 +85,20 @@ describe('favicon.ico', () => {
     // regeneration of the set silently left this one on the old logo. Built by hand instead: a modern
     // ICO may embed a PNG verbatim (Vista onward, every current browser), which is 22 bytes of header
     // plus the PNG.
+    // Since 2026-09-29 scripts/brand/build-assets.mjs writes it with 16, 32 and 48 px entries, each a PNG.
     const b = readFileSync(join(root, 'public/icons/favicon.ico'));
     expect(b.readUInt16LE(0)).toBe(0);   // reserved
     expect(b.readUInt16LE(2)).toBe(1);   // type: icon
-    expect(b.readUInt16LE(4)).toBe(1);   // one entry
-    expect(b.subarray(22, 26).toString('hex')).toBe('89504e47'); // …and it is a PNG
+    const n = b.readUInt16LE(4);
+    expect(n).toBeGreaterThanOrEqual(1);
+    const sizes: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const entry = 6 + 16 * i;
+      sizes.push(b.readUInt8(entry) || 256);
+      const offset = b.readUInt32LE(entry + 12);
+      expect(b.subarray(offset, offset + 4).toString('hex')).toBe('89504e47'); // …and every image is a PNG
+    }
+    expect(sizes).toContain(32); // the size a browser tab actually asks for
   });
 });
 

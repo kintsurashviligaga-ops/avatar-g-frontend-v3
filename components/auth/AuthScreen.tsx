@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
+import { Wordmark } from '@/components/brand/Wordmark';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -429,8 +430,9 @@ function DemoScreen({ locale }: { locale: string }) {
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
       <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
-        <div className="text-4xl">🚀</div>
-        <h2 className="text-2xl font-bold text-white">MyAvatar</h2>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={56} height={56} className="mx-auto h-14 w-14 object-contain" />
+        <h2 className="text-2xl font-bold text-white"><Wordmark size="lg" tone="onDark" /></h2>
         <p className="text-slate-300">{c.demoMode}</p>
         <a
           href={`/${locale}/dashboard`}

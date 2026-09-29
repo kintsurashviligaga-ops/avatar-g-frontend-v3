@@ -1,6 +1,6 @@
 {
   "name": "MyAvatar.ge",
-  "short_name": "MyAvatar",
+  "short_name": "MyAvatar.ge",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -13,7 +13,7 @@
       "type": "image/png"
     }
   ],
-  "theme_color": "#0B1220",
-  "background_color": "#0B1220",
+  "theme_color": "#0A0A0A",
+  "background_color": "#0A0A0A",
   "display": "standalone"
 }
