@@ -280,14 +280,13 @@ export class ServiceManager {
     const service: BillingServiceType = operation === 'text-to-image' ? 'image'
       : request.intent === 'avatar_generation' ? 'avatar'
       : 'video';
-    // Seconds for video (the guard prices video per second), one artefact otherwise.
-    const units = service === 'video'
-      ? Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec'])) || 8
-      : 1;
-
     // A Google-only clip renders on Veo and nothing else, so the guard can price it exactly (tier × resolution ×
     // audio) instead of the flat video line — which under-reserves a Standard clip ~3×.
-    const veoPrice = service === 'video' && this.isGoogleOnlyVideo(request) ? this.veoGuardPrice(request, units) : null;
+    const veoPrice = service === 'video' && this.isGoogleOnlyVideo(request) ? this.veoGuardPrice(request) : null;
+    // Seconds for video (the guard prices video per second), one artefact otherwise. ⚠️ NEVER the raw option: the
+    // duration is caller-supplied, and `duration: '0.001'` booked a whole clip at a fraction of a cent — the budget
+    // guard is the last line against a drain, so it counts the seconds the engine will actually render.
+    const units = service === 'video' ? (veoPrice?.seconds ?? this.guardVideoSeconds(request)) : 1;
 
     try {
       return await guardedCall(
@@ -920,17 +919,28 @@ export class ServiceManager {
     };
   }
 
-  /** The exact $/s the Veo clip for this request will bill at, and the model id it renders on (for the budget guard). */
-  private veoGuardPrice(request: ServiceManagerRequest, seconds: number): { model: string; perSecondUsd: number } {
+  /** Seconds a non-Veo clip is booked at: the requested length, bounded to what the engines render (4–10 s). */
+  private guardVideoSeconds(request: ServiceManagerRequest): number {
+    const raw = Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec', 'duration_seconds']));
+    return Number.isFinite(raw) && raw > 0 ? Math.min(10, Math.max(4, Math.ceil(raw))) : 8;
+  }
+
+  /**
+   * What the Veo clip for this request bills: the model it renders on, the exact $/s (tier × resolution × audio), and
+   * the seconds Veo will actually render — its 4 / 6 / 8 s grid, rounded UP (never under-count), 8 s in reference mode.
+   */
+  private veoGuardPrice(request: ServiceManagerRequest): { model: string; perSecondUsd: number; seconds: number } {
     const opts = request.selectedOptions || {};
     const transport = veoTransport() ?? 'gemini';
     const tierRaw = this.getOption(opts, ['veoTier']);
     const tier: VeoTier = tierRaw === 'fast' || tierRaw === 'lite' || tierRaw === 'standard' ? tierRaw : DEFAULT_VEO_TIER;
     const model = resolveVeoModel(transport, tier);
+    const raw = Number(this.getOption(opts, ['duration', 'durationSec', 'duration_seconds']));
+    const asked = Number.isFinite(raw) && raw > 0 ? raw : 8;
     // Reference mode pins the clip to 8 s (→ 1080p); otherwise the clip's own length decides the resolution.
-    const durationSec = this.getOption(opts, ['veoReferenceMode']) === 'reference' ? 8 : seconds;
+    const seconds = this.getOption(opts, ['veoReferenceMode']) === 'reference' ? 8 : asked <= 4 ? 4 : asked <= 6 ? 6 : 8;
     const audio = transport === 'gemini' || this.getOption(opts, ['veoGenerateAudio']) !== '0';
-    return { model, perSecondUsd: costPerSecondUsd(model, resolutionFor(durationSec), audio, transport) };
+    return { model, perSecondUsd: costPerSecondUsd(model, resolutionFor(seconds), audio, transport), seconds };
   }
 
   /** Google-only for this request: the film decided it per clip (buildFilmClipRequest), or the process policy. */
@@ -2713,15 +2723,19 @@ export class ServiceManager {
 
   private resolveVideoProvider(request: ServiceManagerRequest): 'ltx' | 'heygen' {
     const preferred = this.getOption(request.selectedOptions || {}, ['provider', 'video_provider', 'providerMode']);
+    const avatar = request.intent === 'avatar_generation' || request.serviceContext === 'avatar';
+    // ⚠️ HeyGen is the AVATAR engine, billed as an avatar. A client-supplied `provider: 'heygen'` on a VIDEO request
+    // used to reroute it there — past the Google-only gate and priced as a video (0 credits in chat): a free HeyGen
+    // render for anyone who set one option. The option now chooses between engines only for an avatar request.
     if (preferred?.toLowerCase() === 'heygen') {
-      return 'heygen';
+      return avatar ? 'heygen' : 'ltx';
     }
 
     if (preferred?.toLowerCase() === 'ltx') {
       return 'ltx';
     }
 
-    if (request.intent === 'avatar_generation' || request.serviceContext === 'avatar') {
+    if (avatar) {
       return 'heygen';
     }
 

@@ -32,6 +32,7 @@ import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, insufficientCreditsResponse } from './chatBilling';
+import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
@@ -264,6 +265,23 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
 
 // ─── Main orchestrate function ───────────────────────────────────────────────
 
+/**
+ * The anonymous-generation refusal (lib/auth/generationGate): every branch of orchestrate() that reaches a PAID
+ * provider — film, music video, music, image / video / avatar, interior — runs through this first. /api/chat/orchestrate
+ * and /api/chat/stream both land here with the userId taken from the verified session, so a direct POST without one is
+ * refused before any planning, frame or provider call. Text chat and attachment analysis are not generations.
+ */
+function refuseAnonymousGeneration(input: OrchestratorInput, intent: IntentCategory): ChatResponse | null {
+  if (!mustSignInToGenerate(input.userId)) return null;
+  return {
+    success: false,
+    intent,
+    responseType: 'text',
+    message: signInToGenerateMessage(input.locale),
+    metadata: { provider: 'auth', authRequired: true },
+  };
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
@@ -274,11 +292,11 @@ export async function orchestrate(
   // walkthrough, re-render the SAME room with new materials, furniture and
   // lighting. Explicit 3D/world asks still fall through to WorldLabs below.
   if (shouldRedesignInterior(input)) {
-    return handleInteriorRedesign(input);
+    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorRedesign(input);
   }
 
   if (shouldRouteInteriorToWorldLabs(input)) {
-    return handleInteriorIntent(input);
+    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorIntent(input);
   }
 
   // PHASE 56 — Gemini multimodal VISION, unleashed across EVERY conversational
@@ -334,7 +352,7 @@ export async function orchestrate(
   // flag rides in metadata from driveFilmStudio (and the orchestrate dispatch), so
   // the film/music-video pipeline activates whenever musicVideoMode === true.
   if (input.metadata?.musicVideoMode === true) {
-    return handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
   }
 
   // EXPLICIT FILM DISPATCH — a render started from the Video Studio storyboard carries STRUCTURAL film
@@ -346,14 +364,14 @@ export async function orchestrate(
   // approved storyboard — the user watched 3 scenes get built, then got a one-shot render that failed.
   // LIVE-VERIFIED: the dispatch reported engine 'ltx' with no film matrix for exactly this phrasing.
   if (hasFilmDispatchSignal(input.metadata)) {
-    return handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
   }
 
   // PHASE 42 §1 — The flagship film pipeline for a FREE-TEXT chat brief. `isThirtySecondFilm` is deliberately
   // conservative (explicit "30-second film / short film / mini-movie" phrasing), so a plain "music video"
   // request still falls through to the music-video composite below. See lib/chat/filmComposite.ts.
   if (isThirtySecondFilm(input.message)) {
-    return handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
   }
 
   // Composite check runs BEFORE single-intent detection. Music-video prompts
@@ -361,23 +379,23 @@ export async function orchestrate(
   // (whichever pattern hits the higher confidence weight) and only ONE
   // worker would fire — see lib/chat/musicVideoComposite.ts for the trace.
   if (isMusicVideoComposite(input.message)) {
-    return handleMusicVideoComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleMusicVideoComposite(input);
   }
 
   // 1. Detect intent
   const detected = detectIntent(input.message, input.serviceContext);
 
   if (detected.intent === 'music_generation') {
-    return handleMusicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? handleMusicIntent(input, detected);
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
-    return handleDeterministicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? handleDeterministicIntent(input, detected);
   }
 
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
-    return handleReplicateIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? handleReplicateIntent(input, detected);
   }
 
   return handleTextIntent(input, detected);

@@ -31,8 +31,12 @@ describe('music-video composite', () => {
     expect(src).toContain('videoDebited = true');
   });
 
-  it('refunds a leg that was debited and produced nothing', () => {
-    expect(src).toContain('creditWalletGel');
+  it('refunds a leg that was debited and produced nothing — what the LEDGER took, never a forecast', () => {
+    // credit_wallet_gel converts GEL ×10 into credits: refunding a 2 ₾ forecast paid back 20 credits for a debit
+    // that (debit_wallet_gel being undefined on the production database) never happened. refundDebitByRef pays
+    // back exactly the net debit under the leg's own ref.
+    expect(src).toContain('refundDebitByRef');
+    expect(src).not.toMatch(/creditWalletGel\(/);
     expect(src).toMatch(/musicDebited && !musicWorkId/);
     expect(src).toMatch(/videoDebited && !videoTaskRef/);
   });
@@ -42,8 +46,10 @@ describe('music-video composite', () => {
     expect(src).toMatch(/const realUser = Boolean\(input\.userId && input\.userId !== 'anonymous'\)/);
   });
 
-  it('uses a distinct :refund ref so a retry cannot over-credit', () => {
-    expect(src).toMatch(/\$\{compositeId\}:\$\{leg\}:refund/);
+  it('refunds under the leg\'s own debit ref (refundDebitByRef appends the idempotent :refund)', () => {
+    expect(src).toMatch(/refundDebitByRef\(input\.userId as string, `\$\{compositeId\}:\$\{leg\}`\)/);
+    expect(src).toContain('deductRef: `${compositeId}:music`');
+    expect(src).toContain('deductRef: `${compositeId}:video`');
   });
 });
 
@@ -60,8 +66,10 @@ describe('film composite', () => {
     expect(src).toContain('await rollbackFilmDebits(clips)');
   });
 
-  it('keeps the per-leg :refund ref', () => {
-    expect(src).toMatch(/\$\{compositeId\}:clip:\$\{c\.ordinal\}:refund/);
+  it('refunds each leg under its own debit ref, from the ledger — never the GEL forecast', () => {
+    expect(src).toMatch(/refundDebitByRef\(input\.userId as string, `\$\{compositeId\}:clip:\$\{c\.ordinal\}`\)/);
+    expect(src).toContain('deductRef: `${compositeId}:clip:${scene.ordinal}`');
+    expect(src).not.toMatch(/creditWalletGel\(/); // (a comment may still name it; a CALL may not)
   });
 });
 

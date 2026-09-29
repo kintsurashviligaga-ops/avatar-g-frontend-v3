@@ -30,6 +30,9 @@ import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -97,6 +100,17 @@ export async function POST(req: NextRequest): Promise<Response> {
   // the platform's keys, so it is gated exactly like the other AI pipeline routes.
   const limited = await checkRateLimit(req, RATE_LIMITS.AI);
   if (limited) return limited;
+
+  // ⚠️ SIGNED-IN AND PAID. This route re-renders up to four scenes on the platform's video keys (Veo: up to $3.20
+  // a clip) and it had neither a session check nor a charge — any direct POST was free video. Now: a session, a
+  // balance that covers the remix, and the remix price debited once the re-cut is delivered (never for a remix whose
+  // scenes all failed — the original film comes back unchanged and costs nothing).
+  const { user } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(user?.id)) return json(signInToGenerateBody(), 401);
+  const remixCost = creditCostFor('remix');
+  if (user?.id && !(await hasSufficientBalance(user.id, remixCost))) {
+    return json({ success: false, error: 'insufficient_credits', requiredCredits: remixCost, message: `Not enough credits for a remix (needs ${remixCost}). Please top up to continue.` }, 402);
+  }
 
   const stamp = Date.now();
 
@@ -211,9 +225,12 @@ export async function POST(req: NextRequest): Promise<Response> {
   // (generation_jobs), exactly like a fresh film, so the edited version shows in
   // History instead of being lost. Best-effort + signed-in only (anonymous trials
   // have no account to file it under); keyed by the remix session for idempotency.
+  if (masterUrl && user?.id && rerendered.size > 0) {
+    // Post-delivery, idempotent per remix; deduct_credits refuses an overdraw, so the balance never goes negative.
+    await deductCredits(user.id, remixCost, `pipeline-remix:${user.id}:${stamp}`).catch(() => { /* best-effort */ });
+  }
   if (masterUrl) {
     try {
-      const { user } = await authedClientFromRequest(req);
       if (user?.id) {
         await recordCompletedFilm({
           id: `remix_${stamp}`,

@@ -29,6 +29,7 @@ import 'server-only';
 import { sanitizeSpokenText } from './spokenText';
 import { castRoster, collapseVoicedTurns, type CastTurn, type VoicedTurn } from './dialogueCasting';
 import { llmText } from '@/lib/ai/llmText';
+import { isGoogleOnly } from '@/lib/veo/policy';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText, type ElevenLabsModelId } from '@/lib/audio/tts-model';
 import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
@@ -86,6 +87,9 @@ async function generateNarrationScript(brief: string, totalSec: number): Promise
     maxTokens: 500,
     temperature: 0.7,
     timeoutMs: 30_000,
+    // Google-only (docs/VEO_ENGINE.md §3): Gemini writes the narration or none is written (the film keeps its
+    // dialogue / music) — never DeepSeek or Claude behind a Google-only film.
+    googleOnly: isGoogleOnly(),
   });
   if (!text) return null;
   // Strip accidental wrapping quotes / smart-quotes the model sometimes adds.

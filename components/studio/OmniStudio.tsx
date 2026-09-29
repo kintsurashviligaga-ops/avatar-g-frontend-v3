@@ -888,6 +888,8 @@ interface FilmSnap {
   videoSoundtrack: { name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null;
   videoMyVoiceNarration: boolean;
   videoSpeech: string;
+  /** The pasted timecoded Master Script — read by the render, so it belongs to the submit moment like the rest. */
+  videoMasterScript: string;
   videoMusic: boolean;
   videoNarratorGender: 'male' | 'female';
   videoMultiChar: boolean;
@@ -2843,7 +2845,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
-      voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta,
+      voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -3278,7 +3280,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
-      voiceTone, videoModel, hasTrainedVoice,
+      voiceTone, videoModel, hasTrainedVoice, videoMasterScript,
       veo: toRenderOptions(videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan, renderSceneCount),
       ...(clipSec ? { clipSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
@@ -3306,7 +3308,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).

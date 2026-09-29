@@ -35,6 +35,9 @@ import { withRetry } from '@/lib/utils/withRetry';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { generateGeminiImage } from '@/lib/ai/geminiImage';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -90,7 +93,8 @@ async function generateSceneScripts(brief: string, count: number): Promise<strin
   // excellent + reliably fast); DeepSeek-V3 is the deep-quality fallback (≈75s for 10 scenes —
   // too slow to lead the board, but superb when Gemini is down). Generous timeout so the
   // fallback can still complete within the client's wait window. (Anthropic is dead in prod.)
-  const text = await llmText({ system: SYS, user: USER, maxTokens: 2000, temperature: 0.6, geminiFirst: true, timeoutMs: 85_000 });
+  // Google-only (docs/VEO_ENGINE.md §3): Gemini writes the shots or nobody does — a miss keeps the deterministic beats.
+  const text = await llmText({ system: SYS, user: USER, maxTokens: 2000, temperature: 0.6, geminiFirst: true, googleOnly: isGoogleOnly(), timeoutMs: 85_000 });
   return text ? parseScripts(text) : null;
 }
 
@@ -314,6 +318,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
   }
 
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). Every mode of this route spends the platform's keys — Gemini image
+  // frames, the director LLM, vision, uploads to our storage — and it had no session check at all: a direct POST could
+  // loop frames on the Gemini balance. The studio stops a guest before it gets here; this stops everyone else.
+  const { user: sessionUser } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(sessionUser?.id)) {
+    return NextResponse.json(signInToGenerateBody(typeof body.locale === 'string' ? body.locale : 'ka'), { status: 401 });
+  }
+
   // A 4:5 film is rendered on Veo's 9:16 and cropped (docs/VEO_ENGINE.md §2), so its frames — the clips' first
   // frames — are vertical too. (Square stays on 16:9, like the render.)
   const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' || body.orientation === 'portrait' ? 'vertical' : 'landscape';
@@ -399,7 +411,18 @@ export async function POST(req: NextRequest) {
       // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
       // (the render then animates the scene from text), never a non-Google image.
       if (isGoogleOnly()) {
-        const img = await generateGeminiImage({ prompt: framePrompt, referenceImages: selfie ? [selfie] : [], aspectRatio: aspect });
+        // Inside the daily budget envelope like every other paid call: a refusal is an empty tile, not a frame.
+        let img: Awaited<ReturnType<typeof generateGeminiImage>> = null;
+        try {
+          img = await guardedCall(
+            { service: 'image', model: 'gemini-image', units: 1, userId: sessionUser?.id ?? null, promptSummary: sceneEn.slice(0, 200), actualCost: (r) => (r ? undefined : 0) },
+            () => generateGeminiImage({ prompt: framePrompt, referenceImages: selfie ? [selfie] : [], aspectRatio: aspect }),
+          );
+        } catch (err) {
+          if (!(err instanceof BudgetExceededError)) throw err;
+          console.warn(`[storyboard] frame refused by the budget guard (${err.reason})`);
+          return null;
+        }
         if (!img) return null;
         frameSourceTally.gemini += 1;
         const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';

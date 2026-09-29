@@ -32,7 +32,8 @@ import type { OrchestratorInput, ChatResponse } from './providerRouter';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { creditWalletGel, consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
+import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
+import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { PipelineTimer } from '@/lib/pipeline/timing';
@@ -241,6 +242,8 @@ async function stylizeSceneFrame(
   // the uploaded selfie (fast dispatch, identity still locked). Flip
   // FILM_STYLE_FRAMES=1 to re-enable the stylized-frame chain.
   if (process.env.FILM_STYLE_FRAMES !== '1') return null;
+  // This chain renders on ServiceManager's image path (FLUX / NanoBanana); a Google-only film takes no such frame.
+  if (isGoogleOnly()) return null;
   const selfie = shared.referenceImages?.[0] ?? shared.avatarReference ?? null;
   if (!selfie) return null;
   const work = (async (): Promise<string | null> => {
@@ -868,6 +871,15 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // LTX balance funds the real render). Checked only when no free film applies.
     const founderBypass = hasFreeFilm ? false : await isAdminUser(input.userId);
     clipBillingWaived = hasFreeFilm || founderBypass;
+    // ⚠️ THE FREE FILM IS PAID BY THE PLATFORM — and anyone gets one by signing up. On Veo Standard ($0.40/s) a 48 s
+    // free film is $19.20 of Google spend for an e-mail address; on Fast ($0.12/s at 1080p) it is $5.76. Google-only
+    // free films therefore render on Fast at most (Lite stays Lite). Founder/admin renders and paid films keep the
+    // tier they chose.
+    if (hasFreeFilm && googleOnly && plan.shared.veo?.tier !== 'lite') {
+      plan.shared.veo = plan.shared.veo
+        ? { ...plan.shared.veo, tier: 'fast' }
+        : { tier: 'fast', format: orientation === 'vertical' ? '9:16' : '16:9', referenceMode: 'first_frame', generateAudio: true, seedLock: true, enhancePrompt: false };
+    }
     const balance = (hasFreeFilm || founderBypass) ? null : await readWalletBalanceGel(input.userId);
     if (!hasFreeFilm && !founderBypass && filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
       return {
@@ -899,9 +911,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     if (billed.length === 0) return;
     // eslint-disable-next-line no-console
     console.warn(`[film] refunding ${billed.length} billed clip leg(s) that produced nothing, for ${input.userId}`);
+    // ⚠️ REFUND WHAT THE LEDGER SHOWS WAS TAKEN — NEVER A FORECAST. This used to pay `clipForecast.retailGel` back
+    // through credit_wallet_gel, which converts GEL at ×10: a 2.0 ₾ leg came back as 20 CREDITS while the debit
+    // (debit_wallet_gel) is not even defined on the production database — so a charge of nothing was "refunded"
+    // with 20 credits, and every refused Veo scene minted balance. refundDebitByRef pays back exactly the net debit
+    // under the leg's own deductRef (0 when none landed), idempotent on `${ref}:refund`.
     await Promise.all(
       billed.map((c) =>
-        creditWalletGel(input.userId as string, clipForecast.retailGel, `${compositeId}:clip:${c.ordinal}:refund`),
+        refundDebitByRef(input.userId as string, `${compositeId}:clip:${c.ordinal}`).catch(() => null),
       ),
     );
   };
@@ -985,7 +1002,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // Vision QA heal pass (env-gated FILM_VISION_QA=1) — inspect each storyboard keyframe
     // for severe artifacts/face-melting and regenerate failures via the SAME stylizeSceneFrame
     // path BEFORE the costly render. Fail-OPEN per scene; structured report logged.
-    if (visionQaEnabled() && !referenceMode) {
+    // The keyframe QA reads the frames with Claude vision — not behind a Google-only film.
+    if (visionQaEnabled() && !referenceMode && !googleOnly) {
       const qa = await qaHealKeyframes(sceneFrames, (i) => {
         const sc = plan.scenes[i];
         return sc ? stylizeSceneFrame(input, sc, plan.shared) : Promise.resolve(null);

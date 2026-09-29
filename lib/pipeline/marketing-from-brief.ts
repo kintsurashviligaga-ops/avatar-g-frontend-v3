@@ -4,6 +4,7 @@
 import 'server-only';
 import { ClaudeDirectorAgent } from './agents/claude-director';
 import type { MarketingOverlay } from './compositing/ffmpeg-overlay';
+import { isGoogleOnly } from '@/lib/veo/policy';
 
 const B2B_RE =
   /\b(commercial|advert|advertis|promo|real\s?estate|apartment|property|for\s?sale|listing|product|brand|store|shop|price|\$\s?\d|\d+\s?(gel|usd|\$|₾)|sale|business|company|service|booking|book\s?now|call\s?now|contact|launch|offer)\b/i;
@@ -11,6 +12,9 @@ const B2B_RE =
 /** Returns marketing copy when the brief reads as a B2B commercial, else null (cinematic). */
 export async function deriveMarketingFromBrief(brief: string): Promise<MarketingOverlay | null> {
   if (!brief || brief.trim().length < 8 || !B2B_RE.test(brief)) return null;
+  // The director here is Claude. A Google-only film (docs/VEO_ENGINE.md §3) gets no AUTO-derived overlay copy; an
+  // overlay the client passes explicitly (the product-ad surface) is still burned in by the assemble route.
+  if (isGoogleOnly()) return null;
   try {
     const director = new ClaudeDirectorAgent();
     const o = await director.direct({ jobId: 'film-b2b-marketing' }, brief.slice(0, 1500));
