@@ -189,6 +189,48 @@ The share image, 1200×630, is this still with the logo lockup composited in cod
 }
 ```
 
+## A-revisions — text removal (added after review, before the request)
+
+The first Soul takes of A4 and A5 put **lettering into the picture**: gibberish on the camera's screen and body, and labels on every wine bottle, although the A5 prompt asked for an unlabelled bottle. Per §C, a shot is fixed from the chosen take as the reference, not started over. These are reference edits of the selected take, with the same seed and the same grade; each one counts as that shot's second attempt.
+
+```json shot
+{
+  "id": "A4r",
+  "title": "card VIDEO — lettering removed (from A4)",
+  "endpoint": "alibaba/qwen-image-3/edit",
+  "needs": ["A4"],
+  "input": {
+    "image_urls": ["{{A4}}"],
+    "prompt": "Remove every letter, number, logo and on-screen interface marking from the camera body and from its screen; the screen shows only the picture of the wet street. Keep the camera, the gimbal, the cable, the street, the light, the composition and the teal-and-amber colour grade exactly as they are. No text anywhere.",
+    "negative_prompt": "text, letters, numbers, words, logo, brand name, watermark, user interface, icons",
+    "aspect_ratio": "3:4",
+    "resolution": "2k",
+    "seed": 260929,
+    "prompt_extend": false,
+    "enable_thinking": false
+  }
+}
+```
+
+```json shot
+{
+  "id": "A5r",
+  "title": "card IMAGE — label removed (from A5)",
+  "endpoint": "alibaba/qwen-image-3/edit",
+  "needs": ["A5"],
+  "input": {
+    "image_urls": ["{{A5}}"],
+    "prompt": "Remove the paper label and all lettering from the wine bottle so it is plain dark glass with only the reflections of the light, and remove the pale marks on the stone base. Keep the bottle shape, the wine glass, the stone, the cyan and amber light, the shadows, the composition and the colour grade exactly as they are. No text anywhere.",
+    "negative_prompt": "text, letters, numbers, words, label, logo, brand name, watermark, user interface",
+    "aspect_ratio": "3:4",
+    "resolution": "2k",
+    "seed": 260929,
+    "prompt_extend": false,
+    "enable_thinking": false
+  }
+}
+```
+
 ## B — optional, only if ≥ $2 of the stop line remains
 
 ### B1 · a 5-second loop of the hero, 720p, silent
