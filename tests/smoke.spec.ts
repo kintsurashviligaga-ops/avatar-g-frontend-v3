@@ -62,17 +62,24 @@ async function openDashboardReady(page: Page, path = '/en/dashboard'): Promise<v
   if (await accept.isVisible().catch(() => false)) await accept.click();
 }
 
-test('bare root redirects to the Georgian dashboard', async ({ page }) => {
+// The front door (lib/routing/landing.ts, docs/DESIGN.md §9): a GUEST at `/` or `/{lang}` gets the marketing
+// landing; a visitor with a session cookie keeps going straight to the dashboard, as before.
+test('bare root sends a guest to the Georgian landing, whose CTA opens the studio', async ({ page }) => {
   await page.goto('/');
+  await page.waitForURL(/\/ka$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ვიდეო ერთი იდეიდან.');
+  await page.getByRole('link', { name: /შექმენი ვიდეო/ }).first().click();
   await page.waitForURL(/\/ka\/dashboard$/);
-  await expect(page).toHaveURL(/\/ka\/dashboard$/);
-  // ⚠️ THE OLD ASSERTION LOOKED FOR A GREETING CARRYING THE OWNER'S NAME, WHICH NO LONGER EXISTS —
-  // that string is why this test sat red for months. Assert the thing the route is FOR instead: the
-  // composer. A dashboard that redirects correctly and renders no input has still failed the user.
+  // Assert the thing the dashboard is FOR: the composer. A route that loads and renders no input has still failed.
   await expect(page.getByRole('textbox').first()).toBeVisible({ timeout: 20_000 });
 });
 
-test('locale root redirects to localized dashboard', async ({ page }) => {
+test('locale root shows a guest the landing, and sends a signed-in visitor to the dashboard', async ({ page, context, baseURL }) => {
+  await page.goto('/ka');
+  await expect(page).toHaveURL(/\/ka$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ვიდეო ერთი იდეიდან.');
+  // Only the cookie's PRESENCE is read by the front door (the dashboard itself validates the session).
+  await context.addCookies([{ name: 'sb-smoketest-auth-token', value: 'x', url: baseURL ?? 'http://localhost:3000' }]);
   await page.goto('/ka');
   await page.waitForURL(/\/ka\/dashboard$/);
   await expect(page).toHaveURL(/\/ka\/dashboard$/);
