@@ -8,7 +8,7 @@
  */
 import Image, { getImageProps } from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, Check, ChevronDown, Clapperboard, ShieldCheck, Sparkles, Heart } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown } from 'lucide-react';
 import { Wordmark } from '@/components/brand/Wordmark';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { LANDING_COPY, landingLang, type LandingLang, type ServiceKey } from './copy';
@@ -277,15 +277,9 @@ export function Landing({ locale }: { locale: string }) {
               <Wordmark size="sm" tone="onDark" />
             </Link>
             <p className="mt-3 max-w-[32ch] text-[14px] text-[#A1A1AA]">{t.footer.tagline}</p>
-            <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[12px] font-medium uppercase tracking-[0.14em] text-white/55" aria-label="MyAvatar.ge">
-              <li className="flex items-center gap-1.5"><Clapperboard size={13} aria-hidden="true" /> Fast</li>
-              <li className="flex items-center gap-1.5"><ShieldCheck size={13} aria-hidden="true" /> Secure</li>
-              <li className="flex items-center gap-1.5"><Sparkles size={13} aria-hidden="true" /> AI powered</li>
-              <li className="flex items-center gap-1.5"><Heart size={13} aria-hidden="true" /> Built for Georgia</li>
-            </ul>
           </div>
           <div className="flex flex-col gap-6 md:items-end">
-            <nav aria-label="Legal" className="flex flex-wrap gap-x-6 gap-y-2 text-[14px] text-[#A1A1AA]">
+            <nav aria-label={lang === 'en' ? 'Legal' : lang === 'ru' ? 'Правовая информация' : 'სამართლებრივი'} className="flex flex-wrap gap-x-6 gap-y-2 text-[14px] text-[#A1A1AA]">
               <Link href={`/${lang}/terms`} className="min-h-[44px] content-center hover:text-white">{t.footer.terms}</Link>
               <Link href={`/${lang}/privacy`} className="min-h-[44px] content-center hover:text-white">{t.footer.privacy}</Link>
               <Link href={`/${lang}/refund`} className="min-h-[44px] content-center hover:text-white">{t.footer.refund}</Link>
