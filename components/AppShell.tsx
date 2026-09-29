@@ -155,6 +155,9 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
   const isStudioV2 = studioV2 && !!pathname && /^(\/(ka|en|ru))?\/studio\/?$/.test(pathname);
 
   const hideShellChrome = isImmersiveWorkspace || isStudioV2 || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed || isLegalDoc;
+  // The marketing landing (/{lang}) paints its own opaque, cinematic page — the animated environment behind it
+  // would cost frames nobody sees (docs/DESIGN.md: low motion).
+  const isMarketingLanding = !!pathname && /^\/(ka|en|ru)\/?$/.test(pathname);
 
   return (
     <div
@@ -162,7 +165,7 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
       style={{ color: 'var(--color-text)', isolation: 'isolate' }}
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
-      <PageEnvironment reduced={isImmersiveWorkspace || isStudioV2 || isAdmin} />
+      <PageEnvironment reduced={isImmersiveWorkspace || isStudioV2 || isAdmin || isMarketingLanding} />
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"

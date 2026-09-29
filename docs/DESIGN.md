@@ -1,0 +1,132 @@
+# MyAvatar.ge — DESIGN.md
+
+Written before any pixel or any Higgsfield request. The landing page, the dashboard polish and the brand/v1 image pack all follow this file. If a change breaks a rule here, change this file first.
+
+## 1. What the product is
+
+**A Tbilisi video production studio for Reels.** You describe a shot in Georgian and get a finished vertical video: footage, Georgian voice, music, subtitles and edit. Image, music, voice and avatar are part of the same studio, always one click away. Video leads.
+
+A guest must understand "video studio" within three seconds of landing. The picture says it, the headline says it, and the first card says it.
+
+## 2. Look
+
+**Dark studio, one accent, cinematic stills.** It should feel like a colour-graded night shoot in Old Tbilisi, not an AI dashboard.
+
+| Token | Value | Use |
+|---|---|---|
+| ink | `#0A0A0A` (`--app-bg`) | page background |
+| surface | `#16161A` / `#202026` (`--app-surface` / `--app-elevated`) | panels, the composer, cards |
+| hairline | white 8–12 % | borders; never a coloured border |
+| text | `#F0F0F5` (`--app-text`) | headings and body |
+| muted | `#A0A0AF` (`--app-muted`) | secondary text: 7.7:1 on ink, 7.0:1 on surface. Never below AA (4.5:1) |
+| **accent** | **`#00E5FF`** (`--app-accent`) | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges |
+
+**One accent only.** The brand sheet's lime (`#C5FF00`) and gold (`#D4AF37`) are brand-sheet colours, not UI colours. The product UI uses cyan and neutrals only. If a second colour seems necessary, the hierarchy is wrong. (`--app-gold` still exists as a token for older surfaces. New UI does not use it.)
+
+The primary CTA is a solid cyan pill with ink text, used once per view. Secondary actions are outline or text.
+
+## 3. Type
+
+- Georgian text keeps **Noto Sans Georgian**, the current Georgian-capable face. Headlines are weight 700, body text 400/500.
+- Latin display uses **Montserrat**, from the brand sheet. Latin body text uses Inter at small sizes only; Inter is not the only face on the page.
+- Headline scale: 40 px on phones up to 72 px on desktop, tracking −1 %, line-height 1.1. Georgian has tall ascenders, so a headline line-height is never below 1.1.
+- Body text is 16–18 px, line-height 1.6, with a measure of 60–70 characters.
+- Numbers use `tabular-nums` wherever they change: prices and counters.
+
+## 4. Imagery — the brand/v1 world
+
+**One world, one grade.** It is Tbilisi at night after rain:
+- wet cobblestones and carved Old-Town balconies;
+- warm sodium streetlight against cool cyan practicals;
+- mist, a 35 mm anamorphic look and fine grain;
+- deep blacks with teal-and-amber separation.
+
+Every still is the same world with the same grade and the same seed family. Shot 1 is the reference for the rest.
+
+- **No text, logos, UI or watermarks inside an image.** Type is set in code over the picture.
+- A phone screen shows **footage**, never interface.
+- Images carry depth. The UI stays flat: hairlines and shadowless panels.
+- Generated only from `scripts/hf-art-pack.md`, all costs logged in `public/brand/v1/manifest.json`. The hard cap is $7 and generation stops at $6.50.
+
+## 5. Motion and density
+
+- **Motion: low.** Fades and 8–12 px rises of 200–300 ms on `cubic-bezier(.2,.7,.2,1)`. No bounce, no spring overshoot, no parallax.
+- `prefers-reduced-motion` disables every movement, including the hero loop, which then shows its poster.
+- **Density: medium.** Section rhythm is 96–128 px on desktop and 64–80 px on phones, with an 8 px grid.
+- Touch targets are ≥ 44 px, and safe-area insets are respected on every fixed edge.
+
+## 6. Banned
+
+- purple, violet or mesh gradients: the "AI purple" look;
+- **glow soup**: neon box-shadows, blurred colour halos, pulsing glows. At most one soft shadow per elevated surface;
+- emoji as UI: icons, labels and bullets made of emoji;
+- cards inside cards, and borders inside borders;
+- bounce and spring easing;
+- text baked into generated images;
+- a second accent colour, including lime and gold, in product UI;
+- stock-looking "AI posters": eight shots in eight styles.
+
+## 7. Copy — locked
+
+**Dashboard empty state.**
+
+| | ka | en | ru |
+|---|---|---|---|
+| H1 | რით დაგეხმარო? | How can I help? | Чем помочь? |
+| Sub | შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით. | Make a video, an image or music — by text, voice or file. | Создайте видео, изображение или музыку — текстом, голосом или файлом. |
+| Placeholder (video) | აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი… | Describe a shot, record your voice, or attach a file… | Опишите кадр, запишите голос или прикрепите файл… |
+
+Only the ka column is locked by the brief; en and ru keep the product's existing greeting and translate the rest. In en and ru, video is always named first. Russian uses «вы» on every surface, the landing included.
+
+**Landing, above the fold.** The ka copy leads; en and ru translate it.
+- The H1 says video: **„ვიდეო ერთი იდეიდან.“**
+- One sentence follows, naming Reels and the Georgian language.
+- The primary CTA is **„შექმენი ვიდეო“** and goes to `/{lang}/dashboard`, signed in or not. The secondary is **„შესვლა“**.
+
+**The three proof steps:** დაწერე → დაარენდერე → გამოაქვეყნე.
+
+## 8. Components
+
+- **Service cards (4):** image, name and one line. Video comes first and carries a **„მთავარი“** badge. There is no nested panel inside a card and no hover glow; hover lifts the image contrast only.
+- **Chips (dashboard):** four hairline pills, video first — კინო რილი 9:16 · პროდუქტის სურათი · საუნდთრექი · ავატარის პორტრეტი — in two rows of two at every width. Hover and press **invert** a chip to a white fill with ink text. A chip selects the service (the reel also sets 9:16) and puts the cursor in the composer. It never sends, never spends, and never writes the user's words for them.
+- **Composer:** unchanged in structure. When the text field has text, the voice/waveform button becomes **send**.
+- **Header:** logo, language and „შესვლა“. On the landing, „შესვლა“ opens sign-in, and a signed-in visitor goes straight to the studio.
+
+## 9. Routes (invariants)
+
+- `/{lang}/dashboard`, `/chat`, `/agent`, `/pricing` and `/services/*` are untouched.
+- Auth, the credit ledger and the generation contracts are untouched.
+- `/{lang}` is the marketing landing for **guests** (anyone without a session cookie, crawlers included). `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard`, as today (`lib/routing/landing.ts`).
+- The sitemap lists `/ka`, `/en` and `/ru` and never the bare `/`, which only redirects.
+- `/{lang}/landing`, the retired route, redirects to `/{lang}`.
+- The PWA `start_url` stays `/ka/dashboard`.
+
+## 10. Audit — the burger, the service menu, the rest (2026-09-29)
+
+What the guest dashboard offered before this pass, what it offers now, and what is left.
+
+**The burger (☰, phones; the sidebar on desktop).** It holds: new chat, chat history, then Library, Persona, Billing and Settings, plus „სტუდია β“ on deployments with `STUDIO_V2`. It has **no service list**, and it keeps none: an earlier pass removed the sidebar's duplicate list, so the composer's menu is the only service picker. „Video first in the burger“ is therefore satisfied where the services actually are, in the next item.
+
+**The service menu (the composer's „ვიდეო ⌄“).**
+
+| | Before | After |
+|---|---|---|
+| Order | ჩატი · სურათი · მუსიკა · ვიდეო · ავატარი · რემიქსი | **ვიდეო** · სურათი · მუსიკა · ავატარი · რემიქსი · ჩატი |
+| Default on a fresh visit | ჩატი | **ვიდეო** (9:16) |
+| Avatar icon | a speaker | a face, the same as its chip and the landing card |
+| Empty state | the greeting over a blank page | the greeting, the locked line, four chips, and the A3 plate at 8 % |
+| Options panel, desktop | always open, covering the greeting | collapsed behind „პარამეტრები“ until the first message |
+
+The full studios, Montage, Dubbing, 3D and Presentation, stay below a divider in the same menu, with line icons.
+
+**Header.** The language trigger shows a text label (ქარ / ENG / РУС) instead of an emoji flag. On phones, the sign-in icon is dropped so the wordmark, the language and „შესვლა“ fit at 360 px. The rocket lost its three stacked drop-shadows.
+
+**Composer.** The mic and Send lost their hover-scale. The live-voice button lost its halo. Its equaliser bars are still at rest and move only on hover or focus. With text in the box, Send replaces the live-voice button in the same slot.
+
+**Glow and colour.** Removed on these surfaces: rocket shadows, the live-voice halo, the orange „swap“ tab (now the accent), and the ★ label. Kept on purpose: `text-emerald-400` on the „generation complete“ check. A success state is status, not a second accent.
+
+**Contrast.** Body and muted text use `text-app-text` / `text-app-muted`, and the placeholder uses `placeholder:text-app-muted`. None sit below AA on ink.
+
+**Left for a follow-up.** Deliberately out of this pass, because they are message copy and panel copy rather than the empty state:
+- About 290 emoji characters remain in `OmniStudio.tsx` strings: 🎵 in notices, ⚠️ in warnings, 🎥 in the storyboard title, ✓ in labels, and the like. They should become line icons, or plain words, surface by surface.
+- `AuthModal` still uses a cyan-to-blue gradient badge and a tinted drop-shadow, and has no `role="dialog"`. It was left alone because auth is an invariant of this pass (§9).

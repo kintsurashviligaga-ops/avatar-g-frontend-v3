@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
+import { frontDoor, hasSessionCookie } from '@/lib/routing/landing';
 
 const SUPPORTED_LOCALES = ['ka', 'en', 'ru'];
 const DEFAULT_LOCALE = 'ka';
@@ -14,9 +15,9 @@ function getPreferredLocale(request: NextRequest) {
 
 /**
  * Root middleware:
- * / and locale roots → /{locale}/dashboard (the integrated chat workspace at
- *   app/[locale]/dashboard/page.tsx — the only entrypoint).
- * /{locale}/landing is retired and redirects to the dashboard.
+ * / and locale roots → the marketing landing for guests, /{locale}/dashboard for signed-in visitors
+ *   (lib/routing/landing.ts — the dashboard itself is unchanged).
+ * /{locale}/landing (retired) → /{locale}.
  * Paths without locale prefix → /{locale}/path
  */
 export async function middleware(request: NextRequest) {
@@ -48,26 +49,14 @@ export async function middleware(request: NextRequest) {
     const segments = pathname.split('/').filter(Boolean);
     const firstSegment = segments[0] ?? '';
 
-    // Bare root → /{locale}/dashboard (the integrated cyber-black chat workspace is
-    // the ONLY entrypoint; the legacy marketing landing is retired).
-    if (pathname === '/') {
+    // Front doors: `/`, `/{locale}` and the retired `/{locale}/landing`. Guests get the landing; a signed-in
+    // visitor keeps going straight to the dashboard, as before (lib/routing/landing.ts).
+    const door = frontDoor(pathname, hasSessionCookie(request.cookies.getAll()), preferredLocale);
+    if (door && 'redirect' in door) {
       const url = request.nextUrl.clone();
-      url.pathname = `/${preferredLocale}/dashboard`;
+      url.pathname = door.redirect;
       const response = NextResponse.redirect(url);
-      response.cookies.set('NEXT_LOCALE', preferredLocale, {
-        path: '/',
-        maxAge: LOCALE_COOKIE_MAX_AGE,
-        sameSite: 'lax',
-      });
-      return response;
-    }
-
-    // Locale root (e.g. /ka, /en, /ru) → /{locale}/dashboard
-    if (SUPPORTED_LOCALES.includes(firstSegment) && segments.length === 1) {
-      const url = request.nextUrl.clone();
-      url.pathname = `/${firstSegment}/dashboard`;
-      const response = NextResponse.redirect(url);
-      response.cookies.set('NEXT_LOCALE', firstSegment, {
+      response.cookies.set('NEXT_LOCALE', door.redirect.split('/')[1] ?? preferredLocale, {
         path: '/',
         maxAge: LOCALE_COOKIE_MAX_AGE,
         sameSite: 'lax',

@@ -35,15 +35,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   });
 
-  // Root domain (redirects to the default-locale landing; the root itself is
-  // the canonical entry point so it stays at priority 1).
-  const rootPage = {
-    url: baseUrl,
+  // The landing, per locale. `/{locale}` renders it (200) for every visitor without a session — crawlers
+  // included — and is self-canonical. The bare root is NOT listed: it only redirects to the visitor's locale
+  // (middleware.ts → lib/routing/landing.ts), and this file lists no redirects.
+  const landingPages = locales.map(locale => ({
+    url: `${baseUrl}/${locale}`,
     lastModified: now,
-    changeFrequency: 'daily' as const,
-    priority: 1,
+    changeFrequency: 'weekly' as const,
+    priority: localePriority(locale, 1),
     alternates: langAlternates(''),
-  };
+  }));
 
   // Core app / marketing pages, emitted per-locale at their canonical 200 URL.
   const coreSlugs: { slug: string; priority: number; changeFrequency: 'daily' | 'weekly' }[] = [
@@ -95,7 +96,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   );
 
   return [
-    rootPage,
+    ...landingPages,
     ...corePages,
     ...servicePages,
     ...legalPages,

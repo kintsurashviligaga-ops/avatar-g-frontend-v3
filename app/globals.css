@@ -2294,8 +2294,15 @@ a:focus-visible {
   border-radius: 9999px;
   background: currentColor;
   transform-origin: center;
-  animation: voice-eq 1.1s ease-in-out infinite;
+  /* AT REST THE BARS ARE STILL (docs/DESIGN.md §5, low motion): a static waveform of four heights reads as
+     "voice" without pulling the eye off the composer. They come alive only under the pointer or focus. */
 }
+.voice-eq span:nth-child(1) { transform: scaleY(0.45); }
+.voice-eq span:nth-child(2) { transform: scaleY(0.9); }
+.voice-eq span:nth-child(3) { transform: scaleY(0.6); }
+.voice-eq span:nth-child(4) { transform: scaleY(0.8); }
+.group:hover .voice-eq span,
+.group:focus-visible .voice-eq span { animation: voice-eq 1.1s ease-in-out infinite; }
 .voice-eq span:nth-child(1) { animation-delay: 0s; }
 .voice-eq span:nth-child(2) { animation-delay: 0.18s; }
 .voice-eq span:nth-child(3) { animation-delay: 0.36s; }
@@ -4175,4 +4182,21 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
    an iPad in portrait is exactly 768px and slipped through a max-width rule once already. */
 @media (hover: none) and (pointer: coarse) {
   .reveal-on-hover { opacity: 1 !important; }
+}
+
+/* ── Landing (docs/DESIGN.md §5: low motion) ─────────────────────────────────────────────────────────
+   One entrance: a 10 px rise + fade, staggered, on the ease the spec names. No scroll-driven motion.
+   Reduced motion: no entrance, and the hero loop is hidden so its poster picture shows instead. */
+@keyframes landing-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.landing .landing-rise { animation: landing-rise 480ms cubic-bezier(.2,.7,.2,1) both; }
+.landing .landing-rise:nth-child(2) { animation-delay: 60ms; }
+.landing .landing-rise:nth-child(3) { animation-delay: 120ms; }
+.landing .landing-rise:nth-child(4) { animation-delay: 180ms; }
+.landing .landing-rise:nth-child(5) { animation-delay: 240ms; }
+@media (prefers-reduced-motion: reduce) {
+  .landing .landing-rise { animation: none; }
+  .landing .landing-loop { display: none !important; }
 }
