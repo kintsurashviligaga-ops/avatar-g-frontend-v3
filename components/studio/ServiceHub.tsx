@@ -21,6 +21,7 @@ import dynamic from 'next/dynamic';
 import { Film, Sparkles, ChevronRight, Loader2 } from 'lucide-react';
 import { ChatChrome } from './ChatChrome';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { Wordmark } from '@/components/brand/Wordmark';
 
 // PERF: lazy-load each studio so the dashboard's initial JS ships only the shell +
 // the studio actually on screen — not all ~8.2k lines of the three studios at once
@@ -177,7 +178,9 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     <div className="fixed inset-0 z-[2] overflow-y-auto bg-app-bg text-app-text" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         <div className="mb-8 flex items-center gap-2">
-          <span className="text-[15px] font-semibold tracking-tight text-app-text">My<span className="text-app-accent">Avatar</span></span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={22} height={22} decoding="async" className="h-[22px] w-[22px] shrink-0 object-contain" />
+          <Wordmark size="sm" />
         </div>
 
         <header className="mb-7">

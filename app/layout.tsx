@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Syne, DM_Sans, Noto_Sans_Georgian } from "next/font/google";
+import { Inter, Montserrat, Noto_Sans_Georgian } from "next/font/google";
 import "./globals.css";
 import Providers from "@/app/providers";
 import { AppShell } from "@/components/AppShell";
@@ -14,25 +14,23 @@ const inter = Inter({
 	display: "swap",
 });
 
-const syne = Syne({
-	subsets: ["latin"],
-	variable: "--font-syne",
+// Brand typography (docs/brand/BRAND.md, sheet of 2026-09-29): Montserrat for headings, the wordmark and the
+// tagline; Inter (above) for text and UI. They replace Syne and DM Sans. The old variable names stay as
+// aliases on <html> (--font-syne → display, --font-dm → ui), so every `font-syne` / `font-dm` utility and any
+// CSS still naming them lands on the brand faces without a sweep.
+const montserrat = Montserrat({
+	subsets: ["latin", "cyrillic"],
+	variable: "--font-display",
 	display: "swap",
-	weight: ["400", "600", "700", "800"],
-});
-
-const dmSans = DM_Sans({
-	subsets: ["latin"],
-	variable: "--font-dm",
-	display: "swap",
-	weight: ["300", "400", "500", "600", "700"],
+	weight: ["500", "600", "700", "800"],
 });
 
 // Iteration 4 — brand Georgian type. 'Noto Sans Georgian' was referenced in the font stacks but never
 // LOADED (no @font-face), so ka glyphs fell back to an OS font. Loading it via next/font gives clean,
 // uniform brand typography for the primary audience. display:'swap' + the metric-compatible fallback that
 // next/font auto-inserts keep layout metrics stable (no CLS / truncation shift). Latin/Cyrillic still
-// render in DM Sans / Inter — the browser only reaches this family for Georgian glyphs (per-char fallthrough).
+// render in Inter / Montserrat — the browser only reaches this family for Georgian glyphs (per-char fallthrough):
+// neither brand face has a Georgian glyph, and the brand sheet's own mockups set Georgian the same way.
 const notoGeorgian = Noto_Sans_Georgian({
 	subsets: ["georgian"],
 	variable: "--font-georgian",
@@ -81,12 +79,12 @@ export const viewport: Viewport = {
 	// innerHeight === visualViewport.height, so keyboardOffset computes 0 and --kb-inset publishes 0. The
 	// JS becomes inert exactly where the platform takes over.
 	interactiveWidget: 'resizes-content',
-	themeColor: '#000000',
+	themeColor: '#0A0A0A', // brand ink
 };
 
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
-	applicationName: 'MyAvatar',
+	applicationName: 'MyAvatar.ge',
 	// Next.js dynamic manifest at app/manifest.ts is served at /manifest.webmanifest.
 	manifest: '/manifest.webmanifest',
 	appleWebApp: {
@@ -264,8 +262,12 @@ export default async function RootLayout({
 			lang={documentLocale}
 			data-theme="dark"
 			suppressHydrationWarning
-			className={`dark ${inter.variable} ${syne.variable} ${dmSans.variable} ${notoGeorgian.variable}`}
-			style={{ ['--font-geist' as string]: 'var(--font-ui)' }}
+			className={`dark ${inter.variable} ${montserrat.variable} ${notoGeorgian.variable}`}
+			style={{
+				['--font-geist' as string]: 'var(--font-ui)',
+				['--font-dm' as string]: 'var(--font-ui)',
+				['--font-syne' as string]: 'var(--font-display)',
+			}}
 		>
 			<head>
 				{/*

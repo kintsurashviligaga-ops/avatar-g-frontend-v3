@@ -70,6 +70,7 @@ export function InstallAppButton({ locale = 'ka' }: { locale?: 'ka' | 'en' | 'ru
     <button
       type="button"
       title={t.title}
+      aria-label={t.install}
       onClick={async () => {
         try {
           await deferred.prompt();
@@ -78,10 +79,11 @@ export function InstallAppButton({ locale = 'ka' }: { locale?: 'ka' | 'en' | 'ru
         // The prompt is single-use whatever the outcome; keeping it would give a button that no-ops.
         setDeferred(null);
       }}
-      className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-app-accent/15 px-3 text-[12.5px] font-semibold text-app-accent ring-1 ring-app-accent/30 transition hover:bg-app-accent/25 active:scale-[0.97]"
+      className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-full bg-app-accent/15 px-3 text-[12.5px] font-semibold text-app-accent ring-1 ring-app-accent/30 transition hover:bg-app-accent/25 active:scale-[0.97]"
     >
       <Download size={15} className="shrink-0" />
-      <span className="whitespace-nowrap">{t.install}</span>
+      {/* Icon-only on phones: in the chat header the label pushed the wordmark out ("MyAvata", brief §8). */}
+      <span className="hidden whitespace-nowrap sm:inline">{t.install}</span>
     </button>
   );
 }

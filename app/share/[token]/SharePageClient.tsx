@@ -1,6 +1,7 @@
 'use client';
 
 import type { Creation } from './page';
+import { Wordmark } from '@/components/brand/Wordmark';
 
 type Kind = 'image' | 'video' | 'audio' | 'avatar' | 'text' | 'code';
 
@@ -95,10 +96,11 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
       {/* Header */}
       <header style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)', background: 'rgba(10,10,14,0.7)' }}>
         <a href="https://myavatar.ge" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#0284c7,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff' }}>G</div>
-          <span style={{ fontWeight: 700, fontSize: 15, color: '#fff' }}>MyAvatar</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={30} height={30} style={{ width: 30, height: 30, objectFit: 'contain', borderRadius: 8 }} />
+          <Wordmark size="sm" tone="onDark" />
         </a>
-        <a href="https://myavatar.ge" style={{ padding: '7px 16px', background: 'linear-gradient(135deg,#0369a1,#0ea5e9)', borderRadius: 8, color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
+        <a href="https://myavatar.ge" style={{ padding: '8px 16px', background: '#C5FF00', borderRadius: 999, color: '#0A0A0A', textDecoration: 'none', fontSize: 13, fontWeight: 700 }}>
           MyAvatar-ში გახსნა →
         </a>
       </header>
@@ -183,7 +185,8 @@ export default function SharePageClient({ creation }: { creation: Creation | nul
 
         {/* Footer credit */}
         <div style={{ marginTop: 48, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 24, height: 24, borderRadius: 6, background: 'linear-gradient(135deg,#0284c7,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>G</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={24} height={24} style={{ width: 24, height: 24, objectFit: 'contain', borderRadius: 6 }} />
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>შექმნილია MyAvatar AI-ით · myavatar.ge</span>
         </div>
       </main>

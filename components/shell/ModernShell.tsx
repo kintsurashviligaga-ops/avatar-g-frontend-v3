@@ -200,7 +200,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
       <div style={{ height: 'env(safe-area-inset-top, 0px)', flexShrink: 0 }} />
       <div className={`flex items-center justify-between px-4 sm:px-6 transition-all duration-300 ${scrolled ? 'h-14' : 'h-16'}`}>
       {/* Left: Hamburger + Brand Logo */}
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <button
           onClick={onMenuToggle}
           className="p-2.5 rounded-lg transition-colors hover:bg-[var(--card-hover)] touch-manipulation"
@@ -334,7 +334,7 @@ export function TopNavbar({ onMenuToggle, menuOpen }: { onMenuToggle: () => void
         {/* Get Started */}
         <Link
           href={lh('/signup')}
-          className="cinematic-btn cinematic-btn-primary text-[13px] px-4 py-2.5 rounded-xl"
+          className="cinematic-btn cinematic-btn-primary shrink-0 whitespace-nowrap text-[13px] px-3 sm:px-4 py-2.5 rounded-xl"
         >
           {locale === 'ka' ? 'დაწყება' : locale === 'ru' ? 'Начать' : 'Get Started'}
         </Link>

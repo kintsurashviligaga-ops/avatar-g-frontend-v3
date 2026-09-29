@@ -10,10 +10,12 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-dm)', 'var(--font-ui)', 'var(--font-georgian)', 'Noto Sans Georgian', 'Inter', 'system-ui', 'sans-serif'],
-        display: ['var(--font-syne)', 'var(--font-ui)', 'var(--font-georgian)', 'Noto Sans Georgian', 'Inter', 'system-ui', 'sans-serif'],
-        syne: ['var(--font-syne)', 'system-ui', 'sans-serif'],
-        dm: ['var(--font-dm)', 'system-ui', 'sans-serif'],
+        // Brand (docs/brand/BRAND.md): Inter for text, Montserrat for display; Georgian glyphs fall through to
+        // Noto Sans Georgian. `syne` and `dm` are the pre-2026-09 names, kept as aliases of the brand faces.
+        sans: ['var(--font-ui)', 'var(--font-georgian)', 'Noto Sans Georgian', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)', 'var(--font-georgian)', 'Noto Sans Georgian', 'var(--font-ui)', 'system-ui', 'sans-serif'],
+        syne: ['var(--font-display)', 'var(--font-georgian)', 'Noto Sans Georgian', 'system-ui', 'sans-serif'],
+        dm: ['var(--font-ui)', 'var(--font-georgian)', 'Noto Sans Georgian', 'system-ui', 'sans-serif'],
       },
       colors: {
         'app-bg': 'rgb(var(--app-bg) / <alpha-value>)',
@@ -27,6 +29,15 @@ const config: Config = {
         'app-success': 'rgb(var(--app-success) / <alpha-value>)',
         'app-warning': 'rgb(var(--app-warning) / <alpha-value>)',
         'app-danger': 'rgb(var(--app-danger) / <alpha-value>)',
+        // Brand (docs/brand/BRAND.md): bg-brand-lime text-brand-on-lime = the one primary CTA per screen.
+        brand: {
+          DEFAULT: 'rgb(var(--brand-primary) / <alpha-value>)',
+          primary: 'rgb(var(--brand-primary) / <alpha-value>)',
+          lime: 'rgb(var(--brand-lime) / <alpha-value>)',
+          gold: 'rgb(var(--brand-gold) / <alpha-value>)',
+          ink: 'rgb(var(--brand-ink) / <alpha-value>)',
+          'on-lime': 'rgb(var(--brand-on-lime) / <alpha-value>)',
+        },
         space: {
           DEFAULT: '#0a0a0f',
           black: '#030712',
@@ -39,10 +50,10 @@ const config: Config = {
           muted:   '#1e1e35',
         },
         cyan: {
-          DEFAULT: '#00d4ff',
+          DEFAULT: '#00E5FF', // brand primary (was #00d4ff)
           dim:    '#003d4d',
           glow:   '#006680',
-          base:   '#00d4ff',
+          base:   '#00E5FF',
           bright: '#33ddff',
           white:  '#ccf7ff',
           300: '#67E8F9',
