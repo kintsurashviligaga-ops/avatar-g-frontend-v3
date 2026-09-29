@@ -72,7 +72,7 @@ async function main() {
   const report = [];
   for (const [shot, targets] of Object.entries(TARGETS)) {
     // A reviewed revision (e.g. A4r — lettering removed) wins over the shot it was made from.
-    const pick = sel[`${shot}r`] ?? sel[shot];
+    const pick = sel[`${shot}r2`] ?? sel[`${shot}r`] ?? sel[shot];
     if (!pick) { report.push(`${shot}: not selected — skipped`); continue; }
     const src = join(OUT, pick.file);
     for (const t of targets) {

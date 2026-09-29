@@ -231,6 +231,27 @@ The first Soul takes of A4 and A5 put **lettering into the picture**: gibberish 
 }
 ```
 
+A5r removed the label but left pale letter-like marks on the front edge of the stone. **A5r2** is the IMAGE card's third and last allowed attempt: the first plus two retries.
+
+```json shot
+{
+  "id": "A5r2",
+  "title": "card IMAGE — stone marks removed (from A5r)",
+  "endpoint": "alibaba/qwen-image-3/edit",
+  "needs": ["A5r"],
+  "input": {
+    "image_urls": ["{{A5r}}"],
+    "prompt": "Remove the pale white marks and letters on the front edge of the dark stone slab so the stone is plain, dark and natural. Keep the bottle, the wine glass, the light, the shadows, the composition and the colour grade exactly as they are. No text anywhere.",
+    "negative_prompt": "text, letters, numbers, words, label, logo, watermark, white marks",
+    "aspect_ratio": "3:4",
+    "resolution": "2k",
+    "seed": 260929,
+    "prompt_extend": false,
+    "enable_thinking": false
+  }
+}
+```
+
 ## B — optional, only if ≥ $2 of the stop line remains
 
 ### B1 · a 5-second loop of the hero, 720p, silent
