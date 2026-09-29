@@ -19,7 +19,10 @@ export type ErrLang = 'ka' | 'en' | 'ru';
 
 type Known =
   | 'insufficient_credits' | 'provider_not_configured' | 'duplicate_request'
-  | 'rate_limited' | 'unauthorized' | 'timeout' | 'too_large' | 'unsupported_format';
+  | 'rate_limited' | 'unauthorized' | 'timeout' | 'too_large' | 'unsupported_format'
+  // The studio saga's codes (lib/studio/saga.ts → /api/estimate, /api/generate).
+  | 'price_changed' | 'confirmation_required' | 'model_unavailable' | 'content_rejected'
+  | 'generation_failed' | 'invalid_input' | 'provider_unavailable' | 'billing_unavailable' | 'cannot_cancel';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -31,6 +34,15 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     timeout: 'რენდერი ძალიან დიდხანს გაგრძელდა და შეწყდა. სცადე უფრო მოკლე ან პატარა ფაილით.',
     too_large: 'ფაილი ძალიან დიდია. სცადე პატარა ან უფრო მოკლე ფაილი.',
     unsupported_format: 'ეს ფორმატი არ იკითხება. სცადე MP4, MP3 ან WAV.',
+    price_changed: 'ფასი შეიცვალა. გადახედე ახალ ფასს და დაადასტურე ხელახლა.',
+    confirmation_required: 'ჯერ დაადასტურე ფასი — დადასტურების გარეშე თანხა არ ჩამოგეჭრება.',
+    model_unavailable: 'ეს მოდელი ახლა მიუწვდომელია. აირჩიე სხვა მოდელი — თანხა არ ჩამოგეჭრა.',
+    content_rejected: 'მოთხოვნა ან შედეგი უსაფრთხოების ფილტრმა შეაჩერა. შეცვალე აღწერა და სცადე ხელახლა — თანხა დაგიბრუნდა.',
+    generation_failed: 'გენერაცია ვერ დასრულდა. თანხა დაგიბრუნდა — სცადე ხელახლა.',
+    invalid_input: 'მოდელმა ეს პარამეტრები ვერ მიიღო. შეამოწმე ხანგრძლივობა, ფორმატი და ფაილები და სცადე ხელახლა.',
+    provider_unavailable: 'სერვისი დროებით მიუწვდომელია. სცადე რამდენიმე წუთში — ამ მცდელობის თანხა არ დაიკარგება.',
+    billing_unavailable: 'ბალანსის შემოწმება ვერ მოხერხდა. სცადე ცოტა ხანში — ზედმეტი თანხა არ ჩამოგეჭრება.',
+    cannot_cancel: 'გენერაცია უკვე დაწყებულია და ვეღარ გაუქმდება. შედეგი მალე გამოჩნდება.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -41,6 +53,15 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     timeout: 'The render ran too long and was stopped. Try a shorter or smaller file.',
     too_large: 'The file is too large. Try a smaller or shorter one.',
     unsupported_format: 'That format cannot be read. Try MP4, MP3 or WAV.',
+    price_changed: 'The price changed. Check the new price and confirm again.',
+    confirmation_required: 'Confirm the price first — nothing is charged without it.',
+    model_unavailable: 'This model is unavailable right now. Pick another one — you were not charged.',
+    content_rejected: 'The safety filter stopped this request or its result. Change the description and try again — you were refunded.',
+    generation_failed: 'The generation did not finish. You were refunded — try again.',
+    invalid_input: 'The model could not accept these settings. Check duration, format and files, then try again.',
+    provider_unavailable: 'The service is temporarily unavailable. Try again in a few minutes — you will not lose credits for this attempt.',
+    billing_unavailable: 'We could not check your balance. Try again shortly — you will not be overcharged.',
+    cannot_cancel: 'The generation has already started and can no longer be canceled. The result will appear soon.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -51,11 +72,32 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     timeout: 'Рендер шёл слишком долго и был остановлен. Попробуйте файл покороче.',
     too_large: 'Файл слишком большой. Попробуйте меньший или более короткий.',
     unsupported_format: 'Этот формат не читается. Попробуйте MP4, MP3 или WAV.',
+    price_changed: 'Цена изменилась. Проверьте новую цену и подтвердите снова.',
+    confirmation_required: 'Сначала подтвердите цену — без этого ничего не списывается.',
+    model_unavailable: 'Эта модель сейчас недоступна. Выберите другую — списания не было.',
+    content_rejected: 'Фильтр безопасности остановил запрос или результат. Измените описание и попробуйте снова — средства возвращены.',
+    generation_failed: 'Генерация не завершилась. Средства возвращены — попробуйте снова.',
+    invalid_input: 'Модель не приняла эти параметры. Проверьте длительность, формат и файлы и попробуйте снова.',
+    provider_unavailable: 'Сервис временно недоступен. Попробуйте через несколько минут — кредиты за эту попытку не пропадут.',
+    billing_unavailable: 'Не удалось проверить баланс. Попробуйте чуть позже — лишнего не спишем.',
+    cannot_cancel: 'Генерация уже началась и не может быть отменена. Результат скоро появится.',
   },
 };
 
 /** Substrings that identify a known failure inside a longer provider string. */
 const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
+  // The studio saga's codes are exact machine codes — matched whole and FIRST, so a loose pattern below
+  // (e.g. `timeout` inside a longer word) can never claim them.
+  [/^price_changed$/, 'price_changed'],
+  [/^confirmation_required$/, 'confirmation_required'],
+  [/^model_unavailable$/, 'model_unavailable'],
+  [/^content_rejected$/, 'content_rejected'],
+  [/^generation_failed$/, 'generation_failed'],
+  [/^invalid_input$/, 'invalid_input'],
+  [/^provider_unavailable$/, 'provider_unavailable'],
+  [/^billing_unavailable$/, 'billing_unavailable'],
+  [/^cannot_cancel$/, 'cannot_cancel'],
+  [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a
   // stack trace on the user's screen.
