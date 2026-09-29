@@ -47,3 +47,19 @@
 ## შემდეგი ნაბიჯი (შენი „კი"-ს შემდეგ)
 
 secret მოსვლისთანავე: `npm run hf:smoke` → `--submit` → ცხრილი ამ ფაილში → Phase 1 (`lib/providers/*`, `/api/generate`, `/api/estimate`, webhook, `generation_jobs` + RLS, ტესტები).
+
+---
+
+## განახლება · 2026-09-29 — Phase 0 დახურულია (MCP-ის გარდა)
+
+| პირობა (brief §3) | შედეგი |
+|---|---|
+| API key მუშაობს | ✅ ახალი key შეიქმნა console-ში, ადგილობრივად შემოწმდა (`npm run hf:credentials -- --from-clipboard`: Higgsfield-მა მიიღო) → `.env.local` (600) + Vercel Production/Preview (`HF_CREDENTIALS`, encrypted). secret არც ჩატში, არც ლოგში, არც git-ში |
+| smoke test | ✅ estimate (უფასო): Soul 2 $0.004 · Kling 3 std t2v/i2v $0.139 · Kling 3 pro $0.185 · Seedance 2.5 — token-priced (იხ. ქვემოთ). Motion Control / Genjutsu / Soul ID — გამოტოვებული (საჭიროა წყარო-ვიდეო / endpoint-ის დადასტურება) |
+| რეალური გენერაცია | ✅ ოფიციალური SDK-ით (`npm run hf:example`): Seedance 2.5, „A cinematic scene at sunset“, 5 s / 720p / 16:9 → **completed 430.7 s-ში**; ფაილი შემოწმდა ffmpeg-ით: 5.04 s, 1280×720, h264 24 fps, AAC stereo, 4.9 MB |
+| secret bundle-ში | ✅ არ არის |
+| MCP Claude Code-ში | ⏳ OAuth ინტერაქტიულია (`/mcp → higgsfield → Authenticate`) — მხოლოდ დეველოპმენტისთვის, საიტი არ იყენებს |
+
+**ხარჯი (Higgsfield Analytics):** $1.62 ჩამოიჭრა (სიის ფასი **$2.31**, −30% ფასდაკლება); ამავე დღეს promo-მ +$1.618 cashback დააბრუნა → ბალანსი $23.38.
+
+**ნაპოვნი და გასწორებული:** `/estimate` ორ სხვადასხვა ფორმას აბრუნებს — Kling/Soul: რიცხვი (`usd` = რაც ჩამოიჭრება, `discount.usd` = ფასდაკლება); **Seedance 2.5: მხოლოდ ტექსტი** („~$0.4622 წამში 720p-ზე…“). ჩვენი კლიენტი ამ მეორე ფორმაზე ვარდებოდა → Seedance-ის ფასი ვერ დადგინდებოდა. ახლა ფასი ითვლება provider-ის საკუთარი ფორმულით (`lib/providers/higgsfield/tokenPricing.ts`): ჩვენი გამოთვლა **$2.3112** — Higgsfield-ის „usage before discounts“ **$2.31** ✓.
