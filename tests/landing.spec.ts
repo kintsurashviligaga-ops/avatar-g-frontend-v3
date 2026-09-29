@@ -169,7 +169,13 @@ for (const vp of VIEWPORTS) {
     test('a chip switches the service and sends nothing', async ({ page }) => {
       await openDashboard(page);
       const posts: string[] = [];
-      page.on('request', (r) => { if (r.method() === 'POST' && new URL(r.url()).pathname.startsWith('/api/')) posts.push(r.url()); });
+      // Background traffic is not a send: the presence heartbeat POSTs on its own schedule (it made this flaky on
+      // production), and client error logging may too. Anything else POSTed to /api/ would be a job.
+      const BACKGROUND = /^\/api\/(presence|log-error)\b/;
+      page.on('request', (r) => {
+        const path = new URL(r.url()).pathname;
+        if (r.method() === 'POST' && path.startsWith('/api/') && !BACKGROUND.test(path)) posts.push(r.url());
+      });
       const chips = page.getByRole('group', { name: 'დაიწყე' }).getByRole('button');
       await chips.nth(1).click();
       await expect(chips.nth(1)).toHaveAttribute('aria-pressed', 'true');
@@ -253,6 +259,22 @@ for (const vp of VIEWPORTS) {
       await startImageJob(page);
       await expect(page.locator('img[src="/brand/v1/card-image.jpg"]').first()).toBeVisible();
       await expect(page.getByTestId('result-card')).toHaveCount(0);
+    });
+
+    test('one composer: the price sits inside it, next to the format and length, and follows the length', async ({ page }) => {
+      await openDashboard(page);
+      const price = page.getByTestId('price-tag').filter({ visible: true });
+      await expect(price).toHaveCount(1);
+      await expect(price).toContainText('კრედიტი');
+      await page.locator('select[aria-label="ხანგრძლივობა"]:visible').selectOption('8');
+      await expect(price).toContainText('~2 წთ');
+      await page.locator('select[aria-label="ხანგრძლივობა"]:visible').selectOption('48');
+      await expect(price).toContainText('~7 წთ');
+      // Options are a control IN the composer, not a bar above it.
+      const composer = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
+      const toggle = (await page.getByTestId('options-toggle').boundingBox())!;
+      expect(toggle.y).toBeGreaterThanOrEqual(composer.y);
+      expect(toggle.y + toggle.height).toBeLessThanOrEqual(composer.y + composer.height + 1);
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {
