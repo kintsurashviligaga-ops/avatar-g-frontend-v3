@@ -2,8 +2,8 @@
 # Enter the Higgsfield API key SECRET locally — hidden, checked live with Higgsfield (a FREE estimate call),
 # and only then saved.
 #
-#   npm run hf:credentials              # the key ID is already configured → asks ONLY for the secret
-#   npm run hf:credentials -- --new-id  # you created a NEW key → asks for its ID first
+#   npm run hf:credentials              # paste the secret — or the whole "KEY_ID:KEY_SECRET" the console copies
+#   npm run hf:credentials -- --new-id  # you created a NEW key and have only its separate ID + secret
 #
 # The secret is never shown, logged or committed. It goes into .env.local (gitignored, chmod 600) and — only if
 # you answer "y" — into this project's encrypted Vercel environment (Production + Preview).
@@ -51,13 +51,22 @@ verify() {
 ok=0
 key_secret=""
 for attempt in 1 2 3; do
-  printf 'Paste the API Key SECRET and press Enter (nothing shows while you paste): '
+  printf 'Paste the API key (KEY_ID:KEY_SECRET) or just the secret, then Enter (nothing shows): '
   read -rs key_secret
   echo
   key_secret="$(printf '%s' "$key_secret" | tr -d '[:space:]')"
   if [ -z "$key_secret" ]; then echo "Nothing was pasted. Try again."; continue; fi
+  # The console's "API key" copies as ONE string "KEY_ID:KEY_SECRET" — accept it whole and take the ID from it.
+  if [[ "$key_secret" == *:* ]]; then
+    left="${key_secret%%:*}"; right="${key_secret#*:}"
+    if [[ "$left" =~ $UUID_RE ]] && [ -n "$right" ] && [[ "$right" != *:* ]]; then
+      key_id="$left"; key_secret="$right"
+      echo "Read a combined key — ID ${key_id:0:8}…"
+    else
+      echo "That has a ':' but is not KEY_ID:KEY_SECRET — paste the whole key exactly as copied, or only the secret."; continue
+    fi
+  fi
   if [ "$key_secret" = "$key_id" ]; then echo "That is the key ID, not the secret — the console shows a second, different value."; continue; fi
-  case "$key_secret" in *:*) echo "The secret contains ':' — paste only the secret itself."; continue ;; esac
   code="$(verify "$key_id" "$key_secret")"
   case "$code" in
     200) echo "OK — Higgsfield accepted the key."; ok=1; break ;;
