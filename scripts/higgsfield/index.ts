@@ -60,7 +60,7 @@ async function main(): Promise<number> {
   const credentials = credentialsFromEnv();
   if (!credentials) {
     console.error('Blocked: HF_CREDENTIALS ("key-id:key-secret") is not set.');
-    console.error('Only a key ID is configured — the key SECRET is missing. Run `npm run hf:credentials` and enter it locally.');
+    console.error('Only a key ID is configured — the key SECRET is missing. Run `npm run hf:credentials` and paste the secret locally.');
     return 2;
   }
 
