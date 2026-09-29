@@ -22,6 +22,7 @@ import {
   soul2Input,
 } from '@/lib/providers/higgsfield/models';
 import { videoTokensUsd } from '@/lib/providers/higgsfield/tokenPricing';
+import { describeInput } from '@/lib/providers/paramSpec';
 import type { ModelTier, OutputKind, ProviderId, StudioService } from '@/lib/providers/types';
 
 export type ModelMode = 'text-to-image' | 'text-to-video' | 'image-to-video' | 'reference-to-video' | 'motion-transfer';
@@ -52,6 +53,11 @@ export interface ModelEntry {
    * and the provider's pricing text. Absent → such a model cannot be priced and is refused (D5).
    */
   priceUsd?: (input: Record<string, unknown>, pricingDescription: string | null) => number | null;
+  /**
+   * Fields of which at least one must be filled — a rule the schema states as a refinement, which a form
+   * cannot read. The UI waits for one of them before asking for a price.
+   */
+  requireOneOf?: string[];
 }
 
 const MIN = 60_000;
@@ -177,6 +183,7 @@ export const MODELS: readonly ModelEntry[] = [
     schema: 'page',
     timeoutMs: 20 * MIN,
     priceUsd: videoTokensUsd,
+    requireOneOf: ['image_urls', 'audio_urls'],
   },
   {
     id: 'hf/kling-3-motion-std',
@@ -278,7 +285,23 @@ export function parseModelInput(model: ModelEntry, raw: unknown): ParsedInput {
   };
 }
 
-/** The public, UI-safe view of a model (no endpoint, no schema object). */
+/**
+ * The public, UI-safe view of a model: no endpoint, no schema object — the form description derived from the
+ * schema instead (lib/providers/paramSpec.ts), so the chips offer exactly what the server will accept.
+ */
 export function publicModel(m: ModelEntry) {
-  return { id: m.id, service: m.service, mode: m.mode, label_ka: m.label_ka, description_ka: m.description_ka, label_en: m.label_en, tier: m.tier, output: m.output };
+  return {
+    id: m.id,
+    service: m.service,
+    mode: m.mode,
+    label_ka: m.label_ka,
+    description_ka: m.description_ka,
+    label_en: m.label_en,
+    tier: m.tier,
+    output: m.output,
+    params: describeInput(m.input),
+    requireOneOf: m.requireOneOf ?? [],
+  };
 }
+
+export type PublicModel = ReturnType<typeof publicModel>;

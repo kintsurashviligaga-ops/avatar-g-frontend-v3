@@ -2454,6 +2454,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     window.addEventListener('omni:set-mode', onSet);
     return () => window.removeEventListener('omni:set-mode', onSet);
   }, []);
+  // Deep link: /dashboard?mode=music (the studio's Music tab, a shared link) opens that service. The param is
+  // removed once applied, so a reload or a copied URL does not keep forcing it.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const d = url.searchParams.get('mode');
+      if (d !== 'image' && d !== 'music' && d !== 'video' && d !== 'lipsync') return;
+      setMode(d);
+      setOptionsOpen(true);
+      url.searchParams.delete('mode');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch { /* no URL API — the chat simply opens in its default mode */ }
+  }, []);
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('omni:mode-changed', { detail: mode }));
   }, [mode]);

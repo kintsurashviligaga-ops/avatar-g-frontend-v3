@@ -19,7 +19,7 @@ import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard,
+  Menu, X, Plus, History, LogIn, LogOut, Shield, FileText, LifeBuoy, MessageSquarePlus, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, CreditCard, Clapperboard,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -312,7 +312,20 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       if (uid && uid !== lastAvatarUserIdRef.current) { lastAvatarUserIdRef.current = uid; loadAvatar(uid); }
       else if (!uid) { lastAvatarUserIdRef.current = null; setAvatarUrl(null); }
     };
-    supabase.auth.getUser().then(({ data }) => syncUser(data.user)).catch(() => {});
+    supabase.auth.getUser().then(({ data }) => {
+      syncUser(data.user);
+      // Deep link: /dashboard?voice=1 (the studio's Voice tab) opens the voice overlay — or sign-in, since voice
+      // is an authed feature. Decided only once auth is known; the param is removed so a reload does not re-open.
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('voice') === '1') {
+          url.searchParams.delete('voice');
+          window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+          if (data.user) { setLiveUnavailable(false); setLiveAvatarUnavailable(false); setVoiceOpen(true); }
+          else { setAuthMode('login'); setAuthOpen(true); }
+        }
+      } catch { /* no URL API */ }
+    }).catch(() => {});
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => syncUser(session?.user ?? null));
     return () => { alive = false; sub?.subscription?.unsubscribe(); };
   }, []);
@@ -779,6 +792,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // (visible on ALL viewports — the header is always sticky) whenever an explicit onBack
   // is given OR we're on a non-dashboard surface, defaulting the action to the chat home.
   const onLibrary = (pathname ?? '').includes('/library');
+  // The studio row exists per DEPLOYMENT (STUDIO_V2, published on <html> by the root layout), never per route.
+  const [studioV2, setStudioV2] = useState(false);
+  useEffect(() => { setStudioV2(document.documentElement.dataset.studioV2 === '1'); }, []);
+  const tStudio = lang === 'en' ? 'Studio' : lang === 'ru' ? 'Студия' : 'სტუდია';
+  const tBeta = lang === 'en' ? 'Beta' : lang === 'ru' ? 'Бета' : 'ბეტა';
   const showBack = Boolean(onBack) || onLibrary;
   const goBack = onBack ?? (() => router.push(`/${locale}/dashboard`));
   // Secondary surfaces opened ON TOP of the studio (e.g. /library) get a CLOSE (X)
@@ -939,6 +957,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               · Favorites — it pointed at `/library?tab=favorites`, the same view Library already opens,
                 so it was a second door to one room. */}
         <div className="space-y-0.5 border-t border-app-border/10 px-2 py-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
+          {studioV2 && (
+            <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/studio`); }} className={sideRow}>
+              <Clapperboard className="h-[17px] w-[17px] text-app-muted" /> {tStudio}
+              <span className="ml-auto rounded-full bg-app-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent">{tBeta}</span>
+            </button>
+          )}
           <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" /> {tLibrary}
           </button>

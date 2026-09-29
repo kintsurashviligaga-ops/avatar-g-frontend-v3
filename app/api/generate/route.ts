@@ -7,6 +7,9 @@
  *   409 confirmation_required / price_changed → { price } — show it, ask again, resend with confirmedGel
  *   402 insufficient_credits → { price }
  *   202 → { job } — then poll GET /api/generate/:id
+ *
+ * GET /api/generate[?limit=12] — the caller's most recent jobs, newest first. A reload, or a start whose
+ * answer was lost, must not make a job the user paid for disappear from their screen.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -15,6 +18,7 @@ import { studioV2Enabled } from '@/lib/studio/flags';
 import { getStudioRuntime, signUploadedReference } from '@/lib/studio/runtime';
 import { publicJob } from '@/lib/studio/saga';
 import { mediaParams, notFound, publicPrice, readJson, sagaError, unauthorized } from '@/lib/studio/http';
+import { TERMINAL_JOB_STATUSES } from '@/lib/studio/store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,4 +47,27 @@ export async function POST(req: NextRequest) {
   const res = await rt.saga.create({ userId: user.id, modelId, params: media.params, confirmedGel, promptOriginal });
   if (!res.ok) return sagaError(res.code, { price: res.price, issues: res.issues });
   return NextResponse.json({ job: publicJob(res.job), price: publicPrice(res.price) }, { status: 202 });
+}
+
+/** Outputs signed per completed job (a result can carry several images). */
+const MAX_SIGNED_PER_JOB = 4;
+
+export async function GET(req: NextRequest) {
+  if (!studioV2Enabled()) return notFound();
+  const { user } = await authedClientFromRequest(req);
+  if (!user) return unauthorized();
+
+  const rt = getStudioRuntime();
+  if (!rt) return sagaError('not_configured');
+  const n = Number(req.nextUrl.searchParams.get('limit'));
+  const limit = Number.isInteger(n) && n > 0 ? Math.min(n, 30) : 12;
+
+  const jobs = await rt.store.listForUser(user.id, limit);
+  const out = await Promise.all(
+    jobs.map(async (job) => {
+      const urls = job.status === 'completed' ? await rt.signOutputs(job.output_urls.slice(0, MAX_SIGNED_PER_JOB)).catch(() => []) : [];
+      return { ...publicJob(job, urls), terminal: TERMINAL_JOB_STATUSES.has(job.status) };
+    }),
+  );
+  return NextResponse.json({ jobs: out }, { headers: { 'Cache-Control': 'no-store' } });
 }

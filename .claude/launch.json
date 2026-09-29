@@ -18,6 +18,15 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "avatar-g-ui-studio",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "STUDIO_V2=1 npm run dev:ui"
+      ],
+      "port": 3100
     }
   ]
 }

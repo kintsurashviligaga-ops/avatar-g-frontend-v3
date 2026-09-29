@@ -74,7 +74,7 @@ const AGENTS: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StudioPage() {
+export default function LegacyStudioHub() {
   return (
     <div className="min-h-screen bg-transparent text-white">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 space-y-10">

@@ -92,6 +92,8 @@ export interface StudioStore {
   patch(id: string, patch: JobPatch): Promise<void>;
   listByStatus(statuses: JobStatus[], opts?: { updatedBefore?: string; dueBefore?: string; limit?: number }): Promise<StudioJob[]>;
   listRefundPending(limit?: number): Promise<StudioJob[]>;
+  /** The user's most recent jobs, newest first — the studio's job list survives a reload. */
+  listForUser(userId: string, limit?: number): Promise<StudioJob[]>;
   /** Webhook dedupe on (provider, request_id, status). true = first delivery. Throws if the write fails. */
   recordEvent(ev: { provider: string; requestId: string; status: string; jobId: string | null; payload: unknown }): Promise<boolean>;
 }
@@ -138,6 +140,16 @@ export function createSupabaseStudioStore(sb: Sb): StudioStore {
     },
     async listRefundPending(limit = 25) {
       const { data, error } = await sb.from(TABLE).select('*').eq('refund_state', 'pending').order('updated_at', { ascending: true }).limit(limit);
+      if (error) throw new Error(`studio_jobs: ${error.message}`);
+      return (data ?? []) as StudioJob[];
+    },
+    async listForUser(userId, limit = 12) {
+      const { data, error } = await sb
+        .from(TABLE)
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(Math.max(1, Math.min(limit, 50)));
       if (error) throw new Error(`studio_jobs: ${error.message}`);
       return (data ?? []) as StudioJob[];
     },

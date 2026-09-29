@@ -9,7 +9,7 @@ import CookieConsent from './CookieConsent';
 import SupportWidgetMount from './support/SupportWidgetMount';
 import PresenceHeartbeat from './presence/PresenceHeartbeat';
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, studioV2 = false }: { children: React.ReactNode; /** STUDIO_V2 on this deployment (root layout). */ studioV2?: boolean }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   // Embedded mode: when a page is opened inside the studio's in-window slide-over
@@ -150,7 +150,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Stripping the chrome here is what lets LegalDocChrome's ✕ be the single, obvious way out.
   const isLegalDoc = !!pathname && /\/(terms|privacy|refund|refund-policy|cookies|licenses)\/?$/.test(pathname);
 
-  const hideShellChrome = isImmersiveWorkspace || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed || isLegalDoc;
+  // /{locale}/studio is the new studio — wrapped in the ChatChrome shell like /library — where STUDIO_V2 is on.
+  // Elsewhere the same URL is the legacy agent hub, which is a marketing page and keeps this chrome.
+  const isStudioV2 = studioV2 && !!pathname && /^(\/(ka|en|ru))?\/studio\/?$/.test(pathname);
+
+  const hideShellChrome = isImmersiveWorkspace || isStudioV2 || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed || isLegalDoc;
 
   return (
     <div
@@ -158,7 +162,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       style={{ color: 'var(--color-text)', isolation: 'isolate' }}
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
-      <PageEnvironment reduced={isImmersiveWorkspace || isAdmin} />
+      <PageEnvironment reduced={isImmersiveWorkspace || isStudioV2 || isAdmin} />
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"
@@ -173,7 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         id="main-content"
         className="relative flex-1 w-full"
         style={
-          isImmersiveWorkspace
+          isImmersiveWorkspace || isStudioV2
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
             // ⚠️ isLegalDoc BELONGS HERE TOO. The else-branch below reserves 4rem at the top for the
             // TopNavbar and 60px at the bottom for the BottomNavigation — neither of which renders on a
@@ -205,7 +209,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Support chat. It decides for itself whether this route should show it — notably NOT the studio,
           whose composer dock owns the bottom-right corner (see the PHASE 37.1 note above: a floating
           button in that corner has been reported before). */}
-      {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <SupportWidgetMount />}
+      {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <SupportWidgetMount hidden={isStudioV2} />}
     </div>
   );
 }

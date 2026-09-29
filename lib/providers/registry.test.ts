@@ -41,9 +41,19 @@ describe('every registered model', () => {
     expect(ids).not.toMatch(/nano|banana|seedream|gpt-image/i);
   });
 
-  test('the public view carries no endpoint and no schema', () => {
+  test('the public view carries no endpoint and no schema — only a plain form description', () => {
     const p = publicModel(MODELS[0]!);
-    expect(Object.keys(p)).toEqual(['id', 'service', 'mode', 'label_ka', 'description_ka', 'label_en', 'tier', 'output']);
+    expect(Object.keys(p)).toEqual(['id', 'service', 'mode', 'label_ka', 'description_ka', 'label_en', 'tier', 'output', 'params', 'requireOneOf']);
+    for (const m of MODELS) {
+      const json = JSON.stringify(publicModel(m));
+      expect(json).not.toContain(m.endpoint);
+      expect(json).not.toMatch(/_def|ZodObject/);
+    }
+  });
+
+  test('reference→video says which references satisfy "at least one"', () => {
+    expect(publicModel(getModel('hf/seedance-2.5-r2v')!).requireOneOf).toEqual(['image_urls', 'audio_urls']);
+    expect(publicModel(getModel('hf/kling-3-std-t2v')!).requireOneOf).toEqual([]);
   });
 });
 
