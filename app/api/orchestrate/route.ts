@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
 import { textProviderFactory, type TextProviderId } from '@/lib/providers/text-factory';
 import { toolRegistry, type ToolId } from '@/lib/tools/registry';
 import { reportError } from '@/lib/observability/report-error';
@@ -126,21 +126,19 @@ export async function POST(request: NextRequest) {
     // 7. Deduct from the CANONICAL ledger with a per-transaction idempotency ref (Iteration 3 — was the
     //    legacy public.credits overload). The canonical deduct_credits(uuid,int,text) returns the new
     //    balance (integer) and RAISES on an insufficient balance (surfaced here as `deductError`).
+    //    ⚠️ Through the SERVICE-ROLE ledger helper, never the session client: deduct_credits trusts the
+    //    p_user_id it is handed, so as of 20260929a only service_role may execute it.
     const deductRef = `orchestrate:${agentId}:${crypto.randomUUID()}`;
-    const { data: newBalance, error: deductError } = await supabase
-      .rpc('deduct_credits', {
-        p_user_id: user.id,
-        p_amount: creditsRequired,
-        p_ref: deductRef,
-      });
+    const debit = await deductCredits(user.id, creditsRequired, deductRef);
 
-    if (deductError) {
-      console.error('Credit deduction failed:', deductError);
+    if (!debit.ok) {
+      console.error('Credit deduction failed:', debit.reason);
       return NextResponse.json(
-        { error: 'Credit deduction failed', details: deductError.message },
+        { error: 'Credit deduction failed', reason: debit.reason },
         { status: 402 }
       );
     }
+    const newBalance = debit.balance;
 
     // 8. Log orchestration run
     await supabase.from('orchestration_runs').insert({

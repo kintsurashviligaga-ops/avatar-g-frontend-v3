@@ -147,3 +147,95 @@ export async function refundCredits(userId: string, amount: number, ref: string)
     return { ok: false, reason };
   }
 }
+
+/**
+ * Credits ACTUALLY taken under `ref` and not yet given back — read from the ledger, never from a job row.
+ *
+ * ⚠️ WHY THIS EXISTS: the render drainer used to refund `generation_jobs.params._reserve.credits`, and
+ * generation_jobs is OWNER-WRITABLE (RLS lets a signed-in user insert and update their own rows). A user
+ * could insert a stale `processing` row claiming `_reserve: { ref: <anything new>, credits: 1000000 }` and
+ * the drainer would pay it out. A row can claim what it likes; only the ledger knows what was charged.
+ *
+ * net = |sum of debits whose ref is exactly `ref`| − sum of credit-backs whose ref starts with `${ref}:`
+ * (`:refund`, `:settle`, …), floored at 0. Returns null when the ledger cannot be read — callers must then
+ * refund NOTHING rather than guess.
+ */
+export async function netDebitedForRef(userId: string, ref: string): Promise<number | null> {
+  const sb = client();
+  if (!sb || !userId || !ref) return null;
+  try {
+    const debits = await sb
+      .from('credit_ledger')
+      .select('delta')
+      .eq('user_id', userId)
+      .eq('metadata->>ref', ref)
+      .lt('delta', 0);
+    if (debits.error) return null;
+    // `_` and `%` are LIKE wildcards and refs contain underscores — escape them, then re-check the prefix
+    // exactly in JS so a wildcard can never widen the match.
+    const prefix = `${ref}:`;
+    const credits = await sb
+      .from('credit_ledger')
+      .select('delta, metadata')
+      .eq('user_id', userId)
+      .like('metadata->>ref', `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+      .gt('delta', 0);
+    if (credits.error) return null;
+    const taken = ((debits.data ?? []) as Array<{ delta: number }>).reduce((s, r) => s + Math.abs(Number(r.delta) || 0), 0);
+    const given = ((credits.data ?? []) as Array<{ delta: number; metadata?: { ref?: unknown } | null }>)
+      .filter((r) => typeof r.metadata?.ref === 'string' && (r.metadata.ref as string).startsWith(prefix))
+      .reduce((s, r) => s + (Number(r.delta) || 0), 0);
+    return Math.max(0, taken - given);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refund what the LEDGER shows was taken under `ref` (as `${ref}:refund`, the same idempotency ref every
+ * in-route rollback uses), capped at `claimed` when the caller has an expected amount. Never refunds more
+ * than was charged, never refunds on an unreadable ledger.
+ */
+export async function refundDebitByRef(
+  userId: string,
+  ref: string,
+  claimed?: number,
+): Promise<LedgerResult & { refunded: number }> {
+  const net = await netDebitedForRef(userId, ref);
+  if (net === null) return { ok: false, reason: 'error', refunded: 0 };
+  const cap = typeof claimed === 'number' && Number.isFinite(claimed) && claimed > 0 ? Math.round(claimed) : net;
+  const amount = Math.min(net, cap);
+  if (!(amount > 0)) return { ok: false, reason: 'skipped', refunded: 0 };
+  const res = await refundCredits(userId, amount, `${ref}:refund`);
+  return { ...res, refunded: res.ok ? amount : 0 };
+}
+
+/**
+ * Grant credits THROUGH THE LEDGER (bonuses, promos). Idempotent on `ref`: the unique index
+ * credit_ledger_user_ref_positive_uniq (user_id, metadata->>'ref') WHERE delta > 0 turns a repeat into a
+ * 23505, which is reported as success — the grant already happened. The AFTER INSERT trigger moves
+ * profiles.credits_balance.
+ *
+ * ⚠️ Replaces the `add_credits` RPC, which UPDATEd credits_balance directly and wrote no ledger row — every
+ * referral bonus it paid is a balance the ledger cannot explain (5 accounts on 2026-09-29).
+ */
+export async function grantCredits(userId: string, amount: number, ref: string, source: string): Promise<LedgerResult> {
+  const sb = client();
+  if (!sb) return { ok: false, reason: 'skipped' };
+  const credits = Math.round(amount);
+  if (!userId || !ref || !(credits > 0)) return { ok: false, reason: 'error' };
+  try {
+    const { error } = await sb
+      .from('credit_ledger')
+      .insert({ user_id: userId, delta: credits, reason: 'admin_adjustment', metadata: { source, ref } });
+    if (error) {
+      if ((error as { code?: string }).code === '23505') return { ok: true };
+      reportError(error, { fn: 'grantCredits', userId, amount: credits, ref, source });
+      return { ok: false, reason: 'error' };
+    }
+    return { ok: true };
+  } catch (e) {
+    reportError(e, { fn: 'grantCredits', userId, amount: credits, ref, source });
+    return { ok: false, reason: 'error' };
+  }
+}

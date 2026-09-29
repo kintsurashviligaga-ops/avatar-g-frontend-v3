@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { grantCredits } from '@/lib/orchestrator/ledger';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +65,10 @@ export async function POST(request: NextRequest) {
     }
 
     // ── WINNER ONLY — award both sides exactly once ──────────────────────────────────────────────
-    try { await supabase.rpc('add_credits', { p_user_id: user.id, p_amount: NEW_USER_BONUS }); } catch { /* graceful */ }
+    // Through the LEDGER, not add_credits: that RPC UPDATEd credits_balance directly and wrote no ledger
+    // row, so every bonus it paid was a balance the ledger could not explain. The refs make each grant
+    // idempotent on its own (unique (user_id, ref) for credits), on top of the atomic claim above.
+    await grantCredits(user.id, NEW_USER_BONUS, `referral:new:${user.id}`, 'referral_bonus');
 
     await supabase
       .from('profiles')
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', referrer.id);
 
-    try { await supabase.rpc('add_credits', { p_user_id: referrer.id, p_amount: REFERRER_BONUS }); } catch { /* graceful */ }
+    await grantCredits(referrer.id, REFERRER_BONUS, `referral:referrer:${referrer.id}:${user.id}`, 'referral_bonus');
 
     return NextResponse.json({
       success: true,

@@ -127,6 +127,16 @@ export async function POST(request: NextRequest) {
   const ref = bogCreditRef(order.shop_order_id);
   const newBalance = await creditWalletGel(order.user_id, order.amount_gel, ref);
 
+  // ⚠️ A FAILED CREDIT MUST NOT BE REPORTED AS PAID. This used to mark the order `paid` and answer
+  // `credited: true` whatever creditWalletGel returned — and from 2026-08-02 it returned null on EVERY call
+  // (the ambiguous credit_wallet_gel overload, fixed in 20260929a). A 5xx makes BOG re-deliver; the ref
+  // above keeps the retry exactly-once.
+  if (newBalance === null) {
+    // eslint-disable-next-line no-console
+    console.error(`[BOG webhook] APPROVED but credit FAILED ref=${ref} user=${order.user_id} amount=${order.amount_gel}₾ — asking BOG to retry`);
+    return NextResponse.json({ received: true, status: 'APPROVED', credited: false, reason: 'credit_failed' }, { status: 500 });
+  }
+
   await svc
     .from('bog_orders')
     .update({ status: 'paid', bog_order_id: data.orderId ?? order.shop_order_id, updated_at: new Date().toISOString() })

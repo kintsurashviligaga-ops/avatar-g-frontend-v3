@@ -112,6 +112,17 @@ describe('credit', () => {
     expect(mockCreditWalletGel).toHaveBeenCalledWith('user_1', 10, 'bog:shop_uuid_1');
   });
 
+  it('REGRESSION: a credit that did NOT land is not reported as paid — 5xx so BOG re-delivers', async () => {
+    // From 2026-08-02 creditWalletGel returned null on every call (ambiguous RPC overload). The route marked
+    // the order `paid` and answered `credited: true` anyway, so the customer paid and got nothing, forever.
+    mockCreditWalletGel.mockResolvedValue(null);
+    const body = APPROVED({ purchase_units: { transferred_amount: '10.00', currency_code: 'GEL' } });
+    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
+    expect(r.status).toBe(500);
+    expect(r.json).toMatchObject({ credited: false, reason: 'credit_failed' });
+    expect(mockState.updates.filter((u) => u.patch.status === 'paid')).toHaveLength(0);
+  });
+
   it('REGRESSION: same order in two DIFFERENT envelopes yields the SAME ref (no double-credit window)', async () => {
     // Delivery A carries order_id; delivery B carries ONLY shop_order_id. Pre-fix these produced
     // bog:BOG_1 vs bog:shop_uuid_1 → the ref PK failed to dedupe. Now both must be bog:shop_uuid_1.
