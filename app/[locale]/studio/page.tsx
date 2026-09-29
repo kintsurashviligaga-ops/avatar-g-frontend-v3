@@ -15,8 +15,8 @@ type Props = { params: Promise<{ locale: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
-  const title = locale === 'en' ? 'Studio — MyAvatar.ge' : locale === 'ru' ? 'Студия — MyAvatar.ge' : 'სტუდია — MyAvatar.ge';
-  return { title };
+  // The [locale] layout's template appends " · MyAvatar" — the page gives only its own name.
+  return { title: locale === 'en' ? 'Studio' : locale === 'ru' ? 'Студия' : 'სტუდია' };
 }
 
 export default async function StudioPage({ params }: Props) {
