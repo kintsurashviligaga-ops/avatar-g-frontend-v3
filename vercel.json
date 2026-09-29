@@ -185,6 +185,10 @@
     {
       "path": "/api/app/worker/tick",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/studio-sweep",
+      "schedule": "* * * * *"
     }
   ]
 }

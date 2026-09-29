@@ -40,6 +40,23 @@ describe('describeServiceError', () => {
     expect(describeServiceError({ code: 5 }, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
   });
 
+  it('speaks every studio saga code in all three languages, Georgian by default', () => {
+    // lib/studio/saga.ts → /api/estimate, /api/generate. Each one says what happened AND what to do next.
+    const codes = ['price_changed', 'confirmation_required', 'model_unavailable', 'content_rejected', 'generation_failed',
+      'invalid_input', 'provider_unavailable', 'billing_unavailable', 'cannot_cancel', 'not_configured'];
+    for (const code of codes) {
+      const ka = describeServiceError(code, 'ka', KA_FALLBACK);
+      expect(ka).not.toBe(KA_FALLBACK);
+      expect(ka).toMatch(/[Ⴀ-ჿ]/);
+      expect(describeServiceError(code, 'en', 'x')).not.toBe('x');
+      expect(describeServiceError(code, 'ru', 'x')).toMatch(/[Ѐ-ӿ]/);
+    }
+  });
+
+  it('matches the studio codes whole — a longer string that merely contains one is not claimed', () => {
+    expect(describeServiceError('xyz_price_changed_log', 'en', 'fallback')).toBe('fallback');
+  });
+
   it('reads Georgian for any locale it does not ship', () => {
     expect(describeServiceError('rate_limited', 'de', 'x')).toBe(describeServiceError('rate_limited', 'ka', 'x'));
   });

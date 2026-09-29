@@ -43,7 +43,8 @@ const ZERO = '00000000-0000-0000-0000-000000000000';
 
 /** Tables an anonymous visitor must see ZERO rows of. */
 const TABLES = ['profiles', 'credit_ledger', 'wallet_topups', 'jobs', 'job_steps', 'artifacts', 'project_intelligence',
-  'generation_jobs', 'agent_evolution_traces', 'music_jobs', 'avatar_builder_jobs', 'image_architect_jobs', 'transactions'];
+  'generation_jobs', 'agent_evolution_traces', 'music_jobs', 'avatar_builder_jobs', 'image_architect_jobs', 'transactions',
+  'studio_jobs', 'provider_webhook_events'];
 
 /** Functions an anonymous visitor must NOT be able to execute, with no-op arguments. */
 const RPCS = [
