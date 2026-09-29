@@ -1,0 +1,457 @@
+{
+  "job": "brand/v1 art pack",
+  "capUsd": 7,
+  "stopAtUsd": 6.5,
+  "spentUsd": 0.744,
+  "attempts": [
+    {
+      "shot": "A1",
+      "attempt": 1,
+      "endpoint": "higgsfield-ai/soul/v2/standard",
+      "input": {
+        "prompt": "Wide cinematic establishing shot. A young Georgian woman videographer in her late twenties, dark hair tied back, black raincoat, stands in the right third of the frame on a narrow wet cobblestone street, holding a smartphone vertically at chest height and filming; the phone screen glows with a vertical video of the same glittering street. Her face is softly lit by the screen and a warm streetlamp, three-quarter profile, calm focus. The left half of the frame is open dark street receding into mist with long reflections, quiet negative space. Night in Old Tbilisi, Georgia, just after rain. Wet dark cobblestones mirror warm sodium streetlights and a few cool cyan practical lights. Carved wooden balconies and old brick facades, a light mist in the air. Shot on a 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no signage, no logos, no watermark, no user interface.",
+        "aspect_ratio": "16:9",
+        "resolution": "1080p",
+        "seed": 260929,
+        "batch_size": 4,
+        "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+        "enhance_prompt": false
+      },
+      "requestId": "ec0e0e4c-67d8-415b-b8b3-58d8fe1acb5c",
+      "usd": 0.023,
+      "listUsd": 0.023,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/7c72b03c-8610-421c-b12f-4d29649925ac.png",
+          "file": "raw/A1-1-0.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/c627177c-600d-47c1-9fd4-156eeb513205.png",
+          "file": "raw/A1-1-1.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/0eaafdc6-1dbd-419f-9d88-3bf0568942e3.png",
+          "file": "raw/A1-1-2.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/96d9ec98-cf91-4274-a689-56f10e99f0d4.png",
+          "file": "raw/A1-1-3.png"
+        }
+      ],
+      "at": "2026-09-29T10:10:47.141Z"
+    },
+    {
+      "shot": "A2",
+      "attempt": 1,
+      "endpoint": "alibaba/qwen-image-3/edit",
+      "input": {
+        "image_urls": [
+          "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/7c72b03c-8610-421c-b12f-4d29649925ac.png"
+        ],
+        "prompt": "Recompose this exact photograph as a tall vertical 9:16 frame. Keep the same woman, her raincoat, the glowing phone, the wet cobblestone street, the balconies, the light and the teal-and-amber colour grade exactly as they are. Place her in the upper middle of the frame and extend the wet reflective street below her and the dark balconies and misty sky above. No text, no letters, no logos, no watermark, no user interface.",
+        "negative_prompt": "text, letters, words, signage, logo, watermark, user interface, extra people, distorted hands, cartoon, illustration",
+        "aspect_ratio": "9:16",
+        "resolution": "2k",
+        "seed": 260929,
+        "prompt_extend": false,
+        "enable_thinking": false
+      },
+      "requestId": "933a6fc4-6dc9-4cb9-9a49-8726d3a7d85e",
+      "usd": 0.075,
+      "listUsd": 0.075,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/2d34bbfb-dc51-4b86-ba1b-fc963fecdd71.png",
+          "file": "raw/A2-1-0.png"
+        }
+      ],
+      "at": "2026-09-29T10:12:05.125Z"
+    },
+    {
+      "shot": "A3",
+      "attempt": 1,
+      "endpoint": "higgsfield-ai/soul/v2/standard",
+      "input": {
+        "prompt": "Abstract, almost entirely dark frame: the lights of an Old Tbilisi street at night seen through a rain-covered window, large soft out-of-focus bokeh in warm amber with a few cyan points, raindrops sharp on the glass, very low key, most of the frame near black, calm and minimal. The same night in Tbilisi after rain: warm tungsten practical light against cool cyan light, 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no visible labels, no logos, no watermark, no user interface.",
+        "aspect_ratio": "16:9",
+        "resolution": "1080p",
+        "seed": 260929,
+        "batch_size": 4,
+        "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+        "enhance_prompt": false
+      },
+      "requestId": "65238001-7399-4b32-8d7f-6bbd410d7ecb",
+      "usd": 0.023,
+      "listUsd": 0.023,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/4bdf9487-1df0-4e1a-97ba-f58883714874.png",
+          "file": "raw/A3-1-0.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/ed4a397a-e7fd-4ddc-ae17-14493e70dd6b.png",
+          "file": "raw/A3-1-1.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/250692a6-8f54-4634-9adf-c76dce20c462.png",
+          "file": "raw/A3-1-2.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/c234343b-74ca-4746-80c0-038f300c7219.png",
+          "file": "raw/A3-1-3.png"
+        }
+      ],
+      "at": "2026-09-29T10:12:39.754Z"
+    },
+    {
+      "shot": "A4",
+      "attempt": 1,
+      "endpoint": "higgsfield-ai/soul/v2/standard",
+      "input": {
+        "prompt": "A compact cinema camera on a small handheld gimbal held low above the wet cobblestones of a narrow Old Tbilisi street at night, the lens in sharp focus catching reflections, a small warm on-camera light, streetlight bokeh and mist behind, the feeling of a film crew at work, no face visible. Night in Old Tbilisi, Georgia, just after rain. Wet dark cobblestones mirror warm sodium streetlights and a few cool cyan practical lights. Carved wooden balconies and old brick facades, a light mist in the air. Shot on a 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no signage, no logos, no watermark, no user interface.",
+        "aspect_ratio": "3:4",
+        "resolution": "1080p",
+        "seed": 260929,
+        "batch_size": 4,
+        "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+        "enhance_prompt": false
+      },
+      "requestId": "25718f42-e11d-4f91-8747-6d017728aaa6",
+      "usd": 0.023,
+      "listUsd": 0.023,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/b5bc606e-807c-4643-b810-d73120de4ee0.png",
+          "file": "raw/A4-1-0.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/4bb7d8f7-fbd9-46f8-9857-c887bd04fff6.png",
+          "file": "raw/A4-1-1.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/0a273da7-24fe-459d-a39b-99e11f5a1a1b.png",
+          "file": "raw/A4-1-2.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/f480d9fd-29a9-4c30-bcf2-5273ef6695b0.png",
+          "file": "raw/A4-1-3.png"
+        }
+      ],
+      "at": "2026-09-29T10:13:16.537Z"
+    },
+    {
+      "shot": "A5",
+      "attempt": 1,
+      "endpoint": "higgsfield-ai/soul/v2/standard",
+      "input": {
+        "prompt": "Premium product photograph on a set in a dark studio: a dark unlabeled glass bottle of red wine and a single wine glass on a wet black stone slab, fine water droplets, a warm amber key light from the side and a thin cyan rim light, dramatic shadows, clean minimal composition, advertising still life. The same night in Tbilisi after rain: warm tungsten practical light against cool cyan light, 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no visible labels, no logos, no watermark, no user interface.",
+        "aspect_ratio": "3:4",
+        "resolution": "1080p",
+        "seed": 260929,
+        "batch_size": 4,
+        "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+        "enhance_prompt": false
+      },
+      "requestId": "c75c90ad-5f44-4427-b1ee-5688e17c3bb4",
+      "usd": 0.023,
+      "listUsd": 0.023,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/eb2896cf-8e76-4a7e-a7b1-adc3e8f12ea4.png",
+          "file": "raw/A5-1-0.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/f24a65a5-93cc-4379-9e48-280c6565d41c.png",
+          "file": "raw/A5-1-1.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/1ab2a886-c597-46bd-86d6-174cc0234cd0.png",
+          "file": "raw/A5-1-2.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/a040677d-2cae-456f-b6c4-cbce23eaf81a.png",
+          "file": "raw/A5-1-3.png"
+        }
+      ],
+      "at": "2026-09-29T10:13:58.760Z"
+    },
+    {
+      "shot": "A6",
+      "attempt": 1,
+      "endpoint": "higgsfield-ai/soul/v2/standard",
+      "input": {
+        "prompt": "A vintage analogue synthesizer and a studio condenser microphone on a stand in a dim home studio at night, a large window behind showing the Old Tbilisi skyline with the lit Narikala fortress in rain mist, raindrops on the glass, a warm desk lamp and cool cyan light from a monitor out of frame, no visible labels or writing on the equipment. The same night in Tbilisi after rain: warm tungsten practical light against cool cyan light, 35mm anamorphic cinema lens, shallow depth of field, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no visible labels, no logos, no watermark, no user interface.",
+        "aspect_ratio": "3:4",
+        "resolution": "1080p",
+        "seed": 260929,
+        "batch_size": 4,
+        "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+        "enhance_prompt": false
+      },
+      "requestId": "1506723c-b46c-4937-ae01-933fe082f9e5",
+      "usd": 0.023,
+      "listUsd": 0.023,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/daf95ebc-8c26-4660-897e-90d09776129e.png",
+          "file": "raw/A6-1-0.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/ef684651-95a7-4e53-9692-276bd2b0be12.png",
+          "file": "raw/A6-1-1.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/3fb8c89e-0b3c-4799-8973-49e1af780157.png",
+          "file": "raw/A6-1-2.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/1ab2001e-421a-4fc1-a244-409d527915e0.png",
+          "file": "raw/A6-1-3.png"
+        }
+      ],
+      "at": "2026-09-29T10:14:23.045Z"
+    },
+    {
+      "shot": "A7",
+      "attempt": 1,
+      "endpoint": "alibaba/qwen-image-3/edit",
+      "input": {
+        "image_urls": [
+          "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/7c72b03c-8610-421c-b12f-4d29649925ac.png"
+        ],
+        "prompt": "Close-up portrait of the same young woman from this photograph, head and shoulders, looking just past the camera with a calm, confident expression. Her face is lit from below by the soft cyan glow of a phone screen and from the side by warm streetlight; raindrops on her black raincoat; the Old Tbilisi street lights are soft bokeh behind her. Keep her face, hair and the colour grade exactly as in the photograph. Vertical 3:4 portrait. No text, no letters, no logos, no watermark, no user interface.",
+        "negative_prompt": "text, letters, words, signage, logo, watermark, user interface, different person, distorted face, extra fingers, cartoon, illustration",
+        "aspect_ratio": "3:4",
+        "resolution": "2k",
+        "seed": 260929,
+        "prompt_extend": false,
+        "enable_thinking": false
+      },
+      "requestId": "d8bf2106-06c3-4f2c-a0f2-5570f50e54ec",
+      "usd": 0.075,
+      "listUsd": 0.075,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/1bafb1aa-1cdd-455f-8c53-d4c21dc9abd4.png",
+          "file": "raw/A7-1-0.png"
+        }
+      ],
+      "at": "2026-09-29T10:15:17.646Z"
+    },
+    {
+      "shot": "A8",
+      "attempt": 1,
+      "endpoint": "higgsfield-ai/soul/v2/standard",
+      "input": {
+        "prompt": "Aerial wide establishing shot of Tbilisi at night just after rain: the Old Town rooftops and carved balconies, the Mtkvari river reflecting the city lights, the illuminated Narikala fortress on its hill and the softly glowing Bridge of Peace, low mist drifting over the river, calm and cinematic. Shot on a 35mm anamorphic cinema lens, gentle film grain, teal-and-amber night colour grade, deep true blacks, photorealistic, restrained, editorial. No text, no letters, no signage, no logos, no watermark, no user interface.",
+        "aspect_ratio": "16:9",
+        "resolution": "1080p",
+        "seed": 260929,
+        "batch_size": 4,
+        "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+        "enhance_prompt": false
+      },
+      "requestId": "c24e7136-1bab-4c2c-803a-b4775f2de567",
+      "usd": 0.023,
+      "listUsd": 0.023,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/2853c08a-4d89-448f-8aa7-be84b7433182.png",
+          "file": "raw/A8-1-0.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/fb379cd9-bba3-47e1-9ea1-7fd209a8d0e4.png",
+          "file": "raw/A8-1-1.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/68a0af21-d01a-43ba-af0e-417fdfa3303a.png",
+          "file": "raw/A8-1-2.png"
+        },
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/eda28ad7-7f65-4df1-8d49-9b6290101fcd.png",
+          "file": "raw/A8-1-3.png"
+        }
+      ],
+      "at": "2026-09-29T10:15:49.511Z"
+    },
+    {
+      "shot": "A4r",
+      "attempt": 1,
+      "endpoint": "alibaba/qwen-image-3/edit",
+      "input": {
+        "image_urls": [
+          "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/f480d9fd-29a9-4c30-bcf2-5273ef6695b0.png"
+        ],
+        "prompt": "Remove every letter, number, logo and on-screen interface marking from the camera body and from its screen; the screen shows only the picture of the wet street. Keep the camera, the gimbal, the cable, the street, the light, the composition and the teal-and-amber colour grade exactly as they are. No text anywhere.",
+        "negative_prompt": "text, letters, numbers, words, logo, brand name, watermark, user interface, icons",
+        "aspect_ratio": "3:4",
+        "resolution": "2k",
+        "seed": 260929,
+        "prompt_extend": false,
+        "enable_thinking": false
+      },
+      "requestId": "31719999-cc36-4e00-9887-4b071f173b18",
+      "usd": 0.075,
+      "listUsd": 0.075,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/b6e5aa82-2529-4788-a7c8-724eb0eafb7d.png",
+          "file": "raw/A4r-1-0.png"
+        }
+      ],
+      "at": "2026-09-29T10:19:45.231Z"
+    },
+    {
+      "shot": "A5r",
+      "attempt": 1,
+      "endpoint": "alibaba/qwen-image-3/edit",
+      "input": {
+        "image_urls": [
+          "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/a040677d-2cae-456f-b6c4-cbce23eaf81a.png"
+        ],
+        "prompt": "Remove the paper label and all lettering from the wine bottle so it is plain dark glass with only the reflections of the light, and remove the pale marks on the stone base. Keep the bottle shape, the wine glass, the stone, the cyan and amber light, the shadows, the composition and the colour grade exactly as they are. No text anywhere.",
+        "negative_prompt": "text, letters, numbers, words, label, logo, brand name, watermark, user interface",
+        "aspect_ratio": "3:4",
+        "resolution": "2k",
+        "seed": 260929,
+        "prompt_extend": false,
+        "enable_thinking": false
+      },
+      "requestId": "ad29f882-0218-473e-8cad-809b949a4334",
+      "usd": 0.075,
+      "listUsd": 0.075,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/556ecc48-3802-4539-846c-09c9c4a3c4d3.png",
+          "file": "raw/A5r-1-0.png"
+        }
+      ],
+      "at": "2026-09-29T10:20:12.550Z"
+    },
+    {
+      "shot": "A5r2",
+      "attempt": 1,
+      "endpoint": "alibaba/qwen-image-3/edit",
+      "input": {
+        "image_urls": [
+          "{{A5r}}"
+        ],
+        "prompt": "Remove the pale white marks and letters on the front edge of the dark stone slab so the stone is plain, dark and natural. Keep the bottle, the wine glass, the light, the shadows, the composition and the colour grade exactly as they are. No text anywhere.",
+        "negative_prompt": "text, letters, numbers, words, label, logo, watermark, white marks",
+        "aspect_ratio": "3:4",
+        "resolution": "2k",
+        "seed": 260929,
+        "prompt_extend": false,
+        "enable_thinking": false
+      },
+      "requestId": "c9a57e91-7925-468b-9a52-a01bb25f6d4d",
+      "usd": 0.075,
+      "listUsd": 0.075,
+      "status": "failed",
+      "outputs": [],
+      "at": "2026-09-29T10:21:33.052Z"
+    },
+    {
+      "shot": "B1",
+      "attempt": 1,
+      "endpoint": "kling-video/v3.0/std/image-to-video",
+      "input": {
+        "prompt": "A living photograph: light rain keeps falling, reflections shimmer on the wet cobblestones, thin mist drifts slowly, the phone screen glows softly; the woman stays almost still, only breathing; the camera is locked off with an imperceptible slow push-in. No cuts, no new people, no text.",
+        "image_url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/7c72b03c-8610-421c-b12f-4d29649925ac.png",
+        "last_image_url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/7c72b03c-8610-421c-b12f-4d29649925ac.png",
+        "duration": 5,
+        "sound": "off"
+      },
+      "requestId": "fcb15d10-4a5c-4c6e-892a-b7144b5cc578",
+      "usd": 0.231,
+      "listUsd": 0.42,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/1cb12f48-5d8c-4e7e-943f-1e7204169d71.mp4",
+          "file": "raw/B1-1-0.mp4"
+        }
+      ],
+      "at": "2026-09-29T10:23:24.945Z"
+    }
+  ],
+  "selected": {
+    "A1": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/7c72b03c-8610-421c-b12f-4d29649925ac.png",
+      "file": "raw/A1-1-0.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A1.jpg"
+    },
+    "A3": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/4bdf9487-1df0-4e1a-97ba-f58883714874.png",
+      "file": "raw/A3-1-0.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A3.jpg"
+    },
+    "A4": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/f480d9fd-29a9-4c30-bcf2-5273ef6695b0.png",
+      "file": "raw/A4-1-3.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A4.jpg"
+    },
+    "A5": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/a040677d-2cae-456f-b6c4-cbce23eaf81a.png",
+      "file": "raw/A5-1-3.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A5.jpg"
+    },
+    "A6": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/ef684651-95a7-4e53-9692-276bd2b0be12.png",
+      "file": "raw/A6-1-1.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A6.jpg"
+    },
+    "A8": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/2853c08a-4d89-448f-8aa7-be84b7433182.png",
+      "file": "raw/A8-1-0.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A8.jpg"
+    },
+    "A2": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/2d34bbfb-dc51-4b86-ba1b-fc963fecdd71.png",
+      "file": "raw/A2-1-0.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A2.jpg"
+    },
+    "A7": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/1bafb1aa-1cdd-455f-8c53-d4c21dc9abd4.png",
+      "file": "raw/A7-1-0.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A7.jpg"
+    },
+    "A4r": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/b6e5aa82-2529-4788-a7c8-724eb0eafb7d.png",
+      "file": "raw/A4r-1-0.png",
+      "attempt": 1,
+      "master": "design/brand/v1/A4r.jpg"
+    },
+    "A5r": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/556ecc48-3802-4539-846c-09c9c4a3c4d3.png",
+      "file": "raw/A5r-1-0-retouched.png",
+      "attempt": 1,
+      "note": "code retouch (scripts/brand/retouch.py): pale mark on the slab filled from the surrounding stone; no generation",
+      "master": "design/brand/v1/A5r.jpg"
+    },
+    "B1": {
+      "url": "https://d3u0tzju9qaucj.cloudfront.net/ad3e8891-cb3e-4441-98fc-6aff85f87d90/1cb12f48-5d8c-4e7e-943f-1e7204169d71.mp4",
+      "file": "raw/B1-1-0.mp4",
+      "attempt": 1,
+      "master": "design/brand/v1/B1.mp4"
+    }
+  }
+}

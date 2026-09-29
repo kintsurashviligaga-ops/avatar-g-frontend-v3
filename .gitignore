@@ -45,3 +45,7 @@ lint-report*.json
 lint-target-summary.txt
 copilot_marker.txt
 vercel-project-inspect.txt
+
+# brand/v1 art pack: every raw take stays local — only the selected masters (design/brand/v1) are committed,
+# and nothing raw may ever deploy from public/.
+/public/brand/v1/raw/
