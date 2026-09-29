@@ -480,7 +480,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     catch { setWelcomed(true); }
   }, []);
 
-  const drawerRow = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-app-text transition-colors hover:bg-app-elevated';
+  // 44 px rows (docs/DESIGN.md §5) — py-2.5 around 14 px text came to ~42.
+  const drawerRow = 'flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-app-text transition-colors hover:bg-app-elevated';
   const sectionHdr = 'px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-app-muted';
   const settingsDivider = 'my-2 border-t border-app-border/10';
   // 44px, not the 38px it was. These rows ARE the app's primary navigation — Library, Persona,
@@ -1121,7 +1122,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             {/* Sticky header */}
             <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-app-border/10 bg-app-surface px-5 py-4" style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}>
               <span className="text-[16px] font-semibold tracking-tight text-app-text">{t.settings}</span>
-              <button type="button" onClick={() => setMenuOpen(false)} aria-label="close" className="flex h-9 w-9 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><X className="h-[18px] w-[18px]" /></button>
+              <button type="button" onClick={() => setMenuOpen(false)} aria-label={lang === 'en' ? 'Close' : lang === 'ru' ? 'Закрыть' : 'დახურვა'} className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation"><X className="h-[18px] w-[18px]" /></button>
             </div>
 
             {/* Scrollable body — thin themed scrollbar */}

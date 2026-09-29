@@ -16,7 +16,9 @@ import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, Repeat, SlidersHorizontal, CreditCard, Wallet, type LucideIcon } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
-import { GenerationProgress, PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
+import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
+import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
+import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
@@ -29,6 +31,7 @@ import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { TAP_MIN_PX } from './ui/tokens';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { PresetRow } from './ui/controls';
 import { VIDEO_PRESETS, matchVideoPreset, videoPresetValues } from '@/lib/video/videoPresets';
 import { IMAGE_PRESETS, matchImagePreset, imagePresetValues } from '@/lib/image/imagePresets';
@@ -219,14 +222,14 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
-    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე ფაილი…', empty: 'შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
+    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე ფაილი…', empty: STUDIO_EMPTY.ka.sub,
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
     generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა', remix: 'რემიქსი', remixPlaceholder: 'შეცვალე სცენა — მაგ. „გახადე მე-2 სცენა უფრო თბილი და ნათელი“…', remixGenerating: 'რემიქსი მუშავდება — მხოლოდ შეცვლილი სცენა გადაირენდერება…',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
-    modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი…',
+    modeVideo: 'ვიდეო', videoPlaceholder: STUDIO_EMPTY.ka.videoPlaceholder,
     generatingVideo: 'ვიდეო იქმნება… სცენარი, სცენები და საბოლოო მონტაჟი', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
@@ -234,7 +237,7 @@ const COPY: Record<Lang, {
     remixNeedCaption: '✏️ დამიწერე რა ტექსტი გნებავს კადრზე — ბრჭყალებში ან ორწერტილის შემდეგ. მაგ.: წარწერა: გამარჯობა',
     modeSurgical: 'რედაქტორი',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
-    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: 'თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: 'თავიდან ცდა', elapsedHint: 'გავიდა', greeting: STUDIO_EMPTY.ka.greeting, attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე სცენებს — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და კადრები იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
@@ -243,14 +246,14 @@ const COPY: Record<Lang, {
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
-    placeholder: 'Type, record your voice, or attach a file…', empty: 'Make a video, an image or music — by text, voice or file.',
+    placeholder: 'Type, record your voice, or attach a file…', empty: STUDIO_EMPTY.en.sub,
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Chat', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
     generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied', remix: 'Remix', remixPlaceholder: 'Edit a scene — e.g. “make scene 2 warmer and brighter”…', remixGenerating: 'Remixing — re-rendering only the edited scene…',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
-    modeVideo: 'Video', videoPlaceholder: 'Describe a shot, record your voice, or attach a file…',
+    modeVideo: 'Video', videoPlaceholder: STUDIO_EMPTY.en.videoPlaceholder,
     generatingVideo: 'Producing video… storyboard, scenes, then final montage', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
@@ -258,7 +261,7 @@ const COPY: Record<Lang, {
     remixNeedCaption: '✏️ Tell me the exact words to burn on — in quotes, or after a colon. E.g. caption: Hello world',
     modeSurgical: 'Editor',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
-    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: 'Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: 'Try again', elapsedHint: 'elapsed', greeting: STUDIO_EMPTY.en.greeting, attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
@@ -267,14 +270,14 @@ const COPY: Record<Lang, {
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
-    placeholder: 'Напишите, запишите голос или прикрепите файл…', empty: 'Создайте видео, изображение или музыку — текстом, голосом или файлом.',
+    placeholder: 'Напишите, запишите голос или прикрепите файл…', empty: STUDIO_EMPTY.ru.sub,
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Чат', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
     generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована', remix: 'Ремикс', remixPlaceholder: 'Измените сцену — напр. «сделай 2-ю сцену теплее и ярче»…', remixGenerating: 'Ремикс — перерисовывается только изменённая сцена…',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
-    modeVideo: 'Видео', videoPlaceholder: 'Опишите кадр, запишите голос или прикрепите файл…',
+    modeVideo: 'Видео', videoPlaceholder: STUDIO_EMPTY.ru.videoPlaceholder,
     generatingVideo: 'Создаю видео… раскадровка, сцены и монтаж', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
@@ -282,7 +285,7 @@ const COPY: Record<Lang, {
     remixNeedCaption: '✏️ Напишите точный текст для наложения — в кавычках или после двоеточия. Напр.: текст: Привет мир',
     modeSurgical: 'Редактор',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
-    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: 'Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: 'Повторить', elapsedHint: 'прошло', greeting: STUDIO_EMPTY.ru.greeting, attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите сцены — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и кадры…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
@@ -371,23 +374,30 @@ const MODES = [
  */
 const MENU_MODES = MODES.filter((m) => m.id !== 'surgical');
 
+/** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
+const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
+
 /** Line icons for the video presets (their catalogue still carries emoji; docs/DESIGN.md bans emoji as UI). */
 const VIDEO_PRESET_ICON: Record<string, LucideIcon> = { reel: Smartphone, trailer: Clapperboard, teaser: Zap };
 
 /**
  * The four starter chips of the empty state (the owner's 2026-09-29 brief, docs/DESIGN.md §8), video first.
  *
- * ⚠️ THEY ARE SERVICE SHORTCUTS, NOT PROMPTS. The previous chips (removed in 23b2c6e) were three pre-written
- * image prompts that called runImageJob directly: one tap SPENT credits, skipped the guest gate, and made the
- * user's first creation somebody else's idea. A chip here only selects the service (and, for the reel, the
- * 9:16 format) and puts the cursor in the composer. Nothing is sent, nothing is spent, the words are the user's.
+ * ⚠️ THEY NEVER SEND AND NEVER SPEND. The previous chips (removed in 23b2c6e) were three pre-written image
+ * prompts that called runImageJob directly: one tap SPENT credits, skipped the guest gate, and made the
+ * user's first creation somebody else's idea. A chip here selects the service (and, for the reel, 9:16) and
+ * writes a STARTER into an empty box — a frame the user completes ("კინო რილი 9:16 — სცენა: …"), not an idea.
+ * An untouched starter cannot be sent (see `chipStarter` / canSend): Send appears once the words are theirs.
  */
-const STARTER_CHIPS: ReadonlyArray<{ id: string; mode: 'video' | 'image' | 'music' | 'lipsync'; Icon: LucideIcon; ka: string; en: string; ru: string }> = [
-  { id: 'reel', mode: 'video', Icon: Film, ka: 'კინო რილი 9:16', en: 'Cinematic reel 9:16', ru: 'Кино-рилс 9:16' },
-  { id: 'product', mode: 'image', Icon: ImageIcon, ka: 'პროდუქტის სურათი', en: 'Product image', ru: 'Фото продукта' },
-  { id: 'soundtrack', mode: 'music', Icon: Music2, ka: 'საუნდთრექი', en: 'Soundtrack', ru: 'Саундтрек' },
-  { id: 'avatar', mode: 'lipsync', Icon: ScanFace, ka: 'ავატარის პორტრეტი', en: 'Avatar portrait', ru: 'Портрет-аватар' },
+const STARTER_CHIPS: ReadonlyArray<{ id: string; mode: 'video' | 'image' | 'music' | 'lipsync'; Icon: LucideIcon; ka: string; en: string; ru: string; fill: Record<'ka' | 'en' | 'ru', string> }> = [
+  { id: 'reel', mode: 'video', Icon: Film, ka: 'კინო რილი 9:16', en: 'Cinematic reel 9:16', ru: 'Кино-рилс 9:16', fill: { ka: 'კინო რილი 9:16 — სცენა: ', en: 'Cinematic reel 9:16 — scene: ', ru: 'Кино-рилс 9:16 — сцена: ' } },
+  { id: 'product', mode: 'image', Icon: ImageIcon, ka: 'პროდუქტის სურათი', en: 'Product image', ru: 'Фото продукта', fill: { ka: 'პროდუქტის სურათი — პროდუქტი: ', en: 'Product image — product: ', ru: 'Фото продукта — продукт: ' } },
+  { id: 'soundtrack', mode: 'music', Icon: Music2, ka: 'საუნდთრექი', en: 'Soundtrack', ru: 'Саундтрек', fill: { ka: 'საუნდთრექი — განწყობა: ', en: 'Soundtrack — mood: ', ru: 'Саундтрек — настроение: ' } },
+  { id: 'avatar', mode: 'lipsync', Icon: ScanFace, ka: 'ავატარის პორტრეტი', en: 'Avatar portrait', ru: 'Портрет-аватар', fill: { ka: 'ავატარის პორტრეტი — რას ამბობს: ', en: 'Avatar portrait — what it says: ', ru: 'Портрет-аватар — что говорит: ' } },
 ];
+
+/** The composer's format pill, both ways: a video's orientation ⇄ the ratio label the pill shows. */
+const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portrait'> = { '9:16': 'vertical', '16:9': 'landscape', '1:1': 'square', '4:5': 'portrait' };
 
 // P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
 // with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
@@ -941,7 +951,9 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Rende
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
-  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait' }
+  orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
+  /** The queue job rendering this bubble, when it is not the bubble's own id — what its ResultCard's cancel stops. */
+  jobId?: string }
 
 /**
  * Seconds a render of this tier is EXPECTED to take — the curve both the inline card and the durable
@@ -1738,12 +1750,33 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setPanelServiceRaw(svc);
     if (svc) { setModeRaw('chat'); setOptionsOpen(false); }
   }, []);
-  /** A starter chip: select the service (+ 9:16 for the reel) and hand the cursor to the user. Never sends. */
+  /** The starter a chip wrote into the box, while it is still untouched — such a box has nothing to send. */
+  const [chipStarter, setChipStarter] = useState<string | null>(null);
+  // send() reads it through a ref — its dependency list is long and it must not go stale on this one value.
+  const chipStarterRef = useRef<string | null>(null);
+  /**
+   * A starter chip: select the service (+ 9:16 for the reel), write its starter into an EMPTY box (never over
+   * the user's own words) and hand the cursor to the end of it. Never sends, never spends.
+   */
   const startChip = useCallback((chip: (typeof STARTER_CHIPS)[number]) => {
     setMode(chip.mode);
     if (chip.id === 'reel') setVideoOrientation('vertical');
-    requestAnimationFrame(() => taRef.current?.focus());
-  }, [setMode]);
+    const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+    const current = taRef.current?.value ?? '';
+    const fill = chip.fill[lang];
+    if (!current.trim() || STARTER_CHIPS.some((c) => c.fill[lang] === current)) {
+      setInput(fill);
+      setChipStarter(fill);
+      chipStarterRef.current = fill;
+    }
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      const end = ta.value.length;
+      try { ta.setSelectionRange(end, end); } catch { /* not a text control yet */ }
+    });
+  }, [setMode, locale]);
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
@@ -2697,14 +2730,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     return () => ro.disconnect();
   }, []);
 
-  // Close the full-screen lightbox on Escape (desktop affordance; the backdrop tap
-  // and the X button cover touch).
-  useEffect(() => {
-    if (!lightbox) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [lightbox]);
+  // The full-screen lightbox is a real dialog (docs/DESIGN.md §10): focus moves into it and back to the tile
+  // that opened it, Tab stays inside, Escape closes — the shared useDialogA11y, as every other overlay uses.
+  const lightboxRef = useDialogA11y<HTMLDivElement>(!!lightbox, () => setLightbox(null));
 
   const lang = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : 'ka-GE';
 
@@ -3860,7 +3888,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const runImageJob = useCallback((prompt: string, imgRef: string | undefined, spec: ImageRegenSpec) => {
     const bubbleId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '', id: bubbleId, genKind: 'image' }]);
-    submitJob({
+    const imageJobId = submitJob({
       kind: 'image',
       label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),
       createParams: { prompt },
@@ -3929,6 +3957,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         throw new Error(j.error || 'image failed');
       },
     });
+    // So the bubble's ResultCard can cancel THIS job (the global stop() only reaches the foreground render).
+    updateBubble(bubbleId, { jobId: imageJobId });
   }, [submitJob, updateBubble, notifyCredit, trackJobSettle, t]);
 
   /**
@@ -4092,7 +4122,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       { role: 'user', text: m.userBubble, ...(m.medias?.length ? { medias: m.medias } : {}) },
       { role: 'assistant', text: m.useTrained ? t.generatingMyVoice : '', id: bubbleId, genKind: 'music' },
     ]);
-    submitJob({
+    const musicJobId = submitJob({
       kind: 'music',
       label: m.prompt.trim().slice(0, 42) || (locale === 'en' ? 'Music' : locale === 'ru' ? 'Музыка' : 'მუსიკა'),
       createParams: { prompt: m.prompt },
@@ -4138,6 +4168,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         throw new Error(j.error || 'music failed');
       },
     });
+    updateBubble(bubbleId, { jobId: musicJobId });
   }, [submitJob, trackJobSettle, updateBubble, notifyCredit, locale, t]);
 
   // Stream one chat turn from /api/chat/gemini into a fresh assistant bubble. Shared
@@ -4616,8 +4647,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
     // attachment — otherwise this guard silently blocked a script-only run from starting.
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
+    // An untouched chip starter counts as an empty box — Enter must not send what the button would not.
+    const starterOnly = !opts?.promptOverride && !!chipStarterRef.current && text === chipStarterRef.current.trim();
     // Nothing to send → return quietly (no toast for an empty box).
-    if (!text && attachments.length === 0 && !videoOnlyInputs) return;
+    if ((!text || starterOnly) && attachments.length === 0 && !videoOnlyInputs) return;
     // ⚠️ `mode` IS STICKY, AND THE MODE INTERCEPTS BELOW CLAIM EVERY TURN WITHOUT READING THE MESSAGE.
     // `mode` is plain component state (declared ~1497) that persists until something sets it back, and the
     // avatar branch begins with a bare `if (mode === 'lipsync')` — no intent check of any kind. So once
@@ -5402,6 +5435,18 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       return next;
     });
   }, [t.stopped, locale]);
+  const cancelQueueJob = useJobQueue((s) => s.cancel);
+  /**
+   * Cancel the job behind ONE bubble, from its ResultCard. A queued film bubble IS its queue job (id === jobId);
+   * image and music bubbles carry theirs in `jobId`. Only when neither is live in the queue does this fall back
+   * to stop(), which reaches the foreground render.
+   */
+  const cancelBubbleJob = useCallback((m: Msg) => {
+    const ids = [m.jobId, m.id].filter((x): x is string => !!x);
+    const live = useJobQueue.getState().jobs.find((j) => ids.includes(j.id) && (j.status === 'queued' || j.status === 'rendering'));
+    if (live) cancelQueueJob(live.id);
+    else stop();
+  }, [cancelQueueJob, stop]);
 
   // Abort any in-flight request if the studio unmounts (e.g. New Chat remount).
   useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
@@ -5989,7 +6034,51 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // In VIDEO mode a loaded SCRIPT or uploaded scene frames are enough to generate — without
   // this the Send button hid when the text box was empty, so a script-only run couldn't START.
   const videoReadyToSend = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
-  const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
+  // An untouched chip starter ("კინო რილი 9:16 — სცენა: ") is a frame, not a prompt: Send waits for the user's words.
+  const onlyStarter = chipStarter !== null && input.trim() === chipStarter.trim();
+  const canSend = (!!input.trim() && !onlyStarter) || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
+
+  /**
+   * The composer's format pills — the Imagine grammar: WHAT you make (the mode pill), in what SHAPE and for how
+   * LONG, next to Send. The ratio for video / image / avatar, the length for video. Native <select>s: a real
+   * picker on iOS, keyboard-complete, 44 px tall, 16 px text on phones (below 16 iOS zooms the page on tap).
+   * They write the SAME state as the options panel, so the two can never disagree. The length offers the
+   * pipeline's real ones (8 / 24 / 48 s — the Veo scene grid); anything else would be a new generation contract.
+   */
+  const formatPills = (where: 'row' | 'inline') => {
+    if (mode !== 'video' && mode !== 'image' && mode !== 'lipsync') return null;
+    const aspect: string = mode === 'video' ? ORIENT_ASPECT[videoOrientation] : mode === 'image' ? imgAspect : lipFormat;
+    const options = Array.from(new Set(['9:16', '1:1', '16:9', aspect]));
+    // A music video is always vertical — the options panel disables its format buttons for the same reason.
+    const lockedVertical = mode === 'video' && videoMode === 'musicvideo';
+    const onAspect = (v: string) => {
+      if (mode === 'video') { const o = ASPECT_ORIENT[v]; if (o) setVideoOrientation(o); }
+      else if (mode === 'image') setImgAspect(v as ImgAspect);
+      else if (v === '9:16' || v === '16:9' || v === '1:1') setLipFormat(v);
+    };
+    const pill = `h-11 cursor-pointer appearance-none rounded-full border-0 bg-app-surface/60 pl-3.5 pr-8 font-medium tabular-nums text-app-text transition-colors hover:bg-app-surface focus:shadow-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-50 ${where === 'row' ? 'text-[16px]' : 'text-[12.5px]'}`;
+    const secs = locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ';
+    return (
+      <div data-testid={`format-pills-${where}`} className={where === 'row' ? 'mt-1 flex items-center gap-1.5 sm:hidden' : 'hidden shrink-0 items-center gap-1 sm:flex'}>
+        <span className="relative inline-flex">
+          <select aria-label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} value={aspect} disabled={lockedVertical}
+            onChange={(e) => onAspect(e.target.value)} className={pill}>
+            {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
+        </span>
+        {mode === 'video' && (
+          <span className="relative inline-flex">
+            <select aria-label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} value={videoDuration}
+              onChange={(e) => setVideoDuration(Number(e.target.value) as 8 | 24 | 48)} className={pill}>
+              {([8, 24, 48] as const).map((d) => <option key={d} value={d}>{`${d}${secs}`}</option>)}
+            </select>
+            <ChevronDown size={13} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-app-muted" />
+          </span>
+        )}
+      </div>
+    );
+  };
 
   // Force a REAL download. The <a download> attribute is ignored cross-origin (Supabase
   // signed URLs), so the old button just opened the file in a new tab. Fetch → blob →
@@ -6280,35 +6369,29 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-1.5">
                       {m.batch.tiles.map((tile, k) => (
-                        <div key={k} className="relative overflow-hidden rounded-xl bg-app-elevated/40 ring-1 ring-app-border/10" style={{ aspectRatio: m.batch!.spec.aspect.replace(':', '/') }}>
-                          {tile.status === 'done' && tile.url ? (
-                            <>
-                              <button type="button" onClick={() => setLightbox(tile.url!)} className="block h-full w-full cursor-zoom-in" aria-label="open fullscreen">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={tile.url} alt="variation" loading="lazy" decoding="async" className="h-full w-full object-cover transition-opacity hover:opacity-90" />
-                              </button>
-                              {/* Cross-service bridge — each variation can be sent to the Video studio too. */}
-                              <button type="button" aria-label={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'} title={locale === 'en' ? 'Send to video' : locale === 'ru' ? 'В видео' : 'ვიდეოში გადატანა'}
-                                onClick={(e) => { e.stopPropagation(); sendImageToVideo(tile.url!); }}
-                                className="absolute right-1.5 top-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-app-bg/70 text-[13px] backdrop-blur ring-1 ring-app-border/15 transition-transform hover:scale-110 active:scale-95 touch-manipulation">🎬</button>
-                            </>
-                          ) : tile.status === 'failed' ? (
-                            // A reason and a way out, instead of a bare glyph. Retrying ONE tile also
-                            // stops the user re-billing the variations they were happy with, which is
-                            // what the regenerate-all button below forces them to do.
-                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1.5 text-center">
-                              <X size={16} className="text-app-danger/70" />
-                              {tile.error && <span className="line-clamp-2 text-[9px] leading-tight text-app-muted">{tile.error}</span>}
-                              <button type="button" disabled={busy}
-                                onClick={() => void runImageBatch(m.batch!.spec, 1)}
-                                className="rounded-full bg-app-elevated px-2 py-0.5 text-[9.5px] font-semibold text-app-accent ring-1 ring-app-border/15 disabled:opacity-40">
-                                {t.regenerate}
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-app-muted/50"><Loader2 size={18} className="animate-spin" /></div>
-                          )}
-                        </div>
+                        // Every tile is a ResultCard: while it renders, a shimmer plate and a thin bar in the
+                        // batch's own ratio (it used to be a bare spinner in a grey box); when it lands, the
+                        // image with open / download / use-as-reference; when it fails, one line, a retry of
+                        // THAT tile only (the good variations are not re-billed) and a way to put it away.
+                        <ResultCard
+                          key={k}
+                          size="tile"
+                          kind="image"
+                          aspect={m.batch!.spec.aspect}
+                          locale={locale}
+                          state={tile.status === 'done' && tile.url ? 'ready' : tile.status === 'failed' ? 'error' : 'rendering'}
+                          elapsedSec={elapsed}
+                          capSec={m.batch!.spec.quality === 'standard' ? 55 : m.batch!.spec.quality === 'high' ? 75 : 215}
+                          media={tile.status === 'done' && tile.url ? { type: 'image', url: tile.url } : undefined}
+                          error={tile.error}
+                          onOpen={tile.url ? () => setLightbox(tile.url!) : undefined}
+                          onUseAsRef={tile.url ? () => sendImageToVideo(tile.url!) : undefined}
+                          onCancel={tile.status === 'pending' && tile.jobId ? () => cancelQueueJob(tile.jobId!) : undefined}
+                          onRetry={busy ? undefined : () => void runImageBatch(m.batch!.spec, 1)}
+                          onDismiss={tile.status === 'failed' ? () => setMessages((prev) => prev.map((pm) => ((m.id ? pm.id === m.id : pm === m) && pm.batch
+                            ? { ...pm, batch: { ...pm.batch, tiles: pm.batch.tiles.filter((_, j) => j !== k) } }
+                            : pm))) : undefined}
+                        />
                       ))}
                     </div>
                     {!m.batch.tiles.some((tl) => tl.status === 'pending') && (
@@ -6437,6 +6520,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   </div>
                 )}
                 {(() => {
+                  // A FAILED FILM is its ResultCard in the error state, in the film's own shape: one line of why,
+                  // a retry that reuses the stored prompt + refs + orientation (what the old retry button did),
+                  // and a way to put it away. The bubble's ⚠️ text is that one line, not a paragraph under it.
+                  if (m.role === 'assistant' && m.retryVideo && !m.videoUrl) {
+                    const r = m.retryReq ?? lastVideoReqRef.current;
+                    return (
+                      <ResultCard
+                        kind="video"
+                        aspect={ORIENT_ASPECT[m.retryReq?.orientation ?? m.orientation ?? videoOrientation]}
+                        state="error"
+                        locale={locale}
+                        error={m.text}
+                        onRetry={!busy && r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
+                        onDismiss={() => setMessages((prev) => prev.filter((pm) => (m.id ? pm.id !== m.id : pm !== m)))}
+                      />
+                    );
+                  }
                   const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
                   // Director's Console for QUEUED cinema renders: the Cap-3 queue path never sets the
                   // global `busy` flag (so `pending` is false and the console was hidden). Key off the
@@ -6482,9 +6582,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     // Prefer the kind stamped on the message at render-start (intrinsic),
                     // so a mid-render mode switch can't swap the wrong progress UI in.
                     const kind: 'image' | 'music' | 'video' | 'lipsync' = m.genKind ?? ((m.storyboard?.length ?? 0) > 0 ? 'video' : (mode as 'image' | 'music' | 'video' | 'lipsync'));
+                    // A ×2/×4 batch draws one ResultCard per tile above (each with its own bar) — an aggregate
+                    // card under the grid would say the same thing twice.
+                    if (kind === 'image' && m.batch && m.batch.tiles.length > 0) return null;
+                    // THE RESULT'S SHAPE FROM THE FIRST SECOND: the tile a job renders into has the ratio of the
+                    // media it will become, so the feed does not jump when it lands (ResultCard).
+                    const cardAspect = kind === 'video' ? ORIENT_ASPECT[m.orientation ?? videoOrientation]
+                      : kind === 'image' ? (m.regen?.kind === 'image' ? m.regen.aspect : imgAspect)
+                      : kind === 'lipsync' ? lipFormat : '1:1';
+                    // A real percent when the pipeline reports one (the film poll's videoProgress); otherwise the
+                    // card paces elapsed against the same measured caps the old card used, and holds at 92.
+                    const cardCap = kind === 'video' ? (videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video)
+                      : kind === 'image' ? imgTarget : PROGRESS_TARGET[kind];
+                    const cardPct = kind === 'video' && typeof m.videoProgress === 'number' ? m.videoProgress : undefined;
                     return (
                       // Explicit vertical stack — the storyboard grid sits ABOVE the
-                      // Director's Console and the two can never overlap (no absolute/
+                      // result tile and the two can never overlap (no absolute/
                       // fixed positioning, no shared z-index).
                       <div className="flex flex-col gap-3">
                         {/* Storyboard frames stay in view during the ~7-min render. */}
@@ -6498,25 +6611,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                             ))}
                           </div>
                         )}
-                        {kind === 'video' ? (
-                          // The Master-Prompt Director's Console — the 9-agent crew,
-                          // live, driven by the real film-pipeline matrix.
-                          <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
-                        ) : (
-                          <GenerationProgress
-                            kind={kind}
-                            elapsed={elapsed}
-                            status={m.text}
-                            locale={locale}
-                            targetSec={kind === 'image' ? imgTarget : undefined}
-                            // A BATCH knows its real completion — tiles done over tiles total — so it
-                            // reports that instead of an interpolated guess. Capped below 100 by the card
-                            // itself, since the last tile is not finished until its bubble swaps.
-                            {...(m.batch && m.batch.tiles.length
-                              ? { pct: Math.round((m.batch.tiles.filter((t) => t.status !== 'pending').length / m.batch.tiles.length) * 100) }
-                              : {})}
-                          />
-                        )}
+                        <ResultCard
+                          kind={kind === 'lipsync' ? 'avatar' : kind}
+                          aspect={cardAspect}
+                          state={typeof cardPct === 'number' && cardPct >= 96 ? 'finalizing' : 'rendering'}
+                          locale={locale}
+                          pct={cardPct}
+                          elapsedSec={elapsed}
+                          capSec={cardCap}
+                          stage={m.text}
+                          poster={m.storyboard?.find((s) => s.frameUrl)?.frameUrl ?? null}
+                          // This bubble's own job — its queue job when it has one, else the foreground render.
+                          onCancel={() => cancelBubbleJob(m)}
+                        >
+                          {/* The Master-Prompt Director's Console — the 9-agent crew, live, driven by the real
+                              film-pipeline matrix — stays one tap away under the tile rather than being lost. */}
+                          {kind === 'video' ? (
+                            <FilmDirectorConsole roster={m.filmRoster} log={m.filmLog} statusText={m.text} elapsed={elapsed} targetSec={cardCap} locale={locale} onCancel={stop} stopLabel={t.stop} musicVideo={videoMode === 'musicvideo'} />
+                          ) : null}
+                        </ResultCard>
                       </div>
                     );
                   }
@@ -6627,17 +6740,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     <RotateCcw size={13} /> {t.retry}
                   </button>
                 )}
-                {/* FIX 4 — one-click retry on a failed video render (reuses the stored
-                    prompt + refs + orientation; no re-typing / re-uploading). */}
-                {m.retryVideo && !busy && (
-                  <button
-                    type="button"
-                    onClick={() => { const r = m.retryReq ?? lastVideoReqRef.current; if (r) void createStoryboard(r.filmPrompt, r.refs, r.orientation); }}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
-                  >
-                    {t.retry}
-                  </button>
-                )}
+                {/* FIX 4 — one-click retry on a failed video render now lives IN the failed film's ResultCard
+                    (the error tile above reuses the stored prompt + refs + orientation). */}
                 {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
                     could copy assistant replies but not their own messages. On desktop
                     the row reveals on hover / keyboard focus (group-hover); on mobile
@@ -6967,18 +7071,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
             canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
             that never send; see their definition for why the old prompt chips were removed). */}
-        {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
-            never covered and the input stays reachable; on a real desktop (lg:) they're always
-            open. Phone AND tablet open them on demand, capped to 52svh (keyboard-aware) with their own scroll. */}
+        {/* Per-service options, on demand at EVERY width, capped (52svh phones / 58svh desktop, keyboard-aware)
+            with their own scroll. ⚠️ Desktop used to pin them open once a conversation started — a 58svh panel
+            over the result feed, so the ResultCard of the job you had just started rendered behind it. The feed
+            is the centre of the studio (docs/DESIGN.md §8); ratio and length now live in the composer's format
+            pills, and the full panel is one tap away. */}
         {mode !== 'chat' && (
           <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
             data-testid="options-toggle"
             style={{ minHeight: TAP_MIN_PX }}
             // ⚠️ `sm:hidden` TOOK THIS AWAY FROM TABLETS while the panel below stayed forced open — the
-            // control and the thing it controls disappeared at the same breakpoint, from opposite sides.
-            // Must stay in lockstep with the panel's `lg:block`: whatever width the panel stops being
-            // always-open at is the width this button has to exist down to.
-            className={`mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated ${messages.length === 0 ? '' : 'lg:hidden'}`}>
+            // control and the thing it controls disappeared at the same breakpoint, from opposite sides. The
+            // panel is never forced open now, so this toggle exists at every width.
+            className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated">
             <span className="inline-flex items-center gap-1.5"><Sparkles size={14} className="text-app-accent" /> {locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}</span>
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -7011,10 +7116,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
              collapses its toolbar, which is precisely when the reported drag happens: the scroller's height
              animates mid-gesture, scrollTop re-clamps, and content slides under the finger. svh is the
              stable small-viewport unit and does not move. */
-          // ⚠️ `lg:block` (always open on desktop) is withheld while the conversation is EMPTY: with VIDEO as the
-          // default mode (the owner's 2026-09-29 brief) the 58svh video panel would otherwise open over the
-          // greeting and the starter chips on every desktop visit. Empty → the same toggle phones use.
-          className={`${optionsOpen ? 'max-h-[52svh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} ${messages.length === 0 ? '' : 'lg:block'} lg:max-h-[58svh] lg:overflow-y-auto lg:overscroll-contain lg:touch-pan-y lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
+          // Never pinned open (no `lg:block`): on desktop too it is the toggle above — see its comment.
+          className={`${optionsOpen ? 'max-h-[52svh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} lg:max-h-[58svh] lg:overflow-y-auto lg:overscroll-contain lg:touch-pan-y lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
           // VECTOR 3 — keyboard open: cap to what's left below it (header+composer buffer ≈ 220px) so
           // the panel scrolls internally and the composer dock never gets pushed under the keyboard.
           style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}
@@ -7022,19 +7125,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {/* Panel header — title + ✕ close (BUG 1). The per-service panel had NO close
             affordance on desktop (sm:block keeps it open). Lives at the top of the scroll area so it's always
             reachable.
-            ⚠️ ✕ CLOSES THE PANEL; IT DOES NOT LEAVE THE SERVICE. It used to switch to chat everywhere, which
-            made chat the "home" a guest fell back to: open პარამეტრები, tap ✕, and the video studio had become
-            a chat box (docs/DESIGN.md §11 LIVE_GAP). Where the panel is a collapsible sheet — phones, tablets,
-            and any empty conversation — ✕ just collapses it. Only where it is pinned open (desktop, a
-            conversation under way) does ✕ still fall back to chat, the one mode without a panel. */}
+            ⚠️ ✕ CLOSES THE PANEL; IT DOES NOT LEAVE THE SERVICE. It used to switch to chat, which made chat the
+            "home" a guest fell back to: open პარამეტრები, tap ✕, and the video studio had become a chat box
+            (docs/DESIGN.md §11 LIVE_GAP). The panel is a collapsible sheet at every width now, so ✕ only
+            collapses it. */}
         {mode !== 'chat' && (
           <div className="mb-2 flex items-center justify-between px-0.5">
             <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-app-muted">{t[activeModeKey]}</span>
-            <button type="button" onClick={() => {
-              const pinnedOpen = messages.length > 0 && window.matchMedia('(min-width: 1024px)').matches;
-              if (pinnedOpen) setMode('chat');
-              setOptionsOpen(false);
-            }}
+            <button type="button" onClick={() => setOptionsOpen(false)}
               aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'}
               className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text active:scale-95">
               <X size={17} />
@@ -8661,6 +8759,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : mode === 'remix' ? t.remixUploadHint : t.placeholder}
             className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60"
           />
+          {/* Phones: the format pills get their own thin row — the controls row below has ~70 px to spare. */}
+          {formatPills('row')}
 
           {/* Controls row — a single clean line on every viewport: [+][📷] locked FAR-LEFT, a
               flex-1 spacer, then the mode chip + mic + live-voice + send clustered FAR-RIGHT. To fit
@@ -8789,6 +8889,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 </>
               )}
             </div>
+            {/* Tablet and up: the format pills sit inline, between what you make and Send. */}
+            {formatPills('inline')}
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
@@ -8860,7 +8962,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}
-                {input.trim() && (
+                {input.trim() && !onlyStarter && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
                   // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
@@ -8927,6 +9029,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           the click so it stays open while you inspect it. */}
       {lightbox && (
         <div
+          ref={lightboxRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm"
           onClick={() => setLightbox(null)}
           style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -8934,7 +9040,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           <button
             type="button"
             onClick={() => setLightbox(null)}
-            aria-label="close"
+            aria-label={locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა'}
             className="absolute right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
             style={{ top: 'max(0.75rem, env(safe-area-inset-top))' }}
           >

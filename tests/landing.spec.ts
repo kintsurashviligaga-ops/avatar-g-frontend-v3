@@ -90,6 +90,14 @@ test('the landing is in the server HTML: `curl /ka` returns the headline', async
   expect(await res.text()).toContain('ვიდეო ერთი იდეიდან');
 });
 
+test('the studio server HTML carries the video-first copy, and never the old line', async ({ request }) => {
+  const html = await (await request.get('/ka/dashboard', { headers: { accept: 'text/html' } })).text();
+  expect(html).toContain('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.');
+  expect(html).not.toContain('შექმენი სურათი ან მუსიკა');
+  expect(html).not.toContain('ჰკითხე ნებისმიერი');
+  expect(html).not.toContain('🇬🇪');
+});
+
 test.describe('landing · 320 px', () => {
   test.use({ viewport: { width: 320, height: 640 } });
 
@@ -168,6 +176,10 @@ for (const vp of VIEWPORTS) {
       await expect(chips.nth(0)).toHaveAttribute('aria-pressed', 'false');
       const box = page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…');
       await expect(box).toBeFocused();
+      // The chip writes a starter the user completes — and an untouched starter has nothing to send.
+      await expect(box).toHaveValue('პროდუქტის სურათი — პროდუქტი: ');
+      await expect(page.getByRole('button', { name: 'სურათის შექმნა' })).toHaveCount(0);
+      await box.press('Enter');
       await page.waitForTimeout(800);
       expect(posts).toEqual([]);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible(); // still the empty state: nothing was sent
@@ -203,6 +215,44 @@ for (const vp of VIEWPORTS) {
       await page.getByPlaceholder(VIDEO_PLACEHOLDER).fill('ღამის თბილისი წვიმის შემდეგ');
       await expect(create).toBeVisible();
       await expect(live).toHaveCount(0);
+    });
+
+    // ResultCard end to end on the REAL composer and job queue. The only stand-in is the network: the image
+    // request is held open by the test (or answered by it), so nothing reaches a provider and nothing is spent.
+    // The guest gate is lifted in this browser only — it is the sign-in wall, not what is under test.
+    async function startImageJob(page: Page) {
+      await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });
+      await page.getByRole('group', { name: 'დაიწყე' }).getByRole('button').nth(1).click(); // product image
+      await page.locator('select[aria-label="ფორმატი"]:visible').selectOption('9:16');
+      await page.locator('textarea').last().fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
+      await page.getByRole('button', { name: 'სურათის შექმნა' }).click();
+    }
+
+    test('a generating job is a studio card in its own shape, and its cancel stops that job', async ({ page }) => {
+      await page.route('**/api/nanobanana/image', () => { /* held open: the job stays in flight */ });
+      await openDashboard(page);
+      await startImageJob(page);
+      const card = page.getByTestId('result-card');
+      await expect(card).toHaveAttribute('data-state', 'rendering');
+      await expect(card.getByText(/^სურათი · 9:16 · \d+%$/)).toBeVisible();
+      expect(await card.locator('div').first().evaluate((el) => (el as HTMLElement).style.aspectRatio)).toBe('9 / 16');
+      await expect(card.getByRole('progressbar')).toBeAttached();
+      const cancel = card.getByRole('button', { name: 'გაუქმება' });
+      const box = (await cancel.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      await cancel.click();
+      await expect(page.getByTestId('result-card')).toHaveCount(0);
+      await expect(page.getByText('⏹ შეჩერდა')).toBeVisible();
+    });
+
+    test('when the image lands, the card gives way to it', async ({ page }) => {
+      await page.route('**/api/nanobanana/image', (route) =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: '/brand/v1/card-image.jpg' }) }));
+      await openDashboard(page);
+      await startImageJob(page);
+      await expect(page.locator('img[src="/brand/v1/card-image.jpg"]').first()).toBeVisible();
+      await expect(page.getByTestId('result-card')).toHaveCount(0);
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {
