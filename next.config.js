@@ -202,6 +202,13 @@ const nextConfig = {
           { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
+      // The front doors' HTML must never outlive a deploy in a browser: the landing and the studio are where a
+      // stale copy is noticed first (docs/DESIGN.md §11). `no-store` for these documents only — their JS/CSS
+      // under /_next/static stays immutable and cached, and every other page keeps Next's own caching.
+      ...['/', '/:locale(ka|en|ru)', '/:locale(ka|en|ru)/dashboard'].map((source) => ({
+        source,
+        headers: [{ key: 'Cache-Control', value: 'no-store, max-age=0' }],
+      })),
       {
         // Only disable caching for API routes - let Next.js manage SSG/ISR caching
         source: '/api/:path*',

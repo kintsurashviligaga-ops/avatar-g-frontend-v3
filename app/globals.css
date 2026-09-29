@@ -4200,3 +4200,19 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
   .landing .landing-rise { animation: none; }
   .landing .landing-loop { display: none !important; }
 }
+
+/* ── ResultCard plate (components/studio/ui/ResultCard.tsx) ──────────────────────────────────────────
+   A quiet diagonal sheen that crosses the tile while a job renders — the "something is being made here"
+   signal, instead of a spinner. Low contrast on purpose (docs/DESIGN.md §6: no glow); off under reduced
+   motion, where the static plate and the progress bar still say everything. */
+@keyframes result-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.result-shimmer {
+  background: linear-gradient(100deg, transparent 25%, rgb(255 255 255 / 0.06) 50%, transparent 75%);
+  animation: result-shimmer 1.8s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .result-shimmer { animation: none; background: rgb(255 255 255 / 0.03); }
+}

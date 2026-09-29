@@ -88,8 +88,9 @@ Only the ka column is locked by the brief; en and ru keep the product's existing
 ## 8. Components
 
 - **Service cards (4):** image, name and one line. Video comes first and carries a **„მთავარი“** badge. There is no nested panel inside a card and no hover glow; hover lifts the image contrast only.
-- **Chips (dashboard):** four hairline pills, video first — კინო რილი 9:16 · პროდუქტის სურათი · საუნდთრექი · ავატარის პორტრეტი — in two rows of two at every width. Hover and press **invert** a chip to a white fill with ink text. A chip selects the service (the reel also sets 9:16) and puts the cursor in the composer. It never sends, never spends, and never writes the user's words for them.
-- **Composer:** unchanged in structure. When the text field has text, the voice/waveform button becomes **send**.
+- **Chips (dashboard):** four hairline pills, video first — კინო რილი 9:16 · პროდუქტის სურათი · საუნდთრექი · ავატარის პორტრეტი — in two rows of two at every width. Hover and press **invert** a chip to a white fill with ink text. A chip selects the service (the reel also sets 9:16) and writes a **starter** into an empty box — a frame the user completes („კინო რილი 9:16 — სცენა: “), never over their own words. An untouched starter cannot be sent (neither the button nor Enter): a chip never sends and never spends.
+- **Composer:** one composer, bottom, safe-area aware. Left: + and camera. Middle: the mode pill (ვიდეო first, the default) and the **format pills** — the ratio (9:16 · 1:1 · 16:9) for video, image and avatar, the length for video (8 · 24 · 48 s, the pipeline's real lengths). Right: mic, then the live-voice waveform, which **send** replaces once there is something to send. Textarea 16 px. On phones the format pills take their own thin row under the text; from `sm` up they sit inline.
+- **ResultCard:** one tile for a generation from queued to ready — `components/studio/ui/ResultCard.tsx`. It has the result's shape from the first second (a 9:16 video is a 9:16 tile), a shimmer plate instead of a spinner, a 3 px accent bar and one caption („ვიდეო · 9:16 · 12%“), a 44 px cancel that stops THAT job, and a polite live region that announces state changes (not percent ticks). Progress is the pipeline's real percent when it reports one, otherwise elapsed ÷ cap held at 92 % until the media is here. Ready: the real image or video, with open · download · use as reference. Error: one line, retry, dismiss. The film crew console stays one tap away under the tile („დეტალები“).
 - **Header:** logo, language and „შესვლა“. On the landing, „შესვლა“ opens sign-in, and a signed-in visitor goes straight to the studio.
 
 ## 9. Routes (invariants)
@@ -115,7 +116,7 @@ What the guest dashboard offered before this pass, what it offers now, and what 
 | Default on a fresh visit | ჩატი | **ვიდეო** (9:16) |
 | Avatar icon | a speaker | a face, the same as its chip and the landing card |
 | Empty state | the greeting over a blank page | the greeting, the locked line, four chips, and the A3 plate at 8 % |
-| Options panel, desktop | always open, covering the greeting | collapsed behind „პარამეტრები“ until the first message |
+| Options panel, desktop | always open, covering the greeting | on demand at every width, behind „პარამეტრები“; ratio and length are also pills in the composer |
 
 The full studios, Montage, Dubbing, 3D and Presentation, stay below a divider in the same menu, with line icons.
 

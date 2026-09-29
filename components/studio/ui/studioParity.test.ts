@@ -142,12 +142,21 @@ describe('no studio is left with a bare spinner', () => {
    */
   const studios = readdirSync(dir).filter((f) => /Studio\.tsx$/.test(f));
 
-  it('every studio with an elapsed clock also renders the shared card', () => {
+  it('every studio with an elapsed clock also renders a shared progress card', () => {
+    // Either shared card counts: GenerationProgress (the panel studios) or ResultCard (OmniStudio's feed,
+    // a tile in the result's own shape — docs/DESIGN.md §8). What is forbidden is a clock with neither.
     const clockButNoCard = studios.filter((f) => {
       const s = src(f);
-      return s.includes('setElapsed') && !s.includes('<GenerationProgress');
+      return s.includes('setElapsed') && !s.includes('<GenerationProgress') && !s.includes('<ResultCard');
     });
     expect(clockButNoCard).toEqual([]);
+  });
+
+  it('OmniStudio draws its in-flight jobs with ResultCard, never a bare spinner tile', () => {
+    const s = src('OmniStudio.tsx');
+    expect(s).toContain('<ResultCard');
+    // The batch grid used to render `<Loader2 … animate-spin />` alone in a grey tile for every pending variation.
+    expect(s).not.toMatch(/items-center justify-center text-app-muted\/50"><Loader2/);
   });
 });
 
