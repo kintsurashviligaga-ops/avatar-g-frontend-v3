@@ -23,7 +23,7 @@
 -- anon policy it simply sees zero rows, which keeps /api/services/health's `select id limit 1` probe green.
 --
 -- ⚠️ NEVER write `CREATE POLICY … USING (true)` without `TO service_role`, and REVOKE EXECUTE FROM PUBLIC,
--- anon, authenticated on every new SECURITY DEFINER function. supabase/migrations/migrationSecurity.test.ts
+-- anon, authenticated on every new SECURITY DEFINER function. lib/security/dbExposure.test.ts
 -- enforces both for every migration from this one on.
 
 begin;
