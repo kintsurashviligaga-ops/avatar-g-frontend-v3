@@ -91,6 +91,13 @@ const SAFETY_RE =
 const BILLING_RE =
   /billing(?![\s_-]*details)|prepa(?:y|id)(?:ment)?|credits? (?:are |is |have been |has been )?(?:depleted|exhausted|used up)|insufficient (?:funds|balance|credits?)|payment required|out of credits/i;
 
+/**
+ * Google answers a bad or expired API key with HTTP 400 INVALID_ARGUMENT ("API key not valid. Please pass a valid API
+ * key.", ErrorInfo reason API_KEY_INVALID), not 401. It is an auth failure all the same: the fix is the key, not the
+ * request, and the UI must say so.
+ */
+const API_KEY_RE = /\bapi[ _]key (?:not valid|expired|invalid)\b|\bAPI_KEY_INVALID\b/i;
+
 export function isSafetyWording(text: string): boolean {
   return SAFETY_RE.test(text);
 }
@@ -115,8 +122,8 @@ function failure(reason: VeoFailureReason, retryable: boolean, detail: string, s
 /**
  * A non-2xx answer to a submit → the failure it means (docs/VEO_ENGINE.md §5). Order matters: 402 and billing
  * wording win (a 403 BILLING_DISABLED or a 429 "prepayment credits are depleted" will not clear on retry); then 429
- * and 503, which Google sends BEFORE creating a job (safe to retry); 400 is the request's fault (or a safety refusal);
- * 401/403 auth. 500/502/504 (and 408) may have created the job, so they are `ambiguous` and never retried. Any other
+ * and 503, which Google sends BEFORE creating a job (safe to retry); 400 is the request's fault (or a safety refusal,
+ * or an invalid API key → auth); 401/403 auth. 500/502/504 (and 408) may have created the job, so they are `ambiguous` and never retried. Any other
  * status (404 unknown model, 3xx that `redirect: 'manual'` refused to follow…) is a request problem.
  */
 export function classifySubmitHttpFailure(status: number, message: string): VeoCreateFailure {
@@ -124,6 +131,7 @@ export function classifySubmitHttpFailure(status: number, message: string): VeoC
   if (status === 402) return failure('quota', false, detail, status);
   if (status >= 400 && status < 500 && isBillingWording(message)) return failure('quota', false, detail, status);
   if (status === 429) return failure('rate_limited', true, detail, status);
+  if (status === 400 && API_KEY_RE.test(message)) return failure('auth', false, detail, status);
   if (status === 400) return failure(isSafetyWording(message) ? 'safety' : 'invalid_request', false, detail, status);
   if (status === 401 || status === 403) return failure('auth', false, detail, status);
   if (status === 503) return failure('unavailable', true, detail, status);

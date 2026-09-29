@@ -190,6 +190,20 @@ function mediaFromString(input: string): VeoMedia {
   throw new VeoGcsError('invalid_input', 'Veo input must be a data: URL, an https URL or a VeoMedia object');
 }
 
+/**
+ * The input as VeoMedia. A `{ kind: 'url' }` carrying a data: URL is decoded like the string form: the studio hands
+ * uploaded images through as url media (lib/chat/ServiceManager.resolveReferenceImages accepts `data:image/…`), and
+ * treating one as a fetch target would refuse it as "not a public https URL" on Vertex while the Gemini path
+ * (engine.inlineForGemini) decodes the very same input — one input, two verdicts depending on the transport.
+ */
+function mediaFromInput(media: VeoMedia | string): VeoMedia {
+  if (typeof media === 'string') return mediaFromString(media);
+  if (media.kind === 'url' && typeof media.url === 'string' && /^\s*data:/i.test(media.url)) {
+    return mediaFromDataUrl(media.url.trim());
+  }
+  return media;
+}
+
 function decodeBase64Input(base64: string): Buffer {
   // Reject by the encoded length before allocating: 4 chars → 3 bytes, with slack for line-wrapped base64.
   if (base64.length > Math.ceil((VEO_INPUT_MAX_BYTES * 4) / 3) * 1.05 + 16) {
@@ -256,7 +270,7 @@ async function fetchInputImage(url: string): Promise<{ bytes: Buffer; declared: 
 /**
  * Put a Veo image input in our bucket and return it as `{ kind: 'gcs' }` for the Vertex payload.
  *   • `gcs`                 → returned as-is (no I/O).
- *   • `bytes` / data: URL   → decoded (≤20 MB).
+ *   • `bytes` / data: URL   → decoded (≤20 MB) — a data: URL as a string or inside `{ kind: 'url' }`.
  *   • `url` / https string  → fetched with the SSRF guard, 15 s deadline, 20 MB cap.
  * The bytes must BE a JPEG or PNG (magic bytes, not the declared type); the object is written to
  * `<bucket>/[prefix/]inputs/{session}/{uuid}.{jpg|png}` with that contentType and never overwrites.
@@ -265,7 +279,7 @@ export async function uploadVeoInput(
   media: VeoMedia | string,
   opts: { sessionId: string },
 ): Promise<VeoMedia & { kind: 'gcs' }> {
-  const input = typeof media === 'string' ? mediaFromString(media) : media;
+  const input = mediaFromInput(media);
   if (input.kind === 'gcs') {
     const parsed = parseGsUri(input.uri);
     if (!parsed || !parsed.path || parsed.path.endsWith('/')) {

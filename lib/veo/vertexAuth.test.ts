@@ -180,6 +180,9 @@ describe('vertexConfigProblems — names only, never throws', () => {
     ['GCP_PROJECT_NUMBER', 'proj-123'],
     ['GCP_SERVICE_ACCOUNT_EMAIL', 'evil@x.com/../../other'],
     ['GCP_SERVICE_ACCOUNT_EMAIL', 'not-an-email'],
+    ['GCP_SERVICE_ACCOUNT_EMAIL', 'veo?x@my-proj.iam.gserviceaccount.com'],
+    ['GCP_SERVICE_ACCOUNT_EMAIL', 'veo@my-proj.iam.gserviceaccount.com#frag'],
+    ['GCP_SERVICE_ACCOUNT_EMAIL', 'veo%2F@my-proj.iam.gserviceaccount.com'],
     ['GCP_WORKLOAD_IDENTITY_POOL_ID', 'Pool With Spaces'],
     ['GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID', 'prov/../x'],
   ])('flags a malformed %s (it is interpolated into a URL)', (name, value) => {

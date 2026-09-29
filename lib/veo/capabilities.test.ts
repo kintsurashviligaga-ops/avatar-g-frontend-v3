@@ -579,6 +579,20 @@ describe('pricing', () => {
     expect(costPerSecondUsd(V_LITE, '4k', false)).toBe(0.05);
   });
 
+  it('prices 4k on Fast by transport: Gemini renders it, Vertex renders 1080p (never the 4k rate there)', () => {
+    expect(costPerSecondUsd(G_FAST, '4k', true)).toBe(0.3);
+    expect(costPerSecondUsd(V_FAST, '4k', true)).toBe(0.12);
+    expect(costPerSecondUsd(V_FAST, '4k', false)).toBe(0.1);
+    for (const audio of [true, false]) {
+      const { request } = normalizeClipRequest(base({ resolution: '4k', generateAudio: audio }), V_FAST, 'vertex');
+      expect(costPerSecondUsd(V_FAST, '4k', audio, 'vertex')).toBe(costPerSecondUsd(V_FAST, request.resolution, audio, 'vertex'));
+    }
+  });
+
+  it('prices an unknown resolution string as the 1080p normalisation substitutes', () => {
+    expect(costPerSecondUsd(V_STD, '8k' as unknown as '4k', true)).toBe(0.4);
+  });
+
   it('prices an unknown id by its inferred tier', () => {
     expect(costPerSecondUsd('veo-3.2-fast-generate-001', '1080p', true)).toBe(0.12);
     expect(costPerSecondUsd('veo-3.2-fast-generate-001', '1080p', false)).toBe(0.12);

@@ -129,6 +129,8 @@ describe('submitGeminiVeo', () => {
     ['400 → invalid_request', 400, 'durationSeconds out of bound', 'invalid_request', false],
     ['400 safety → safety', 400, 'Your input image contains content that violates our usage guidelines. Support codes: 15236754', 'safety', false],
     ['401 → auth', 401, 'API key not valid', 'auth', false],
+    ['400 invalid key → auth (Google sends 400, not 401)', 400, 'INVALID_ARGUMENT: API key not valid. Please pass a valid API key.', 'auth', false],
+    ['400 expired key → auth', 400, 'INVALID_ARGUMENT: API key expired. Please renew the API key.', 'auth', false],
     ['403 → auth', 403, 'Permission denied', 'auth', false],
     ['402 → quota', 402, 'Payment required', 'quota', false],
     ['429 → rate_limited', 429, 'You exceeded your current quota, please check your plan and billing details.', 'rate_limited', true],

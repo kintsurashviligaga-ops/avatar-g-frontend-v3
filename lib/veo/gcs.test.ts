@@ -309,6 +309,14 @@ describe('uploadVeoInput — pass-through and input forms', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("decodes a data: URL inside { kind: 'url' } locally (as the Gemini path does) instead of refusing it", async () => {
+    const out = await uploadVeoInput({ kind: 'url', url: ` ${dataUrl('image/png', PNG)}` }, { sessionId: 's' });
+    expect(out).toMatchObject({ kind: 'gcs', mimeType: 'image/png' });
+    expect(Buffer.compare(lastSave().bytes, PNG)).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await rejection(uploadVeoInput({ kind: 'url', url: 'data:image/png,%89PNG' }, { sessionId: 's' }))).code).toBe('invalid_input');
+  });
+
   it('treats an https string as a URL input', async () => {
     fetchMock.mockResolvedValueOnce(imageResponse(PNG));
     const out = await uploadVeoInput('https://cdn.example.com/a.png', { sessionId: 's' });

@@ -38,9 +38,10 @@ const PROJECT_ID_RE = /^[a-z0-9][a-z0-9.:-]{0,99}$/; // incl. legacy domain-scop
 const LOCATION_RE = /^[a-z0-9-]{2,40}$/; // becomes the `{location}-aiplatform.googleapis.com` host label
 const PROJECT_NUMBER_RE = /^\d{1,20}$/;
 const POOL_ID_RE = /^[a-z0-9][a-z0-9-]{2,62}$/; // Google: 4–32 lowercase letters, digits, hyphens (kept lenient)
-// No '/', ':' or '@'-less forms: the email is placed RAW into the impersonation URL. It must not be percent-encoded,
-// because google-auth-library reads it back out of that URL for signBlob and the V4 X-Goog-Credential.
-const EMAIL_RE = /^[^\s@/:]+@[^\s@/:]+\.[^\s@/:]+$/;
+// No '/', ':', '?', '#', '%' or backslash, and exactly one '@': the email is placed RAW into the impersonation URL (a '?' or
+// '#' would cut `:generateAccessToken` off the path). It must not be percent-encoded, because google-auth-library
+// reads it back out of that URL for signBlob and the V4 X-Goog-Credential.
+const EMAIL_RE = /^[^\s@/:?#%\\]+@[^\s@/:?#%\\]+\.[^\s@/:?#%\\]+$/;
 const BUCKET_NAME_RE = /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/;
 const PREFIX_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
 

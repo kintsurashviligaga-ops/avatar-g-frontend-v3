@@ -452,13 +452,15 @@ export function normalizeClipRequest(input: VeoClipInput, modelId: string, trans
 
 /**
  * $/s for a clip. The video-only rate applies only where it exists (Vertex with audio off); otherwise the audio rate —
- * the Gemini API bills audio because it always renders it. A resolution the tier has no price for is priced as the
- * resolution normalisation would actually render (4k on Lite → 1080p).
+ * the Gemini API bills audio because it always renders it. A resolution the model does not render is priced as the
+ * resolution normalisation would actually render (4k on Lite, or on Fast via Vertex → 1080p): the published Fast 4k
+ * rate is a Gemini-API price, and reserving it for a clip Vertex renders at 1080p would over-charge 2.5×.
  */
 export function costPerSecondUsd(modelId: string, resolution: VeoResolution, audio: boolean, transport?: VeoTransport): number {
   const caps = capsFor(modelId, transport);
   const row = !audio && caps.pricePerSecondUsd.videoOnly ? caps.pricePerSecondUsd.videoOnly : caps.pricePerSecondUsd.audio;
-  const start = Math.max(0, RESOLUTION_ORDER.indexOf(resolution));
+  const rendered = highestSupported(caps, isResolution(resolution) ? resolution : '1080p');
+  const start = Math.max(0, RESOLUTION_ORDER.indexOf(rendered));
   for (const res of RESOLUTION_ORDER.slice(start)) {
     const price = row[res];
     if (price !== undefined) return price;

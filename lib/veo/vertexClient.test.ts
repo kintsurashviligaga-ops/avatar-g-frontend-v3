@@ -319,6 +319,13 @@ describe('classification helpers', () => {
     expect(isBillingWording('please check your plan and billing details')).toBe(false);
   });
 
+  it('classifySubmitHttpFailure: a 400 about the API key is auth; any other 400 stays the request\'s fault', () => {
+    expect(classifySubmitHttpFailure(400, 'INVALID_ARGUMENT: API key not valid. Please pass a valid API key.')).toMatchObject({ reason: 'auth', retryable: false, status: 400 });
+    expect(classifySubmitHttpFailure(400, 'reason: API_KEY_INVALID')).toMatchObject({ reason: 'auth' });
+    expect(classifySubmitHttpFailure(400, 'The prompt mentions an api key for a door lock')).toMatchObject({ reason: 'invalid_request' });
+    expect(classifySubmitHttpFailure(400, 'durationSeconds out of bound')).toMatchObject({ reason: 'invalid_request' });
+  });
+
   it('classifySubmitHttpFailure without a message', () => {
     expect(classifySubmitHttpFailure(503, '')).toStrictEqual({ ok: false, reason: 'unavailable', retryable: true, status: 503, detail: 'HTTP 503' });
   });

@@ -19,7 +19,7 @@ import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { DEFAULT_TIER, normalizeClipRequest, resolveModel, type VeoClipAdjustment, type VeoClipInput } from './capabilities';
-import { signedReadUrl, uploadVeoInput, veoOutputPrefix, VeoGcsError } from './gcs';
+import { signedReadUrl, uploadVeoInput, VEO_INPUT_FETCH_TIMEOUT_MS, VEO_INPUT_MAX_BYTES, veoOutputPrefix, VeoGcsError } from './gcs';
 import { pollGeminiVeo, submitGeminiVeo } from './geminiTransport';
 import { vertexConfig, vertexConfigProblems } from './vertexAuth';
 import { pollVertexVeo, submitVertexVeo, type VeoCreateFailure } from './vertexClient';
@@ -27,9 +27,8 @@ import type { VeoClipRequest, VeoCreateOutcome, VeoFailureReason, VeoMedia, VeoP
 
 export { isGoogleOnly } from './policy';
 
-/** Same limits as gcs.uploadVeoInput, so an input behaves the same whichever transport renders it. */
-export const VEO_INPUT_MAX_BYTES = 20 * 1024 * 1024;
-export const VEO_INPUT_FETCH_TIMEOUT_MS = 15_000;
+/** gcs.uploadVeoInput's own limits (one definition), so an input behaves the same whichever transport renders it. */
+export { VEO_INPUT_FETCH_TIMEOUT_MS, VEO_INPUT_MAX_BYTES };
 const MAX_INPUT_REDIRECTS = 3;
 /** Enough of the prompt to recognise a clip in the logs (and a safety refusal's trigger); never the whole prompt. */
 const PROMPT_LOG_CHARS = 120;
