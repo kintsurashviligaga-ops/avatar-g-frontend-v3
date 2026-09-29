@@ -14,7 +14,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, type LucideIcon } from 'lucide-react';
+import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, MessageSquare, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, Presentation, Box, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, Repeat, SlidersHorizontal, CreditCard, Wallet, type LucideIcon } from 'lucide-react';
+import { BRAND_V1 } from '@/lib/brand/v1';
 import { GenerationProgress, PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
@@ -218,14 +219,14 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
-    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე სურათი…', empty: 'ჰკითხე ნებისმიერი რამ, შექმენი სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
+    placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე ფაილი…', empty: 'შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.',
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
     modeChat: 'ჩატი', modeImage: 'სურათი', imgPlaceholder: 'აღწერე სურათი, რომ დაგიხატო…',
     generatingImage: 'სურათი იქმნება…', imageFailed: 'სურათის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', imgDownload: 'ჩამოტვირთვა', editImage: 'რედაქტირება', share: 'გაზიარება', linkCopied: 'ბმული დაკოპირდა', remix: 'რემიქსი', remixPlaceholder: 'შეცვალე სცენა — მაგ. „გახადე მე-2 სცენა უფრო თბილი და ნათელი“…', remixGenerating: 'რემიქსი მუშავდება — მხოლოდ შეცვლილი სცენა გადაირენდერება…',
     magicHint: 'AI-ით პრომპტის გაუმჯობესება',
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
-    modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე ვიდეო (ატვირთე ფოტო პერსონაჟისთვის)…',
+    modeVideo: 'ვიდეო', videoPlaceholder: 'აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი…',
     generatingVideo: 'ვიდეო იქმნება… სცენარი, სცენები და საბოლოო მონტაჟი', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
@@ -233,7 +234,7 @@ const COPY: Record<Lang, {
     remixNeedCaption: '✏️ დამიწერე რა ტექსტი გნებავს კადრზე — ბრჭყალებში ან ორწერტილის შემდეგ. მაგ.: წარწერა: გამარჯობა',
     modeSurgical: 'რედაქტორი',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
-    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: '🔄 თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
+    stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: 'თავიდან ცდა', elapsedHint: 'გავიდა', greeting: 'რით დაგეხმარო?', attachHint: 'დამატება',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე სცენებს — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და კადრები იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
@@ -242,14 +243,14 @@ const COPY: Record<Lang, {
   },
   en: {
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
-    placeholder: 'Type, record your voice, or attach an image…', empty: 'Ask anything, or generate an image or music — by text, voice or file.',
+    placeholder: 'Type, record your voice, or attach a file…', empty: 'Make a video, an image or music — by text, voice or file.',
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
     modeChat: 'Chat', modeImage: 'Image', imgPlaceholder: 'Describe an image to generate…',
     generatingImage: 'Generating image…', imageFailed: 'Image generation failed. Try again.', imgDownload: 'Download', editImage: 'Edit', share: 'Share', linkCopied: 'Link copied', remix: 'Remix', remixPlaceholder: 'Edit a scene — e.g. “make scene 2 warmer and brighter”…', remixGenerating: 'Remixing — re-rendering only the edited scene…',
     magicHint: 'Enhance prompt with AI',
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
-    modeVideo: 'Video', videoPlaceholder: 'Describe your video (attach a photo for the character)…',
+    modeVideo: 'Video', videoPlaceholder: 'Describe a shot, record your voice, or attach a file…',
     generatingVideo: 'Producing video… storyboard, scenes, then final montage', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
@@ -257,7 +258,7 @@ const COPY: Record<Lang, {
     remixNeedCaption: '✏️ Tell me the exact words to burn on — in quotes, or after a colon. E.g. caption: Hello world',
     modeSurgical: 'Editor',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
-    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: '🔄 Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
+    stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: 'Try again', elapsedHint: 'elapsed', greeting: 'How can I help?', attachHint: 'Add',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
@@ -266,14 +267,14 @@ const COPY: Record<Lang, {
   },
   ru: {
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
-    placeholder: 'Напишите, запишите голос или прикрепите изображение…', empty: 'Спросите что угодно или создайте изображение или музыку — текстом, голосом или файлом.',
+    placeholder: 'Напишите, запишите голос или прикрепите файл…', empty: 'Создайте видео, изображение или музыку — текстом, голосом или файлом.',
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
     modeChat: 'Чат', modeImage: 'Изображение', imgPlaceholder: 'Опишите изображение для генерации…',
     generatingImage: 'Генерирую изображение…', imageFailed: 'Не удалось сгенерировать изображение. Попробуйте снова.', imgDownload: 'Скачать', editImage: 'Изменить', share: 'Поделиться', linkCopied: 'Ссылка скопирована', remix: 'Ремикс', remixPlaceholder: 'Измените сцену — напр. «сделай 2-ю сцену теплее и ярче»…', remixGenerating: 'Ремикс — перерисовывается только изменённая сцена…',
     magicHint: 'Улучшить промпт с AI',
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
-    modeVideo: 'Видео', videoPlaceholder: 'Опишите видео (прикрепите фото для персонажа)…',
+    modeVideo: 'Видео', videoPlaceholder: 'Опишите кадр, запишите голос или прикрепите файл…',
     generatingVideo: 'Создаю видео… раскадровка, сцены и монтаж', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
@@ -281,7 +282,7 @@ const COPY: Record<Lang, {
     remixNeedCaption: '✏️ Напишите точный текст для наложения — в кавычках или после двоеточия. Напр.: текст: Привет мир',
     modeSurgical: 'Редактор',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
-    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: '🔄 Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
+    stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: 'Повторить', elapsedHint: 'прошло', greeting: 'Чем помочь?', attachHint: 'Добавить',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите сцены — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и кадры…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
@@ -351,12 +352,15 @@ const TypingDots = memo(function TypingDots() {
  * lookup and the programmatic `setMode('surgical')` call sites keep working.
  */
 const MODES = [
-  { id: 'chat', Icon: MessageSquare, key: 'modeChat' },
+  // VIDEO FIRST (docs/DESIGN.md §1, the owner's 2026-09-29 brief): the studio is a video studio; the other
+  // services stay one click away in the same menu, the assistant chat last.
+  { id: 'video', Icon: Film, key: 'modeVideo' },
   { id: 'image', Icon: ImageIcon, key: 'modeImage' },
   { id: 'music', Icon: Music2, key: 'modeMusic' },
-  { id: 'video', Icon: Film, key: 'modeVideo' },
-  { id: 'lipsync', Icon: Volume2, key: 'modeLipsync' },
+  // ScanFace, not a speaker: the service is "ავატარი" — the same icon as its starter chip and the landing's card.
+  { id: 'lipsync', Icon: ScanFace, key: 'modeLipsync' },
   { id: 'remix', Icon: Wand2, key: 'modeRemix' },
+  { id: 'chat', Icon: MessageSquare, key: 'modeChat' },
   { id: 'surgical', Icon: Scissors, key: 'modeSurgical' },
 ] as const;
 
@@ -366,6 +370,24 @@ const MODES = [
  * editors in one menu — the duplicate this removes.
  */
 const MENU_MODES = MODES.filter((m) => m.id !== 'surgical');
+
+/** Line icons for the video presets (their catalogue still carries emoji; docs/DESIGN.md bans emoji as UI). */
+const VIDEO_PRESET_ICON: Record<string, LucideIcon> = { reel: Smartphone, trailer: Clapperboard, teaser: Zap };
+
+/**
+ * The four starter chips of the empty state (the owner's 2026-09-29 brief, docs/DESIGN.md §8), video first.
+ *
+ * ⚠️ THEY ARE SERVICE SHORTCUTS, NOT PROMPTS. The previous chips (removed in 23b2c6e) were three pre-written
+ * image prompts that called runImageJob directly: one tap SPENT credits, skipped the guest gate, and made the
+ * user's first creation somebody else's idea. A chip here only selects the service (and, for the reel, the
+ * 9:16 format) and puts the cursor in the composer. Nothing is sent, nothing is spent, the words are the user's.
+ */
+const STARTER_CHIPS: ReadonlyArray<{ id: string; mode: 'video' | 'image' | 'music' | 'lipsync'; Icon: LucideIcon; ka: string; en: string; ru: string }> = [
+  { id: 'reel', mode: 'video', Icon: Film, ka: 'კინო რილი 9:16', en: 'Cinematic reel 9:16', ru: 'Кино-рилс 9:16' },
+  { id: 'product', mode: 'image', Icon: ImageIcon, ka: 'პროდუქტის სურათი', en: 'Product image', ru: 'Фото продукта' },
+  { id: 'soundtrack', mode: 'music', Icon: Music2, ka: 'საუნდთრექი', en: 'Soundtrack', ru: 'Саундтрек' },
+  { id: 'avatar', mode: 'lipsync', Icon: ScanFace, ka: 'ავატარის პორტრეტი', en: 'Avatar portrait', ru: 'Портрет-аватар' },
+];
 
 // P1 — Music-video lip-sync. Sends the assembled multi-shot master to /api/video/lipsync
 // with kind:'film' → the route uses Replicate's sync/lipsync-2 (video-input, official),
@@ -1665,7 +1687,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
-  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
+  // DEFAULT = VIDEO (the owner's 2026-09-29 brief). Safe as a default because a video send first builds a
+  // STORYBOARD the user approves before any render is paid for, and send() stops a guest at sign-in in every mode.
+  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('video');
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -1714,6 +1738,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setPanelServiceRaw(svc);
     if (svc) { setModeRaw('chat'); setOptionsOpen(false); }
   }, []);
+  /** A starter chip: select the service (+ 9:16 for the reel) and hand the cursor to the user. Never sends. */
+  const startChip = useCallback((chip: (typeof STARTER_CHIPS)[number]) => {
+    setMode(chip.mode);
+    if (chip.id === 'reel') setVideoOrientation('vertical');
+    requestAnimationFrame(() => taRef.current?.focus());
+  }, [setMode]);
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
@@ -6540,7 +6570,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       )}
                       {routingChip && routingPrompt && (
                         <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
-                          {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <Volume2 size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
+                          {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <ScanFace size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
                           <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{routingPrompt}</span>
                           <button type="button" disabled={busy} onClick={() => dispatchServiceBlock(routingChip, routingPrompt)}
                             className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
@@ -6849,19 +6879,35 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
       >
         {messages.length === 0 ? (
-          <div className="flex min-h-full flex-col items-center justify-center gap-5 px-2 py-6 text-center">
-            <div className="space-y-1.5">
-              <h2 className="text-[28px] font-semibold tracking-tight text-app-text">{t.greeting}</h2>
-              <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-app-muted">{mode === 'video' ? (locale === 'en' ? 'Attach a photo, describe your video, and pick a length — then tap Create. I’ll storyboard it and render the film with Veo.' : locale === 'ru' ? 'Прикрепите фото, опишите видео и выберите длину — затем нажмите «Создать». Я сделаю раскадровку и соберу фильм на Veo.' : 'ატვირთე ფოტო, აღწერე ვიდეო და აირჩიე ხანგრძლივობა — შემდეგ დააჭირე „შექმნას". სცენარსაც და ფილმის აწყობასაც Veo-თი მე გავაკეთებ.') : t.empty}</p>
+          <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-2 py-6 text-center">
+            {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
+                the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
             </div>
-            {/* ⚠️ NO SAMPLE-PROMPT CHIPS HERE — REMOVED ON THE OWNER'S CALL, AND THIS COMMENT EXISTS SO
-                THEY ARE NOT RE-ADDED BY THE NEXT CONVERSION AUDIT. Three fixed suggestions were added
-                here to solve "a new user faces a blank box", and the owner looked at the result and
-                judged them visual noise on the product's most important screen. A pre-written prompt
-                also has a cost the audit did not price: it makes the first thing the user creates
-                somebody else's idea, and on a phone the chips pushed the composer down the fold.
-                If first-run guidance is wanted again, it belongs in the PLACEHOLDER or a dismissible
-                one-time hint — not as permanent furniture between the headline and the input. */}
+            <div className="relative space-y-2">
+              {/* The locked copy (docs/DESIGN.md §7) — the same greeting and line in every mode. */}
+              <h1 className="font-display text-[30px] font-bold leading-tight tracking-[-0.01em] text-app-text sm:text-[36px]">{t.greeting}</h1>
+              <p className="mx-auto max-w-lg text-balance text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
+            </div>
+            {/* Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two at
+                every width: on a phone that keeps the composer above the fold (what got the old chips removed);
+                on a desktop a free-wrapping row broke 3 + 1, which reads as an accident. */}
+            <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
+              className="relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem]">
+              {STARTER_CHIPS.map((chip) => {
+                // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
+                const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
+                return (
+                  <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
+                    className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
+                    <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
+                    <span className="min-w-0 sm:whitespace-nowrap">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : messageList}
       </div>
@@ -6890,7 +6936,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             Shown only after the SECOND consecutive failure, so one flaky pass stays invisible. */}
         {dictationWarn && (
           <div role="status" className="mb-2 rounded-xl border border-app-warning/25 bg-app-warning/10 px-3 py-2 text-[12px] leading-snug text-app-text">
-            ⚠️ {dictationWarn}
+            <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
         {/* ⚠️ THE PRICE MUST BE ON SCREEN BEFORE THE SPEND, IN EVERY STUDIO — NOT JUST IMAGE.
@@ -6918,20 +6964,21 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             </div>
           );
         })()}
-        {/* Service shortcuts intentionally REMOVED from the composer — the in-pill mode
-            dropdown (Chat ⌄ / Video ⌄) is the single, canonical mode switcher. The empty
-            state is now just the heading + subtitle (no pills, no templates). */}
+        {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
+            canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
+            that never send; see their definition for why the old prompt chips were removed). */}
         {/* Per-service options. On MOBILE they collapse behind this toggle so the chat is
             never covered and the input stays reachable; on a real desktop (lg:) they're always
             open. Phone AND tablet open them on demand, capped to 52svh (keyboard-aware) with their own scroll. */}
         {mode !== 'chat' && (
           <button type="button" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen}
+            data-testid="options-toggle"
             style={{ minHeight: TAP_MIN_PX }}
             // ⚠️ `sm:hidden` TOOK THIS AWAY FROM TABLETS while the panel below stayed forced open — the
             // control and the thing it controls disappeared at the same breakpoint, from opposite sides.
             // Must stay in lockstep with the panel's `lg:block`: whatever width the panel stops being
             // always-open at is the width this button has to exist down to.
-            className="mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition active:scale-[0.99] lg:hidden">
+            className={`mb-2 flex w-full items-center justify-between rounded-xl border border-app-border/15 bg-app-elevated/40 px-3 py-2 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated ${messages.length === 0 ? '' : 'lg:hidden'}`}>
             <span className="inline-flex items-center gap-1.5"><Sparkles size={14} className="text-app-accent" /> {locale === 'en' ? 'Options' : locale === 'ru' ? 'Опции' : 'პარამეტრები'}</span>
             <ChevronDown size={16} className={`text-app-muted transition-transform ${optionsOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -6964,7 +7011,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
              collapses its toolbar, which is precisely when the reported drag happens: the scroller's height
              animates mid-gesture, scrollTop re-clamps, and content slides under the finger. svh is the
              stable small-viewport unit and does not move. */
-          className={`${optionsOpen ? 'max-h-[52svh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} lg:block lg:max-h-[58svh] lg:overflow-y-auto lg:overscroll-contain lg:touch-pan-y lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
+          // ⚠️ `lg:block` (always open on desktop) is withheld while the conversation is EMPTY: with VIDEO as the
+          // default mode (the owner's 2026-09-29 brief) the 58svh video panel would otherwise open over the
+          // greeting and the starter chips on every desktop visit. Empty → the same toggle phones use.
+          className={`${optionsOpen ? 'max-h-[52svh] overflow-y-auto overscroll-contain touch-pan-y pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'hidden'} ${messages.length === 0 ? '' : 'lg:block'} lg:max-h-[58svh] lg:overflow-y-auto lg:overscroll-contain lg:touch-pan-y lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden`}
           // VECTOR 3 — keyboard open: cap to what's left below it (header+composer buffer ≈ 220px) so
           // the panel scrolls internally and the composer dock never gets pushed under the keyboard.
           style={optionsOpen && keyboardOffset > 0 ? { maxHeight: `calc(100dvh - ${keyboardOffset + 220}px)` } : undefined}
@@ -7260,16 +7310,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             <div className="grid grid-cols-3 gap-1.5">
               <button type="button" onClick={() => setVideoTab('cinema')}
                 className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'cinema' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                🎬 {locale === 'en' ? 'Cinema' : locale === 'ru' ? 'Кино' : 'კინო'}
+                <span className="inline-flex items-center justify-center gap-1.5"><Clapperboard size={14} aria-hidden="true" /> {locale === 'en' ? 'Cinema' : locale === 'ru' ? 'Кино' : 'კინო'}</span>
               </button>
               <button type="button" onClick={() => setVideoTab('product')}
                 className={`min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'product' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                📦 {locale === 'en' ? 'Product' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}
+                <span className="inline-flex items-center justify-center gap-1.5"><Package size={14} aria-hidden="true" /> {locale === 'en' ? 'Product' : locale === 'ru' ? 'Реклама' : 'პროდუქტი'}</span>
               </button>
               <button type="button" onClick={() => setVideoTab('videoswap')}
-                className={`relative min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'videoswap' ? 'border-orange-500/50 bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
-                🔄 {locale === 'en' ? 'Swap' : locale === 'ru' ? 'Замена' : 'შეცვლა'}
-                <span className="absolute -right-1 -top-1 rounded-full bg-orange-500/30 px-1 text-[8px] font-bold text-orange-300">★</span>
+                className={`relative min-h-[44px] rounded-xl border p-2.5 text-[12px] font-semibold transition active:scale-[0.99] ${videoTab === 'videoswap' ? 'border-app-accent/60 bg-app-accent/15 text-app-accent ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 text-app-muted'}`}>
+                <span className="inline-flex items-center justify-center gap-1.5"><Repeat size={14} aria-hidden="true" /> {locale === 'en' ? 'Swap' : locale === 'ru' ? 'Замена' : 'შეცვლა'}</span>
               </button>
             </div>
             {videoTab === 'cinema' && (<>
@@ -7284,7 +7333,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 have, which is worse than no highlight at all. */}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">
-                ✨ {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
+                <Sparkles size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
               </span>
               <div className="mt-2">
                 <PresetRow
@@ -7292,7 +7341,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     id: pr.id,
                     label: pr.label[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
                     hint: pr.hint[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
-                    icon: pr.emoji,
+                    icon: (() => { const I = VIDEO_PRESET_ICON[pr.id] ?? Film; return <I size={14} aria-hidden="true" />; })(),
                   }))}
                   activeId={activeVideoPreset}
                   onPick={applyVideoPreset}
@@ -7302,7 +7351,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
 
             {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">🎚 {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text"><SlidersHorizontal size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {([
                   ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'A sung music clip' : locale === 'ru' ? 'Клип с песней' : 'მუსიკალური კლიპი'],
@@ -7325,7 +7374,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 in the job metadata for multi-angle character lock. */}
             <div id="character-ref-zone" className="space-y-1.5">
               <span className="inline-flex flex-wrap items-center gap-1.5 px-0.5 text-[12.5px] font-semibold text-app-text">
-                📸 {locale === 'en' ? 'Your photo' : locale === 'ru' ? 'Ваше фото' : 'თქვენი ფოტო'}
+                <Camera size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Your photo' : locale === 'ru' ? 'Ваше фото' : 'თქვენი ფოტო'}
                 <span className="text-[10px] font-normal text-app-muted">
                   {videoCharacterRefs.length}/{sceneFrameCount}
                   {videoCharacterRefs.length < sceneFrameCount && videoCharacterRefs.length > 0 && (
@@ -8601,7 +8650,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             rows={1}
             disabled={enhancing}
             placeholder={recording ? t.recording : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : mode === 'remix' ? t.remixUploadHint : t.placeholder}
-            className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted/70 outline-none focus:ring-0 disabled:opacity-60"
+            className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60"
           />
 
           {/* Controls row — a single clean line on every viewport: [+][📷] locked FAR-LEFT, a
@@ -8739,7 +8788,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 now sits BESIDE the generation Stop, so the two can overlap. */}
             {busy && !recording && !transcribing && (
               <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-300 ease-out hover:scale-105 hover:bg-app-surface hover:text-app-text active:scale-95">
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text">
                 <Mic size={19} />
               </button>
             )}
@@ -8782,7 +8831,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. (Dictation → fills the text box.) */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-all duration-300 ease-out hover:scale-105 hover:bg-app-surface hover:text-app-text active:scale-95">
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text">
                   <Mic size={19} />
                 </button>
                 {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
@@ -8790,14 +8839,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     ChatChrome) via the window CustomEvent bridge. The animated equalizer (a living
                     waveform, staggered scale-Y bars) over a soft accent aura is the premium real-time
                     voice call-to-action. Reduced-motion falls the bars back to static (see .voice-eq). */}
+                {/* SEND-WHEN-TEXT: the live-voice button and Send share ONE slot. With something to send, Send
+                    replaces it — the composer never shows two primary actions side by side. */}
+                {!canSend && (
                 <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
-                  className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-all duration-300 ease-out hover:scale-105 hover:bg-app-accent/10 active:scale-95">
-                  {/* Soft, steady accent aura (the motion comes from the equalizer, not a strobing halo). */}
-                  <span aria-hidden="true" className="pointer-events-none absolute inset-[7px] rounded-full bg-app-accent/20 blur-md" />
+                  className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors duration-200 hover:bg-app-accent/10">
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
+                )}
                 {input.trim() && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
                   // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
@@ -8810,7 +8861,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button type="button" onClick={() => void send()}
                     aria-label={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : mode === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა') : mode === 'music' ? (locale === 'en' ? 'Create music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
                     title={mode === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა') : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა')}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-all duration-300 ease-out hover:scale-105 hover:opacity-95 active:scale-95">
+                    className="ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                     <Send size={17} />
                   </button>
                 )}
@@ -8848,9 +8899,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             style={{ bottom: `calc(max(8rem, calc(env(safe-area-inset-bottom) + 7.5rem)) + ${keyboardOffset}px)` }}
           >
             <span className="flex items-center gap-1.5"><Check size={15} className="text-emerald-400" /> {locale === 'en' ? 'Generation complete' : locale === 'ru' ? 'Генерация завершена' : 'გენერაცია დასრულდა'}</span>
-            <span className="text-app-muted">💳 −{creditToast.credits} {creditsWord} ({formatWalletBalance(creditsToGel(creditToast.credits), locale)})</span>
+            {/* Line icons, not 💳/💰 (docs/DESIGN.md bans emoji as UI) — this toast follows every paid generation. */}
+            <span className="flex items-center gap-1.5 text-app-muted"><CreditCard size={14} aria-hidden="true" /> −{creditToast.credits} {creditsWord} ({formatWalletBalance(creditsToGel(creditToast.credits), locale)})</span>
             {creditToast.balanceGel !== null && (
-              <span className="text-app-muted">💰 {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> ({formatWalletBalance(creditToast.balanceGel, locale)})</span>
+              <span className="flex items-center gap-1.5 text-app-muted"><Wallet size={14} aria-hidden="true" /> {locale === 'en' ? 'Balance' : locale === 'ru' ? 'Баланс' : 'ბალანსი'}: <span className="text-app-accent">{gelToCredits(creditToast.balanceGel)} {creditsWord}</span> ({formatWalletBalance(creditToast.balanceGel, locale)})</span>
             )}
           </div>
         );

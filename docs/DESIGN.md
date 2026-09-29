@@ -14,14 +14,14 @@ A guest must understand "video studio" within three seconds of landing. The pict
 
 | Token | Value | Use |
 |---|---|---|
-| ink | `#0A0A0A` | page background |
-| surface | `#111214` / `#16171A` | panels, the composer, cards |
+| ink | `#0A0A0A` (`--app-bg`) | page background |
+| surface | `#16161A` / `#202026` (`--app-surface` / `--app-elevated`) | panels, the composer, cards |
 | hairline | white 8–12 % | borders; never a coloured border |
-| text | `#F2F2F3` | headings and body |
-| muted | `#A1A1AA` | secondary text. Never below AA (4.5:1) on ink |
-| **accent** | **`#00E5FF`** | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges |
+| text | `#F0F0F5` (`--app-text`) | headings and body |
+| muted | `#A0A0AF` (`--app-muted`) | secondary text: 7.7:1 on ink, 7.0:1 on surface. Never below AA (4.5:1) |
+| **accent** | **`#00E5FF`** (`--app-accent`) | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges |
 
-**One accent only.** The brand sheet's lime (`#C5FF00`) and gold (`#D4AF37`) are brand-sheet colours, not UI colours. The product UI uses cyan and neutrals only. If a second colour seems necessary, the hierarchy is wrong.
+**One accent only.** The brand sheet's lime (`#C5FF00`) and gold (`#D4AF37`) are brand-sheet colours, not UI colours. The product UI uses cyan and neutrals only. If a second colour seems necessary, the hierarchy is wrong. (`--app-gold` still exists as a token for older surfaces. New UI does not use it.)
 
 The primary CTA is a solid cyan pill with ink text, used once per view. Secondary actions are outline or text.
 
@@ -72,11 +72,11 @@ Every still is the same world with the same grade and the same seed family. Shot
 
 | | ka | en | ru |
 |---|---|---|---|
-| H1 | რით დაგეხმარო? | What are we making? | Что снимем? |
-| Sub | შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით. | Make a video, an image or music — by text, voice or file. | Создай видео, изображение или музыку — текстом, голосом или файлом. |
-| Placeholder | აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი… | Describe a shot, record your voice, or attach a file… | Опиши кадр, запиши голос или прикрепи файл… |
+| H1 | რით დაგეხმარო? | How can I help? | Чем помочь? |
+| Sub | შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით. | Make a video, an image or music — by text, voice or file. | Создайте видео, изображение или музыку — текстом, голосом или файлом. |
+| Placeholder (video) | აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი… | Describe a shot, record your voice, or attach a file… | Опишите кадр, запишите голос или прикрепите файл… |
 
-In en and ru, video is always named first.
+Only the ka column is locked by the brief; en and ru keep the product's existing greeting and translate the rest. In en and ru, video is always named first. Russian uses «вы» on every surface, the landing included.
 
 **Landing, above the fold.** The ka copy leads; en and ru translate it.
 - The H1 says video: **„ვიდეო ერთი იდეიდან.“**
@@ -88,7 +88,7 @@ In en and ru, video is always named first.
 ## 8. Components
 
 - **Service cards (4):** image, name and one line. Video comes first and carries a **„მთავარი“** badge. There is no nested panel inside a card and no hover glow; hover lifts the image contrast only.
-- **Chips (dashboard):** a hairline pill. Hover and press **invert** it to a white fill with ink text. A chip sets the service and prefills a starter; it never spends.
+- **Chips (dashboard):** four hairline pills, video first — კინო რილი 9:16 · პროდუქტის სურათი · საუნდთრექი · ავატარის პორტრეტი — in two rows of two at every width. Hover and press **invert** a chip to a white fill with ink text. A chip selects the service (the reel also sets 9:16) and puts the cursor in the composer. It never sends, never spends, and never writes the user's words for them.
 - **Composer:** unchanged in structure. When the text field has text, the voice/waveform button becomes **send**.
 - **Header:** logo, language and „შესვლა“. On the landing, „შესვლა“ opens sign-in, and a signed-in visitor goes straight to the studio.
 
@@ -96,6 +96,37 @@ In en and ru, video is always named first.
 
 - `/{lang}/dashboard`, `/chat`, `/agent`, `/pricing` and `/services/*` are untouched.
 - Auth, the credit ledger and the generation contracts are untouched.
-- `/` and `/{lang}` become the marketing landing for **guests**. A signed-in visitor keeps going straight to `/{lang}/dashboard`, as today.
+- `/{lang}` is the marketing landing for **guests** (anyone without a session cookie, crawlers included). `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard`, as today (`lib/routing/landing.ts`).
+- The sitemap lists `/ka`, `/en` and `/ru` and never the bare `/`, which only redirects.
 - `/{lang}/landing`, the retired route, redirects to `/{lang}`.
 - The PWA `start_url` stays `/ka/dashboard`.
+
+## 10. Audit — the burger, the service menu, the rest (2026-09-29)
+
+What the guest dashboard offered before this pass, what it offers now, and what is left.
+
+**The burger (☰, phones; the sidebar on desktop).** It holds: new chat, chat history, then Library, Persona, Billing and Settings, plus „სტუდია β“ on deployments with `STUDIO_V2`. It has **no service list**, and it keeps none: an earlier pass removed the sidebar's duplicate list, so the composer's menu is the only service picker. „Video first in the burger“ is therefore satisfied where the services actually are, in the next item.
+
+**The service menu (the composer's „ვიდეო ⌄“).**
+
+| | Before | After |
+|---|---|---|
+| Order | ჩატი · სურათი · მუსიკა · ვიდეო · ავატარი · რემიქსი | **ვიდეო** · სურათი · მუსიკა · ავატარი · რემიქსი · ჩატი |
+| Default on a fresh visit | ჩატი | **ვიდეო** (9:16) |
+| Avatar icon | a speaker | a face, the same as its chip and the landing card |
+| Empty state | the greeting over a blank page | the greeting, the locked line, four chips, and the A3 plate at 8 % |
+| Options panel, desktop | always open, covering the greeting | collapsed behind „პარამეტრები“ until the first message |
+
+The full studios, Montage, Dubbing, 3D and Presentation, stay below a divider in the same menu, with line icons.
+
+**Header.** The language trigger shows a text label (ქარ / ENG / РУС) instead of an emoji flag. On phones, the sign-in icon is dropped so the wordmark, the language and „შესვლა“ fit at 360 px. The rocket lost its three stacked drop-shadows.
+
+**Composer.** The mic and Send lost their hover-scale. The live-voice button lost its halo. Its equaliser bars are still at rest and move only on hover or focus. With text in the box, Send replaces the live-voice button in the same slot.
+
+**Glow and colour.** Removed on these surfaces: rocket shadows, the live-voice halo, the orange „swap“ tab (now the accent), and the ★ label. Kept on purpose: `text-emerald-400` on the „generation complete“ check. A success state is status, not a second accent.
+
+**Contrast.** Body and muted text use `text-app-text` / `text-app-muted`, and the placeholder uses `placeholder:text-app-muted`. None sit below AA on ink.
+
+**Left for a follow-up.** Deliberately out of this pass, because they are message copy and panel copy rather than the empty state:
+- About 290 emoji characters remain in `OmniStudio.tsx` strings: 🎵 in notices, ⚠️ in warnings, 🎥 in the storyboard title, ✓ in labels, and the like. They should become line icons, or plain words, surface by surface.
+- `AuthModal` still uses a cyan-to-blue gradient badge and a tinted drop-shadow, and has no `role="dialog"`. It was left alone because auth is an invariant of this pass (§9).

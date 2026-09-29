@@ -167,8 +167,8 @@ function LanguageSwitcher({ locale }: { locale: string }) {
   return (
     <div className="relative" ref={wrapRef}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Language" aria-haspopup="menu" aria-expanded={open}
-        className="flex min-h-[44px] items-center gap-1 rounded-full px-2 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0">
-        <span className="text-[15px] leading-none">{current.flag}</span>
+        className="flex min-h-[44px] items-center gap-0.5 rounded-full px-1.5 py-1.5 text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:min-h-0 sm:gap-1 sm:px-2">
+        <span className="text-[13px] font-semibold leading-none tracking-wide">{current.label}</span>
         <ChevronDown size={13} className={`text-app-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -182,7 +182,6 @@ function LanguageSwitcher({ locale }: { locale: string }) {
             {LANGS.map((l) => (
               <button key={l.code} type="button" role="menuitemradio" aria-checked={l.code === locale} onClick={() => go(l.code)}
                 className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors ${l.code === locale ? 'bg-app-accent/10 text-app-accent' : 'text-app-text hover:bg-app-elevated'}`}>
-                <span className="text-[16px] leading-none">{l.flag}</span>
                 <span className="flex-1 text-left font-medium">{l.label}</span>
                 {l.code === locale && <Check size={14} />}
               </button>
@@ -878,7 +877,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         <div className="flex items-center justify-between px-3 py-3.5">
           <span className="flex min-w-0 items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={22} height={22} decoding="async" className="h-[22px] w-[22px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]" />
+            <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={22} height={22} decoding="async" className="h-[22px] w-[22px] shrink-0 object-contain" />
             <Wordmark size="sm" />
           </span>
           {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. Visible on every breakpoint now. */}
@@ -1027,7 +1026,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   {!showBack && !title && (
                     <span className="inline-flex items-center gap-1.5 text-[16px] font-semibold tracking-tight text-app-text">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]" />
+                      <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain" />
                       <Wordmark size="sm" />
                     </span>
                   )}
@@ -1045,10 +1044,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     {/* Brand Rocket lockup — the OFFICIAL premium mark (same asset the Admin Panel's
                         BrandLogo renders: /brand/gemini-rocket-clean.png), for a unified corporate
                         identity. Decorative (the wordmark IS the accessible name); scoped to the
-                        wordmark branch so a page title still truncates normally. object-contain +
-                        the admin's subtle cyan drop-shadow keep it crisp + premium at 18px. */}
+                        wordmark branch so a page title still truncates normally. object-contain keeps it
+                        crisp at 18px; no drop-shadow (docs/DESIGN.md §6 — no glow on the mark). */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]" />
+                    <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={18} height={18} decoding="async" className="h-[18px] w-[18px] shrink-0 object-contain" />
                     </span>
                     <span className="flex h-11 items-center"><Wordmark size="sm" /></span>
                   </span>
@@ -1095,7 +1094,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               ) : (
                 <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} aria-label={t.login}
                   className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation sm:min-h-0">
-                  <LogIn className="h-3.5 w-3.5" /> {t.login}
+                  {/* Icon from `sm` up only: on a 360 px phone its 20 px is what keeps the wordmark whole. */}
+                  <LogIn className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" /> {t.login}
                 </button>
               )}
             </div>
