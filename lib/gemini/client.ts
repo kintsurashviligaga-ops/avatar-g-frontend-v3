@@ -41,6 +41,12 @@ export interface GeminiRequest {
   /** gemini-2.5-* "thinking" budget in tokens. Omit = model default (can add many seconds
    *  of latency). Set 0 to DISABLE thinking for fast, latency-sensitive calls. */
   thinkingBudget?: number;
+  /** A specific model id, overriding the tier's (e.g. the video director's VEO_DIRECTOR_MODEL). */
+  model?: string;
+  /** One-shot request timeout. Default 30 s — a 6-scene director brief can need longer. */
+  timeoutMs?: number;
+  /** 'application/json' makes the model return a JSON document (no prose, no code fences). */
+  responseMimeType?: 'application/json';
 }
 
 export interface GeminiResponse {
@@ -120,14 +126,15 @@ function buildParts(prompt: string, attachments?: GeminiAttachment[]): Part[] {
 
 export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResponse> {
   const tier: GeminiModelTier = req.tier ?? 'pro';
-  const modelName = GEMINI_MODELS[tier];
+  const modelName = req.model?.trim() || GEMINI_MODELS[tier];
   const apiKey = resolveGeminiKey();
 
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const url = `${GEMINI_BASE_URL}/models/${modelName}:generateContent?key=${apiKey}`;
+  // The key travels in the x-goog-api-key header, never the URL: a URL lands in logs, traces and error text.
+  const url = `${GEMINI_BASE_URL}/models/${modelName}:generateContent`;
 
   // Build contents array from (sanitized) history + current message
   const contents: { role: string; parts: Part[] }[] = [];
@@ -149,6 +156,7 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
       // Disable/limit gemini-2.5 "thinking" when a budget is given — thinking can add tens
       // of seconds, which breaks latency-bounded callers (e.g. the storyboard decomposer).
       ...(req.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: req.thinkingBudget } } : {}),
+      ...(req.responseMimeType ? { responseMimeType: req.responseMimeType } : {}),
     },
   };
 
@@ -158,11 +166,11 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
     // Bound the one-shot call so a hung socket can't pin the request up to maxDuration; every caller
     // (viaGemini / handleGeminiMultimodal) wraps this and falls through on throw. (streamWithGemini untouched.)
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(req.timeoutMs ?? 30_000),
   });
 
   if (!res.ok) {
@@ -196,7 +204,7 @@ export async function* streamWithGemini(
 
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
-  const url = `${GEMINI_BASE_URL}/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const url = `${GEMINI_BASE_URL}/models/${modelName}:streamGenerateContent?alt=sse`;
   const contents: { role: string; parts: Part[] }[] = [];
 
   for (const turn of sanitizeGeminiHistory(req.history)) {
@@ -221,7 +229,7 @@ export async function* streamWithGemini(
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
   });
 

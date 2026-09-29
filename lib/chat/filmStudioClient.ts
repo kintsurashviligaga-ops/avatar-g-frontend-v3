@@ -27,6 +27,11 @@
 import { isThirtySecondFilm, FILM_SCENE_COUNT, FILM_CLIP_SEC } from './filmPipeline';
 import { GEL_COST } from '@/lib/billing/gel';
 import { StallDetector } from '@/lib/jobs/stallDetector';
+import type { VeoRenderOptions } from '@/lib/video/veoPlan';
+import type { SceneScreenwriterMeta } from '@/lib/chat/filmPipeline';
+
+/** The director's per-scene provenance as the orchestrate route accepts it (lib/veo/renderOptions SceneMetaSchema). */
+export type SceneMetaWire = Pick<SceneScreenwriterMeta, 'cameraShot' | 'mood' | 'location' | 'lighting' | 'camera'>;
 
 /** Poll-level failover early-flag: Kling made NO forward progress for this long → surface
  *  a "provider slow" note (render continues; the terminal fail stays at `stallMs`). Kept
@@ -185,7 +190,19 @@ export interface DriveFilmOptions {
   /** 'vertical' → 9:16 (1080×1920) master for TikTok/Reels/Shorts; else 16:9. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** Scene-to-scene transition in the master stitch: soft 'crossfade' or hard 'cut'. */
-  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide';
+  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide' | 'fade_black';
+  /** Per-join transitions from the studio's scene timeline (length = scenes − 1). Wins over `transition`. */
+  joinTransitions?: Array<'cut' | 'crossfade' | 'dissolve' | 'fade_black'>;
+  /**
+   * The timecoded Master Production Script. ⚠️ IT USED TO BE DROPPED HERE: the studio passed it, but this interface
+   * had no such field and the dispatch body never sent it, so the server's master-script casting, dialogue stems
+   * and Veo speech delegation were unreachable from the studio.
+   */
+  masterScript?: string;
+  /** The studio's Google Veo plan (lib/video/veoPlan → toRenderOptions). */
+  veo?: VeoRenderOptions;
+  /** The director's per-scene provenance (structured camera, lighting, mood, location) approved with the storyboard. */
+  sceneMeta?: SceneMetaWire[];
   /** Re-voice the narration in the user's TRAINED voice (RVC) before the stitch. */
   myVoiceNarration?: boolean;
   /** Verbatim dialogue from the video panel — spoken as the film's voice-over (as-is). */
@@ -524,7 +541,7 @@ async function assembleMaster(
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait',
   voiceUrl?: string | null,
   sfxUrl?: string | null,
-  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
+  transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide' | 'fade_black',
   myVoiceNarration?: boolean,
   noMusic?: boolean,
   musicVideoMode?: boolean,
@@ -535,6 +552,8 @@ async function assembleMaster(
   dialogueStems?: { url: string; speaker: string; startSec: number }[] | null,
   /** The film's real per-scene length (4–8s). Absent → the 8s default grid. */
   clipSec?: number | null,
+  /** Per-join transitions (the studio's scene timeline). */
+  joinTransitions?: string[] | null,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -554,6 +573,12 @@ async function assembleMaster(
   // the route keeps its defaults (and the existing documentary mix) when nothing is set.
   const globalRender: Record<string, string | number | boolean> = {};
   if (transition) globalRender.transition = transition;
+  // globalRender carries scalars only: the per-join list travels comma-separated ("cut,dissolve,cut").
+  if (joinTransitions && joinTransitions.length) {
+    globalRender.transitions = joinTransitions.join(',');
+    // A mixed list needs the soft (xfade) chain; the assembler renders each 'cut' in it as a one-frame join.
+    if (!transition || transition === 'cut') globalRender.transition = joinTransitions.every((t) => t === 'cut') ? 'cut' : 'crossfade';
+  }
   if (audioMix?.threeTrack) globalRender.three_track_mix = true;
   if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
   if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
@@ -756,6 +781,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.style ? { style: opts.style } : {}),
           // Prompt-Agent locked character → injected verbatim into every clip prompt.
           ...(opts.characterLock?.trim() ? { characterLock: opts.characterLock.trim() } : {}),
+          ...(opts.masterScript?.trim() ? { masterScript: opts.masterScript.trim().slice(0, 20_000) } : {}),
+          // Google Veo plan + the director's per-scene provenance (docs/VEO_ENGINE.md).
+          ...(opts.veo ? { veo: opts.veo } : {}),
+          ...(opts.sceneMeta?.length ? { sceneMeta: opts.sceneMeta } : {}),
         },
         signal,
       );
@@ -927,7 +956,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }

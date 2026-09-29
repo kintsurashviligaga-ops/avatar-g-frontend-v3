@@ -59,7 +59,6 @@ import {
   type SceneScreenwriterMeta,
 } from './filmPipeline';
 import { planSceneDialogue, type SceneSpokenLine } from './sceneDialogue';
-import { hasGeminiVeoProvider } from '@/lib/ai/geminiVeo';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import {
   MAX_CLIP_DISPATCH_ATTEMPTS,
@@ -72,6 +71,10 @@ import {
 import { filmBalanceDecision } from './filmBalanceGate';
 import { visionQaEnabled, qaHealKeyframes } from '@/lib/pipeline/quality/scene-qa';
 import { runPromptAgent, type MasterFilmSfxCue } from './promptAgent';
+import { isGoogleOnly } from '@/lib/veo/policy';
+import { parseSceneMeta, parseVeoRenderOptions } from '@/lib/veo/renderOptions';
+import { nativeAspectFor } from '@/lib/veo/capabilities';
+import { veoTransport } from '@/lib/veo/engine';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
 const serviceManager = new ServiceManager();
@@ -343,7 +346,8 @@ async function renderClip(
     // retries so a saturated / timing-out Kling cluster can't starve this scene: skipI2v makes
     // execute() skip the premium create and land straight on LTX (which keeps the identity anchor
     // + drift clause). Sticky by design — once we down-shift a scene, later retries stay on LTX.
-    if (shouldDownshiftToLtx(attempt)) clipReq.selectedOptions.skipI2v = '1';
+    // Google-only: never down-shift to LTX (skipI2v also skips Veo) — the scene stays on Veo or fails honestly.
+    if (shouldDownshiftToLtx(attempt) && clipReq.selectedOptions.googleOnly !== '1') clipReq.selectedOptions.skipI2v = '1';
     try {
       const dispatched = await withTrace(
         {
@@ -404,6 +408,17 @@ async function renderClip(
       lastErr = new Error(dispatchDead
         ? `dispatch reported ${dispatched.predictionStatus ?? 'failure'} without a usable job`
         : 'dispatch returned no task reference');
+      // ⚠️ A VEO SUBMIT IS RE-POSTED ONLY WHEN GOOGLE PROVABLY REFUSED IT (429 / 503). predictLongRunning has no
+      // idempotency key: after a timeout or a 5xx the job may already exist and bill, so a retry would pay twice
+      // (owner rule: never repeat a generation POST on an unclear outcome). A 400 / auth / billing / safety miss
+      // cannot succeed on a retry either. ServiceManager reports which it was in metadata.veoFailure.
+      const veoFailure = dispatched.metadata?.veoFailure as { reason?: string; retryable?: boolean } | undefined;
+      if (veoFailure && veoFailure.retryable !== true) {
+        const veoErr = `veo ${veoFailure.reason ?? 'failure'} — not retried`;
+        // eslint-disable-next-line no-console
+        console.warn(`[film] clip ${scene.ordinal}: Veo ${veoFailure.reason ?? 'failure'} — no retry (a re-POST could bill twice or cannot succeed)`);
+        return { ordinal: scene.ordinal, taskRef: null, status: 'failed', attempts: attempt, debited, error: veoErr };
+      }
     } catch (err) {
       lastErr = err;
       // eslint-disable-next-line no-console
@@ -433,9 +448,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // debit — so a missing infrastructure token can never burn a founder free-film
   // slot or a GEL charge, and never strands the user at the ~38% "Video skipped
   // (no provider)" mark. Returns a clean, localized, zero-cost failure instead.
-  if (!hasVideoProvider()) {
+  // Google-only (docs/VEO_ENGINE.md §3): the door needs a Veo route (Vertex or the Gemini API) — an LTX or Replicate
+  // key alone must not wave a film through that would then refuse every non-Google engine clip by clip.
+  const googleOnly = isGoogleOnly();
+  // veoTransport() also honours a VEO_TRANSPORT pin: a pinned-but-unready transport is no route at all.
+  const providerReady = googleOnly ? veoTransport() !== null : hasVideoProvider();
+  if (!providerReady) {
     // eslint-disable-next-line no-console
-    console.error('[film] aborted pre-storyboard: no video provider configured (LTX / Replicate both absent)');
+    console.error(`[film] aborted pre-storyboard: no video provider configured (${googleOnly ? 'Google-only: neither Vertex AI nor a Gemini Veo key' : 'LTX / Replicate both absent'})`);
     return {
       success: false,
       intent: 'video_generation',
@@ -446,10 +466,26 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         composite: true,
         providerUnavailable: true,
         // Names-only — surfaced for diagnostics, never a secret value.
-        missingEnv: ['LTX2_API_KEY', 'REPLICATE_API_TOKEN'],
+        missingEnv: googleOnly ? ['GEMINI_API_KEY', 'GCP_PROJECT_ID', 'GCP_VEO_BUCKET'] : ['LTX2_API_KEY', 'REPLICATE_API_TOKEN'],
       },
     };
   }
+  // ⚠️ AN ANONYMOUS CALLER COULD RENDER A FILM ON PAID ENGINES, UNBILLED. /api/chat/orchestrate has no auth gate of
+  // its own (the studio stops a guest in the browser, the API did not), and every clip engine costs money — Veo
+  // $0.10–0.40 per second, Runway and Kling per clip — while the per-leg debit only exists for a real user. Refused
+  // here, before any planning, frame or clip. FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo/preview deployment.
+  if (!(input.userId && input.userId !== 'anonymous') && process.env.FILM_ALLOW_ANONYMOUS !== '1') {
+    const loc = input.locale === 'en' ? 'en' : input.locale === 'ru' ? 'ru' : 'ka';
+    return {
+      success: false,
+      intent: 'video_generation',
+      responseType: 'text',
+      message: loc === 'en' ? 'Sign in to make a video.' : loc === 'ru' ? 'Войдите, чтобы создать видео.' : 'ვიდეოს შესაქმნელად შედი ანგარიშზე.',
+      metadata: { provider: 'composite', composite: true, authRequired: true },
+    };
+  }
+  // The studio's Veo plan (lib/video/veoPlan → toRenderOptions), re-validated: anything malformed is ignored.
+  const veoPlan = parseVeoRenderOptions(input.metadata?.veo);
 
   const opts = input.selectedOptions || {};
   const avatarReference =
@@ -476,8 +512,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   })();
   // Frame orientation forwarded from the composer (Video mode 16:9 / 9:16) via
   // metadata. Drives the per-clip aspect ratio so the cut never changes shape.
-  const orientation: 'landscape' | 'vertical' =
-    input.metadata?.orientation === 'vertical' ? 'vertical' : 'landscape';
+  // Veo renders only 16:9 and 9:16. The DELIVERED format decides the native ratio: 4:5 is cropped from 9:16 (it
+  // used to be cropped from 16:9, keeping ~45% of the width), 1:1 from 16:9.
+  const orientation: 'landscape' | 'vertical' = veoPlan
+    ? (nativeAspectFor(veoPlan.film.format) === '9:16' ? 'vertical' : 'landscape')
+    : (input.metadata?.orientation === 'vertical' || input.metadata?.orientation === 'portrait' ? 'vertical' : 'landscape');
   // The user's PINNED clip count (6s→1 · 30s→6 · 60s→12). When present it fixes the render's scene count so a
   // scriptless / raced dispatch can never fall back to FILM_SCENE_COUNT (30s/6 scenes) — the "6s selection → 30s
   // film with a dropped selfie anchor" bug. Null → prior behaviour (derive from sceneScripts.length, else default).
@@ -492,7 +531,9 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     : undefined;
   // V1 — the screenwriter's per-scene metadata (cameraShot/mood/location), populated ONLY from the
   // Prompt-Agent brief path below (plain string sceneScripts from other sources carry no shot data).
-  let sceneMeta: SceneScreenwriterMeta[] | undefined;
+  // The director's per-scene provenance approved with the storyboard (structured camera, lighting…). The
+  // render-time fallback agent below only runs when no scenes arrived, so this is the common source now.
+  let sceneMeta: SceneScreenwriterMeta[] | undefined = parseSceneMeta(input.metadata?.sceneMeta);
 
   // ── SPOKEN DIALOGUE + SCENE TIMING SOURCES ─────────────────────────────────
   // Parsed ONCE, up front, because three separate decisions depend on them: the scene GRID (a 4 × 6s
@@ -570,7 +611,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         // V1 — stop FLATTENING the brief away: carry the screenwriter's per-scene shot direction
         // (cameraShot/mood/location) index-aligned with sceneScripts so the Camera stage honors the
         // script's intent instead of re-deriving from the deterministic beat ladder.
-        sceneMeta = brief.scenes.map((s) => ({ cameraShot: s.cameraShot, mood: s.mood, location: s.location }));
+        sceneMeta = brief.scenes.map((s) => ({
+          cameraShot: s.cameraShot, mood: s.mood, location: s.location,
+          ...(s.camera ? { camera: s.camera } : {}),
+          ...(s.lighting ? { lighting: s.lighting } : {}),
+        }));
         sfxCues = brief.sfxCues;
         // VECTOR 1 — capture the Director's scene-tailored negative so it reaches the provider.
         if (!filmNegative && brief.visualStyle?.negativePrompt?.trim()) filmNegative = brief.visualStyle.negativePrompt.trim();
@@ -653,7 +698,13 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     isSignedIn: Boolean(input.userId && input.userId !== 'anonymous'),
     preview: input.metadata?.quality === 'preview',
   });
-  const nativeSpeech = hasGeminiVeoProvider() && effectiveVideoModel !== 'kling' && effectiveVideoModel !== 'hailuo';
+  // Google-only renders every clip on Veo whatever the panel's engine pick. Veo speaks only when it renders audio:
+  // the plan's "native audio" switch is honoured on Vertex AI (a video-only clip is cheaper), while the Gemini API
+  // always renders it — so a Vertex film with native audio OFF keeps its ElevenLabs dialogue leg.
+  const clipTransport = veoTransport();
+  const nativeSpeech = clipTransport !== null
+    && (googleOnly || (effectiveVideoModel !== 'kling' && effectiveVideoModel !== 'hailuo'))
+    && (veoPlan?.film.generateAudio !== false || clipTransport === 'gemini');
 
   // Per-scene spoken lines, index-aligned with the scenes. Sources, best first: the line written inside
   // each scene's own sheet → the Master Script's timecoded dialogue turns → the dialogue textarea → a
@@ -752,6 +803,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // earlier would break that equality and silently switch Veo's native speech back off.
   //
   // FAIL-OPEN, and free for a Latin-script brief (promptToEnglish returns immediately, no network call).
+  // The user's own negative (the Veo panel's advanced field) joins the director's; normalisation happens in the plan.
+  if (veoPlan?.negativePrompt) filmNegative = filmNegative ? `${filmNegative}, ${veoPlan.negativePrompt}` : veoPlan.negativePrompt;
   const [messageEn, characterLockEn, filmNegativeEn] = await Promise.all([
     promptToEnglish(input.message, 'video'),
     characterLock ? promptToEnglish(characterLock, 'video') : Promise.resolve(characterLock),
@@ -760,7 +813,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const sceneScriptsEn: string[] | undefined = sceneScripts?.length
     ? await Promise.all(sceneScripts.map((s) => promptToEnglish(s, 'video')))
     : undefined;
-  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}) });
+  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
   // `grid.totalSec` (not a bare pinnedSceneCount × clipSec) is what the plan splits, so plan.sceneCount
   // and grid.sceneCount can never disagree — a mismatch would slide every dialogue line one scene off.
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;

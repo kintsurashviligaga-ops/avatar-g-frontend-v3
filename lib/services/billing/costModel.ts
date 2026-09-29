@@ -105,6 +105,12 @@ export interface EstimateInput {
   outputTokens?: number;
   /** True when the input tokens are served from Gemini's context cache (a 10× cheaper input rate). */
   cachedInput?: boolean;
+  /**
+   * Per-unit USD for a call whose price the caller knows exactly — a Veo clip's tier × resolution × audio rate
+   * (lib/veo/capabilities.costPerSecondUsd) is 0.03–0.60 $/s, and the flat `video` line would under-reserve a
+   * Standard clip 3×. Ignored unless finite and positive; per-token services never use it.
+   */
+  unitCostUsd?: number;
 }
 
 /**
@@ -125,7 +131,9 @@ export function estimateCost(input: EstimateInput): CostEstimate {
   } else {
     // Default to ONE unit rather than zero: a missing `units` must not make an expensive call look free.
     const units = safeUnits(input.units, 1);
-    estimatedCost = units * UNIT_COST_USD[service];
+    const override = Number(input.unitCostUsd);
+    const rate = Number.isFinite(override) && override > 0 ? override : UNIT_COST_USD[service];
+    estimatedCost = units * rate;
   }
 
   const estimate: CostEstimate = {

@@ -3621,7 +3621,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       //    every storyboard image depicts the script instead of generic camera beats.
       //  • typed brief → enrich in the BACKGROUND (frames stay fast deterministic stills;
       //    only the render gets the richer story).
-      const hasScript = /SCRIPT \(follow this EXACTLY/i.test(filmPrompt);
+      // Both script markers: send() folds an attached script as „SCRIPT — the SINGLE source of truth…“, the storyboard
+      // bridge as „SCRIPT (follow this EXACTLY…“. Matching only the second skipped the script-first frames for every upload.
+      const hasScript = /SCRIPT (?:\(follow this EXACTLY|— the SINGLE source of truth)/i.test(filmPrompt);
       const enrichStory = async () => {
         let scripts: string[] | null = null;
         let character: string | null = null;
@@ -3738,7 +3740,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, videoDuration, startFilmRender, scenePrompts]);
+  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
   // a hot-reload of just this one scene's agent thread, never the master loop. An

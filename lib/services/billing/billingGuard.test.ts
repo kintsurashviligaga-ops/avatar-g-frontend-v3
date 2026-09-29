@@ -82,6 +82,11 @@ describe('BillingGuard', () => {
     // Per-unit services (§1.8).
     expect(estimateCost({ service: 'image', model: 'imagen-4', units: 4 }).estimatedCost).toBeCloseTo(0.12, 4);
     expect(estimateCost({ service: 'video', model: 'veo-3.1', units: 8 }).estimatedCost).toBeCloseTo(0.96, 4);
+    // A caller that knows the exact rate (a Veo Standard 1080p clip with audio: $0.40/s) overrides the flat line…
+    expect(estimateCost({ service: 'video', model: 'veo-3.1-generate-001', units: 8, unitCostUsd: 0.4 }).estimatedCost).toBeCloseTo(3.2, 4);
+    // …and a garbage override falls back to it rather than pricing the call at zero.
+    expect(estimateCost({ service: 'video', model: 'veo-3.1', units: 8, unitCostUsd: Number.NaN }).estimatedCost).toBeCloseTo(0.96, 4);
+    expect(estimateCost({ service: 'video', model: 'veo-3.1', units: 8, unitCostUsd: -1 }).estimatedCost).toBeCloseTo(0.96, 4);
     expect(estimateCost({ service: 'dubbing', model: 'eleven', units: 3 }).estimatedCost).toBeCloseTo(0.15, 4);
     // Every service must be priced — a missing entry would make an expensive call look free.
     for (const s of SERVICE_TYPES) {

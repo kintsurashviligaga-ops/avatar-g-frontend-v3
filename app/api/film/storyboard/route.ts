@@ -33,6 +33,8 @@ import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import { withRetry } from '@/lib/utils/withRetry';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
+import { isGoogleOnly } from '@/lib/veo/policy';
+import { generateGeminiImage } from '@/lib/ai/geminiImage';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -312,7 +314,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
   }
 
-  const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' ? 'vertical' : 'landscape';
+  // A 4:5 film is rendered on Veo's 9:16 and cropped (docs/VEO_ENGINE.md §2), so its frames — the clips' first
+  // frames — are vertical too. (Square stays on 16:9, like the render.)
+  const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' || body.orientation === 'portrait' ? 'vertical' : 'landscape';
   const style = typeof body.style === 'string' && body.style.trim() ? body.style.trim() : null;
   const locale = typeof body.locale === 'string' ? body.locale : 'ka';
   // Scene count = film length on the 8s Veo grid: the user picks 8s (1 scene) · 24s (3) · 48s (6). The scene
@@ -371,7 +375,7 @@ export async function POST(req: NextRequest) {
   // Fail-open: any miss returns null and the scene plan still surfaces.
   // Diagnostic — which provider produced each frame (returned in the response so a
   // benchmark can confirm flux-schnell is actually firing; the re-host hides the source URL).
-  const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0 };
+  const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0, gemini: 0 };
   const genFrame = async (scenePrompt: string): Promise<string | null> => {
     try {
       // Master Contract V4 — a positive SINGLE-SHOT clause is the only anti-collage lever that reaches ALL
@@ -391,6 +395,16 @@ export async function POST(req: NextRequest) {
       const framePrompt = selfie
         ? `Cinematic film still, ${aspect} composition. ${sceneEn} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
         : `Cinematic film still, ${aspect} composition. ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
+      // GOOGLE-ONLY (docs/VEO_ENGINE.md §3): the frame comes straight from Gemini's image model, the selfie passed as
+      // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
+      // (the render then animates the scene from text), never a non-Google image.
+      if (isGoogleOnly()) {
+        const img = await generateGeminiImage({ prompt: framePrompt, referenceImages: selfie ? [selfie] : [], aspectRatio: aspect });
+        if (!img) return null;
+        frameSourceTally.gemini += 1;
+        const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
+        return await uploadAndSign('uploads', `storyboard/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800);
+      }
       // Primary = NanoBanana (via ServiceManager). ISOLATE its failure: if it throws
       // (e.g. the key is absent on this deployment, which left storyboards blank) or
       // returns nothing, we still fall through to the Replicate FLUX fallback below —

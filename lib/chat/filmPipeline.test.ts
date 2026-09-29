@@ -415,7 +415,9 @@ describe('planFilmScenes — Phase 22 VECTOR 1: provider negative threading', ()
   it("MERGES the Director's scene-tailored negative ahead of the baseline (both survive)", () => {
     const plan = planFilmScenes('a hero in a storm', { negativePrompt: 'ZZ-unique amber cast, flat lighting' });
     expect(plan.shared.negativePrompt).toContain('sepia'); // baseline kept
-    expect(plan.shared.negativePrompt).toContain('ZZ-unique amber cast'); // brief negative threaded
+    // normalizeNegativePrompt (lib/veo/promptCompiler) lowercases and de-duplicates terms — the model reads a
+    // negative list case-insensitively, so the term surviving is what matters, not its capitalisation.
+    expect(plan.shared.negativePrompt.toLowerCase()).toContain('zz-unique amber cast'); // brief negative threaded
   });
 
   it('caps a runaway brief negative so it can never blow the provider field bound', () => {

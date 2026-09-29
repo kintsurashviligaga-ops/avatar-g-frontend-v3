@@ -1,4 +1,4 @@
-import { buildDirectorUserContent, SYSTEM_PROMPT, type PromptAgentInput } from './promptAgent';
+import { buildDirectorUserContent, coerceBrief, coerceSceneCamera, SYSTEM_PROMPT, type PromptAgentInput } from './promptAgent';
 
 const base: PromptAgentInput = {
   brief: 'a 30s blues clip', mode: 'music_video', sceneCount: 6, length: 30, effect: 'Cinematic', language: 'ka',
@@ -102,5 +102,39 @@ describe('SYSTEM_PROMPT — color science (VECTOR 3)', () => {
     // storyboard card showed "cartoon, illustration, painting, CGI, bokeh, lens blur" as the scene text.
     expect(SYSTEM_PROMPT).toMatch(/NEVER write a "Negative:" list inside imagePrompt/i);
     expect(SYSTEM_PROMPT).toMatch(/visualStyle\.negativePrompt MUST carry the suppression tokens/i);
+  });
+});
+
+describe('the director speaks structured camera language (docs/VEO_ENGINE.md §5)', () => {
+  it('keeps documented values and turns anything else into auto', () => {
+    expect(coerceSceneCamera({ move: 'push_in', shot: 'close_up', angle: 'low', lens: 'telephoto' }))
+      .toEqual({ move: 'push_in', shot: 'close_up', angle: 'low', lens: 'telephoto' });
+    expect(coerceSceneCamera({ move: 'dolly zoom vertigo', shot: 'close_up' })).toEqual({ move: 'auto', shot: 'close_up', angle: 'auto', lens: 'auto' });
+  });
+
+  it('an all-auto or missing camera is absent, not an empty object the render must interpret', () => {
+    expect(coerceSceneCamera({ move: 'nonsense' })).toBeUndefined();
+    expect(coerceSceneCamera(null)).toBeUndefined();
+    expect(coerceSceneCamera('push_in')).toBeUndefined();
+  });
+
+  it('camera and lighting survive the brief parse; a scene without them is unchanged', () => {
+    const brief = coerceBrief({
+      character: { description: 'a woman in a red coat', imagePromptFragment: 'a woman in a red coat' },
+      scenes: [
+        { imagePrompt: 'she walks through the rain', camera: { move: 'truck_left', shot: 'wide' }, lighting: 'cool 5600K street light' },
+        { imagePrompt: 'she stops at a door' },
+      ],
+    }, 2);
+    expect(brief!.scenes[0]!.camera).toEqual({ move: 'truck_left', shot: 'wide', angle: 'auto', lens: 'auto' });
+    expect(brief!.scenes[0]!.lighting).toBe('cool 5600K street light');
+    expect(brief!.scenes[1]).not.toHaveProperty('camera');
+    expect(brief!.scenes[1]).not.toHaveProperty('lighting');
+  });
+
+  it('the system prompt names the vocabulary and the dolly-vs-zoom distinction', () => {
+    expect(SYSTEM_PROMPT).toContain('STRUCTURED CAMERA');
+    expect(SYSTEM_PROMPT).toContain('push_in/pull_out = the camera physically moves');
+    expect(SYSTEM_PROMPT).toContain('"camera": { "move": "push_in"');
   });
 });

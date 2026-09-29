@@ -23,9 +23,14 @@ import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
-import { hasGeminiVeoProvider, geminiVeoModel, createGeminiVeoClip, pollGeminiVeoTask, fetchVeoVideoBuffer } from '@/lib/ai/geminiVeo';
+import { createVeoClip, deliverableUrl, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
+import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
+import { nativeCameraControl } from '@/lib/veo/cinematography';
+import { costPerSecondUsd, DEFAULT_TIER as DEFAULT_VEO_TIER, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
+import { isGoogleOnly } from '@/lib/veo/policy';
+import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
-import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withColorScience } from '@/lib/video/colorScience';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
@@ -233,6 +238,32 @@ const HEYGEN_VOICE_MAP: Record<'female' | 'male', Record<string, string>> = {
 const TERMINAL_LTX_STATUS = new Set(['completed', 'succeeded', 'success', 'failed', 'error', 'canceled']);
 const FAILED_LTX_STATUS = new Set(['failed', 'error', 'canceled']);
 
+/** One Veo submit, as the render path sees it: a task-ref response, or the engine's reason for the miss. */
+type VeoSubmit =
+  | { ok: true; response: ServiceManagerResponse }
+  | { ok: false; reason: VeoFailureReason; retryable: boolean };
+
+/**
+ * What the user reads when a Google-only clip could not be submitted. Deliberately free of provider detail (the
+ * engine logs that): a billing or auth fault is OUR outage, never something the user can fix by retrying.
+ */
+const VEO_FAILURE_MESSAGE: Record<VeoFailureReason, string> = {
+  not_configured: 'Video rendering is not available right now. Please try again later.',
+  invalid_request: 'This scene could not be rendered with these settings.',
+  auth: 'Video rendering is temporarily unavailable. Please try again later.',
+  quota: 'Video rendering is temporarily unavailable. Please try again later.',
+  rate_limited: 'The video engine is busy. Please try again in a minute.',
+  unavailable: 'The video engine is busy. Please try again in a minute.',
+  ambiguous: 'The video engine did not confirm this scene in time. It was not re-sent, so you are not charged twice.',
+  safety: "This scene was declined under Google's safety rules. Rephrase it and render again.",
+};
+
+/** "Veo on Vertex AI (veo-3.1-generate-001)" / "Gemini Veo (…)" — rides into metadata.film.clips[].note. */
+function veoEngineLabel(transport: VeoTransport | null, model: string | null): string {
+  const name = transport === 'vertex' ? 'Veo on Vertex AI' : 'Gemini Veo';
+  return model ? `${name} (${model})` : name;
+}
+
 export class ServiceManager {
   /**
    * Master Task §2.1.1 — EVERY provider call goes through the budget guard, and this is the chokepoint for
@@ -254,13 +285,29 @@ export class ServiceManager {
       ? Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec'])) || 8
       : 1;
 
+    // A Google-only clip renders on Veo and nothing else, so the guard can price it exactly (tier × resolution ×
+    // audio) instead of the flat video line — which under-reserves a Standard clip ~3×.
+    const veoPrice = service === 'video' && this.isGoogleOnlyVideo(request) ? this.veoGuardPrice(request, units) : null;
+
     try {
       return await guardedCall(
         {
           service,
-          model: request.videoModel || (service === 'image' ? 'imagen-4' : 'veo-3.1'),
+          model: veoPrice?.model ?? (request.videoModel || (service === 'image' ? 'imagen-4' : 'veo-3.1')),
           units,
           promptSummary: request.userPrompt,
+          ...(veoPrice
+            ? {
+                unitCostUsd: veoPrice.perSecondUsd,
+                // A definitive Veo refusal created no job and bills nothing. An `ambiguous` submit MAY have created a
+                // billed job, so it keeps the estimate — the budget errs toward counting money that may be spent.
+                actualCost: (result: unknown) => {
+                  const r = result as ServiceManagerResponse | null;
+                  const f = r?.metadata?.veoFailure as { reason?: string } | undefined;
+                  return r?.success === false && f && f.reason !== 'ambiguous' ? 0 : undefined;
+                },
+              }
+            : {}),
         },
         async () => (operation === 'text-to-image' ? this.runTextToImage(request) : this.runVideoAvatar(request)),
       );
@@ -336,7 +383,7 @@ export class ServiceManager {
     }
 
     if (decoded.provider === 'gemini-veo') {
-      return this.pollGeminiVeoTaskRef(decoded, taskRefOrPredictionId);
+      return this.pollVeoTaskRef(decoded, taskRefOrPredictionId);
     }
 
     return this.pollLtxTask(decoded, taskRefOrPredictionId);
@@ -488,6 +535,11 @@ export class ServiceManager {
       ? request
       : { ...request, userPrompt: await promptToEnglish(request.userPrompt, 'video') };
 
+    // GOOGLE-ONLY (lib/veo/policy · docs/VEO_ENGINE.md §3) — Veo is the ONLY engine. No Runway / Kling / LTX
+    // fallback, no engine down-shift, and the Cinema panel's Kling/Hailuo pick does not apply: a Veo miss comes
+    // back as a failed leg carrying metadata.veoFailure, never as a clip quietly rendered by another vendor.
+    if (this.isGoogleOnlyVideo(request)) return this.runVeoOnly(videoRequest);
+
     // PHOTOREALISTIC i2v — try the premium image-to-video model (Kling/Seedance)
     // FIRST: it animates the clip FROM this scene's identity frame, so motion is
     // smooth + photorealistic and the character never drifts. Returns null when
@@ -599,7 +651,7 @@ export class ServiceManager {
     // veoTextToVideo for film clips), then bail — Runway/Kling/LTX all require the frame, exactly as
     // before. The opt-in keeps plain chat video ("make me a video of a cat", no image) on its existing
     // cheaper engine instead of moving the whole text-to-video population onto Veo.
-    const veoEngineOk = request.videoModel !== 'kling' && request.videoModel !== 'hailuo' && hasGeminiVeoProvider();
+    const veoEngineOk = request.videoModel !== 'kling' && request.videoModel !== 'hailuo' && veoTransport() !== null;
     const veoTextToVideoOk = !!this.getOption(request.selectedOptions || {}, ['veoTextToVideo', 'allowVeoT2v']);
     const veoEligible = veoEngineOk && (!!startImage || veoTextToVideoOk);
     if (!startImage && !veoEligible) return null; // i2v needs an anchor frame; without one, keep LTX
@@ -628,8 +680,8 @@ export class ServiceManager {
     // BYTE-IDENTICAL (zero regression). Off unless GEMINI_VEO_ENABLED is set. Respects the same Cinema-panel
     // engine opt-out as Runway (explicit Kling/Hailuo selection skips both premium tiers).
     if (veoEligible) {
-      const veo = await this.tryGeminiVeoClip(request, startImage, aspect, enrichedPrompt);
-      if (veo) return veo;
+      const veo = await this.submitVeoClip(request, startImage, enrichedPrompt);
+      if (veo.ok) return veo.response;
     }
     // Every remaining premium engine is image-to-video only.
     if (!startImage) return null;
@@ -868,103 +920,218 @@ export class ServiceManager {
     };
   }
 
+  /** The exact $/s the Veo clip for this request will bill at, and the model id it renders on (for the budget guard). */
+  private veoGuardPrice(request: ServiceManagerRequest, seconds: number): { model: string; perSecondUsd: number } {
+    const opts = request.selectedOptions || {};
+    const transport = veoTransport() ?? 'gemini';
+    const tierRaw = this.getOption(opts, ['veoTier']);
+    const tier: VeoTier = tierRaw === 'fast' || tierRaw === 'lite' || tierRaw === 'standard' ? tierRaw : DEFAULT_VEO_TIER;
+    const model = resolveVeoModel(transport, tier);
+    // Reference mode pins the clip to 8 s (→ 1080p); otherwise the clip's own length decides the resolution.
+    const durationSec = this.getOption(opts, ['veoReferenceMode']) === 'reference' ? 8 : seconds;
+    const audio = transport === 'gemini' || this.getOption(opts, ['veoGenerateAudio']) !== '0';
+    return { model, perSecondUsd: costPerSecondUsd(model, resolutionFor(durationSec), audio, transport) };
+  }
+
+  /** Google-only for this request: the film decided it per clip (buildFilmClipRequest), or the process policy. */
+  private isGoogleOnlyVideo(request: ServiceManagerRequest): boolean {
+    return this.getOption(request.selectedOptions || {}, ['googleOnly']) === '1' || isGoogleOnly();
+  }
+
+  /** The Google-only render: Veo or a reported miss. Prompt enrichment runs on Gemini only, like everything else here. */
+  private async runVeoOnly(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
+    const startImage = this.resolveClipImage(request);
+    const enrichedPrompt = await expandCinematicPrompt(request.userPrompt, (o) => llmText({ ...o, googleOnly: true }), { timeoutMs: 9_000 });
+    const veo = await this.submitVeoClip(request, startImage, enrichedPrompt);
+    if (veo.ok) return veo.response;
+    return {
+      success: false, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+      message: VEO_FAILURE_MESSAGE[veo.reason],
+      predictionStatus: 'failed',
+      metadata: {
+        provider: 'replicate' as const, videoProvider: 'gemini-veo', operation: 'video-avatar', outputType: 'video',
+        sessionId: request.sessionId, promptHash: this.hashPrompt(request.userPrompt),
+        // filmComposite reads this to decide whether a re-POST is safe (docs/VEO_ENGINE.md §4: only a PROVABLE
+        // rejection — 429 / 503 — is retried; a timeout or 5xx may already have created a billed job).
+        veoFailure: { reason: veo.reason, retryable: veo.retryable },
+      },
+    };
+  }
+
+  /** The user's upload(s) as Veo asset references (reference mode): https or bounded data: images, at most 3. */
+  private resolveReferenceImages(request: ServiceManagerRequest): string[] {
+    const usable = (v: unknown): v is string =>
+      typeof v === 'string' && (/^https?:\/\//i.test(v) || (/^data:image\//i.test(v) && v.length <= 2_000_000));
+    const opts = request.selectedOptions || {};
+    const out: string[] = [];
+    const refsJson = this.getOption(opts, ['characterReferences', 'referenceImages']);
+    if (refsJson) {
+      try {
+        const arr = JSON.parse(refsJson) as unknown;
+        if (Array.isArray(arr)) for (const v of arr) if (usable(v) && !out.includes(v)) out.push(v);
+      } catch {
+        /* not JSON → the single reference below */
+      }
+    }
+    const single = this.getOption(opts, ['characterReference']);
+    if (out.length === 0 && usable(single)) out.push(single);
+    return out.slice(0, 3);
+  }
+
   /**
-   * GEMINI VEO — submit a Veo clip (native audio) and return a 'gemini-veo' task-ref the async poll resolves
-   * via pollGeminiVeoTaskRef. Gated on GEMINI_VEO_ENABLED + a Gemini key (checked by the caller). Returns null
-   * on ANY create miss → the caller falls through to Runway. The requested aspect is packed into the task-ref
-   * (operation::aspect) so the poll can crop the watermark to the right dimensions. NEVER throws.
+   * Submit ONE Veo clip through lib/veo/engine (Vertex AI once configured, else the Gemini API) and wrap the
+   * operation in a 'gemini-veo' task-ref — the engine string stays 'gemini-veo' on both transports because the
+   * double-voice guard, the task-ref allowlist and the engine badge all key on it. The operation name alone says
+   * which transport polls it (engine.transportOf), so a transport switch mid-render cannot strand a clip.
+   *
+   * The studio's Veo plan arrives as veo* options (buildFilmClipRequest); a caller without them (chat video,
+   * a pre-plan film token) renders with the engine defaults exactly as before. Submits AT MOST ONCE and never
+   * throws: a miss is returned with the engine's reason so the caller decides (fall through, or report it).
    */
-  private async tryGeminiVeoClip(request: ServiceManagerRequest, startImage: string | undefined, aspect: '9:16' | '16:9' | '1:1', prompt: string): Promise<ServiceManagerResponse | null> {
-    const negativePrompt = this.getOption(request.selectedOptions || {}, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
-    // 2000 (was 1000): the tighter cap clipped the character-lock + consistency-seed tail off every Veo
-    // prompt, so the "same protagonist in every shot" instruction never arrived — the identity-drift bug.
-    // withColorScience now trims from the MIDDLE, so the identity tail survives any clamp.
-    const veoPrompt = withColorScience(prompt || request.userPrompt, 2000);
-    // eslint-disable-next-line no-console
-    console.log(`[veo] promptText(${veoPrompt.length}): ${veoPrompt.slice(0, 300)}`);
-    // The film's shared continuity seed → a REAL Veo parameter (verified live), which is what actually holds
-    // the look/character stable across scenes. It used to only appear as "(consistency seed N)" prose.
-    const seedRawVeo = this.getOption(request.selectedOptions || {}, ['seed', 'consistencySeed']);
-    const seedVeo = seedRawVeo != null ? Number.parseInt(seedRawVeo, 10) : NaN;
-    // The SCENE's own length, not a pinned 8. Veo accepts 4–8s (verified live), and the film grid now
-    // follows the script's cadence — a 4 × 6s script was otherwise stretched to 4 × 8s clips whose action
-    // no longer matched the storyboard's timecodes. Absent/out-of-range → the 8s default, as before.
-    const durRaw = Number(this.getOption(request.selectedOptions || {}, ['duration', 'durationSec', 'duration_seconds']));
-    const durationSec = Number.isFinite(durRaw) && durRaw > 0 ? Math.min(8, Math.max(4, Math.round(durRaw))) : 8;
-    const created = await createGeminiVeoClip({
-      promptText: veoPrompt,
-      // i2v anchor frame (Veo animates from it, keeping the locked character). Optional: with no frame
-      // Veo renders text-to-video, which is still far better than dropping to LTX.
-      ...(startImage ? { promptImage: startImage } : {}),
-      ...(Number.isFinite(seedVeo) && seedVeo >= 0 ? { seed: seedVeo } : {}),
-      aspect,
-      durationSec,
-      ...(negativePrompt ? { negativePrompt } : {}),
+  private async submitVeoClip(request: ServiceManagerRequest, startImage: string | undefined, prompt: string): Promise<VeoSubmit> {
+    const opts = request.selectedOptions || {};
+    const flag = (key: string): boolean | undefined => {
+      const v = this.getOption(opts, [key]);
+      return v === '1' ? true : v === '0' ? false : undefined;
+    };
+    const tierRaw = this.getOption(opts, ['veoTier']);
+    const tier: VeoTier | undefined = tierRaw === 'standard' || tierRaw === 'fast' || tierRaw === 'lite' ? tierRaw : undefined;
+    // The OUTPUT format (1:1 / 4:5 render at 9:16 and are cropped by the assembler); else the clip's own aspect.
+    const formatRaw = this.getOption(opts, ['veoFormat']);
+    const format: OutputFormat = formatRaw === '9:16' || formatRaw === '16:9' || formatRaw === '1:1' || formatRaw === '4:5'
+      ? formatRaw
+      : this.toI2vAspect(this.normalizeAspectRatio(this.getOption(opts, ['aspect', 'aspectRatio', 'ratio'])) || undefined);
+    // Reference mode: the uploads become Veo asset references (identity kept, composition free) instead of a
+    // first frame. The engine drops a first frame that would collide with them and pins the clip to 8 s.
+    const references = this.getOption(opts, ['veoReferenceMode']) === 'reference' ? this.resolveReferenceImages(request) : [];
+    // Seed lock OFF → no seed at all (each scene samples freely). Absent (a caller without the plan) → as before.
+    const seedRaw = flag('veoSeedLock') === false ? undefined : this.getOption(opts, ['seed', 'consistencySeed']);
+    const seed = seedRaw != null ? Number.parseInt(seedRaw, 10) : NaN;
+    const durRaw = Number(this.getOption(opts, ['duration', 'durationSec', 'duration_seconds']));
+    const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']);
+    const move = this.getOption(opts, ['veoCameraMove']);
+    const cameraControl = move ? nativeCameraControl(move as CameraMove) : undefined; // unknown move → undefined
+    const ordinal = Number.parseInt(this.getOption(opts, ['sceneOrdinal']) ?? '', 10);
+    const media = (url: string): VeoMedia => ({ kind: 'url', url });
+
+    const result = await createVeoClip({
+      request: {
+        // 2000: the character-lock + continuity tail must survive — withColorScience trims from the MIDDLE.
+        prompt: withColorScience(prompt || request.userPrompt, 2000),
+        aspect: format,
+        ...(Number.isFinite(durRaw) && durRaw > 0 ? { durationSec: durRaw } : {}),
+        ...(Number.isFinite(seed) && seed >= 0 ? { seed } : {}),
+        // Vertex honours it (video-only renders are cheaper); the Gemini API always renders audio.
+        generateAudio: flag('veoGenerateAudio') ?? true,
+        ...(flag('veoEnhancePrompt') ? { enhancePrompt: true } : {}),
+        ...(negativePrompt ? { negativePrompt } : {}),
+        ...(references.length ? { referenceImages: references.map(media) } : startImage ? { startImage: media(startImage) } : {}),
+        ...(cameraControl ? { cameraControl } : {}),
+      },
+      ...(tier ? { tier } : {}),
+      sessionId: request.sessionId,
+      ordinal: Number.isFinite(ordinal) && ordinal >= 0 ? ordinal : 0,
     });
-    if (!created?.operation) return null; // → Runway → Kling → LTX cascade
+    const outcome = result.outcome;
+    if (!outcome.ok) return { ok: false, reason: outcome.reason, retryable: outcome.retryable };
+
     const promptHash = this.hashPrompt(request.userPrompt);
-    const model = geminiVeoModel();
-    const providerTaskId = `${created.operation}::${aspect}`;
+    // The NATIVE aspect Veo rendered (not the output format) — the poll crops the Gemini watermark at this size.
+    const providerTaskId = `${outcome.operation.name}::${result.request.aspect}`;
     const taskRef = this.encodeTaskRef({
       provider: 'gemini-veo', providerTaskId, sessionId: request.sessionId,
       serviceContext: request.serviceContext, intent: request.intent, operation: 'video-avatar',
       responseType: 'video', promptHash, createdAt: Date.now(),
     });
-    // eslint-disable-next-line no-console
-    console.log(`[veo] ${model} accepted clip (${created.operation})`);
+    const engine = veoEngineLabel(result.transport, result.model);
     return {
-      success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
-      message: `Gemini Veo (${model}) accepted the request. Polling for completion.`,
-      predictionId: taskRef, predictionStatus: 'processing',
-      metadata: { provider: 'replicate' as const, videoProvider: 'gemini-veo', model, operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId, promptHash },
+      ok: true,
+      response: {
+        success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+        message: `${engine} accepted the request. Polling for completion.`,
+        predictionId: taskRef, predictionStatus: 'processing',
+        metadata: {
+          provider: 'replicate' as const, videoProvider: 'gemini-veo', model: result.model, veoTransport: result.transport,
+          // What normalisation changed to fit the model (e.g. 1:1 → 9:16, 6 s → 8 s for references) — field names only.
+          ...(result.adjustments.length ? { veoAdjustments: result.adjustments.map((a) => a.field) } : {}),
+          operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId, promptHash,
+        },
+      },
     };
   }
 
-  /** Resolve a 'gemini-veo' task-ref: poll the Veo operation; on success download it SERVER-SIDE (key never
-   *  leaves), re-host to durable storage, then strip the bottom watermark (audio preserved) — the clip
-   *  reaches the user with its NATIVE audio and no visible Google mark. Fail-open: any transient outcome
-   *  keeps polling. */
-  private async pollGeminiVeoTaskRef(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
+  /**
+   * Resolve a 'gemini-veo' task-ref: poll the operation on the transport that created it, then deliver the clip.
+   * Vertex writes to our GCS bucket → a V4 signed URL (no visible watermark to remove). The Gemini API serves a
+   * key-gated file → downloaded SERVER-SIDE (the key never leaves), the bottom watermark cropped (audio kept) and
+   * hosted at a path fixed per operation, so the film poll — which re-polls finished clips every tick until the
+   * whole film is done — re-signs one object instead of re-downloading, re-cropping and re-uploading it each time.
+   * A transient miss keeps polling; only a definitive verdict (filtered / failed / undeliverable) is terminal.
+   */
+  private async pollVeoTaskRef(decoded: EncodedTaskRef, taskRef: string): Promise<ServiceManagerResponse> {
     const sep = decoded.providerTaskId.indexOf('::');
     const operation = sep > 0 ? decoded.providerTaskId.slice(0, sep) : decoded.providerTaskId;
-    const aspect = (sep > 0 ? decoded.providerTaskId.slice(sep + 2) : '16:9') as '9:16' | '16:9' | '1:1';
-    const engine = `Gemini Veo (${geminiVeoModel()})`;
+    const aspectRaw = sep > 0 ? decoded.providerTaskId.slice(sep + 2) : '16:9';
+    const aspect: '9:16' | '16:9' | '1:1' = aspectRaw === '9:16' || aspectRaw === '1:1' ? aspectRaw : '16:9';
+    const transport = transportOf(operation);
+    const engine = veoEngineLabel(transport, null);
     const baseMeta = {
-      provider: 'replicate' as const, videoProvider: 'gemini-veo', operation: decoded.operation,
+      provider: 'replicate' as const, videoProvider: 'gemini-veo', veoTransport: transport, operation: decoded.operation,
       sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
     };
-    const r = await pollGeminiVeoTask(operation);
-    if (r.status === 'succeeded' && r.uri) {
-      let finalUrl: string | null = null;
-      const buf = await fetchVeoVideoBuffer(r.uri);
-      if (buf) {
-        const hosted = await uploadBufferAndSign('renders', `veo/${decoded.sessionId}/${Date.now()}.mp4`, buf, 'video/mp4', 604_800);
-        if (hosted) finalUrl = (await stripBottomWatermark(hosted, aspect).catch(() => null)) || hosted; // crop miss → keep hosted
-      }
-      if (finalUrl) {
+    const failed = (message: string, extra: Record<string, unknown> = {}): ServiceManagerResponse => ({
+      success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+      message, predictionId: taskRef, predictionStatus: 'failed', metadata: { ...baseMeta, ...extra },
+    });
+
+    const r = await pollVeoClip(operation);
+    if (r.state === 'succeeded') {
+      const url = await this.deliverVeoVideo(r.videos[0], operation, decoded.sessionId, aspect);
+      if (url) {
         return {
           success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-          message: `${engine} rendered the scene.`, assetUrl: finalUrl, assetType: decoded.responseType,
+          message: `${engine} rendered the scene.`, assetUrl: url, assetType: decoded.responseType,
           predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
         };
       }
-      // Generated but couldn't be delivered (download/host miss) → treat as failed so the pipeline re-tries
-      // (or falls to LTX). Rare; the raw Veo URI needs the key so it can't be handed to the client directly.
-      return {
-        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: `${engine} post-processing failed.`, predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
-      };
+      // Generated but not deliverable (download / hosting / signing miss). Failing the leg lets the film report
+      // it; the raw Veo file is key- or IAM-gated, so it can never be handed to the browser as-is.
+      return failed(`${engine} post-processing failed.`);
     }
-    if (r.status === 'failed') {
-      return {
-        success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
-        message: `${engine} generation failed.`, predictionId: taskRef, predictionStatus: 'failed', metadata: baseMeta,
-      };
+    if (r.state === 'filtered') {
+      return failed(`${engine} declined this scene under Google's safety rules. Rephrase it and render again.`, { veoFiltered: true });
     }
+    if (r.state === 'failed') return failed(`${engine} generation failed.`);
     return {
       success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
       message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
     };
+  }
+
+  /** A playable URL for a finished Veo video, or null when it cannot be delivered. Never throws. */
+  private async deliverVeoVideo(video: VeoVideo | undefined, operation: string, sessionId: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string | null> {
+    if (!video) return null;
+    if (video.kind === 'gcs') {
+      // 7 days, like every other clip URL the film hands to the assembler and the library.
+      try { return await deliverableUrl(video, 604_800); } catch { return null; }
+    }
+    const opKey = createHash('sha256').update(operation).digest('hex').slice(0, 24);
+    const session = sessionId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'session';
+    const path = `veo/${session}/${opKey}.mp4`;
+    const existing = await createSignedAssetUrl('renders', path, 604_800);
+    if (existing) return existing;
+
+    const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : await downloadGeminiVideo(video.uri);
+    if (!buf || buf.byteLength < 1_024) return null;
+    // ffmpeg reads the crop input over https; that staging copy is removed once the clean clip is hosted.
+    const rawPath = `veo/${session}/${opKey}-raw.mp4`;
+    const raw = await uploadBufferAndSign('renders', rawPath, buf, 'video/mp4', 3_600);
+    if (!raw) return null;
+    const clean = await stripBottomWatermark(raw, aspect, undefined, { bucket: 'renders', path }).catch(() => null);
+    // A crop miss keeps the uncropped clip — at the SAME fixed path, so the next tick finds it and stops here too.
+    const final = clean ?? (await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800));
+    await removeStorageObjects('renders', [rawPath]);
+    return final;
   }
 
   /**

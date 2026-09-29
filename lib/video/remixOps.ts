@@ -333,11 +333,17 @@ export async function fitAspect(videoUrl: string, aspect: '9:16' | '16:9' | '1:1
 }
 
 /**
- * Change playback speed by `factor` (2 = 2× faster, 0.5 = half-speed). Video via
- * setpts; audio via atempo (chained so factors outside the 0.5–2.0 atempo window
- * still work). Clamped to a sane 0.25×–4× range.
+ * Crop a Gemini-API Veo clip's visible bottom watermark band (audio copied through). `videoUrl` is anything ffmpeg
+ * reads — an https URL or a local file. `dest` hosts the result at a FIXED storage path instead of a fresh random
+ * one, so a caller that may run twice for the same clip (the film poll re-polls finished clips every tick) lands on
+ * the same object instead of minting a new copy each time.
  */
-export async function stripBottomWatermark(videoUrl: string, aspect: '9:16' | '16:9' | '1:1' = '16:9', pct?: number): Promise<string | null> {
+export async function stripBottomWatermark(
+  videoUrl: string,
+  aspect: '9:16' | '16:9' | '1:1' = '16:9',
+  pct?: number,
+  dest?: { bucket: string; path: string },
+): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
   const rawPct = Number.isFinite(pct) ? (pct as number) : Number(process.env.VEO_WATERMARK_CROP_PCT || 8);
   const p = Math.min(20, Math.max(0, rawPct)) / 100; // clamp 0–20%; 0 → nothing to strip
@@ -360,6 +366,7 @@ export async function stripBottomWatermark(videoUrl: string, aspect: '9:16' | '1
       ...X264, '-c:a', 'copy', '-movflags', '+faststart', out,
     ], { maxBuffer: 1 << 26, timeout: 180_000 });
     const buf = await readFile(out);
+    if (dest) return buf.byteLength < 1_024 ? null : await uploadBufferAndSign(dest.bucket, dest.path, buf, 'video/mp4', 604_800);
     return await hostMp4(buf, 'veo-clean');
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -370,6 +377,11 @@ export async function stripBottomWatermark(videoUrl: string, aspect: '9:16' | '1
   }
 }
 
+/**
+ * Change playback speed by `factor` (2 = 2× faster, 0.5 = half-speed). Video via
+ * setpts; audio via atempo (chained so factors outside the 0.5–2.0 atempo window
+ * still work). Clamped to a sane 0.25×–4× range.
+ */
 export async function changeSpeed(videoUrl: string, factor: number): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
   const f = Math.max(0.25, Math.min(4, Number(factor) || 1));

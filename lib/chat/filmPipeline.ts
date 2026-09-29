@@ -27,6 +27,11 @@ import {
 } from '@/lib/orchestrator/script-breakdown';
 import { extractPromptTraits, enrichVideoPrompt } from './promptTraits';
 import { extractSceneDialogue, MAX_SPOKEN_LINE_CHARS, MAX_LINES_PER_SCENE, type SceneSpokenLine } from './sceneDialogue';
+import type { CameraSpec, OutputFormat, VeoTier } from '@/lib/veo/types';
+import { cameraPhrase } from '@/lib/veo/cinematography';
+import { framingHintFor } from '@/lib/veo/capabilities';
+import { normalizeNegativePrompt } from '@/lib/veo/promptCompiler';
+import { isGoogleOnly } from '@/lib/veo/policy';
 
 /**
  * Strip a trailing `Negative: …` list from a scene description.
@@ -651,6 +656,28 @@ export interface FilmPlanOptions {
    *  reaches the provider's native negative field (Kling) — where negatives are weighted far more
    *  than in-prompt "no x" — to suppress sepia/yellow tints, muddy gradients and deformations. */
   negativePrompt?: string | null;
+  /**
+   * The studio's Veo plan, per scene (docs/VEO_ENGINE.md §2): a camera the user set on THIS scene wins over every
+   * other source of camera language. Index-aligned with the scenes; 'auto' parts defer to the director.
+   */
+  veoScenes?: Array<{ camera?: CameraSpec } | null | undefined>;
+  /** The delivered frame. 1:1 and 4:5 are rendered at a native ratio and cropped — the prompt asks for a centred subject. */
+  outputFormat?: OutputFormat | null;
+  /** Film-level Veo options threaded to every clip request (tier, sound, reference mode, seed lock…). */
+  veo?: FilmVeoOptions | null;
+}
+
+/**
+ * Film-level Google Veo options (validated at /api/chat/orchestrate, read by ServiceManager's Veo leg via
+ * buildFilmClipRequest). Absent = the pre-migration defaults (standard tier, native sound, first-frame photos).
+ */
+export interface FilmVeoOptions {
+  tier: VeoTier;
+  format: OutputFormat;
+  referenceMode: 'first_frame' | 'reference';
+  generateAudio: boolean;
+  seedLock: boolean;
+  enhancePrompt: boolean;
 }
 
 /** Screenwriter provenance for ONE scene (index-aligned with FilmPlanOptions.sceneScripts). */
@@ -663,6 +690,10 @@ export interface SceneScreenwriterMeta {
   /** Timecode window on the master timeline — lets a visual scene join its dialogue span. */
   startSec?: number;
   endSec?: number;
+  /** The director's STRUCTURED camera (Google's Veo vocabulary) — compiled exactly, instead of re-read prose. */
+  camera?: Omit<CameraSpec, 'intensity'>;
+  /** The director's light for this scene. */
+  lighting?: string;
 }
 
 /** Parameters shared identically across every clip — the continuity contract. */
@@ -681,6 +712,8 @@ export interface FilmShared {
    *  strong drift-suppression baseline, merged with the Director's scene-tailored negative when
    *  one was supplied. buildFilmClipRequest maps it onto selectedOptions.negativePrompt. */
   negativePrompt: string;
+  /** Film-level Veo options (absent = defaults). */
+  veo?: FilmVeoOptions | null;
 }
 
 /** PHASE 22 (VECTOR 1) — always-on drift/artifact suppression, merged ahead of the Director's
@@ -751,6 +784,8 @@ export interface FilmScene {
   seed: number;
   /** PHASE 47 §3 — the visual fallback plan that keeps a dropped clip on-model. */
   contingency: FilmSceneContingency;
+  /** The camera this scene was compiled with, when it came from the structured vocabulary (drives Vertex cameraControl). */
+  camera?: CameraSpec;
 }
 
 /**
@@ -816,7 +851,13 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // off the positive text, which left the Director's own negative with nothing but the cut. 800 is still
   // far inside every provider's field bound (Veo trims to the same number on the wire).
   const briefNegative = typeof opts.negativePrompt === 'string' ? opts.negativePrompt.trim() : '';
-  const negativePrompt = (briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE).slice(0, 800);
+  // Style-aware: a film the user asked to be Anime / Neon / Vintage / Noir must not carry the drift negatives that
+  // forbid exactly that look ("anime, cartoon", "neon glow", "sepia", "monochrome"). normalizeNegativePrompt also
+  // strips negation words (Google: describe what to avoid, never "no …") and caps the list at 800 characters.
+  const negativePrompt = normalizeNegativePrompt(
+    briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE,
+    opts.style ?? undefined,
+  ) || FILM_DRIFT_NEGATIVE.slice(0, 800);
 
   const shared: FilmShared = {
     seed,
@@ -828,9 +869,13 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     totalSec,
     orientation: opts.orientation === 'vertical' ? 'vertical' : 'landscape',
     negativePrompt,
+    ...(opts.veo ? { veo: opts.veo } : {}),
   };
 
   const styleGuide = buildStyleGuide(shared);
+  // 1:1 and 4:5 are cropped from a native Veo frame: ask for the subject centred with safe margins.
+  const framing = opts.outputFormat ? framingHintFor(opts.outputFormat) : null;
+  const framingClause = framing ? ` ${framing}` : '';
 
   // The per-beat camera move was computed but never reached the video model, so the
   // clips came out near-static. Map each beat to an explicit, strong motion directive.
@@ -855,6 +900,36 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     const pace = n >= 8 ? ', fast energetic kinetic movement' : n <= 3 ? ', very subtle slow gentle movement' : ', steady moderate movement';
     return ` (motion intensity ${Math.round(n)}/10${pace})`;
   })();
+
+  // ── STRUCTURED CAMERA (docs/VEO_ENGINE.md §2) ──────────────────────────────────────────────────────────
+  // The camera is compiled from Google's documented vocabulary (lib/veo/cinematography) whenever anyone named it
+  // in those terms. Precedence per part: the user's per-scene camera (any non-auto part) > the old global chip >
+  // the director's structured camera. The old chips' prose mis-described two of them ("pan left" became "push
+  // and pan", "pan right" an arc), so a legacy move now goes through the same vocabulary instead.
+  const LEGACY_MOVE: Record<string, CameraSpec['move']> = {
+    pan_left: 'pan_left', pan_right: 'pan_right', zoom_in: 'zoom_in', zoom_out: 'zoom_out', tilt_up: 'tilt_up', tilt_down: 'tilt_down',
+  };
+  const legacyIntensity = (() => {
+    const n = Number(opts.motionIntensity);
+    return Number.isFinite(n) && n > 0 ? Math.max(1, Math.min(10, Math.round(n))) : 5;
+  })();
+  const structuredCameraFor = (index: number): CameraSpec | null => {
+    const director = opts.sceneMeta?.[index]?.camera;
+    const user = opts.veoScenes?.[index]?.camera;
+    const cam: CameraSpec = { move: 'auto', intensity: legacyIntensity, shot: 'auto', angle: 'auto', lens: 'auto', ...(director ?? {}) };
+    const legacyMove = opts.cameraMove && opts.cameraMove !== 'auto' ? LEGACY_MOVE[opts.cameraMove] : undefined;
+    if (legacyMove) cam.move = legacyMove;
+    if (user) {
+      if (user.move && user.move !== 'auto') cam.move = user.move;
+      if (user.shot && user.shot !== 'auto') cam.shot = user.shot;
+      if (user.angle && user.angle !== 'auto') cam.angle = user.angle;
+      if (user.lens && user.lens !== 'auto') cam.lens = user.lens;
+      if (typeof user.intensity === 'number' && Number.isFinite(user.intensity)) cam.intensity = user.intensity;
+    }
+    return cameraPhrase(cam) ? cam : null;
+  };
+  /** The structured path already carries the speed ("slow dolly in"); the legacy suffix is for the prose path only. */
+  const motionSuffixFor = (index: number): string => (structuredCameraFor(index) ? '' : motionSuffix);
   // When the user picks an explicit camera move it overrides the per-beat default
   // FOR THE PROMPT ONLY (the stored scene.cameraMotion is unchanged for downstream use).
   const promptMoveFor = (beatMotion: string): string =>
@@ -863,8 +938,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // cameraMove override, (2) the SCREENWRITER's exact per-scene cameraShot (script intent,
   // injected verbatim), (3) the deterministic beat ladder. So the visual camera now HONORS the
   // script's shot direction instead of re-deriving it. sceneCam absent → identical to before.
-  const cameraLineFor = (beatMotion: string, sceneCam?: string): string => {
-    if (opts.cameraMove && opts.cameraMove !== 'auto') return cameraDirectiveFor(opts.cameraMove);
+  const cameraLineFor = (index: number, beatMotion: string, sceneCam?: string): string => {
+    const structured = structuredCameraFor(index);
+    if (structured) return `Camera: ${cameraPhrase(structured)}`;
     if (sceneCam && sceneCam.trim()) return `Camera: ${sceneCam.trim()}`;
     return cameraDirectiveFor(beatMotion);
   };
@@ -958,7 +1034,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
           // "NO people, NO performer" must STAY here: this is a positive instruction the model needs (an
           // empty establishing shot), and the generic negative field can't express "empty of people" for
           // this scene alone. Everything else that was a negation moved to FILM_DRIFT_NEGATIVE.
-          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. An empty establishing location shot — no people, no performer anywhere in frame. ${styleGuide}`,
+          `${head}. ${cameraDirectiveFor(promptMoveFor(beat.cameraMotion))}${motionSuffix}, slow cinematic camera movement, atmospheric and immersive. An empty establishing location shot — no people, no performer anywhere in frame.${framingClause} ${styleGuide}`,
           traits, 1700,
         )
       : scriptDriven
@@ -970,7 +1046,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
             // can't parse; the affirmative "continuous cinematic camera movement" carries the intent and
             // the text/watermark terms live in FILM_DRIFT_NEGATIVE.
             ((tail) => `${fitHead(tail)}${headStop}${speechDirection}${tail}`)(
-              ` ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous cinematic camera movement true to the scene. ${continuity}`,
+              ` ${cameraLineFor(seg.index, beat.cameraMotion, sceneCam)}${motionSuffixFor(seg.index)}, continuous cinematic camera movement true to the scene.${framingClause} ${continuity}`,
             ),
             traits, 1700,
           )
@@ -985,7 +1061,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
             // the continuity clause) and padded with negations. One affirmative sentence + the continuity
             // clause is stronger conditioning AND leaves the scene's own action dominant.
             ((tail) => `${fitHead(tail)}${headStop}${speechDirection}${tail}`)(
-              ` ${cameraLineFor(beat.cameraMotion, sceneCam)}${motionSuffix}, continuous movement. The subject performs with believable, natural emotion — lifelike expression, gaze and body language true to the moment. ${continuity}`,
+              ` ${cameraLineFor(seg.index, beat.cameraMotion, sceneCam)}${motionSuffixFor(seg.index)}, continuous movement. The subject performs with believable, natural emotion — lifelike expression, gaze and body language true to the moment.${framingClause} ${continuity}`,
             ),
             traits, 1700,
           );
@@ -1002,6 +1078,9 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
       seed,
       // PHASE 47 §3 — Nano Banano stamps each scene with its on-model fallback.
       contingency: buildSceneContingency(seg.index, segments.length, shared),
+      // A Music-Video intro keeps its drone establishing move; every other scene records the structured camera
+      // it was compiled with, so the render can send the matching native cameraControl when that is enabled.
+      ...(!mvIntro && structuredCameraFor(seg.index) ? { camera: structuredCameraFor(seg.index)! } : {}),
     };
   });
 
@@ -1030,6 +1109,8 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
     // which fought a landscape stitch and made the format "change mid-video".)
     aspectRatio: shared.orientation === 'vertical' ? '9:16' : '16:9',
     seed: String(scene.seed),
+    // Groups this clip's Veo inputs/outputs under its scene in GCS (lib/veo/gcs veoOutputPrefix).
+    sceneOrdinal: String(scene.ordinal),
     // Per-clip audio generation stays OFF for the engines that expose the switch (LTX): the Audio/Foley
     // agent binds one cohesive track across the stitched timeline. Veo has no such parameter — its audio
     // is always on — which is exactly what makes the in-clip spoken line work.
@@ -1062,6 +1143,20 @@ export function buildFilmClipRequest(scene: FilmScene, shared: FilmShared): Film
   // metadata so the Director/Editor can swap in a continuity-matched variant if
   // this leg drops, without re-rolling a fresh (off-model) character.
   selectedOptions.contingency = JSON.stringify(scene.contingency);
+  // ── GOOGLE VEO (docs/VEO_ENGINE.md) — the film-level plan the Veo leg in ServiceManager turns into a request. ──
+  // googleOnly is decided HERE, per film, so a clip can never be half-Google: ServiceManager then refuses every
+  // non-Google fallback for it and reports a Veo miss as a Veo failure.
+  if (isGoogleOnly()) selectedOptions.googleOnly = '1';
+  const veo = shared.veo;
+  if (veo) {
+    selectedOptions.veoTier = veo.tier;
+    selectedOptions.veoFormat = veo.format;
+    selectedOptions.veoReferenceMode = veo.referenceMode;
+    selectedOptions.veoGenerateAudio = veo.generateAudio ? '1' : '0';
+    selectedOptions.veoSeedLock = veo.seedLock ? '1' : '0';
+    selectedOptions.veoEnhancePrompt = veo.enhancePrompt ? '1' : '0';
+  }
+  if (scene.camera && scene.camera.move !== 'auto') selectedOptions.veoCameraMove = scene.camera.move;
   return { userPrompt: scene.prompt, selectedOptions };
 }
 
