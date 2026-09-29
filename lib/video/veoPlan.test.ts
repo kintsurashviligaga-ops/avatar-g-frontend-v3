@@ -112,3 +112,36 @@ describe('formats', () => {
     expect(planNotices(p, { audioToggle: true }).map((x) => x.id)).not.toContain('audio-fixed');
   });
 });
+
+describe('toRenderOptions — fitted to the storyboard that renders', () => {
+  it('pads missing scenes with the defaults and drops extra ones', () => {
+    let plan = initialVeoPlan({ lengthSec: 24 });
+    plan = veoPlanReducer(plan, { type: 'sceneCamera', index: 0, camera: { move: 'push_in' } });
+    plan = veoPlanReducer(plan, { type: 'sceneTransition', index: 0, transition: 'dissolve' });
+    const five = toRenderOptions(plan, 5);
+    expect(five.scenes).toHaveLength(5);
+    expect(five.scenes[0]!.camera.move).toBe('push_in');
+    expect(five.scenes[0]!.transitionOut).toBe('dissolve');
+    expect(five.scenes[4]!.camera).toEqual(plan.cameraDefault);
+    expect(five.scenes[4]!.transitionOut).toBe(plan.transitionDefault);
+    const two = toRenderOptions(plan, 2);
+    expect(two.scenes).toHaveLength(2);
+    expect(two.scenes[0]!.camera.move).toBe('push_in');
+  });
+
+  it('ignores a nonsense count and caps at the 12-scene ceiling', () => {
+    const plan = initialVeoPlan({ lengthSec: 24 });
+    expect(toRenderOptions(plan, Number.NaN).scenes).toHaveLength(3);
+    expect(toRenderOptions(plan, 0).scenes).toHaveLength(3);
+    expect(toRenderOptions(plan, 40).scenes).toHaveLength(12);
+  });
+
+  it('never shares camera objects with the plan (a later edit cannot mutate a queued film)', () => {
+    const plan = initialVeoPlan({ lengthSec: 8 });
+    const out = toRenderOptions(plan, 3);
+    out.scenes[0]!.camera.move = 'orbit';
+    out.scenes[2]!.camera.move = 'orbit';
+    expect(plan.scenes[0]!.camera.move).toBe('auto');
+    expect(plan.cameraDefault.move).toBe('auto');
+  });
+});

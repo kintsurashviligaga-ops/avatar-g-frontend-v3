@@ -346,6 +346,35 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 48წმ');
     });
 
+    test('the Veo controls: a quality tier, one camera per scene, and only the joins Veo’s edit can make', async ({ page }) => {
+      await openDashboard(page);
+      const settings = await openSettings(page);
+      // Quality = the Veo 3.1 tier, next to format and length.
+      const quality = settings.getByRole('radiogroup', { name: 'ხარისხი' });
+      await expect(quality.getByRole('radio')).toHaveText(['უმაღლესი', 'სწრაფი', 'ეკონომი']);
+      await expect(quality.getByRole('radio', { name: 'უმაღლესი' })).toHaveAttribute('aria-checked', 'true');
+      const veo = settings.getByTestId('veo-parameters');
+      await veo.getByRole('button', { name: /სცენები და კამერა/ }).click();
+      // 24 s = three 8 s clips → one camera card per scene, and a join between each pair.
+      await expect(veo.locator('ol > li')).toHaveCount(3);
+      await expect(veo.getByText('სცენა 1 → 2')).toBeVisible();
+      // Veo has no transition parameter: the joins are the four the assembler makes. Zoom / Slide are gone, and so is
+      // the engine badge (Veo is the only engine).
+      await expect(veo.getByRole('button', { name: /ზუმი|სლაიდი/ })).toHaveCount(0);
+      await expect(settings.getByText('Google Veo', { exact: true })).toHaveCount(0);
+      // A per-scene move shows its speed and names itself on the card.
+      await veo.locator('#veo-s0-move').selectOption('push_in');
+      const first = veo.locator('ol > li').first();
+      await expect(first.locator('span', { hasText: /^მიახლოება$/ })).toBeVisible();
+      await expect(first.getByRole('slider')).toBeVisible();
+      // Economy takes no reference photos: choosing it hands a reference-mode film back to the first frame.
+      await veo.getByRole('button', { name: /პერსონაჟის შენარჩუნება/ }).click();
+      await veo.getByRole('button', { name: /რეფერენს-ფოტოებით/ }).click();
+      await expect(veo.getByRole('button', { name: /რეფერენს-ფოტოებით/ })).toHaveAttribute('aria-pressed', 'true');
+      await quality.getByRole('radio', { name: 'ეკონომი' }).click();
+      await expect(veo.getByRole('button', { name: /პირველი კადრიდან/ })).toHaveAttribute('aria-pressed', 'true');
+    });
+
     test('"შესვლა" opens the sign-in', async ({ page }) => {
       await openDashboard(page);
       await page.locator('header').getByRole('button', { name: 'შესვლა' }).click();

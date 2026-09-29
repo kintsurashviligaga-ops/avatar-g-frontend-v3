@@ -242,7 +242,21 @@ export interface VeoRenderOptions {
   scenes: Array<{ camera: CameraSpec; transitionOut: Transition }>;
 }
 
-export function toRenderOptions(plan: VeoPlan): VeoRenderOptions {
+/**
+ * `sceneCount` fits the per-scene list to the film that will actually render — the approved storyboard can hold more
+ * or fewer scenes than the length's grid (a scene added or deleted on the board, a script's own timecodes). Missing
+ * scenes take the plan's defaults; extra ones are dropped. Scene cameras are positional: scene N keeps camera N.
+ */
+export function toRenderOptions(plan: VeoPlan, sceneCount?: number): VeoRenderOptions {
+  const n = typeof sceneCount === 'number' && Number.isFinite(sceneCount) && sceneCount >= 1
+    ? Math.min(12, Math.floor(sceneCount))
+    : plan.scenes.length;
+  const scenes = Array.from({ length: n }, (_, i) => {
+    const s = plan.scenes[i];
+    return s
+      ? { camera: { ...s.camera }, transitionOut: s.transitionOut }
+      : { camera: { ...plan.cameraDefault }, transitionOut: plan.transitionDefault };
+  });
   return {
     tier: plan.tier,
     format: plan.format,
@@ -251,7 +265,7 @@ export function toRenderOptions(plan: VeoPlan): VeoRenderOptions {
     seedLock: plan.seedLock,
     enhancePrompt: plan.enhancePrompt,
     ...(plan.negativePrompt.trim() ? { negativePrompt: plan.negativePrompt.trim() } : {}),
-    scenes: plan.scenes.map((s) => ({ camera: { ...s.camera }, transitionOut: s.transitionOut })),
+    scenes,
   };
 }
 

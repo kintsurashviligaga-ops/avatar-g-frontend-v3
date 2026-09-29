@@ -77,7 +77,7 @@ function CameraFields({ camera, onChange, locale, idPrefix }: {
   ];
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2">
         {fields.map((f) => (
           <label key={f.key} htmlFor={`${idPrefix}-${f.key}`} className="min-w-0">
             <span className="mb-1 block text-[11px] font-medium text-app-muted">{f.label}</span>

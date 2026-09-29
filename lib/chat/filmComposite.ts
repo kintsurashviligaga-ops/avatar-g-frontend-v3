@@ -942,9 +942,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       ? (input.metadata.sceneFrames as unknown[]).map((f) =>
           typeof f === 'string' && /^https?:\/\//i.test(f) ? f : null)
       : null;
-    let sceneFrames = approvedFrames && approvedFrames.length === plan.scenes.length
-      ? approvedFrames
-      : await Promise.all(plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)));
+    // REFERENCE MODE (the studio's Veo plan): the photos ride as Veo asset references and Veo composes each scene
+    // itself — a first frame would be dropped by the engine (it cannot take both), so no frame is made or paid for.
+    const referenceMode = veoPlan?.film.referenceMode === 'reference';
+    let sceneFrames = referenceMode
+      ? plan.scenes.map(() => null as string | null)
+      : approvedFrames && approvedFrames.length === plan.scenes.length
+        ? approvedFrames
+        : await Promise.all(plan.scenes.map((scene) => stylizeSceneFrame(input, scene, plan.shared)));
     // AUTO CHARACTER-ANCHOR — a text-only brief (no uploaded photo, no storyboard frames)
     // has no i2v start image, so clips fall to LTX text-to-video even when Kling is selected.
     // Generate ONE flux-schnell portrait (~3.65s) from the locked character and reuse it as
@@ -967,7 +972,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
       (characterLockEn && characterLockEn.trim()) ||
       (Array.isArray(sceneScriptsEn) && sceneScriptsEn.find((s) => typeof s === 'string' && s.trim())) ||
       messageEn.slice(0, 400);
-    if (autoAnchorOn && anchorDesc && hostedCount === 0 && !sceneFrames.some(Boolean)) {
+    // Skipped in reference mode (see above) and when Google-only: the anchor is drawn by FLUX on Replicate.
+    if (autoAnchorOn && !referenceMode && !googleOnly && anchorDesc && hostedCount === 0 && !sceneFrames.some(Boolean)) {
       const tAnchor = Date.now();
       const anchor = await generateAnchorFrame(anchorDesc, orientation === 'vertical' ? '9:16' : '16:9');
       if (anchor) {
@@ -979,7 +985,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // Vision QA heal pass (env-gated FILM_VISION_QA=1) — inspect each storyboard keyframe
     // for severe artifacts/face-melting and regenerate failures via the SAME stylizeSceneFrame
     // path BEFORE the costly render. Fail-OPEN per scene; structured report logged.
-    if (visionQaEnabled()) {
+    if (visionQaEnabled() && !referenceMode) {
       const qa = await qaHealKeyframes(sceneFrames, (i) => {
         const sc = plan.scenes[i];
         return sc ? stylizeSceneFrame(input, sc, plan.shared) : Promise.resolve(null);

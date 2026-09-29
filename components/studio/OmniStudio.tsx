@@ -11,7 +11,7 @@
  * #00D2FF. Fail-soft throughout.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
@@ -39,8 +39,12 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { driveFilmStudio, type FilmStudioMatrix } from '@/lib/chat/filmStudioClient';
+import { driveFilmStudio, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
+import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
+import { SceneMetaSchema } from '@/lib/veo/renderOptions';
+import type { Transition, VeoTier } from '@/lib/veo/types';
+import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
 // initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
 // out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
@@ -325,6 +329,12 @@ const TypingDots = memo(function TypingDots() {
 });
 
 /** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
+/** The Veo 3.1 tiers as the Quality control names them (Standard · Fast · Lite). */
+const VEO_TIER_LABEL: Record<VeoTier, Record<Lang, string>> = {
+  standard: { ka: 'უმაღლესი', en: 'Best', ru: 'Лучшее' },
+  fast: { ka: 'სწრაფი', en: 'Fast', ru: 'Быстро' },
+  lite: { ka: 'ეკონომი', en: 'Economy', ru: 'Эконом' },
+};
 const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
 
 /** Line icons for the video presets (their catalogue still carries emoji; docs/DESIGN.md bans emoji as UI). */
@@ -415,7 +425,7 @@ async function compositeMusicVideo(
   storyboardScenes: { ordinal: number; beat?: string; frameUrl: string | null }[] | undefined,
   musicUrl: string,
   orientation: 'landscape' | 'vertical',
-  transition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
+  transition: Transition,
   signal: AbortSignal,
   mine: () => boolean,
   filmTokenId: string | null,
@@ -523,7 +533,7 @@ async function compositeDocumentary(
   dialogue: string,
   gender: 'male' | 'female',
   orientation: 'landscape' | 'vertical',
-  transition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide',
+  transition: Transition,
   signal: AbortSignal,
   mine: () => boolean,
   filmTokenId: string | null,
@@ -869,7 +879,7 @@ const ENABLE_PARALLEL_CINEMA = process.env.NEXT_PUBLIC_PARALLEL_CINEMA === '1';
 // NEVER inherits edits the user makes afterwards for their next film. Mirrors the product/swap
 // snapshot pattern. renderFilm reads exclusively from this — no live-closure panel reads.
 interface FilmSnap {
-  videoTransition: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide';
+  videoTransition: Transition;
   videoMode: 'musicvideo' | 'documentary';
   videoStyle: string;
   videoDuration: 8 | 24 | 48;
@@ -887,9 +897,12 @@ interface FilmSnap {
   voiceLanguage: 'ka' | 'en' | 'ru';
   voicePersona: 'male' | 'female' | 'child' | 'elderly';
   voiceTone: 'epic' | 'emotional' | 'energetic';
-  videoCameraMove: 'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down';
-  videoMotionIntensity: number;
   videoModel: 'runway' | 'kling' | 'hailuo';
+  /** The Google Veo plan (lib/video/veoPlan → toRenderOptions) fitted to the scenes that render: tier, format, how
+   *  the photos condition Veo, Veo's own sound, seed lock, negative prompt, and each scene's camera + join. */
+  veo: VeoRenderOptions;
+  /** The director's per-scene camera / lighting / shot / mood / location from the storyboard (validated). */
+  sceneMeta?: SceneMetaWire[];
   hasTrainedVoice: boolean;
   /** Per-scene length (4-8s) the storyboard derived from the script's own timecodes; undefined = the
    *  default 8s grid. Rides in the snapshot so a QUEUED film keeps the grid it was planned on. */
@@ -1211,6 +1224,35 @@ interface StoryboardState {
   /** Per-scene length (4-8s) the route derived from the script's own timecodes; threaded to the render
    *  so the board's card durations and the rendered clips are the same length. */
   clipSec?: number;
+  /** The director's per-scene provenance (structured camera, lighting, shot, mood, location) from the storyboard's
+   *  Master Film Brief — POSITIONAL like sceneScripts, so a reorder carries each scene's entry with it. */
+  sceneMeta?: SceneMetaWire[] | null;
+}
+
+/**
+ * The Master Film Brief's scenes (from /api/film/storyboard scriptsOnly) → the render's sceneMeta, validated with
+ * the SAME schema the orchestrate route enforces: one malformed entry would otherwise 400 the whole film, so a brief
+ * that does not validate is dropped here (the render then re-derives the shots, exactly as before).
+ */
+function sceneMetaFromBrief(scenes: unknown): SceneMetaWire[] | null {
+  if (!Array.isArray(scenes) || scenes.length === 0) return null;
+  const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+  const meta = scenes.slice(0, 12).map((raw) => {
+    const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const cam = r.camera && typeof r.camera === 'object' ? (r.camera as Record<string, unknown>) : null;
+    const out: Record<string, unknown> = {};
+    const cameraShot = str(r.cameraShot, 400); if (cameraShot) out.cameraShot = cameraShot;
+    const mood = str(r.mood, 200); if (mood) out.mood = mood;
+    const location = str(r.location, 300); if (location) out.location = location;
+    const lighting = str(r.lighting, 300); if (lighting) out.lighting = lighting;
+    if (cam) out.camera = { move: cam.move ?? 'auto', shot: cam.shot ?? 'auto', angle: cam.angle ?? 'auto', lens: cam.lens ?? 'auto' };
+    return out;
+  });
+  const parsed = SceneMetaSchema.safeParse(meta);
+  if (parsed.success) return parsed.data as SceneMetaWire[];
+  // One scene's camera held a word outside the vocabulary: keep the prose fields, drop only the cameras.
+  const noCamera = SceneMetaSchema.safeParse(meta.map(({ camera: _camera, ...rest }) => rest));
+  return noCamera.success ? (noCamera.data as SceneMetaWire[]) : null;
 }
 
 /** Read a picked File into a data: URL (for the per-scene "Change Base Image"). */
@@ -1234,15 +1276,19 @@ function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): St
   const idxByOrd = new Map(prev.scenes.map((s, i) => [s.ordinal, i] as const));
   const framePrompts: Record<number, string> = {};
   const sceneScripts: (string | null)[] = [];
+  const oldMeta = prev.sceneMeta ?? null;
+  const sceneMeta: SceneMetaWire[] = [];
   const scenes = ordered.map((s, i) => {
     const newOrd = i + 1;
     const fp = oldFP[s.ordinal];
     if (fp) framePrompts[newOrd] = fp;
     const oldIdx = idxByOrd.get(s.ordinal);
     sceneScripts[i] = oldIdx != null ? oldScripts[oldIdx] ?? null : null;
+    // A new scene has no director entry: an empty one keeps the list positional (every field is optional).
+    sceneMeta[i] = (oldIdx != null ? oldMeta?.[oldIdx] : undefined) ?? {};
     return { ...s, ordinal: newOrd };
   });
-  return { ...prev, scenes, framePrompts, sceneScripts };
+  return { ...prev, scenes, framePrompts, sceneScripts, ...(oldMeta ? { sceneMeta } : {}) };
 }
 
 /**
@@ -2027,8 +2073,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [lipPreset, setLipPreset] = useState<string | null>(null);
   // Lip-sync mode sub-tab: 'avatar' (talking photo) vs 'motion' (Kling Motion Control).
   const [lipTab, setLipTab] = useState<'avatar' | 'motion'>('avatar');
-  // Scene-to-scene transition in the final stitch: soft crossfade or hard cut.
-  const [videoTransition, setVideoTransition] = useState<'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide'>('crossfade');
+  // The whole film's join in the stitch (mirrors the Veo panel's "between scenes" choice; per-scene joins ride in the
+  // Veo plan). A hard cut by default: every soft join overlaps the clips by ~1 s, so a crossfaded 24 s film came
+  // back 22 s long.
+  const [videoTransition, setVideoTransition] = useState<Transition>('cut');
   // What the character SAYS — typed dialogue → spoken verbatim as the film's voice-over
   // (empty = auto-written narration). The clear "what should they say" field.
   const [videoSpeech, setVideoSpeech] = useState('');
@@ -2054,9 +2102,14 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
   const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
   const [voiceTone, setVoiceTone] = useState<'epic' | 'emotional' | 'energetic'>('emotional');
-  // PHASE 2 L1 — camera controls → clip prompt tokens (move + 1–10 motion intensity).
-  const [videoCameraMove, setVideoCameraMove] = useState<'auto' | 'pan_left' | 'pan_right' | 'zoom_in' | 'zoom_out' | 'tilt_up' | 'tilt_down'>('auto');
-  const [videoMotionIntensity, setVideoMotionIntensity] = useState(5);
+  // THE GOOGLE VEO PLAN (lib/video/veoPlan) — quality tier, how the photos condition Veo, Veo's own sound, seed lock,
+  // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
+  // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
+  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24 }));
+  // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
+  const veoEngine = useVeoEngineInfo();
+  useEffect(() => { dispatchVeo({ type: 'format', format: formatForOrientation(videoOrientation) }); }, [videoOrientation]);
+  useEffect(() => { dispatchVeo({ type: 'length', lengthSec: videoDuration }); }, [videoDuration]);
   // PHASE 2 L5 / Master Contract V3 — per-render i2v engine. Google VEO is the wired PRIMARY i2v engine
   // (ServiceManager tries Veo first for the default 'runway' value, then falls to Runway → Kling → LTX), so
   // the default chip is labelled "✨ Veo"; its routing value stays 'runway' (the auto cascade whose primary
@@ -2790,7 +2843,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
-      voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice, clipSec,
+      voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -2904,9 +2957,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         ...(!isMusicVideo && !videoMultiChar && !videoMyVoiceNarration ? { narratorGender: videoNarratorGender } : {}),
         // PHASE 2 L1 — Character Voice selector → VOICE_MAP (documentary narration only).
         ...(!isMusicVideo && !videoMyVoiceNarration ? { voiceLanguage, voicePersona, voiceTone } : {}),
-        // PHASE 2 L1 — camera controls → clip prompt tokens (apply to every cinema render).
-        ...(videoCameraMove !== 'auto' ? { cameraMove: videoCameraMove } : {}),
-        motionIntensity: videoMotionIntensity,
+        // THE VEO PLAN — tier, delivered format, how the photos condition Veo, Veo's own sound, seed lock, negative
+        // prompt, and each scene's camera (compiled into that clip's prompt server-side) + its join into the next
+        // scene (made in the edit: Veo has no transition parameter).
+        veo,
+        ...(veo.scenes.length > 1 ? { joinTransitions: veo.scenes.slice(0, -1).map((sc) => sc.transitionOut) } : {}),
+        // The legacy prose camera path reads one global speed; each structured scene camera carries its own.
+        motionIntensity: veo.scenes[0]?.camera.intensity ?? 5,
+        // The director's per-scene camera / lighting / shot / mood / location from the approved storyboard.
+        ...(sceneMeta?.length ? { sceneMeta } : {}),
         // PHASE 2 L5 — per-render i2v model (Kling/Hailuo).
         videoModel,
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
@@ -3206,16 +3265,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
      *  music-video paste (whose masterScript is deliberately NOT sent to the render) showed 4x6s cards
      *  and then rendered 3x8s. */
     clipSec?: number,
+    /** The director's per-scene provenance from the approved storyboard (validated by sceneMetaFromBrief). */
+    sceneMeta?: SceneMetaWire[],
   ): Promise<string | void> => {
     // SNAPSHOT-AT-SUBMIT (Step 2): capture the WHOLE video panel NOW (the submit millisecond) into one
     // immutable object; renderFilm renders from this exact snapshot, so a queued film never inherits a
     // later edit made for the next film. Mirrors generateProductAd / runVideoSwap.
+    // The Veo plan is fitted to the scenes that will ACTUALLY render (the same count renderFilm pins), and a
+    // music video is 9:16 whatever the Format control last held (renderFilm forces the orientation the same way).
+    const renderSceneCount = storyboardScenes?.length || sceneScripts?.length || sceneCountForDuration(videoDuration);
     const snap: FilmSnap = {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
-      voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice,
+      voiceTone, videoModel, hasTrainedVoice,
+      veo: toRenderOptions(videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan, renderSceneCount),
       ...(clipSec ? { clipSec } : {}),
+      ...(sceneMeta?.length ? { sceneMeta } : {}),
     };
     if (!ENABLE_PARALLEL_CINEMA) {
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
@@ -3240,7 +3306,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoCameraMove, videoMotionIntensity, videoModel, hasTrainedVoice]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -3627,6 +3693,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       const enrichStory = async () => {
         let scripts: string[] | null = null;
         let character: string | null = null;
+        let sceneMeta: SceneMetaWire[] | null = null;
         try {
           const sr = await fetch('/api/film/storyboard', {
             // Pass the uploaded reference(s): without them the scene-script agent gets hasReferenceImage=false and
@@ -3635,9 +3702,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
             body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
           });
-          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null };
+          const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null; masterBrief?: { scenes?: unknown } | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
           if (typeof sj.character === 'string' && sj.character.trim()) character = sj.character.trim();
+          // The director's structured camera + lighting per scene. It was returned and then DROPPED here, so the
+          // render re-derived every shot from a generic beat ladder instead of the brief the user just approved.
+          sceneMeta = sceneMetaFromBrief(sj.masterBrief?.scenes);
         } catch { /* best-effort; frames fall back to deterministic beats */ }
         if (!scripts || !scripts.length) return;
         const finalScripts = scripts;
@@ -3650,6 +3720,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           ...prev,
           sceneScripts: finalScripts,
           ...(character ? { character } : {}),
+          ...(sceneMeta && sceneMeta.length === prev.scenes.length ? { sceneMeta } : {}),
           // Reflect the STORY-SPECIFIC per-scene shots in the editable scene captions for
           // EVERY brief — not just attached scripts. A typed brief's scenes used to keep the
           // generic deterministic beat framing on screen (identical across unrelated briefs,
@@ -7303,6 +7374,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 onChange={(a) => { const o = ASPECT_ORIENT[a]; if (o) setVideoOrientation(o); }} />
               <Segmented label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} cols="grid-cols-3"
                 options={[8, 24, 48] as const} value={videoDuration} onChange={setVideoDuration} format={(d) => `${d}${secsWord}`} />
+              {/* The Veo model tier: Veo 3.1 · Veo 3.1 Fast · Veo 3.1 Lite. Economy takes no reference photos — picking
+                  it hands a reference-mode film back to the first-frame path (the reducer), never a silent drop. */}
+              <Segmented label={locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'} cols="grid-cols-3"
+                options={['standard', 'fast', 'lite'] as const} value={veoPlan.tier}
+                onChange={(tier: VeoTier) => dispatchVeo({ type: 'tier', tier })}
+                format={(tier) => VEO_TIER_LABEL[tier][locale]} />
             </div>
             {/* 0 · START HERE — one tap sets mode, length, format and look together.
                 The panel has 57 controls. Each is reasonable; the combination is not, because a
@@ -7400,7 +7477,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   );
                 })}
               </div>
-              <p className="px-0.5 text-[10px] leading-tight text-app-muted">{locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.'}</p>
+              <p className="px-0.5 text-[10px] leading-tight text-app-muted">{veoPlan.referenceMode === 'reference'
+                ? (locale === 'en' ? 'Reference mode: up to 3 photos of the person — Veo keeps them in every scene.' : locale === 'ru' ? 'Режим референса: до 3 фото человека — Veo сохранит его в каждой сцене.' : 'რეფერენსის რეჟიმი: ადამიანის მაქს. 3 ფოტო — Veo მას ყველა სცენაში შეინარჩუნებს.')
+                : (locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.')}</p>
             </div>
 
             {/* ⚠️ THE PANEL WAS FIFTEEN SECTIONS DEEP, all open at once — script, track, mix, voices, ducking, master
@@ -7702,56 +7781,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
 
-            {/* Advanced — transition + engine folded together (both are set-and-forget defaults);
-                the collapsed badge surfaces the current transition glyph + engine so nothing hides. */}
-            <Section
-              title={`${locale === 'en' ? 'Advanced' : locale === 'ru' ? 'Дополнительно' : 'დამატებითი'}`}
-              badge={`${videoTransition === 'crossfade' ? '⤫' : videoTransition === 'cut' ? '▮' : videoTransition === 'dissolve' ? '◈' : videoTransition === 'zoom' ? '⊕' : '▷'} · ${videoModel === 'kling' ? 'Kling' : videoModel === 'hailuo' ? 'Hailuo' : 'Veo'}`}
-            >
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Transition:' : locale === 'ru' ? 'Переход:' : 'გადასვლა:'}</span>
-                  <Chip active={videoTransition === 'crossfade'} onClick={() => setVideoTransition('crossfade')}>⤫ {t.transCrossfade}</Chip>
-                  <Chip active={videoTransition === 'cut'} onClick={() => setVideoTransition('cut')}>▮ {t.transCut}</Chip>
-                  <Chip active={videoTransition === 'dissolve'} onClick={() => setVideoTransition('dissolve')}>◈ {locale === 'en' ? 'Dissolve' : locale === 'ru' ? 'Растворение' : 'დაშლა'}</Chip>
-                  <Chip active={videoTransition === 'zoom'} onClick={() => setVideoTransition('zoom')}>⊕ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
-                  <Chip active={videoTransition === 'slide'} onClick={() => setVideoTransition('slide')}>▷ {locale === 'en' ? 'Slide' : locale === 'ru' ? 'Слайд' : 'სლაიდი'}</Chip>
-                </div>
-                {/* ENGINE — Google Veo is THE engine (primary, always on). Runway/Kling are automatic backend
-                    fallbacks only (the ServiceManager cascade), so they're no longer competing UI choices. */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-0.5 text-[11px] text-app-muted">{locale === 'en' ? 'Engine:' : locale === 'ru' ? 'Движок:' : 'ძრავა:'}</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-app-accent/15 px-2.5 py-1 text-[12px] font-semibold text-app-accent ring-1 ring-app-accent/30">Google Veo</span>
-                  <span className="text-[10.5px] text-app-muted">{locale === 'en' ? 'auto-fallback if busy' : locale === 'ru' ? 'авто-резерв при загрузке' : 'ავტო-სარეზერვო დატვირთვისას'}</span>
-                </div>
-              </div>
-            </Section>
-
-            {/* PHASE 2 L1 — Camera controls folded (advanced; 'Auto' + intensity 5 are the sensible
-                defaults). Badge appears only when the user has moved off the defaults. */}
-            <Section
-              title={`${locale === 'en' ? 'Camera' : locale === 'ru' ? 'Камера' : 'კამერა'}`}
-              badge={(videoCameraMove !== 'auto' || videoMotionIntensity !== 5)
-                ? `${videoCameraMove === 'pan_left' ? '←' : videoCameraMove === 'pan_right' ? '→' : videoCameraMove === 'zoom_in' ? '＋' : videoCameraMove === 'zoom_out' ? '－' : videoCameraMove === 'tilt_up' ? '↑' : videoCameraMove === 'tilt_down' ? '↓' : ''} ${videoMotionIntensity}/10`.trim()
-                : false}
-            >
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-1.5">
-                  <Chip active={videoCameraMove === 'auto'} onClick={() => setVideoCameraMove('auto')}>{locale === 'en' ? 'Auto' : locale === 'ru' ? 'Авто' : 'ავტო'}</Chip>
-                  <Chip active={videoCameraMove === 'pan_left'} onClick={() => setVideoCameraMove('pan_left')}>← {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
-                  <Chip active={videoCameraMove === 'pan_right'} onClick={() => setVideoCameraMove('pan_right')}>→ {locale === 'en' ? 'Pan' : locale === 'ru' ? 'Пан' : 'პან'}</Chip>
-                  <Chip active={videoCameraMove === 'zoom_in'} onClick={() => setVideoCameraMove('zoom_in')}>＋ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
-                  <Chip active={videoCameraMove === 'zoom_out'} onClick={() => setVideoCameraMove('zoom_out')}>－ {locale === 'en' ? 'Zoom' : locale === 'ru' ? 'Зум' : 'ზუმი'}</Chip>
-                  <Chip active={videoCameraMove === 'tilt_up'} onClick={() => setVideoCameraMove('tilt_up')}>↑ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
-                  <Chip active={videoCameraMove === 'tilt_down'} onClick={() => setVideoCameraMove('tilt_down')}>↓ {locale === 'en' ? 'Tilt' : locale === 'ru' ? 'Наклон' : 'დახრა'}</Chip>
-                </div>
-                <label className="flex items-center gap-2 pt-0.5">
-                  <span className="whitespace-nowrap text-[11px] text-app-muted">{locale === 'en' ? 'Motion' : locale === 'ru' ? 'Движение' : 'მოძრაობა'}</span>
-                  <input type="range" min={1} max={10} step={1} value={videoMotionIntensity} onChange={(e) => setVideoMotionIntensity(Number(e.target.value))} className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="motion intensity" />
-                  <span className="w-9 text-right text-[10.5px] tabular-nums text-app-text">{videoMotionIntensity}/10</span>
-                </label>
-              </div>
-            </Section>
+            {/* GOOGLE VEO — scenes & camera, identity, Veo's own sound, advanced. Every control maps to a field of the Veo
+                request or to the edit (docs/VEO_ENGINE.md §2): the camera is compiled into each clip's prompt, the joins
+                are made by the assembler. Zoom / Slide joins and the engine badge are gone — Veo is the only engine and
+                those joins do not exist in its pipeline. */}
+            <VeoParametersPanel plan={veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
+              sceneTexts={scenePrompts} onTransitionAll={setVideoTransition} />
             </>)}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
@@ -9049,7 +9084,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // don't need (or want to pay for) the remaining preview frames.
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
             const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
-            const sceneFrames = frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
+            // REFERENCE MODE — the photos ride as Veo asset references and Veo composes every scene itself, so the
+            // board's frames are only the plan: sending them would make each clip animate FROM a frame (Veo cannot
+            // take a first frame and references together) and would drop the refs below.
+            const referenceMode = veoPlan.referenceMode === 'reference';
+            const sceneFrames = !referenceMode && frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
             const sb = storyboard;
             setStoryboard(null);
             // Thread the (possibly EDITED) per-scene descriptions into the render: an
@@ -9062,7 +9101,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec);
+            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
