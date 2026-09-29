@@ -56,13 +56,27 @@ describe('estimate', () => {
   test('POST /estimate/<endpoint> with the generation body and the documented Authorization header', async () => {
     const { client, calls } = make([{ status: 200, body: { credits: '1.500', usd: '0.094' }, corr: 'corr-1' }]);
     const r = await client.estimate('higgsfield-ai/soul/v2/standard', { prompt: 'x' });
-    expect(r).toEqual({ usd: 0.094, providerCredits: 1.5, correlationId: 'corr-1' });
+    expect(r).toEqual({ usd: 0.094, providerCredits: 1.5, listUsd: 0.094, pricingDescription: null, correlationId: 'corr-1' });
     expect(calls[0]).toMatchObject({
       url: 'https://api.higgsfield.ai/estimate/higgsfield-ai/soul/v2/standard',
       method: 'POST',
       body: { prompt: 'x' },
     });
     expect(calls[0]!.headers.Authorization).toBe(AUTH);
+  });
+
+  test('a discount is reported: usd is what is charged, listUsd what it would have been', async () => {
+    // Verified 2026-09-29 on Kling 3 std 5 s with sound.
+    const { client } = make([{ status: 200, body: { type: 'estimate', credits: '5.544', usd: '0.347', discount: { percentage: '45.00', credits: '4.536', usd: '0.284' } } }]);
+    await expect(client.estimate('kling-video/v3.0/std/text-to-video', {})).resolves.toMatchObject({ usd: 0.347, listUsd: 0.631 });
+  });
+
+  test('a token-priced model answers with a DESCRIPTION — no number, the text is passed on', async () => {
+    const text = 'For 16:9 video without video input, your request costs roughly $0.2056 per second of generated video at 480p, $0.4622 at 720p, and $1.1372 at 1080p.';
+    const { client } = make([{ status: 200, body: { type: 'description', pricing_description: text } }]);
+    await expect(client.estimate('bytedance/seedance-2.5/text-to-video', {})).resolves.toEqual({
+      usd: null, providerCredits: null, listUsd: null, pricingDescription: text, correlationId: null,
+    });
   });
 
   test('estimates are retried on 5xx (no side effect at the provider)', async () => {

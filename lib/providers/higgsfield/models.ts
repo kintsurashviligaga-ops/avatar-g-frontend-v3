@@ -81,17 +81,20 @@ const seedanceCommon = {
 /** Seedance 2.5 · text→video (additionalProperties: false). */
 export const seedanceT2vInput = z.object({ prompt, ...seedanceCommon }).strict();
 
-/** Seedance 2.5 · reference→video — at least one reference array; our cap is MAX_REFS per kind. */
+/**
+ * Seedance 2.5 · reference→video — at least one reference array; our cap is MAX_REFS per kind.
+ * ⚠️ No `video_urls` (yet): Seedance bills the INPUT video's duration too, which cannot be known before fetching
+ * it, so a request with video references could not be priced before it is charged (tokenPricing.ts).
+ */
 export const seedanceR2vInput = z
   .object({
     prompt: prompt.optional(),
     image_urls: z.array(mediaUrl).min(1).max(MAX_REFS).optional(),
-    video_urls: z.array(mediaUrl).min(1).max(MAX_REFS).optional(),
     audio_urls: z.array(mediaUrl).min(1).max(MAX_REFS).optional(),
     ...seedanceCommon,
   })
   .strict()
-  .refine((v) => Boolean(v.image_urls?.length || v.video_urls?.length || v.audio_urls?.length), {
+  .refine((v) => Boolean(v.image_urls?.length || v.audio_urls?.length), {
     message: 'at least one reference is required',
     path: ['image_urls'],
   });

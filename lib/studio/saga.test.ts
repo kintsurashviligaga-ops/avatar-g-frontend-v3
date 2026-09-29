@@ -99,7 +99,7 @@ function countingSemaphore(limit = 4): Semaphore & { held: Set<string> } {
   };
 }
 
-type Script = { usd?: number; submit?: () => Promise<{ requestId: string; status: ProviderStatus }>; status?: ProviderStatus; outputs?: string[]; cancel?: boolean; estimateError?: ProviderError };
+type Script = { usd?: number; describe?: string; submit?: () => Promise<{ requestId: string; status: ProviderStatus }>; status?: ProviderStatus; outputs?: string[]; cancel?: boolean; estimateError?: ProviderError };
 
 function fakeProvider(script: Script = {}) {
   const calls = { estimate: 0, submit: 0, status: 0, cancel: 0, endpoints: [] as string[] };
@@ -108,7 +108,9 @@ function fakeProvider(script: Script = {}) {
     async estimate(endpoint) {
       calls.estimate++;
       if (script.estimateError) throw script.estimateError;
-      return { usd: endpoint.includes('/pro/') ? (script.usd ?? 0.4) * 2 : script.usd ?? 0.4, providerCredits: 6, correlationId: 'c-est' };
+      if (script.describe !== undefined) return { usd: null, providerCredits: null, listUsd: null, pricingDescription: script.describe, correlationId: 'c-est' };
+      const usd = endpoint.includes('/pro/') ? (script.usd ?? 0.4) * 2 : script.usd ?? 0.4;
+      return { usd, providerCredits: 6, listUsd: usd, pricingDescription: null, correlationId: 'c-est' };
     },
     async submit(endpoint) {
       calls.submit++;
@@ -198,6 +200,31 @@ describe('no money moves without a confirmed price', () => {
     const { saga, calls } = setup();
     expect(await saga.create({ userId: USER, modelId: 'hf/nope', params: {}, confirmedGel: 1 })).toMatchObject({ ok: false, code: 'model_unavailable' });
     expect(calls.estimate).toBe(0);
+  });
+});
+
+/* ─── token-priced models (the provider only describes the price) ──────────────────────────── */
+
+describe('models the provider only DESCRIBES', () => {
+  const LIVE = 'For 16:9 video without video input, your request costs roughly $0.2056 per second of generated video at 480p, $0.4622 at 720p, and $1.1372 at 1080p. Each 1,000 video tokens costs $0.0214 at 480p or 720p and $0.0234 at 1080p.';
+
+  test('Seedance is priced locally from the description — and charged exactly that', async () => {
+    const { saga, ledger } = setup({ describe: LIVE });
+    const params = { prompt: 'ზღვა', duration: 5, resolution: '720p', aspect_ratio: '16:9' };
+    const q = await saga.quote('hf/seedance-2.5-t2v', params);
+    // $2.3112 × 2.7 × 1.35 = 8.424 ₾ → 85 credits → 8.50 ₾
+    expect(q.ok && q.price).toMatchObject({ credits: 85, gel: 8.5 });
+    const r = await saga.create({ userId: USER, modelId: 'hf/seedance-2.5-t2v', params, confirmedGel: 8.5 });
+    expect(r.ok).toBe(true);
+    expect(ledger.entries[0]!.delta).toBe(-85);
+  });
+
+  test('a described model with NO local pricing is refused — nothing is charged without a price', async () => {
+    const { saga, alerts, ledger } = setup({ describe: 'priced by magic' });
+    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
+    expect(r).toMatchObject({ ok: false, code: 'provider_unavailable' });
+    expect(alerts).toContain('hf_unpriced_model');
+    expect(ledger.entries).toEqual([]);
   });
 });
 

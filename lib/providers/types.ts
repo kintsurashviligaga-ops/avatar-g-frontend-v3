@@ -34,11 +34,24 @@ export function isProviderStatus(v: unknown): v is ProviderStatus {
   return v === 'queued' || v === 'in_progress' || v === 'completed' || v === 'failed' || v === 'nsfw' || v === 'canceled';
 }
 
-/** A pre-generation price quote in the provider's own units. */
+/**
+ * A pre-generation price quote in the provider's own units.
+ *
+ * ⚠️ NOT EVERY MODEL GETS A NUMBER. Token-priced models (Seedance 2.5, verified 2026-09-29) answer the estimate
+ * with `{type: "description", pricing_description: "…roughly $0.4622 per second at 720p…"}` — prose, no amount.
+ * Then `usd` is null and `pricingDescription` carries the text; the registry's own `priceUsd` computes the price
+ * (lib/providers/higgsfield/tokenPricing.ts). A model that is described but not locally priceable is refused:
+ * nothing is charged without a price the user has seen (D5).
+ */
 export interface ProviderEstimate {
-  /** The provider's credits (Higgsfield returns them as a decimal string). */
-  providerCredits: number;
-  usd: number;
+  /** The provider's credits (Higgsfield returns them as a decimal string); null when only described. */
+  providerCredits: number | null;
+  /** What this request will actually cost us, AFTER any provider discount; null when only described. */
+  usd: number | null;
+  /** Undiscounted cost (usd + the discount the provider reports), for margin reporting; null if unknown. */
+  listUsd: number | null;
+  /** The provider's pricing prose when it gives no number. */
+  pricingDescription: string | null;
   correlationId: string | null;
 }
 
