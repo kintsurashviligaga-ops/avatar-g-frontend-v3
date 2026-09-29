@@ -2,8 +2,9 @@
  * Copy a provider's finished media into OUR storage (brief D6): Higgsfield keeps outputs ≥ 7 days, so the
  * moment a job finishes every file is downloaded and re-hosted, and a user is only ever handed our URL.
  *
- * Private bucket `studio` (created on first upload by uploadBufferAndSign), signed on read — a generation is
- * the user's own until they share it. The download is SSRF-guarded and byte-capped DURING the read, even
+ * Private bucket `studio`, signed on read — a generation is the user's own until they share it. The bucket is
+ * self-provisioned on first upload (storage-adapter ensureBucket); in production it exists since 2026-09-29,
+ * created by hand when the first real run showed the self-provisioning had been failing silently. The download is SSRF-guarded and byte-capped DURING the read, even
  * though the URLs come from an authenticated webhook / status poll: a URL is still data from outside.
  */
 import 'server-only';

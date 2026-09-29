@@ -113,9 +113,15 @@ describe('the browser tab resolves to the same artwork', () => {
     expect(existsSync(join(root, 'app/[locale]/icon.tsx'))).toBe(false);
   });
 
-  it('favicon.ico and favicon.png still point at /icon', () => {
-    for (const r of ['app/favicon.ico/route.ts', 'app/favicon.png/route.ts']) {
-      expect(readFileSync(join(root, r), 'utf8')).toContain("'/icon'");
-    }
+  it('favicon.ico and favicon.png redirect to files that exist (not /icon — that 404ed via /ka/icon)', () => {
+    // /icon was the route of the generated icon.tsx; a static app/icon.png is served at /icon.png, and the locale
+    // middleware rewrote the dead /icon into /ka/icon → 404 (measured in production, 2026-09-29).
+    const ico = readFileSync(join(root, 'app/favicon.ico/route.ts'), 'utf8');
+    const png = readFileSync(join(root, 'app/favicon.png/route.ts'), 'utf8');
+    expect(ico).toContain("'/icons/favicon.ico'");
+    expect(existsSync(join(root, 'public/icons/favicon.ico'))).toBe(true);
+    expect(png).toContain("'/icon.png'");
+    expect(existsSync(join(root, 'app/icon.png'))).toBe(true);
+    for (const src of [ico, png]) expect(src).not.toContain("'/icon'");
   });
 });
