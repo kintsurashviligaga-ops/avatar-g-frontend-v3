@@ -7,6 +7,10 @@
  * There are no favicons: fetching one per source would tell a third-party favicon service which pages the
  * user's answer cited, and the chips have to read on phones without them anyway.
  *
+ * Gemini's source chips: a filled pill on the elevated surface, no outline, 13 px, domain first. There is no
+ * index number — the reply text carries no citation markers for it to match. On touch screens a chip is 44 px
+ * tall (the tap-target floor); with a mouse it is Gemini's 32 px.
+ *
  * ⚠️ GOOGLE GROUNDING LINKS ARE REDIRECTS. The Gemini API returns every source as a
  * `vertexaisearch.cloud.google.com/grounding-api-redirect/…` URL and puts the real site in the title
  * (e.g. "bbc.com"). Taking the domain from the URL would label every chip "vertexaisearch.cloud.google.com".
@@ -98,19 +102,18 @@ function SourcesChipsImpl({ sources, locale = 'ka', max = 6, className }: Source
   const hidden = items.length - shown.length;
 
   return (
-    <nav aria-label={labels.sources} className={`mt-2 flex flex-wrap items-center gap-1.5 ${className ?? ''}`} data-sources="">
-      <span className="mr-0.5 text-[11px] font-medium text-app-muted">{labels.sources}</span>
-      {shown.map((s, i) => (
+    <nav aria-label={labels.sources} className={`mt-2 flex flex-wrap items-center gap-2 ${className ?? ''}`} data-sources="">
+      <span className="mr-0.5 text-[13px] font-medium text-app-muted">{labels.sources}</span>
+      {shown.map((s) => (
         <a
           key={s.href}
           href={s.href}
           target="_blank"
           rel="noopener noreferrer nofollow"
           title={s.title ? `${s.title} · ${s.domain}` : s.domain}
-          className="inline-flex max-w-[15rem] items-center gap-1.5 rounded-full border border-app-border/15 bg-app-elevated/60 px-2.5 py-1 text-[11.5px] leading-none text-app-muted transition-colors hover:border-app-accent/40 hover:text-app-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-app-accent/60"
+          className="inline-flex h-11 max-w-[16rem] items-center gap-1.5 rounded-full bg-app-elevated px-3 text-[13px] leading-none text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8"
         >
-          <span className="text-[10px] tabular-nums text-app-muted/70">{i + 1}</span>
-          <span className="shrink-0 font-medium text-app-text/85">{s.domain}</span>
+          <span className="shrink-0 font-medium text-app-text">{s.domain}</span>
           {s.title && <span className="min-w-0 truncate">{s.title}</span>}
         </a>
       ))}
@@ -119,7 +122,7 @@ function SourcesChipsImpl({ sources, locale = 'ka', max = 6, className }: Source
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className="rounded-full px-2 py-1 text-[11.5px] font-medium text-app-muted transition-colors hover:text-app-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-app-accent/60"
+          className="inline-flex h-11 items-center rounded-full px-3 text-[13px] font-medium text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8"
         >
           {expanded ? labels.less : labels.more(hidden)}
         </button>

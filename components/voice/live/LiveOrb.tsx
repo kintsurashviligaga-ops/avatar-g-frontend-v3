@@ -2,11 +2,17 @@
 
 /**
  * LiveOrb — the Live call's one visual signal. It swells with the USER's voice while listening and with the MODEL's
- * voice while speaking, breathes while connecting, turns a slow arc while thinking, and goes still + red on error.
+ * voice while speaking, breathes while connecting, turns a slow arc while thinking, and goes still on error.
+ * LiveWaveform — the five accent bars in the control pill, driven by the same levels.
  *
- * Performance contract: one requestAnimationFrame loop that writes `transform` on three refs — no React state per
- * frame, no layout properties, nothing that re-renders the call screen 60 times a second. The loop only runs in the
- * animated states and stops entirely under prefers-reduced-motion (the state then reads from colour + the label).
+ * Performance contract: one requestAnimationFrame loop per component that writes `transform` on refs — no React state
+ * per frame, no layout properties, nothing that re-renders the call screen 60 times a second. The loops only run in
+ * the animated states and stop entirely under prefers-reduced-motion (the state then reads from the label).
+ *
+ * Look (docs/DESIGN.md §6 exception for Live): ONE hue — accent → cyan-500 → cyan-dim — and exactly ONE
+ * audio-reactive halo behind the core. ⚠️ The core used to carry `shadow-2xl` (a second glow) and its gradient ran
+ * accent → neon, which are the same colour in the dark theme: a flat disc with two glows. The depth now comes from
+ * the cyan shades of the one hue.
  *
  * ⚠️ The old Live screen animated the avatar portrait EVEN under prefers-reduced-motion ("movement is the whole
  * point of a live avatar"). This orb deliberately does not: a user who asked the OS for less motion gets a still
@@ -92,25 +98,27 @@ export interface LiveOrbProps {
   className?: string;
 }
 
+/** One hue at every live state; only idle (grey) and error (red) leave it. */
+const LIVE_TONE = 'from-app-accent via-cyan-500 to-cyan-dim';
 const CORE_TONE: Record<LiveOrbState, string> = {
   idle: 'from-app-muted/40 to-app-muted/20',
-  connecting: 'from-app-accent/50 to-app-neon/30',
-  listening: 'from-app-accent to-app-neon/70',
-  thinking: 'from-app-accent/70 to-app-neon/50',
-  speaking: 'from-app-neon to-app-accent',
+  connecting: 'from-app-accent/70 via-cyan-500/60 to-cyan-dim/70',
+  listening: LIVE_TONE,
+  thinking: LIVE_TONE,
+  speaking: LIVE_TONE,
   error: 'from-app-danger/70 to-app-danger/40',
 };
 
 const HALO_TONE: Record<LiveOrbState, string> = {
-  idle: 'bg-app-muted/10',
-  connecting: 'bg-app-accent/15',
-  listening: 'bg-app-accent/25',
+  idle: 'bg-transparent',
+  connecting: 'bg-app-accent/10',
+  listening: 'bg-app-accent/20',
   thinking: 'bg-app-accent/20',
-  speaking: 'bg-app-neon/30',
-  error: 'bg-app-danger/20',
+  speaking: 'bg-app-accent/20',
+  error: 'bg-app-danger/10',
 };
 
-export default function LiveOrb({ state, getLevels, size = 184, imageUrl, label, className = '' }: LiveOrbProps) {
+export default function LiveOrb({ state, getLevels, size = 208, imageUrl, label, className = '' }: LiveOrbProps) {
   const haloRef = useRef<HTMLDivElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
   const coreRef = useRef<HTMLDivElement | null>(null);
@@ -167,11 +175,11 @@ export default function LiveOrb({ state, getLevels, size = 184, imageUrl, label,
       className={`relative shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
-      {/* Halo: blurred glow that breathes with the voice. */}
+      {/* The one halo: a blurred disc of the accent that breathes with the voice. */}
       <div
         ref={haloRef}
         aria-hidden
-        className={`absolute inset-0 rounded-full blur-2xl transition-colors duration-500 ${HALO_TONE[state]}`}
+        className={`absolute inset-0 rounded-full blur-3xl transition-colors duration-300 ${HALO_TONE[state]}`}
         style={{ willChange: animated ? 'transform' : undefined }}
       />
       {/* Arc: a quarter ring that turns while connecting / thinking. */}
@@ -181,20 +189,88 @@ export default function LiveOrb({ state, getLevels, size = 184, imageUrl, label,
         className={`absolute -inset-1.5 rounded-full border-2 border-transparent transition-opacity duration-300 ${showArc ? 'border-t-app-accent/80 opacity-100' : 'opacity-0'}`}
         style={{ willChange: animated && showArc ? 'transform' : undefined }}
       />
-      {/* Core: the orb itself (or the user's avatar inside it). */}
+      {/* Core: the orb itself (or the user's avatar inside it). No shadow — the halo is the only glow. */}
       <div
         ref={coreRef}
         aria-hidden
-        className={`absolute inset-[12%] overflow-hidden rounded-full bg-gradient-to-br shadow-2xl ring-1 ring-white/15 transition-colors duration-500 ${CORE_TONE[state]}`}
+        className={`absolute inset-[12%] overflow-hidden rounded-full bg-gradient-to-br ring-1 ring-white/10 transition-colors duration-300 ${CORE_TONE[state]}`}
         style={{ willChange: animated ? 'transform' : undefined }}
       >
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
         ) : (
-          <div className="h-full w-full rounded-full bg-[radial-gradient(circle_at_35%_30%,rgba(255,255,255,0.45),transparent_55%)]" />
+          <div className="h-full w-full rounded-full bg-[radial-gradient(circle_at_35%_30%,rgba(255,255,255,0.35),transparent_55%)]" />
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Waveform ──────────────────────────────────────────────────────────────────
+
+/** Resting bar heights (also the still waveform under reduced motion): a symmetric "voice" silhouette. */
+export const WAVE_REST = [0.35, 0.6, 0.9, 0.6, 0.35] as const;
+/** How much each bar follows the level: the middle moves most, like a voice meter. */
+const WAVE_GAIN = [0.45, 0.75, 1, 0.75, 0.45] as const;
+
+/** The level the bars follow: the user while listening, the model while speaking, nothing otherwise. */
+export function waveLevel(state: LiveOrbState, levels: LiveLevels): number {
+  if (state === 'listening') return Math.min(1, Math.max(0, levels.input));
+  if (state === 'speaking') return Math.min(1, Math.max(0, levels.output));
+  return 0;
+}
+
+export interface LiveWaveformProps {
+  state: LiveOrbState;
+  getLevels?: () => LiveLevels;
+  className?: string;
+}
+
+export function LiveWaveform({ state, getLevels, className = '' }: LiveWaveformProps) {
+  const barsRef = useRef<Array<HTMLSpanElement | null>>([]);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const levelsRef = useRef(getLevels);
+  levelsRef.current = getLevels;
+  const reduced = usePrefersReducedMotion();
+  const animated = !reduced && (state === 'listening' || state === 'speaking' || state === 'thinking' || state === 'connecting');
+
+  useEffect(() => {
+    const bars = barsRef.current;
+    // Same string as the initial inline style, so React and the loop never disagree about the resting shape.
+    const rest = () => bars.forEach((b, i) => { if (b) b.style.transform = `scaleY(${WAVE_REST[i] ?? 0.5})`; });
+    if (!animated || typeof requestAnimationFrame !== 'function') { rest(); return undefined; }
+    let raf = 0;
+    let eased = 0;
+    const tick = (ts: number) => {
+      let levels = ZERO;
+      try { levels = levelsRef.current?.() ?? ZERO; } catch { levels = ZERO; }
+      const target = waveLevel(stateRef.current, levels);
+      eased += (target - eased) * (target > eased ? 0.5 : 0.18);
+      bars.forEach((b, i) => {
+        if (!b) return;
+        // A slow per-bar sway keeps the bars "fluid" rather than a single bar graph jumping in unison.
+        const sway = 0.08 * Math.sin(ts / 180 + i * 1.3);
+        const h = Math.min(1, Math.max(0.12, 0.28 + sway + eased * (WAVE_GAIN[i] ?? 0.5)));
+        b.style.transform = `scaleY(${h.toFixed(3)})`;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); rest(); };
+  }, [animated]);
+
+  return (
+    <span aria-hidden data-state={state} className={`flex h-6 items-center justify-center gap-[3px] ${className}`}>
+      {WAVE_REST.map((h, i) => (
+        <span
+          key={i}
+          ref={(el) => { barsRef.current[i] = el; }}
+          className="h-full w-[3px] origin-center rounded-full bg-app-accent"
+          style={{ transform: `scaleY(${h})`, willChange: animated ? 'transform' : undefined }}
+        />
+      ))}
+    </span>
   );
 }

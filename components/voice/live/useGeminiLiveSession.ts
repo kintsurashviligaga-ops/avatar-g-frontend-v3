@@ -27,9 +27,22 @@
  *  • getUserMedia + AudioContext are async: an End tap during the permission prompt must still release the mic.
  *    Every await re-checks a generation counter and releases what it acquired (media-capture reentrancy), and a
  *    second start() while a call is live is a no-op.
- *  • AudioContexts are created synchronously in start() — inside the gesture that opened the call. A context
- *    created after the mint's await can come up 'suspended' (autoplay policy), and a suspended graph captures
- *    nothing: the call would connect and hear silence.
+ *  • ⚠️ "INSIDE THE GESTURE" WAS NOT TRUE. ChatChrome loads this screen with dynamic() and start() runs in a mount
+ *    effect, after the tap's activation is spent — on iOS the contexts stayed 'suspended' and the call connected in
+ *    silence. The Live button now primes the playback context + the mic inside its click (lib/voice/livePrime) and
+ *    start() adopts them; Retry creates its context inside its own tap. A context that still will not run shows a
+ *    "tap to start audio" control (`audioBlocked` / `resumeAudio`) instead of a silent call.
+ *  • ⚠️ EVERY MIC FAILURE WAS "mic_unavailable" and the DOMException was thrown away — a device held by Zoom, a PC
+ *    with no mic and an in-app browser all read „მიკროფონი ვერ ჩაირთო“ under a „კავშირი შეწყდა“ headline, with one
+ *    attempt and no retry. The mic now goes through lib/voice/micAcquire.ts (release other holders, constraint
+ *    ladder, busy back-off, explicit device), is awaited BEFORE the socket opens (a call that cannot hear never
+ *    connects), maps to a specific code, keeps `errorDetail` {name, message} for the screen and reports a
+ *    whitelisted failure to lib/voice/liveTelemetry.ts.
+ *  • The status said 'listening' while getUserMedia was still pending. It stays 'connecting' until the mic AND
+ *    setupComplete both exist, and a track that ends mid-call (Bluetooth drop, a phone call) is re-acquired once
+ *    before the call fails as `mic_lost` — it no longer sits on "listening" hearing nothing.
+ *  • The capture worklet had no outputs and was never connected; WebKit may never pull such a node, so the user
+ *    was never heard. It now runs worklet → zero gain → destination (the dictation recorder's pattern).
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 
@@ -42,6 +55,10 @@ import {
   type LiveServerEvent,
   type LiveTool,
 } from '@/lib/voice/geminiLive';
+import { takePrimed as takePrimedLive, disposePrimed, type PrimedLive } from '@/lib/voice/livePrime';
+import { reportLiveFailure, type LiveFailureContext } from '@/lib/voice/liveTelemetry';
+import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResult } from '@/lib/voice/micAcquire';
+import { requestMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
 import { liveVoicePersona } from '@/lib/voice/voicePrompt';
@@ -75,6 +92,17 @@ const MAX_FINAL_CAPTIONS = 40;
 const WORKLET_URL = '/worklets/pcm-capture-processor.js';
 const WORKLET_NAME = 'pcm-capture-processor';
 const BARGE_CFG = bargeConfig(DEFAULT_VAD_CONFIG);
+/**
+ * A token older than this when the mic finally arrives is re-minted before the socket opens: the token's new-session
+ * window is ~2 min, and a permission prompt the user reads slowly can outlast it.
+ */
+export const LIVE_TOKEN_FRESH_MS = 90_000;
+/** Retry after `mic_busy` waits this long (after asking other holders to release) before asking for the device. */
+export const LIVE_MIC_BUSY_RETRY_PAUSE_MS = 500;
+/** How long a freshly created 16 kHz capture context may take to reach 'running' before capture falls back. */
+const CAPTURE_START_WAIT_MS = 300;
+/** A playback context still 'suspended' this long after resume() had no user activation: offer "tap to start". */
+const AUDIO_BLOCK_CHECK_MS = 1200;
 
 const LANGUAGE_CODES: Record<'ka' | 'en' | 'ru', string> = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' };
 
@@ -84,6 +112,12 @@ export type LiveStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'spe
 
 export type LiveErrorCode =
   | 'mic_denied'
+  | 'mic_system_denied'
+  | 'mic_not_found'
+  | 'mic_busy'
+  | 'mic_in_app'
+  | 'mic_insecure'
+  | 'mic_lost'
   | 'mic_unavailable'
   | 'auth'
   | 'rate_limited'
@@ -111,15 +145,29 @@ export interface LiveTurn {
 
 export interface LiveUsage { totalTokens?: number }
 export interface LiveLevels { input: number; output: number }
+/** What the browser said when the mic failed — shown small on the error screen, sent with the failure report. */
+export interface LiveErrorDetail { name: string; message: string }
 
 /** Injection points (tests; exotic hosts). Anything left out uses the browser API. */
 export interface LiveSessionDeps {
   fetch: typeof fetch;
-  getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+  /** null = the browser has no getUserMedia (in-app browser, insecure page, very old engine). */
+  getUserMedia: ((constraints: MediaStreamConstraints) => Promise<MediaStream>) | null;
+  enumerateDevices: (() => Promise<MediaDeviceInfo[]>) | null;
+  /** navigator.permissions.query({name:'microphone'}) → state; null where unsupported. */
+  queryMicPermission: (() => Promise<PermissionState>) | null;
+  isSecureContext: boolean;
+  userAgent: string;
+  /** Busy-mic back-off and the Retry pause. */
+  sleep: (ms: number) => Promise<void>;
   createAudioContext: (opts?: AudioContextOptions) => AudioContext;
   createWorkletNode: (ctx: BaseAudioContext, name: string, opts: AudioWorkletNodeOptions) => AudioWorkletNode;
-  /** Monotonic ms clock for the VAD (performance.now()). */
+  /** Monotonic ms clock for the VAD and the token age (performance.now()). */
   now: () => number;
+  /** The context + mic the Live button primed inside its tap (lib/voice/livePrime). */
+  takePrimed: () => PrimedLive | null;
+  /** Failure telemetry (lib/voice/liveTelemetry). */
+  report: (code: LiveErrorCode, detail: LiveErrorDetail | null, context: LiveFailureContext) => void;
 }
 
 export interface UseGeminiLiveSessionOptions {
@@ -154,6 +202,12 @@ export interface UseGeminiLiveSessionOptions {
 export interface UseGeminiLiveSessionResult {
   status: LiveStatus;
   error: LiveErrorCode | null;
+  /** The browser's own words for a mic failure (e.g. {name:'NotReadableError', …}); null otherwise. */
+  errorDetail: LiveErrorDetail | null;
+  /** The playback context could not start without a user gesture: show a "tap to start audio" control. */
+  audioBlocked: boolean;
+  /** Call from a click: resumes the call's audio contexts inside that gesture. */
+  resumeAudio: () => void;
   captions: LiveCaption[];
   muted: boolean;
   /** Running on the legacy wire after a failed parity handshake: no captions, no resumption. */
@@ -312,9 +366,53 @@ function stopTracks(stream: MediaStream | null | undefined): void {
   try { stream?.getTracks().forEach((t) => { try { t.stop(); } catch { /* noop */ } }); } catch { /* noop */ }
 }
 
-function micErrorCode(e: unknown): LiveErrorCode {
-  const name = isObj(e) && typeof e.name === 'string' ? e.name : '';
-  return name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError' ? 'mic_denied' : 'mic_unavailable';
+/** Mic codes get the microphone error screen (never "connection dropped"). */
+export function isMicErrorCode(code: LiveErrorCode | null | undefined): boolean {
+  return typeof code === 'string' && code.startsWith('mic_');
+}
+
+/** micAcquire's failure kind → the code the Live screen explains. */
+export function micErrorCodeFor(kind: MicFailure): LiveErrorCode {
+  switch (kind) {
+    case 'denied': return 'mic_denied';
+    case 'system_denied': return 'mic_system_denied';
+    case 'not_found': return 'mic_not_found';
+    case 'busy':
+    case 'timeout': return 'mic_busy';
+    case 'in_app': return 'mic_in_app';
+    case 'insecure': return 'mic_insecure';
+    default: return 'mic_unavailable'; // no_api, constraint, unknown
+  }
+}
+
+/** Codes worth a telemetry report: the ones only the user's device can explain. */
+const REPORTED_CODES: ReadonlySet<LiveErrorCode> = new Set<LiveErrorCode>([
+  'mic_denied', 'mic_system_denied', 'mic_not_found', 'mic_busy', 'mic_in_app', 'mic_insecure', 'mic_lost',
+  'mic_unavailable', 'unsupported', 'setup_failed',
+]);
+
+function closeCtx(ctx: AudioContext | null | undefined): void {
+  if (!ctx) return;
+  try { void ctx.close().catch(() => {}); } catch { /* noop */ }
+}
+
+const ctxState = (ctx: AudioContext | null | undefined): string | undefined => {
+  const s = (ctx as { state?: unknown } | null | undefined)?.state;
+  return typeof s === 'string' ? s : undefined;
+};
+
+/**
+ * resume() and wait (bounded) for the context to run. Engines that do not report a state are trusted. Chrome's
+ * resume() stays PENDING without user activation, hence the timeout rather than a bare await.
+ */
+async function startsRunning(ctx: AudioContext, ms: number): Promise<boolean> {
+  if (ctxState(ctx) === undefined || ctxState(ctx) === 'running') return true;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    const done = () => { clearTimeout(timer); resolve(); };
+    try { ctx.resume().then(done, done); } catch { done(); }
+  });
+  return ctxState(ctx) === 'running';
 }
 
 function toBase64(pcm: Int16Array): string {
@@ -328,15 +426,40 @@ function rmsOf(f: Float32Array): number {
 }
 
 function defaultDeps(): LiveSessionDeps {
+  // ⚠️ The old default was `navigator.mediaDevices.getUserMedia(c)` unguarded: an in-app browser without
+  // mediaDevices threw a synchronous TypeError that surfaced as a nameless "mic_unavailable". Absent = null now, and
+  // the mic preflight names the reason (mic_in_app / mic_insecure).
+  const mic = browserMicDeps(() => requestMicRelease('live'));
   return {
     fetch: (input, init) => fetch(input, init),
-    getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
+    getUserMedia: mic.getUserMedia,
+    enumerateDevices: mic.enumerateDevices,
+    queryMicPermission: mic.queryPermission,
+    isSecureContext: mic.isSecureContext,
+    userAgent: mic.userAgent,
+    sleep: mic.sleep,
     createAudioContext: (opts) => {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       return opts ? new AC(opts) : new AC();
     },
     createWorkletNode: (ctx, name, opts) => new AudioWorkletNode(ctx, name, opts),
     now: () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+    takePrimed: () => takePrimedLive(),
+    report: (code, detail, context) => reportLiveFailure(code, detail, context),
+  };
+}
+
+/** The hook's deps, seen through micAcquire's interface. */
+function micDepsOf(d: LiveSessionDeps): MicDeps {
+  return {
+    getUserMedia: d.getUserMedia,
+    enumerateDevices: d.enumerateDevices,
+    queryPermission: d.queryMicPermission,
+    isSecureContext: d.isSecureContext,
+    userAgent: d.userAgent,
+    sleep: d.sleep,
+    now: d.now,
+    requestRelease: () => requestMicRelease('live'),
   };
 }
 
@@ -353,6 +476,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   const [status, setStatus] = useState<LiveStatus>('idle');
   const [error, setError] = useState<LiveErrorCode | null>(null);
+  const [errorDetail, setErrorDetail] = useState<LiveErrorDetail | null>(null);
+  const [audioBlocked, setAudioBlockedState] = useState(false);
   const [captions, setCaptions] = useState<LiveCaption[]>([]);
   const [muted, setMutedState] = useState(false);
   const [degraded, setDegraded] = useState(false);
@@ -361,16 +486,32 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const genRef = useRef(0); // bumped by every teardown: an async continuation from an older call bails out
   const activeRef = useRef(false); // a call is running (reentrancy guard)
   const statusRef = useRef<LiveStatus>('idle');
+  const errorRef = useRef<LiveErrorCode | null>(null);
   // Audio graph
   const playCtxRef = useRef<AudioContext | null>(null);
   const capCtxRef = useRef<AudioContext | null>(null); // the 16 kHz capture context (null → capture shares playCtx)
+  const capFallbackRef = useRef(false); // this call already fell back to capturing on playCtx; do not retry the 16 kHz one
+  const workletCtxsRef = useRef<WeakSet<BaseAudioContext>>(new WeakSet()); // contexts whose worklet module is loaded
+  const retryCtxRef = useRef<AudioContext | null>(null); // created inside the Retry tap, adopted by the next start()
   const gainRef = useRef<GainNode | null>(null);
   const outAnalyserRef = useRef<AnalyserNode | null>(null);
   const outBufRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const micRef = useRef<MediaStream | null>(null);
+  const micEndedCleanupRef = useRef<(() => void) | null>(null);
+  const micRecoveredRef = useRef(false); // the one mid-call re-acquire has been spent
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const captureNodeRef = useRef<AudioWorkletNode | ScriptProcessorNode | null>(null);
+  const captureSinkRef = useRef<GainNode | null>(null);
   const downsampleRef = useRef<((input: Int16Array) => Int16Array) | null>(null);
+  const audioBlockedRef = useRef(false);
+  const audioWatchCleanupRef = useRef<(() => void) | null>(null);
+  // Telemetry for this open
+  const lastMicRef = useRef<MicResult | null>(null);
+  const primedRef = useRef(false);
+  const mintsRef = useRef(0);
+  const startedAtRef = useRef(0);
+  const micResultMsRef = useRef<number | undefined>(undefined);
+  const mintedAtRef = useRef(0);
   // Playback
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const playCursorRef = useRef(0);
@@ -410,6 +551,12 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const setStatusSafe = useCallback((s: LiveStatus) => {
     statusRef.current = s;
     setStatus(s);
+  }, []);
+
+  const setAudioBlocked = useCallback((v: boolean) => {
+    if (audioBlockedRef.current === v) return;
+    audioBlockedRef.current = v;
+    setAudioBlockedState(v);
   }, []);
 
   const clearThinkingTimer = useCallback(() => {
@@ -525,17 +672,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   }, [clearThinkingTimer, flushPlayback, flushTurn, isPlaying, setStatusSafe]);
 
   // ── Teardown ──
-  const teardown = useCallback(() => {
-    genRef.current += 1;
-    activeRef.current = false;
-    reconnectingRef.current = false;
-    clearThinkingTimer();
-    clearGoAwayTimer();
-    clearHandshakeTimer();
-    const session = sessionRef.current;
-    sessionRef.current = null;
-    readyRef.current = false;
-    try { session?.close(); } catch { /* noop */ }
+  /** Disconnect the capture chain (source → worklet → silent sink) but keep the contexts: a re-acquired mic reuses them. */
+  const detachCapture = useCallback(() => {
     const node = captureNodeRef.current;
     captureNodeRef.current = null;
     if (node) {
@@ -547,43 +685,96 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       }
       try { node.disconnect(); } catch { /* noop */ }
     }
+    try { captureSinkRef.current?.disconnect(); } catch { /* noop */ }
+    captureSinkRef.current = null;
     try { sourceRef.current?.disconnect(); } catch { /* noop */ }
     sourceRef.current = null;
-    stopTracks(micRef.current);
+  }, []);
+
+  const detachMic = useCallback(() => {
+    try { micEndedCleanupRef.current?.(); } catch { /* noop */ }
+    micEndedCleanupRef.current = null;
+    const mic = micRef.current;
     micRef.current = null;
+    stopTracks(mic);
+  }, []);
+
+  const teardown = useCallback(() => {
+    genRef.current += 1;
+    activeRef.current = false;
+    reconnectingRef.current = false;
+    clearThinkingTimer();
+    clearGoAwayTimer();
+    clearHandshakeTimer();
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    readyRef.current = false;
+    try { session?.close(); } catch { /* noop */ }
+    detachCapture();
+    detachMic();
     flushPlayback();
     try { gainRef.current?.disconnect(); } catch { /* noop */ }
     try { outAnalyserRef.current?.disconnect(); } catch { /* noop */ }
     gainRef.current = null;
     outAnalyserRef.current = null;
+    try { audioWatchCleanupRef.current?.(); } catch { /* noop */ }
+    audioWatchCleanupRef.current = null;
+    setAudioBlocked(false);
     const cap = capCtxRef.current;
     const play = playCtxRef.current;
+    const retryCtx = retryCtxRef.current;
     capCtxRef.current = null;
     playCtxRef.current = null;
-    if (cap && cap !== play) { try { void cap.close().catch(() => {}); } catch { /* noop */ } }
-    if (play) { try { void play.close().catch(() => {}); } catch { /* noop */ } }
+    retryCtxRef.current = null;
+    if (cap && cap !== play) closeCtx(cap);
+    closeCtx(play);
+    closeCtx(retryCtx);
     downsampleRef.current = null;
     pendingMicRef.current = [];
     pendingSamplesRef.current = 0;
     inputLevelRef.current = 0;
     dropModelAudioRef.current = false;
     modelTurnOpenRef.current = false;
-  }, [clearGoAwayTimer, clearHandshakeTimer, clearThinkingTimer, flushPlayback]);
+  }, [clearGoAwayTimer, clearHandshakeTimer, clearThinkingTimer, detachCapture, detachMic, flushPlayback, setAudioBlocked]);
 
-  const fail = useCallback((code: LiveErrorCode) => {
+  const fail = useCallback((code: LiveErrorCode, detail: LiveErrorDetail | null = null) => {
+    // Read the failure's circumstances BEFORE teardown closes the contexts.
+    const report = REPORTED_CODES.has(code);
+    const mic = lastMicRef.current;
+    const context: LiveFailureContext | null = report
+      ? {
+        ...(mic ? { attempts: mic.attempts, permission: mic.permission } : {}),
+        ...(mic?.audioInputs !== undefined ? { audioInputs: mic.audioInputs } : {}),
+        locale: optsRef.current.locale || 'ka',
+        primed: primedRef.current,
+        ...(ctxState(playCtxRef.current) ? { ctxState: ctxState(playCtxRef.current) } : {}),
+        mints: mintsRef.current,
+        ...(micResultMsRef.current !== undefined ? { msToMicResult: micResultMsRef.current } : {}),
+        degraded: degradedRef.current,
+      }
+      : null;
     flushTurn(true); // keep what was said so far in the thread
     teardown();
+    errorRef.current = code;
     setError(code);
+    setErrorDetail(detail);
     setStatusSafe('error');
-  }, [flushTurn, setStatusSafe, teardown]);
+    if (context) {
+      try { deps().report(code, detail, context); } catch { /* telemetry never breaks the call screen */ }
+    }
+  }, [deps, flushTurn, setStatusSafe, teardown]);
 
   // ── Token mint ──
   // `handle` = the resumption handle this connection will open with (undefined on a fresh call). The token LOCKS the
   // server-built setup, so everything the session must run with — transcription, compression, the handle — has to be
   // in the mint request; a field the browser adds afterwards is not guaranteed to survive the lock.
+  // ⚠️ A mint from an ENDED call used to write its token into the refs whenever it landed — after a quick voice switch
+  // (stop + start) the old voice's late token could overwrite the new one. Results only land for the call that asked.
   const mint = useCallback(async (handle?: string | null): Promise<MintResult> => {
     const o = optsRef.current;
+    const gen = genRef.current;
     const parity = o.parity !== false && !degradedRef.current;
+    mintsRef.current += 1;
     let res: Response;
     try {
       res = await deps().fetch(o.endpoint || '/api/voice/live', {
@@ -611,8 +802,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       if (res.status === 503) return { ok: false, code: 'unavailable' };
       return { ok: false, code: 'mint_failed' };
     }
+    if (gen !== genRef.current) return { ok: true }; // a later call owns the refs now; its caller bails on gen anyway
     const exp = typeof j.expiresAt === 'string' ? Date.parse(j.expiresAt) : NaN;
     tokenRef.current = { token, expiresAtMs: Number.isFinite(exp) ? exp : null };
+    mintedAtRef.current = deps().now();
     modelRef.current = typeof j.model === 'string' ? j.model : null;
     // /api/voice/live answers `setupMessage` (the frame it locked into the token); `setup` is accepted for older routes.
     serverSetupRef.current = extractServerSetup(j.setupMessage ?? j.setup);
@@ -684,10 +877,19 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     clearHandshakeTimer();
     readyRef.current = true;
     reconnectingRef.current = false;
+    const initial = phaseRef.current === 'initial';
     phaseRef.current = 'resume';
     clearGoAwayTimer();
     flushPendingMic(session);
+    errorRef.current = null;
     setError(null);
+    setErrorDetail(null);
+    // A socket is not a call that can hear: without a live mic (it is being re-acquired) the screen must not say
+    // "listening". The mic path flips the status once the capture is back.
+    if (!micRef.current) {
+      if (!isPlaying()) setStatusSafe(initial ? 'connecting' : 'reconnecting');
+      return;
+    }
     setStatusSafe(isPlaying() ? 'speaking' : 'listening');
   }, [clearGoAwayTimer, clearHandshakeTimer, flushPendingMic, isPlaying, setStatusSafe]);
 
@@ -909,7 +1111,22 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   const openCapture = useCallback(async (mic: MediaStream, gen: number): Promise<void> => {
     const d = deps();
-    let ctx = capCtxRef.current;
+    detachCapture(); // a re-acquired mic replaces the old chain on the same contexts
+    let ctx: AudioContext | null = capCtxRef.current;
+    // The 16 kHz capture context is created only NOW, with the mic live. Creating it eagerly — before getUserMedia,
+    // outside any gesture — renegotiated the output device mid capture-start (Bluetooth A2DP→HFP), and a capturing
+    // page may start audio on WebKit where an idle one may not. If it will not run, capture shares the (gesture-
+    // started) playback context and the JS downsampler does the rate conversion.
+    if (!ctx && !capFallbackRef.current) {
+      try { ctx = d.createAudioContext({ sampleRate: CAPTURE_RATE }); } catch { ctx = null; }
+      if (ctx) {
+        capCtxRef.current = ctx;
+        const running = await startsRunning(ctx, CAPTURE_START_WAIT_MS);
+        if (gen !== genRef.current || micRef.current !== mic) return; // ended / replaced meanwhile (teardown closed it)
+        if (!running) { closeCtx(ctx); capCtxRef.current = null; ctx = null; }
+      }
+      if (!ctx) capFallbackRef.current = true;
+    }
     let source: MediaStreamAudioSourceNode | null = null;
     if (ctx) {
       try {
@@ -917,8 +1134,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       } catch {
         // ⚠️ Firefox refuses to connect a mic to a context at a different sample rate — capture on the (native-rate)
         // playback context instead and downsample in JS.
-        try { void ctx.close().catch(() => {}); } catch { /* noop */ }
+        closeCtx(ctx);
         capCtxRef.current = null;
+        capFallbackRef.current = true;
         ctx = null;
       }
     }
@@ -933,12 +1151,21 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
     const worklet = (ctx as BaseAudioContext).audioWorklet;
     if (worklet && typeof worklet.addModule === 'function') {
-      await worklet.addModule(WORKLET_URL);
-      if (gen !== genRef.current) return;
+      // Loaded once per context: a re-acquired mic must not re-register the processor.
+      if (!workletCtxsRef.current.has(ctx)) {
+        await worklet.addModule(WORKLET_URL);
+        workletCtxsRef.current.add(ctx);
+      }
+      if (gen !== genRef.current || micRef.current !== mic) return;
       const node = d.createWorkletNode(ctx, WORKLET_NAME, {
         numberOfInputs: 1,
-        numberOfOutputs: 0,
+        // ⚠️ WAS numberOfOutputs: 0 AND NEVER CONNECTED. WebKit may not run process() on a node nothing pulls — the
+        // call connected and never heard the user. One output → a zero gain → the destination keeps it pulled and
+        // silent (useDictation's recorder does the same).
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
         channelCount: 1,
+        channelCountMode: 'explicit', // a stereo mic is mixed down; the processor reads channel 0 only
         processorOptions: { frameSize: Math.max(128, Math.round((rate * CHUNK_MS) / 1000)) },
       });
       node.port.onmessage = (e: MessageEvent) => {
@@ -948,8 +1175,13 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         if (!buf || typeof buf.byteLength !== 'number') return;
         ingest(new Int16Array(buf, 0, Math.floor(buf.byteLength / 2)), typeof data.rms === 'number' ? data.rms : 0);
       };
+      const sink = ctx.createGain();
+      sink.gain.value = 0;
       source.connect(node);
+      node.connect(sink);
+      sink.connect(ctx.destination);
       captureNodeRef.current = node;
+      captureSinkRef.current = sink;
       return;
     }
     // ⚠️ Engines without AudioWorklet (old iOS): ScriptProcessor is deprecated and runs on the main thread, but it
@@ -962,13 +1194,76 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     source.connect(proc);
     proc.connect(ctx.destination); // some engines only fire onaudioprocess on a connected node; its output is silent
     captureNodeRef.current = proc;
-  }, [deps, ingest]);
+  }, [deps, detachCapture, ingest]);
+
+  // ── Mic lifecycle ──
+  const onMicEndedRef = useRef<(stream: MediaStream) => void>(() => {});
+
+  const attachMic = useCallback((stream: MediaStream) => {
+    try { micEndedCleanupRef.current?.(); } catch { /* noop */ }
+    micEndedCleanupRef.current = null;
+    micRef.current = stream;
+    if (mutedRef.current) stream.getAudioTracks().forEach((t) => { t.enabled = false; });
+    // The OS can end the track under us (Bluetooth disconnect, a phone call, iOS audio interruption). Our own
+    // track.stop() never fires 'ended', so this only hears real losses.
+    const track = stream.getAudioTracks()[0] as (MediaStreamTrack & Partial<EventTarget>) | undefined;
+    if (track && typeof track.addEventListener === 'function') {
+      const onEnded = () => onMicEndedRef.current(stream);
+      track.addEventListener('ended', onEnded);
+      micEndedCleanupRef.current = () => { try { track.removeEventListener?.('ended', onEnded); } catch { /* noop */ } };
+    }
+  }, []);
+
+  onMicEndedRef.current = (stream: MediaStream) => {
+    if (!activeRef.current || micRef.current !== stream) return;
+    const gen = genRef.current;
+    detachCapture();
+    detachMic();
+    inputLevelRef.current = 0;
+    // One re-acquire per call: a device that keeps dropping is a device problem, not something to loop on.
+    if (micRecoveredRef.current) {
+      fail('mic_lost', { name: 'TrackEnded', message: 'the microphone track ended during the call' });
+      return;
+    }
+    micRecoveredRef.current = true;
+    if (!isPlaying()) setStatusSafe('reconnecting');
+    void (async () => {
+      const res = await acquireMic(micDepsOf(deps()), () => gen !== genRef.current);
+      if (gen !== genRef.current) { if (res.ok) stopTracks(res.stream); return; }
+      lastMicRef.current = res;
+      if (!res.ok) { fail('mic_lost', { name: res.name, message: res.message }); return; }
+      attachMic(res.stream);
+      try {
+        await openCapture(res.stream, gen);
+      } catch {
+        if (gen === genRef.current) fail('unsupported', { name: 'CaptureError', message: 'the capture graph could not be rebuilt' });
+        return;
+      }
+      if (gen !== genRef.current) return;
+      if (readyRef.current && (statusRef.current === 'reconnecting' || statusRef.current === 'connecting')) {
+        setStatusSafe(isPlaying() ? 'speaking' : 'listening');
+      }
+    })();
+  };
+
+  /** Track the playback context: a context that cannot start without a gesture gets a "tap to start audio" control. */
+  const watchAudio = useCallback((ctx: AudioContext, gen: number) => {
+    const check = () => { if (gen === genRef.current && activeRef.current) setAudioBlocked(ctxState(ctx) === 'suspended'); };
+    const timer = setTimeout(check, AUDIO_BLOCK_CHECK_MS);
+    const target = ctx as AudioContext & Partial<EventTarget>;
+    if (typeof target.addEventListener === 'function') target.addEventListener('statechange', check);
+    audioWatchCleanupRef.current = () => {
+      clearTimeout(timer);
+      try { target.removeEventListener?.('statechange', check); } catch { /* noop */ }
+    };
+  }, [setAudioBlocked]);
 
   // ── Public API ──
   const start = useCallback(async (): Promise<void> => {
     if (activeRef.current) return; // a call is already running or starting (double tap, double effect)
     activeRef.current = true;
     const gen = ++genRef.current;
+    const isStale = () => gen !== genRef.current;
     const d = deps();
 
     degradedRef.current = false;
@@ -986,16 +1281,36 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     setCaptions([]);
     vadRef.current = createVadState();
     graceUntilRef.current = 0;
+    capFallbackRef.current = false;
+    micRecoveredRef.current = false;
+    lastMicRef.current = null;
+    mintsRef.current = 0;
+    micResultMsRef.current = undefined;
+    startedAtRef.current = d.now();
+    errorRef.current = null;
     setError(null);
+    setErrorDetail(null);
     setStatusSafe('connecting');
 
-    // 1) Audio contexts NOW, inside the opening gesture (see the header).
-    let playCtx: AudioContext;
-    try {
-      playCtx = d.createAudioContext();
-    } catch {
-      fail('unsupported');
-      return;
+    // 0) Other in-page mic holders (dictation, the music sample recorder, the ElevenLabs voice) stop their capture
+    // BEFORE we ask for the device: Android and some Windows drivers give a second capture NotReadableError.
+    requestMicRelease('live');
+
+    // 1) Playback context: the one created inside a tap (Retry's, or the Live button's prime), else our own.
+    let primed: PrimedLive | null = null;
+    try { primed = d.takePrimed(); } catch { primed = null; }
+    primedRef.current = !!primed;
+    let playCtx: AudioContext | null = retryCtxRef.current ?? primed?.playCtx ?? null;
+    if (retryCtxRef.current && primed?.playCtx) closeCtx(primed.playCtx);
+    retryCtxRef.current = null;
+    if (!playCtx) {
+      try {
+        playCtx = d.createAudioContext();
+      } catch {
+        if (primed) disposePrimed({ ...primed, playCtx: null });
+        fail('unsupported', { name: 'AudioContextError', message: 'no AudioContext could be created' });
+        return;
+      }
     }
     playCtxRef.current = playCtx;
     const gain = playCtx.createGain();
@@ -1006,25 +1321,50 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     gainRef.current = gain;
     outAnalyserRef.current = analyser;
     outBufRef.current = new Uint8Array(analyser.fftSize);
-    try { capCtxRef.current = d.createAudioContext({ sampleRate: CAPTURE_RATE }); } catch { capCtxRef.current = null; }
     try { void playCtx.resume().catch(() => {}); } catch { /* noop */ }
-    try { void capCtxRef.current?.resume().catch(() => {}); } catch { /* noop */ }
+    watchAudio(playCtx, gen);
 
-    // 2) Mic permission and token mint in PARALLEL: startup costs max(mic, mint), not the sum.
-    let micP: Promise<MediaStream>;
-    try {
-      micP = d.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
-    } catch (e) {
-      micP = Promise.reject(e);
-    }
-    micP.catch(() => {}); // pre-attach: an early mint failure must not surface an unhandled rejection
-    const releaseMicLater = () => { void micP.then(stopTracks).catch(() => {}); };
-
+    // 2) Mic and token in PARALLEL (startup costs max(mic, mint), not the sum) — but the MIC decides first: a call
+    // that cannot hear never opens a socket, and the failure names the microphone, not the connection.
+    const micP = acquireMic(micDepsOf(d), isStale, { initial: primed?.mic ?? null });
     // Parity asks for resumption from the first frame (sessionResumption: {}), so the locked setup must carry it too.
-    const minted = await mint(optsRef.current.parity !== false ? null : undefined);
-    if (gen !== genRef.current) { releaseMicLater(); return; }
+    const parity = optsRef.current.parity !== false;
+    const firstHandle = parity ? null : undefined;
+    const mintP = mint(firstHandle);
+
+    const mic = await micP;
+    if (isStale()) { if (mic.ok) stopTracks(mic.stream); return; }
+    lastMicRef.current = mic;
+    micResultMsRef.current = Math.round(d.now() - startedAtRef.current);
+    if (!mic.ok) {
+      // The token (if it lands) is simply never used.
+      fail(micErrorCodeFor(mic.kind), { name: mic.name, message: mic.message });
+      return;
+    }
+    attachMic(mic.stream);
+
+    // 3) Capture graph. From here on, what the user says is HELD (bounded) until setupComplete.
+    try {
+      await openCapture(mic.stream, gen);
+    } catch (e) {
+      if (!isStale()) {
+        const name = isObj(e) && typeof e.name === 'string' ? e.name : 'CaptureError';
+        const message = isObj(e) && typeof e.message === 'string' ? e.message.slice(0, 200) : '';
+        fail('unsupported', { name, message });
+      }
+      return;
+    }
+    if (isStale()) return;
+
+    // 4) Token. A slow permission prompt can outlast the token's new-session window: mint again rather than open a
+    // socket Google will refuse.
+    let minted = await mintP;
+    if (isStale()) return;
+    if (minted.ok && d.now() - mintedAtRef.current > LIVE_TOKEN_FRESH_MS) {
+      minted = await mint(firstHandle);
+      if (isStale()) return;
+    }
     if (!minted.ok) {
-      releaseMicLater();
       const onUnavailable = optsRef.current.onUnavailable;
       if (minted.code === 'unavailable' && onUnavailable) {
         teardown();
@@ -1036,33 +1376,15 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       return;
     }
 
-    // 3) Open the socket right away (the mint's new-session window is ~2 min; a permission prompt can outlast it).
-    const parity = optsRef.current.parity !== false;
+    // 5) Socket.
     planRef.current = [
-      { freshToken: false, handle: parity ? null : undefined },
+      { freshToken: false, handle: firstHandle },
       // One retry: fresh token, legacy wire (the parity fields are the unverified part of the handshake).
       { freshToken: true, handle: undefined, degrade: true },
     ];
     stepRef.current = 0;
     openSession(planRef.current[0]!.handle);
-
-    // 4) Mic → capture graph.
-    let mic: MediaStream;
-    try {
-      mic = await micP;
-    } catch (e) {
-      if (gen === genRef.current) fail(micErrorCode(e));
-      return;
-    }
-    if (gen !== genRef.current) { stopTracks(mic); return; }
-    micRef.current = mic;
-    if (mutedRef.current) mic.getAudioTracks().forEach((t) => { t.enabled = false; });
-    try {
-      await openCapture(mic, gen);
-    } catch {
-      if (gen === genRef.current) fail('unsupported');
-    }
-  }, [deps, fail, mint, openCapture, openSession, setStatusSafe, teardown]);
+  }, [attachMic, deps, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
 
   const stop = useCallback(() => {
     flushTurn(true);
@@ -1071,9 +1393,32 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   }, [flushTurn, setStatusSafe, teardown]);
 
   const retry = useCallback(() => {
+    const last = errorRef.current;
     teardown();
-    void start();
-  }, [start, teardown]);
+    if (last !== 'mic_busy') { void start(); return; }
+    // A busy device re-hit at once fails the same way. Ask every holder to let go, give the device a moment — but
+    // create the playback context NOW, inside this tap, so the call still starts with working audio on iOS.
+    let ctx: AudioContext | null = null;
+    try { ctx = deps().createAudioContext(); void ctx.resume().catch(() => {}); } catch { ctx = null; }
+    retryCtxRef.current = ctx;
+    requestMicRelease('live');
+    errorRef.current = null;
+    setError(null);
+    setErrorDetail(null);
+    setStatusSafe('connecting');
+    const gen = genRef.current;
+    void deps().sleep(LIVE_MIC_BUSY_RETRY_PAUSE_MS).then(() => {
+      if (gen === genRef.current && !activeRef.current) void start();
+    });
+  }, [deps, setStatusSafe, start, teardown]);
+
+  const resumeAudio = useCallback(() => {
+    const play = playCtxRef.current;
+    const cap = capCtxRef.current;
+    const recheck = () => { if (play && playCtxRef.current === play) setAudioBlocked(ctxState(play) === 'suspended'); };
+    try { play?.resume().then(recheck, recheck); } catch { /* noop */ }
+    try { if (cap && cap !== play) void cap.resume().catch(() => {}); } catch { /* noop */ }
+  }, [setAudioBlocked]);
 
   const setMuted = useCallback((next: boolean) => {
     mutedRef.current = next;
@@ -1123,7 +1468,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     teardown();
   }, [flushTurn, teardown]);
 
-  return { status, error, captions, muted, degraded, start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, getLevels };
+  return {
+    status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
+    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, getLevels,
+  };
 }
 
 // ─── Camera ───────────────────────────────────────────────────────────────────

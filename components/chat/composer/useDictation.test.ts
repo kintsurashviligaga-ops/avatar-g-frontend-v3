@@ -19,6 +19,7 @@ import {
   type SpeechRecognitionLike,
   type UseDictationOptions,
 } from './useDictation';
+import { requestMicRelease } from '@/lib/voice/micBus';
 
 // ─── Fakes ───────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -433,5 +434,75 @@ describe('recorder path (WAV)', () => {
     expect(h.result.current.d.stopEcho).toBe(first.stopEcho);
     expect(h.result.current.d.markTyped).toBe(first.markTyped);
     expect(h.result.current.d.inputSourceRef).toBe(first.inputSourceRef);
+  });
+});
+
+// ─── Sharing the mic with Live voice (lib/voice/micBus) ────────────────────────────────────────────────────
+
+describe('mic release (Live voice opening)', () => {
+  test('Web Speech: the recognizer stops for good and what was dictated stays in the box', async () => {
+    const h = harness({ initial: 'ტექსტი' });
+    await act(async () => { await h.result.current.d.toggle(); });
+    const sr = FakeSR.instances[0]!;
+    act(() => sr.emit('გამარჯობა'));
+    act(() => requestMicRelease('live'));
+    expect(sr.stop).toHaveBeenCalled();
+    expect(sr.start).toHaveBeenCalledTimes(1); // onend did NOT restart it
+    expect(h.result.current.d.recording).toBe(false);
+    expect(h.result.current.value).toBe('ტექსტი გამარჯობა');
+  });
+
+  test('recorder: the tracks stop SYNCHRONOUSLY, then the final pass still fills the box', async () => {
+    const h = harness({ deps: { speechRecognition: () => undefined } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    expect(h.result.current.d.recording).toBe(true);
+    act(() => { requestMicRelease('live'); expect(h.track.stop).toHaveBeenCalled(); });
+    await act(async () => { await flush(); });
+    expect(h.fetchMock).toHaveBeenCalledTimes(1);
+    expect(h.result.current.value).toBe('გამარჯობა');
+    expect(h.result.current.d.recording).toBe(false);
+  });
+
+  test("its own release request ('dictation') is ignored, and an idle composer does nothing", async () => {
+    const h = harness({ deps: { speechRecognition: () => undefined } });
+    act(() => requestMicRelease('live')); // idle: no-op
+    expect(h.getUserMedia).not.toHaveBeenCalled();
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    act(() => requestMicRelease('dictation'));
+    expect(h.track.stop).not.toHaveBeenCalled();
+    expect(h.result.current.d.recording).toBe(true);
+  });
+
+  test('a release during the permission prompt drops the stream that arrives afterwards', async () => {
+    let grant!: (s: MediaStream) => void;
+    const track = { stop: jest.fn() };
+    const getUserMedia = jest.fn(() => new Promise<MediaStream>((r) => { grant = r; }));
+    const h = harness({ deps: { speechRecognition: () => undefined, getUserMedia } });
+    let p!: Promise<void>;
+    act(() => { p = h.result.current.d.toggle(); });
+    act(() => requestMicRelease('live'));
+    await act(async () => { grant({ getTracks: () => [track] } as unknown as MediaStream); await p; await flush(); });
+    expect(track.stop).toHaveBeenCalled();
+    expect(h.result.current.d.recording).toBe(false);
+  });
+
+  test('Stop releases the device before the capture finishes encoding (MediaRecorder can take 1.5 s)', async () => {
+    let finishCapture!: () => void;
+    const blob = new Blob([new Uint8Array(20_000)], { type: 'audio/wav' });
+    const slow: CaptureFactory = async () => ({
+      engine: 'mediarecorder',
+      mimeType: 'audio/webm',
+      minBytes: 100,
+      seconds: () => 1,
+      snapshot: () => blob,
+      finish: () => new Promise<Blob | null>((r) => { finishCapture = () => r(blob); }),
+    });
+    const h = harness({ deps: { speechRecognition: () => undefined, captureFactories: [slow] } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    act(() => h.result.current.d.stop());
+    expect(h.track.stop).toHaveBeenCalled(); // before finish() resolved
+    expect(h.fetchMock).not.toHaveBeenCalled();
+    await act(async () => { finishCapture(); await flush(); });
+    expect(h.fetchMock).toHaveBeenCalledTimes(1);
   });
 });

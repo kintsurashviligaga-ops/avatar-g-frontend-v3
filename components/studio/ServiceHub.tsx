@@ -96,11 +96,22 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   // "New Chat" remounts the assistant by bumping this key — a clean reset of the
   // whole conversation (messages, attachment, mode) without page reload.
   const [chatResetKey, setChatResetKey] = useState(0);
+  // …except the tool when that tool is the CHAT: Gemini's „New chat“ keeps you in a chat, and the remount used to
+  // drop a chat user onto the video studio. Read from <html data-tool> (OmniStudio publishes the active tool there)
+  // at the moment of the press, and handed to the fresh OmniStudio as its initial tool.
+  const [restartTool, setRestartTool] = useState<'chat' | undefined>(undefined);
+  const newChat = useCallback(() => {
+    try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ }
+    setRestartTool(document.documentElement.dataset.tool === 'chat' ? 'chat' : undefined);
+    setChatResetKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     const read = () => {
       const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
       setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' || h === 'agent' ? (h as Service) : 'omni');
+      // A restart's tool is one-shot: coming back to the studio from another surface opens it fresh (on video).
+      setRestartTool(undefined);
     };
     read();
     window.addEventListener('hashchange', read);
@@ -112,6 +123,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     // including the card hub — rides an explicit hash so it's shareable.
     if (typeof window !== 'undefined') window.location.hash = s === 'omni' ? '' : s;
     setService(s);
+    setRestartTool(undefined);
   }, []);
 
   // Card A — the flagship studio owns the full viewport + its own header (a back
@@ -137,7 +149,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
         // agent (STEP 3) mounts IN-PLACE here too — its back returns to the assistant.
         onBack={service === 'lipsync' ? () => go('hub') : service === 'agent' ? () => go('omni') : undefined}
         title={service === 'lipsync' ? t.lipTitle : service === 'agent' ? 'Agent G' : undefined}
-        onNewChat={service === 'omni' ? () => { try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ } setChatResetKey((k) => k + 1); } : undefined}
+        onNewChat={service === 'omni' ? newChat : undefined}
         scrollBody={service === 'lipsync' || service === 'agent'}
       >
         {/* PHASE 3 Task 5 — a render crash in the studio keeps the ChatChrome shell +
@@ -155,7 +167,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
             </div>
           }
         >
-          {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} />
+          {service === 'omni' ? <OmniStudio key={chatResetKey} locale={lang} initialTool={restartTool} />
             : service === 'lipsync' ? <LipsyncStudio locale={lang} />
             : <AgentTerminal embedded locale={lang} onExit={() => go('omni')} />}
         </ErrorBoundary>

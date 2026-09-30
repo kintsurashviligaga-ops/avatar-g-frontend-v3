@@ -64,9 +64,11 @@ export const GEMINI_TOKEN_PRICING = {
 export type GeminiPriceFamily =
   | 'pro-3'          // gemini-3-pro*, gemini-3.1-pro-preview, gemini-pro-latest, any newer Pro
   | 'pro-2.5'        // gemini-2.5-pro
-  | 'flash-3.5'      // gemini-3.5 … 3.8-flash, gemini-flash-latest
+  | 'flash-3.6'      // gemini-3.6 / 3.7 / 3.8-flash
+  | 'flash-3.5'      // gemini-3.5-flash, gemini-flash-latest, any Flash newer than 3.8
   | 'flash-3'        // gemini-3-flash-preview (3.0 – 3.4)
   | 'flash-2.5'      // gemini-2.5-flash
+  | 'flash-lite-3.5' // gemini-3.5-flash-lite
   | 'flash-lite-3'   // gemini-3.x-flash-lite below 3.5
   | 'flash-lite-2.5' // gemini-2.5-flash-lite
   | 'live-audio'     // Live API native-audio / *-live / *-transcribe-live
@@ -102,13 +104,17 @@ export const LONG_CONTEXT_THRESHOLD_TOKENS = 200_000;
 export const GEMINI_PRICES_AS_OF = '2026-09-30';
 
 /**
- * USD per 1M tokens (grounding: USD per prompt/query), paid tier of the Gemini Developer API.
+ * USD per 1M tokens (grounding: USD per prompt/query), Standard paid tier of the Gemini Developer API.
  *
- * ⚠️ UNCERTAIN (2026-09-30): written from the published ai.google.dev pricing list as known at the time of writing,
- * NOT re-fetched live (the pricing page cannot be read from CI). Rows marked UNCERTAIN below were never seen on the
- * list at all, or were seen only in preview. Re-check against the live page before trusting a margin
- * computed from these numbers; a wrong row only mis-sizes the PLATFORM budget guard — the customer's credit charge
- * lives in lib/credits/pricing.ts and never reads this table.
+ * RECONCILED LIVE on 2026-09-30 against ai.google.dev/gemini-api/docs/pricing for every CHAT row (Pro, Flash,
+ * Flash-Lite — the models the chat dropdown can route to): input, output, cached input and grounding all match the
+ * page. The page cannot be read from CI, so a later price change is only caught by re-reading it by hand. The
+ * Live-audio and TTS rows were NOT re-checked in that pass and keep their UNCERTAIN marks. A wrong row only mis-sizes
+ * the PLATFORM budget guard — the customer's credit charge lives in lib/credits/pricing.ts and never reads this table.
+ *
+ * ⚠️ WHERE GOOGLE PUBLISHES A DATED PRICE, THE LATER (HIGHER) ONE IS USED. 3.6 / 3.7 / 3.8 Flash are $0.75 / $3.75
+ * until 2026-12-31 and $1.50 / $7.50 from 2027-01-01; the table carries the 2027 price so it stays on the safe side
+ * without a date switch nobody would remember to flip (it over-books those three by 2× until the new year).
  *
  * Output rates INCLUDE thinking tokens (Google bills thoughts as output; @ai-sdk/google 3.0.70 already folds
  * `thoughtsTokenCount` into `usage.outputTokens`). The free grounding allowances (1,500 grounded prompts/day on
@@ -116,22 +122,29 @@ export const GEMINI_PRICES_AS_OF = '2026-09-30';
  * guard over-books grounding, which is the safe direction.
  */
 export const GEMINI_PRICE_TABLE: Readonly<Record<GeminiPriceFamily, GeminiFamilyPrice>> = {
-  // Gemini 3 / 3.1 Pro (preview). Cached rates UNCERTAIN. Pro ≥3.5 has no published price → priced as 3.x Pro,
-  // which is at least the flat fallback, so an unknown newer Pro can never look cheaper than it probably is.
+  // Gemini 3 / 3.1 Pro (preview) — live 2026-09-30, cached rates included. The Pro chat mode. Pro ≥3.5 has no
+  // published price → priced as 3.x Pro, which is at least the flat fallback, so an unknown newer Pro can never look
+  // cheaper than it probably is.
   'pro-3': {
     inputPerMillion: 2.0, outputPerMillion: 12.0, cachedInputPerMillion: 0.2,
     longContext: { inputPerMillion: 4.0, outputPerMillion: 18.0, cachedInputPerMillion: 0.4 },
     grounding: { per: 'query', usd: 14 / 1000 },
   },
-  // Cached rates UNCERTAIN (Google cut 2.5 caching to 10% of input; the older list said 25%).
+  // Live 2026-09-30, cached rates included (10% of input).
   'pro-2.5': {
     inputPerMillion: 1.25, outputPerMillion: 10.0, cachedInputPerMillion: 0.125,
     longContext: { inputPerMillion: 2.5, outputPerMillion: 15.0, cachedInputPerMillion: 0.25 },
     grounding: { per: 'prompt', usd: 35 / 1000 },
   },
-  // UNCERTAIN: no 3.5+ Flash row was on the list as I knew it. This is the Master Task §1.6.1 "Gemini text"
-  // rate — the same numbers as the flat fallback, and the rate the premium chat model (gemini-3.6-flash,
-  // budgetPolicy PREMIUM_MODELS) has always been booked at. Grounding assumed to follow the Gemini 3 rule.
+  // Gemini 3.6 / 3.7 / 3.8 Flash — the 2027-01-01 list price (see the note above; $0.75 / $3.75 / $0.075 until then).
+  // The Fast and Thinking chat modes run on this row.
+  'flash-3.6': {
+    inputPerMillion: 1.5, outputPerMillion: 7.5, cachedInputPerMillion: 0.15,
+    grounding: { per: 'query', usd: 14 / 1000 },
+  },
+  // Gemini 3.5 Flash (live: $1.50 / $9.00, cached $0.15) — the dearest Flash on the list, so it also prices the
+  // `gemini-flash-latest` alias (whatever it points at today) and any Flash newer than 3.8 (no published price yet):
+  // an unknown Flash can never look cheaper than every known one. Same numbers as the flat fallback.
   'flash-3.5': {
     inputPerMillion: 1.5, outputPerMillion: 9.0, cachedInputPerMillion: 0.15,
     grounding: { per: 'query', usd: 14 / 1000 },
@@ -141,17 +154,25 @@ export const GEMINI_PRICE_TABLE: Readonly<Record<GeminiPriceFamily, GeminiFamily
     inputPerMillion: 0.5, outputPerMillion: 3.0, cachedInputPerMillion: 0.05,
     grounding: { per: 'query', usd: 14 / 1000 },
   },
-  // Text/image/video input (audio input is $1.00 — not split out here). Cached UNCERTAIN.
+  // Text/image/video input (audio input is $1.00 — not split out here). Live 2026-09-30, cached included.
   'flash-2.5': {
     inputPerMillion: 0.3, outputPerMillion: 2.5, cachedInputPerMillion: 0.03,
     grounding: { per: 'prompt', usd: 35 / 1000 },
   },
-  // UNCERTAIN: Gemini 3.1 Flash-Lite preview rate. Flash-Lite ≥3.5 is NOT placed here (no known price) → flat.
+  // Gemini 3.5 Flash-Lite (live: $0.30 / $2.50, cached $0.03, text/image/video/audio input) — the Lite chat mode's
+  // fallback. Before this row it fell to the flat fallback, whose grounding price is $0 — so its Google Search
+  // queries were booked as free.
+  'flash-lite-3.5': {
+    inputPerMillion: 0.3, outputPerMillion: 2.5, cachedInputPerMillion: 0.03,
+    grounding: { per: 'query', usd: 14 / 1000 },
+  },
+  // Gemini 3.1 Flash-Lite, text/image/video input (audio input is $0.50 — not split out here). The Lite chat mode.
+  // Flash-Lite NEWER than 3.5 is not placed (no published price) → flat fallback.
   'flash-lite-3': {
     inputPerMillion: 0.25, outputPerMillion: 1.5, cachedInputPerMillion: 0.025,
     grounding: { per: 'query', usd: 14 / 1000 },
   },
-  // Text/image/video input (audio input is $0.30). Cached UNCERTAIN.
+  // Text/image/video input (audio input is $0.30). Live 2026-09-30, cached included.
   'flash-lite-2.5': {
     inputPerMillion: 0.1, outputPerMillion: 0.4, cachedInputPerMillion: 0.01,
     grounding: { per: 'prompt', usd: 35 / 1000 },
@@ -200,9 +221,11 @@ export function geminiPriceFamily(model: string | null | undefined): GeminiPrice
     case 'pro':
       return version >= 3 ? 'pro-3' : 'pro-2.5';
     case 'flash':
+      if (version >= 3.6 && version <= 3.8) return 'flash-3.6';
       return version >= 3.5 ? 'flash-3.5' : version >= 3 ? 'flash-3' : 'flash-2.5';
     default: // flash-lite
-      if (version >= 3.5) return null;
+      if (version > 3.5) return null;
+      if (version === 3.5) return 'flash-lite-3.5';
       return version >= 3 ? 'flash-lite-3' : 'flash-lite-2.5';
   }
 }

@@ -190,6 +190,19 @@ describe('encode → parse round-trip for every frame kind', () => {
     { text: 'plain' },
     { meta: { provider: 'gemini', model: 'gemini-3.8-flash' } },
     { meta: { provider: 'anthropic', model: 'claude-haiku-4-5', partial: true } },
+    { meta: { provider: 'gemini', model: 'gemini-3.1-pro-preview', mode: 'pro', fallback: false } },
+    { meta: { provider: 'gemini', model: 'gemini-2.5-flash', mode: 'thinking', fallback: true } },
+    {
+      meta: {
+        provider: 'gemini',
+        model: 'gemini-3.8-flash',
+        mode: 'fast',
+        fallback: false,
+        requestedMode: 'pro',
+        reason: 'pro_cap',
+        resetAt: '2026-10-01T08:15:00.000Z',
+      },
+    },
     { sources: [{ url: 'https://example.com/a', title: 'A' }, { url: 'http://example.org/b' }] },
     { usage: { model: 'gemini-3.8-flash', inputTokens: 1200, outputTokens: 340, totalTokens: 1540 } },
     { usage: { model: 'gemini-2.5-flash' } },
@@ -269,6 +282,41 @@ describe('tolerant decoding of new frames', () => {
       { meta: { provider: 'gemini', model: 'm' } },
     ]);
     expect(decodeFrames('data: {"meta":{"provider":"gemini"}}\n\n')).toEqual([]);
+  });
+
+  it('meta: the mode fields are validated field by field — the badge survives a bad one', () => {
+    const decodeMeta = (meta: Record<string, unknown>) => decodeFrames(`data: ${JSON.stringify({ meta })}\n\n`);
+    const base = { provider: 'gemini', model: 'gemini-3.8-flash' };
+    // Unknown modes, a model id posing as a mode, non-boolean flags and unknown reasons are dropped.
+    expect(decodeMeta({ ...base, mode: 'ultra', fallback: 'yes', requestedMode: 'gemini-3.1-pro-preview', reason: 'budget' })).toEqual([
+      { meta: base },
+    ]);
+    // Every catalogue mode passes, as mode and as requestedMode.
+    for (const mode of ['fast', 'thinking', 'pro', 'lite'] as const) {
+      expect(decodeMeta({ ...base, mode, requestedMode: mode })).toEqual([{ meta: { ...base, mode, requestedMode: mode } }]);
+    }
+    expect(decodeMeta({ ...base, fallback: true })).toEqual([{ meta: { ...base, fallback: true } }]);
+  });
+
+  it('meta: resetAt must be a bounded ISO instant', () => {
+    const resetOf = (resetAt: unknown) => {
+      const [f] = decodeFrames(`data: ${JSON.stringify({ meta: { provider: 'gemini', model: 'm', resetAt } })}\n\n`);
+      return f !== 'DONE' && f && 'meta' in f ? f.meta.resetAt : 'no frame';
+    };
+    expect(resetOf('2026-10-01T08:15:00.000Z')).toBe('2026-10-01T08:15:00.000Z');
+    expect(resetOf('2026-10-01T12:15:00+04:00')).toBe('2026-10-01T12:15:00+04:00');
+    expect(resetOf('2026-10-01T08:15Z')).toBe('2026-10-01T08:15Z');
+    for (const bad of [
+      'tomorrow',
+      '2026-10-01', // a date is not an instant
+      '2026-13-45T99:99:00Z', // shaped right, not a real time
+      `2026-10-01T08:15:00.000Z${' '.repeat(30)}`,
+      '<img src=x onerror=alert(1)>',
+      1759306500,
+      null,
+    ]) {
+      expect([bad, resetOf(bad)]).toEqual([bad, undefined]);
+    }
   });
 
   it('error: never dropped. An unknown code becomes unavailable and retryable falls back to the code default', () => {

@@ -10,9 +10,11 @@
  * code default.
  *
  * Two override policies, on purpose:
- *   • Chat chains (GEMINI_CHAT_MODELS / GEMINI_CHAT_PRO_MODELS) are OPERATOR lists: any well-formed, non-retired id
- *     is accepted, so a newly released model can be rolled in by env without a deploy. A bad id costs one failed
- *     attempt and the chain rotates past it.
+ *   • Chat chains (GEMINI_CHAT_MODELS / GEMINI_CHAT_PRO_MODELS / GEMINI_CHAT_LITE_MODELS) are OPERATOR lists: any
+ *     well-formed, non-retired id OF THE MODE'S CLASS is accepted, so a newly released model can be rolled in by env
+ *     without a deploy. A bad id costs one failed attempt and the chain rotates past it. The class check is what
+ *     keeps a mode honest: a Flash id in the Pro list would silently answer a "Pro" turn with Flash (see
+ *     `chatModelClass`).
  *   • Live, TTS and STT are ALLOWLISTED. The Live model can arrive from a request body (a leaked-token repoint to a
  *     costlier model is the threat), and a TTS/STT model that cannot do the job fails every call with no rotation.
  *
@@ -20,6 +22,9 @@
  * Georgian (Live native-audio + Aoede/Charon, flash-preview TTS). Switching Live or TTS to another allowlisted id by
  * env needs a live Georgian check first — the allowlist says "exists on the key", not "speaks Georgian well".
  */
+
+import type { ChatModeId } from '@/lib/chat/chatModes';
+import { geminiPriceFamily } from '@/lib/services/billing/costModel';
 
 /** A bare Gemini model id: no `models/` prefix, no path, no query. Anything else is ignored. */
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -34,12 +39,37 @@ const MAX_CHAIN = 6;
 
 // ─── Catalogue ──────────────────────────────────────────────────────────────
 
+/**
+ * The legacy tier names. 'standard' is the Fast chain — app/api/chat/route.ts, app/api/chat/stream/route.ts and the
+ * agent's googleSearch tool still ask for it by that name. The product chat asks by mode (lib/chat/chatModes.ts).
+ */
 export type ChatTier = 'standard' | 'pro';
 
-/** Default chat rotation chains, first = primary. `chatModelChain()` returns a fresh copy. */
-export const DEFAULT_CHAT_MODELS: Readonly<Record<ChatTier, readonly string[]>> = {
+/** What `chatModelChain` accepts: a chat mode (the dropdown's Fast · Thinking · Pro · Lite) or a legacy tier. */
+export type ChatChainKey = ChatModeId | ChatTier;
+
+/**
+ * The three model CLASSES a chat chain can be made of. Fast and Thinking share the Flash chain (Thinking is the same
+ * model with a deeper thinking level, set by the route); Pro and Lite each have their own.
+ */
+export type ChatModelClass = 'flash' | 'pro' | 'lite';
+
+/**
+ * Default chat rotation chains, first = primary, keyed by class ('standard' is the Flash class — the key predates
+ * modes and callers read it). `chatModelChain()` returns a fresh copy.
+ *
+ * ⚠️ EVERY CHAIN STAYS INSIDE ITS CLASS. Pro used to end in `gemini-3.8-flash`, so a Pro turn whose two Pro models
+ * were busy was quietly answered by Flash while the header said "Pro". A Pro chain that runs out now ends the turn
+ * with the normal typed error; answering with Fast is the user's choice (the dropdown), not a silent downgrade.
+ * `gemini-pro-latest` is deliberately absent: today it aliases `gemini-3.1-pro-preview` (verified live — its
+ * modelVersion comes back as 3.1-pro), so listing it would retry the same model, not add a fallback.
+ * ⚠️ Lite's fallback is 3.5 Flash-Lite, NOT 2.5 Flash-Lite: on 2026-09-30 this key got a 404 "gemini-2.5-flash-lite
+ * is no longer available to new users" (3.1 / 3.5 Flash-Lite, 2.5 Flash and 2.5 Pro all answered 200 the same day).
+ */
+export const DEFAULT_CHAT_MODELS: Readonly<Record<'standard' | 'pro' | 'lite', readonly string[]>> = {
   standard: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'],
-  pro: ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-3.8-flash'],
+  pro: ['gemini-3.1-pro-preview', 'gemini-2.5-pro'],
+  lite: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'],
 };
 
 /**
@@ -146,14 +176,55 @@ function pickAllowed(raw: unknown, allow: readonly string[]): string | null {
 // ─── Resolvers ──────────────────────────────────────────────────────────────
 
 /**
- * The chat rotation chain for a tier, first = primary. GEMINI_CHAT_MODELS (standard) / GEMINI_CHAT_PRO_MODELS (pro)
- * replace the defaults when they yield at least one usable id; an empty, all-malformed or all-retired override
- * falls back to the defaults rather than leaving chat with no model. Always a fresh array.
+ * Which chat class a model id belongs to, or null when it is not a TEXT chat model we can place — by its price family
+ * (lib/services/billing/costModel `geminiPriceFamily`, pure), so "what class is this" and "what does it cost" can
+ * never disagree. Live-audio, TTS and image models return null (they share the "flash" word but cannot answer a text
+ * turn), and so does any id the price table cannot place: a model we cannot price is a model we have not checked.
  */
-export function chatModelChain(tier: ChatTier): string[] {
-  const t: ChatTier = tier === 'pro' ? 'pro' : 'standard';
-  const override = parseModelList(t === 'pro' ? process.env.GEMINI_CHAT_PRO_MODELS : process.env.GEMINI_CHAT_MODELS);
-  return override.length ? override : [...DEFAULT_CHAT_MODELS[t]];
+export function chatModelClass(id: string): ChatModelClass | null {
+  const family = geminiPriceFamily(id);
+  if (!family) return null;
+  if (family.startsWith('pro-')) return 'pro';
+  if (family.startsWith('flash-lite-')) return 'lite';
+  if (family.startsWith('flash-')) return 'flash';
+  return null;
+}
+
+/** The class a chain key draws from. Unknown keys (a stale client, a typo) are the Flash class — the everyday chain. */
+function classOfKey(key: unknown): ChatModelClass {
+  if (key === 'pro') return 'pro';
+  if (key === 'lite') return 'lite';
+  return 'flash'; // 'fast', 'thinking', 'standard', anything else
+}
+
+const CHAIN_ENV: Readonly<Record<ChatModelClass, string>> = {
+  flash: 'GEMINI_CHAT_MODELS',
+  pro: 'GEMINI_CHAT_PRO_MODELS',
+  lite: 'GEMINI_CHAT_LITE_MODELS',
+};
+
+const CHAIN_DEFAULTS: Readonly<Record<ChatModelClass, readonly string[]>> = {
+  flash: DEFAULT_CHAT_MODELS.standard,
+  pro: DEFAULT_CHAT_MODELS.pro,
+  lite: DEFAULT_CHAT_MODELS.lite,
+};
+
+/**
+ * The chat rotation chain for a mode (or a legacy tier), first = primary.
+ *
+ *   fast · thinking · standard → GEMINI_CHAT_MODELS       (Flash class)
+ *   pro                        → GEMINI_CHAT_PRO_MODELS   (Pro class)
+ *   lite                       → GEMINI_CHAT_LITE_MODELS  (Flash-Lite class)
+ *
+ * An override replaces the defaults when it yields at least one usable id OF THAT CLASS; ids of another class are
+ * dropped (a Flash id in the Pro list, a TTS id anywhere), and an override left empty by that — or empty, malformed
+ * or all-retired to begin with — falls back to the defaults rather than leaving chat with no model. Always a fresh
+ * array. The key is never a model id: the route resolves a client's mode through lib/chat/chatModes first.
+ */
+export function chatModelChain(key: ChatChainKey): string[] {
+  const cls = classOfKey(key);
+  const override = parseModelList(process.env[CHAIN_ENV[cls]]).filter((id) => chatModelClass(id) === cls);
+  return override.length ? override : [...CHAIN_DEFAULTS[cls]];
 }
 
 /** The effective Live default: GEMINI_LIVE_MODEL when allowlisted, else DEFAULT_LIVE_MODEL. Bare id. */

@@ -66,8 +66,30 @@ import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 import { adoptLegacyArchive, conversationsKey } from '@/lib/chat/historyKeys';
 import { Wordmark } from '@/components/brand/Wordmark';
+import { ModelSwitcher, OPEN_PERSONA_EVENT, PERSONA_CHANGED_EVENT, announcePersona } from '@/components/chat/ModelSwitcher';
+import { requestMicRelease } from '@/lib/voice/micBus';
+import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 
 type Lang = 'ka' | 'en' | 'ru';
+
+type UserMeta = { name?: string; full_name?: string; given_name?: string } | null | undefined;
+
+/**
+ * The first name for the chat's personal greeting („გამარჯობა, {name}"). Google sign-in fills given_name / full_name,
+ * the profile editor fills `name`. Bounded and trimmed — it is display text, never markup (React escapes it) — and
+ * nothing is invented from the e-mail address: no name, no line.
+ */
+export function firstNameOf(meta: UserMeta): string {
+  const raw = [meta?.given_name, meta?.name, meta?.full_name].find((v) => typeof v === 'string' && v.trim());
+  const first = (raw ?? '').trim().split(/\s+/)[0] ?? '';
+  return first.slice(0, 40);
+}
+
+/** Drop a Live prime nobody will adopt (its mic tracks must not stay hot under another voice engine). */
+function dropUnadoptedPrime(): void {
+  const p = takePrimed(Number.POSITIVE_INFINITY);
+  if (p) disposePrimed(p);
+}
 
 const COPY: Record<Lang, {
   menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
@@ -228,6 +250,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Profile editing (#3) + GDPR data export (#4).
   const [profileOpen, setProfileOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   // Profile photo (FIX 2): current URL + in-flight upload state + the hidden file input.
@@ -274,11 +297,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   useEffect(() => {
     let alive = true;
     const supabase = createBrowserClient();
-    const apply = (user: { email?: string | null; user_metadata?: { name?: string } | null } | null) => {
+    const apply = (user: { email?: string | null; user_metadata?: UserMeta } | null) => {
       if (!alive) return;
       setAuthed(!!user);
       setUserEmail(user?.email ? String(user.email) : null);
       setUserName(user?.user_metadata?.name ?? null);
+      setFirstName(firstNameOf(user?.user_metadata));
       if (!user) setBalanceGel(null);
     };
     // Authoritative avatar read: always trust the DB row (never a stale client cache). Guards:
@@ -294,7 +318,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     // De-dupe: read the profile ONCE per distinct user. This forces a fresh DB read on mount and on any
     // genuine account switch (re-auth), but skips redundant reads on every token refresh / tab focus that
     // would otherwise re-issue the query for the same user (and widen the upload race window).
-    const syncUser = (user: { id?: string; email?: string | null; user_metadata?: { name?: string } | null } | null) => {
+    const syncUser = (user: { id?: string; email?: string | null; user_metadata?: UserMeta } | null) => {
       apply(user);
       const uid = user?.id ?? null;
       setUserId(uid);
@@ -310,7 +334,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         if (url.searchParams.get('voice') === '1') {
           url.searchParams.delete('voice');
           window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
-          if (data.user) { setLiveUnavailable(false); setLiveAvatarUnavailable(false); setVoiceOpen(true); }
+          // Not a gesture, so there is no prime to adopt — but the rest of the page may already hold the mic (dictation,
+          // the music recorder): ask them to let go before Live asks for it, or Android refuses the capture.
+          if (data.user) { requestMicRelease('live'); setLiveUnavailable(false); setLiveAvatarUnavailable(false); setVoiceOpen(true); }
           else { setAuthMode('login'); setAuthOpen(true); }
         }
       } catch { /* no URL API */ }
@@ -347,12 +373,31 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // open the real-time overlay; guest → open the sign-in modal (voice is an authed feature).
   useEffect(() => {
     const openVoice = () => {
+      // The composer's chip primed Live inside the tap (lib/voice/livePrime). When this open will NOT be Gemini Live —
+      // the flag is off, or the opt-in LiveAvatar goes first — nobody adopts that prime: release it now, before the
+      // other engine asks for the same microphone.
+      if (!authed || !GEMINI_LIVE_ENABLED || (LIVEAVATAR_ENABLED && Date.now() >= liveAvatarCooldownUntil)) dropUnadoptedPrime();
       if (authed) { setLiveUnavailable(false); setLiveAvatarUnavailable(false); setVoiceOpen(true); }
       else { setAuthMode('login'); setAuthOpen(true); }
     };
     window.addEventListener('myavatar:voice-open', openVoice);
     return () => window.removeEventListener('myavatar:voice-open', openVoice);
   }, [authed]);
+  /**
+   * ⚠️ THE CALL MUST NOT FOLLOW AN AUTH FLICKER. The engine is chosen from `userId`, which a token refresh can null for
+   * a moment: Live unmounted, VoiceConversation mounted and grabbed the mic, then Live came back and asked for it
+   * again — two token mints and a rapid re-acquire that Android answers with „the microphone could not start“. The id
+   * is latched when the call opens and held until it closes.
+   */
+  const [voiceUid, setVoiceUid] = useState<string | null>(null);
+  useEffect(() => {
+    if (!voiceOpen) { setVoiceUid(null); return; }
+    if (userId) setVoiceUid((cur) => cur ?? userId);
+  }, [voiceOpen, userId]);
+  const liveUid = voiceUid ?? userId;
+  // Signed in, but the client has not resolved WHO yet (the session was seeded from the server): wait for the id
+  // instead of starting the ElevenLabs fallback and swapping it for Live a moment later.
+  const awaitingLiveUid = GEMINI_LIVE_ENABLED && authed && !liveUid && !liveUnavailable;
 
   // ⚠️ THE GENERATION GATE, PUBLISHED WHERE ANY SURFACE CAN READ IT SYNCHRONOUSLY. The composer must
   // decide whether to send BEFORE it fires a request, and it cannot await an auth lookup at the moment
@@ -368,6 +413,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     else delete document.documentElement.dataset.uid;
     adoptLegacyArchive(userId);
   }, [authed, userId]);
+  // The first name, for the chat's personal greeting in OmniStudio — published like `authed` and `uid`, because the
+  // two components share no provider. Removed on sign-out.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (authed && firstName) root.dataset.firstName = firstName;
+    else delete root.dataset.firstName;
+  }, [authed, firstName]);
 
   // Generation gate bridge — a surface that detects a guest dispatches `myavatar:auth-required` and we
   // open sign-in. This replaces the old shape where the request went out, the route answered 401, and
@@ -491,6 +543,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Only used for the "a persona is active" dot — read once on mount (localStorage is not reactive).
   const [activePersonaId, setActivePersonaId] = useState('');
   useEffect(() => { setActivePersonaId(loadSelectedPersonaId()); }, []);
+  // The persona is chosen in three places now — this sidebar row, the model switcher's persona row (both open the
+  // picker below) and the chat composer's chip (✕ clears it). The chip and the switchers announce changes; follow them.
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const d = (e as CustomEvent<unknown>).detail;
+      setActivePersonaId(typeof d === 'string' ? d : loadSelectedPersonaId());
+    };
+    const onOpen = () => { setSidebarOpen(false); setPersonaOpen(true); };
+    window.addEventListener(PERSONA_CHANGED_EVENT, onChanged);
+    window.addEventListener(OPEN_PERSONA_EVENT, onOpen);
+    return () => {
+      window.removeEventListener(PERSONA_CHANGED_EVENT, onChanged);
+      window.removeEventListener(OPEN_PERSONA_EVENT, onOpen);
+    };
+  }, []);
   /**
    * ⚠️ THE ROW SAID "პერსონა" AND A DOT. The dot told you a persona was active and nothing else — so the
    * one thing you actually want to know, WHO you are talking to, required opening the picker to find out.
@@ -844,6 +911,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // history "back" that could land on the wrong page. An explicit onBack (the lipsync
   // studio's exit-to-hub) still renders as a labelled chevron.
   const isCloseControl = onLibrary && !onBack;
+  // The studio's chat: the header's name becomes the model switcher (never on /library or a titled surface).
+  const chatHeader = onStudioHome && activeTool === 'chat' && !showBack && !title;
   const backLabel = lang === 'en' ? 'Back' : lang === 'ru' ? 'Назад' : 'უკან';
   const closeLabel = lang === 'en' ? 'Close' : lang === 'ru' ? 'Закрыть' : 'დახურვა';
 
@@ -914,7 +983,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         role={sidebarOpen ? 'dialog' : undefined}
         aria-modal={sidebarOpen ? true : undefined}
         aria-label={t.menu}
-        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[272px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[288px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         {/* ONE mark: the name, set as text. ⚠️ „ორი ლოგო“ — the rocket raster sat here AND in the header, and the
@@ -1082,7 +1151,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
 
       {/* Collapsed on a desktop/iPad: a rail of icons, never nothing — the way back is always on screen. */}
       {sidebarCollapsed && (
-        <nav aria-label={t.menu} className="hidden w-[60px] shrink-0 flex-col items-center gap-1 border-r border-app-border/10 bg-app-surface py-2.5 md:flex"
+        // Gemini's collapsed rail is the page itself — no panel colour, no rule — so the session gets the whole width.
+        <nav aria-label={t.menu} className="hidden w-[60px] shrink-0 flex-col items-center gap-1 bg-app-bg py-2.5 md:flex"
           style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top, 0px))' }}>
           <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={tExpand} title={tExpand} className={railBtn}><PanelLeft className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession} className={railBtn}><PenSquare className="h-[18px] w-[18px]" aria-hidden="true" /></button>
@@ -1106,7 +1176,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         locale={locale}
         open={personaOpen}
         onClose={() => setPersonaOpen(false)}
-        onSelect={(p) => setActivePersonaId(p?.id ?? '')}
+        onSelect={(p) => { setActivePersonaId(p?.id ?? ''); announcePersona(p?.id ?? ''); }}
       />
 
       {/* ── Main column (header + chat) ──────────────────────────────────────── */}
@@ -1139,7 +1209,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t.menu} className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation md:hidden">
                 <Menu className="h-[18px] w-[18px]" />
               </button>
-              {/* The name — shown where no sidebar carries it: phones, and a desktop whose sidebar is a rail. */}
+              {/* IN THE CHAT the name IS the model switcher — Gemini mobile's "Gemini · 3.8 Flash ⌄": the wordmark and
+                  the mode in the accent. Shown at every width this header lives at (it is the tablet's only way to the
+                  model); the wordmark inside steps aside where the sidebar already carries it, and on narrow phones —
+                  below 360 px, or below 420 px for a guest, whose „შესვლა“ pill is wider than the account circle — so
+                  the mode itself is never cut. */}
+              {chatHeader ? (
+                <ModelSwitcher variant="phone" locale={lang}
+                  brandClassName={`${authed ? 'max-[359px]:hidden' : 'max-[419px]:hidden'} ${sidebarCollapsed ? '' : 'md:hidden'}`} />
+              ) : (
               <span className={`min-w-0 text-[16px] font-semibold tracking-tight text-app-text ${title ? 'shrink-0' : ''} ${showBack ? 'hidden' : sidebarCollapsed && !title ? '' : 'md:hidden'}`}>
                 {title ?? (
                   // All-or-nothing (brief §8, "MyAvata"): a 44 px-tall wrapping row, so when the name does not fit
@@ -1149,6 +1227,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   </span>
                 )}
               </span>
+              )}
               {title && <span className="hidden truncate text-[16px] font-semibold tracking-tight text-app-text md:inline">{title}</span>}
             </div>
 
@@ -1328,11 +1407,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {/* Voice cascade: real-time lip-synced LiveAvatar (premium) → Gemini audio-reactive selfie → ElevenLabs.
           Each tier hands down via onUnavailable, so voice mode always resolves to a working experience and
           auto-upgrades to the real avatar the moment LiveAvatar is funded. */}
-      {voiceOpen && (
-        LIVEAVATAR_ENABLED && userId && !liveAvatarUnavailable && Date.now() >= liveAvatarCooldownUntil
+      {voiceOpen && !awaitingLiveUid && (
+        LIVEAVATAR_ENABLED && liveUid && !liveAvatarUnavailable && Date.now() >= liveAvatarCooldownUntil
           ? <LiveAvatarRealtime locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => { liveAvatarCooldownUntil = Date.now() + LIVEAVATAR_COOLDOWN_MS; setLiveAvatarUnavailable(true); }} />
-          : GEMINI_LIVE_ENABLED && userId && !liveUnavailable
-            ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
+          : GEMINI_LIVE_ENABLED && liveUid && !liveUnavailable
+            ? <GeminiLiveConversation userId={liveUid} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
                 // The persona the chat is using speaks on the call too (read at open time; localStorage is not reactive).
                 personaId={loadSelectedPersonaId() || undefined}
                 customPersona={loadCustomPersonas().find((p: Persona) => p.id === loadSelectedPersonaId())} />

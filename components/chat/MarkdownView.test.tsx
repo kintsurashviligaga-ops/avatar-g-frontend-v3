@@ -13,6 +13,8 @@
  * ⚠️ TEST ORDER MATTERS FOR THE LAZY-LOAD TEST. The extensions are module-level caches, as in the app. The
  * "plain text loads nothing" test runs first in this file, before any test renders code or math.
  */
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { act, fireEvent, render } from '@testing-library/react';
 
 interface MockLoads {
@@ -69,10 +71,8 @@ import {
   loadHighlightExtension,
   loadMathExtension,
   normalizeMathDelimiters,
-  rehypeStreamCaret,
   safeUrlTransform,
   splitMarkdownBlocks,
-  CARET_TAG,
 } from './MarkdownView';
 
 /** Lets pending dynamic imports and the resulting store update settle. */
@@ -168,10 +168,33 @@ describe('rendering', () => {
     expect(getByRole('button', { name: 'კოპირება' })).toBeTruthy();
   });
 
-  it('inline code stays inline', () => {
+  it('inline code stays inline, in neutral text rather than the accent', () => {
     const { container } = render(<MarkdownView source={'Run `npm test` now.'} />);
-    expect(container.querySelector('p code')?.textContent).toBe('npm test');
+    const code = container.querySelector('p code')!;
+    expect(code.textContent).toBe('npm test');
+    expect(code.className).toContain('text-app-text');
+    expect(code.className).not.toContain('text-app-accent');
     expect(container.querySelector('[data-md-code]')).toBeNull();
+  });
+
+  it('spaces top-level blocks from the root, 16 px apart with more above h1 and h2', () => {
+    const { container } = render(<MarkdownView source={'Intro.\n\n## Part\n\nBody.'} />);
+    const root = container.querySelector('[data-md-root]')!;
+    const cls = root.className.split(' ');
+    // `space-y-*` outranked every margin on a child, so heading margins never applied; the root owns the rhythm.
+    expect(cls.some((c) => c.startsWith('space-y-'))).toBe(false);
+    expect(cls).toEqual(expect.arrayContaining(['[&>*+*]:mt-4', '[&>*+h1]:mt-6', '[&>*+h2]:mt-5', '[&>:first-child]:mt-0', '[&>:last-child]:mb-0']));
+    // Body text keeps the Georgian reading size and height.
+    expect(cls).toEqual(expect.arrayContaining(['text-[16px]', 'leading-[1.7]']));
+    expect(container.querySelector('h2')?.className).toContain('text-[19px]');
+  });
+
+  it('keeps table text at the 16 px body size and blockquotes upright and neutral', () => {
+    const { container } = render(<MarkdownView source={'| ა | ბ |\n|---|---|\n| 1 | 2 |\n\n> ციტატა'} />);
+    expect(container.querySelector('table')?.className).toContain('text-[16px]');
+    const quote = container.querySelector('blockquote')!;
+    expect(quote.className).not.toMatch(/\bitalic\b/);
+    expect(quote.className).not.toContain('app-accent');
   });
 });
 
@@ -219,39 +242,55 @@ describe('links are sanitized', () => {
 });
 
 describe('streaming', () => {
-  const caretParent = (container: HTMLElement) => container.querySelector('[data-stream-caret]')?.parentElement?.tagName;
+  const root = (container: HTMLElement) => container.querySelector('[data-md-root]')!;
 
-  it('places the caret inline at the end of the last paragraph, not on its own line', () => {
+  it('draws no caret: while streaming the root fades new blocks in, and a finished reply does not', () => {
     const { container } = render(<MarkdownView source={'First.\n\nHello **world**'} streaming />);
-    expect(container.querySelectorAll('[data-stream-caret]')).toHaveLength(1);
-    expect(caretParent(container)).toBe('P');
-    const p = container.querySelector('[data-stream-caret]')!.parentElement!;
-    expect(p.textContent).toBe('Hello world');
-    // Right after the bold word, as the paragraph's last node.
-    expect(p.lastChild).toBe(container.querySelector('[data-stream-caret]'));
-    expect(p.lastElementChild?.previousElementSibling?.tagName).toBe('STRONG');
-  });
+    expect(container.querySelector('[data-stream-caret]')).toBeNull();
+    expect(container.innerHTML).not.toContain('mya-caret');
+    expect(root(container).classList.contains('mya-fade-children')).toBe(true);
+    // The paragraph ends at the last word; nothing trails it.
+    const last = container.querySelectorAll('p')[1]!;
+    expect(last.textContent).toBe('Hello world');
+    expect(last.lastElementChild?.tagName).toBe('STRONG');
 
-  it('puts the caret in the last list item and in the code being typed', () => {
-    const list = render(<MarkdownView source={'- a\n- b'} streaming />);
-    expect(caretParent(list.container)).toBe('LI');
-    list.unmount();
-    const code = render(<MarkdownView source={'```js\nconst x = 1'} streaming />);
-    const caret = code.container.querySelector('[data-stream-caret]')!;
-    const codeEl = caret.closest('code')!;
-    expect(codeEl).toBeTruthy();
-    // On the line being typed: the only thing after the caret is the code's trailing newline.
-    expect(caret.nextSibling?.textContent).toBe('\n');
-    expect(caret.nextSibling?.nextSibling ?? null).toBeNull();
-    expect(codeEl.textContent).toBe('const x = 1\n');
-  });
-
-  it('shows a caret alone before the first character, and none once finished', () => {
-    const empty = render(<MarkdownView source="" streaming />);
-    expect(empty.container.querySelectorAll('[data-stream-caret]')).toHaveLength(1);
-    empty.unmount();
     const done = render(<MarkdownView source="Done." />);
-    expect(done.container.querySelector('[data-stream-caret]')).toBeNull();
+    expect(root(done.container).classList.contains('mya-fade-children')).toBe(false);
+  });
+
+  it('renders an empty root before the first character', () => {
+    const { container } = render(<MarkdownView source="" streaming />);
+    expect(root(container).childElementCount).toBe(0);
+  });
+
+  it('keeps a block\'s elements while the next one arrives, so only the new block fades in', () => {
+    // A CSS animation runs when its element is inserted. The first paragraph must stay the SAME node as the
+    // reply grows, or its fade would replay on every new block.
+    const { rerender, container } = render(<MarkdownView source={'First para'} streaming />);
+    const first = container.querySelector('p')!;
+    rerender(<MarkdownView source={'First paragraph.'} streaming />);
+    expect(container.querySelector('p')).toBe(first);
+    rerender(<MarkdownView source={'First paragraph.\n\nSecond'} streaming />);
+    const ps = container.querySelectorAll('p');
+    expect(ps).toHaveLength(2);
+    expect(ps[0]).toBe(first);
+    // Finishing only drops the class: the same nodes stay on screen, so the handoff can't flash.
+    rerender(<MarkdownView source={'First paragraph.\n\nSecond'} />);
+    expect(container.querySelectorAll('p')[0]).toBe(first);
+    expect(container.querySelectorAll('p')[1]).toBe(ps[1]);
+    expect(root(container).classList.contains('mya-fade-children')).toBe(false);
+  });
+
+  it('the fade is opacity-only, 180 ms, and off under reduced motion (app/globals.css)', () => {
+    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
+    const keyframes = /@keyframes mya-fade\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+    expect(keyframes).toMatch(/opacity:\s*0/);
+    // `fadeIn` rises 8 px, which jitters each new paragraph; this one must not move anything.
+    expect(keyframes).not.toContain('transform');
+    expect(css).toMatch(/\.mya-fade-children > \*\s*\{\s*animation:\s*mya-fade 180ms/);
+    const reduced = Array.from(css.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/g)).map((m) => m[1]).join('\n');
+    expect(reduced).toContain('.mya-fade-children > *');
+    expect(reduced).toContain('.mya-fade,');
   });
 
   it('re-parses only the tail block as text streams in', () => {
@@ -264,11 +303,10 @@ describe('streaming', () => {
     const parses = mockLoads().parses;
     expect(parses).toHaveLength(3);
     expect(parses.every((p) => p.startsWith('Tail'))).toBe(true);
-    // Finishing the stream re-renders only the tail (its caret goes away); the finished blocks stay put.
+    // Finishing the stream re-parses nothing: the fade flag lives on the root, not on the memoized blocks.
     parses.length = 0;
     rerender(<MarkdownView source={`${head}Tail and grows more.`} />);
-    expect(parses).toEqual(['Tail and grows more.']);
-    expect(container.querySelector('[data-stream-caret]')).toBeNull();
+    expect(parses).toEqual([]);
     expect(container.querySelector('h1')?.textContent).toBe('Title');
     expect(container.querySelector('table')).toBeTruthy();
   });
@@ -284,7 +322,7 @@ describe('streaming', () => {
     // A reference definition disables splitting, so the same text renders as one block.
     const whole = render(<MarkdownView source={`${src}\n\n[unused]: https://x.example`} />);
     expect(norm(whole.container.innerHTML)).toBe(html);
-    expect(html).toContain('<li class="break-words"><p class="whitespace-pre-wrap break-words">b</p><p class="whitespace-pre-wrap break-words">nested para</p></li>');
+    expect(html).toContain('<li class="break-words [&amp;>*+*]:mt-2"><p class="whitespace-pre-wrap break-words">b</p><p class="whitespace-pre-wrap break-words">nested para</p></li>');
   });
 });
 
@@ -350,26 +388,5 @@ describe('dollars and math delimiters', () => {
     const blocks = analyzeMarkdown('prose $5\n\n```js\nx\n```\n\n$a$');
     expect(blocks.map((b) => [b.code, b.math])).toEqual([[false, false], [true, false], [false, true]]);
     expect(blocks[0]!.source).toBe('prose \\$5\n');
-  });
-});
-
-describe('rehypeStreamCaret', () => {
-  type N = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: N[] };
-  const el = (tagName: string, children: N[] = [], properties: Record<string, unknown> = {}): N => ({ type: 'element', tagName, properties, children });
-  const txt = (value: string): N => ({ type: 'text', value });
-
-  it('never enters KaTeX output', () => {
-    const katex = el('span', [el('span', [txt('x')])], { className: ['katex'] });
-    const tree: N = { type: 'root', children: [el('p', [txt('a '), katex])] };
-    rehypeStreamCaret()(tree);
-    const p = tree.children![0]!;
-    expect(p.children!.map((c) => c.tagName ?? c.type)).toEqual(['text', 'span', CARET_TAG]);
-  });
-
-  it('skips trailing whitespace text between block elements', () => {
-    const tree: N = { type: 'root', children: [el('ul', [txt('\n'), el('li', [txt('a')]), txt('\n')]), txt('\n')] };
-    rehypeStreamCaret()(tree);
-    const li = tree.children![0]!.children![1]!;
-    expect(li.children!.map((c) => c.tagName ?? c.value)).toEqual(['a', CARET_TAG]);
   });
 });

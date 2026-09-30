@@ -2,18 +2,27 @@
  * The Live call's browser half, driven through a fake WebSocket + fake Web Audio + a fake worklet:
  * setup goes first, audio spoken before setupComplete is flushed after it, a local barge-in stops playback,
  * goAway resumes with the handle, teardown releases everything, transcripts reach onTurn. No network, no provider.
+ * The microphone section drives the mic ladder through the hook: specific error codes + the browser's error name,
+ * no socket for a call that cannot hear, release-before-acquire, busy back-off, re-mint of a stale token, a track
+ * lost mid-call, the pulled capture worklet, Retry after a busy device, the gesture prime, and "tap to start audio".
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
+import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
+import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
 import { liveVoicePersona } from '@/lib/voice/voicePrompt';
 
 import {
   LIVE_LANGUAGE_RULE,
+  LIVE_MIC_BUSY_RETRY_PAUSE_MS,
+  LIVE_TOKEN_FRESH_MS,
   LIVE_TRANSCRIPT_EVENT,
   buildLiveInstruction,
   createPcmDownsampler,
+  isMicErrorCode,
+  micErrorCodeFor,
   normalizeCaption,
   playbackRateFromMime,
   useGeminiLiveSession,
@@ -112,11 +121,30 @@ class FakeWorklet extends FakeNode {
 const future = () => new Date(Date.now() + 30 * 60_000).toISOString();
 const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as unknown as Response;
 
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36';
+const FB_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/480.0]';
+const domErr = (name: string, message = '') => Object.assign(new Error(message), { name });
+
+/** A mic track that can end on its own (the OS pulled it), like a real MediaStreamTrack. */
+function makeTrack() {
+  const listeners = new Map<string, Set<() => void>>();
+  return {
+    stop: jest.fn(),
+    enabled: true,
+    kind: 'audio',
+    addEventListener: (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn); },
+    removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); },
+    fire: (type: string) => { Array.from(listeners.get(type) ?? []).forEach((fn) => fn()); },
+  };
+}
+const streamOf = (track: ReturnType<typeof makeTrack>) => ({ getTracks: () => [track], getAudioTracks: () => [track] }) as unknown as MediaStream;
+
 function harness(mintBody?: (n: number) => unknown, mintStatus = 200) {
-  const track = { stop: jest.fn(), enabled: true, kind: 'audio' };
-  const stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream;
+  const track = makeTrack();
+  const stream = streamOf(track);
   const worklets: FakeWorklet[] = [];
   const mintBodies: Frame[] = [];
+  const sleeps: number[] = [];
   let clock = 10_000;
   let n = 0;
   const fetchImpl = jest.fn(async (_url: string, init?: RequestInit) => {
@@ -124,10 +152,16 @@ function harness(mintBody?: (n: number) => unknown, mintStatus = 200) {
     mintBodies.push(JSON.parse(String(init?.body ?? '{}')));
     return reply(mintStatus, mintBody ? mintBody(n) : { token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future() });
   });
-  const getUserMedia = jest.fn(async () => stream);
+  const getUserMedia = jest.fn(async (_c: MediaStreamConstraints) => stream);
+  const report = jest.fn();
   const deps: Partial<LiveSessionDeps> = {
     fetch: fetchImpl as unknown as typeof fetch,
     getUserMedia,
+    enumerateDevices: null,
+    queryMicPermission: null,
+    isSecureContext: true,
+    userAgent: CHROME_UA,
+    sleep: jest.fn(async (ms: number) => { sleeps.push(ms); }),
     createAudioContext: ((opts?: AudioContextOptions) => new FakeAudioContext(opts)) as unknown as LiveSessionDeps['createAudioContext'],
     createWorkletNode: ((ctx: FakeAudioContext, name: string, opts: AudioWorkletNodeOptions) => {
       const w = new FakeWorklet(ctx, name, opts);
@@ -135,9 +169,11 @@ function harness(mintBody?: (n: number) => unknown, mintStatus = 200) {
       return w;
     }) as unknown as LiveSessionDeps['createWorkletNode'],
     now: () => clock,
+    takePrimed: () => null,
+    report,
   };
   return {
-    deps, track, worklets, fetchImpl, getUserMedia, mintBodies,
+    deps, track, stream, worklets, fetchImpl, getUserMedia, mintBodies, report, sleeps,
     advance: (ms: number) => { clock += ms; },
     get playCtx() { return FakeAudioContext.all[0]!; },
     get capCtx() { return FakeAudioContext.all[1]!; },
@@ -575,6 +611,309 @@ test('a capture context the mic cannot join (Firefox) falls back to the native-r
   expect(sent.length).toBeGreaterThanOrEqual(639);
   expect(sent.length).toBeLessThanOrEqual(641);
   unmount();
+});
+
+// ─── Microphone ────────────────────────────────────────────────────────────────
+
+const flushMicrotasks = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+
+describe('microphone', () => {
+  test('a denied mic: specific code + the browser\'s error name, NO socket, one telemetry report', async () => {
+    const h = harness();
+    h.getUserMedia.mockImplementation(async () => { throw domErr('NotAllowedError', 'Permission denied'); });
+    const { result, unmount } = await startCall({ deps: h.deps, locale: 'en' });
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toBe('mic_denied');
+    expect(result.current.errorDetail).toEqual({ name: 'NotAllowedError', message: 'Permission denied' });
+    expect(FakeSocket.all).toHaveLength(0); // a call that cannot hear never connects
+    expect(h.report).toHaveBeenCalledTimes(1);
+    expect(h.report).toHaveBeenCalledWith('mic_denied', { name: 'NotAllowedError', message: 'Permission denied' }, expect.objectContaining({
+      attempts: [expect.objectContaining({ step: 'full', name: 'NotAllowedError' })],
+      locale: 'en',
+      primed: false,
+      mints: 1,
+    }));
+    unmount();
+  });
+
+  test('NotFoundError with no audio inputs → mic_not_found', async () => {
+    const h = harness();
+    h.getUserMedia.mockImplementation(async () => { throw domErr('NotFoundError'); });
+    h.deps.enumerateDevices = async () => [];
+    const { result, unmount } = await startCall({ deps: h.deps });
+    expect(result.current.error).toBe('mic_not_found');
+    expect(h.report.mock.calls[0]![2]).toMatchObject({ audioInputs: 0 });
+    unmount();
+  });
+
+  test('a busy device: other holders are asked to release BEFORE the first request, then 400 ms / 1 s back-off, then it connects', async () => {
+    const h = harness();
+    const log: string[] = [];
+    const onRelease = (e: Event) => log.push(`release:${(e as CustomEvent<MicReleaseDetail>).detail.reason}`);
+    window.addEventListener(MIC_RELEASE_EVENT, onRelease);
+    h.getUserMedia
+      .mockImplementationOnce(async () => { log.push('gum'); throw domErr('NotReadableError', 'Could not start audio source'); })
+      .mockImplementationOnce(async () => { log.push('gum'); throw domErr('NotReadableError'); })
+      .mockImplementationOnce(async () => { log.push('gum'); return h.stream; });
+    const { result, unmount } = await startCall({ deps: h.deps });
+    window.removeEventListener(MIC_RELEASE_EVENT, onRelease);
+    expect(log[0]).toBe('release:live');
+    expect(log.filter((x) => x === 'gum')).toHaveLength(3);
+    expect(h.getUserMedia.mock.calls[2]![0]).toEqual({ audio: true });
+    expect(h.sleeps).toEqual([400, 1000]);
+    const ws = FakeSocket.last;
+    act(() => ws.open());
+    act(() => ws.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    expect(h.report).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  test('OverconstrainedError steps the constraints down and still connects', async () => {
+    const h = harness();
+    h.getUserMedia
+      .mockRejectedValueOnce(domErr('OverconstrainedError'))
+      .mockRejectedValueOnce(domErr('OverconstrainedError'));
+    const { unmount } = await startCall({ deps: h.deps });
+    expect(h.getUserMedia.mock.calls.map((c) => c[0])).toEqual([MIC_CONSTRAINTS.full, MIC_CONSTRAINTS.basic, MIC_CONSTRAINTS.bare]);
+    expect(FakeSocket.all).toHaveLength(1);
+    unmount();
+  });
+
+  test.each([
+    { who: 'in-app browser', ua: FB_UA, code: 'mic_in_app' },
+    { who: 'desktop Chrome', ua: CHROME_UA, code: 'mic_unavailable' },
+  ])('a getUserMedia that throws TypeError synchronously ($who) → $code, never an uncaught throw', async ({ ua, code }) => {
+    const h = harness();
+    h.deps.userAgent = ua;
+    h.getUserMedia.mockImplementation(() => { throw new TypeError("Cannot read properties of undefined (reading 'getUserMedia')"); });
+    const { result, unmount } = await startCall({ deps: h.deps });
+    expect(result.current.error).toBe(code);
+    expect(result.current.errorDetail?.name).toBe('TypeError');
+    unmount();
+  });
+
+  test('no getUserMedia at all (an in-app WebView) → mic_in_app; an http page → mic_insecure', async () => {
+    const h = harness();
+    h.deps.getUserMedia = null;
+    h.deps.userAgent = FB_UA;
+    const a = await startCall({ deps: h.deps });
+    expect(a.result.current.error).toBe('mic_in_app');
+    a.unmount();
+
+    const h2 = harness();
+    h2.deps.isSecureContext = false;
+    const b = await startCall({ deps: h2.deps });
+    expect(b.result.current.error).toBe('mic_insecure');
+    expect(h2.getUserMedia).not.toHaveBeenCalled();
+    b.unmount();
+  });
+
+  test('End during the busy back-off: no further request, the call stays closed', async () => {
+    const h = harness();
+    let wake!: () => void;
+    h.deps.sleep = jest.fn(() => new Promise<void>((r) => { wake = r; }));
+    h.getUserMedia.mockImplementation(async () => { throw domErr('NotReadableError'); });
+    const { result, unmount } = renderHook(() => useGeminiLiveSession({ deps: h.deps }));
+    let p!: Promise<void>;
+    act(() => { p = result.current.start(); });
+    await act(async () => { await flushMicrotasks(); });
+    expect(h.deps.sleep).toHaveBeenCalledWith(400);
+    act(() => result.current.stop());
+    await act(async () => { wake(); await p; });
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('closed');
+    expect(FakeSocket.all).toHaveLength(0);
+    unmount();
+  });
+
+  test('status stays "connecting" and no socket exists while the mic is pending; listening needs mic AND setupComplete', async () => {
+    const h = harness();
+    let grant!: (s: MediaStream) => void;
+    h.getUserMedia.mockImplementationOnce(() => new Promise<MediaStream>((r) => { grant = r; }));
+    const { result, unmount } = renderHook(() => useGeminiLiveSession({ deps: h.deps }));
+    let p!: Promise<void>;
+    act(() => { p = result.current.start(); });
+    await act(async () => { await flushMicrotasks(); });
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1); // the mint runs in parallel…
+    expect(FakeSocket.all).toHaveLength(0); // …but nothing connects before the mic
+    expect(result.current.status).toBe('connecting');
+    await act(async () => { grant(h.stream); await p; });
+    const ws = FakeSocket.last;
+    act(() => ws.open());
+    expect(result.current.status).toBe('connecting');
+    act(() => ws.receive({ setupComplete: {} }));
+    expect(result.current.status).toBe('listening');
+    unmount();
+  });
+
+  test(`a mic granted more than ${LIVE_TOKEN_FRESH_MS / 1000} s after the mint gets a fresh token before the socket opens`, async () => {
+    const h = harness();
+    let grant!: (s: MediaStream) => void;
+    h.getUserMedia.mockImplementationOnce(() => new Promise<MediaStream>((r) => { grant = r; }));
+    const { unmount, result } = renderHook(() => useGeminiLiveSession({ deps: h.deps }));
+    let p!: Promise<void>;
+    act(() => { p = result.current.start(); });
+    await act(async () => { await flushMicrotasks(); }); // the first mint lands
+    h.advance(LIVE_TOKEN_FRESH_MS + 1000); // the user read the permission prompt for a while
+    await act(async () => { grant(h.stream); await p; });
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2);
+    expect(FakeSocket.last.url).toContain('access_token=tok2');
+    unmount();
+  });
+
+  test('a track that ends mid-call is re-acquired once; a second loss ends the call as mic_lost', async () => {
+    const h = harness();
+    const track2 = makeTrack();
+    const { result, ws, unmount } = await connected({ deps: h.deps });
+    h.getUserMedia.mockResolvedValueOnce(streamOf(track2));
+    await act(async () => { h.track.fire('ended'); await flushMicrotasks(); });
+    expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(h.worklets).toHaveLength(2);
+    expect(h.capCtx.audioWorklet.addModule).toHaveBeenCalledTimes(1); // the module is loaded once per context
+    expect(result.current.status).toBe('listening');
+    const before = ws.sent.filter(isAudioFrame).length;
+    act(() => h.worklets[1]!.emit(pcm(640, 3), 0.01));
+    expect(ws.sent.filter(isAudioFrame)).toHaveLength(before + 1); // the new mic reaches the socket
+
+    act(() => track2.fire('ended'));
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toBe('mic_lost');
+    expect(h.report).toHaveBeenCalledWith('mic_lost', expect.anything(), expect.anything());
+    unmount();
+  });
+
+  test('a lost track whose re-acquire fails → mic_lost with the browser\'s reason', async () => {
+    const h = harness();
+    const { result, unmount } = await connected({ deps: h.deps });
+    h.getUserMedia.mockRejectedValueOnce(domErr('NotAllowedError', 'Permission denied'));
+    await act(async () => { h.track.fire('ended'); await flushMicrotasks(); });
+    expect(result.current.error).toBe('mic_lost');
+    expect(result.current.errorDetail?.name).toBe('NotAllowedError');
+    unmount();
+  });
+
+  test('the capture worklet is PULLED: one output → a zero gain → the destination', async () => {
+    const h = harness();
+    const { unmount } = await connected({ deps: h.deps });
+    const w = h.worklets[0]!;
+    expect(w.opts.numberOfOutputs).toBe(1);
+    const sink = w.connections[0] as FakeGain;
+    expect(sink).toBeInstanceOf(FakeGain);
+    expect(sink.gain.value).toBe(0);
+    expect(sink.connections[0]).toBe(h.capCtx.destination);
+    unmount();
+  });
+
+  test(`Retry after mic_busy asks for release, waits ${LIVE_MIC_BUSY_RETRY_PAUSE_MS} ms, then starts with the context made in the tap`, async () => {
+    const h = harness();
+    h.getUserMedia.mockImplementation(async () => { throw domErr('NotReadableError'); });
+    const { result, unmount } = await startCall({ deps: h.deps });
+    expect(result.current.error).toBe('mic_busy');
+
+    let wake!: () => void;
+    h.deps.sleep = jest.fn((ms: number) => {
+      h.sleeps.push(ms);
+      return ms === LIVE_MIC_BUSY_RETRY_PAUSE_MS ? new Promise<void>((r) => { wake = r; }) : Promise.resolve();
+    });
+    h.getUserMedia.mockReset();
+    h.getUserMedia.mockImplementation(async () => h.stream);
+    const releases: string[] = [];
+    const onRelease = (e: Event) => releases.push((e as CustomEvent<MicReleaseDetail>).detail.reason);
+    window.addEventListener(MIC_RELEASE_EVENT, onRelease);
+    const ctxsBefore = FakeAudioContext.all.length;
+    act(() => result.current.retry());
+    expect(releases).toEqual(['live']);
+    expect(FakeAudioContext.all).toHaveLength(ctxsBefore + 1); // playback context created INSIDE the tap
+    const tapCtx = FakeAudioContext.all[ctxsBefore]!;
+    expect(result.current.status).toBe('connecting');
+    expect(result.current.error).toBeNull();
+    expect(h.sleeps[h.sleeps.length - 1]).toBe(LIVE_MIC_BUSY_RETRY_PAUSE_MS);
+    await act(async () => { await flushMicrotasks(); });
+    expect(h.getUserMedia).not.toHaveBeenCalled(); // still waiting out the pause
+
+    await act(async () => { wake(); await flushMicrotasks(); await flushMicrotasks(); });
+    window.removeEventListener(MIC_RELEASE_EVENT, onRelease);
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
+    const ws = FakeSocket.last;
+    act(() => ws.open());
+    act(() => ws.receive({ setupComplete: {} }));
+    act(() => ws.receive(audioFrame()));
+    expect(tapCtx.sources).toHaveLength(1); // the call plays through the context the tap created
+    unmount();
+  });
+
+  test('the gesture prime is adopted: its context plays, its mic is used, no second getUserMedia', async () => {
+    const h = harness();
+    const primedCtx = new FakeAudioContext();
+    h.deps.takePrimed = () => ({ playCtx: primedCtx as unknown as AudioContext, mic: Promise.resolve(h.stream), at: 0 });
+    const { ws, unmount } = await connected({ deps: h.deps });
+    expect(h.getUserMedia).not.toHaveBeenCalled();
+    expect(FakeAudioContext.all.filter((c) => c.sampleRate !== 16000)).toEqual([primedCtx]); // no second playback context
+    act(() => ws.receive(audioFrame()));
+    expect(primedCtx.sources).toHaveLength(1);
+    unmount();
+    expect(primedCtx.closed).toBe(true);
+  });
+
+  test('a failed prime continues the ladder instead of failing the call', async () => {
+    const h = harness();
+    h.deps.takePrimed = () => ({ playCtx: null, mic: Promise.reject(domErr('NotReadableError')), at: 0 });
+    const { unmount } = await startCall({ deps: h.deps });
+    expect(h.sleeps).toEqual([400]);
+    expect(h.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(FakeSocket.all).toHaveLength(1);
+    unmount();
+  });
+
+  test('a playback context that will not start without a gesture shows "tap to start"; resumeAudio clears it', async () => {
+    jest.useFakeTimers();
+    try {
+      class GestureCtx extends FakeAudioContext {
+        state: AudioContextState = 'suspended';
+        allow = false;
+        private listeners = new Set<() => void>();
+        addEventListener(_t: string, fn: () => void) { this.listeners.add(fn); }
+        removeEventListener(_t: string, fn: () => void) { this.listeners.delete(fn); }
+        resume() {
+          if (this.allow && this.state !== 'running') { this.state = 'running'; this.listeners.forEach((fn) => fn()); }
+          return Promise.resolve();
+        }
+      }
+      const h = harness();
+      let play!: GestureCtx;
+      h.deps.createAudioContext = ((opts?: AudioContextOptions) => {
+        if (opts?.sampleRate) return new FakeAudioContext(opts);
+        play = new GestureCtx(opts);
+        return play;
+      }) as unknown as LiveSessionDeps['createAudioContext'];
+      const { result, unmount } = await startCall({ deps: h.deps });
+      expect(result.current.audioBlocked).toBe(false);
+      act(() => { jest.advanceTimersByTime(1200); });
+      expect(result.current.audioBlocked).toBe(true);
+      play.allow = true; // the next call happens inside a tap
+      await act(async () => { result.current.resumeAudio(); await Promise.resolve(); });
+      expect(result.current.audioBlocked).toBe(false);
+      unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('mic helpers: failure kinds map to screen codes; every mic code is recognised as one', () => {
+    expect(micErrorCodeFor('denied')).toBe('mic_denied');
+    expect(micErrorCodeFor('system_denied')).toBe('mic_system_denied');
+    expect(micErrorCodeFor('not_found')).toBe('mic_not_found');
+    expect(micErrorCodeFor('busy')).toBe('mic_busy');
+    expect(micErrorCodeFor('timeout')).toBe('mic_busy');
+    expect(micErrorCodeFor('in_app')).toBe('mic_in_app');
+    expect(micErrorCodeFor('insecure')).toBe('mic_insecure');
+    expect(micErrorCodeFor('no_api')).toBe('mic_unavailable');
+    expect(micErrorCodeFor('constraint')).toBe('mic_unavailable');
+    expect(isMicErrorCode('mic_lost')).toBe(true);
+    expect(isMicErrorCode('connection_lost')).toBe(false);
+    expect(isMicErrorCode(null)).toBe(false);
+  });
 });
 
 // ─── Pure helpers ──────────────────────────────────────────────────────────────

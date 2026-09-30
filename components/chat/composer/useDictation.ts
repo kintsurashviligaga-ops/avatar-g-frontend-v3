@@ -38,12 +38,19 @@
  *
  * `setValue` must accept an updater (a React `setState`): the recorder's late passes read the LIVE value and
  * keep a keyboard edit instead of clobbering it.
+ *
+ * ⚠️ THE MIC IS SHARED WITH LIVE VOICE. Opening Live while this held the device (Android's recognizer holds it
+ * exclusively; the recorder's tracks used to stop only AFTER `finish()` resolved, up to 1.5 s for MediaRecorder)
+ * made Live's getUserMedia fail with NotReadableError. The hook now listens on lib/voice/micBus: a release request
+ * stops the recognizer and the recorder's tracks SYNCHRONOUSLY, keeping what was already dictated (the final pass
+ * still runs on the audio captured so far).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
+import { useMicRelease } from '@/lib/voice/micBus';
 
 // ─── Web Speech shapes (not in the TS DOM lib) ───────────────────────────────────────────────────────────
 
@@ -384,6 +391,10 @@ export const createMediaRecorderCapture: CaptureFactory = async (stream, onLevel
   };
 };
 
+function stopStream(stream: MediaStream | null | undefined): void {
+  try { stream?.getTracks().forEach((t) => { try { t.stop(); } catch { /* noop */ } }); } catch { /* noop */ }
+}
+
 /** Defaults, overridden only by the injected deps that are actually defined (an explicit `undefined` keeps the default). */
 function withDefaults<T extends object>(defaults: T, over: Partial<T> | undefined): T {
   const out = { ...defaults };
@@ -527,8 +538,12 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     const wantFinal = finalPass && !sttDiscardRef.current && !!r.session;
     if (wantFinal) setTrans(true);
     try {
-      const blob = r.session ? await r.session.finish().catch(() => null) : null;
-      r.stream.getTracks().forEach((t) => { try { t.stop(); } catch { /* noop */ } });
+      // finish() FIRST (it snapshots the WAV / asks MediaRecorder for its last chunk synchronously), THEN release
+      // the device, THEN wait. ⚠️ The tracks used to stop only after `await finish()` — up to 1.5 s of a hot mic
+      // that Live voice, opened right after, could not get.
+      const finishing = r.session ? r.session.finish().catch(() => null) : Promise.resolve(null);
+      stopStream(r.stream);
+      const blob = await finishing;
       if (!wantFinal) return;
       // Await the pass already in flight (never a polling loop), then one final pass over the whole clip.
       if (r.inFlight) await r.inFlight.catch(() => undefined);
@@ -741,6 +756,19 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     setEngine(null);
     try { optsRef.current.textareaRef?.current?.blur(); } catch { /* noop */ }
   }, [setRec, stopRecorder]);
+
+  // Another feature (Live voice) needs the microphone NOW. Like stop(), but the device is released before this
+  // returns: the recognizer is told to stop (its final result still lands in the box) and the recorder's tracks
+  // stop synchronously; the recorder's final pass then transcribes what was captured. Nothing dictated is lost.
+  const releaseMic = useCallback(() => {
+    const stream = streamRef.current;
+    if (!recordingRef.current && !stream && !recognitionRef.current) return;
+    micStopRequestedRef.current = true; // also makes a getUserMedia still in flight drop its stream
+    try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    stopStream(stream);
+    void stopRecorder(true);
+  }, [stopRecorder]);
+  useMicRelease(releaseMic, 'dictation');
 
   const markTyped = useCallback(() => { inputSourceRef.current = 'text'; }, []);
   const clearWarn = useCallback(() => setWarn(null), []);

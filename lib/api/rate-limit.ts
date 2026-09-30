@@ -130,6 +130,13 @@ export const RATE_LIMITS = {
   // call (plus Google Search grounding). 500 matches DAILY_AI_LIMIT, the cap the other chat routes already use —
   // a heavy day of real conversation, far below a scripted drain. The platform budget guard is the global backstop.
   CHAT_USER: { maxRequests: 500, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:chat:user' } as const,
+  // Per-USER daily allowance of PRO turns (/api/chat/gemini, mode 'pro'), keyed on the verified userId and checked
+  // AFTER CHAT_USER — a Pro turn draws on both buckets. A Pro turn costs ~3× a Fast one on output (3.1 Pro $2/$12 per
+  // 1M vs 3.8 Flash $1.50/$7.50, plus thinking), so CHAT_USER alone left one account able to spend ~$0.10 × 500 a day.
+  // 20 is Gemini-app-like: roughly $0.9 typical / $2 heavy per user per day. When it is spent the route DOWNGRADES the
+  // turn to Fast (with a notice) instead of refusing it. Read it through `chatProUserLimit()`, which applies the
+  // operator's CHAT_PRO_DAILY_LIMIT; this entry is the default and the namespace.
+  CHAT_PRO_USER: { maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:chat:pro:user' } as const,
   // Read-aloud (/api/tts/gemini), IP-keyed, before the session check. Its OWN namespace on purpose.
   // ⚠️ IT USED TO DRAW ON WRITE (20/min, shared with every other WRITE route). The studio reads a reply in ~600-char
   // chunks and prefetches the next one, so ONE long answer is ~14 requests. Two long replies in a minute — or one
@@ -176,6 +183,23 @@ export const RATE_LIMITS = {
   POLL_3D:   { maxRequests: 60,  windowMs: 60_000,       keyPrefix: 'rl:3dpoll' } as const,
   WEBHOOK:   { maxRequests: 500, windowMs: 60_000,       keyPrefix: 'rl:wh'    } as const,
 } as const;
+
+/** The most a CHAT_PRO_DAILY_LIMIT override may raise the Pro allowance to — a typo must not unbound Pro spend. */
+const MAX_CHAT_PRO_DAILY = 10_000;
+
+/**
+ * RATE_LIMITS.CHAT_PRO_USER with the operator's CHAT_PRO_DAILY_LIMIT applied, read at CALL time (like the model
+ * chains) so an env change needs no code change. A whole number 0 … 10,000; anything else (unset, blank, "20/day",
+ * negative, fractional, huge) keeps the default. 0 turns Pro off: every Pro turn is answered by Fast. The key prefix
+ * never changes, so moving the number up or down keeps today's count.
+ */
+export function chatProUserLimit(): RateLimitConfig {
+  const base = RATE_LIMITS.CHAT_PRO_USER;
+  const raw = (process.env.CHAT_PRO_DAILY_LIMIT ?? '').trim();
+  if (!/^\d{1,6}$/.test(raw)) return { ...base };
+  const n = Number(raw);
+  return n <= MAX_CHAT_PRO_DAILY ? { ...base, maxRequests: n } : { ...base };
+}
 
 export function getRateLimitForPlan(
   plan: PlanTier,

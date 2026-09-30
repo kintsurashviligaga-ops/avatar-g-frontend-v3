@@ -11,10 +11,10 @@
  * #00D2FF. Fail-soft throughout.
  */
 
-import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -43,9 +43,14 @@ import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition, VeoTier } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
 import { useChatStream } from '@/hooks/chat/useChatStream';
-import { StreamingBubble, formatModelBadge } from '@/components/chat/StreamingBubble';
+import { StreamingBubble } from '@/components/chat/StreamingBubble';
+import { ModelSwitcher, OPEN_PERSONA_EVENT, selectPersona, useActivePersona } from '@/components/chat/ModelSwitcher';
+import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@/lib/chat/chatModes';
+import { getChatMode } from '@/lib/chat/chatModeStore';
+import { primeLive } from '@/lib/voice/livePrime';
+import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
-import type { ChatSource, ChatStreamSnapshot } from '@/components/chat/chatStreamStore';
+import type { ChatSource, ChatStreamSnapshot, ChatStreamStore } from '@/components/chat/chatStreamStore';
 import { serializeHistory } from '@/lib/chat/historySerializer';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
 // initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
@@ -320,16 +325,53 @@ const StoryboardFrame = memo(function StoryboardFrame({ url, label, onZoom }: { 
   );
 });
 
-// Animated three-dot "typing" indicator for the chat-mode pending bubble.
-// memo (Iteration 5): zero props → always shallow-equal → never re-renders after mount.
-const TypingDots = memo(function TypingDots() {
+/**
+ * Small reading text next to the chat — the thinking mark, the disclaimer, the Pro-limit notice, the persona chip.
+ * Georgian keeps 16 px on a 1.6 line (docs/DESIGN.md §3: its tall glyphs blur at Gemini's 13 px); Latin and Cyrillic
+ * keep Gemini's quieter 13 px.
+ */
+const chatSmallText = (l: Lang) => (l === 'ka' ? 'text-[16px] leading-[1.6]' : 'text-[13px] leading-[1.5]');
+
+/**
+ * The chat's "thinking" mark before the first token (Gemini's spark, not three bouncing dots — DESIGN §5/§6 ban
+ * bounce). An opacity pulse on the icon, still under reduced motion (`motion-safe:`).
+ * memo (Iteration 5): primitive props → re-renders only when the language changes.
+ */
+const ThinkingMark = memo(function ThinkingMark({ label, lang }: { label: string; lang: Lang }) {
   return (
-    <span className="inline-flex items-center gap-1 py-1" aria-label="…">
-      {[0, 1, 2].map((i) => (
-        <span key={i} className="h-1.5 w-1.5 rounded-full bg-app-muted animate-bounce" style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }} />
-      ))}
+    <span role="status" className={`inline-flex items-center gap-2 py-1 text-app-muted ${chatSmallText(lang)}`}>
+      <Sparkle size={18} aria-hidden="true" className="shrink-0 text-app-accent motion-safe:animate-pulse" />
+      <span>{label}</span>
     </span>
   );
+});
+
+/** „Pro's daily allowance is spent — this answer came from Flash." The Flash name comes from the catalogue. */
+function proCapNotice(l: Lang): string {
+  const fast = chatModeOption('fast').label;
+  return l === 'en' ? `You've reached today's Pro limit — this answer used ${fast}.`
+    : l === 'ru' ? `Дневной лимит Pro исчерпан — ответ дан моделью ${fast}.`
+      : `Pro-ს დღიური ლიმიტი ამოიწურა — პასუხი გაეცა ${fast}-ით.`;
+}
+
+/** The notice line above a reply — one recipe for the streaming and the committed bubble, so the hand-off never jumps. */
+function ProCapLine({ lang }: { lang: Lang }) {
+  return <p role="note" className={`mb-2 text-app-muted ${chatSmallText(lang)}`}>{proCapNotice(lang)}</p>;
+}
+
+/**
+ * The same notice while the reply streams. The route downgrades a Pro turn to Flash once the per-account Pro
+ * allowance is spent and says so in the meta frame (`reason: 'pro_cap'`), which arrives before the first token — so
+ * the line is in place before any text, and the committed bubble renders it in the same spot. Subscribes to a
+ * BOOLEAN of the stream store, so a text chunk never re-renders it (only StreamingBubble re-renders per frame).
+ */
+const StreamProCapNotice = memo(function StreamProCapNotice({ store, lang }: { store: ChatStreamStore; lang: Lang }) {
+  const capped = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().meta?.reason === 'pro_cap',
+    () => false,
+  );
+  return capped ? <ProCapLine lang={lang} /> : null;
 });
 
 /** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
@@ -897,7 +939,16 @@ interface FilmSnap {
   clipSec?: number;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+  /** Legacy: a preformatted engine label (a raw model id, or "⚠ … (fallback)" for a non-Gemini provider). Still read. */
+  chatModel?: string;
+  /** The model that ACTUALLY answered this chat turn (the stream's meta frame) — formatted at render in the UI language. */
+  chatModelId?: string;
+  /** The chat mode that answered (Fast · Thinking · Pro · Lite) — the server's effective mode when it reports one. */
+  chatMode?: ChatModeId;
+  /** A one-line notice above the reply: 'pro_cap' = Pro's daily allowance was spent and Flash answered instead. */
+  chatNotice?: 'pro_cap';
+  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
@@ -1146,6 +1197,9 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
       ...(m.coverUrl ? { coverUrl: m.coverUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+      // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
+      ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
+      ...(m.chatMode ? { chatMode: m.chatMode } : {}),
       ...(m.regen ? { regen: dropRef(m.regen) } : {}),
       ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
     }));
@@ -1647,7 +1701,14 @@ function Portal({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
-export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
+export default function OmniStudio({ locale = 'ka', initialTool }: {
+  locale?: Lang;
+  /**
+   * The tool to open on instead of the default (video). ServiceHub passes 'chat' when „New session“ is pressed IN the
+   * chat — the session restarts by remounting this component, and Gemini keeps you in the chat you were in.
+   */
+  initialTool?: ToolId;
+}) {
   const t = COPY[locale] ?? COPY.ka;
   // Full studios reachable from the composer's service picker. Derived from the catalogue, so a service
   // added there shows up here without touching this file.
@@ -1674,7 +1735,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // (image / track / film) rendered inline in the feed.
   // DEFAULT = VIDEO (the owner's 2026-09-29 brief). Safe as a default because a video send first builds a
   // STORYBOARD the user approves before any render is paid for, and send() stops a guest at sign-in in every mode.
-  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('video');
+  // A chat restart (initialTool 'chat') opens straight on the chat — set here, not by an effect, so the new session
+  // never flashes the video empty state first.
+  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>(() => (initialTool === 'chat' ? 'chat' : 'video'));
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -2013,9 +2076,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const [imgStyle, setImgStyle] = useState<string>('Auto');
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
-  // P5 — Chat: response language (auto = reply in the user's language) + model tier.
-  const [chatLang, _setChatLang] = useState<'auto' | 'ka' | 'en' | 'ru'>('auto');
-  const [chatTier, _setChatTier] = useState<'standard' | 'pro'>('standard');
+  // The chat's MODEL is not component state: the header's ModelSwitcher writes it to lib/chat/chatModeStore and
+  // streamChat reads it at send time (a useState here was lost on every „New session“ remount). The reply language
+  // is the server's auto-detect — the two never-set useStates that used to sit here (language, tier) are gone.
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
   const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
@@ -2531,11 +2594,20 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [busy, storyboardBusy, queueActiveNow]);
 
   // Auto-grow the composer textarea with its content (capped), like a modern chat.
+  //
+  // `composerWrapped` drives the chat composer's two shapes (Gemini): ONE row — „+“ · the text · mic · Send — while
+  // the text fits a line, and the text on its own full-width line with the controls below once it wraps. LATCHED
+  // until the box is emptied: in the one-row shape the text box is narrower, so wrapped text would fit again on the
+  // wider line and the composer would flip back and forth on every keystroke.
+  const [composerWrapped, setComposerWrapped] = useState(false);
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    if (!input) setComposerWrapped(false);
+    // One line is 44 px (24 px line + 20 px padding); anything taller has wrapped.
+    else if (input.includes('\n') || el.scrollHeight > 48) setComposerWrapped(true);
   }, [input]);
 
   // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
@@ -2547,6 +2619,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : 'video')
         : mode === 'lipsync' ? (lipTab === 'motion' ? 'motion' : 'avatar')
           : mode;
+  /**
+   * PURE CHAT (Gemini): no settings column, no settings toggle, the model switcher in the header, the chat composer.
+   * ⚠️ Keyed on the TOOL, never on `mode`: dubbing, 3D and presentation park `mode` at 'chat' while their controls live
+   * in the settings panel — a rule on `mode` would hide those studios' only controls.
+   */
+  const chatOnly = activeTool === 'chat';
   const selectTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
@@ -2583,9 +2661,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (isDesktop && optionsOpen) { setPanelOpen(true); setOptionsOpen(false); }
   }, [isDesktop, optionsOpen]);
   const openSettings = useCallback(() => {
+    // Chat has no settings to open (its model and persona live in the header's switcher).
+    if (activeTool === 'chat') return;
     if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
-  }, [isDesktop]);
+  }, [isDesktop, activeTool]);
   useEffect(() => { if (mode === 'surgical') setOptionsOpen(false); }, [mode]);
+  // Entering the chat puts a phone's settings sheet away (it has nothing to show there), so switching back to a tool
+  // never springs a sheet open by itself. The desktop PANEL is not touched: `panelOpen` is the user's choice, and
+  // leaving the chat brings the panel back exactly as it was (AI Studio).
+  useEffect(() => { if (chatOnly) setOptionsOpen(false); }, [chatOnly]);
   // The JobTray floats at the right edge; on a desktop it moves left of the settings column instead of over it.
   const settingsSurfaceRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -2597,9 +2681,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     const ro = new ResizeObserver(set);
     ro.observe(el);
     return () => { ro.disconnect(); root.style.setProperty('--settings-w', '0px'); };
-  }, [isDesktop, mode]);
+    // chatOnly: the column is display:none in chat (offsetWidth 0) — re-measure on the switch rather than trust the
+    // observer to report a hide.
+  }, [isDesktop, mode, chatOnly]);
   // Below `lg` the settings are a modal sheet: focus in, Tab trapped, Escape closes, focus back to the chip.
-  const settingsSheetRef = useDialogA11y<HTMLDivElement>(!isDesktop && optionsOpen, () => setOptionsOpen(false));
+  const settingsSheetRef = useDialogA11y<HTMLDivElement>(!isDesktop && optionsOpen && !chatOnly, () => setOptionsOpen(false));
   // The „+" sheet: what you bring (photos · camera · files) and what you make (the tools). `toolPickOnly` is the
   // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
@@ -2611,14 +2697,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const remixVideoRef = useRef<HTMLInputElement | null>(null);
   // A guest sees „შესვლა" in the desktop title bar. ChatChrome publishes the session on <html data-authed>.
   const [guest, setGuest] = useState(false);
+  // …and the signed-in user's first name (<html data-first-name>, ChatChrome), for the chat's personal greeting line.
+  const [firstName, setFirstName] = useState('');
   useEffect(() => {
     const el = document.documentElement;
-    const read = () => setGuest(el.dataset.authed === '0');
+    const read = () => {
+      setGuest(el.dataset.authed === '0');
+      setFirstName((el.dataset.firstName ?? '').trim());
+    };
     read();
     const mo = new MutationObserver(read);
-    mo.observe(el, { attributes: true, attributeFilter: ['data-authed'] });
+    mo.observe(el, { attributes: true, attributeFilter: ['data-authed', 'data-first-name'] });
     return () => mo.disconnect();
   }, []);
+  // The persona in use — named on the chat composer's chip (Gemini shows the chosen Gem there). Same store as the
+  // sidebar row and the switcher's persona row; ✕ on the chip returns to the default assistant.
+  const activePersona = useActivePersona(locale);
   // The sidebar picks a tool through `omni:set-tool`; it learns which one is active from `omni:tool-changed` and
   // from <html data-tool> (read on its mount — a child's first effect runs before its parent's listener exists).
   useEffect(() => {
@@ -2658,6 +2752,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
         return;
       }
+      // A restart that asked to stay on a tool (ServiceHub's „New session“). Chat is already the initial mode (no
+      // flash); any other tool is selected here, through the same path the sidebar uses.
+      if (initialTool && initialTool !== 'chat') { selectTool(initialTool); return; }
       const d = url.searchParams.get('mode');
       if (d !== 'image' && d !== 'music' && d !== 'video' && d !== 'lipsync') return;
       setMode(d);
@@ -2694,7 +2791,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // panel's always-open breakpoint (now `lg`), not with `sm` — an iPad opening the drawer needs the page
     // pinned for exactly the same reason a phone does. Keeping 640 here would have left the one device that
     // reported the bug as the only one whose drawer does not pin the page behind it.
-    if (!optionsOpen || window.innerWidth >= 1024) return;
+    if (!optionsOpen || chatOnly || window.innerWidth >= 1024) return;
     const scrollY = window.scrollY;
     const body = document.body;
     const prev = { overflow: body.style.overflow, position: body.style.position, top: body.style.top, width: body.style.width };
@@ -2709,7 +2806,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       body.style.width = prev.width;
       window.scrollTo(0, scrollY);
     };
-  }, [optionsOpen]);
+  }, [optionsOpen, chatOnly]);
 
   // ── Cross-service Studio Bridge ────────────────────────────────────────────────
   // A generated image (→ character ref) or music track (→ music-video soundtrack) handed
@@ -4581,6 +4678,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
     })));
+    // THE MODEL — read at send time too, exactly like the persona below: a switch in the header applies to the very
+    // next turn (regenerate, edit-resend and the queued type-ahead included) without rebuilding streamChat, and it
+    // travels as a MODE — the route maps it to its own model chain and never accepts a model id from a client.
+    const chatMode = getChatMode();
     // PERSONA — read at send time, not render time, so a change in the picker applies to the very next turn. A
     // BUILT-IN travels as an id the server knows; a CUSTOM one lives only in this browser, so the whole object travels
     // and the server re-validates it (the injection sanitizer is a security boundary, not a formality).
@@ -4593,8 +4694,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         messages: payload,
         // protocol 2: this client renders {error} frames, so the route sends the error once (not also as {text}).
         protocol: 2,
-        ...(chatLang !== 'auto' ? { language: chatLang } : {}),
-        ...(chatTier === 'pro' ? { tier: 'pro' } : {}),
+        mode: chatMode,
         ...(personaId ? { personaId } : {}),
         ...(customPersona ? { customPersona } : {}),
       }, { turnId: String(myGen) });
@@ -4606,14 +4706,25 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         : result.status === 'error' && result.error
           ? `${result.text}\n\n⚠️ ${result.error.message}`
           : result.text;
-      const badge = formatModelBadge(result.meta);
+      // WHO ANSWERED — the raw id and the mode, formatted at render (in the UI language, at the END of the action row).
+      // Not the budget notice (not a model's answer). A non-Gemini provider keeps the legacy explicit fallback label,
+      // so a degraded answer is never mistaken for Gemini. The server's effective mode wins over the one we asked for.
+      const meta = result.meta;
+      const answered = meta && meta.model && meta.provider !== 'budget' && meta.model !== 'none' ? meta : null;
+      const reportedMode = meta?.mode;
+      const answeredMode: ChatModeId = isChatModeId(reportedMode) ? reportedMode : chatMode;
       // Commit into THIS turn's bubble (by id) — never "the last message", which may be an image job or a Live
       // transcript appended while the reply streamed.
       setMessages((prev) => prev.map((m) => (m.id === sid
         ? {
           ...m,
           text: replyText,
-          ...(badge ? { chatModel: badge } : {}),
+          ...(answered
+            ? (answered.provider === 'gemini'
+              ? { chatModelId: answered.model, chatMode: answeredMode }
+              : { chatModel: `⚠ ${answered.model} (fallback)` })
+            : {}),
+          ...(meta?.reason === 'pro_cap' ? { chatNotice: 'pro_cap' as const } : {}),
           ...(result.sources.length ? { sources: result.sources } : {}),
         }
         : m)));
@@ -4633,7 +4744,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setStreamingId((cur) => (cur === sid ? null : cur));
       if (mine()) setBusy(false);
     }
-  }, [chat, chatStop, chatLang, chatTier, persistChatTurn, locale]);
+  }, [chat, chatStop, persistChatTurn, locale]);
 
   // Flush a queued type-ahead chat message once the current turn finishes (busy → false). Reads the
   // LATEST messages via messagesRef (not a stale closure), so the follow-up carries the full history.
@@ -5592,6 +5703,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, []);
 
+  // Share a reply's TEXT (Gemini's share): the system share sheet where there is one (phones), otherwise a copy with a
+  // "copied" note — the share button must never be a dead tap. A dismissed sheet (AbortError) is the user's answer,
+  // not a failure, so it does not fall through to the clipboard.
+  const shareReply = useCallback(async (text: string, i: number) => {
+    const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { share?: (d: ShareData) => Promise<void> }) : null;
+    if (nav?.share) {
+      try { await nav.share({ text }); return; } catch (e) {
+        if ((e as { name?: string } | null)?.name === 'AbortError') return;
+      }
+    }
+    await copyMsg(text, i);
+    const note = locale === 'en' ? 'Copied — paste it anywhere' : locale === 'ru' ? 'Скопировано — вставьте куда угодно' : 'დაკოპირდა — ჩასვი სადაც გინდა';
+    setShareToast(note);
+    setTimeout(() => setShareToast((cur) => (cur === note ? null : cur)), 2200);
+  }, [copyMsg, locale]);
+
   // Thumbs feedback (#9): record the rating locally + fire-and-forget to the
   // server. Never throws — feedback must never disrupt the chat.
   const rateMsg = useCallback((i: number, rating: 'up' | 'down', text: string) => {
@@ -5795,6 +5922,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       setVoiceRecording(false);
     }
   }, [addVoiceMedia, stopVoiceRecording]);
+  // Live voice asks every in-page mic holder to let go before it takes the mic (lib/voice/micBus): Android Chrome and
+  // some Windows drivers refuse a second capture of a busy device, and Live reported that as „the microphone could
+  // not start“. The clip recorded so far is kept — the recorder's onstop still attaches it.
+  useMicRelease(() => { if (voiceStreamRef.current) stopVoiceRecording(); }, 'music');
 
   // Detect an existing TRAINED voice model (RVC) so the Music panel can surface a
   // "sing in my trained voice" toggle. GET /api/voice/train reports the user's model
@@ -5913,6 +6044,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             : activeTool === 'remix' ? (REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en)
               : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა');
   const composerPlaceholder = recording ? t.recording
+    // The chat asks like Gemini's prompt bar ("Ask Gemini") — in our name.
+    : activeTool === 'chat' ? (locale === 'en' ? 'Ask MyAvatar' : locale === 'ru' ? 'Спросите MyAvatar' : 'ჰკითხე MyAvatar-ს')
     : activeTool === 'product' ? (locale === 'en' ? 'A tagline (optional) — the product photo goes in with „+“' : locale === 'ru' ? 'Слоган (необязательно) — фото товара через „+“' : 'სლოგანი (არასავალდებულო) — პროდუქტის ფოტო „+“-ით')
       : activeTool === 'swap' ? (locale === 'en' ? 'Add the video and the new face with „+“' : locale === 'ru' ? 'Добавьте видео и новое лицо через „+“' : 'დაამატე ვიდეო და ახალი სახე „+“-ით')
         : activeTool === 'motion' ? (locale === 'en' ? 'Motion runs from its settings' : locale === 'ru' ? 'Движение запускается в настройках' : 'მოძრაობა პარამეტრებიდან იწყება')
@@ -6122,20 +6255,19 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
    */
   const messageList = useMemo(() => (
           messages.map((m, i) => (
-            <div key={i} className={`group flex animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div key={i} className={`group flex motion-safe:animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {/* ⚠️ No "M" badge beside a reply. It was styled exactly like the account initial in the header, so the
                   screen carried two identical brand circles — the „ორი ლოგო" report. A reply is the model's text, as in
-                  Gemini: the page already says whose studio it is. */}
+                  Gemini: the page already says whose studio it is. And no engine label ABOVE it any more: that row
+                  was reserved while streaming and swapped on commit — the model now closes the action row (Gemini).
+                  A user turn is a right-aligned column: attachments, the tinted bubble, and (touch) its actions below. */}
               <div className={`text-[16px] leading-[1.7] ${
                 m.role === 'user'
-                  ? 'max-w-[85%] rounded-2xl bg-app-elevated px-4 py-2.5 text-app-text'
+                  ? 'flex min-w-0 max-w-[85%] flex-col items-end text-app-text'
                   : 'min-w-0 flex-1 text-app-text'
               }`}>
-                {m.role === 'assistant' && m.chatModel && (
-                  <div className="mb-1 text-[10px] font-medium text-app-muted/55" title="answering engine">{m.chatModel}</div>
-                )}
                 {m.medias && m.medias.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
+                  <div className={`mb-2 flex flex-wrap gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
                     {m.medias.map((md, mi) => (
                       isImage(md.mimeType) ? (
                         <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
@@ -6385,7 +6517,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
                   // The chat turn in flight renders from the stream store — only this bubble re-renders per frame.
                   if (streamingId !== null && m.id === streamingId && m.role === 'assistant' && !m.genKind) {
-                    return <StreamingBubble store={chat.store} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} transform={streamTransform} onCommit={pinStream} />;
+                    return (
+                      <>
+                        <StreamProCapNotice store={chat.store} lang={locale} />
+                        <StreamingBubble store={chat.store} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} transform={streamTransform} onCommit={pinStream} />
+                      </>
+                    );
                   }
                   // Director's Console for QUEUED cinema renders: the Cap-3 queue path never sets the
                   // global `busy` flag (so `pending` is false and the console was hidden). Key off the
@@ -6482,29 +6619,59 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       </div>
                     );
                   }
-                  if (pending && mode === 'chat' && !m.text) return <TypingDots />;
+                  if (pending && mode === 'chat' && !m.text) return <ThinkingMark label={t.thinking} lang={locale} />;
                   if (!m.text) return null;
-                  // Inline edit mode for a user turn → textarea + Send/Cancel.
+                  // Inline edit mode for a user turn → Gemini's editor: the text in a rounded field, Cancel · Update.
                   if (m.role === 'user' && editingIdx === i) {
                     return (
-                      <div className="space-y-1.5">
+                      <div className="w-[min(85vw,36rem)] max-w-full space-y-2">
                         <textarea
                           value={editText}
                           onChange={(e) => setEditText(e.target.value)}
                           rows={2}
                           autoFocus
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); } else if (e.key === 'Escape') cancelEdit(); }}
-                          className="w-[min(70vw,420px)] max-w-full resize-none rounded-xl bg-app-surface px-3 py-2 text-[14.5px] text-app-text outline-none ring-1 ring-app-accent/40"
+                          className="block w-full resize-none rounded-[24px] border-0 bg-app-elevated px-5 py-3 text-[16px] leading-[1.6] text-app-text outline-none ring-1 ring-app-accent/40 focus:ring-2 focus:ring-app-accent/60"
                         />
                         <div className="flex items-center justify-end gap-1.5">
-                          <button type="button" onClick={cancelEdit} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:text-app-text">{locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}</button>
-                          <button type="button" onClick={saveEdit} disabled={!editText.trim()} className="inline-flex items-center gap-1.5 rounded-full bg-app-accent min-h-[40px] sm:min-h-0 px-3.5 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-40">{locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა'}</button>
+                          <button type="button" onClick={cancelEdit}
+                            className={`inline-flex h-11 items-center rounded-full px-4 font-medium text-app-accent transition-colors duration-200 hover:bg-app-accent/10 [@media(pointer:fine)]:h-10 ${locale === 'ka' ? 'text-[16px]' : 'text-[14px]'}`}>
+                            {locale === 'en' ? 'Cancel' : locale === 'ru' ? 'Отмена' : 'გაუქმება'}
+                          </button>
+                          <button type="button" onClick={saveEdit} disabled={!editText.trim()}
+                            className={`inline-flex h-11 items-center rounded-full bg-app-accent px-4 font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 disabled:opacity-40 [@media(pointer:fine)]:h-10 ${locale === 'ka' ? 'text-[16px]' : 'text-[14px]'}`}>
+                            {locale === 'en' ? 'Update' : locale === 'ru' ? 'Обновить' : 'განახლება'}
+                          </button>
                         </div>
                       </div>
                     );
                   }
-                  // The user's own text stays verbatim; assistant replies render as rich markdown.
-                  if (m.role !== 'assistant') return <span className="whitespace-pre-wrap break-words">{m.text}</span>;
+                  // The user's own text stays verbatim, in Gemini's bubble — tinted with the ONE accent (the owner's brief;
+                  // docs/DESIGN.md §2), no border. With a mouse, copy and edit sit to the LEFT of the bubble on hover; on
+                  // touch they are the row under it (below), because there is no hover to reveal them.
+                  if (m.role !== 'assistant') {
+                    return (
+                      <div className="flex min-w-0 max-w-full items-start justify-end gap-1">
+                        {!busy && (
+                          <div className="mt-1.5 hidden shrink-0 gap-0.5 text-app-muted opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:fine)]:flex">
+                            <button type="button" onClick={() => void copyMsg(m.text, i)}
+                              aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
+                              title={copiedIdx === i ? (locale === 'en' ? 'Copied!' : locale === 'ru' ? 'Скопировано!' : 'დაკოპირდა!') : (locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება')}
+                              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text ${copiedIdx === i ? 'text-app-accent' : ''}`}>
+                              {copiedIdx === i ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+                            </button>
+                            <button type="button" onClick={() => startEdit(i)}
+                              aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
+                              title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
+                              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text">
+                              <Pencil size={16} aria-hidden="true" />
+                            </button>
+                          </div>
+                        )}
+                        <div className="min-w-0 max-w-[32rem] whitespace-pre-wrap break-words rounded-[24px] bg-app-accent/10 px-5 py-3 text-[16px] leading-[1.6] text-app-text">{m.text}</div>
+                      </div>
+                    );
+                  }
                   // VECTOR 1 — split out image blocks so a `[Image: …]` placeholder never renders as a raw bracketed
                   // text block: real URLs become <img> frames (Download + Open-in-Editor), URL-less descriptions
                   // become a one-tap "Generate" card. Plain prose is untouched (fast-path when there are no blocks).
@@ -6519,6 +6686,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   const displayText = stripDanglingServiceBlock(parsed.text);
                   return (
                     <>
+                      {m.chatNotice === 'pro_cap' && <ProCapLine lang={locale} />}
                       {typeof m.videoProgress === 'number' && !m.videoUrl && (
                         <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
                           <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
@@ -6534,7 +6702,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <ScanFace size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
                           <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{routingPrompt}</span>
                           <button type="button" disabled={busy} onClick={() => dispatchServiceBlock(routingChip, routingPrompt)}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 disabled:opacity-40">
                             <Sparkles size={13} />{(routingChip === 'image' || routingChip === 'music')
                               ? (locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია')
                               : (locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა')}
@@ -6548,7 +6716,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                             className="block max-h-[60vh] w-full max-w-[min(82vw,420px)] cursor-zoom-in bg-black/40 object-contain" />
                           <div className="mt-1.5 flex items-center gap-1.5">
                             <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.png`)} title={t.imgDownload} aria-label={t.imgDownload}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90"><Download size={15} /></button>
                             {editButton(url, 'image')}
                           </div>
                         </div>
@@ -6558,7 +6726,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           <ImageIcon size={16} className="shrink-0 text-app-accent" />
                           <span className="min-w-0 flex-1 truncate text-[12.5px] text-app-muted">{p}</span>
                           <button type="button" disabled={busy} onClick={() => void runImageJob(p, undefined, { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle })}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-all duration-300 ease-out hover:scale-[1.04] hover:opacity-95 disabled:opacity-40 disabled:hover:scale-100">
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-app-accent px-3 py-1.5 text-[12px] font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 disabled:opacity-40">
                             <Sparkles size={13} />{locale === 'en' ? 'Generate' : locale === 'ru' ? 'Создать' : 'გენერაცია'}
                           </button>
                         </div>
@@ -6569,9 +6737,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           <TrackPlayer url={url} label={t.modeMusic} />
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                             <button type="button" onClick={() => void dl(url, `myavatar-${Date.now()}.mp3`)} title={t.imgDownload} aria-label={t.imgDownload}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90"><Download size={15} /></button>
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90"><Download size={15} /></button>
                             <button type="button" onClick={() => void share(url, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90"><Share2 size={15} /></button>
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent"><Share2 size={15} /></button>
                             {editButton(url, 'audio')}
                           </div>
                         </div>
@@ -6583,19 +6751,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button
                     type="button"
                     onClick={() => void regenerate(m.regen!)}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12px] font-semibold text-app-bg shadow-sm transition-opacity hover:opacity-90"
                   >
                     <RotateCcw size={13} /> {t.retry}
                   </button>
                 )}
                 {/* FIX 4 — one-click retry on a failed video render now lives IN the failed film's ResultCard
                     (the error tile above reuses the stored prompt + refs + orientation). */}
-                {/* User-turn actions — Copy + Edit. Copy was missing entirely: users
-                    could copy assistant replies but not their own messages. On desktop
-                    the row reveals on hover / keyboard focus (group-hover); on mobile
-                    (no hover) it stays visible so the action is always reachable. */}
+                {/* User-turn actions on TOUCH — Copy + Edit under the bubble, always visible (there is no hover to
+                    reveal them). With a mouse the same two sit left of the bubble on hover (above). */}
                 {m.role === 'user' && m.text && editingIdx !== i && !busy && (
-                  <div className="mt-1 flex justify-end gap-1.5 text-app-muted transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                  <div className="mt-1 flex justify-end gap-0.5 text-app-muted [@media(pointer:fine)]:hidden">
                     <button
                       type="button"
                       onClick={() => void copyMsg(m.text, i)}
@@ -6603,76 +6769,75 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                       title={copiedIdx === i
                         ? (locale === 'en' ? 'Copied!' : locale === 'ru' ? 'Скопировано!' : 'დაკოპირდა!')
                         : (locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება')}
-                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-colors hover:bg-app-border/15 hover:text-app-accent ${copiedIdx === i ? 'text-app-accent' : ''}`}
+                      className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text ${copiedIdx === i ? 'text-app-accent' : ''}`}
                     >
-                      {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                      {copiedIdx === i ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                     </button>
                     <button
                       type="button"
                       onClick={() => startEdit(i)}
                       aria-label={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
                       title={locale === 'en' ? 'Edit' : locale === 'ru' ? 'Изменить' : 'რედაქტირება'}
-                      className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md text-app-muted transition-colors hover:bg-app-border/15 hover:text-app-accent"
+                      className="flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text"
                     >
-                      <Pencil size={13} />
+                      <Pencil size={18} aria-hidden="true" />
                     </button>
                   </div>
                 )}
-                {/* Per-response actions on a TEXT reply — Read-aloud + Copy. No
-                    Like/Dislike, per the one-window spec. */}
-                {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (
-                  <div className="mt-1 flex items-center gap-1.5 text-app-muted">
-                    <button
-                      type="button"
-                      onClick={() => void speakMsg(m.text, i)}
-                      aria-label={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                      title={locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა'}
-                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${speakingIdx === i ? 'text-app-accent' : ''}`}
-                    >
-                      {speakingIdx === i
-                        ? (speakPhase === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />)
-                        : <Volume2 size={13} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void copyMsg(m.text, i)}
-                      aria-label={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                      title={locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება'}
-                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${copiedIdx === i ? 'text-app-accent' : ''}`}
-                    >
-                      {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => rateMsg(i, 'up', m.text)}
-                      aria-label={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                      title={locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი'}
-                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}
-                    >
-                      <ThumbsUp size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => rateMsg(i, 'down', m.text)}
-                      aria-label={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                      title={locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი'}
-                      className={`flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90 ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}
-                    >
-                      <ThumbsDown size={13} />
-                    </button>
-                    {i === messages.length - 1 && !busy && (
-                      <button
-                        type="button"
-                        onClick={() => regenerateChat()}
-                        aria-label={t.regenerate}
-                        title={t.regenerate}
-                        className="flex h-9 w-9 -m-0.5 items-center justify-center rounded-md transition-all duration-300 ease-out hover:scale-110 hover:bg-app-elevated hover:text-app-accent active:scale-90"
-                      >
-                        <RotateCcw size={13} />
+                {/* The reply's action row, in Gemini's order: 👍 · 👎 · regenerate (the last reply) · share · copy — plus
+                    read-aloud (our Georgian TTS, a product feature Gemini hides behind ⋮) — and, closing the row, the
+                    model that ACTUALLY answered, small and muted. The last reply's row is always visible (Gemini);
+                    earlier ones appear on hover / keyboard focus where there is a hover, and stay visible on touch.
+                    No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
+                {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
+                  const isLast = i === messages.length - 1;
+                  const act = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
+                  const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
+                  // „Thinking“ is Flash with deep reasoning — name it as the menu does, so the label matches the choice.
+                  const modelLabel = answeredBy && m.chatMode === 'thinking' && /flash/i.test(m.chatModelId ?? '') && !/lite/i.test(m.chatModelId ?? '')
+                    ? `${answeredBy} Thinking` : answeredBy;
+                  const good = locale === 'en' ? 'Good response' : locale === 'ru' ? 'Хороший ответ' : 'კარგი პასუხი';
+                  const bad = locale === 'en' ? 'Bad response' : locale === 'ru' ? 'Плохой ответ' : 'ცუდი პასუხი';
+                  const copyWord = locale === 'en' ? 'Copy' : locale === 'ru' ? 'Копировать' : 'კოპირება';
+                  const readWord = locale === 'en' ? 'Read aloud' : locale === 'ru' ? 'Озвучить' : 'ხმამაღლა წაკითხვა';
+                  return (
+                    // -ml-2.5: the first icon (not its 40 px state layer) lines up with the reply's text edge.
+                    <div className={`-ml-2.5 mt-2 flex min-w-0 items-center gap-0.5 text-app-muted transition-opacity duration-200 ${isLast ? '' : '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100'}`}>
+                      <button type="button" onClick={() => rateMsg(i, 'up', m.text)} aria-label={good} title={good} aria-pressed={ratedIdx[i] === 'up'}
+                        className={`${act} ${ratedIdx[i] === 'up' ? 'text-app-accent' : ''}`}>
+                        <ThumbsUp size={18} aria-hidden="true" />
                       </button>
-                    )}
-                  </div>
-                )}
+                      <button type="button" onClick={() => rateMsg(i, 'down', m.text)} aria-label={bad} title={bad} aria-pressed={ratedIdx[i] === 'down'}
+                        className={`${act} ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}>
+                        <ThumbsDown size={18} aria-hidden="true" />
+                      </button>
+                      {isLast && !busy && (
+                        <button type="button" onClick={() => regenerateChat()} aria-label={t.regenerate} title={t.regenerate} className={act}>
+                          <RotateCcw size={18} aria-hidden="true" />
+                        </button>
+                      )}
+                      <button type="button" onClick={() => void shareReply(m.text, i)} aria-label={t.share} title={t.share} className={act}>
+                        <Share2 size={18} aria-hidden="true" />
+                      </button>
+                      <button type="button" onClick={() => void copyMsg(m.text, i)} aria-label={copyWord} title={copyWord}
+                        className={`${act} ${copiedIdx === i ? 'text-app-accent' : ''}`}>
+                        {copiedIdx === i ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                      </button>
+                      <button type="button" onClick={() => void speakMsg(m.text, i)} aria-label={readWord} title={readWord}
+                        className={`${act} ${speakingIdx === i ? 'text-app-accent' : ''}`}>
+                        {speakingIdx === i
+                          ? (speakPhase === 'loading' ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <Square size={16} aria-hidden="true" />)
+                          : <Volume2 size={18} aria-hidden="true" />}
+                      </button>
+                      {modelLabel && (
+                        <span data-testid="reply-model" title={modelLabel}
+                          className="ml-auto min-w-0 truncate pl-2 text-[12px] font-medium tabular-nums text-app-muted">
+                          {modelLabel}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* Retry — the last reply errored; re-run the same turn cleanly. */}
                 {/* Chat-only retry: a failed IMAGE/MUSIC/VIDEO bubble keeps its genKind (video also sets
                     retryVideo + its own retry), so exclude those — regenerateChat() streams a TEXT reply and
@@ -6681,7 +6846,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button
                     type="button"
                     onClick={() => regenerateChat()}
-                    className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90"
                   >
                     <RotateCcw size={13} /> {t.regenerate}
                   </button>
@@ -6695,7 +6860,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   <button
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
-                    className="mt-1 inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 active:scale-[0.98]"
+                    className="mt-1 inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90"
                   >
                     <Plus size={14} /> {locale === 'en' ? 'Top up balance' : locale === 'ru' ? 'Пополнить баланс' : 'ბალანსის შევსება'}
                   </button>
@@ -6703,7 +6868,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, copiedIdx, copyMsg, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
@@ -6768,13 +6933,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         </span>
         <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
       </button>
-      {activeTool === 'chat' && (
-        <p className="px-1 text-[12.5px] leading-relaxed text-app-muted">
-          {locale === 'en' ? 'Chat needs no settings — write or speak. „+“ adds a photo or a file.'
-            : locale === 'ru' ? 'Чату не нужны настройки — пишите или говорите. „+“ добавит фото или файл.'
-              : 'ჩატს პარამეტრები არ სჭირდება — დაწერე ან ჩაილაპარაკე. „+“ ფოტოს ან ფაილს დაამატებს.'}
-        </p>
-      )}
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -8037,6 +8195,43 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     if (!first) return locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია';
     return first.length > 90 ? `${first.slice(0, 90)}…` : first;
   })();
+  /**
+   * Gemini's empty chat on a desktop: the greeting, the composer in the MIDDLE of the screen, the starter chips under
+   * it. Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold that node): the
+   * column centres its content with auto margins (`mt-auto` on the feed, `mb-auto` on the chips), which, unlike
+   * `justify-center`, can never push the greeting above an unreachable scroll edge on a short screen. Phones keep
+   * the composer docked at the bottom, as Gemini's phone app does.
+   */
+  const centred = chatOnly && messages.length === 0 && isDesktop;
+  // The chat composer's one-row shape (see the pill): while the text fits a line and nothing else needs the row.
+  const chatSingleRow = chatOnly && attachments.length === 0 && !composerWrapped && !activePersona.name;
+  // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
+  const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
+  // Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two: on a phone that
+  // keeps the composer above the fold (what got the old chips removed); on a desktop a free-wrapping row broke 3 + 1,
+  // which reads as an accident. ONE column from 1024 to 1279 — there the centre sits between the navigation and the
+  // open settings (~400 px) and „ავატარის პორტრეტი" clipped — except in the chat, which has no settings column.
+  const starterChips = (
+    <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
+      className={`relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem] ${chatOnly ? '' : 'lg:max-w-[22rem] lg:grid-cols-1 xl:max-w-[34rem] xl:grid-cols-2'}`}>
+      {STARTER_CHIPS.map((chip) => {
+        // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
+        const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
+        return (
+          <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
+            className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
+            <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
+            <span className="min-w-0 sm:truncate">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+  // „გამარჯობა, {name}" — Gemini's personal line above the greeting, for a signed-in user in the chat. Cyan fading
+  // into the text colour: one hue, no second accent (docs/DESIGN.md §6–§7).
+  const personalGreeting = chatOnly && firstName
+    ? (locale === 'en' ? `Hi, ${firstName}` : locale === 'ru' ? `Здравствуйте, ${firstName}` : `გამარჯობა, ${firstName}`)
+    : '';
 
   return (
     // Drag-and-drop covers the whole studio. ⚠️ With the settings beside the centre column, a video dropped on the
@@ -8044,9 +8239,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     <div className="flex h-full w-full min-w-0 text-app-text" onDragEnter={onChatDragEnter} onDragOver={onChatDragOver} onDragLeave={onChatDragLeave} onDrop={onChatDrop}>
     <div className="flex min-w-0 flex-1 flex-col">
       {/* Desktop title bar (AI Studio): the session's name, and the three things you do to a session. ChatChrome's
-          header steps aside at this width; this bar is a <header> of its own, so sign-in stays in one. */}
-      <header className="hidden h-14 shrink-0 items-center gap-1 border-b border-app-border/10 pl-6 pr-3 lg:flex">
-        <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium text-app-text" title={sessionTitle}>{sessionTitle}</h2>
+          header steps aside at this width; this bar is a <header> of its own, so sign-in stays in one.
+          IN THE CHAT it is Gemini's: 64 px, no rule under it, the model switcher top-left, the session's name centred
+          (from xl; a heading for screen readers below that) and no settings toggle — the chat has no settings.
+          `relative z-30`: the switcher's menu drops over the feed that follows this bar in the DOM. */}
+      <header className={`relative z-30 hidden shrink-0 items-center gap-1 pr-3 lg:flex ${chatOnly ? 'h-16 pl-3' : 'h-14 border-b border-app-border/10 pl-6'}`}>
+        {chatOnly ? (
+          <>
+            <ModelSwitcher variant="desktop" locale={locale} />
+            <h2 title={sessionTitle}
+              className="sr-only xl:not-sr-only xl:pointer-events-none xl:absolute xl:left-1/2 xl:top-1/2 xl:max-w-[40%] xl:-translate-x-1/2 xl:-translate-y-1/2 xl:truncate xl:text-[16px] xl:font-normal xl:text-app-muted">
+              {sessionTitle}
+            </h2>
+            <span className="flex-1" aria-hidden="true" />
+          </>
+        ) : (
+          <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium text-app-text" title={sessionTitle}>{sessionTitle}</h2>
+        )}
         {guest && (
           <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'login' }))}
             className="tap-44 relative mr-1 inline-flex h-9 items-center rounded-full bg-app-accent px-4 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
@@ -8059,11 +8268,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
           <PenSquare size={18} aria-hidden="true" />
         </button>
-        <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} aria-controls="studio-settings"
-          aria-label={settingsWord} title={settingsWord} data-testid="settings-panel-toggle"
-          className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-app-elevated hover:text-app-text ${panelOpen ? 'bg-app-elevated text-app-text' : 'text-app-muted'}`}>
-          <SlidersHorizontal size={18} aria-hidden="true" />
-        </button>
+        {!chatOnly && (
+          <button type="button" onClick={() => setPanelOpen((v) => !v)} aria-expanded={panelOpen} aria-controls="studio-settings"
+            aria-label={settingsWord} title={settingsWord} data-testid="settings-panel-toggle"
+            className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-app-elevated hover:text-app-text ${panelOpen ? 'bg-app-elevated text-app-text' : 'text-app-muted'}`}>
+            <SlidersHorizontal size={18} aria-hidden="true" />
+          </button>
+        )}
       </header>
     <div
       // ⚠️ A VIEWPORT TRAP ON SHORT SCREENS. `overflow-hidden` here is deliberate — the shell must not
@@ -8153,10 +8364,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           nearBottomRef.current = dist < 160;
           setShowJump(dist > 160);
         }}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1"
+        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1 ${centred ? 'mt-auto flex-none' : 'flex-1'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
         {messages.length === 0 ? (
-          <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-2 py-6 text-center">
+          <div className={`relative flex min-h-full flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'pb-7 pt-6' : 'py-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
@@ -8164,28 +8375,17 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
             </div>
             <div className="relative space-y-2">
+              {personalGreeting && (
+                <p data-testid="personal-greeting" className="bg-gradient-to-r from-app-accent to-app-text bg-clip-text pb-1 text-[18px] font-medium leading-[1.4] text-transparent sm:text-[20px]">
+                  {personalGreeting}
+                </p>
+              )}
               {/* The locked copy (docs/DESIGN.md §7) — the same greeting and line in every mode. */}
               <h1 className="font-display text-[30px] font-bold leading-tight tracking-[-0.01em] text-app-text sm:text-[36px]">{t.greeting}</h1>
               <p className="mx-auto max-w-lg text-balance text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
             </div>
-            {/* Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two: on a
-                phone that keeps the composer above the fold (what got the old chips removed); on a desktop a
-                free-wrapping row broke 3 + 1, which reads as an accident. ONE column from 1024 to 1279: there the
-                centre sits between the navigation and the open settings (~400 px) and „ავატარის პორტრეტი" clipped. */}
-            <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
-              className="relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem] lg:max-w-[22rem] lg:grid-cols-1 xl:max-w-[34rem] xl:grid-cols-2">
-              {STARTER_CHIPS.map((chip) => {
-                // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
-                const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
-                return (
-                  <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
-                    className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
-                    <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
-                    <span className="min-w-0 sm:truncate">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* In the centred chat the chips sit UNDER the composer (rendered after it, below). */}
+            {!centred && starterChips}
           </div>
         ) : messageList}
       </div>
@@ -8197,10 +8397,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           onClick={() => scrollToBottom()}
           aria-label={t.scrollDown}
           title={t.scrollDown}
-          className="absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-app-border/15 bg-app-surface text-app-text shadow-lg backdrop-blur transition-colors hover:text-app-accent"
+          className="absolute left-1/2 z-20 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-app-elevated text-app-text shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)] ring-1 ring-app-border/10 transition-colors duration-200 hover:bg-app-surface [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10"
           style={{ bottom: `calc(env(safe-area-inset-bottom) + ${Math.min(composerH, 180) + 12}px)` }}
         >
-          <ChevronDown size={18} />
+          <ArrowDown size={18} aria-hidden="true" />
         </button>
       )}
 
@@ -8437,8 +8637,15 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           if (f) void pickRemixMedia(f, 'video');
         }} />
         {/* One clean rounded pill — min-height 52px, padding 12px 16px; the prompt sits on
-            its own line so a long brief is never squeezed, and ALL controls live inside. */}
-        <div className="rounded-[24px] border border-app-border/15 bg-app-elevated px-3 py-3 min-h-[52px] sm:px-4 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40">
+            its own line so a long brief is never squeezed, and ALL controls live inside.
+            IN THE CHAT it is Gemini's prompt bar: 64 px, radius 32, a hairline RING (never a coloured border — the
+            focus ring may be the accent), and ONE row — „+“ · the text · mic · Live / Send — while the text fits a
+            line; wrapped text, an attachment or a persona chip move the controls onto their own row below.
+            ⚠️ The textarea stays this pill's DIRECT child in every shape (tests measure `textarea/..` as the pill),
+            so the one-row shape is made by `display: contents` on the control row and `order`, never by moving it. */}
+        <div className={chatOnly
+          ? `flex min-h-[64px] bg-app-elevated px-2 py-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.16)] ring-1 ring-app-border/10 transition-shadow duration-200 focus-within:ring-app-accent/40 ${chatSingleRow ? 'items-center gap-1 rounded-[32px]' : 'flex-col rounded-[28px]'}`
+          : 'rounded-[24px] border border-app-border/15 bg-app-elevated px-3 py-3 min-h-[52px] sm:px-4 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40'}>
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
               narrow column by the controls (the old single-row pill did exactly that). */}
           <textarea
@@ -8458,30 +8665,58 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             rows={1}
             disabled={enhancing}
             placeholder={composerPlaceholder}
-            className="max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60"
+            className={chatOnly
+              ? `max-h-40 min-h-[44px] resize-none border-0 bg-transparent py-2.5 text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-w-0 flex-1 px-2' : 'w-full px-3'}`
+              : 'max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60'}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className="mt-1 flex items-center gap-1">
+          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : ''} mt-1 flex items-center gap-1`}>
             <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
               aria-label={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
               title={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text">
-              <Plus size={20} aria-hidden="true" />
+              className={chatOnly
+                ? `group flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${chatSingleRow ? 'order-first' : ''}`
+                : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
+              {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
+              <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
-            {/* The tool chip — its visible text IS its accessible name (what, and in what shape). */}
-            <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
-              aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
-              data-testid="options-toggle" title={settingsWord}
-              className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface sm:px-3.5 sm:text-[13px]">
-              <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
-              <span className="min-w-0 truncate whitespace-nowrap">{toolLabel}{toolSummary ? <span className="text-app-muted"> · {toolSummary}</span> : null}</span>
-              {/* The chevron is from `sm` up: on a 390 px phone its 19 px is what keeps „ვიდეო · 9:16 · 24წმ" whole. */}
-              <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
-            </button>
-            <div className="flex-1" />
+            {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
+                chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
+            {!chatOnly && (
+              <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
+                aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
+                data-testid="options-toggle" title={settingsWord}
+                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface sm:px-3.5 sm:text-[13px]">
+                <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
+                <span className="min-w-0 truncate whitespace-nowrap">{toolLabel}{toolSummary ? <span className="text-app-muted"> · {toolSummary}</span> : null}</span>
+                {/* The chevron is from `sm` up: on a 390 px phone its 19 px is what keeps „ვიდეო · 9:16 · 24წმ" whole. */}
+                <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
+              </button>
+            )}
+            {/* The persona in use, as Gemini shows a chosen Gem: tap the name to change it, ✕ to go back to the
+                default assistant. The same choice the sidebar row and the switcher's persona row show. */}
+            {chatOnly && activePersona.name && (
+              <span data-testid="persona-chip"
+                className={`inline-flex h-11 min-w-0 max-w-[55%] items-center gap-0.5 rounded-full bg-app-accent/10 pl-1 pr-1 font-medium text-app-accent [@media(pointer:fine)]:h-9 ${chatSmallText(locale)}`}>
+                <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_PERSONA_EVENT))}
+                  aria-label={`${locale === 'en' ? 'Persona' : locale === 'ru' ? 'Персона' : 'პერსონა'}: ${activePersona.name}`}
+                  title={activePersona.name}
+                  className="inline-flex h-full min-w-0 items-center gap-1.5 rounded-full pl-2 pr-1 transition-colors duration-200 hover:bg-app-accent/10">
+                  <Sparkles size={14} aria-hidden="true" className="shrink-0" />
+                  <span className="min-w-0 truncate">{activePersona.name}</span>
+                </button>
+                <button type="button" onClick={() => selectPersona('')}
+                  aria-label={locale === 'en' ? 'Stop using this persona' : locale === 'ru' ? 'Отключить персону' : 'პერსონის გამორთვა'}
+                  title={locale === 'en' ? 'Stop using this persona' : locale === 'ru' ? 'Отключить персону' : 'პერსონის გამორთვა'}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-accent/15 [@media(pointer:fine)]:h-7 [@media(pointer:fine)]:w-7">
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </span>
+            )}
+            <div className={chatSingleRow ? 'hidden' : 'flex-1'} />
 
             {/* Right action: Stop while busy · Wand+Send when there's something to send ·
                 Mic otherwise (record voice). Mirrors Gemini's mic↔send swap. */}
@@ -8492,16 +8727,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 now sits BESIDE the generation Stop, so the two can overlap. */}
             {busy && !recording && !transcribing && (
               <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text">
-                <Mic size={19} />
+                className={chatOnly ? `${chatRound} text-app-text/90 hover:bg-app-border/10` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text'}>
+                <Mic size={chatOnly ? 20 : 19} />
               </button>
             )}
             {/* Generation Stop, kept reachable when dictation owns the primary slot — otherwise starting to
                 dictate mid-reply would take away the only way to stop that reply. */}
             {busy && (recording || transcribing) && (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
-                <Square size={15} className="fill-current" />
+                className={chatOnly ? `${chatRound} bg-app-text text-app-bg hover:opacity-90` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent'}>
+                <Square size={chatOnly ? 14 : 15} className="fill-current" />
               </button>
             )}
             {/* A product ad and a swap render through the Cap-3 queue, not `busy`: their Run stays on screen beside Stop
@@ -8514,9 +8749,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             )}
             {/* Dictation state wins the primary slot: while recording, Stop must mean "stop the mic". */}
             {busy && !recording && !transcribing ? (
+              // Gemini's stop: a solid circle in the text colour with a filled square.
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent">
-                <Square size={15} className="fill-current" />
+                className={chatOnly ? `${chatRound} bg-app-text text-app-bg hover:opacity-90` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent'}>
+                <Square size={chatOnly ? 14 : 15} className="fill-current" />
               </button>
             ) : recording ? (
               // While dictating, a STOP that never disappears — even as live text
@@ -8543,8 +8779,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 {/* Mic stays available even with text in the box — tap again to keep
                     dictating / continue where you left off. (Dictation → fills the text box.) */}
                 <button type="button" onClick={() => void toggleMic()} aria-label={t.micHint} title={t.micHint}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text">
-                  <Mic size={19} />
+                  className={chatOnly ? `${chatRound} text-app-text/90 hover:bg-app-border/10` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors duration-200 hover:bg-app-surface hover:text-app-text'}>
+                  <Mic size={chatOnly ? 20 : 19} />
                 </button>
                 {/* LIVE VOICE — Gemini-style full-duplex voice-dialogue chip, immediately right of the
                     dictation mic. Launches the real-time VoiceConversation overlay (owned by the parent
@@ -8553,39 +8789,66 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     voice call-to-action. Reduced-motion falls the bars back to static (see .voice-eq). */}
                 {/* SEND-WHEN-TEXT: the live-voice button and Send share ONE slot. With something to send, Send
                     replaces it — the composer never shows two primary actions side by side. */}
+                {/* ⚠️ primeLive() RUNS INSIDE THE TAP, BEFORE THE OPEN. The Live screen mounts later (a lazy chunk, then
+                    an effect) — after the tap's user activation is spent — so on iOS its audio stayed suspended, and a
+                    mic still held by dictation or the music recorder made Android refuse the capture („მიკროფონი
+                    ვერ ჩაირთო“). primeLive asks every other mic holder to let go, resumes playback and starts the
+                    mic while the gesture is live; the session adopts both. A guest is sent to sign-in instead —
+                    their browser is never asked for the microphone. */}
                 {!canRun && (
-                <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:voice-open'))}
+                <button type="button" onClick={() => {
+                  if (document.documentElement.dataset.authed !== '0') primeLive();
+                  window.dispatchEvent(new CustomEvent('myavatar:voice-open'));
+                }}
                   aria-label={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   title={locale === 'en' ? 'Live voice' : locale === 'ru' ? 'Живой голос' : 'ცოცხალი ხმა'}
                   className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors duration-200 hover:bg-app-accent/10">
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}
-                {input.trim() && !onlyStarter && (
+                {input.trim() && !onlyStarter && !chatOnly && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
                   // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
+                  // Not in the chat: it rewrites a GENERATION prompt; a question to the assistant is not one.
                   <button type="button" onClick={() => void magicEnhance()} disabled={enhancing} aria-label={t.magicHint} title={t.magicHint}
                     className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-accent disabled:opacity-40 sm:flex">
                     {enhancing ? <Loader2 size={18} className="animate-spin text-app-accent" /> : <Wand2 size={18} />}
                   </button>
                 )}
                 {canRun && (
-                  <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
-                    className="ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
-                    <Send size={17} />
-                  </button>
+                  chatOnly ? (
+                    // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
+                    <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
+                      className={`${chatRound} ml-0.5 bg-app-accent text-app-bg hover:opacity-90`}>
+                      <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
+                    </button>
+                  ) : (
+                    <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
+                      className="ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
+                      <Send size={17} />
+                    </button>
+                  )
                 )}
               </>
             )}
           </div>
         </div>
-        {/* The price, once, under the composer — on screen before the spend, for every priced tool. */}
-        {priceTag && (
+        {/* The price, once, under the composer — on screen before the spend, for every priced tool. The chat is not
+            priced; there the line is Gemini's disclaimer instead. */}
+        {chatOnly ? (
+          <p data-testid="chat-disclaimer" className={`mt-2 px-3 text-center text-app-muted ${chatSmallText(locale)}`}>
+            {locale === 'en' ? 'MyAvatar is AI and can make mistakes.'
+              : locale === 'ru' ? 'MyAvatar — это ИИ, и он может ошибаться.'
+                : 'MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.'}
+          </p>
+        ) : priceTag && (
           <p data-testid="price-tag" title={priceTag.long} className="mt-1.5 px-3 text-center text-[12px] tabular-nums text-app-muted">
             <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
           </p>
         )}
       </div>
+      {/* The centred empty chat (desktop): the starter chips UNDER the composer, closing the centred group. */}
+      {centred && <div className="mb-auto flex w-full shrink-0 justify-center pt-6">{starterChips}</div>}
 
       {/* All full-screen overlays portal to document.body so they render above
           root-level chrome (the cookie banner) instead of being trapped in the chat
@@ -8798,9 +9061,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         MotionControlPanel's picked files. Mounted while hidden, for the same reason: closing is not discarding. */}
     <div
       ref={settingsSurfaceRef}
+      // In the chat the surface is HIDDEN, never unmounted (the keep-mounted rule above): the chat has nothing to set,
+      // and `panelOpen` is left as the user set it, so leaving the chat brings the panel back exactly as it was.
       className={isDesktop
-        ? `${panelOpen ? 'flex' : 'hidden'} w-[300px] shrink-0 flex-col border-l border-app-border/10 bg-app-surface/40 xl:w-[340px]`
-        : `${optionsOpen ? 'flex' : 'hidden'} fixed inset-0 z-[95] items-end justify-center sm:pb-28`}
+        ? `${panelOpen && !chatOnly ? 'flex' : 'hidden'} w-[300px] shrink-0 flex-col border-l border-app-border/10 bg-app-surface/40 xl:w-[340px]`
+        : `${optionsOpen && !chatOnly ? 'flex' : 'hidden'} fixed inset-0 z-[95] items-end justify-center sm:pb-28`}
       onClick={isDesktop ? undefined : () => setOptionsOpen(false)}
     >
       {isDesktop ? null : <div aria-hidden="true" className="sheet-fade absolute inset-0 bg-black/55" />}

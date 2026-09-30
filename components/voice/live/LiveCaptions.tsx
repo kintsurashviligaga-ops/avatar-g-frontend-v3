@@ -2,7 +2,8 @@
 
 /**
  * LiveCaptions — the rolling transcript of a Live call: the last few lines, newest at the bottom, the user's words
- * dimmer than the model's (as in the Gemini app).
+ * dimmer and smaller than the model's (as in Gemini Live: the answer is the thing you read). Georgian keeps the
+ * product's 16 px floor and 1.6 line-height for its tall script; the model's line is 20 px in every language.
  *
  * Accessibility: the region is a polite live log, but only FINAL lines are exposed to assistive tech. Pending lines
  * change several times a second while the words stream in; announcing each revision would read every sentence to a
@@ -45,7 +46,7 @@ export default function LiveCaptions({ captions, locale = 'ka', maxItems = 3, cl
       aria-live="polite"
       aria-relevant="additions"
       aria-label={t.region}
-      className={`flex w-full max-w-md flex-col justify-end gap-1.5 px-6 text-center ${className}`}
+      className={`flex w-full max-w-xl flex-col justify-end gap-2 px-6 text-center ${className}`}
     >
       {shown.map((c) => (
         <p
@@ -55,8 +56,8 @@ export default function LiveCaptions({ captions, locale = 'ka', maxItems = 3, cl
           data-final={c.final ? '1' : '0'}
           className={
             c.role === 'user'
-              ? 'text-[14px] leading-snug text-app-muted'
-              : `text-[16px] font-medium leading-snug text-app-text ${c.final ? '' : 'opacity-90'}`
+              ? `${locale === 'ka' ? 'text-[16px]' : 'text-[15px]'} leading-[1.6] text-app-muted`
+              : `text-[20px] font-medium leading-[1.6] text-app-text ${c.final ? '' : 'opacity-90'}`
           }
         >
           <span className="sr-only">{c.role === 'user' ? t.you : t.assistant}: </span>

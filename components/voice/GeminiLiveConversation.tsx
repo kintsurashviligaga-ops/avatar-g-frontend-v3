@@ -116,7 +116,10 @@ export default function GeminiLiveConversation({
   const camera = useLiveCamera({ onFrame: sendVideoFrame });
   const stopCamera = camera.stop;
 
-  // Connect on mount (opening the overlay is the user gesture); a voice switch reconnects with the new voice.
+  // Connect on mount; a voice switch reconnects with the new voice. The mount is NOT the user's gesture (ChatChrome
+  // loads this screen with dynamic()): the Live button primes the audio context + mic inside its own click
+  // (lib/voice/livePrime) and the session adopts them; without a prime, a context that will not start shows
+  // "tap to turn on sound" rather than a silent call.
   useEffect(() => {
     void start();
     return () => stop();
@@ -163,10 +166,11 @@ export default function GeminiLiveConversation({
       aria-label={voiceGender === 'female'
         ? (loc === 'en' ? 'Switch to the male voice' : loc === 'ru' ? 'Переключить на мужской голос' : 'გადართე კაცის ხმაზე')
         : (loc === 'en' ? 'Switch to the female voice' : loc === 'ru' ? 'Переключить на женский голос' : 'გადართე ქალის ხმაზე')}
-      className="flex h-12 min-w-[44px] shrink-0 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-3.5 text-app-text transition hover:bg-white/[0.14] active:scale-[0.97]"
+      className="flex h-12 min-w-[48px] shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full px-3 text-app-text transition-colors duration-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
     >
-      <Volume2 size={18} className="shrink-0 text-app-accent" aria-hidden />
-      <span className="whitespace-nowrap text-[13px] font-semibold">
+      <Volume2 size={20} className="shrink-0 text-app-accent" aria-hidden />
+      {/* Icon-only below `sm`: the pill must hold five controls on a 320 px phone; the aria-label still names it. */}
+      <span className={`hidden whitespace-nowrap font-semibold sm:inline ${loc === 'ka' ? 'text-[16px]' : 'text-[15px]'}`}>
         {voiceGender === 'female'
           ? (loc === 'en' ? 'Female' : loc === 'ru' ? 'Женский' : 'ქალის')
           : (loc === 'en' ? 'Male' : loc === 'ru' ? 'Мужской' : 'კაცის')}
@@ -179,6 +183,7 @@ export default function GeminiLiveConversation({
       locale={loc}
       status={status}
       error={session.error}
+      errorDetail={session.errorDetail}
       captions={session.captions}
       muted={session.muted}
       cameraOn={camera.on}
@@ -191,6 +196,8 @@ export default function GeminiLiveConversation({
       onFlipCamera={onFlipCamera}
       onEnd={endCall}
       onRetry={session.retry}
+      audioBlocked={session.audioBlocked}
+      onResumeAudio={session.resumeAudio}
       extraControls={voiceSwitch}
       showCaptions={!session.degraded}
     />
