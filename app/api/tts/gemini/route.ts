@@ -5,7 +5,8 @@
  * model (generateContent → responseModalities:['AUDIO']) with a built-in Google voice and return the
  * spoken audio. Gemini returns raw 16-bit mono PCM (audio/L16;rate=24000), which <audio> can't play, so
  * we wrap it in a minimal WAV container and return audio/wav. Verified live: 24 kHz PCM, natural
- * Georgian, ~1-2 s/chunk. Rate-limited (paid call, unauthenticated so guest read-aloud works too).
+ * Georgian, ~1-2 s/chunk. Rate-limited AND signed-in only: it spends the Gemini balance, and a guest has no
+ * assistant reply to read aloud (the studio stops a guest before any turn is sent).
  *
  * This is SEPARATE from /api/elevenlabs/tts on purpose — that route still powers film/voiceover; only the
  * chat read-aloud is migrated off ElevenLabs here.
@@ -15,6 +16,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -57,6 +60,13 @@ export async function POST(req: NextRequest) {
   const text = (body.text || '').trim().slice(0, MAX_TEXT);
   if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 });
 
+  // ⚠️ IT WAS OPEN TO ANYONE ("so guest read-aloud works too"), with up to three billed attempts per call and only a
+  // per-IP limit whose IP header was spoofable. A guest has no reply to read — the studio stops them before any turn
+  // is sent — so the only anonymous caller was someone spending our Gemini balance directly. Both clients
+  // (OmniStudio speakMsg, lib/audio/premium-tts) already treat a non-OK answer as "stay silent".
+  const { user } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(user?.id)) return NextResponse.json(signInToGenerateBody(body.locale), { status: 401 });
+
   const apiKey = resolveGeminiKey();
   if (!apiKey) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
@@ -68,9 +78,10 @@ export async function POST(req: NextRequest) {
   // generate text, but it should only be used for TTS"). Even with it, the preview TTS model very
   // occasionally still slips into answer-mode, so we retry once.
   const callGemini = async (): Promise<Response> =>
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    // The key rides in a header — a key in a URL lands in every proxy and access log on the way to Google.
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `Read aloud verbatim: ${text}` }] }],
         generationConfig: {

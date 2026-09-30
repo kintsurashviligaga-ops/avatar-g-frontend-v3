@@ -310,6 +310,10 @@ export async function orchestrate(
     || !!input.metadata?.imageBase64
     || (Array.isArray(input.metadata?.attachments) && input.metadata.attachments.length > 0);
   if (hasAttachedAsset) {
+    // An attachment goes to Gemini Pro vision (large files, long histories) — paid, so a session is required like
+    // every other paid branch. Text-only chat below stays as it is.
+    const refusedAttachment = refuseAnonymousGeneration(input, 'visual_analysis');
+    if (refusedAttachment) return refusedAttachment;
     const probe = detectIntent(input.message, input.serviceContext);
     const isGenerationCommand = DETERMINISTIC_INTENTS.has(probe.intent) || probe.intent === 'music_generation';
     if (!isGenerationCommand) {
@@ -440,6 +444,8 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
       provider === 'heygen' ? 'avatar_generation'
       : (mapped.assetType === 'image' || mapped.responseType === 'image') ? 'image_generation'
       : mapped.responseType === 'audio' ? 'music_generation'
+      // A single chat clip resolves here (film clips poll through pollFilmTask, never this branch).
+      : (mapped.assetType === 'video' || mapped.responseType === 'video') ? 'video_generation'
       : null;
     const cost = intent ? billableCreditCost(intent) : 0;
     if (cost > 0) await deductCredits(userId, cost, `poll:${predictionId}`).catch(() => { /* best-effort */ });

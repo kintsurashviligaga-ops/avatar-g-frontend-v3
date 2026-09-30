@@ -33,6 +33,8 @@ import {
   extractJson,
   normalizeBreakdown,
 } from '@/lib/orchestrator/script-breakdown';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,6 +50,7 @@ interface ScriptBody {
   prompt?: string;
   totalDurationSec?: number;
   image?: { base64?: string; mimeType?: string };
+  locale?: string;
 }
 
 /**
@@ -118,6 +121,15 @@ export async function POST(req: NextRequest) {
   const prompt = String(body.prompt ?? '').trim();
   if (!prompt) {
     return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
+  }
+
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). Both stages spend the platform's keys — Gemini vision (retried up
+  // to 4× per key, rotated across every configured key) on a caller-supplied image, then a Claude breakdown — and
+  // no screen in the product calls this route. "Honest degradation" below is about provider misses; it was never
+  // meant to make an anonymous POST a free Gemini + Claude call.
+  const { user } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(user?.id)) {
+    return NextResponse.json(signInToGenerateBody(typeof body.locale === 'string' ? body.locale : 'ka'), { status: 401 });
   }
   const totalSec = Number.isFinite(body.totalDurationSec) ? Number(body.totalDurationSec) : 30;
 

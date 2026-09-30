@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
-import { createGeminiVeoClip, pollGeminiVeoTask, fetchVeoVideoBuffer, hasGeminiVeoProvider } from '@/lib/ai/geminiVeo';
+import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
+import { costPerSecondUsd, DEFAULT_TIER, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
+import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
+import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
+import type { OutputFormat } from '@/lib/veo/types';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { addWatermark } from '@/lib/video/remixOps';
 import { shouldWatermark } from '@/lib/billing/entitlements';
@@ -25,9 +29,44 @@ import { promptToEnglish } from '@/lib/ai/promptToEnglish';
  *     this codebase has already shipped once.
  *   · A submit that fails refunds immediately; a poll that reports failure refunds too. The credit is
  *     never held by a clip that will not exist.
+ *
+ * ⚠️ VEO GOES THROUGH lib/veo/engine AND THE BUDGET GUARD. This used to call lib/ai/geminiVeo directly,
+ * which could only ever render on the Gemini API (adding GCP credentials moves every other Veo caller to
+ * Vertex AI) and spent Google money OUTSIDE the daily budget guard — a 25-clip batch was 25 Veo jobs the
+ * platform envelope never saw. The submit now runs inside guardedCall, priced like ServiceManager's Veo leg.
+ * The stored `operation` is the engine's operation name, which says by itself which transport polls it
+ * (`models/…` Gemini, `projects/…` Vertex), so a row submitted before a transport switch still resolves.
+ *
+ * ⚠️ AN AMBIGUOUS SUBMIT IS NEVER RE-SUBMITTED. A timed-out / 5xx create MAY have made a billed job, but
+ * there is no operation name to poll, so the item fails and the user is refunded — the platform, not the
+ * user, carries the possible Veo charge, and the budget keeps the estimate for it. A retry would risk two.
  */
 
 const VIDEO_SECONDS = 8; // Veo's clip grid — see the project's scene-grid notes.
+/** 7 days — the hosted copy's TTL, and V4 signing's own maximum for a Vertex clip. */
+const DELIVERY_TTL_SEC = 604_800;
+/** Anything smaller is not a playable clip — the floor ServiceManager.deliverVeoVideo uses too. */
+const MIN_CLIP_BYTES = 1_024;
+/** The legacy client's prompt cap: the enqueue cap is on the brief, and the English translation can run longer. */
+const PROMPT_MAX_CHARS = 2_000;
+
+/**
+ * The stored shape as the engine's output format. The engine decides the native frame (1:1 renders at 16:9,
+ * 4:5 at 9:16); this queue has no post-crop, so those clips are delivered at the native frame. Anything
+ * unrecognised renders landscape, as the legacy client did.
+ */
+function outputFormat(aspect: string): OutputFormat {
+  return aspect === '9:16' || aspect === '16:9' || aspect === '1:1' || aspect === '4:5' ? aspect : '16:9';
+}
+
+/**
+ * The budget books a definitive refusal at $0 (nothing was created); an `ambiguous` submit keeps the estimate
+ * because a billed job MAY exist — the guard errs toward counting money that may be spent.
+ */
+function submitActualCost(result: unknown): number | undefined {
+  const outcome = (result as CreateVeoClipResult | null)?.outcome;
+  return outcome && !outcome.ok && outcome.reason !== 'ambiguous' ? 0 : undefined;
+}
 
 export interface QueueItem {
   id: string; batch_id: string; ordinal: number; prompt: string; aspect: string;
@@ -119,17 +158,31 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
   if (inflight) {
     const item = inflight as QueueItem;
     if (!item.operation) { await fail(svc, item, userId, 'submitted without an operation handle'); return { action: 'failed', item }; }
-    const res = await pollGeminiVeoTask(item.operation).catch(() => null);
+    const res = await pollVeoClip(item.operation).catch(() => null);
     // `processing` covers every transient/unknown outcome by design — keep waiting rather than refunding
-    // a clip that is still rendering. Only an explicit `failed` ends the item.
-    if (!res || res.status === 'processing') return { action: 'pending', item };
-    if (res.status === 'failed' || !res.uri) { await fail(svc, item, userId, 'the provider could not render this clip'); return { action: 'failed', item }; }
+    // a clip that is still rendering. Only an explicit verdict (`filtered` / `failed`) ends the item.
+    if (!res || res.state === 'processing') return { action: 'pending', item };
+    if (res.state === 'filtered') { await fail(svc, item, userId, 'Google declined this clip under its safety rules'); return { action: 'failed', item }; }
+    const video = res.state === 'succeeded' ? res.videos[0] : undefined;
+    if (!video) { await fail(svc, item, userId, 'the provider could not render this clip'); return { action: 'failed', item }; }
 
-    const buf = await fetchVeoVideoBuffer(res.uri).catch(() => null);
-    if (!buf) { await fail(svc, item, userId, 'video could not be downloaded'); return { action: 'failed', item }; }
+    let url: string | null;
+    if (video.kind === 'gcs') {
+      // Vertex AI wrote the clip into our own bucket: a signed read URL IS the delivery — nothing to download
+      // or re-host. A signing error is a delivery miss like any other, so it refunds.
+      url = await deliverableUrl(video, DELIVERY_TTL_SEC).catch(() => null);
+      if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
+    } else {
+      // A Gemini API file needs the key to read, so it is downloaded server-side (the key never leaves);
+      // `bytes` is Vertex's inline output. Either way the clip is hosted once, at a path fixed per item.
+      const buf = video.kind === 'bytes'
+        ? Buffer.from(video.base64, 'base64')
+        : await downloadGeminiVideo(video.uri).catch(() => null);
+      if (!buf || buf.byteLength < MIN_CLIP_BYTES) { await fail(svc, item, userId, 'video could not be downloaded'); return { action: 'failed', item }; }
 
-    let url = await uploadBufferAndSign('uploads', `agentq/${item.id}.mp4`, buf, 'video/mp4', 604_800);
-    if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
+      url = await uploadBufferAndSign('uploads', `agentq/${item.id}.mp4`, buf, 'video/mp4', DELIVERY_TTL_SEC);
+      if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
+    }
 
     // ⚠️ WATERMARK LAST. Anything that crops or scales must happen before it — stripVeoWatermark crops
     // the bottom of the frame and would cut off a mark applied earlier. Fail-open: an unmarked clip is
@@ -153,7 +206,8 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
   if (!next) return { action: 'idle' };
   const item = next as QueueItem;
 
-  if (!hasGeminiVeoProvider()) { await fail(svc, item, userId, 'video provider is not configured'); return { action: 'failed', item }; }
+  const transport = veoTransport();
+  if (!transport) { await fail(svc, item, userId, 'video provider is not configured'); return { action: 'failed', item }; }
 
   // ⚠️ CHARGE HERE, NOT AT ENQUEUE, AND UNDER THIS ITEM'S OWN REF. `agentq:<item id>` is unique per row
   // and the column is UNIQUE, so a retried drain re-uses the same ref and deduct_credits — which is
@@ -174,14 +228,57 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
   // Veo reads English — the same reason every other lane translates. The brief is a DESCRIPTION, so
   // there is nothing here that must survive verbatim.
   const promptEn = await promptToEnglish(item.prompt, 'video');
-  const created = await createGeminiVeoClip({
-    promptText: promptEn, aspect: item.aspect, durationSec: VIDEO_SECONDS,
-  }).catch(() => null);
+  // The default tier is what the legacy client rendered (veo-3.1-generate-preview, GEMINI_VEO_MODEL honoured).
+  const model = resolveModel(transport, DEFAULT_TIER);
+  let created: CreateVeoClipResult | null;
+  try {
+    created = await guardedCall(
+      {
+        service: 'video',
+        model,
+        // The seconds Veo renders at the exact tier × resolution × audio rate — the flat video line
+        // under-reserves a Standard clip ~3×. Audio is always on (the Gemini API cannot turn it off).
+        units: VIDEO_SECONDS,
+        unitCostUsd: costPerSecondUsd(model, resolutionFor(VIDEO_SECONDS), true, transport),
+        userId,
+        promptSummary: item.prompt.slice(0, 200),
+        actualCost: submitActualCost,
+      },
+      () =>
+        createVeoClip({
+          request: {
+            prompt: promptEn.slice(0, PROMPT_MAX_CHARS),
+            aspect: outputFormat(item.aspect),
+            durationSec: VIDEO_SECONDS,
+            generateAudio: true,
+          },
+          sessionId: `agentq-${item.batch_id}`,
+          ordinal: item.ordinal,
+        }),
+    );
+  } catch (err) {
+    // ⚠️ The platform's budget said no BEFORE anything reached Google. The charge above already landed, so
+    // this is a failed submit like any other: refunded, and the item ends. It is not left queued for the
+    // budget to recover: its ref has now been charged AND refunded, and a second debit under that same ref
+    // is not a path the ledger's idempotency was built for.
+    if (err instanceof BudgetExceededError) {
+      await fail(svc, item, userId, 'the platform video budget is exhausted — try again later');
+      return { action: 'failed', item };
+    }
+    created = null; // createVeoClip never throws; anything else is a refused submit
+  }
 
-  if (!created?.operation) { await fail(svc, item, userId, 'the provider refused the clip'); return { action: 'failed', item }; }
+  const outcome = created?.outcome;
+  if (!outcome?.ok) {
+    const reason = outcome?.reason === 'ambiguous'
+      ? 'the provider did not confirm the clip' // never re-submitted — see the header
+      : 'the provider refused the clip';
+    await fail(svc, item, userId, reason);
+    return { action: 'failed', item };
+  }
 
   await svc.from('agent_video_queue')
-    .update({ status: 'submitted', operation: created.operation, updated_at: new Date().toISOString() })
+    .update({ status: 'submitted', operation: outcome.operation.name, updated_at: new Date().toISOString() })
     .eq('id', item.id);
   return { action: 'submitted', item };
 }

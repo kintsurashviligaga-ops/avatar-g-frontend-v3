@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateWithGemini, type GeminiAttachment } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, getServiceCreditCost, type GeminiServiceContext } from '@/lib/gemini/prompts';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -26,7 +28,10 @@ const RequestSchema = z.object({
       }),
     )
     .optional(),
-  userId: z.string().optional(),
+  // ⚠️ NO `userId` HERE, ON PURPOSE. It used to be accepted from the body and written straight into
+  // gemini_chat_sessions / gemini_chat_messages with the SERVICE-ROLE key (which bypasses RLS), so any caller
+  // could plant rows — and a `credits_used` figure — under any account's id. The owner is the verified session,
+  // read below; a `userId` a client still sends is stripped by zod's default object mode and never reaches the DB.
 });
 
 export async function POST(req: NextRequest) {
@@ -40,7 +45,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { message, sessionId, serviceContext, locale, attachments, history, userId } = parsed.data;
+    const { message, sessionId, serviceContext, locale, attachments, history } = parsed.data;
+
+    // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). Every turn here spends the platform's Gemini balance — the Pro
+    // tier whenever an attachment or a long history is present — and nothing in the product calls this route (the
+    // product chat is /api/chat*), so an anonymous POST was pure loss with no account to attribute it to.
+    const { user } = await authedClientFromRequest(req);
+    if (mustSignInToGenerate(user?.id)) {
+      return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+    }
+    // The persisted owner. Null only in a FILM_ALLOW_ANONYMOUS demo deployment, where nothing is written.
+    const userId = user?.id ?? null;
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
@@ -68,6 +83,18 @@ export async function POST(req: NextRequest) {
           process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
           process.env.SUPABASE_SERVICE_ROLE_KEY,
         );
+        // ⚠️ THE SESSION ID IS CLIENT-CHOSEN AND THIS CLIENT BYPASSES RLS. An upsert on `id` alone would let a
+        // signed-in caller who names someone else's sessionId rewrite that row's user_id to their own (taking the
+        // conversation over) and append messages into it. A session that already belongs to another account is
+        // left alone: the reply is still returned, it just is not persisted.
+        const { data: existing } = await supabase
+          .from('gemini_chat_sessions')
+          .select('user_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+        if (existing && (existing as { user_id?: string | null }).user_id !== userId) {
+          throw new Error('session belongs to another account — not persisted');
+        }
         await supabase.from('gemini_chat_sessions').upsert(
           {
             id: sessionId,

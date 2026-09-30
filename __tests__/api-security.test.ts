@@ -77,11 +77,8 @@ const ALLOWLIST: Record<string, string> = {
   // ── Grandfathered gaps: user-facing PAID generation, rate-limited but not user-auth'd. Surfaced by
   //    the pre-Iteration-3 audit; user-auth is a tracked follow-up. Listed so the guard still protects
   //    NEW routes while these known gaps are worked down (goal: empty this section).
-  'app/api/elevenlabs/tts/route.ts': 'ElevenLabs TTS — rate-limited (checkRateLimit); user-auth TODO (audit follow-up)',
   'app/api/elevenlabs/sound/route.ts': 'ElevenLabs SFX — rate-limited (RATE_LIMITS.WRITE); user-auth TODO (audit follow-up)',
   'app/api/matilda/route.ts': 'Matilda voice (ElevenLabs TTS) — user-auth TODO (audit follow-up)',
-  'app/api/film/storyboard/route.ts': 'FLUX storyboard frames — STORYBOARD rate-limited; user-auth TODO (audit follow-up)',
-  'app/api/pipeline/route.ts': 'Pipeline Replicate image — rate-limited; user-auth TODO (audit follow-up)',
   // ── WS2: interactive chat-mic voice routes. Client-facing + rate-limited + low per-call cost (short
   //    Whisper/STT utterances); guest voice input is a live product feature, so requiring user-auth is a
   //    PRODUCT decision (would remove guest voice), not a pure security fix. Listed as a reasoned exception

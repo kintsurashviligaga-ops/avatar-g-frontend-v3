@@ -86,8 +86,26 @@ Veo failure — surfaced honestly and refunded by the existing per-leg rollback 
 | `VEO_NATIVE_CAMERA_CONTROL` | `1` sends Vertex `cameraControl` with a first frame |
 | `VEO_VERTEX_PERSON_GENERATION` | default `allow_adult` |
 | `VIDEO_GOOGLE_ONLY` | default on |
+| `FILM_ALLOW_ANONYMOUS` | default **off**: every paid generation (film, chat image/video/music/avatar, storyboard, remix) needs a session — `lib/auth/generationGate.ts` |
+| `DAILY_COST_LIMIT` / `MONTHLY_COST_LIMIT` | budget guard ceilings in USD (defaults $10 / $300); Google-only clips are priced at the real Veo rate |
+| `BILLING_GUARD_FAIL_CLOSED` | `1` refuses paid calls while the guard cannot read spend (default fails open) |
+| `GEMINI_PROBE_MODEL` | the model the admin provider probe spends one token on to prove the prepaid balance (default `gemini-2.5-flash`) |
 
 Setup runbook: `docs/VEO_VERTEX_SETUP.md`.
+
+## 4a. Cost protection (what stands between the key and a drain)
+
+1. **Sign-in.** `orchestrate()` refuses every paid branch for an anonymous caller; `/api/film/storyboard`,
+   `/api/pipeline/remix` and the other paid routes check the session themselves. The studio stops a guest earlier
+   (`myavatar:auth-required`); the server gate is what stops a direct POST.
+2. **Credits.** A chat video clip costs the studio's 8 s price (25 credits), checked before the render and charged
+   on the successful poll; a pipeline remix costs `remix_video`, charged once the re-cut is delivered.
+3. **Budget guard.** `ServiceManager.execute` prices a Google-only clip at `costPerSecondUsd(model, resolution,
+   audio, transport)` for the seconds Veo actually renders (4 / 6 / 8, never the caller's number) and stops at
+   `DAILY_COST_LIMIT`. Storyboard frames on Gemini image are inside the same envelope.
+4. **Free film.** A new account's free film renders on Veo Fast at most — it is paid by the platform.
+5. **Refunds.** Composite refunds pay back what the ledger shows was debited under the leg's ref
+   (`refundDebitByRef`), never a forecast — a GEL forecast refunded through `credit_wallet_gel` minted ×10 credits.
 
 ## 5. Module contracts (lib/veo/)
 

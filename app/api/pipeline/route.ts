@@ -24,6 +24,8 @@ import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -1056,6 +1058,15 @@ export async function POST(req: NextRequest) {
       case 'generate': {
         if (!serviceId || !userInput) {
           return NextResponse.json({ error: 'serviceId and userInput required' }, { status: 400 });
+        }
+        // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate), and only HERE: detect_intent / get_questions / confirm are
+        // local lookups that spend nothing, so the wizard can still be walked signed out. `generate` is the one
+        // action that spends — and it spends everywhere: the text services on Gemini Pro (Claude / OpenAI as the
+        // fallbacks), image on Nano Banana, video on LTX, avatar on HeyGen + ElevenLabs, interior on World Labs,
+        // music on Udio. None of it had a session check, so a direct POST reached every one of those keys for free.
+        const { user } = await authedClientFromRequest(req);
+        if (mustSignInToGenerate(user?.id)) {
+          return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
         }
         const finalPrompt = answers
           ? buildFinalPrompt(serviceId as ServiceId, userInput, answers)

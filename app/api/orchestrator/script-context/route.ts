@@ -16,6 +16,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithGemini, type GeminiAttachment } from '@/lib/gemini/client';
 import { geminiKeyPresent } from '@/lib/orchestrator/gemini-guard';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,7 +61,7 @@ const SYSTEM_PROMPT =
   + 'invent contradicting facts. Output ONLY the brief — no headings, no lists, no preamble.';
 
 export async function POST(req: NextRequest) {
-  let body: { prompt?: unknown; documents?: unknown };
+  let body: { prompt?: unknown; documents?: unknown; locale?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -68,6 +70,18 @@ export async function POST(req: NextRequest) {
 
   const prompt = String(body.prompt ?? '').trim();
   const docs: Doc[] = Array.isArray(body.documents) ? (body.documents as Doc[]).slice(0, 3) : [];
+
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate) — and "fail-open" above does NOT extend to who may ask. Its only
+  // caller is the film studio's first production step (ConversationalFilmStudio → driveFilmStudio), and the film
+  // render right after it already refuses a guest; so for a guest this was a Gemini read of up to three PDFs /
+  // images on the platform balance, immediately followed by a refused film. A direct POST could loop it.
+  // Without documents it spends nothing and simply echoes the prompt, so that case stays open.
+  if (docs.length > 0) {
+    const { user } = await authedClientFromRequest(req);
+    if (mustSignInToGenerate(user?.id)) {
+      return NextResponse.json(signInToGenerateBody(typeof body.locale === 'string' ? body.locale : 'ka'), { status: 401 });
+    }
+  }
 
   // Fail-open: nothing to enrich, or no Gemini credential → use the raw prompt.
   if (!geminiKeyPresent() || docs.length === 0) {

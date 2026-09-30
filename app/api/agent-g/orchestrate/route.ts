@@ -15,6 +15,7 @@ import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { parseIntent } from '@/lib/agentg/intent-parser';
 import { reportError } from '@/lib/observability/report-error';
+import { signInToGenerateBody } from '@/lib/auth/generationGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const { goal, dry_run } = parsed.data;
+    const { goal, dry_run, locale } = parsed.data;
+
+    // ⚠️ AUTH FIRST — BEFORE parseIntent, NOT AFTER IT. The check used to sit below the intent parse, so every
+    // anonymous POST had already paid for a Gemini call (up to 4000 chars of goal) by the time it was refused,
+    // and `dry_run: true` returned before the check was ever reached: a free, unbounded Gemini planner for anyone.
+    // A task row also needs an owner, so this is a plain session requirement (no FILM_ALLOW_ANONYMOUS escape —
+    // there would be no user_id to write).
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { ...signInToGenerateBody(locale), requestId },
+        { status: 401 }
+      );
+    }
 
     // Parse intent (Gemini 2.5 Flash → heuristic fallback)
     const plan = await parseIntent(goal);
@@ -55,14 +69,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Auth — require authenticated user for task persistence
-    const user = await getAuthenticatedUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthenticated', requestId },
-        { status: 401 }
-      );
-    }
     const supabase = createServiceRoleClient();
 
     // Upsert task row

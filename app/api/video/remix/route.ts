@@ -33,13 +33,17 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/
 import { generateMusic } from '@/lib/ai/replicate';
 import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
-import { authedClientFromRequest } from '@/lib/supabase/server';
+import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/chat/filmComposite';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { isGoogleOnly } from '@/lib/veo/policy';
+import {
+  gateProductAdSecondaryClip, isProductAdSecondaryRequest, readProductAdPrimaryNetDebit, remixTxnRef,
+} from '@/lib/video/productAdCharge';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -158,8 +162,9 @@ export async function POST(req: NextRequest) {
   // — on its primary clip (single-clip / clip 0) — so a multi-clip ad is billed PER-AD (one
   // remix_video, matching the client's single credit toast), NOT 12× per clip. Secondary clips
   // (sceneIndex >= 1) skip the debit; each is its own request with charged=false → nothing to refund.
-  const productAdSecondaryClip = op === 'productad'
-    && Number.isFinite(Number(body.sceneIndex)) && Math.floor(Number(body.sceneIndex)) >= 1;
+  // ⚠️ SKIPPING THE DEBIT IS EARNED, NOT CLAIMED — see the SECONDARY-CLIP GATE below: a secondary renders
+  // only when the ledger already holds this user's net debit for the SAME jobId's primary.
+  const productAdSecondaryClip = op === 'productad' && isProductAdSecondaryRequest(body.sceneIndex);
   // CRITICAL BILLING FIX — scope the idempotency ref PER-TRANSACTION. The deduct_credits RPC
   // dedupes GLOBALLY on (user_id, metadata->>'ref') with no time window; a per-OP ref
   // (`remix:${op}`) meant a user's SECOND ad/swap matched the FIRST ledger row and was silently
@@ -195,6 +200,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ url: null, error: 'duplicate_request' }, { status: 409 });
     }
   }
+  // ── PRODUCT-AD SECONDARY-CLIP GATE ───────────────────────────────────────────
+  // ⚠️ A FREE CLIP USED TO NEED NOTHING BUT `sceneIndex >= 1`. Whether a primary had ever been paid for was
+  // never asked, so a signed-in caller could send ONLY secondaries — never the primary — and render
+  // unlimited Veo clips (Standard ≈ $3.20 each) for 0 credits; and a user whose primary was refused for
+  // insufficient credits still got every other clip of the ad free. Now a secondary must carry the jobId
+  // of a primary that THIS user has a net ledger debit for (the primary's txnRef, `remix:productad:<jobId>:`
+  // — built by the same remixTxnRef as below), its sceneIndex must be a whole number 1..11, and each
+  // (jobId, sceneIndex) renders at most once per hour. The gate waits (bounded) for the primary's debit,
+  // because the client fires clips 0–3 concurrently and an honest clip 1 can arrive before its clip 0 has
+  // been charged. Admins skip the ledger requirement, as they skip billing everywhere in this route.
+  if (productAdSecondaryClip) {
+    const gate = await gateProductAdSecondaryClip(
+      { userId: remixUid, jobId, sceneIndex: body.sceneIndex },
+      {
+        isAdmin: (uid) => isAdminUser(uid),
+        primaryNetDebit: async (uid, jid) => {
+          let sb: ReturnType<typeof createServiceRoleClient> | null = null;
+          try { sb = createServiceRoleClient(); } catch { sb = null; } // unreadable ledger → refused, never free
+          return readProductAdPrimaryNetDebit(sb, uid, jid);
+        },
+        claim: (uid, key, windowSec) => claimIdempotencyKey(uid, key, windowSec),
+      },
+    );
+    if (!gate.ok) {
+      await releaseIdem(); // nothing rendered — free the in-flight mutex
+      return NextResponse.json(
+        { url: null, error: gate.error, ...(gate.status === 402 ? { adNotPaid: true } : {}) },
+        { status: gate.status },
+      );
+    }
+  }
   // ── PRODUCT-AD SINGLE-CHARGE ─────────────────────────────────────────────────
   // A product ad is billed ONCE, here on its primary clip, at the FULL video tier
   // (25 cr ≤30s / 45 cr 60s) — the same price the client's toast shows — NOT the
@@ -219,7 +255,8 @@ export async function POST(req: NextRequest) {
   // ref, so it is genuinely charged before it can be refunded, and any single ref can only ever pay back
   // the amount that ref was charged. The body fingerprint (same server-derived helper as the produce
   // routes) additionally stops a changed request from riding an old jobId.
-  const txnRef = `remix:${op}:${jobId ?? crypto.randomUUID()}:${chargeAmount}:${bodyFingerprint(body)}`;
+  // Built by remixTxnRef so the ref charged here and the prefix the secondary-clip gate reads can never drift.
+  const txnRef = remixTxnRef(op, jobId ?? crypto.randomUUID(), chargeAmount, bodyFingerprint(body));
   // Did we actually take an up-front credit off the wallet? (Only then must a downstream miss
   // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
@@ -339,11 +376,19 @@ export async function POST(req: NextRequest) {
       //     silently handed a landscape video for a square placement.
       //   · A Veo miss (quota, transient 5xx, undeliverable download) would otherwise drop straight to
       //     kenBurnsClip — a slow pan over the product still, for the full price of a video ad.
+      //
+      // ⚠️ …EXCEPT WHEN THE PIPELINE IS GOOGLE-ONLY (isGoogleOnly(), ON by default — lib/veo/policy). Then
+      // a Veo miss is a Veo miss: no Replicate/Kling call, and the chain falls straight to the LOCAL ffmpeg
+      // Ken Burns pan, which is free — and which the refund just below already delivers free of charge. So
+      // under Google-only a square ad (no Veo 1:1) is a still pan at no cost, never a hidden Kling spend.
+      // VIDEO_GOOGLE_ONLY=0 restores the Kling leg.
       const veoAd = await renderVeoClipSync({
         startImage: startImg, promptText: adPrompt, aspect: aspectP,
         durationSec: 8, folder: `product-ad/${remixUid ?? 'anon'}`, budgetMs: 240_000,
+        // Books the Google spend against this user in the budget guard (veoClipSync → guardedCall).
+        userId: remixUid,
       });
-      const animated = veoAd?.url || (await klingI2v(startImg, adPrompt, aspectP));
+      const animated = veoAd?.url || (isGoogleOnly() ? null : await klingI2v(startImg, adPrompt, aspectP));
       const url = animated || (await kenBurnsClip(startImg, 5, aspectP));
       if (!url) return failRefund('Product ad generation failed.', 'render-null');
       // ⚠️ A STILL PAN IS NOT A GENERATED AD, SO IT MUST NOT COST ONE. When both paid engines miss and
