@@ -57,3 +57,45 @@ describe('degenerate input', () => {
     await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toEqual(expect.any(String));
   });
 });
+
+describe('the Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §3)', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  const ORIGINAL_GEMINI = process.env.GEMINI_API_KEY;
+  const ORIGINAL_FLAG = process.env.VIDEO_GOOGLE_ONLY;
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_GEMINI === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = ORIGINAL_GEMINI;
+    if (ORIGINAL_FLAG === undefined) delete process.env.VIDEO_GOOGLE_ONLY; else process.env.VIDEO_GOOGLE_ONLY = ORIGINAL_FLAG;
+  });
+
+  it('calls Gemini with the key in a header — never in the URL — and returns the translation', async () => {
+    delete process.env.VIDEO_GOOGLE_ONLY; // default ON
+    process.env.GEMINI_API_KEY = 'test-key';
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'a woman walks through rainy Tbilisi at night' }] } }],
+    }), { status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(promptToEnglish('ქალი ღამის წვიმიან თბილისში მიდის', 'video')).resolves.toBe('a woman walks through rainy Tbilisi at night');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).not.toContain('key=');
+    expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe('test-key');
+  });
+
+  it('a Gemini failure hands back the original words (fail-open), and Anthropic is never tried', async () => {
+    delete process.env.VIDEO_GOOGLE_ONLY;
+    process.env.GEMINI_API_KEY = 'test-key';
+    process.env.ANTHROPIC_API_KEY = 'must-not-be-used';
+    global.fetch = jest.fn(async () => new Response('{"error":{"code":402}}', { status: 402 })) as unknown as typeof fetch;
+    await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toBe('ქართული ტექსტი');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('VIDEO_GOOGLE_ONLY=0 keeps the Anthropic translator (no key here → the original)', async () => {
+    process.env.VIDEO_GOOGLE_ONLY = '0';
+    process.env.GEMINI_API_KEY = 'test-key';
+    global.fetch = jest.fn() as unknown as typeof fetch;
+    await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toBe('ქართული ტექსტი');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

@@ -10,6 +10,7 @@
  * working synthesis path).
  */
 import { NextRequest } from 'next/server';
+import { forwardSessionHeaders } from '@/lib/api/forwardSession';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
@@ -59,8 +60,9 @@ export async function POST(req: NextRequest) {
         emit({ stage: 'synthesizing', pct: 15, ticker: '[Agent H: Synthesizing Vocal Frequency Spectrum…]', expression: persona.expression });
         emit({ stage: 'cloning', pct: 40, ticker: '[ElevenLabs: Injecting Emotional Voice Clones…]' });
 
+        // The caller's session travels with the self-call — the TTS route is sign-in only.
         const res = await fetch(`${origin}/api/elevenlabs/tts`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...forwardSessionHeaders(req) },
           body: JSON.stringify({ text, locale }),
         });
         if (!res.ok) { emit({ stage: 'failed', error: `tts_${res.status}` }); return; }

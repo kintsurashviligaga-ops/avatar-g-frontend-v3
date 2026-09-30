@@ -10,6 +10,8 @@ import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-t
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { numbersToGeorgianWords } from '@/lib/chat/georgianNumbers';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -172,8 +174,7 @@ async function synthesizeWithGoogleTTS(text: string): Promise<ArrayBuffer | null
 }
 
 export async function POST(req: NextRequest) {
-  // Cost/abuse guard: unauthenticated endpoint (powers guest "read aloud"); each
-  // call hits the paid ElevenLabs API, so rate-limit by IP.
+  // Burst guard per IP, ahead of the session lookup below.
   const rateLimitError = await checkRateLimit(req, RATE_LIMITS.WRITE);
   if (rateLimitError) return rateLimitError;
 
@@ -181,6 +182,22 @@ export async function POST(req: NextRequest) {
   let text = body.text?.trim();
   if (!text) {
     return NextResponse.json({ error: 'text is required' }, { status: 400 });
+  }
+
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was left open on the belief that it powered the guest
+  // "read aloud" — it no longer does: read-aloud moved to /api/tts/gemini, and the two browser callers left
+  // (OnboardingWizard, useSimpleVoice) parse a JSON `{ audio }` this route has not returned in a long time. What an
+  // anonymous POST still bought was up to 5,000 characters on ElevenLabs, then Azure, then GOOGLE CLOUD TTS — which
+  // lib/audio/google-tts runs on GEMINI_API_KEY whenever GOOGLE_TTS_API_KEY / GOOGLE_API_KEY are unset — all on the
+  // platform's accounts, with no account of the caller's behind it.
+  //
+  // ⚠️ SERVER-SIDE SELF-CALLERS MUST FORWARD THE SESSION. /api/orchestrator/produce (genVoice) and
+  // /api/orchestrator/voice/produce fetch this route from the server with only a Content-Type header; they must
+  // pass the caller's `cookie` / `authorization` through (or call the synthesis directly), or their voice step
+  // now gets this 401 — voice/produce refunds and fails, film produce ships without the voiceover.
+  const { user } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(user?.id)) {
+    return NextResponse.json(signInToGenerateBody(body.locale), { status: 401 });
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY;

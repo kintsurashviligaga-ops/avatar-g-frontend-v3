@@ -1,6 +1,9 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { reportError } from '@/lib/observability/report-error';
+import { generateWithGemini } from '@/lib/gemini/client';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { isGoogleOnly } from '@/lib/veo/policy';
 
 /**
  * Render a generation brief into English for the model that will execute it.
@@ -40,6 +43,35 @@ function isLatinScript(s: string): boolean {
 
 const MODEL = process.env.ANTHROPIC_TRANSLATE_MODEL || 'claude-haiku-4-5-20251001';
 
+const TRANSLATE_SYSTEM =
+  'You translate generation briefs into English for an AI media model. Output ONLY the translated '
+  + 'brief — no preamble, no quotes, no commentary, no explanation. Preserve every concrete detail: '
+  + 'genre, mood, tempo, instruments, subject, colours, camera, composition, and the number and '
+  + 'gender of performers. If the brief names a language for the OUTPUT (for example "in Spanish"), '
+  + 'keep that instruction in English rather than translating the brief into that language. '
+  + 'Keep proper nouns as they are. Be faithful and literal; add nothing that was not asked for.';
+
+/**
+ * The Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §3). Same contract as the Anthropic leg:
+ * temperature 0, fail-open to the original text, every miss logged.
+ */
+async function viaGemini(raw: string, kind: string): Promise<string> {
+  if (!resolveGeminiKey()) { note(kind, 'no_key', 'no Gemini key on this deployment'); return raw; }
+  try {
+    const r = await generateWithGemini({
+      prompt: `Medium: ${kind}.\n\nBrief:\n${raw}`, systemPrompt: TRANSLATE_SYSTEM, tier: 'flash',
+      maxTokens: 400, temperature: 0, thinkingBudget: 0, timeoutMs: 12_000,
+    });
+    const out = (r.text || '').trim();
+    if (out.length >= 3) { note(kind, 'ok'); return out; }
+    note(kind, 'empty_result', `gemini returned ${out.length} chars`);
+    return raw;
+  } catch (e) {
+    note(kind, 'provider_error', e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120));
+    return raw;
+  }
+}
+
 /**
  * Why a translation did not happen. `ok` means the provider returned a real one.
  *
@@ -77,6 +109,7 @@ export async function promptToEnglish(
 ): Promise<string> {
   const raw = String(text ?? '').trim();
   if (!raw || isLatinScript(raw)) { note(kind, 'skipped_latin'); return raw; }
+  if (isGoogleOnly()) return viaGemini(raw, kind);
 
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!key) { note(kind, 'no_key', 'ANTHROPIC_API_KEY is unset on this deployment'); return raw; }
@@ -89,13 +122,7 @@ export async function promptToEnglish(
       // Temperature 0: this is a transcription of intent, not a creative act. A translator that
       // embellishes reintroduces the exact problem — a result that is not what the user asked for.
       temperature: 0,
-      system:
-        'You translate generation briefs into English for an AI media model. Output ONLY the translated '
-        + 'brief — no preamble, no quotes, no commentary, no explanation. Preserve every concrete detail: '
-        + 'genre, mood, tempo, instruments, subject, colours, camera, composition, and the number and '
-        + 'gender of performers. If the brief names a language for the OUTPUT (for example "in Spanish"), '
-        + 'keep that instruction in English rather than translating the brief into that language. '
-        + 'Keep proper nouns as they are. Be faithful and literal; add nothing that was not asked for.',
+      system: TRANSLATE_SYSTEM,
       messages: [{ role: 'user', content: `Medium: ${kind}.\n\nBrief:\n${raw}` }],
     }, { timeout: 12_000 });
 

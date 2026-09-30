@@ -20,7 +20,9 @@
 import 'server-only';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
+import { isGoogleOnly } from '@/lib/veo/policy';
 import { stripNegativeTail } from './filmPipeline';
+import type { CameraAngle, CameraMove, LensLook, ShotSize } from '@/lib/veo/types';
 
 export interface MasterFilmCharacter {
   /** Stable role id when a brief has several people ("mother" | "father" | "child"). */
@@ -39,12 +41,40 @@ export interface MasterFilmVisualStyle {
   negativePrompt: string;
 }
 
+export interface SceneCamera {
+  move: CameraMove;
+  shot: ShotSize;
+  angle: CameraAngle;
+  lens: LensLook;
+}
+
+const CAMERA_MOVE_IDS: readonly CameraMove[] = ['auto', 'static', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'push_in', 'pull_out', 'truck_left', 'truck_right', 'pedestal_up', 'pedestal_down', 'zoom_in', 'zoom_out', 'orbit', 'crane_up', 'crane_down', 'aerial', 'handheld'];
+const SHOT_SIZE_IDS: readonly ShotSize[] = ['auto', 'extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'close_up', 'extreme_close_up'];
+const CAMERA_ANGLE_IDS: readonly CameraAngle[] = ['auto', 'eye_level', 'low', 'high', 'birds_eye', 'worms_eye', 'dutch', 'over_shoulder', 'pov'];
+const LENS_LOOK_IDS: readonly LensLook[] = ['auto', 'wide_angle', 'standard', 'telephoto', 'macro', 'shallow_focus', 'deep_focus'];
+
+/** Keep only values from the documented vocabulary; anything else becomes 'auto' (the render then decides). */
+export function coerceSceneCamera(raw: unknown): SceneCamera | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const pick = <T extends string>(v: unknown, ids: readonly T[]): T => (typeof v === 'string' && (ids as readonly string[]).includes(v.trim()) ? (v.trim() as T) : ('auto' as T));
+  const cam: SceneCamera = { move: pick(o.move, CAMERA_MOVE_IDS), shot: pick(o.shot, SHOT_SIZE_IDS), angle: pick(o.angle, CAMERA_ANGLE_IDS), lens: pick(o.lens, LENS_LOOK_IDS) };
+  return cam.move === 'auto' && cam.shot === 'auto' && cam.angle === 'auto' && cam.lens === 'auto' ? undefined : cam;
+}
+
 export interface MasterFilmScene {
   sceneNumber: number;
   location: string;
   action: string;
   cameraShot: string;
   mood: string;
+  /**
+   * The shot as STRUCTURED camera language — Google's documented Veo vocabulary (lib/veo/cinematography.ts), so
+   * the render compiles the exact move instead of re-reading free prose. Absent or invalid values are 'auto'.
+   */
+  camera?: SceneCamera;
+  /** This scene's light (source, direction, colour temperature), when the director names one. */
+  lighting?: string;
   /** FULL ready-to-use image prompt — MUST include the character fragment + style. */
   imagePrompt: string;
   /** PHASE 2 L3 — a 6-second ambient SFX cue for THIS scene (no music, no speech),
@@ -248,6 +278,16 @@ SFX CUES (every scene):
      colour grading, ARRI Alexa color science, neutral white balance, clean neutral whites".
      NEVER a yellow, sepia, amber or muddy over-warm cast — keep whites clean and neutral even in
      warm scenes (warmth belongs in motivated practical lights, never a global filter).
+   - STRUCTURED CAMERA: also give every scene a "camera" object using ONLY these values (Google's Veo
+     vocabulary; anything else is discarded):
+       move:  static, pan_left, pan_right, tilt_up, tilt_down, push_in, pull_out, truck_left, truck_right,
+              pedestal_up, pedestal_down, zoom_in, zoom_out, orbit, crane_up, crane_down, aerial, handheld
+       shot:  extreme_wide, wide, full, medium, medium_close, close_up, extreme_close_up
+       angle: eye_level, low, high, birds_eye, worms_eye, dutch, over_shoulder, pov
+       lens:  wide_angle, standard, telephoto, macro, shallow_focus, deep_focus
+     It must agree with the camera the imagePrompt names. push_in/pull_out = the camera physically moves
+     (dolly); zoom_in/zoom_out = the lens changes focal length; pan/tilt = the camera rotates in place.
+     Also give "lighting": the scene's light source, direction and colour temperature in one phrase.
    - QUALITY TAGS: end each imagePrompt with AT MOST "photorealistic, cinematic, sharp focus".
      Do NOT repeat the long grading chain per scene. A scene whose text is mostly tags
      ("ultra-realistic texture, professional color grading, ARRI Alexa color science, neutral white
@@ -284,6 +324,8 @@ JSON structure:
       "location": "...",
       "action": "...",
       "cameraShot": "wide/medium/close-up/drone",
+      "camera": { "move": "push_in", "shot": "close_up", "angle": "eye_level", "lens": "shallow_focus" },
+      "lighting": "warm 3200K practical lamp, soft key from camera left",
       "mood": "...",
       "imagePrompt": "FULL ready-to-use prompt",
       "sfxPrompt": "6s ambient SFX for this scene — no music, no speech"
@@ -321,7 +363,7 @@ export function generateSceneSfxPrompts(scenes: MasterFilmScene[]): string[] {
 }
 
 /** Coerce an arbitrary parsed object into a strict MasterFilmBrief, or null. */
-function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
+export function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const ch = (o.character ?? {}) as Record<string, unknown>;
@@ -340,12 +382,16 @@ function coerceBrief(raw: unknown, sceneCount: number): MasterFilmBrief | null {
       const imagePrompt = stripNegativeTail(str(sc.imagePrompt) || str(sc.action));
       if (!imagePrompt) return null;
       const sfxPrompt = str(sc.sfxPrompt);
+      const camera = coerceSceneCamera(sc.camera);
+      const lighting = str(sc.lighting);
       return {
         sceneNumber: typeof sc.sceneNumber === 'number' ? sc.sceneNumber : i + 1,
         location: str(sc.location),
         action: str(sc.action),
         cameraShot: str(sc.cameraShot, 'medium'),
         mood: str(sc.mood),
+        ...(camera ? { camera } : {}),
+        ...(lighting ? { lighting } : {}),
         imagePrompt,
         ...(sfxPrompt ? { sfxPrompt } : {}),
       } satisfies MasterFilmScene;
@@ -460,7 +506,14 @@ export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFil
   // to the deterministic plan). Backstop race guards against any provider hanging.
   const work = (async (): Promise<MasterFilmBrief | null> => {
     const t0 = Date.now();
-    const text = await llmText({ system: SYSTEM_PROMPT, user: userContent, maxTokens, temperature: 0.6, timeoutMs: timeoutMs - 4_000 });
+    // Google-only (docs/VEO_ENGINE.md §3): the director is Gemini, asked for a JSON document directly. The model is
+    // VEO_DIRECTOR_MODEL when set (e.g. gemini-3.1-pro-preview for a slower, stronger plan), else the flash tier.
+    const googleOnly = isGoogleOnly();
+    const directorModel = (process.env.VEO_DIRECTOR_MODEL || '').trim() || undefined;
+    const text = await llmText({
+      system: SYSTEM_PROMPT, user: userContent, maxTokens, temperature: 0.6, timeoutMs: timeoutMs - 4_000,
+      ...(googleOnly ? { googleOnly: true, json: true, ...(directorModel ? { geminiModel: directorModel } : {}) } : {}),
+    });
     const brief = text ? coerceBrief(extractJson(text), sceneCount) : null;
     // HARD LOCK: when the photo was vision-extracted, the character fragment threaded to the render is the GROUND
     // TRUTH — never the agent's own (text-only) guess, which can still drift. This is what the render conditions on.

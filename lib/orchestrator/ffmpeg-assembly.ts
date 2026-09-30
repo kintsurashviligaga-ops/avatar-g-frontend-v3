@@ -17,7 +17,7 @@ import { mkdtemp, writeFile, readFile, rm, stat, rename } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { buildFilterComplex, sceneAwareTransitions } from './ffmpeg-filtergraph';
+import { buildFilterComplex, joinOverlaps, sceneAwareTransitions } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
@@ -220,6 +220,10 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const fps = String(g.fps) === '60' ? 60 : 24;
     const duckPct = typeof g.vocal_ducking_pct === 'number' ? g.vocal_ducking_pct : 30;
     const transition = String(g.transition ?? 'crossfade');
+    // Per-join transitions from the studio's scene timeline ("cut,dissolve,cut"). globalRender carries scalars only,
+    // so the list travels as a comma-separated string. Unknown names are dropped, never passed to ffmpeg.
+    const JOIN_NAMES = new Set(['cut', 'crossfade', 'dissolve', 'fade_black', 'fade_to_black', 'zoom', 'slide', 'wipe']);
+    const callerJoins = String(g.transitions ?? '').split(',').map((t) => t.trim()).filter((t) => JOIN_NAMES.has(t));
     // PHASE 2 L2/L6 — opt-in 3-track audio master + smart-ducking knobs (all default
     // OFF/undefined → the existing 2-lane documentary mix is unchanged). The client
     // sets these via globalRender (three_track_mix / music_volume / sfx_volume /
@@ -296,7 +300,16 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // the 6s default when no durations were supplied.
     const segDurs = segs.map((s) => Number(s.durationSec)).filter((d) => Number.isFinite(d) && d > 0);
     const clipSec = segDurs.length ? Math.max(1, Math.round(segDurs.reduce((a, b) => a + b, 0) / segDurs.length)) : 6;
-    const transSec = transition === 'cut' ? 0 : 1;
+    // ⚠️ THE USER'S TRANSITION USED TO BE OVERRIDDEN. For every non-cut film the beat-aware crossfade/dissolve
+    // pattern replaced the chosen join, so Zoom and Slide never rendered on a multi-clip film. Now: the caller's
+    // per-join list wins; else an explicit choice applies to every join; only the default crossfade gets the
+    // beat-aware softening.
+    const joinTransitions: string[] | undefined = transition === 'cut' ? undefined
+      : callerJoins.length ? callerJoins
+        : transition === 'crossfade' ? sceneAwareTransitions(segs.length) : undefined;
+    const overlapSec = joinOverlaps(segs.length, transition, joinTransitions, fps);
+    // Mean overlap per join — expectedMasterDuration's model (n·clip − (n−1)·trans) then matches the graph exactly.
+    const transSec = overlapSec.length ? overlapSec.reduce((a, b) => a + b, 0) / overlapSec.length : 0;
     // Output canvas: landscape 16:9 · vertical 9:16 · square 1:1 · portrait 4:5.
     // Resolved from globalRender.orientation (the panel's Format) or a raw aspect.
     const orientation: 'landscape' | 'vertical' | 'square' | 'portrait' = (() => {
@@ -424,7 +437,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       // PHASE 5A — beat-aware per-join transitions for the xfade master (soften the
       // arc-reveal + closing joins to a dissolve). Skipped for the hard-cut music-video
       // master and single-clip films, where it's a no-op.
-      ...(transition !== 'cut' && inputs.length >= 2 ? { transitions: sceneAwareTransitions(inputs.length) } : {}),
+      ...(joinTransitions && inputs.length >= 2 ? { transitions: joinTransitions.slice(0, inputs.length - 1) } : {}),
       clipSec,
       lut3dPath,
       hasBrandOverlay: Boolean(brandPngPath),

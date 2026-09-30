@@ -30,8 +30,10 @@ import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifac
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
-import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, insufficientCreditsResponse } from './chatBilling';
+import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
+import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
@@ -264,6 +266,23 @@ async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatRes
 
 // ─── Main orchestrate function ───────────────────────────────────────────────
 
+/**
+ * The anonymous-generation refusal (lib/auth/generationGate): every branch of orchestrate() that reaches a PAID
+ * provider — film, music video, music, image / video / avatar, interior — runs through this first. /api/chat/orchestrate
+ * and /api/chat/stream both land here with the userId taken from the verified session, so a direct POST without one is
+ * refused before any planning, frame or provider call. Text chat and attachment analysis are not generations.
+ */
+function refuseAnonymousGeneration(input: OrchestratorInput, intent: IntentCategory): ChatResponse | null {
+  if (!mustSignInToGenerate(input.userId)) return null;
+  return {
+    success: false,
+    intent,
+    responseType: 'text',
+    message: signInToGenerateMessage(input.locale),
+    metadata: { provider: 'auth', authRequired: true },
+  };
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
@@ -274,11 +293,11 @@ export async function orchestrate(
   // walkthrough, re-render the SAME room with new materials, furniture and
   // lighting. Explicit 3D/world asks still fall through to WorldLabs below.
   if (shouldRedesignInterior(input)) {
-    return handleInteriorRedesign(input);
+    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorRedesign(input);
   }
 
   if (shouldRouteInteriorToWorldLabs(input)) {
-    return handleInteriorIntent(input);
+    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorIntent(input);
   }
 
   // PHASE 56 — Gemini multimodal VISION, unleashed across EVERY conversational
@@ -292,6 +311,10 @@ export async function orchestrate(
     || !!input.metadata?.imageBase64
     || (Array.isArray(input.metadata?.attachments) && input.metadata.attachments.length > 0);
   if (hasAttachedAsset) {
+    // An attachment goes to Gemini Pro vision (large files, long histories) — paid, so a session is required like
+    // every other paid branch. Text-only chat below stays as it is.
+    const refusedAttachment = refuseAnonymousGeneration(input, 'visual_analysis');
+    if (refusedAttachment) return refusedAttachment;
     const probe = detectIntent(input.message, input.serviceContext);
     const isGenerationCommand = DETERMINISTIC_INTENTS.has(probe.intent) || probe.intent === 'music_generation';
     if (!isGenerationCommand) {
@@ -334,7 +357,7 @@ export async function orchestrate(
   // flag rides in metadata from driveFilmStudio (and the orchestrate dispatch), so
   // the film/music-video pipeline activates whenever musicVideoMode === true.
   if (input.metadata?.musicVideoMode === true) {
-    return handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
   }
 
   // EXPLICIT FILM DISPATCH — a render started from the Video Studio storyboard carries STRUCTURAL film
@@ -346,14 +369,14 @@ export async function orchestrate(
   // approved storyboard — the user watched 3 scenes get built, then got a one-shot render that failed.
   // LIVE-VERIFIED: the dispatch reported engine 'ltx' with no film matrix for exactly this phrasing.
   if (hasFilmDispatchSignal(input.metadata)) {
-    return handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
   }
 
   // PHASE 42 §1 — The flagship film pipeline for a FREE-TEXT chat brief. `isThirtySecondFilm` is deliberately
   // conservative (explicit "30-second film / short film / mini-movie" phrasing), so a plain "music video"
   // request still falls through to the music-video composite below. See lib/chat/filmComposite.ts.
   if (isThirtySecondFilm(input.message)) {
-    return handleFilmComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
   }
 
   // Composite check runs BEFORE single-intent detection. Music-video prompts
@@ -361,23 +384,23 @@ export async function orchestrate(
   // (whichever pattern hits the higher confidence weight) and only ONE
   // worker would fire — see lib/chat/musicVideoComposite.ts for the trace.
   if (isMusicVideoComposite(input.message)) {
-    return handleMusicVideoComposite(input);
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleMusicVideoComposite(input);
   }
 
   // 1. Detect intent
   const detected = detectIntent(input.message, input.serviceContext);
 
   if (detected.intent === 'music_generation') {
-    return handleMusicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? handleMusicIntent(input, detected);
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
-    return handleDeterministicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? handleDeterministicIntent(input, detected);
   }
 
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
-    return handleReplicateIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? handleReplicateIntent(input, detected);
   }
 
   return handleTextIntent(input, detected);
@@ -422,9 +445,17 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
       provider === 'heygen' ? 'avatar_generation'
       : (mapped.assetType === 'image' || mapped.responseType === 'image') ? 'image_generation'
       : mapped.responseType === 'audio' ? 'music_generation'
+      // A single chat clip resolves here (film clips poll through pollFilmTask, never this branch).
+      : (mapped.assetType === 'video' || mapped.responseType === 'video') ? 'video_generation'
       : null;
     const cost = intent ? billableCreditCost(intent) : 0;
     if (cost > 0) await deductCredits(userId, cost, `poll:${predictionId}`).catch(() => { /* best-effort */ });
+  }
+  // A render charged at acceptance (handleDeterministicIntent) that ends in a terminal failure is paid back — exactly
+  // what the ledger shows under its ref, so a poller who was never charged gets nothing. ('error' is a routing blip,
+  // e.g. a session mismatch, not a verdict.)
+  if (userId && userId !== 'anonymous' && (mapped.predictionStatus === 'failed' || mapped.predictionStatus === 'canceled')) {
+    await refundDebitByRef(userId, `poll:${predictionId}`).catch(() => null);
   }
 
   return mapped;
@@ -1335,40 +1366,67 @@ async function handleDeterministicIntent(
   // a free paid generation. Block it up front. Authed only; fail-open on read miss (post-charge stays
   // the backstop). Wires the previously-dead insufficientCreditsResponse.
   const gateCost = billableCreditCost(detected.intent);
-  if (input.userId && input.userId !== 'anonymous' && gateCost > 0 && !(await hasSufficientBalance(input.userId, gateCost))) {
-    return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
+  const payingUser = input.userId && input.userId !== 'anonymous' && gateCost > 0 ? input.userId : null;
+  // ⚠️ ONE PAID DISPATCH AT A TIME PER USER. The balance check below is a READ, and the charge lands after Google
+  // accepts the job — so N parallel requests all passed the check and all rendered, while only the first charge fit
+  // the balance (deduct_credits refuses an overdraw): N−1 free clips. Serialising check → submit → charge per user
+  // makes each check see the previous charge. A contender waits (bounded) for the lock; Redis down = fail-open.
+  const dispatchLock = 'chat-paid-dispatch';
+  if (payingUser) {
+    let held = await claimIdempotencyKey(payingUser, dispatchLock, 90).catch(() => true);
+    for (let i = 0; !held && i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 1_500));
+      held = await claimIdempotencyKey(payingUser, dispatchLock, 90).catch(() => true);
+    }
+    if (!held) {
+      const busy = input.locale === 'en' ? 'Another generation is starting — try again in a moment.'
+        : input.locale === 'ru' ? 'Запускается другая генерация — попробуйте через мгновение.'
+        : 'სხვა გენერაცია იწყება — სცადე ცოტა ხანში.';
+      return { success: false, intent: detected.intent, responseType: 'text', message: busy, metadata: { provider: 'billing', dispatchBusy: true } };
+    }
   }
+  try {
+    if (payingUser && !(await hasSufficientBalance(payingUser, gateCost))) {
+      return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
+    }
 
-  const response = await serviceManager.execute({
-    sessionId: input.sessionId,
-    serviceContext: input.serviceContext,
-    intent: detected.intent,
-    userPrompt: iterative.prompt,
-    selectedOptions: input.selectedOptions,
-    imageUrl: input.imageUrl,
-    locale: input.locale,
-    confidence: detected.confidence,
-  });
+    const response = await serviceManager.execute({
+      sessionId: input.sessionId,
+      serviceContext: input.serviceContext,
+      intent: detected.intent,
+      userPrompt: iterative.prompt,
+      selectedOptions: input.selectedOptions,
+      imageUrl: input.imageUrl,
+      locale: input.locale,
+      confidence: detected.confidence,
+    });
 
-  // DAY-6 — charge AFTER a successful, TERMINAL (synchronous) generation, via the balance-of-record
-  // deduct_credits RPC. Charging post-success (not reserve-before) is deliberately safe: it can NEVER bill a
-  // thrown error (control never reaches here), a `success:false` failure, or an async `processing` render that
-  // might still fail downstream — async avatar/video resolve on the POLL path (which has no refund), so they are
-  // NOT billed here (avatar/video credit accounting is deferred to their own pipeline). This covers the primary
-  // leak: standalone SYNC image/photo generations. Authed only (anon/preview free); idempotent per-call ref;
-  // fail-open + best-effort (a ledger hiccup never breaks the already-delivered asset); deduct_credits rejects
-  // overdraw so the balance can never go negative.
-  const billCost = billableCreditCost(detected.intent);
-  const uid = input.userId;
-  const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
-  if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
-    await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
-      .catch(() => { /* best-effort — the asset is already delivered */ });
+    // DAY-6 — a SYNCHRONOUS generation (image / photo) is charged after it delivered, via the balance-of-record
+    // deduct_credits RPC: it can never bill a thrown error or a `success:false` failure. Authed only; idempotent
+    // per-call ref; fail-open (a ledger hiccup never breaks the delivered asset); deduct_credits rejects overdraw.
+    // An ASYNC render (video / avatar) is charged at acceptance just below, and refunded on the poll path if it fails.
+    const billCost = billableCreditCost(detected.intent);
+    const uid = input.userId;
+    const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
+    if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
+      await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
+        .catch(() => { /* best-effort — the asset is already delivered */ });
+    }
+    // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
+    // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
+    // all and reads the clip some other way) was a free Veo clip. The ref is the SAME `poll:<predictionId>` the poll
+    // path charges under, so its charge dedupes into this one; a terminal failure there refunds it through the ledger.
+    const acceptedAsync = response.success && response.predictionStatus === 'processing' && !!response.predictionId;
+    if (uid && uid !== 'anonymous' && billCost > 0 && acceptedAsync) {
+      await deductCredits(uid, billCost, `poll:${response.predictionId}`).catch(() => { /* the poll-path charge is the backstop */ });
+    }
+
+    const mapped = toChatResponse(response, detected.intent);
+    mapped.metadata.iteration = iterative.iteration;
+    return mapped;
+  } finally {
+    if (payingUser) await releaseIdempotencyKey(payingUser, dispatchLock).catch(() => undefined);
   }
-
-  const mapped = toChatResponse(response, detected.intent);
-  mapped.metadata.iteration = iterative.iteration;
-  return mapped;
 }
 
 function toChatResponse(

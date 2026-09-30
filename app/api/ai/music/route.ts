@@ -371,14 +371,30 @@ export async function POST(req: NextRequest) {
   const releaseMutex = async (): Promise<void> => {
     if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
   };
+  // ⚠️ THE SESSION LOOKUP FAILS CLOSED — IT USED TO SIT INSIDE THE FAIL-OPEN `try` BELOW. That block swallows
+  // every throw so a ledger or Redis blip never blocks a paid render, which is right for bookkeeping and wrong for
+  // identity: if authedClientFromRequest threw (Supabase auth unreachable, a malformed cookie), the catch skipped
+  // requireAuthForGeneration along with everything else and the track rendered for nobody, uncharged. A session we
+  // cannot verify is not a session, so that case now refuses (503 — retryable; it is our outage, not the caller's
+  // fault, so it does not pretend they are signed out) before any provider is touched.
+  let rUser: Awaited<ReturnType<typeof authedClientFromRequest>>['user'];
   try {
-    const { user: rUser } = await authedClientFromRequest(req);
-    // ⚠️ ANONYMOUS CALLERS PROCEEDED WITH AN `anon:` IDEMPOTENCY OWNER AND GENERATED FOR FREE. Music is
-    // one of the most expensive calls on the platform (Lyria / Udio / ElevenLabs Music), and there was
-    // no account to charge or attribute it to — the `anon:` prefix was invented precisely so the mutex
-    // key would not crash, which quietly made guest generation a supported path.
-    const musicGate = requireAuthForGeneration(rUser?.id ?? null);
-    if (musicGate.response) return musicGate.response;
+    ({ user: rUser } = await authedClientFromRequest(req));
+  } catch (err) {
+    console.error('[ai/music] session lookup threw — refusing:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json(
+      { success: false, error: 'auth_unavailable', message: 'ანგარიშის შემოწმება ვერ მოხერხდა — სცადე ხელახლა. / Could not verify your session — please try again.' },
+      { status: 503 },
+    );
+  }
+  // ⚠️ ANONYMOUS CALLERS PROCEEDED WITH AN `anon:` IDEMPOTENCY OWNER AND GENERATED FOR FREE. Music is
+  // one of the most expensive calls on the platform (Lyria / Udio / ElevenLabs Music), and there was
+  // no account to charge or attribute it to — the `anon:` prefix was invented precisely so the mutex
+  // key would not crash, which quietly made guest generation a supported path.
+  const musicGate = requireAuthForGeneration(rUser?.id ?? null);
+  if (musicGate.response) return musicGate.response;
+
+  try {
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
     idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0 })}`;
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex

@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { PlanTier } from '@/lib/billing/plans';
+import { isTruthyFlag } from '@/lib/env/flag';
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -164,12 +165,48 @@ export function getRateLimitForPlan(
   return { ...base, maxRequests: Math.round(base.maxRequests * mult) };
 }
 
+/** First comma-separated entry of an IP header, trimmed; '' when absent or blank. */
+function firstIp(value: string | null): string {
+  return value?.split(',')[0]?.trim() ?? '';
+}
+
+/**
+ * The client IP the per-IP buckets are keyed on.
+ *
+ * ⚠️ THIS USED TO TRUST `cf-connecting-ip` FIRST, AND WE ARE NOT BEHIND CLOUDFLARE. The app is served
+ * by Vercel's edge (Cloudflare is only R2 storage here), and nothing between the browser and this code
+ * sets or strips `cf-connecting-ip` — so it arrives exactly as the client typed it. `curl -H
+ * 'cf-connecting-ip: <random>'` got a brand-new bucket on EVERY request, which made every per-IP limit
+ * decorative — including the only brake on anonymous chat spend. A header is only trustworthy if the
+ * hop that sets it also overwrites whatever the client sent, so the order is:
+ *
+ *   1. `x-vercel-forwarded-for` — written by Vercel's edge; the client can't supply its own.
+ *   2. `x-real-ip`              — also written by Vercel's edge.
+ *   3. `x-forwarded-for`, FIRST entry — Vercel overwrites it too, but it is the header every other
+ *      proxy APPENDS to, so anywhere else the first slot is whatever the client sent. Last resort.
+ *
+ * `cf-connecting-ip` is honoured ONLY when TRUST_CF_CONNECTING_IP says the site really is behind
+ * Cloudflare — and then it goes FIRST, because behind a Cloudflare proxy the Vercel headers carry
+ * Cloudflare's egress IP, which is shared by thousands of unrelated visitors (one bucket for all of
+ * them). Turning the flag on without the proxy reopens the bypass, so it is off by default.
+ *
+ * Off Vercel (local dev, a bare `next start`) all of these are client-controlled; that is a hosting
+ * property this function cannot fix, and dev is the only place that happens today.
+ */
+function getClientIp(req: NextRequest): string {
+  const h = req.headers;
+  const cf = isTruthyFlag(process.env.TRUST_CF_CONNECTING_IP) ? firstIp(h.get('cf-connecting-ip')) : '';
+  return (
+    cf ||
+    firstIp(h.get('x-vercel-forwarded-for')) ||
+    firstIp(h.get('x-real-ip')) ||
+    firstIp(h.get('x-forwarded-for')) ||
+    'unknown'
+  );
+}
+
 function getClientKey(req: NextRequest, prefix: string, identity?: string): string {
-  const ip =
-    req.headers.get('cf-connecting-ip') ||
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip') ||
-    'unknown';
+  const ip = getClientIp(req);
   // An identity (an email, a user id) scopes the bucket to ONE person sharing that IP, which is the
   // difference between rate-limiting an abuser and rate-limiting a cafe.
   return identity ? `${prefix}:${ip}:${identity.toLowerCase().trim()}` : `${prefix}:${ip}`;

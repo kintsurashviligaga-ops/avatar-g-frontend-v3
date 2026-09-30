@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
+import { veoTransport } from '@/lib/veo/engine';
+import { isGoogleOnly } from '@/lib/veo/policy';
+import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,7 +64,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // GEMINI — chat, Imagen (images), Lyria (music) AND Veo (video) all ride this one key, which is why
     // it is first and why its failure is the most expensive one in the system.
     probe('gemini', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
-      const r = await get(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(k)}`);
+      // Header, not `?key=`: a key in a URL ends up in every proxy and access log between here and Google.
+      const r = await get('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': k } });
       if (!r.ok) {
         const body = await r.text().catch(() => '');
         return { provider: 'gemini', configured: true, ok: false, detail: `HTTP ${r.status} ${body.slice(0, 180)}` };
@@ -78,6 +82,34 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         detail: `${names.length} models · veo:${has(/veo/i)} imagen:${has(/imagen/i)} lyria:${has(/lyria/i)}`,
       };
     }),
+
+    // GEMINI BILLING — listing models is free, so it stays green while the prepaid balance is EMPTY: that is exactly
+    // how every Veo / Lyria / TTS / chat call answered 402 for days behind a healthy-looking key. One generated
+    // token (well under $0.0001) is the cheapest question the billing system actually answers.
+    probe('gemini-billing', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
+      const model = (process.env.GEMINI_PROBE_MODEL || 'gemini-2.5-flash').trim();
+      const r = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'x-goog-api-key': k, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: 'ok' }] }], generationConfig: { maxOutputTokens: 1 } }),
+      });
+      if (r.ok) return { provider: 'gemini-billing', configured: true, ok: true, detail: `${model} answered — the balance pays` };
+      const body = await r.text().catch(() => '');
+      const hint = r.status === 402 || /prepa|billing|credit/i.test(body) ? ' — the AI Studio prepaid balance is empty' : '';
+      return { provider: 'gemini-billing', configured: true, ok: false, detail: `HTTP ${r.status}${hint} ${body.slice(0, 160)}` };
+    }),
+
+    // VEO — which Google route renders clips right now, and what still keeps Vertex AI off (variable NAMES only).
+    (async (): Promise<ProbeResult> => {
+      const transport = veoTransport();
+      const missing = vertexConfigProblems();
+      return {
+        provider: 'veo',
+        configured: transport !== null,
+        ok: transport !== null,
+        detail: `transport:${transport ?? 'none'} · google-only:${isGoogleOnly()} · vertex:${missing.length ? `missing ${missing.join(', ')}` : 'ready'}`,
+      };
+    })(),
 
     probe('anthropic', process.env.ANTHROPIC_API_KEY, async (k) => {
       const r = await get('https://api.anthropic.com/v1/models?limit=1', {
@@ -138,6 +170,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       not_configured: unset,
     },
     results,
-    note: 'Every probe is a read — nothing was generated and nothing was charged.',
+    note: 'Every probe is a read, except gemini-billing: one generated token (under $0.0001) to prove the prepaid balance pays.',
   });
 }

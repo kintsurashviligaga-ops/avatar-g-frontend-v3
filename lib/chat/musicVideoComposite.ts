@@ -41,7 +41,7 @@ import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasVideoProvider } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
-import { creditWalletGel } from '@/lib/billing/wallet-ledger';
+import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 
 const serviceManager = new ServiceManager();
 
@@ -314,16 +314,16 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   // a `:refund` suffix and credit_wallet_gel is idempotent on its ref, so a retry cannot over-credit.
   const realUser = Boolean(input.userId && input.userId !== 'anonymous');
   if (realUser) {
-    const stranded: Array<[string, number]> = [];
-    if (musicDebited && !musicWorkId) stranded.push(['music', forecast.legs.music.retail]);
-    if (videoDebited && !videoTaskRef) stranded.push(['video', forecast.legs.video.retail]);
+    const stranded: string[] = [];
+    if (musicDebited && !musicWorkId) stranded.push('music');
+    if (videoDebited && !videoTaskRef) stranded.push('video');
     if (stranded.length) {
       // eslint-disable-next-line no-console
-      console.warn(`[composite] refunding ${stranded.map(([l]) => l).join('+')} leg(s) billed with no output for ${input.userId}`);
+      console.warn(`[composite] refunding ${stranded.join('+')} leg(s) billed with no output for ${input.userId}`);
+      // Exactly what the ledger shows was taken under the leg's deductRef — never the GEL forecast, which
+      // credit_wallet_gel multiplies by 10 into credits (a refund that pays out more than was charged).
       await Promise.all(
-        stranded.map(([leg, retail]) =>
-          creditWalletGel(input.userId as string, retail, `${compositeId}:${leg}:refund`).catch(() => null),
-        ),
+        stranded.map((leg) => refundDebitByRef(input.userId as string, `${compositeId}:${leg}`).catch(() => null)),
       );
     }
   }

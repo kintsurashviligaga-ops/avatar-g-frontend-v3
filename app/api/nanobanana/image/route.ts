@@ -4,6 +4,7 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
 import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { randomUUID } from 'node:crypto';
@@ -138,6 +139,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
     }
 
+    // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
+    // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
+    // sending; this stops a direct POST. FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment.
+    // (applyApiGuards above already resolved a cookie session; the full resolver covers the Bearer path.)
+    const sessionUserId = gate.auth ? gate.auth.userId : ((await authedClientFromRequest(req)).user?.id ?? null);
+    if (mustSignInToGenerate(sessionUserId)) {
+      return NextResponse.json(signInToGenerateBody(), { status: 401 });
+    }
+
     // RESERVE the credit up front (state declared above). The atomic deduct serialises a
     // concurrent ×4 batch: only tiles the wallet can actually fund proceed; the rest 402 WITHOUT
     // a paid render (fixes the free-image TOCTOU leak). Per-tile idempotency ref — a retry of the
@@ -149,7 +159,7 @@ export async function POST(req: NextRequest) {
       // session through auth.getUser(), which is a real round trip to GoTrue and not a local decode.
       // Reuse its answer when it has one; fall back to the full resolver otherwise, because getAuthContext
       // only reads cookies and this route must still accept the Authorization: Bearer path unchanged.
-      const rUser = gate.auth ? { id: gate.auth.userId } : (await authedClientFromRequest(req)).user;
+      const rUser = sessionUserId ? { id: sessionUserId } : null;
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;

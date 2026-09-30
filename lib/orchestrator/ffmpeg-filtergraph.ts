@@ -86,6 +86,8 @@ const XFADE: Record<string, string> = {
   slide: 'slideleft',
   wipe: 'wiperight',
   fade_to_black: 'fadeblack',
+  // The studio's Veo plan names it fade_black (lib/veo/types Transition).
+  fade_black: 'fadeblack',
 };
 
 // Output canvas per format. 16:9 landscape · 9:16 vertical · 1:1 square · 4:5 portrait.
@@ -96,6 +98,22 @@ const CANVAS: Record<string, readonly [number, number]> = {
   portrait: [1080, 1350],
 };
 const TRANSITION_SEC = 1; // 1s crossfade (offset = clipSec - 1)
+
+/**
+ * The overlap every join takes, in seconds — the ONE definition the filter graph and the assembler's duration
+ * math (bitrate cap, master QA) share. A soft join overlaps the clips by TRANSITION_SEC. A film whose joins are all
+ * cuts concatenates with no overlap at all. A 'cut' INSIDE a mixed chain (the studio's per-scene joins: cut, cut,
+ * dissolve…) is a one-frame fade, because xfade needs a positive duration — on screen it is a hard cut, and it costs
+ * the timeline one frame instead of a second.
+ */
+export function joinOverlaps(nClips: number, transition: string | undefined, transitions: readonly string[] | undefined, fps: number): number[] {
+  const joins = Math.max(0, Math.floor(nClips) - 1);
+  if (transition === 'cut') return Array.from({ length: joins }, () => 0);
+  const per = Array.from({ length: joins }, (_, j) => transitions?.[j] || transition || 'crossfade');
+  if (per.every((t) => t === 'cut')) return per.map(() => 0);
+  const frameSec = 1 / (fps >= 30 ? 30 : 24);
+  return per.map((t) => (t === 'cut' ? frameSec : TRANSITION_SEC));
+}
 
 /**
  * PHASE 5A — beat-aware transitions for an N-clip film. The film's cinematic beats run
@@ -150,9 +168,10 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // master lands at EXACTLY N·clipSec (5·6 = 30s) with zero pad-freeze — the honest
   // way to hit the 30-second brand promise, and the beat-synced grammar a music
   // video wants. Every other transition keeps the proven 1-second xfade chain.
-  const isCut = opts.transition === 'cut';
+  const overlaps = joinOverlaps(nClips, opts.transition, opts.transitions, opts.fps);
+  // All joins are cuts (the whole-film 'cut', or a per-join list of nothing but cuts) → concat, zero overlap.
+  const isCut = overlaps.every((o) => o === 0);
   const trans = XFADE[opts.transition ?? 'crossfade'] ?? 'fade';
-  const overlap = isCut ? 0 : TRANSITION_SEC;
   const parts: string[] = [];
 
   // Output canvas: 1920×1080 (16:9) by default, or 1080×1920 (9:16) for the
@@ -164,7 +183,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // chain. N clips each `clipSec` long, overlapped by `TRANSITION_SEC` at every
   // join: totalDur = N·clipSec − (N−1)·TRANSITION_SEC. The background audio bed
   // is later padded/trimmed to THIS value so music/SFX scale to the timeline.
-  const totalDur = nClips * clipSec - Math.max(0, nClips - 1) * overlap;
+  const totalDur = nClips * clipSec - overlaps.reduce((a, b) => a + b, 0);
 
   // ── Video: normalize + color-match QA pass per clip, then xfade-chain ──────
   // Per-clip finishing pass: scale EVERY clip onto a clean 1920×1080 canvas
@@ -206,15 +225,22 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
     vmap = '[vcat]';
   } else {
     let prev = 'v0';
-    let offset = clipSec - TRANSITION_SEC;
+    // A one-frame join has a fractional offset; three decimals keep it on the frame. Uniform soft chains keep
+    // the two-decimal form (byte-identical to the snapshot tests).
+    const fine = overlaps.some((o) => o !== TRANSITION_SEC);
+    let length = clipSec;
     for (let i = 1; i < nClips; i++) {
       const out = `vx${i}`;
-      // PHASE 5A — per-join transition: use the content-aware override for this join
-      // when supplied, else the single `trans`. undefined transitions → identical output.
-      const pairTrans = opts.transitions?.[i - 1] ? (XFADE[opts.transitions[i - 1]!] ?? trans) : trans;
-      parts.push(`[${prev}][v${i}]xfade=transition=${pairTrans}:duration=${TRANSITION_SEC}:offset=${offset.toFixed(2)}[${out}]`);
+      const ov = overlaps[i - 1] ?? TRANSITION_SEC;
+      const joinName = opts.transitions?.[i - 1];
+      // PHASE 5A — per-join transition: use the override for this join when supplied, else the single `trans`.
+      // A 'cut' join inside a soft chain is a one-frame fade (see joinOverlaps).
+      const pairTrans = joinName === 'cut' ? 'fade' : joinName ? (XFADE[joinName] ?? trans) : trans;
+      const offset = length - ov;
+      const dur = ov === TRANSITION_SEC ? `${TRANSITION_SEC}` : ov.toFixed(3);
+      parts.push(`[${prev}][v${i}]xfade=transition=${pairTrans}:duration=${dur}:offset=${offset.toFixed(fine ? 3 : 2)}[${out}]`);
       prev = out;
-      offset += clipSec - TRANSITION_SEC;
+      length += clipSec - ov;
     }
     vmap = `[${prev}]`;
   }
@@ -410,12 +436,15 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       parts.push(`${labels}concat=n=${nClips}:v=0:a=1[natcat]`);
       natLabel = '[natcat]';
     } else {
-      // Mirror the video xfade: acrossfade by TRANSITION_SEC at every join, so the diegetic sound stays
-      // frame-aligned with the picture. (A plain concat would run (N−1)s long and drift progressively.)
+      // Mirror the video xfade JOIN BY JOIN: acrossfade by the same overlap the picture takes at that join, so the
+      // diegetic sound stays frame-aligned with it. ⚠️ With the studio's mixed joins a 'cut' overlaps the picture
+      // by ONE FRAME, not a second — crossfading the audio by a full second there ran Veo's in-clip dialogue ~1 s
+      // ahead of the lips per cut join. (A plain concat would instead run long and drift the other way.)
       let prevA = 'na0';
       for (let i = 1; i < nClips; i++) {
         const out = `nax${i}`;
-        parts.push(`[${prevA}][na${i}]acrossfade=d=${TRANSITION_SEC}:c1=tri:c2=tri[${out}]`);
+        const ov = overlaps[i - 1] ?? TRANSITION_SEC;
+        parts.push(`[${prevA}][na${i}]acrossfade=d=${ov.toFixed(4)}:c1=tri:c2=tri[${out}]`);
         prevA = out;
       }
       natLabel = `[${prevA}]`;

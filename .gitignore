@@ -49,3 +49,7 @@ vercel-project-inspect.txt
 # brand/v1 art pack: every raw take stays local — only the selected masters (design/brand/v1) are committed,
 # and nothing raw may ever deploy from public/.
 /public/brand/v1/raw/
+
+# GCP service-account keys (scripts/gcp/setup-veo-vertex.sh writes one) — a long-lived secret, never committed.
+*-key.json
+*service-account*.json

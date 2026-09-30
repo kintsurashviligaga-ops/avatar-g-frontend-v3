@@ -19,6 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { atlasChat, atlasConfigured } from '@/lib/ai/atlasClient';
 import { deepseekChat, deepseekConfigured } from '@/lib/ai/deepseekClient';
 import { generateWithGemini } from '@/lib/gemini/client';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { reportReliability } from '@/lib/observability/reliability';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 
@@ -31,6 +32,16 @@ export interface LlmTextOpts {
   signal?: AbortSignal;
   /** Skip DeepSeek and lead with Gemini (e.g. a latency-critical path). Default false. */
   geminiFirst?: boolean;
+  /**
+   * Gemini ONLY — no DeepSeek, Atlas or Anthropic leg. The Google-only video pipeline (docs/VEO_ENGINE.md §3) uses
+   * this for its director, so a miss surfaces as a miss (callers keep their deterministic plan) instead of the brief
+   * being written by a non-Google model.
+   */
+  googleOnly?: boolean;
+  /** Gemini model id for this call (default: the flash tier, GEMINI_MODEL_FLASH). */
+  geminiModel?: string;
+  /** Ask Gemini for a JSON document (responseMimeType application/json) — no prose, no code fences. */
+  json?: boolean;
 }
 
 async function viaDeepSeek(o: LlmTextOpts): Promise<string | null> {
@@ -46,9 +57,17 @@ async function viaAtlas(o: LlmTextOpts): Promise<string | null> {
 }
 
 async function viaGemini(o: LlmTextOpts): Promise<string | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
+  // resolveGeminiKey() also honours GOOGLE_GENERATIVE_AI_API_KEY and the GEMINI_API_KEYS pool — the bare
+  // GEMINI_API_KEY check here used to skip Gemini on a deployment that only set the pool.
+  if (!resolveGeminiKey()) return null;
   try {
-    const r = await generateWithGemini({ prompt: o.user, systemPrompt: o.system, tier: 'flash', maxTokens: o.maxTokens ?? 2000, temperature: o.temperature ?? 0.6, thinkingBudget: 0 });
+    const r = await generateWithGemini({
+      prompt: o.user, systemPrompt: o.system, tier: 'flash', maxTokens: o.maxTokens ?? 2000, temperature: o.temperature ?? 0.6,
+      thinkingBudget: 0,
+      ...(o.geminiModel ? { model: o.geminiModel } : {}),
+      ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}),
+      ...(o.json ? { responseMimeType: 'application/json' as const } : {}),
+    });
     return r.text && r.text.trim() ? r.text : null;
   } catch { return null; }
 }
@@ -74,9 +93,11 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
   // DeepSeek-V3 is reachable two ways — the DIRECT api.deepseek.com key (DEEPSEEK_API_KEY) and the
   // Atlas-hosted route (ATLAS_API_KEY). Try DIRECT first, then Atlas as the same-model backup, so one
   // provider's rate-limit/outage fails over to the other instead of dropping to the deterministic plan.
-  const chain: Array<[string, (opts: LlmTextOpts) => Promise<string | null>]> = o.geminiFirst
-    ? [['gemini', viaGemini], ['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['anthropic', viaAnthropic]]
-    : [['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['gemini', viaGemini], ['anthropic', viaAnthropic]];
+  const chain: Array<[string, (opts: LlmTextOpts) => Promise<string | null>]> = o.googleOnly
+    ? [['gemini', viaGemini]]
+    : o.geminiFirst
+      ? [['gemini', viaGemini], ['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['anthropic', viaAnthropic]]
+      : [['deepseek', viaDeepSeek], ['atlas', viaAtlas], ['gemini', viaGemini], ['anthropic', viaAnthropic]];
   // BUDGET GATE (Master Task §2.1.1). This helper is the shared brain behind 14 internal call sites
   // (storyboard, prompt agent, scene writer, …), so guarding it here covers all of them at once instead
   // of each remembering. Refusal returns null — the SAME shape every provider miss already returns — so
@@ -112,7 +133,7 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
   console.error('[llmText] ALL text-LLM providers missed — scene planning will fall back to deterministic camera beats. Check deployment keys.', {
     deepseek: deepseekConfigured(),
     atlas: atlasConfigured(),
-    gemini: !!process.env.GEMINI_API_KEY,
+    gemini: !!resolveGeminiKey(),
     anthropic: !!process.env.ANTHROPIC_API_KEY,
   });
   return null;

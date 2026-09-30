@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { SceneMetaSchema, VeoRenderOptionsSchema } from '@/lib/veo/renderOptions';
 import { randomUUID } from 'crypto';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -112,6 +113,12 @@ const orchestrateSchema = z.object({
   // Prompt-Agent character LOCK — one detailed appearance fragment injected verbatim
   // into every scene so the protagonist never drifts shot-to-shot.
   characterLock: z.string().max(2000).optional(),
+  // Google Veo — the studio's Veo plan (lib/video/veoPlan → toRenderOptions): tier, delivered format, how the
+  // character photos condition Veo, native sound, seed lock, and the per-scene camera + joins (docs/VEO_ENGINE.md).
+  veo: VeoRenderOptionsSchema.optional(),
+  // The director's per-scene provenance from the storyboard (structured camera, lighting, mood, location). It used
+  // to be computed and then dropped by the client, so the render re-derived every shot from a beat ladder.
+  sceneMeta: SceneMetaSchema.optional(),
 
   // ── Personalization (Settings → Custom Instructions) ──
   customInstructions: z.string().max(2000).optional(),
@@ -257,7 +264,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock || data.veo || data.sceneMeta?.length)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -286,6 +293,8 @@ export async function POST(req: NextRequest) {
             // Prompt-Agent: the chosen effect + the locked character description.
             ...(data.style ? { style: data.style } : {}),
             ...(data.characterLock ? { characterLock: data.characterLock } : {}),
+            ...(data.veo ? { veo: data.veo } : {}),
+            ...(data.sceneMeta?.length ? { sceneMeta: data.sceneMeta } : {}),
           }
         : data.metadata,
       customInstructions: effectiveInstructions,

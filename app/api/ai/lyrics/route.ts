@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithGemini } from '@/lib/gemini/client';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 /**
  * Auto-write singable song lyrics from a theme — removes the biggest friction in the
@@ -16,6 +18,15 @@ export async function POST(req: NextRequest) {
   const language = typeof body.language === 'string' ? body.language : 'ka';
   const style = typeof body.style === 'string' ? body.style.trim().slice(0, 60) : '';
   if (!theme) return NextResponse.json({ success: false, error: 'theme is required' }, { status: 400 });
+
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). One tap is up to THREE Gemini calls (two Flash takes + a Pro
+  // fallback) on the platform balance, and the route had no session check and no rate limit. Its one caller is the
+  // Music panel's ✨ button, whose lyrics feed only a music render — which already refuses a guest — so a guest's
+  // lyrics could never become a song; the only thing an anonymous call could do was spend.
+  const { user } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(user?.id)) {
+    return NextResponse.json(signInToGenerateBody(language), { status: 401 });
+  }
 
   const langName = language === 'en' ? 'English' : language === 'ru' ? 'Russian' : 'Georgian';
   const sys =
