@@ -329,8 +329,22 @@ export function intentToReplicateService(intent: IntentCategory): string | null 
 /**
  * Deliverables that are TEXT. A generate command aimed at one of these belongs in the chat stream, not
  * in an image render — "make me a list of ideas" is a request to write, not to draw.
+ *
+ * ⚠️ A WRITING VERB IS ITSELF A TEXT DELIVERABLE. "დაწერე გრძელი პასუხი" (write a long answer) passed the
+ * imperative gate, named no noun from the old Georgian list, and was DRAWN — a paid image nobody asked for.
+ * "Write …" can never mean a picture, in any of the three languages, so the verb alone vetoes the render.
  */
-const TEXT_DELIVERABLE = /\b(list|plan|summary|essay|email|letter|article|blog|post|caption|script|story|poem|code|table|recipe|schedule|itinerary|outline|report|translation|joke|ideas?|names?|slogans?|description|explanation|answer|reply|message)\b|სია|გეგმა|წერილ|სტატი|ტექსტ|კოდ|იდეა|სახელ|რეცეპტ|список|план|письмо|стать|текст|код|иде[яю]|рецепт/i;
+const TEXT_DELIVERABLE = new RegExp([
+  // English — nouns, then writing verbs.
+  String.raw`\b(list|plan|summary|essay|email|letter|article|blog|post|caption|script|story|poem|code|table|recipe|schedule|itinerary|outline|report|translation|joke|ideas?|names?|slogans?|description|explanation|answer|reply|message|lyrics|paragraph|sentence)\b`,
+  String.raw`\b(write|rewrite|translate|summari[sz]e|explain|paraphrase|proofread)\b`,
+  // Georgian — nouns (stems), then writing verbs (დაწერე / დამიწერე / მომწერე / გადაწერე, თარგმნე, ახსენი).
+  'სია|გეგმა|წერილ|სტატი|ტექსტ|კოდ|იდეა|სახელ|რეცეპტ|პასუხ|ლექს|მოთხრობ|ესსე|სცენარ|ცხრილ|განრიგ|შეჯამ|რეზიუმე|პოსტ|ბლოგ|იმეილ|მეილ|შეტყობინებ|სლოგან|ანეკდოტ|ხუმრობ|აბზაც|წინადადებ',
+  'დაწერ|დამიწერ|მომწერ|გადაწერ|გადამიწერ|თარგმნ|მითარგმნ|ახსენ|ამიხსენ|შეაჯამ',
+  // Russian — nouns (stems), then writing verbs.
+  'список|план|письмо|стать|текст|код|иде[яю]|рецепт|ответ|стих|рассказ|сценари|таблиц|расписани|резюме|пост|слоган|шутк|анекдот|абзац',
+  'напиши|написать|перепиши|переведи|объясни|перескажи',
+].join('|'), 'i');
 
 /**
  * The lane an imperative generate command belongs to, or null to leave it in the chat stream.

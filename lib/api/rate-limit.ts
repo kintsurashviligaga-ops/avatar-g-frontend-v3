@@ -123,6 +123,31 @@ export const RATE_LIMITS = {
   // costly streaming avatar, so this is much tighter than the Gemini token cap. Bounds a single account
   // from starting hundreds of paid sessions; the owner can raise it as the plan matures.
   LIVEAVATAR_SESSION:{ maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:liveavatar:user' } as const,
+  // Per-USER daily ceiling on the product chat (/api/chat/gemini). Use it with checkRateLimitByKey(userId, …)
+  // AFTER the session is verified — keyed on the account, not the IP, so rotating IPs cannot buy more turns.
+  // ⚠️ The per-IP READ bucket that used to be chat's ONLY brake is shared with every other READ route and is a
+  // per-minute burst guard; it never bounded what one account could spend in a day. Each turn is a paid Gemini
+  // call (plus Google Search grounding). 500 matches DAILY_AI_LIMIT, the cap the other chat routes already use —
+  // a heavy day of real conversation, far below a scripted drain. The platform budget guard is the global backstop.
+  CHAT_USER: { maxRequests: 500, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:chat:user' } as const,
+  // Read-aloud (/api/tts/gemini), IP-keyed, before the session check. Its OWN namespace on purpose.
+  // ⚠️ IT USED TO DRAW ON WRITE (20/min, shared with every other WRITE route). The studio reads a reply in ~600-char
+  // chunks and prefetches the next one, so ONE long answer is ~14 requests. Two long replies in a minute — or one
+  // plus a message sent — hit 429, and the client skips a 429'd chunk SILENTLY: words vanished from the middle of
+  // the read-aloud. 60/min is four long replies per minute; the sign-in gate and the platform budget guard bound cost.
+  TTS:       { maxRequests: 60,  windowMs: 60_000,       keyPrefix: 'rl:tts'   } as const,
+  // Per-USER ceiling on speech-to-text (/api/voice/transcribe), keyed on the verified userId via
+  // checkRateLimitByKey AFTER the session check, so rotating IPs buys nothing. Sized for real use: a minute of
+  // dictation runs ~10 interim passes + the final (lib/voice/interimCadence.ts) and the voice-call loop sends one
+  // clip per turn, so 600/hour is a continuous hour of either — far below a scripted drain.
+  STT_USER:  { maxRequests: 600, windowMs: 60 * 60_000,  keyPrefix: 'rl:stt:user' } as const,
+  // Per-USER daily ceiling on read-aloud (/api/tts/gemini), keyed on the verified userId AFTER the session check (the
+  // IP-keyed TTS bucket above is only the burst guard; rotating IPs used to buy unlimited synthesis). A long reply is
+  // ~14 chunks, so 1500/day is 100+ long replies read aloud — a heavy day, far below a scripted drain.
+  TTS_USER:  { maxRequests: 1500, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:tts:user' } as const,
+  // Per-USER daily ceiling on the small free Gemini text helpers (magic-wand prompt enhance, chat titles). One shared
+  // bucket: both are a few hundred tokens, and a real day uses them dozens of times, not thousands.
+  HELPER_USER: { maxRequests: 400, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:helper:user' } as const,
   // Storyboard preview = ONE logical generation that fans out into many quick
   // server calls (plan + per-scene frame stream + retries + re-rolls). Treating
   // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This

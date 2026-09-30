@@ -235,6 +235,14 @@ describe('an imperative order never comes back as an essay', () => {
     ['make a summary of this article'],
     ['сделай список идей'],
     ['გამიკეთე გეგმა შემდეგი კვირისთვის'],
+    // ⚠️ REGRESSION: a writing VERB with no noun from the list was drawn as a (paid) image.
+    ['დაწერე გრძელი პასუხი'],
+    ['დამიწერე ლექსი საქართველოზე'],
+    ['თარგმნე ეს ინგლისურად'],
+    ['write something about Tbilisi'],
+    ['write a long answer'],
+    ['напиши рассказ про кота'],
+    ['переведи это на английский'],
   ])('still answers in text: %s', (text) => {
     expect(route(text)).toBe('chat');
   });

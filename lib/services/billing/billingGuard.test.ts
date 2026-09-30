@@ -6,8 +6,16 @@
 import {
   estimateCost,
   approximateTokens,
+  geminiPriceFamily,
+  resolveTokenPrice,
+  groundingCostUsd,
+  GEMINI_PRICE_TABLE,
+  GEMINI_TOKEN_PRICING,
+  LONG_CONTEXT_THRESHOLD_TOKENS,
+  MAX_GROUNDING_UNITS_PER_CALL,
   UNIT_COST_USD,
   SERVICE_TYPES,
+  type GeminiPriceFamily,
   type ServiceType,
 } from './costModel';
 import {
@@ -117,6 +125,132 @@ describe('BillingGuard', () => {
     const codes = checkThresholds(at(10, 40)).map((a) => a.code);
     expect(codes).toContain('daily_exceeded');
     expect(checkThresholds(at(10, 40)).find((a) => a.code === 'daily_exceeded')?.level).toBe('critical');
+  });
+});
+
+describe('per-model Gemini token pricing', () => {
+  it('places every model id verified on the funded key (2026-09-30) in a family', () => {
+    const expected: Record<string, GeminiPriceFamily> = {
+      // chat
+      'gemini-3.8-flash': 'flash-3.5',
+      'gemini-3.7-flash': 'flash-3.5',
+      'gemini-3.6-flash': 'flash-3.5',
+      'gemini-3.5-flash': 'flash-3.5',
+      'gemini-3.1-pro-preview': 'pro-3',
+      'gemini-pro-latest': 'pro-3',
+      'gemini-flash-latest': 'flash-3.5',
+      'gemini-2.5-pro': 'pro-2.5',
+      'gemini-2.5-flash': 'flash-2.5',
+      'gemini-2.5-flash-lite': 'flash-lite-2.5',
+      // live — checked BEFORE flash: 'gemini-3.1-flash-live-preview' also says "flash"
+      'gemini-2.5-flash-native-audio-latest': 'live-audio',
+      'gemini-2.5-flash-native-audio-preview-12-2025': 'live-audio',
+      'gemini-3.8-live': 'live-audio',
+      'gemini-3.1-flash-live-preview': 'live-audio',
+      'gemini-3.5-transcribe-live': 'live-audio',
+      // tts — also checked before flash
+      'gemini-2.5-flash-preview-tts': 'tts-flash',
+      'gemini-3.8-flash-tts': 'tts-flash',
+      'gemini-3.1-flash-tts-preview': 'tts-flash',
+      'gemini-2.5-pro-preview-tts': 'tts-pro',
+      // suffixes / prefixes a provider or SDK adds must not knock an id onto the fallback
+      'models/gemini-2.5-flash': 'flash-2.5',
+      'Gemini-2.5-Flash': 'flash-2.5',
+      'gemini-2.5-flash-preview-09-2025': 'flash-2.5',
+      'gemini-2.5-flash-lite-preview-09-2025': 'flash-lite-2.5',
+      'gemini-3-flash-preview': 'flash-3',
+      'gemini-3-pro-preview': 'pro-3',
+      'gemini-3.1-flash-lite-preview': 'flash-lite-3',
+    };
+    for (const [id, family] of Object.entries(expected)) expect([id, geminiPriceFamily(id)]).toEqual([id, family]);
+  });
+
+  it('leaves unknown, retired and non-Gemini ids unplaced (→ flat fallback)', () => {
+    for (const id of [
+      'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', // retired (404) — never booked
+      'gemini-3.5-flash-lite', // no published Flash-Lite ≥3.5 price
+      'gemini-2.5-flash-image', // image-output tokens are not a chat rate
+      'gemini', 'gemini-exp-1206', 'gpt', 'claude-haiku-4-5', 'deepseek', 'chat', '', 'x'.repeat(300),
+    ]) {
+      expect([id, geminiPriceFamily(id)]).toEqual([id, null]);
+    }
+    expect(geminiPriceFamily(null)).toBeNull();
+    expect(geminiPriceFamily(undefined)).toBeNull();
+    expect(resolveTokenPrice('claude-haiku-4-5')).toMatchObject({ family: 'fallback', ...GEMINI_TOKEN_PRICING });
+  });
+
+  it('prices each family at its own rate (1k in + 500 out)', () => {
+    const cost = (model: string) => estimateCost({ service: 'chat', model, inputTokens: 1000, outputTokens: 500 }).estimatedCost;
+    expect(cost('gemini-2.5-flash-lite')).toBeCloseTo((1000 * 0.1 + 500 * 0.4) / 1e6, 6);
+    expect(cost('gemini-2.5-flash')).toBeCloseTo((1000 * 0.3 + 500 * 2.5) / 1e6, 6);
+    expect(cost('gemini-3-flash-preview')).toBeCloseTo((1000 * 0.5 + 500 * 3) / 1e6, 6);
+    expect(cost('gemini-3.8-flash')).toBeCloseTo((1000 * 1.5 + 500 * 9) / 1e6, 6);
+    expect(cost('gemini-2.5-pro')).toBeCloseTo((1000 * 1.25 + 500 * 10) / 1e6, 6);
+    expect(cost('gemini-3.1-pro-preview')).toBeCloseTo((1000 * 2 + 500 * 12) / 1e6, 6);
+    expect(cost('gemini-2.5-flash-native-audio-latest')).toBeCloseTo((1000 * 3 + 500 * 12) / 1e6, 6);
+    expect(cost('gemini-2.5-flash-preview-tts')).toBeCloseTo((1000 * 0.5 + 500 * 10) / 1e6, 6);
+    // Unknown id → exactly the pre-per-model flat rate.
+    expect(cost('some-future-model')).toBeCloseTo((1000 * 1.5 + 500 * 9) / 1e6, 6);
+  });
+
+  it('keeps the table sane: every rate finite and positive, output ≥ input, cached ≤ input', () => {
+    for (const [family, row] of Object.entries(GEMINI_PRICE_TABLE)) {
+      for (const rates of [row, ...(row.longContext ? [row.longContext] : [])]) {
+        for (const v of [rates.inputPerMillion, rates.outputPerMillion, rates.cachedInputPerMillion]) {
+          expect([family, Number.isFinite(v) && v > 0]).toEqual([family, true]);
+        }
+        expect([family, rates.outputPerMillion >= rates.inputPerMillion]).toEqual([family, true]);
+        expect([family, rates.cachedInputPerMillion <= rates.inputPerMillion]).toEqual([family, true]);
+      }
+      expect([family, row.grounding.usd >= 0]).toEqual([family, true]);
+    }
+    // An id we cannot price must never look cheaper than the known Flash tiers — "unknown" errs toward the budget.
+    for (const f of ['flash-2.5', 'flash-3', 'flash-lite-2.5', 'flash-lite-3'] as const) {
+      expect(GEMINI_PRICE_TABLE[f].inputPerMillion).toBeLessThanOrEqual(GEMINI_TOKEN_PRICING.inputPerMillion);
+      expect(GEMINI_PRICE_TABLE[f].outputPerMillion).toBeLessThanOrEqual(GEMINI_TOKEN_PRICING.outputPerMillion);
+    }
+  });
+
+  it('steps Pro up to the long-context rates only past 200k prompt tokens', () => {
+    expect(resolveTokenPrice('gemini-2.5-pro', LONG_CONTEXT_THRESHOLD_TOKENS)).toMatchObject({ inputPerMillion: 1.25, outputPerMillion: 10 });
+    expect(resolveTokenPrice('gemini-2.5-pro', LONG_CONTEXT_THRESHOLD_TOKENS + 1)).toMatchObject({ inputPerMillion: 2.5, outputPerMillion: 15 });
+    expect(resolveTokenPrice('gemini-3.1-pro-preview', 300_000)).toMatchObject({ inputPerMillion: 4, outputPerMillion: 18, cachedInputPerMillion: 0.4 });
+    // Flash has no long-context tier.
+    expect(resolveTokenPrice('gemini-2.5-flash', 900_000)).toMatchObject({ inputPerMillion: 0.3, outputPerMillion: 2.5 });
+    expect(estimateCost({ service: 'chat', model: 'gemini-2.5-pro', inputTokens: 250_000, outputTokens: 1000 }).estimatedCost)
+      .toBeCloseTo((250_000 * 2.5 + 1000 * 15) / 1e6, 6);
+  });
+
+  it('bills a partial context-cache hit at the cached rate (clamped to the prompt)', () => {
+    expect(estimateCost({ service: 'chat', model: 'gemini-3.1-pro-preview', inputTokens: 1000, cachedInputTokens: 400 }).estimatedCost)
+      .toBeCloseTo((600 * 2 + 400 * 0.2) / 1e6, 6);
+    expect(estimateCost({ service: 'chat', model: 'gemini-3.1-pro-preview', inputTokens: 1000, cachedInputTokens: 5000 }).estimatedCost)
+      .toBeCloseTo((1000 * 0.2) / 1e6, 6);
+    // The boolean form still means "all of it".
+    expect(estimateCost({ service: 'chat', model: 'gemini-2.5-flash', inputTokens: 1000, cachedInput: true }).estimatedCost)
+      .toBeCloseTo((1000 * 0.03) / 1e6, 6);
+  });
+
+  it('prices Google Search grounding per query (Gemini 3+) or per grounded prompt (2.5)', () => {
+    const g = (model: string, groundingQueries: number) => estimateCost({ service: 'chat', model, groundingQueries }).estimatedCost;
+    expect(g('gemini-3.8-flash', 1)).toBeCloseTo(0.014, 6);
+    expect(g('gemini-3.8-flash', 4)).toBeCloseTo(0.056, 6);
+    expect(g('gemini-3.1-pro-preview', 2)).toBeCloseTo(0.028, 6);
+    expect(g('gemini-2.5-flash', 1)).toBeCloseTo(0.035, 6);
+    expect(g('gemini-2.5-flash', 4)).toBeCloseTo(0.035, 6); // one grounded PROMPT
+    expect(g('gemini-2.5-flash', 0)).toBe(0);
+    // Unknown price → 0 (TODO rows), never NaN.
+    expect(g('gemini-2.5-flash-native-audio-latest', 3)).toBe(0);
+    expect(g('claude-haiku-4-5', 3)).toBe(0);
+  });
+
+  it('caps grounding units per call so one bad count cannot full-stop the platform', () => {
+    const q = resolveTokenPrice('gemini-3.8-flash').grounding;
+    expect(groundingCostUsd(q, 1_000_000)).toBeCloseTo(MAX_GROUNDING_UNITS_PER_CALL * 0.014, 6);
+    expect(groundingCostUsd(q, Number.NaN)).toBe(0);
+    expect(groundingCostUsd(q, -3)).toBe(0);
+    expect(groundingCostUsd(q, '7')).toBeCloseTo(0.014 * 7, 6); // numeric strings coerce like every other count here
+    expect(groundingCostUsd(q, 1.2)).toBeCloseTo(0.028, 6); // partial counts round UP
   });
 });
 

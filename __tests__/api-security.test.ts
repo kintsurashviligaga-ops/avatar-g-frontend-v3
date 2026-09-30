@@ -78,13 +78,10 @@ const ALLOWLIST: Record<string, string> = {
   //    the pre-Iteration-3 audit; user-auth is a tracked follow-up. Listed so the guard still protects
   //    NEW routes while these known gaps are worked down (goal: empty this section).
   'app/api/elevenlabs/sound/route.ts': 'ElevenLabs SFX — rate-limited (RATE_LIMITS.WRITE); user-auth TODO (audit follow-up)',
-  'app/api/matilda/route.ts': 'Matilda voice (ElevenLabs TTS) — user-auth TODO (audit follow-up)',
-  // ── WS2: interactive chat-mic voice routes. Client-facing + rate-limited + low per-call cost (short
-  //    Whisper/STT utterances); guest voice input is a live product feature, so requiring user-auth is a
-  //    PRODUCT decision (would remove guest voice), not a pure security fix. Listed as a reasoned exception
-  //    rather than broken. voice/realtime/session additionally soft-auths (getAuthenticatedUser) + is inert
-  //    in prod without VOICE_V2V_WS_URL + is WS-token gated.
-  'app/api/voice/transcribe/route.ts': 'Chat-mic STT (Whisper) — rate-limited (RATE_LIMITS.READ); guest voice = product feature; user-auth is a product decision',
+  // ── WS2: interactive voice routes. Client-facing + rate-limited; user-auth is a PRODUCT decision here, listed
+  //    as a reasoned exception rather than broken. voice/realtime/session soft-auths (getAuthenticatedUser) + is
+  //    inert in prod without VOICE_V2V_WS_URL + is WS-token gated. (voice/transcribe LEFT this list 2026-09-30:
+  //    it now requires sign-in through the generation gate + a per-user STT_USER cap, and ?diag is admin-only.)
   'app/api/voice/realtime/session/route.ts': 'Realtime voice session-token minter — soft-auths, inert without VOICE_V2V_WS_URL, WS-token gated; user-auth is a product decision',
   // ── Health / status / diagnostic monitoring: reference or PING provider endpoints (env presence,
   //    /v1/user, /v2/voices) — no media generation, no drain. Should ideally be admin-gated; low risk.

@@ -7,16 +7,30 @@
  * via the FAST Gemini tier (flash) — the cheap text path, never a paid render.
  * The client (titleClient.generateConversationTitle) treats any failure as
  * "no title" and falls back to the deterministic first-prompt title, so this
- * endpoint is best-effort by design: it always responds 200 with a (possibly
- * empty) `title` string and never throws into the chat.
+ * endpoint is best-effort by design: a signed-in caller always gets 200 with a
+ * (possibly empty) `title` string, and nothing here throws into the chat.
+ *
+ * Signed-in only (mustSignInToGenerate): a guest gets the canonical 401 body and
+ * no Gemini call — the studio only titles a signed-in user's conversations, and
+ * an open title endpoint was a free anonymous Gemini proxy (2000-char prompts).
+ *
+ * ⚠️ THINKING OFF (thinkingBudget: 0). The flash tier thinks by default, and the
+ * thinking tokens come out of maxOutputTokens: with the old cap of 24 the model
+ * spent the whole budget thinking and returned an EMPTY title on almost every
+ * call, so the sidebar always showed the deterministic fallback. Thinking off +
+ * TITLE_MAX_TOKENS leaves room for a ≤4-word title in any script (Georgian is
+ * token-dense) while still bounding a runaway reply.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { applyApiGuards } from '@/lib/api/guard';
-import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { RATE_LIMITS, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { generateWithGemini } from '@/lib/gemini/client';
-import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,6 +40,20 @@ const titleSchema = z.object({
   prompt: z.string().min(1).max(2000),
   locale: z.string().default('en'),
 });
+
+/** Room for a ≤4-word title in any script with thinking off; a cap, not a cost (billing is per token used). */
+const TITLE_MAX_TOKENS = 128;
+const TITLE_MAX_CHARS = 80;
+
+/** First line, no wrapping quotes / markdown emphasis, bounded. The client sanitizes again (titleClient). */
+function cleanTitle(raw: string): string {
+  const line = (raw || '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? '';
+  return line
+    .replace(/^#+\s*/, '')
+    .replace(/^[\s"'`*_«»„“”]+|[\s"'`*_«»„“”]+$/g, '')
+    .slice(0, TITLE_MAX_CHARS)
+    .trim();
+}
 
 const LANG_NAME: Record<string, string> = {
   ka: 'Georgian',
@@ -59,22 +87,43 @@ export async function POST(req: NextRequest) {
     });
     if (gate.response) return gate.response;
 
-    if (!process.env.GEMINI_API_KEY) return empty;
-
     const { prompt, locale } = parsed.data;
+    // The guard already resolved a cookie session; the bearer path (non-browser clients) is the fallback.
+    const userId = gate.auth?.userId ?? (await authedClientFromRequest(req)).user?.id ?? null;
+    if (mustSignInToGenerate(userId)) return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+    if (userId) {
+      const capped = await checkRateLimitByKey(userId, RATE_LIMITS.HELPER_USER);
+      if (capped) return capped;
+    }
+
+    // resolveGeminiKey() also honours GOOGLE_GENERATIVE_AI_API_KEY and the GEMINI_API_KEYS pool.
+    if (!resolveGeminiKey()) return empty;
+
+    const systemPrompt = buildSystemPrompt(locale);
+    const input = prompt.slice(0, 2000);
     // BUDGET GATE (§2.1.1). Titles are tiny but run on EVERY conversation, so they are metered too.
-    if (!(await chatBudgetAllows(JSON.stringify(body ?? {})))) {
+    if (!(await chatBudgetAllows(`${systemPrompt} ${input}`))) {
       return NextResponse.json({ title: null, reason: 'budget_exhausted' }, { status: 200 });
     }
     const gemini = await generateWithGemini({
-      prompt: prompt.slice(0, 2000),
-      systemPrompt: buildSystemPrompt(locale),
+      prompt: input,
+      systemPrompt,
       tier: 'flash',
-      maxTokens: 24,
+      maxTokens: TITLE_MAX_TOKENS,
       temperature: 0.2,
+      thinkingBudget: 0,
+      timeoutMs: 10_000,
+    });
+    void bookChatUsage({
+      model: gemini.model,
+      inputTokens: gemini.tokensIn,
+      outputTokens: gemini.tokensOut,
+      inputChars: systemPrompt.length + input.length,
+      chars: (gemini.text || '').length,
+      userId,
     });
 
-    return NextResponse.json({ title: (gemini.text || '').trim() });
+    return NextResponse.json({ title: cleanTitle(gemini.text || '') });
   } catch {
     // Best-effort: any failure (Gemini error, timeout, parse) → empty title so
     // the client falls back to the deterministic first-prompt title.

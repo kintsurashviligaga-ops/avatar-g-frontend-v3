@@ -9,7 +9,8 @@
  *   anonymous (no verified session) → refused, unless FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment.
  *
  * The flag keeps its historical name (it first guarded the film pipeline only) so one switch covers every lane.
- * Chat itself (text answers) is not a generation and is not gated here.
+ * Chat itself (text answers) is not a generation, so `mustSignInToGenerate` does not cover it; the product chat
+ * route asks its own question, `mustSignInToChat`, which applies the same rule under a name that says what it gates.
  */
 import { isTruthyFlag } from '@/lib/env/flag';
 
@@ -25,6 +26,19 @@ export function anonymousGenerationAllowed(): boolean {
 
 /** True when this caller must be refused before any paid provider call. */
 export function mustSignInToGenerate(userId: string | null | undefined): boolean {
+  return isAnonymousUser(userId) && !anonymousGenerationAllowed();
+}
+
+/**
+ * True when a caller of the product chat (/api/chat/gemini) must be refused before the model is called. Same
+ * semantics as `mustSignInToGenerate`: anonymous is refused unless FILM_ALLOW_ANONYMOUS=1.
+ *
+ * ⚠️ A SEPARATE NAME, NOT A SEPARATE RULE. Every chat turn spends the platform's Gemini key (plus Google Search
+ * grounding), and the studio already stops guests in the browser — so the only anonymous caller left was someone
+ * POSTing to the route directly on our balance. Kept apart from `mustSignInToGenerate` so the two can diverge on
+ * purpose later (e.g. a guest chat trial) without silently re-opening paid generation, and vice versa.
+ */
+export function mustSignInToChat(userId: string | null | undefined): boolean {
   return isAnonymousUser(userId) && !anonymousGenerationAllowed();
 }
 
