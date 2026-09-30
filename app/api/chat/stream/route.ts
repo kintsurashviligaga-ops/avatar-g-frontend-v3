@@ -1,32 +1,55 @@
 /**
  * POST /api/chat/stream
- * Streaming chat endpoint using chatEngine.
- * Returns Server-Sent Events for real-time token streaming.
+ * Streaming chat endpoint (the service widgets, Matilda voice chat, ChatShell / UniversalChat).
+ * Returns Server-Sent Events: `{token}` chunks, then `{done}` or `{error}`.
+ *
+ * Same rules as the product chat (/api/chat/gemini), because it spends the same key:
+ *   • sign-in required (mustSignInToChat → 401; FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment);
+ *   • the per-account daily chat allowance (CHAT_USER, keyed on the verified uid — IP rotation buys nothing);
+ *   • Google only while AI_GOOGLE_ONLY is on (the default) — the Anthropic leg runs only when it is off;
+ *   • the text leg streams through lib/ai/google/chatStream (current model chain, typed errors — the old loop read
+ *     `textStream`, which in ai@6 swallows error parts, and still rotated through retired gemini-2.0 ids);
+ *   • provider wording never reaches the browser — a generic, localized notice does.
  */
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { streamText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import type { ChatMessage } from '@/lib/ai/chatEngine';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { orchestrate, pollOrchestrationTask } from '@/lib/chat/providerRouter';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { chatBudgetAllows, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
+import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
+import { chatModelChain } from '@/lib/ai/google/models';
+import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
+import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 
-// Same rotation as /api/chat (verified via /v1beta/models). 1.5 family is no
-// longer exposed on this API key; lite variants tried first for higher quota.
-const GEMINI_FREE_MODELS = [
-  'gemini-flash-lite-latest',
-  'gemini-2.0-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-flash-latest',
-  'gemini-2.0-flash',
-] as const;
+type Loc = 'ka' | 'en' | 'ru';
+const locOf = (req: NextRequest, hint?: string): Loc => {
+  const h = (hint || req.headers.get('accept-language') || '').toLowerCase();
+  return h.startsWith('en') ? 'en' : h.startsWith('ru') ? 'ru' : 'ka';
+};
+/** What the browser sees when every leg failed — never the provider's own words (lib/api/providerError.ts). */
+const UNAVAILABLE: Record<Loc, string> = {
+  ka: 'AI სერვისი დროებით მიუწვდომელია. სცადე ცოტა ხანში.',
+  en: 'The AI service is temporarily unavailable. Please try again a little later.',
+  ru: 'Сервис ИИ временно недоступен. Попробуйте чуть позже.',
+};
+const SIGN_IN_TO_CHAT: Record<Loc, string> = {
+  ka: 'ჩატისთვის შედი ანგარიშზე.',
+  en: 'Sign in to chat.',
+  ru: 'Войдите, чтобы пользоваться чатом.',
+};
+const hasTokens = (u?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): boolean =>
+  !!u && ((u.inputTokens ?? 0) > 0 || (u.outputTokens ?? 0) > 0 || (u.totalTokens ?? 0) > 0);
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -74,11 +97,24 @@ export async function POST(req: NextRequest) {
 
     const parsedData = parsed.data;
 
-    // Auth + budget
+    // Auth — a verified session (cookie, then bearer), refused before anything is spent.
+    const loc = locOf(req, 'language' in parsedData ? parsedData.language : undefined);
     const auth = await getAuthContext();
-    const userId = auth?.userId || 'anonymous';
-    if (auth) {
-      const budget = checkDailyBudget(auth.userId);
+    const verifiedId = auth?.userId
+      ?? (await authedClientFromRequest(req).catch(() => ({ user: null }))).user?.id
+      ?? null;
+    if (mustSignInToChat(verifiedId)) {
+      return new Response(JSON.stringify({ ...signInToGenerateBody(loc), message: SIGN_IN_TO_CHAT[loc] }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    // 'anonymous' only survives the gate on a demo deployment (FILM_ALLOW_ANONYMOUS=1).
+    const userId = verifiedId || 'anonymous';
+    if (verifiedId) {
+      const capped = await checkRateLimitByKey(verifiedId, RATE_LIMITS.CHAT_USER);
+      if (capped) return capped;
+      const budget = checkDailyBudget(verifiedId);
       if (!budget.allowed) {
         return new Response(JSON.stringify({ error: 'Daily AI limit reached' }), { status: 429, headers: { 'Content-Type': 'application/json' } });
       }
@@ -124,46 +160,53 @@ export async function POST(req: NextRequest) {
 
           let lastError: string | undefined;
           let succeeded = false;
+          let streamedAny = false;
 
-          // Try each Gemini model in the rotation. Same list and order as
-          // /api/chat — keeps both endpoints behaving identically.
-          const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
-          if (apiKey) {
-            const google = createGoogleGenerativeAI({ apiKey });
-            for (const modelName of GEMINI_FREE_MODELS) {
-              try {
-                const result = streamText({
-                  model: google(modelName),
-                  system: AGENT_G_SYSTEM_PROMPT,
-                  messages: userAssistantMessages,
-                  maxOutputTokens: 2048,
-                  temperature: 0.7,
-                  maxRetries: 0,
-                });
-                for await (const chunk of result.textStream) {
-                  send({ token: chunk });
-                }
-                send({
-                  done: true,
-                  model: modelName,
-                  provider: 'gemini',
-                  agentId,
-                  sessionId: sessionForStream,
-                  durationMs: Date.now() - startTime,
-                });
-                succeeded = true;
-                break;
-              } catch (err) {
-                lastError = err instanceof Error ? err.message.slice(0, 200) : String(err);
-                console.warn(`[chat/stream] Gemini ${modelName} failed: ${lastError}`);
-              }
-            }
+          // Gemini — the product chain with typed errors (rotation only before the first token).
+          const result = await streamGeminiChat({
+            apiKey: resolveGeminiKey(),
+            models: chatModelChain('standard'),
+            messages: userAssistantMessages,
+            config: toGeminiChatConfig(resolveAgentProfile({}), AGENT_G_SYSTEM_PROMPT),
+            abortSignal: req.signal,
+            onFrame: (frame) => {
+              if ('text' in frame && frame.text) { streamedAny = true; send({ token: frame.text }); }
+            },
+          });
+          if (result.model && (hasTokens(result.usage) || result.text.length > 0)) {
+            void bookChatUsage({
+              model: result.model,
+              ...result.usage,
+              chars: result.text.length,
+              inputChars: AGENT_G_SYSTEM_PROMPT.length + budgetText.length,
+              userId: verifiedId,
+              groundingQueries: result.groundingQueries ?? 0,
+            });
+          }
+          for (const a of unbookedAttempts(result)) {
+            void bookChatUsage({
+              model: a.model, ...a.usage, inputChars: AGENT_G_SYSTEM_PROMPT.length + budgetText.length,
+              userId: verifiedId, groundingQueries: a.groundingQueries ?? 0,
+            });
+          }
+          if (result.ok && result.model) {
+            send({
+              done: true,
+              model: result.model,
+              provider: 'gemini',
+              agentId,
+              sessionId: sessionForStream,
+              durationMs: Date.now() - startTime,
+            });
+            succeeded = true;
           } else {
-            lastError = 'GEMINI_API_KEY not configured';
+            lastError = result.error ? `${result.error.code}: ${result.error.message}` : 'no result';
+            console.warn(`[chat/stream] Gemini failed — ${lastError.slice(0, 200)}`);
           }
 
-          // Anthropic fallback (same as /api/chat) when every Gemini variant fails.
-          if (!succeeded) {
+          // Anthropic fallback ONLY when Google-only is off, and never after a partial Gemini answer (it would
+          // restart the reply mid-sentence in another voice).
+          if (!succeeded && !streamedAny && !isAiGoogleOnly()) {
             const anthropicKey = process.env.ANTHROPIC_API_KEY ?? '';
             if (anthropicKey) {
               try {
@@ -196,7 +239,8 @@ export async function POST(req: NextRequest) {
           }
 
           if (!succeeded) {
-            send({ error: `All chat providers failed${lastError ? `: ${lastError}` : ''}` });
+            // The diagnostic stays in the server log; the browser gets a generic, localized notice.
+            send({ error: UNAVAILABLE[loc] });
           }
           controller.close();
         },
@@ -339,8 +383,8 @@ export async function POST(req: NextRequest) {
             });
             controller.close();
           } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : 'Stream setup failed';
-            sendEvent({ error: message });
+            console.error('[chat/stream] orchestrate failed:', error instanceof Error ? error.message.slice(0, 200) : String(error));
+            sendEvent({ error: UNAVAILABLE[loc] });
             controller.close();
           }
         })();

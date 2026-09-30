@@ -1,64 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { compose } from '@/lib/api/compose';
-import { RATE_LIMITS } from '@/lib/api/rate-limit';
-import { chatBudgetAllows, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
-
 /**
- * POST /api/ai/chat
- * GPT chat completions endpoint.
- * Body: { messages: Array<{ role: string; content: string }>, model?: string }
+ * POST /api/ai/chat — RETIRED (410 Gone).
+ *
+ * This was an anonymous OpenAI chat-completions proxy that took the MODEL from the request body — any caller
+ * could pick any OpenAI model on the platform's key (IP rate limit only). No live UI calls it, and under the
+ * Google-only policy (lib/ai/google/policy.ts) there is no OpenAI leg to serve it.
+ *
+ * The file stays (vercel.json still configures this path) but it calls no provider. A 410 tells a stale
+ * client the endpoint is gone for good, not temporarily down.
  */
-export const POST = compose()
-  .withRateLimit(RATE_LIMITS.AI)
-  .handle(async (req: NextRequest) => {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
-    }
+import { NextResponse } from 'next/server';
 
-    const body = await req.json();
-    const messages: Array<{ role: string; content: string }> = body.messages;
-    const model: string = body.model ?? 'gpt-4o-mini';
+export const dynamic = 'force-dynamic';
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
-    }
-
-    // BUDGET GATE (§2.1.1) — this route calls OpenAI directly, bypassing every other guard.
-    if (!(await chatBudgetAllows(JSON.stringify(body ?? {}), 'gpt'))) {
-      return NextResponse.json({ error: BUDGET_EXHAUSTED_MESSAGE }, { status: 200 });
-    }
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        max_tokens: 2048,
-        temperature: 0.7,
-      }),
-      // A stalled provider must not hang the function to the platform limit — reject fast so the
-      // compose() error path returns a clean response instead of a gateway timeout.
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: 'OpenAI API error', details: errorText },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content ?? '';
-
-    return NextResponse.json({
-      reply,
-      model: data.model,
-      usage: data.usage,
-    });
-  });
+export function POST() {
+  return NextResponse.json(
+    { error: 'gone', message: 'This chat endpoint was retired. Use /api/chat/gemini.' },
+    { status: 410 },
+  );
+}

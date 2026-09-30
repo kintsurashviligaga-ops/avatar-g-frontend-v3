@@ -38,8 +38,16 @@ test.describe('swarm recon', () => {
     }
   });
 
-  test('unauthenticated direct chat generator stays reachable', async ({ request, baseURL }) => {
+  test('unauthenticated direct chat generator is refused before the model is called', async ({ request, baseURL }) => {
+    // Every chat turn spends the platform's Gemini key (plus Search grounding) — a guest is refused with a 401
+    // + authRequired body (lib/auth/generationGate.ts · mustSignInToChat). FILM_ALLOW_ANONYMOUS=1 re-opens it on a
+    // demo deployment; that is never production, so a deployed host must answer 401.
     const res = await request.post(`${baseURL}/api/chat/gemini`, { data: { messages: [{ role: 'user', content: 'ping' }] } });
-    expect([200, 400, 429, 503]).toContain(res.status());
+    if (!isLocal(baseURL)) {
+      expect(res.status()).toBe(401);
+      expect(((await res.json()) as { authRequired?: boolean }).authRequired).toBe(true);
+    } else {
+      expect([200, 401, 429, 503]).toContain(res.status());
+    }
   });
 });

@@ -95,7 +95,9 @@ test.describe('myavatar.ge production smoke', () => {
     await expect(page.getByText('სცენარი / storyboard')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Card A: script-context enriches a brief from a reference document', async ({ request }) => {
+  // Script enrichment spends the platform's Gemini key, so a guest is refused (401 + authRequired) before any
+  // model call — the smoke runs signed-out, so it asserts the gate rather than the enrichment itself.
+  test('Card A: script-context refuses a guest before spending Gemini', async ({ request }) => {
     const script = Buffer.from(
       'SCENE: A lone fisherman rows through morning fog toward a red lighthouse. Mood: melancholic, hopeful. Style: muted teal, 35mm.',
     ).toString('base64');
@@ -103,21 +105,19 @@ test.describe('myavatar.ge production smoke', () => {
       data: { prompt: 'make it cinematic', documents: [{ dataUrl: `data:text/plain;base64,${script}`, type: 'text/plain', name: 'script.txt' }] },
       timeout: 45_000,
     });
-    expect(res.ok()).toBeTruthy();
-    const j = (await res.json()) as { brief?: string; enriched?: boolean };
-    // Deterministic contract: 200 + a non-empty brief, ALWAYS (fail-open returns
-    // the raw prompt). Enrichment itself is best-effort — a live Gemini blip can
-    // occasionally return empty — so we assert the contract, not the LLM mood.
-    expect(typeof j.enriched).toBe('boolean');
-    expect((j.brief ?? '').length).toBeGreaterThan(0);
+    expect(res.status()).toBe(401);
+    expect(((await res.json()) as { authRequired?: boolean }).authRequired).toBe(true);
   });
 
-  test('Card B: gemini multimodal route accepts a turn', async ({ request }) => {
+  // The product chat is sign-in only (lib/auth/generationGate.ts · mustSignInToChat): a signed-out turn gets a 401
+  // + authRequired BEFORE the model is called, so an anonymous caller can't spend the platform's Gemini key.
+  test('Card B: gemini multimodal route refuses a guest turn', async ({ request }) => {
     const res = await request.post('/api/chat/gemini', {
-      data: { messages: [{ role: 'user', content: 'reply with one word' }] },
+      data: { messages: [{ role: 'user', content: 'reply with one word' }], protocol: 2 },
       timeout: 30_000,
     });
-    expect(res.ok()).toBeTruthy();
+    expect(res.status()).toBe(401);
+    expect(((await res.json()) as { authRequired?: boolean }).authRequired).toBe(true);
   });
 
   // Mobile / Apple-HIG: the hub + Card A studio must fit every standard iPhone

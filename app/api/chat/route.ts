@@ -1,15 +1,88 @@
-import { NextRequest } from 'next/server';
+/**
+ * POST /api/chat — the JSON (non-streaming) chat used by the service widgets and ServiceWorkspaceView.
+ *
+ * Same rules as the product chat (/api/chat/gemini), because it spends the same keys:
+ *   • sign-in required (mustSignInToChat → 401; FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo deployment);
+ *   • the per-account daily chat allowance (CHAT_USER, keyed on the verified uid);
+ *   • Google only while AI_GOOGLE_ONLY is on (the default): the reply comes from the product Gemini chain and the
+ *     OpenAI-backed chatEngine / Anthropic legs are skipped; with it off, the old chain runs as before;
+ *   • provider wording never reaches the browser (the old `diagnostics` field carried it verbatim).
+ */
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { apiSuccess, apiError } from '@/lib/api/response';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { execute } from '@/lib/ai/chatEngine';
 import { getAllAgents } from '@/lib/agents/agentRegistry';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
+import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
+import { chatModelChain } from '@/lib/ai/google/models';
+import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
+import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+
+type Loc = 'ka' | 'en' | 'ru';
+const locOf = (hint?: string | null): Loc => {
+  const h = String(hint || '').toLowerCase();
+  return h.startsWith('en') ? 'en' : h.startsWith('ru') ? 'ru' : 'ka';
+};
+/** What the browser sees when every leg failed — never the provider's own words (lib/api/providerError.ts). */
+const UNAVAILABLE: Record<Loc, string> = {
+  ka: 'AI სერვისი დროებით მიუწვდომელია. სცადე ცოტა ხანში.',
+  en: 'The AI service is temporarily unavailable. Please try again a little later.',
+  ru: 'Сервис ИИ временно недоступен. Попробуйте чуть позже.',
+};
+const SIGN_IN_TO_CHAT: Record<Loc, string> = {
+  ka: 'ჩატისთვის შედი ანგარიშზე.',
+  en: 'Sign in to chat.',
+  ru: 'Войдите, чтобы пользоваться чатом.',
+};
+const hasTokens = (u?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): boolean =>
+  !!u && ((u.inputTokens ?? 0) > 0 || (u.outputTokens ?? 0) > 0 || (u.totalTokens ?? 0) > 0);
+
+/**
+ * One reply from the product Gemini chain (current models, typed errors, rotation), booked with real usage.
+ * Never throws; null when no model answered.
+ */
+async function geminiReply(
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  userId: string | null,
+  signal?: AbortSignal,
+): Promise<{ text: string; model: string } | null> {
+  const result = await streamGeminiChat({
+    apiKey: resolveGeminiKey(),
+    models: chatModelChain('standard'),
+    messages,
+    config: toGeminiChatConfig(resolveAgentProfile({}), AGENT_G_SYSTEM_PROMPT),
+    abortSignal: signal,
+    onFrame: () => { /* collected into result.text */ },
+  });
+  const inputChars = AGENT_G_SYSTEM_PROMPT.length + messages.reduce((n, m) => n + m.content.length, 0);
+  if (result.model && (hasTokens(result.usage) || result.text.length > 0)) {
+    void bookChatUsage({
+      model: result.model,
+      ...result.usage,
+      chars: result.text.length,
+      inputChars,
+      userId,
+      groundingQueries: result.groundingQueries ?? 0,
+    });
+  }
+  for (const a of unbookedAttempts(result)) {
+    void bookChatUsage({ model: a.model, ...a.usage, inputChars, userId, groundingQueries: a.groundingQueries ?? 0 });
+  }
+  if (!result.ok || !result.model || !result.text.trim()) {
+    if (result.error) console.warn(`[chat] Gemini failed — ${result.error.code}: ${result.error.message.slice(0, 160)}`);
+    return null;
+  }
+  return { text: result.text, model: result.model };
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -123,6 +196,8 @@ export async function POST(req: NextRequest) {
   let fallbackContext = 'global';
   let fallbackMessage = '';
   let fallbackHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  let fallbackUserId: string | null = null;
+  let fallbackLoc: Loc = 'ka';
 
   try {
     const body = await req.json();
@@ -171,13 +246,25 @@ export async function POST(req: NextRequest) {
       { role: 'user' as const, content: sanitizedMessage },
     ];
 
-    // Auth context (optional — allows unauthenticated for public chat)
+    // Auth — a verified session (cookie, then bearer), refused before anything is spent.
+    const loc = locOf(locale || language);
     const auth = await getAuthContext();
-    const userId = auth?.userId || 'anonymous';
+    const verifiedId = auth?.userId
+      ?? (await authedClientFromRequest(req).catch(() => ({ user: null }))).user?.id
+      ?? null;
+    if (mustSignInToChat(verifiedId)) {
+      return NextResponse.json({ ...signInToGenerateBody(loc), message: SIGN_IN_TO_CHAT[loc] }, { status: 401 });
+    }
+    // 'anonymous' only survives the gate on a demo deployment (FILM_ALLOW_ANONYMOUS=1).
+    const userId = verifiedId || 'anonymous';
+    fallbackUserId = verifiedId;
+    fallbackLoc = loc;
 
-    // Budget check for authenticated users
-    if (auth) {
-      const budget = checkDailyBudget(auth.userId);
+    // Per-account daily allowance (shared with /api/chat/gemini) + the legacy per-user budget.
+    if (verifiedId) {
+      const capped = await checkRateLimitByKey(verifiedId, RATE_LIMITS.CHAT_USER);
+      if (capped) return capped;
+      const budget = checkDailyBudget(verifiedId);
       if (!budget.allowed) {
         return apiError(new Error('Daily AI limit reached'), 429, `Daily limit of ${budget.limit} requests reached. Resets in 24h.`);
       }
@@ -201,7 +288,26 @@ export async function POST(req: NextRequest) {
       return apiSuccess({ response: BUDGET_EXHAUSTED_MESSAGE, provider: 'budget', model: 'none', agentId: resolvedAgentId });
     }
 
-    // Execute through central chatEngine
+    // GOOGLE ONLY (the default): the product Gemini chain answers; the OpenAI-backed chatEngine is not called.
+    if (isAiGoogleOnly()) {
+      const g = await geminiReply(messageHistory, verifiedId, req.signal);
+      return apiSuccess({
+        response: g ? g.text : UNAVAILABLE[loc],
+        provider: g ? 'gemini' : 'provider-fallback',
+        model: g ? g.model : 'none',
+        agentId: resolvedAgentId,
+        context,
+        serviceId,
+        demoMode: flags?.demoMode ?? false,
+        agentEnabled: flags?.agentEnabled ?? true,
+        conversationId: conversationId || `conv_${Date.now()}`,
+        language: locale || language,
+        metadata: { ...(metadata || {}), serviceId },
+        artifacts: buildDemoArtifacts(context, sanitizedMessage),
+      });
+    }
+
+    // Execute through central chatEngine (multi-vendor; only when AI_GOOGLE_ONLY=0)
     const result = await execute({
       agentId: resolvedAgentId,
       userId,
@@ -263,7 +369,7 @@ export async function POST(req: NextRequest) {
     if (throttled || unavailable) {
       // Real fallback: try Gemini, then Anthropic, before giving up
       const failures: FallbackFailures = {};
-      const realFallback = await tryRealFallback(fallbackHistory, failures);
+      const realFallback = await tryRealFallback(fallbackHistory, failures, fallbackUserId);
       if (realFallback) {
         return apiSuccess({
           response: realFallback.text,
@@ -274,22 +380,20 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // All providers failed — surface diagnostic so operators can act
+      // All providers failed — the diagnostic goes to the server log (operators), never to the browser.
       const diag = [
         `openai: ${normalized.slice(0, 120)}`,
         failures.gemini && `gemini: ${failures.gemini}`,
         failures.anthropic && `anthropic: ${failures.anthropic}`,
       ].filter(Boolean).join(' | ');
+      console.error('[Chat API] every provider failed:', diag);
 
       return apiSuccess({
-        response: throttled
-          ? 'All AI providers are unavailable (likely billing/quota). Please retry shortly or top up provider accounts.'
-          : 'All AI providers are unavailable. Please retry shortly.',
+        response: UNAVAILABLE[fallbackLoc],
         provider: throttled ? 'throttled-fallback' : 'provider-fallback',
         model: 'none',
         agentId: 'main-assistant',
         artifacts: fallbackArtifacts,
-        diagnostics: diag,
       });
     }
 
@@ -303,36 +407,22 @@ export async function POST(req: NextRequest) {
 // rotate through them on quota errors before giving up.
 // Returns null only if all Gemini variants and Anthropic fail.
 
-// Models verified available on this API key via
-// GET https://generativelanguage.googleapis.com/v1beta/models
-// (1.5 family is no longer exposed). Lite variants typically have higher
-// free-tier quota, so they're tried first.
-const GEMINI_FREE_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-flash-lite-latest',
-  'gemini-2.0-flash-lite',
-  'gemini-flash-latest',
-  'gemini-2.0-flash',
-] as const;
-
-function isQuotaError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /429|quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(msg);
-}
-
 // Tiny in-memory cache so identical messages don't re-hit the quota.
 // 5-minute TTL, capped at 100 entries to bound memory.
 interface CacheEntry { text: string; provider: string; model: string; ts: number }
 const chatCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-function cacheKeyFor(messages: Array<{ role: 'user' | 'assistant'; content: string }>): string {
+// ⚠️ SCOPED PER USER. The key used to be the last message alone, so one account's answer to "what is my name?"
+// (with that account's history behind it) was served to the next account that asked the same words.
+function cacheKeyFor(messages: Array<{ role: 'user' | 'assistant'; content: string }>, userId: string | null): string {
   const last = messages[messages.length - 1]?.content ?? '';
-  return last.trim().toLowerCase().slice(0, 200);
+  const q = last.trim().toLowerCase().slice(0, 200);
+  return q && userId ? `${userId}:${q}` : '';
 }
 
-function getCached(messages: Array<{ role: 'user' | 'assistant'; content: string }>): CacheEntry | null {
-  const key = cacheKeyFor(messages);
+function getCached(messages: Array<{ role: 'user' | 'assistant'; content: string }>, userId: string | null): CacheEntry | null {
+  const key = cacheKeyFor(messages, userId);
   if (!key) return null;
   const entry = chatCache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry;
@@ -343,8 +433,9 @@ function getCached(messages: Array<{ role: 'user' | 'assistant'; content: string
 function setCached(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   value: Omit<CacheEntry, 'ts'>,
+  userId: string | null,
 ): void {
-  const key = cacheKeyFor(messages);
+  const key = cacheKeyFor(messages, userId);
   if (!key) return;
   chatCache.set(key, { ...value, ts: Date.now() });
   if (chatCache.size > 100) {
@@ -361,58 +452,26 @@ interface FallbackFailures {
 async function tryRealFallback(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   failures: FallbackFailures = {},
+  userId: string | null = null,
 ): Promise<{ text: string; provider: string; model: string } | null> {
   if (!messages.length) return null;
 
-  // Cache hit short-circuits the whole chain — saves quota on duplicate prompts.
-  const cached = getCached(messages);
+  // Cache hit short-circuits the whole chain — saves quota on duplicate prompts (per user; see cacheKeyFor).
+  const cached = getCached(messages, userId);
   if (cached) {
     return { text: cached.text, provider: `${cached.provider}-cached`, model: cached.model };
   }
 
-  // Try Gemini variants in order. Each has a separate free-tier quota bucket
-  // and not every model name is exposed on v1beta — keep rotating on any
-  // failure (quota, "model not found", auth, transient) since the candidate
-  // list is small and any single hit gives us a real response.
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
-  if (apiKey) {
-    // Use v1beta (the SDK default). v1 rejects the systemInstruction field that
-    // the SDK sends with our system prompt; v1beta accepts it. The "-latest"
-    // suffixed model names listed below are the v1beta-correct ones.
-    const google = createGoogleGenerativeAI({ apiKey });
-    const attempted: string[] = [];
-    for (const modelName of GEMINI_FREE_MODELS) {
-      try {
-        const result = await generateText({
-          model: google(modelName),
-          system: AGENT_G_SYSTEM_PROMPT,
-          messages,
-          maxOutputTokens: 2048,
-          temperature: 0.7,
-          // Fail fast per attempt: AI SDK defaults to 2 retries (= 3 attempts).
-          // With 5 models in the rotation that compounds to ~15s and trips the
-          // Vercel function timeout. We're already rotating, so retries here
-          // are wasted work.
-          maxRetries: 0,
-        });
-        if (result.text?.trim()) {
-          setCached(messages, { text: result.text, provider: 'gemini', model: modelName });
-          return { text: result.text, provider: 'gemini', model: modelName };
-        }
-        attempted.push(`${modelName}: empty`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message.slice(0, 120) : 'unknown';
-        attempted.push(`${modelName}: ${msg}`);
-        const reason = isQuotaError(err) ? 'quota' : 'error';
-        console.warn(`[Chat fallback] Gemini ${modelName} ${reason} — trying next`);
-      }
-    }
-    failures.gemini = attempted.slice(0, 5).join(' | ');
-  } else {
-    failures.gemini = 'no API key';
+  // Gemini — the product chain (current models, typed errors, rotation), booked with real usage.
+  const g = await geminiReply(messages, userId);
+  if (g) {
+    setCached(messages, { text: g.text, provider: 'gemini', model: g.model }, userId);
+    return { text: g.text, provider: 'gemini', model: g.model };
   }
+  failures.gemini = 'no Gemini model answered';
 
-  // Try Anthropic Claude Haiku
+  // Anthropic Claude Haiku — never while Google-only is on.
+  if (isAiGoogleOnly()) return null;
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
     if (apiKey) {
@@ -426,7 +485,7 @@ async function tryRealFallback(
         maxRetries: 0,
       });
       if (result.text?.trim()) {
-        setCached(messages, { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' });
+        setCached(messages, { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' }, userId);
         return { text: result.text, provider: 'anthropic', model: 'claude-haiku-4-5' };
       }
       failures.anthropic = 'empty response';

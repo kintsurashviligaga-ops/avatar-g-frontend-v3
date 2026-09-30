@@ -2,12 +2,18 @@
  * POST /api/agent/run — STEP 3 autonomous agent entry point.
  *
  * Runs the bounded ReAct loop (lib/agent/react) against a user goal with live tools
- * (web_search, scrape_webpage, prepare_instagram_post ⛔, orchestrate_media). Returns the full
- * step trace so the Agent Terminal can render Thought/Action/Observation. The loop is always
- * terminal (final | max_steps | llm_error) — the request can never hang.
+ * (web_search, scrape_webpage, prepare_instagram_post ⛔). Returns the full step trace so the
+ * Agent Terminal can render Thought/Action/Observation. The loop is always terminal
+ * (final | max_steps | llm_error) — the request can never hang.
  *
- * Auth required (the userId scopes orchestrate_media's render jobs). Publishing to social is
- * prepare-only by construction — this route can never post on the user's behalf.
+ * Google-only by default (AI_GOOGLE_ONLY, lib/ai/google/policy.ts): the brain is Gemini alone and
+ * web_search is Gemini + Google Search grounding — both decided in lib/agent/react/bindLiveAgent.ts.
+ * There is no render tool: the old `orchestrate_media` queued generation_jobs rows nothing ever
+ * processed, unbilled (see bindLiveAgent.ts).
+ *
+ * Auth required (the userId attributes the booked LLM/search spend and scopes the per-user rate
+ * limit). Publishing to social is prepare-only by construction — this route can never post on the
+ * user's behalf.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';

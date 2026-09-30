@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { reportError } from '@/lib/observability/report-error';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 
 /**
  * Embed a piece of text as a 1536-dimensional vector.
@@ -10,14 +12,26 @@ import { reportError } from '@/lib/observability/report-error';
  *      primary because the project's Gemini key has free-tier embeddings
  *      capacity. Returns 1536-d vectors compatible with the pgvector
  *      `memories.embedding vector(1536)` column.
- *   2. OpenAI `text-embedding-3-small` — fallback when GEMINI_API_KEY is
- *      missing or the Gemini call fails. Also produces 1536-d vectors.
+ *   2. OpenAI `text-embedding-3-small` — fallback when no Gemini key is
+ *      configured or the Gemini call fails, and ONLY when AI_GOOGLE_ONLY is
+ *      off (lib/ai/google/policy.ts). Also produces 1536-d vectors.
  *
- * Returns `null` (and logs via reportError) when both providers fail or
- * neither key is configured. Callers must treat `null` as "embedding
+ * ⚠️ THE FALLBACK'S VECTORS ARE NOT COMPARABLE TO GEMINI'S. Same dimension, different embedding space:
+ * a text-embedding-3-small vector stored next to gemini-embedding-001 vectors in `memories.embedding`
+ * (or used to query them via match_memories) gives similarity scores that mean nothing — it silently
+ * recalls the wrong memories rather than failing. Under Google-only a Gemini miss is therefore just a
+ * miss (null), never an OpenAI vector.
+ *
+ * ⚠️ Every call is time-bounded (EMBED_TIMEOUT_MS): /api/chat/gemini awaits embed() before the model is
+ * even called, so a hung embeddings socket used to stall the chat turn itself.
+ *
+ * Returns `null` (and logs via reportError) when the providers fail or
+ * no key is configured. Callers must treat `null` as "embedding
  * unavailable" and proceed without storing an embedding or running
  * similarity injection. This function NEVER throws.
  */
+export const EMBED_TIMEOUT_MS = 8_000;
+
 export async function embed(text: string): Promise<number[] | null> {
   const input = (text ?? '').trim();
   if (!input) return null;
@@ -26,7 +40,8 @@ export async function embed(text: string): Promise<number[] | null> {
   const gemini = await embedGemini(input);
   if (gemini) return gemini;
 
-  // 2. Fallback — OpenAI
+  // 2. Fallback — OpenAI (never under Google-only; see the ⚠️ above).
+  if (isAiGoogleOnly()) return null;
   const openai = await embedOpenAI(input);
   if (openai) return openai;
 
@@ -35,23 +50,26 @@ export async function embed(text: string): Promise<number[] | null> {
 
 // ─── Gemini ────────────────────────────────────────────────────────────────
 
+const GEMINI_EMBED_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';
+
 async function embedGemini(input: string): Promise<number[] | null> {
-  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
+  // resolveGeminiKey(): GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, else the GEMINI_API_KEYS pool.
+  const apiKey = resolveGeminiKey();
   if (!apiKey) return null;
 
   try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: { parts: [{ text: input }] },
-          outputDimensionality: 1536,
-          taskType: 'SEMANTIC_SIMILARITY',
-        }),
-      },
-    );
+    // ⚠️ The key travels in the x-goog-api-key header, never the URL: a `?key=` URL lands in fetch error
+    // messages, traces and proxy logs (and from there in reportError payloads).
+    const r = await fetch(GEMINI_EMBED_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        content: { parts: [{ text: input }] },
+        outputDimensionality: 1536,
+        taskType: 'SEMANTIC_SIMILARITY',
+      }),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+    });
 
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
@@ -97,6 +115,7 @@ async function embedOpenAI(input: string): Promise<number[] | null> {
         model: 'text-embedding-3-small',
         input,
       }),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
 
     if (!r.ok) {

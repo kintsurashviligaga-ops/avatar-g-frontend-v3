@@ -22,13 +22,10 @@ import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
-import { audioExtFor } from '@/lib/voice/audioExt';
-import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
-import { mediaCarryingIndices, shouldSendMedia, mediaPlaceholder } from '@/lib/chat/mediaWindow';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { PresetRow } from './ui/controls';
@@ -45,6 +42,11 @@ import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, 
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition, VeoTier } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { useChatStream } from '@/hooks/chat/useChatStream';
+import { StreamingBubble, formatModelBadge } from '@/components/chat/StreamingBubble';
+import { SourcesChips } from '@/components/chat/SourcesChips';
+import type { ChatSource, ChatStreamSnapshot } from '@/components/chat/chatStreamStore';
+import { serializeHistory } from '@/lib/chat/historySerializer';
 // ISSUE 7 — both consoles only render WHILE a video/remix is generating, never on the
 // initial dashboard paint, so lazy-load them (ssr:false) to keep their ~540 lines of JS
 // out of the first-load bundle. A tiny placeholder holds layout until the chunk lands.
@@ -86,6 +88,8 @@ import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { describeServiceError } from './ui/serviceError';
+import { useDictation } from '@/components/chat/composer/useDictation';
+import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
 
@@ -833,28 +837,8 @@ async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string>
   }
 }
 
-// Minimal Web Speech API shapes (not in the standard TS DOM lib) — enough to drive
-// LIVE dictation: interim + finalized transcripts stream in as the user speaks.
-interface SRAlternative { readonly transcript: string }
-interface SRResult { readonly isFinal: boolean; readonly length: number; readonly [i: number]: SRAlternative }
-interface SREvent { readonly resultIndex: number; readonly results: { readonly length: number; readonly [i: number]: SRResult } }
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((e: SREvent) => void) | null;
-  onend: (() => void) | null;
-  /** The event carries `error` — a code like 'language-not-supported' / 'no-speech' / 'aborted'.
-   *  It used to be typed as `() => void`, which discarded the one field that says WHAT went wrong. */
-  onerror: ((e: { error?: string }) => void) | null;
-  /** Fires when the ENGINE itself detects speech — the signal that separates "the user hasn't started
-   *  talking yet" from "the user is talking and this engine is producing nothing". See the watchdog. */
-  onspeechstart: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
 
-interface Media { dataUrl: string; mimeType: string }
+interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
@@ -913,7 +897,7 @@ interface FilmSnap {
   clipSec?: number;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string; chatModel?: string; inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
@@ -1684,16 +1668,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
   const [busy, setBusy] = useState(false);
-  const [recording, setRecording] = useState(false);
-  /** True only between a user Stop tap and the recognizer actually ending — see rec.onend's auto-restart. */
-  const micStopRequestedRef = useRef(false);
-  // The recorder path (all of iOS, and every Georgian fallback) does a FINAL transcription pass after
-  // Stop. Until now `setRecording(false)` fired first and nothing replaced it, so the composer sat
-  // unchanged with a plain mic icon for the length of a Whisper round-trip — reading exactly like "the
-  // mic ate my sentence". This makes that wait visible instead of invisible.
-  const [transcribing, setTranscribing] = useState(false);
-  /** Set when interim transcription keeps failing, so a dead mic stops looking like a working one. */
-  const [dictationWarn, setDictationWarn] = useState<string | null>(null);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
@@ -1787,9 +1761,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
-  // Languages this browser's speech engine has rejected this session (see rec.onerror). Persisting the
-  // rejection turns a repeated 8s stall into an immediate, correct fallback.
-  const webSpeechUnsupportedLangsRef = useRef<Set<string>>(new Set());
   const { keyboardOffset } = useKeyboardResilience();
 
   // ⚠️ PUBLISHED FOR THE FIXED OVERLAYS THAT LIVE OUTSIDE THE SHELL. ChatChrome shrinks the SHELL by
@@ -1939,8 +1910,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // v330 — Avatar/lip-sync face: a scoped single-IMAGE picker (the slot can't ingest
   // PDFs/audio/multiples the way the shared attach button could).
   const lipsyncFaceRef = useRef<HTMLInputElement | null>(null);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   // AUTO-PLAY TTS: when a chat turn was started by VOICE (mic/dictation), the assistant's finished reply is
   // auto-spoken via /api/tts/gemini. Set by send() right before streamChat, consumed once at stream end.
   // A TYPED turn leaves this false, so its reply stays text-only. speakMsgRef bridges to speakMsg (which is
@@ -1954,18 +1923,23 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Live speech-to-text (Web Speech API): the active recognizer + the text composed
-  // so far (base = input when dictation started; final = accumulated finalized text).
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const sttBaseRef = useRef('');
-  const sttFinalRef = useRef('');
-  // Set true by send() so any in-flight/queued transcription result is DISCARDED
-  // instead of re-populating the input after we've cleared it. Reset to false when
-  // a new dictation starts. (Without this the record-and-transcribe fallback kept
-  // streaming the spoken text back into the composer right after sending it.)
-  const sttDiscardRef = useRef(false);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Dictation (mic → composer): Web Speech where the engine can do the language, otherwise record → 16 kHz WAV →
+  // /api/voice/transcribe (Gemini STT). The hook owns both recognizers, the echo guard and the takeover guard;
+  // `inputSourceRef` is 'voice' while the box text came from the mic (send() tags the turn + auto-plays the reply).
+  const dictation = useDictation({
+    locale,
+    value: input,
+    setValue: setInput,
+    textareaRef: taRef,
+    onAuthRequired: () => { try { window.dispatchEvent(new CustomEvent('myavatar:auth-required')); } catch { /* noop */ } },
+  });
+  const { recording, transcribing, warn: dictationWarn, inputSourceRef } = dictation;
+  const toggleMic = dictation.toggle;
+  // Kill every live-dictation echo on a COMMITTED dispatch (send, Agent G route, generative intercepts) so the
+  // sent text can't linger or re-appear: discard pending transcription, stop both recognizers, blur (IME commit).
+  const stopDictationEcho = dictation.stopEcho;
   // Composer wrapper height → anchors the scroll-to-bottom FAB just above it, so the
   // FAB never overlaps a grown composer (multi-line draft, attachments, open options).
   const composerRef = useRef<HTMLDivElement | null>(null);
@@ -1975,6 +1949,34 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // superseded request can never clobber a newer message (or re-clear `busy`).
   const abortRef = useRef<AbortController | null>(null);
   const genIdRef = useRef(0);
+  // The chat stream (see CHAT STREAM below). Created here, not next to streamChat, because the conversation switch
+  // (resumeConversation) must be able to end a turn that is still streaming.
+  const chat = useChatStream({
+    locale: locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka',
+    onAuthRequired: () => { try { window.dispatchEvent(new CustomEvent('myavatar:auth-required')); } catch { /* SSR */ } },
+  });
+  const chatStop = chat.stop;
+  // The id of the assistant bubble the store is streaming into (null when no chat turn is in flight). An ID, not an
+  // index: image/music jobs and Live-call transcripts can append bubbles while a reply streams, so "the last
+  // message" is not necessarily the one this turn owns. The ref mirrors it for stop() and the conversation switch.
+  const [streamingId, setStreamingId] = useState<string | null>(null);
+  const streamingIdRef = useRef<string | null>(null);
+  /**
+   * End the chat turn that is streaming, keeping what the user already read. Returns a PURE mapper that settles that
+   * turn's bubble (the partial text, or the "stopped" note when nothing had arrived) — the caller applies it to the
+   * thread on screen or to the thread being saved before a switch — or null when no turn is streaming. The side
+   * effects happen here, once, not inside a setState updater (React may run an updater twice).
+   */
+  const endChatStream = useCallback((): ((msgs: Msg[]) => Msg[]) | null => {
+    const sid = streamingIdRef.current;
+    if (!sid) return null;
+    streamingIdRef.current = null;
+    setStreamingId(null);
+    chatStop(); // aborts the fetch and FLUSHES the store, so the snapshot below holds every token that arrived
+    const partial = chat.store.getSnapshot().text;
+    const text = partial.trim() ? partial : `⏹ ${t.stopped}`;
+    return (msgs) => msgs.map((m) => (m.id === sid ? { ...m, text } : m));
+  }, [chat.store, chatStop, t.stopped]);
   // Always-current mirror of `busy || storyboardBusy || remixBusy` (set by the loading-bar
   // effect below) so the legacy single-render entry points can reject a second parallel run
   // with a friendly toast, stale-closure-free. (Product ad is queue-governed now, not here.)
@@ -2290,6 +2292,37 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
     if (dragDepthRef.current === 0) setDragActive(false);
   }, []);
+  // ONE intake for every way a file reaches the composer — the „+" picker, Photos, camera, drag-drop and paste.
+  // Images are downscaled (≤1280 px) so a phone photo can't blow the ~4.5 MB request limit, and the declared MIME
+  // is read back from the RESULT: a downscaled PNG is a JPEG now, and Gemini rejects a part whose declared type
+  // disagrees with its bytes. Files the browser leaves untyped (.md, some .docx) get their type from the extension.
+  // Each refusal (too large · empty/iCloud placeholder · unreadable · tray full) is a toast, never a silent drop.
+  const attachmentCountRef = useRef(0);
+  attachmentCountRef.current = attachments.length;
+  const ingestFiles = useCallback(async (files: File[], opts?: { scriptInVideo?: boolean }) => {
+    const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+    let room = MAX_ATTACHMENTS - attachmentCountRef.current;
+    for (const f of files) {
+      if (opts?.scriptInVideo !== false && mode === 'video' && isScriptFile({ name: f.name, type: f.type })) { void loadScriptFile(f); continue; }
+      const kind = classifyFile(f);
+      const label = f.name || kind;
+      if (room <= 0) { toast.error(rejectionMessage('too_many', lang, label)); break; }
+      const cap = PER_FILE_CAP_BYTES[kind];
+      if (f.size > cap) { toast.error(rejectionMessage('too_large', lang, label, cap)); continue; }
+      if (f.size === 0) { toast.error(rejectionMessage('empty', lang, label)); continue; }
+      try {
+        const mime = mimeForFile(f);
+        // Header from the extension first (an untyped .heic/.png reads as octet-stream), then downscale.
+        const raw = withDataUrlMime(await fileToDataUrl(f), mime);
+        const dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
+        const mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
+        room -= 1;
+        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, ...(f.name ? { name: f.name } : {}) }]);
+      } catch {
+        toast.error(rejectionMessage('unreadable', lang, label));
+      }
+    }
+  }, [locale, mode, isScriptFile, loadScriptFile]);
   const onChatDrop = useCallback((e: React.DragEvent) => {
     if (!dragHasFiles(e)) return;
     e.preventDefault();
@@ -2301,12 +2334,8 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // In Video mode a dropped script goes straight into the Director's Script slot.
     if (mode === 'video' && isScriptFile({ name: first.name, type: first.type })) { void loadScriptFile(first); return; }
     // Otherwise ingest as chat attachment(s), same as the composer "+" picker.
-    files.forEach((f) => {
-      const r = new FileReader();
-      r.onload = () => setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }]);
-      r.readAsDataURL(f);
-    });
-  }, [mode, isScriptFile, loadScriptFile]);
+    void ingestFiles(files);
+  }, [mode, isScriptFile, loadScriptFile, ingestFiles]);
   // v330 — sung-vocal gender for Music Video Mode (steers the ElevenLabs Music singer
   // + selects the cloned Georgian voice for any narration). Default male tenor.
   const [videoVocalGender, setVideoVocalGender] = useState<'male' | 'female' | 'duet'>('male');
@@ -2380,7 +2409,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [messages, busy, conversationId]);
 
   const resumeConversation = useCallback(async (id: string) => {
-    upsertConversation(conversationId, messages); // save current before leaving
+    // A reply still streaming belongs to the thread that asked it: end that turn and save its partial text THERE,
+    // instead of letting it render over — and then overwrite — a message in the thread being opened.
+    const settle = endChatStream();
+    if (settle) { genIdRef.current += 1; setBusy(false); }
+    upsertConversation(conversationId, settle ? settle(messages) : messages); // save current before leaving
     setConversationId(id);
     setCurrentConversationId(id);
     const convo = loadConversations().find((c) => c.id === id);
@@ -2399,7 +2432,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     } else {
       setMessages(loadConversationMessages(id));
     }
-  }, [conversationId, messages]);
+  }, [conversationId, messages, endChatStream]);
   const startNewConversation = useCallback(() => {
     upsertConversation(conversationId, messages); // save current
     const id = newConversationId();
@@ -2833,8 +2866,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // The full-screen lightbox is a real dialog (docs/DESIGN.md §10): focus moves into it and back to the tile
   // that opened it, Tab stays inside, Escape closes — the shared useDialogA11y, as every other overlay uses.
   const lightboxRef = useDialogA11y<HTMLDivElement>(!!lightbox, () => setLightbox(null));
-
-  const lang = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : 'ka-GE';
 
   // Drive the film render (orchestrate → poll → assemble) into a fresh assistant
   // bubble. Shared by the storyboard "Generate Video" action and the direct
@@ -4366,6 +4397,22 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       .then((sid) => { if (sid) void saveMessage(sid, role, text); });
   }, [ensureChatSession]);
 
+  // LIVE → THE THREAD. A Gemini Live call (components/voice/live) reports each finished turn — what the user said and
+  // what the model said, as transcribed by Google — on the `myavatar:live-transcript` window event. A call used to
+  // vanish when it ended; now it reads back in the chat like any other exchange and is saved to the history.
+  useEffect(() => {
+    const onTurn = (e: Event) => {
+      const turn = (e as CustomEvent<{ role?: string; text?: string; interrupted?: boolean }>).detail;
+      const role = turn?.role === 'assistant' ? 'assistant' : turn?.role === 'user' ? 'user' : null;
+      const text = typeof turn?.text === 'string' ? turn.text.trim() : '';
+      if (!role || !text) return;
+      setMessages((prev) => [...prev, { role, text, inputMethod: 'voice' }]);
+      persistChatTurn(role, text);
+    };
+    window.addEventListener('myavatar:live-transcript', onTurn);
+    return () => window.removeEventListener('myavatar:live-transcript', onTurn);
+  }, [persistChatTurn]);
+
   // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────
   // For an AUTHENTICATED user, once on mount:
   //  • local view EMPTY (fresh device / cleared cache) → hydrate the text transcript from Supabase
@@ -4486,165 +4533,107 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     }
   }, [runImageJob, runMusicJob, imgNegative, imgQuality, imgAspect, imgStyle, musicAudioMode, musicGenre, musicDuration, musicTempo, musicInstrumental, musicVoiceType]);
 
+  // ── CHAT STREAM (hooks/chat/useChatStream) ─────────────────────────────────────────────────────────────────────
+  // ⚠️ EVERY CHUNK USED TO RE-RENDER THIS WHOLE COMPONENT. The reply was appended with setMessages on each SSE chunk,
+  // so the ~7,500-line render function — settings body included — ran per token, and the growing reply re-parsed
+  // its whole Markdown each time: the jitter people saw while an answer streamed. The stream now writes into an
+  // external store committed once per animation frame, and ONLY <StreamingBubble> subscribes to it; `messages`
+  // changes twice per turn (the empty bubble, then the final text). The hook also reads the typed {error} frames the
+  // route now sends, so a Google failure is an honest message instead of an empty bubble. (`chat` itself is created
+  // next to genIdRef, above: the conversation switch has to be able to end a turn too.)
+  // Stable: StreamingBubble runs it on every committed frame. Hides a half-streamed { "service": … } block and
+  // turns [Image: …] blocks into their text, exactly as the finished bubble renders them.
+  const streamTransform = useCallback((text: string) => {
+    const base = hasImageBlocks(text) ? parseImageBlocks(text).text : text;
+    return stripDanglingServiceBlock(base);
+  }, []);
+  // Keep the thread pinned while the reply grows — `messages` no longer changes per chunk, so the host's own
+  // scroll effect would not fire. 'auto', not 'smooth': a smooth scroll per frame is its own jitter.
+  const pinStream = useCallback((_snap: ChatStreamSnapshot) => {
+    if (nearBottomRef.current) scrollToBottom('auto');
+  }, [scrollToBottom]);
+
   const streamChat = useCallback(async (history: Msg[]) => {
     const myGen = ++genIdRef.current;
+    // The shared Stop (stop()) aborts abortRef; for a chat turn that must also stop THIS stream.
     const ac = new AbortController();
     abortRef.current = ac;
+    ac.signal.addEventListener('abort', () => chatStop(), { once: true });
     const mine = () => genIdRef.current === myGen;
     // Consume the auto-play flag ONCE at the start (a voice-initiated turn set it just before this call).
     // Captured locally so a later regenerate/typed turn — which never sets it — can't inherit it.
     const autoPlayReply = autoPlayReplyRef.current;
     autoPlayReplyRef.current = false;
-    setMessages([...history, { role: 'assistant', text: '' }]);
+    const sid = `chat-${myGen}-${Date.now().toString(36)}`;
+    setMessages([...history, { role: 'assistant', text: '', id: sid }]);
+    streamingIdRef.current = sid;
+    setStreamingId(sid);
     setBusy(true);
-    let assistantText = ''; // accumulate the streamed reply so we can mirror it to the server on completion
-    // STREAM WATCHDOG — a provider that accepts the connection but never streams a token (or stalls
-    // mid-answer without ever sending [DONE]) would leave reader.read() pending forever, wedging
-    // `busy` = true permanently → the composer bricks and every later send bails at the busy gate
-    // WITHOUT clearing the typed text. That is exactly the "chat died + my message stays in the box"
-    // failure the broken GEMINI_API_KEY produced. An inactivity timer (re-armed on every chunk) aborts
-    // a truly stalled stream so the catch/finally always run and `busy` always resets. 45s of total
-    // silence is far beyond any real first-token latency (even gemini-2.5-pro), so it never trips a
-    // healthy answer — only a genuinely hung one.
-    let watchdog: ReturnType<typeof setTimeout> | null = null;
-    // ⚠️ TIME-TO-FIRST-TOKEN WAS NEVER MEASURED, so every latency claim about this chat — including my
-    // own — has been unfalsifiable. There is no way to tell a healthy-but-slow provider from a wedged
-    // one without it, and no way to know whether a change helped. TTFT is the number that matters to a
-    // user: not how long the answer takes, but how long the screen stays empty.
-    const t0 = Date.now();
-    let ttftMs = 0;
-    const markFirstToken = () => {
-      if (ttftMs) return;
-      ttftMs = Date.now() - t0;
-      // eslint-disable-next-line no-console
-      console.info(`[chat] TTFT ${ttftMs}ms`);
-    };
-
-    const armWatchdog = () => {
-      if (watchdog) clearTimeout(watchdog);
-      // Before the first token the risk is a connection that never produces anything; after it, the risk
-      // is a stream that stalls mid-answer. The pre-token window is deliberately tighter: 45s of a blank
-      // screen is indistinguishable from a hang to the person waiting, whereas a 45s GAP inside a
-      // visibly-growing answer is a provider being slow at something already working.
-      const ms = ttftMs ? 45_000 : 20_000;
-      watchdog = setTimeout(() => { try { ac.abort(); } catch { /* noop */ } }, ms);
-    };
-    // Build the Gemini payload: text-only → string content; with media → native
-    // multimodal parts (image / file) the route forwards as inline_data.
-    // ⚠️ THIS RE-UPLOADED EVERY IMAGE EVER ATTACHED, ON EVERY TURN. `history` is the full message array
-    // and each turn's `medias` are base64 data URLs, so a photo attached five messages ago was
-    // re-serialised, re-sent over the wire and re-ingested by Gemini for every later text-only message.
-    // The route's MAX_BODY_BYTES = 16_000_000 shows the scale it was built to survive. On a phone uplink
-    // that is seconds of upload before the server starts any work, and it grows for the life of the
-    // thread — the one latency source here that gets WORSE the more the chat is used.
-    //
-    // Only the most recent media-bearing turns send real bytes (see lib/chat/mediaWindow for why a
-    // window rather than a strip: "make it warmer" must still be able to see the photo). Older turns
-    // keep their text and get a placeholder, so the model is told an attachment existed instead of
-    // silently seeing a gap and contradicting the user about it.
-    const mediaCarrying = mediaCarryingIndices(history);
-    const payload = history.map((m, i) => {
-      if (m.medias && m.medias.length) {
-        const parts = shouldSendMedia(i, mediaCarrying)
-          ? m.medias.map((md) => isImage(md.mimeType)
-            ? { type: 'image', image: md.dataUrl }
-            : { type: 'file', data: md.dataUrl, mimeType: md.mimeType })
-          : [{ type: 'text', text: m.medias.map((md) => mediaPlaceholder(md.mimeType)).join(' ') }];
-        return { role: m.role, content: [
-          ...(m.text ? [{ type: 'text', text: m.text }] : []),
-          ...parts,
-        ] };
-      }
-      return { role: m.role, content: m.text };
-    });
+    // History → wire parts in ONE place (lib/chat/historySerializer): media bytes only for the latest media turns
+    // (lib/chat/mediaWindow — "make it warmer" still sees the photo), generated results as a short reference the
+    // model can read, no empty turns (a result bubble has no text: an empty model turn made Gemini reject every
+    // later turn of the thread), oldest turns trimmed to a budget.
+    const payload = serializeHistory(history.map((m) => ({
+      role: m.role,
+      text: m.text,
+      ...(m.medias?.length ? { medias: m.medias } : {}),
+      ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
+      ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+      ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
+    })));
+    // PERSONA — read at send time, not render time, so a change in the picker applies to the very next turn. A
+    // BUILT-IN travels as an id the server knows; a CUSTOM one lives only in this browser, so the whole object travels
+    // and the server re-validates it (the injection sanitizer is a security boundary, not a formality).
+    const personaId = loadSelectedPersonaId();
+    const customPersona = personaId.startsWith('custom:')
+      ? loadCustomPersonas().find((p) => p.id === personaId)
+      : undefined;
     try {
-      armWatchdog(); // covers connection setup + first-token latency
-      // PERSONA — read at send time, not render time, so a change in the picker applies to the very next
-      // turn without this component re-rendering. A BUILT-IN travels as an id the server already knows;
-      // a CUSTOM one lives only in this browser's localStorage, so the whole object has to travel and the
-      // server re-validates it (the injection sanitizer is a security boundary, not a formality).
-      const personaId = loadSelectedPersonaId();
-      const customPersona = personaId.startsWith('custom:')
-        ? loadCustomPersonas().find((p) => p.id === personaId)
-        : undefined;
-      const res = await fetch('/api/chat/gemini', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: payload,
-          ...(chatLang !== 'auto' ? { language: chatLang } : {}),
-          ...(chatTier === 'pro' ? { tier: 'pro' } : {}),
-          ...(personaId ? { personaId } : {}),
-          ...(customPersona ? { customPersona } : {}),
-        }), credentials: 'include', signal: ac.signal,
-      });
-      if (!res.ok || !res.body) throw new Error('stream failed');
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        if (!mine()) { try { await reader.cancel(); } catch { /* noop */ } break; }
-        const { value, done } = await reader.read();
-        if (done) break;
-        markFirstToken(); // first byte of the body — the moment the wait visibly ends
-        armWatchdog(); // a chunk arrived → the stream is alive; reset the inactivity timer
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          const mm = line.match(/^data:\s*(.+)$/s);
-          if (!mm) continue;
-          try {
-            const j = JSON.parse(mm[1]!) as { text?: string; meta?: { provider: string; model: string; partial?: boolean } };
-            if (j.meta) {
-              // Stamp which engine actually answered so the bubble can show it (⚠ badge on the
-              // Anthropic fallback — so a silently-degraded Gemini is never mistaken for the real thing).
-              const label = j.meta.provider === 'gemini' ? j.meta.model : `⚠ ${j.meta.model} (fallback)`;
-              setMessages((prev) => {
-                if (!mine()) return prev;
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last && last.role === 'assistant') next[next.length - 1] = { ...last, chatModel: label };
-                return next;
-              });
-            }
-            if (j.text) {
-              assistantText += j.text;
-              setMessages((prev) => {
-                if (!mine()) return prev;
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last && last.role === 'assistant') next[next.length - 1] = { ...last, text: last.text + j.text };
-                return next;
-              });
-            }
-          } catch { /* ignore non-JSON keepalive lines */ }
+      const result = await chat.start({
+        messages: payload,
+        // protocol 2: this client renders {error} frames, so the route sends the error once (not also as {text}).
+        protocol: 2,
+        ...(chatLang !== 'auto' ? { language: chatLang } : {}),
+        ...(chatTier === 'pro' ? { tier: 'pro' } : {}),
+        ...(personaId ? { personaId } : {}),
+        ...(customPersona ? { customPersona } : {}),
+      }, { turnId: String(myGen) });
+      // Stopped / superseded / conversation switched: stop() or endChatStream() already put the partial text into
+      // this turn's bubble (they own that moment); nothing more to commit here.
+      if (!mine()) return;
+      const replyText = result.status === 'error' && !result.text
+        ? `⚠️ ${result.error?.message ?? (locale === 'en' ? 'Something went wrong. Please try again.' : locale === 'ru' ? 'Что-то пошло не так. Попробуйте снова.' : 'პასუხის მიღება ვერ მოხერხდა. სცადე თავიდან.')}`
+        : result.status === 'error' && result.error
+          ? `${result.text}\n\n⚠️ ${result.error.message}`
+          : result.text;
+      const badge = formatModelBadge(result.meta);
+      // Commit into THIS turn's bubble (by id) — never "the last message", which may be an image job or a Live
+      // transcript appended while the reply streamed.
+      setMessages((prev) => prev.map((m) => (m.id === sid
+        ? {
+          ...m,
+          text: replyText,
+          ...(badge ? { chatModel: badge } : {}),
+          ...(result.sources.length ? { sources: result.sources } : {}),
         }
-      }
-      // Stream finished cleanly (not superseded) → mirror the reply to the server. VECTOR 1: when a hallucinated
-      // { "service": … } routing block DOMINATES the reply, persist the CLEANED text so the raw JSON never lives in
-      // history (the bubble keeps the original so its render can still offer the one-tap Generate chip). A long
-      // answer that merely contains an example JSON is persisted verbatim. Generation is NEVER auto-fired here.
-      if (mine() && assistantText.trim()) {
-        const svc = hasServiceBlock(assistantText) ? parseServiceBlock(assistantText) : null;
-        const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : assistantText;
+        : m)));
+      // Finished cleanly → mirror the reply to the server. VECTOR 1: when a hallucinated { "service": … } routing
+      // block DOMINATES the reply, persist the CLEANED text so the raw JSON never lives in history (the bubble keeps
+      // the original so its render can still offer the one-tap Generate chip). Generation is NEVER auto-fired here.
+      if (result.status === 'done' && result.text.trim()) {
+        const svc = hasServiceBlock(result.text) ? parseServiceBlock(result.text) : null;
+        const cleaned = svc && svc.service && svc.text.length < 200 ? svc.text : result.text;
         persistChatTurn('assistant', cleaned);
-        // AUTO-PLAY: a VOICE-initiated turn speaks its finished reply aloud (Gemini native TTS). The
-        // assistant bubble is the last message → index history.length (streamChat set [...history, reply]).
+        // AUTO-PLAY: a VOICE-initiated turn speaks its finished reply aloud (Gemini native TTS). The assistant bubble
+        // is the last message → index history.length (streamChat set [...history, reply]).
         if (autoPlayReply) speakMsgRef.current?.(cleaned, history.length);
       }
-    } catch {
-      if (!mine()) return; // stopped / superseded — keep the partial stream as-is
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === 'assistant' && !last.text) next[next.length - 1] = { ...last, text: locale === 'en' ? '⚠️ Something went wrong. Please try again.' : locale === 'ru' ? '⚠️ Что-то пошло не так. Попробуйте снова.' : '⚠️ პასუხის მიღება ვერ მოხერხდა. სცადე თავიდან.' };
-        return next;
-      });
     } finally {
-      if (watchdog) clearTimeout(watchdog);
+      if (streamingIdRef.current === sid) streamingIdRef.current = null;
+      setStreamingId((cur) => (cur === sid ? null : cur));
       if (mine()) setBusy(false);
     }
-  }, [chatLang, chatTier, persistChatTurn]);
+  }, [chat, chatStop, chatLang, chatTier, persistChatTurn, locale]);
 
   // Flush a queued type-ahead chat message once the current turn finishes (busy → false). Reads the
   // LATEST messages via messagesRef (not a stale closure), so the follow-up carries the full history.
@@ -4679,23 +4668,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Agent G router (shared by typed send + voice dictation). Returns true if it consumed the message + routed the
   // attached asset into the Surgical Editor. Strictly gated (chat mode · one editable asset · imperative edit intent)
   // and fail-open (a timeout/error just returns false → the message continues to normal chat with a gentle toast).
-  // Kill every live-dictation echo on a COMMITTED dispatch so the sent/routed text can't linger or
-  // re-appear. There are TWO recognizers — the Web Speech recognizer AND the record-and-transcribe
-  // fallback (iOS/WebView) — and the recorder kept streaming transcription into the composer AFTER
-  // send, which is exactly why the dictated text "stayed" in the input. We discard any further
-  // transcription, stop both recognizers, reset the STT accumulators, then blur so a mobile IME
-  // COMMITS its buffer (a programmatic value='' alone doesn't visibly clear on-screen). Shared by
-  // tryAgentGRoute (the dictate-then-route path) AND send's image/music/chat-generative intercepts,
-  // which all `return` before the main dispatch block — without it they leaked the lingering-input bug.
-  const stopDictationEcho = useCallback(() => {
-    sttDiscardRef.current = true;
-    try { recognitionRef.current?.stop(); } catch { /* noop */ }
-    try { recRef.current?.stop(); } catch { /* noop */ }
-    sttBaseRef.current = '';
-    sttFinalRef.current = '';
-    try { taRef.current?.blur(); } catch { /* noop */ }
-  }, []);
-
   const tryAgentGRoute = useCallback(async (text: string): Promise<boolean> => {
     if (mode !== 'chat' || attachments.length !== 1) return false;
     const a0 = attachments[0];
@@ -4748,17 +4720,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // Voice → Agent G (V2): the dictated transcript settles into `input`; when recording stops, route it the same way
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
-  // Tracks whether the CURRENT composer text came from dictation ('voice') or the keyboard ('text'). The
-  // STT handlers flip it to 'voice' as they stream the transcript; the textarea onChange flips it to 'text'
-  // on any real keystroke. send() reads it to (a) tag the message inputMethod and (b) decide whether to
-  // auto-play the reply. There is NO auto-send — dictation just fills the box and WAITS for the user to tap
-  // Send (product decision; the earlier hands-free auto-submit is intentionally reverted).
-  const inputSourceRef = useRef<'text' | 'voice'>('text');
-  // What the Whisper recorder LAST wrote into the composer. The final-pass transcription (rec.onstop) can
-  // resolve a network round-trip AFTER the user has already typed over the transcript; comparing the live
-  // composer value against this ref lets it bail on a user takeover instead of clobbering the edit (and
-  // wrongly re-tagging the message as 'voice' → auto-play). Seeded to `base` at each dictation start.
-  const lastSttWriteRef = useRef('');
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean }) => {
     // ⚠️ GUESTS ARE STOPPED HERE, BEFORE ANY REQUEST LEAVES. The API routes now reject them (assemble,
@@ -5387,7 +5348,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -5548,6 +5509,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     setStoryboardBusy(false);
     setRemixBusy(false);
     setRemixBusyIdx(null);
+    // A chat reply that was streaming keeps what already arrived (the text lives in the stream store until the turn
+    // commits — without this, Stop replaced a half-read answer with "Stopped").
+    const settle = endChatStream();
+    if (settle) {
+      setMessages(settle);
+      return;
+    }
     setMessages((prev) => {
       const next = [...prev];
       const last = next[next.length - 1];
@@ -5567,7 +5535,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       }
       return next;
     });
-  }, [t.stopped, locale]);
+  }, [t.stopped, locale, endChatStream]);
   const cancelQueueJob = useJobQueue((s) => s.cancel);
   /**
    * Cancel the job behind ONE bubble, from its ResultCard. A queued film bubble IS its queue job (id === jobId);
@@ -5582,7 +5550,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   }, [cancelQueueJob, stop]);
 
   // Abort any in-flight request if the studio unmounts (e.g. New Chat remount).
-  useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } try { recognitionRef.current?.stop(); } catch { /* noop */ } }, []);
+  useEffect(() => () => { try { abortRef.current?.abort(); } catch { /* noop */ } }, []);
   // Release the voice-sample recorder (mic + timer) if the component unmounts mid-capture.
   useEffect(() => () => {
     if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
@@ -5844,314 +5812,6 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
     })();
     return () => { alive = false; };
   }, []);
-
-  // Record-and-transcribe (Whisper) — the RELIABLE path on iOS (the Web Speech API
-  // doesn't work in the WKWebView app) and any browser without live recognition.
-  // Records in a container the platform actually supports and labels the file with the
-  // MATCHING extension: iOS records mp4, NOT webm — a wrong extension makes Whisper
-  // reject the audio (a real cause of "the mic does nothing on mobile").
-  const startRecorderFallback = useCallback(async () => {
-    sttDiscardRef.current = false; // fresh dictation — accept transcription again
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Reentrancy guard (see startVoiceRecording): a concurrent double-invoke would leak the loser stream HOT.
-      if (streamRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
-      streamRef.current = stream;
-      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/mpeg'];
-      let chosen = '';
-      for (const c of candidates) {
-        try { if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c)) { chosen = c; break; } } catch { /* noop */ }
-      }
-      const rec = chosen ? new MediaRecorder(stream, { mimeType: chosen }) : new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      const base = input ? `${input.trimEnd()} ` : '';
-      // Seed the "last recorder write" baseline to the pre-dictation text so a short (<1.2s) clip that
-      // reaches only the final pass — with no progressive write — still recognises an untouched composer.
-      lastSttWriteRef.current = base;
-      // Shared with the SERVER's upload label (lib/voice/audioExt) — they must agree, and until now the
-      // server hardcoded '.wav' and silently failed every transcription this side got right.
-      const extFor = (t: string) => audioExtFor(t);
-      // ⚠️ WAS A BOOLEAN POLLED IN A LOOP. `onstop` did `for (let i = 0; inFlight && i < 25; i++) await
-      // sleep(200)` — up to FIVE SECONDS of artificial waiting before the final transcription round-trip
-      // even began. Holding the promise lets Stop await the actual request and continue the instant it
-      // settles, which on a fast pass is effectively immediate.
-      let inFlightP: Promise<void> | null = null;
-      let failStreak = 0;
-      // Which chunk the last INTERIM pass ran at. See lib/voice/interimCadence: passes back off as the
-      // clip grows, because each one re-uploads and re-decodes the whole clip from the start.
-      let lastInterimChunk = 0;
-      let stopped = false;
-
-      // HANDS-FREE silence auto-stop: watch the live mic level and, once the user has spoken and then goes
-      // quiet for ~1.3s, stop the recorder automatically — no manual Stop tap. The voiceStop effect then
-      // auto-sends the settled transcript. Best-effort: if AudioContext is unavailable the manual Stop
-      // (toggleMic) still works exactly as before.
-      let silenceCtx: AudioContext | null = null;
-      let silenceRaf = 0;
-      const stopSilenceWatch = () => {
-        if (silenceRaf) { cancelAnimationFrame(silenceRaf); silenceRaf = 0; }
-        try { void silenceCtx?.close(); } catch { /* noop */ }
-        silenceCtx = null;
-      };
-      try {
-        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        silenceCtx = new AC();
-        const src = silenceCtx.createMediaStreamSource(stream);
-        const analyser = silenceCtx.createAnalyser();
-        analyser.fftSize = 512;
-        src.connect(analyser);
-        const buf = new Uint8Array(analyser.fftSize);
-        let spoke = false;
-        let quietStart = 0;
-        const tick = () => {
-          if (stopped) { stopSilenceWatch(); return; }
-          analyser.getByteTimeDomainData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) { const v = (buf[i]! - 128) / 128; sum += v * v; }
-          const rms = Math.sqrt(sum / buf.length);
-          const now = performance.now();
-          if (rms > 0.035) { spoke = true; quietStart = 0; }       // speaking
-          else if (spoke) {                                          // was speaking, now quiet
-            if (!quietStart) quietStart = now;
-            else if (now - quietStart > 1300) { stopSilenceWatch(); try { rec.stop(); } catch { /* noop */ } return; }
-          }
-          silenceRaf = requestAnimationFrame(tick);
-        };
-        silenceRaf = requestAnimationFrame(tick);
-      } catch { stopSilenceWatch(); }
-      // Transcribe the audio captured SO FAR and STREAM the text into the composer —
-      // the accumulated blob (chunk[0] carries the container header) is a valid clip,
-      // so the text grows live as you speak instead of only appearing when you stop.
-      const transcribeSoFar = async () => {
-        if (sttDiscardRef.current || inFlightP) return; // a send() discarded this dictation
-
-        const type = rec.mimeType || chosen || 'audio/webm';
-        const blob = new Blob(chunks, { type });
-        if (blob.size < 1600) return;
-        const run = async () => {
-        try {
-          const fd = new FormData();
-          fd.append('audio', blob, `clip.${extFor(type)}`);
-          fd.append('language', lang);
-          const r = await fetch('/api/voice/transcribe', { method: 'POST', body: fd });
-          const j = (await r.json().catch(() => ({}))) as { text?: string };
-          // Re-check the discard flag AFTER the await: if a send() fired while this transcription was
-          // in flight, it already cleared the composer — writing the transcript now would RE-FILL the
-          // just-emptied box (the "my dictated text jumps back after I send" bug; iOS uses this recorder
-          // path, and it only bites when you send before transcription resolves). Drop it silently.
-          if (sttDiscardRef.current) return; // the outer finally clears inFlightP
-          if (j.text && j.text.trim()) {
-            const next = base + j.text.trim();
-            // Functional update so we read the LIVE composer: if the user has typed since the recorder last
-            // wrote (cur is non-empty AND differs from our last write), keep their edit and DON'T re-tag the
-            // message as 'voice' — otherwise a late final-pass would clobber a post-stop keyboard edit and
-            // wrongly auto-play the reply. sttDiscardRef only covers the send() path; this covers plain edits.
-            setInput((cur) => {
-              if (cur !== '' && cur !== lastSttWriteRef.current) return cur;
-              lastSttWriteRef.current = next;
-              inputSourceRef.current = 'voice';
-              return next;
-            });
-          }
-          failStreak = 0;
-          setDictationWarn(null);
-        } catch {
-          // ⚠️ THIS WAS A BARE `catch { /* fail-soft */ }`. A 429 (the route shares the 100-req/60s READ
-          // bucket and a long dictation fires a pass every 1.2s), a 500 or an offline blip produced no
-          // toast, no state change and no retry — the recording UI kept pulsing while text silently
-          // stopped arriving, so the user carried on talking into a void. Still fail-soft; no longer silent.
-          failStreak += 1;
-          if (failStreak >= 2) {
-            setDictationWarn(locale === 'en' ? 'Transcription is not responding — your words may not be captured.'
-              : locale === 'ru' ? 'Расшифровка не отвечает — слова могут не записаться.'
-              : 'ტრანსკრიფცია არ პასუხობს — სიტყვები შესაძლოა არ ჩაიწეროს.');
-          }
-        }
-        };
-        inFlightP = run();
-        try { await inFlightP; } finally { inFlightP = null; }
-      };
-      rec.ondataavailable = (e) => {
-        if (!e.data.size) return;
-        chunks.push(e.data);
-        if (stopped) return;
-        // ⚠️ THIS USED TO TRANSCRIBE ON EVERY SINGLE CHUNK, and every pass re-uploaded the ENTIRE clip
-        // (chunks[0] holds the container header, so the accumulated blob is the only decodable form).
-        // Upload size and decode cost therefore grew with the length of the recording while the tick
-        // rate stayed fixed at 1.2s — total work rising with the SQUARE of how long you speak. The
-        // interim text fell steadily further behind the speaker and then jumped, and already-settled
-        // words could change under the cursor because the whole clip was re-decoded each time.
-        if (!shouldRunInterim(chunks.length, lastInterimChunk)) return;
-        lastInterimChunk = chunks.length;
-        void transcribeSoFar();
-      };
-      rec.onstop = async () => {
-        stopped = true;
-        stopSilenceWatch();
-        setRecording(false);
-        streamRef.current?.getTracks().forEach((tr) => tr.stop());
-        // CRITICAL: null the refs so the NEXT dictation isn't blocked. The reentrancy guard above bails
-        // when streamRef.current is set; leaving it set (tracks stopped but ref alive) is exactly why the
-        // 2nd mic tap "froze" — startRecorderFallback returned immediately and nothing recorded.
-        streamRef.current = null;
-        recRef.current = null;
-        // Await the ACTUAL in-flight request, then do one FINAL pass over the whole clip. The old code
-        // polled a boolean 25 times at 200ms — a flat 5s ceiling of pure waiting before the final pass
-        // could even start, on top of the round-trip itself.
-        setTranscribing(true);
-        try {
-          if (inFlightP) await inFlightP.catch(() => {});
-          inFlightP = null;
-          await transcribeSoFar();
-        } finally {
-          setTranscribing(false);
-        }
-      };
-      recRef.current = rec;
-      rec.start(1200); // emit a chunk every 1.2s → snappier progressive transcription (was 2.5s)
-      setRecording(true);
-    } catch {
-      setRecording(false);
-      streamRef.current = null;
-      recRef.current = null;
-    }
-  }, [input, lang]);
-
-  const toggleMic = useCallback(async () => {
-    if (recording) {
-      // Mark the stop as INTENTIONAL before stopping, so rec.onend can tell it apart from Chrome ending
-      // recognition on its own (which it does after silence, and which must auto-restart instead).
-      micStopRequestedRef.current = true;
-      // Stop whichever recognizer is active (live recognizer or fallback recorder).
-      try { recognitionRef.current?.stop(); } catch { /* noop */ }
-      try { recRef.current?.stop(); } catch { /* noop */ }
-      return;
-    }
-    micStopRequestedRef.current = false;
-    setDictationWarn(null); // a fresh dictation clears any previous transcription warning
-    // Master Contract V17 — INSTANT capture: flip the mic UI to "recording" the moment the user taps,
-    // BEFORE the async recognizer / getUserMedia spins up, so there is zero perceived lag and no lost first
-    // words. Every failure path below reverts it (SR onerror/onend + the recorder fallback's catch).
-    setRecording(true);
-    const SR = (typeof window !== 'undefined'
-      ? ((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
-        ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition)
-      : undefined) as (new () => SpeechRecognitionLike) | undefined;
-    // iOS Safari's SpeechRecognition is APPLE's engine, which has NO Georgian ('ka') support — it stalls
-    // (up to the watchdog) before failing, which is a big part of "the mic takes forever" for ka users.
-    // So on iOS + Georgian, skip Web Speech and go STRAIGHT to the Whisper recorder (it transcribes ka
-    // fine). Desktop Chrome / en / ru keep live Web Speech (Google's engine DOES support ka).
-    // ⚠️ THIS TESTED THE DEVICE, NOT THE ENGINE. The comment above is about APPLE's speech engine, but
-    // /iPad|iPhone|iPod/ does not match macOS Safari — which exposes `webkitSpeechRecognition`, runs that
-    // same Georgian-less engine, and therefore took the Web Speech branch and ate the full watchdog stall
-    // on EVERY dictation. Georgian is this product's primary locale, so that was a first-class path.
-    // Detecting Safari itself (WebKit that is neither Chrome nor Android) covers both.
-    const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
-    const isAppleSpeechEngine = /iPad|iPhone|iPod/.test(ua) || (/safari/i.test(ua) && !/chrome|chromium|crios|android|edg/i.test(ua));
-    // Try LIVE Web Speech FIRST (streams text as you talk); a watchdog drops a silent engine to the
-    // record-and-transcribe fallback so the mic always does something.
-    // A lang the engine has already rejected this session goes straight to the recorder — retrying a
-    // permanent rejection only spends the watchdog window before falling back anyway.
-    if (SR && !(isAppleSpeechEngine && lang.startsWith('ka')) && !webSpeechUnsupportedLangsRef.current.has(lang)) {
-      try {
-        const rec = new SR();
-        rec.lang = lang;
-        rec.continuous = true;
-        rec.interimResults = true;
-        sttDiscardRef.current = false; // fresh dictation — accept transcription again
-        sttBaseRef.current = input ? `${input.trimEnd()} ` : '';
-        sttFinalRef.current = '';
-        let fellBack = false;
-        let gotResult = false;
-        const toRecorder = () => {
-          if (fellBack) return;
-          fellBack = true;
-          try { rec.stop(); } catch { /* noop */ }
-          recognitionRef.current = null;
-          void startRecorderFallback();
-        };
-        // ⚠️ THIS WAS A FLAT 8-SECOND TIMER, AND IT MEASURED THE WRONG THING.
-        //
-        // It counted from the moment the mic was tapped, so a silent engine (Apple's, which has no
-        // Georgian; a locked-down WebView; a blocked network) let the user talk for a full eight seconds
-        // seeing NOTHING, and only then switched to the recorder — which starts a brand-new capture, so
-        // every one of those words was gone and the sentence had to be repeated. That is the single
-        // largest "the mic takes forever / does nothing" complaint.
-        //
-        // Shortening the flat timer was not the answer: the long window exists so that pausing to think
-        // before speaking does not wrongly kill live transcription, and the old comment says exactly that.
-        // The fix is to time the right interval. `onspeechstart` is the engine's own report that it can
-        // hear speech, so once it fires we know silence is the ENGINE's fault, not the user's, and 2.5s
-        // is plenty. Until it fires we keep waiting, so a slow starter is never cut off.
-        let watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 8000);
-        rec.onspeechstart = () => {
-          if (gotResult || fellBack) return;
-          clearTimeout(watchdog);
-          watchdog = setTimeout(() => { if (!gotResult) toRecorder(); }, 2500);
-        };
-        rec.onresult = (e: SREvent) => {
-          if (sttDiscardRef.current) return; // a send() discarded this dictation
-          gotResult = true;
-          clearTimeout(watchdog);
-          let interim = '';
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            const res = e.results[i]!;
-            const txt = res[0]?.transcript ?? '';
-            if (res.isFinal) sttFinalRef.current += txt;
-            else interim += txt;
-          }
-          inputSourceRef.current = 'voice';
-          setInput((sttBaseRef.current + sttFinalRef.current + interim).replace(/\s+/g, ' ').trimStart());
-        };
-        // ⚠️ CHROME FIRES onend BY ITSELF after a stretch of silence, even with continuous = true. This
-        // used to end dictation outright: the Stop button vanished, the mic turned itself off mid-thought,
-        // and the user's next words went nowhere with nothing on screen explaining why. Restart it unless
-        // the user actually asked to stop. The guard is a restart BUDGET, not a flag — an engine that ends
-        // immediately and repeatedly would otherwise spin in a tight start/end loop.
-        let restarts = 0;
-        rec.onend = () => {
-          clearTimeout(watchdog);
-          if (fellBack) { recognitionRef.current = null; return; }
-          if (!micStopRequestedRef.current && restarts < 8) {
-            restarts += 1;
-            try { rec.start(); return; } catch { /* fall through to ending cleanly */ }
-          }
-          recognitionRef.current = null;
-          setRecording(false);
-        };
-        // No text yet + an error (incl. the silent webview case) → record-and-transcribe.
-        // ⚠️ THIS DISCARDED THE ERROR CODE, AND THAT IS WHY GEORGIAN WAS UNDIAGNOSABLE. The handler was
-        // typed `() => void`, so 'language-not-supported' — the code an engine returns when it cannot do
-        // `rec.lang`, and which 'en-US' never triggers because English is universally supported — was
-        // collapsed into the same branch as 'no-speech' and 'aborted'. Nothing was logged, so two
-        // previous attempts at the Georgian bug had no signal at all to work from.
-        //
-        // Two behavioural corrections come with reading it:
-        //  · A language rejection is PERMANENT for this locale, so retrying Web Speech is pure delay.
-        //    It is remembered for the session and the recorder path is used directly from then on.
-        //  · 'no-speech' is NOT fatal — it means the user simply has not spoken yet. Tearing down a live
-        //    recognizer for that threw away a working session mid-pause.
-        rec.onerror = (ev) => {
-          const code = (ev && typeof ev.error === 'string') ? ev.error : '';
-          if (code === 'no-speech') return; // keep listening; the watchdog still covers a silent engine
-          clearTimeout(watchdog);
-          if (code === 'language-not-supported' || code === 'service-not-allowed') {
-            webSpeechUnsupportedLangsRef.current.add(lang);
-            // eslint-disable-next-line no-console
-            console.warn(`[stt] Web Speech rejected lang=${lang} (${code}) — using the recorder path for this session`);
-          }
-          if (!gotResult) toRecorder(); else { recognitionRef.current = null; setRecording(false); }
-        };
-        recognitionRef.current = rec;
-        rec.start();
-        setRecording(true);
-        return;
-      } catch {
-        /* fall through to the recorder */
-      }
-    }
-    await startRecorderFallback();
-  }, [recording, lang, input, startRecorderFallback]);
 
   // Composer derived state: the active mode's icon/label for the inline selector,
   // and whether there's anything to send (drives the mic↔send swap).
@@ -6723,6 +6383,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                     );
                   }
                   const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;
+                  // The chat turn in flight renders from the stream store — only this bubble re-renders per frame.
+                  if (streamingId !== null && m.id === streamingId && m.role === 'assistant' && !m.genKind) {
+                    return <StreamingBubble store={chat.store} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} transform={streamTransform} onCommit={pinStream} />;
+                  }
                   // Director's Console for QUEUED cinema renders: the Cap-3 queue path never sets the
                   // global `busy` flag (so `pending` is false and the console was hidden). Key off the
                   // bubble's OWN genKind/videoProgress/filmRoster instead — per-message + queue-safe, so
@@ -6860,11 +6524,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                           <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
                         </div>
                       )}
-                      {displayText && <Markdown>{displayText}</Markdown>}
-                      {/* Streaming caret — a soft blink while the reply is still arriving, so the
-                          text reads as live-typed rather than snapping in as chunks land. */}
-                      {pending && !m.genKind && (
-                        <span aria-hidden className="mya-caret -mt-1 inline-block h-4 w-[3px] translate-y-[3px] rounded-full bg-app-accent" style={{ animation: 'mya-caret 1.05s ease-in-out infinite' }} />
+                      {displayText && <Markdown locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'}>{displayText}</Markdown>}
+                      {/* Google Search grounding: the pages the answer was built from, as compact chips. */}
+                      {!pending && m.sources && m.sources.length > 0 && (
+                        <SourcesChips sources={m.sources} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} className="mt-2" />
                       )}
                       {routingChip && routingPrompt && (
                         <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
@@ -7040,7 +6703,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               </div>
             </div>
           ))
-  ), [busy, cancelEdit, copiedIdx, copyMsg, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, copiedIdx, copyMsg, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
@@ -8589,7 +8252,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {attachments.map((a, ai) => (
-              <div key={ai} className="relative">
+              <div key={ai} className="relative" title={a.name}>
                 {isImage(a.mimeType) ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -8601,8 +8264,11 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
                 ) : (
-                  <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-app-surface text-app-accent">
+                  <span className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-xl bg-app-surface text-app-accent">
                     {isAudio(a.mimeType) ? <Music2 size={18} /> : <FileText size={18} />}
+                    {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) && (
+                      <span className="max-w-[3.25rem] truncate text-[9px] font-semibold uppercase leading-none text-app-muted">{a.name.split('.').pop()}</span>
+                    )}
                   </span>
                 )}
                 <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
@@ -8616,15 +8282,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             (images / video / audio / pdf), capped at MAX_ATTACHMENTS. */}
         <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,.txt,.md,.pdf,.docx,.doc,.rtf" className="hidden" onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
-          files.forEach((f) => {
-            // In VIDEO mode a document attached via the "+" IS the film script → load it into
-            // the dedicated Script slot (with feedback) instead of a silent generic attachment.
-            if (mode === 'video' && isScriptFile(f)) { void loadScriptFile(f); return; }
-            const r = new FileReader();
-            r.onload = () => setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: String(r.result), mimeType: f.type || 'application/octet-stream' }]);
-            r.readAsDataURL(f);
-          });
           e.target.value = '';
+          // In VIDEO mode a document attached via the "+" IS the film script → ingestFiles loads it into
+          // the dedicated Script slot (with feedback) instead of a silent generic attachment.
+          void ingestFiles(files);
         }} />
         {/* v330 — dedicated Character Reference picker (single image, downscaled + locked). */}
         <input ref={charFileRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
@@ -8743,7 +8404,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
             setLipPreset(null); // an uploaded face supersedes a chosen preset
             setAttachments((prev) => [
               ...prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)),
-              { dataUrl: small, mimeType: f.type || 'image/jpeg' },
+              { dataUrl: small, mimeType: dataUrlMimeOf(small) || f.type || 'image/jpeg', ...(f.name ? { name: f.name } : {}) },
             ]);
           } catch { /* ignore unreadable file */ }
         }} />
@@ -8754,21 +8415,13 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
           const f = e.target.files?.[0];
           e.target.value = '';
           if (!f) return;
-          try {
-            const small = await downscaleDataUrl(await fileToDataUrl(f));
-            setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: small, mimeType: f.type || 'image/jpeg' }]);
-          } catch { /* ignore unreadable capture */ }
+          void ingestFiles([f], { scriptInVideo: false });
         }} />
         {/* „+" → Photos: images into the composer's attachments (the tools that read them). */}
         <input ref={photoRef} type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
-          for (const f of files) {
-            try {
-              const small = await downscaleDataUrl(await fileToDataUrl(f));
-              setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl: small, mimeType: f.type || 'image/jpeg' }]);
-            } catch { /* ignore unreadable image */ }
-          }
+          void ingestFiles(files, { scriptInVideo: false });
         }} />
         {/* „+" → Photos on the product tool: the product photo (then extra angles). */}
         <input ref={productPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
@@ -8790,8 +8443,16 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
               narrow column by the controls (the old single-row pill did exactly that). */}
           <textarea
             ref={taRef}
+            data-testid="composer-input"
             value={input}
-            onChange={(e) => { inputSourceRef.current = 'text'; setInput(e.target.value); }}
+            onChange={(e) => { dictation.markTyped(); setInput(e.target.value); }}
+            onPaste={(e) => {
+              // Pasted screenshots / copied files join the tray (Gemini-app parity); plain-text paste is untouched.
+              const files = filesFromClipboard(e.clipboardData);
+              if (!files.length) return;
+              e.preventDefault();
+              void ingestFiles(files);
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runTool(); } }}
             onFocus={() => setTimeout(() => taRef.current?.scrollIntoView({ block: 'nearest' }), 120)}
             rows={1}

@@ -36,15 +36,18 @@ const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLi
 const LiveAvatarEnroll = dynamic(() => import('@/components/voice/LiveAvatarEnroll'), { ssr: false });
 // PREMIUM real-time lip-synced avatar (LiveAvatar/LiveKit). Attempted FIRST when enabled; auto-falls back to
 // the Gemini audio-reactive selfie avatar until LIVEAVATAR_API_KEY is set AND the account is funded.
+// ⚠️ OPT-IN (NEXT_PUBLIC_LIVEAVATAR_ENABLED=1). Live mode is Google-only by default: Gemini Live's native audio is
+// both the speech-to-text and the voice. LiveAvatar is a separate vendor with its own STT/TTS, and a funded key in
+// the environment was enough for it to take over every voice call ahead of Gemini.
 const LiveAvatarRealtime = dynamic(() => import('@/components/voice/LiveAvatarRealtime'), { ssr: false });
-const LIVEAVATAR_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_LIVEAVATAR_ENABLED);
+const LIVEAVATAR_ENABLED = isTruthyFlag(process.env.NEXT_PUBLIC_LIVEAVATAR_ENABLED);
 // After a LiveAvatar mint miss (unfunded/unconfigured), skip re-probing for a cooldown so the common
 // (unfunded) voice-open stays instant on the Gemini path instead of paying the ~1-2s LiveAvatar probe every
 // time — while still auto-retrying (and auto-activating) once the window lapses and funding lands.
 let liveAvatarCooldownUntil = 0;
 const LIVEAVATAR_COOLDOWN_MS = 5 * 60 * 1000;
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
-import { isEnabledByDefault } from '@/lib/env/flag';
+import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -1329,7 +1332,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         LIVEAVATAR_ENABLED && userId && !liveAvatarUnavailable && Date.now() >= liveAvatarCooldownUntil
           ? <LiveAvatarRealtime locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => { liveAvatarCooldownUntil = Date.now() + LIVEAVATAR_COOLDOWN_MS; setLiveAvatarUnavailable(true); }} />
           : GEMINI_LIVE_ENABLED && userId && !liveUnavailable
-            ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)} />
+            ? <GeminiLiveConversation userId={userId} locale={lang} onClose={() => setVoiceOpen(false)} onUnavailable={() => setLiveUnavailable(true)}
+                // The persona the chat is using speaks on the call too (read at open time; localStorage is not reactive).
+                personaId={loadSelectedPersonaId() || undefined}
+                customPersona={loadCustomPersonas().find((p: Persona) => p.id === loadSelectedPersonaId())} />
             : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />
       )}
 
