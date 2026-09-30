@@ -399,7 +399,7 @@ describe('uploadVeoInput — https fetch', () => {
     expect(err.message).not.toMatch(/SECRET123|cdn\.example\.com/);
   });
 
-  it.each([['text/html; charset=utf-8', 'text/html'], ['image/webp', 'image/webp'], ['image/svg+xml', 'image/svg+xml'], ['video/mp4', 'video/mp4']])(
+  it.each([['text/html; charset=utf-8', 'text/html'], ['image/heic', 'image/heic'], ['image/svg+xml', 'image/svg+xml'], ['video/mp4', 'video/mp4']])(
     'refuses a %s response before downloading it', async (ct, label) => {
       let pulls = 0;
       const body = new ReadableStream<Uint8Array>(
@@ -422,6 +422,18 @@ describe('uploadVeoInput — https fetch', () => {
     await expect(uploadVeoInput('https://cdn.example.com/1', { sessionId: 's' })).resolves.toMatchObject({ mimeType: 'image/png' });
     await expect(uploadVeoInput('https://cdn.example.com/2', { sessionId: 's' })).resolves.toMatchObject({ mimeType: 'image/jpeg' });
     await expect(uploadVeoInput('https://cdn.example.com/3', { sessionId: 's' })).resolves.toMatchObject({ mimeType: 'image/jpeg' });
+  });
+
+  it('re-encodes a REAL WebP to JPEG for Vertex (the Gemini API takes WebP, so refusing it broke films on the switch)', async () => {
+    const sharp = (await import('sharp')).default;
+    const webp = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#ff0000' } }).webp().toBuffer();
+    fetchMock.mockResolvedValueOnce(imageResponse(webp, 'image/webp'));
+    const out = await uploadVeoInput('https://cdn.example.com/a.webp', { sessionId: 's' });
+    expect(out.mimeType).toBe('image/jpeg');
+    expect(lastObjectPath()).toMatch(/\.jpg$/);
+    const saved = mockSave.mock.calls[mockSave.mock.calls.length - 1]![0] as Buffer;
+    expect(saved[0]).toBe(0xff);
+    expect(saved[1]).toBe(0xd8); // JPEG magic
   });
 
   it('rejects a WebP served as image/jpeg (the bytes decide)', async () => {

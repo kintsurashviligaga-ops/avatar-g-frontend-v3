@@ -15,7 +15,10 @@ import {
   PRODUCT_AD_MAX_SCENE_INDEX,
   PRODUCT_AD_SCENE_WINDOW_SEC,
   PRODUCT_AD_LEDGER_ROW_CAP,
+  PRODUCT_AD_PRIMARY_MAX_AGE_SEC,
   gateProductAdSecondaryClip,
+  maxSecondarySceneIndexFor,
+  productAdSecondariesKey,
   isProductAdSecondaryRequest,
   parseSecondarySceneIndex,
   primaryNetDebit,
@@ -242,5 +245,51 @@ describe('the route wiring', () => {
     expect(route).toContain('veoAd?.url || (isGoogleOnly() ? null : await klingI2v(startImg, adPrompt, aspectP))');
     expect(route).toContain('const url = animated || (await kenBurnsClip(startImg, 5, aspectP));');
     expect(route).toContain("if (!animated) await refundCharge('fallback-kenburns');");
+  });
+});
+
+describe('a paid primary is recent and covers only the length it paid for', () => {
+  const NOW = Date.parse('2026-09-30T12:00:00Z');
+  const at = (secondsAgo: number) => new Date(NOW - secondsAgo * 1000).toISOString();
+
+  it('a primary older than the age limit carries nothing (one ad cannot re-open free clips every hour)', () => {
+    const rows: LedgerRow[] = [{ ...debit(PRIMARY_REF), created_at: at(PRODUCT_AD_PRIMARY_MAX_AGE_SEC + 60) }];
+    expect(primaryNetDebit(rows, JOB, NOW)).toBe(0);
+    const fresh: LedgerRow[] = [{ ...debit(PRIMARY_REF), created_at: at(120) }];
+    expect(primaryNetDebit(fresh, JOB, NOW)).toBe(25);
+  });
+
+  it('an unparseable timestamp is stale, never fresh', () => {
+    expect(primaryNetDebit([{ ...debit(PRIMARY_REF), created_at: 'not a date' }], JOB, NOW)).toBe(0);
+  });
+
+  it('a 25-credit ad covers clips up to index 5; a 45-credit ad the full twelve', () => {
+    expect(maxSecondarySceneIndexFor(25)).toBe(5);
+    expect(maxSecondarySceneIndexFor(45)).toBe(PRODUCT_AD_MAX_SCENE_INDEX);
+  });
+
+  it('the gate refuses a clip beyond the paid length — and does not burn its scene', async () => {
+    const { d, calls } = deps({ reads: [25, 25] });
+    const verdict = await gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 7 }, d);
+    expect(verdict).toMatchObject({ ok: false, status: 402, reason: 'unpaid' });
+    expect(calls.claims).toHaveLength(0);
+    const { d: d45 } = deps({ reads: [45, 45] });
+    await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 7 }, d45)).resolves.toMatchObject({ ok: true, sceneIndex: 7 });
+  });
+
+  it('the secondaries marker is per job', () => {
+    expect(productAdSecondariesKey(JOB)).toBe(`productad-secondaries:${JOB}`);
+  });
+});
+
+describe('the route keeps a primary\'s charge once its secondaries were admitted', () => {
+  const route = readFileSync(join(__dirname, '..', '..', 'app', 'api', 'video', 'remix', 'route.ts'), 'utf8');
+  it('marks the job when a secondary is admitted, and the primary refund path checks that mark first', () => {
+    expect(route).toMatch(/claimIdempotencyKey\(remixUid, productAdSecondariesKey\(jobId\), 3600\)/);
+    const refundAt = route.indexOf('const refundCharge = async');
+    const markCheck = route.indexOf('noSecondaryAdmitted', refundAt);
+    const refundCall = route.indexOf('refundCredits(remixUid', refundAt);
+    expect(markCheck).toBeGreaterThan(refundAt);
+    expect(markCheck).toBeLessThan(refundCall);
   });
 });

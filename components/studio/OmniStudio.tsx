@@ -905,6 +905,8 @@ interface FilmSnap {
   veo: VeoRenderOptions;
   /** The director's per-scene camera / lighting / shot / mood / location from the storyboard (validated). */
   sceneMeta?: SceneMetaWire[];
+  /** The "All scenes" camera speed — the film-wide default the prose camera path reads (never scene 1's own). */
+  motionIntensity: number;
   hasTrainedVoice: boolean;
   /** Per-scene length (4-8s) the storyboard derived from the script's own timecodes; undefined = the
    *  default 8s grid. Rides in the snapshot so a QUEUED film keeps the grid it was planned on. */
@@ -2845,7 +2847,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
-      voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript,
+      voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript, motionIntensity,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -2964,8 +2966,9 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
         // scene (made in the edit: Veo has no transition parameter).
         veo,
         ...(veo.scenes.length > 1 ? { joinTransitions: veo.scenes.slice(0, -1).map((sc) => sc.transitionOut) } : {}),
-        // The legacy prose camera path reads one global speed; each structured scene camera carries its own.
-        motionIntensity: veo.scenes[0]?.camera.intensity ?? 5,
+        // The legacy prose camera path reads one film-wide speed (the "All scenes" row); each structured scene
+        // camera carries its own.
+        motionIntensity,
         // The director's per-scene camera / lighting / shot / mood / location from the approved storyboard.
         ...(sceneMeta?.length ? { sceneMeta } : {}),
         // PHASE 2 L5 — per-render i2v model (Kling/Hailuo).
@@ -3281,7 +3284,10 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoModel, hasTrainedVoice, videoMasterScript,
-      veo: toRenderOptions(videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan, renderSceneCount),
+      // The format follows THIS request's orientation (a retry replays the orientation it was planned with, whatever
+      // the panel holds now); a music video is 9:16 whatever either says.
+      veo: toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount),
+      motionIntensity: veoPlan.cameraDefault.intensity,
       ...(clipSec ? { clipSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
     };
@@ -3862,7 +3868,12 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
   // render so the clip matches what the user wrote.
   const editScene = useCallback((ordinal: number, text: string) => {
     setStoryboard((prev) => prev
-      ? { ...prev, scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, prompt: text, edited: true } : s)) }
+      ? {
+        ...prev,
+        scenes: prev.scenes.map((s) => (s.ordinal === ordinal ? { ...s, prompt: text, edited: true } : s)),
+        // The director's camera and light were written for the ORIGINAL shot; the user's rewrite no longer carries them.
+        ...(prev.sceneMeta ? { sceneMeta: prev.sceneMeta.map((m, i) => (prev.scenes[i]?.ordinal === ordinal ? {} : m)) } : {}),
+      }
       : prev);
   }, []);
 
@@ -7787,7 +7798,7 @@ export default function OmniStudio({ locale = 'ka' }: { locale?: Lang }) {
                 request or to the edit (docs/VEO_ENGINE.md §2): the camera is compiled into each clip's prompt, the joins
                 are made by the assembler. Zoom / Slide joins and the engine badge are gone — Veo is the only engine and
                 those joins do not exist in its pipeline. */}
-            <VeoParametersPanel plan={veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
+            <VeoParametersPanel plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
               sceneTexts={scenePrompts} onTransitionAll={setVideoTransition} />
             </>)}
 

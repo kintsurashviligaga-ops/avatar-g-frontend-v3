@@ -26,6 +26,8 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { lipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { isGoogleOnly } from '@/lib/veo/policy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -1067,6 +1069,18 @@ export async function POST(req: NextRequest) {
         const { user } = await authedClientFromRequest(req);
         if (mustSignInToGenerate(user?.id)) {
           return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+        }
+        // Every generate spends a paid provider, and this legacy surface has no credit charge of its own: bound it
+        // like the other expensive routes.
+        const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
+        if (limited) return limited;
+        // Google-only (docs/VEO_ENGINE.md §3): video renders on Veo, in the studio, where it is planned and billed.
+        // This wizard's video leg is LTX / Replicate — a non-Google engine with no charge — so it is closed here.
+        if (isGoogleOnly() && normalizeServiceId(serviceId) === ('video' as ServiceId)) {
+          return NextResponse.json(
+            { error: 'video_moved', message: locale === 'en' ? 'Video is made in the Studio now.' : locale === 'ru' ? 'Видео теперь создаётся в Студии.' : 'ვიდეო ახლა სტუდიაში იქმნება.' },
+            { status: 409 },
+          );
         }
         const finalPrompt = answers
           ? buildFinalPrompt(serviceId as ServiceId, userInput, answers)

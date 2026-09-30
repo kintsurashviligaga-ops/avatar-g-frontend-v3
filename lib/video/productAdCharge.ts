@@ -19,11 +19,30 @@
  * the route supplies the ledger read, the admin check and the Redis claim.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { CREDIT_COSTS } from '@/lib/credits/pricing';
 
 /** A 60s ad on the 5s grid is 12 clips: the primary (0) plus secondaries 1..11. */
 export const PRODUCT_AD_MAX_SCENE_INDEX = 11;
 /** How long one (jobId, sceneIndex) stays spent once it has rendered. */
 export const PRODUCT_AD_SCENE_WINDOW_SEC = 3600;
+/**
+ * How old the primary's debit may be and still carry its secondaries. ⚠️ Without an age limit the per-scene claim
+ * (an hour) was the only bound, so ONE paid ad re-opened eleven free Veo clips every hour, forever, by replaying its
+ * jobId. An honest ad's clips all leave the browser within minutes of its primary.
+ */
+export const PRODUCT_AD_PRIMARY_MAX_AGE_SEC = 1800;
+/** The Redis marker a SECONDARY sets when it is admitted; the primary's refund path reads it (see the route). */
+export function productAdSecondariesKey(jobId: string): string {
+  return `productad-secondaries:${jobId}`;
+}
+/**
+ * The highest clip index the PAID tier covers. The ad price is the video price for its length (25 credits up to
+ * 30 s, 45 for 60 s): a 25-credit ad may run up to six clips (30 s on the old 5 s grid, 48 s never), a 45-credit ad the
+ * full twelve. ⚠️ Without this a 25-credit ad could render the 60 s ad's eleven secondaries.
+ */
+export function maxSecondarySceneIndexFor(netPaid: number): number {
+  return netPaid >= CREDIT_COSTS.video_60s ? PRODUCT_AD_MAX_SCENE_INDEX : 5;
+}
 /**
  * How long a secondary waits for its primary's debit to land.
  *
@@ -96,6 +115,8 @@ export function parseSecondarySceneIndex(raw: unknown): number | null {
 export interface LedgerRow {
   delta?: unknown;
   metadata?: { ref?: unknown } | null;
+  /** ISO timestamp (credit_ledger.created_at). A debit older than PRODUCT_AD_PRIMARY_MAX_AGE_SEC carries nothing. */
+  created_at?: unknown;
 }
 
 /**
@@ -108,8 +129,9 @@ export interface LedgerRow {
  * (The settle re-read in the gate covers the same cycle when it is fired concurrently.)
  * The tail of the ref is re-checked exactly here, so the LIKE prefix can only ever narrow the match.
  */
-export function primaryNetDebit(rows: readonly LedgerRow[], jobId: string): number {
+export function primaryNetDebit(rows: readonly LedgerRow[], jobId: string, nowMs: number = Date.now()): number {
   const prefix = remixTxnPrefix('productad', jobId);
+  const oldest = nowMs - PRODUCT_AD_PRIMARY_MAX_AGE_SEC * 1000;
   let taken = 0;
   let given = 0;
   for (const row of rows) {
@@ -118,8 +140,11 @@ export function primaryNetDebit(rows: readonly LedgerRow[], jobId: string): numb
     const tail = ref.slice(prefix.length);
     const delta = Number(row.delta);
     if (!Number.isFinite(delta) || delta === 0) continue;
-    if (delta < 0 && DEBIT_TAIL.test(tail)) taken += -delta;
-    else if (delta > 0 && CREDIT_TAIL.test(tail)) given += delta;
+    if (delta < 0 && DEBIT_TAIL.test(tail)) {
+      // A stale primary carries nothing (the row always has created_at; an unparseable one is treated as stale).
+      const at = row.created_at === undefined ? nowMs : Date.parse(String(row.created_at));
+      if (Number.isFinite(at) && at >= oldest) taken += -delta;
+    } else if (delta > 0 && CREDIT_TAIL.test(tail)) given += delta;
   }
   return Math.max(0, taken - given);
 }
@@ -140,7 +165,7 @@ export async function readProductAdPrimaryNetDebit(
   try {
     const { data, error } = await sb
       .from('credit_ledger')
-      .select('delta, metadata')
+      .select('delta, metadata, created_at')
       .eq('user_id', userId)
       .like('metadata->>ref', pattern)
       .limit(PRODUCT_AD_LEDGER_ROW_CAP);
@@ -226,6 +251,9 @@ export async function gateProductAdSecondaryClip(
       return net === null
         ? { ok: false, status: 402, reason: 'ledger', error: 'Credit ledger unavailable — please retry.' }
         : { ok: false, status: 402, reason: 'unpaid', error: UNPAID_MESSAGE };
+    }
+    if (sceneIndex > maxSecondarySceneIndexFor(net as number)) {
+      return { ok: false, status: 402, reason: 'unpaid', error: 'This clip is beyond the ad length that was paid for.' };
     }
   }
 

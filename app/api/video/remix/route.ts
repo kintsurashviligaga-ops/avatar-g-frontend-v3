@@ -42,7 +42,7 @@ import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import {
-  gateProductAdSecondaryClip, isProductAdSecondaryRequest, readProductAdPrimaryNetDebit, remixTxnRef,
+  gateProductAdSecondaryClip, isProductAdSecondaryRequest, productAdSecondariesKey, readProductAdPrimaryNetDebit, remixTxnRef,
 } from '@/lib/video/productAdCharge';
 
 export const dynamic = 'force-dynamic';
@@ -230,6 +230,8 @@ export async function POST(req: NextRequest) {
         { status: gate.status },
       );
     }
+    // Mark the ad as having admitted a secondary: from now on its primary's failure no longer refunds (below).
+    if (jobId && remixUid) await claimIdempotencyKey(remixUid, productAdSecondariesKey(jobId), 3600).catch(() => true);
   }
   // ── PRODUCT-AD SINGLE-CHARGE ─────────────────────────────────────────────────
   // A product ad is billed ONCE, here on its primary clip, at the FULL video tier
@@ -283,6 +285,18 @@ export async function POST(req: NextRequest) {
   const refundCharge = async (why: string): Promise<void> => {
     await releaseIdem(); // always free the in-flight mutex on a failure path
     if (!charged || refunded || !remixUid) return;
+    // ⚠️ A PRIMARY WHOSE SECONDARIES WERE ALREADY ADMITTED IS NOT REFUNDED. The secondaries render free ON this charge;
+    // refunding it afterwards (a primary sent to fail late) turned the whole ad into free clips. The claim is a
+    // read-and-set: true = no secondary had claimed it, so the refund proceeds and any later secondary then finds the
+    // ledger net at zero and is refused. Fail-open without Redis (claim → true), like every claim in this route.
+    if (productAdPrimary && jobId) {
+      const noSecondaryAdmitted = await claimIdempotencyKey(remixUid, productAdSecondariesKey(jobId), 3600).catch(() => true);
+      if (!noSecondaryAdmitted) {
+        // eslint-disable-next-line no-console
+        console.warn(`[video/remix] primary ${jobId} failed (${why}) after its secondary clips were admitted — charge kept`);
+        return;
+      }
+    }
     refunded = true;
     try {
       // ⚠️ THE REFUND REF USED TO CARRY THE FAILURE REASON — `:refund:${why}` — and `why` takes 13

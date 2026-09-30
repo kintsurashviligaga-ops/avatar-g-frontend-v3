@@ -26,21 +26,22 @@ jest.mock('../../../../lib/chat/ServiceManager', () => {
 jest.mock('../../../../lib/orchestrator/ffmpeg-assembly', () => ({ assembleWithFfmpeg: jest.fn() }));
 jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedFilm: jest.fn(async () => undefined) }));
 jest.mock('../../../../lib/orchestrator/ledger', () => ({
-  hasSufficientBalance: jest.fn(async () => true),
   deductCredits: jest.fn(async () => ({ ok: true })),
+  refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 15 })),
 }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { assembleWithFfmpeg } from '../../../../lib/orchestrator/ffmpeg-assembly';
-import { deductCredits, hasSufficientBalance } from '../../../../lib/orchestrator/ledger';
+import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
 import { creditCostFor } from '../../../../lib/credits/pricing';
 
 const { __sm: sm } = jest.requireMock('../../../../lib/chat/ServiceManager') as { __sm: { execute: jest.Mock; poll: jest.Mock } };
 const assembleMock = assembleWithFfmpeg as jest.MockedFunction<typeof assembleWithFfmpeg>;
-const balanceMock = hasSufficientBalance as jest.MockedFunction<typeof hasSufficientBalance>;
 const deductMock = deductCredits as jest.MockedFunction<typeof deductCredits>;
+const refundMock = refundDebitByRef as jest.MockedFunction<typeof refundDebitByRef>;
+const REMIX_REF = /^pipeline-remix:user-42:\d+$/;
 
 const REMIX_BODY = {
   originalPrompt: 'A lighthouse keeper keeps the lamp burning through a storm — a cinematic film',
@@ -71,7 +72,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = null;
   delete process.env.FILM_ALLOW_ANONYMOUS;
-  balanceMock.mockResolvedValue(true);
+  deductMock.mockResolvedValue({ ok: true });
   sm.execute.mockResolvedValue({ success: true, assetUrl: 'https://x.supabase.co/clip-2-darker.mp4', predictionStatus: 'succeeded' });
   assembleMock.mockResolvedValue({ url: 'https://x.supabase.co/remix-master.mp4' } as never);
 });
@@ -88,7 +89,6 @@ describe('anonymous → 401 before anything is read, priced or rendered', () => 
     expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ success: false, error: 'auth_required', authRequired: true });
     expect(bodyRead()).toBe(false);
-    expect(balanceMock).not.toHaveBeenCalled();
     expect(sm.execute).not.toHaveBeenCalled();
     expect(sm.poll).not.toHaveBeenCalled();
     expect(assembleMock).not.toHaveBeenCalled();
@@ -100,7 +100,6 @@ describe('anonymous → 401 before anything is read, priced or rendered', () => 
     const res = await POST(post(REMIX_BODY).req);
     expect(res.status).toBe(200);
     expect(sm.execute).toHaveBeenCalledTimes(1);
-    expect(balanceMock).not.toHaveBeenCalled(); // there is no account to check
     expect(deductMock).not.toHaveBeenCalled();
     expect(recordCompletedFilm).not.toHaveBeenCalled();
   });
@@ -111,21 +110,32 @@ describe('signed in', () => {
     mockUser = { id: 'user-42' };
   });
 
-  it('without the balance for a remix → 402 insufficient_credits, before any render', async () => {
-    balanceMock.mockResolvedValue(false);
-    const { req, bodyRead } = post(REMIX_BODY);
-    const res = await POST(req);
+  it('without the balance for a remix → 402 insufficient_credits, before any render (the reservation is the gate)', async () => {
+    deductMock.mockResolvedValueOnce({ ok: false, reason: 'insufficient' });
+    const res = await POST(post(REMIX_BODY).req);
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body).toMatchObject({ success: false, error: 'insufficient_credits', requiredCredits: creditCostFor('remix') });
-    expect(balanceMock).toHaveBeenCalledWith('user-42', creditCostFor('remix'));
-    expect(bodyRead()).toBe(false);
+    expect(deductMock).toHaveBeenCalledWith('user-42', creditCostFor('remix'), expect.stringMatching(REMIX_REF));
     expect(sm.execute).not.toHaveBeenCalled();
     expect(assembleMock).not.toHaveBeenCalled();
-    expect(deductMock).not.toHaveBeenCalled();
   });
 
-  it('with the balance: re-renders only the edited scene, delivers the re-cut, then debits the remix price once', async () => {
+  it('a ledger outage refuses before any render (never a free remix)', async () => {
+    deductMock.mockResolvedValueOnce({ ok: false, reason: 'error' });
+    const res = await POST(post(REMIX_BODY).req);
+    expect(res.status).toBe(503);
+    expect(sm.execute).not.toHaveBeenCalled();
+  });
+
+  it('fewer than two landed clips → 400 before any charge or render (nothing to re-cut, no free clips handed out)', async () => {
+    const res = await POST(post({ ...REMIX_BODY, landedClips: [REMIX_BODY.landedClips[0]] }).req);
+    expect(res.status).toBe(400);
+    expect(deductMock).not.toHaveBeenCalled();
+    expect(sm.execute).not.toHaveBeenCalled();
+  });
+
+  it('with the balance: reserves the remix price once BEFORE the render, re-renders only the edited scene, keeps the charge', async () => {
     const res = await POST(post(REMIX_BODY).req);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -135,7 +145,9 @@ describe('signed in', () => {
     const segments = assembleMock.mock.calls[0]![0].segments.map((s: { url: string }) => s.url);
     expect(segments).toEqual(['https://x.supabase.co/clip-1.mp4', 'https://x.supabase.co/clip-2-darker.mp4', 'https://x.supabase.co/clip-3.mp4']);
     expect(deductMock).toHaveBeenCalledTimes(1);
-    expect(deductMock).toHaveBeenCalledWith('user-42', creditCostFor('remix'), expect.stringMatching(/^pipeline-remix:user-42:\d+$/));
+    expect(deductMock).toHaveBeenCalledWith('user-42', creditCostFor('remix'), expect.stringMatching(REMIX_REF));
+    expect(deductMock.mock.invocationCallOrder[0]!).toBeLessThan(sm.execute.mock.invocationCallOrder[0]!);
+    expect(refundMock).not.toHaveBeenCalled();
   });
 
   it('a remix whose re-render failed returns the original cut and costs nothing', async () => {
@@ -144,13 +156,14 @@ describe('signed in', () => {
     expect(res.status).toBe(200);
     const segments = assembleMock.mock.calls[0]![0].segments.map((s: { url: string }) => s.url);
     expect(segments).toEqual(REMIX_BODY.landedClips.map((c) => c.url)); // film intact, edit not applied
-    expect(deductMock).not.toHaveBeenCalled();
+    // The reservation is handed back through the ledger — exactly what was taken under its ref.
+    expect(refundMock).toHaveBeenCalledWith('user-42', expect.stringMatching(REMIX_REF));
   });
 
   it('a re-cut the assembler could not host is not charged', async () => {
     assembleMock.mockResolvedValue(null as never);
     const res = await POST(post(REMIX_BODY).req);
     expect((await res.json()).success).toBe(false);
-    expect(deductMock).not.toHaveBeenCalled();
+    expect(refundMock).toHaveBeenCalledWith('user-42', expect.stringMatching(REMIX_REF));
   });
 });

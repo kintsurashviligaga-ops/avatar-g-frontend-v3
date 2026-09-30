@@ -31,7 +31,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 
 export const dynamic = 'force-dynamic';
@@ -102,15 +102,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (limited) return limited;
 
   // ⚠️ SIGNED-IN AND PAID. This route re-renders up to four scenes on the platform's video keys (Veo: up to $3.20
-  // a clip) and it had neither a session check nor a charge — any direct POST was free video. Now: a session, a
-  // balance that covers the remix, and the remix price debited once the re-cut is delivered (never for a remix whose
-  // scenes all failed — the original film comes back unchanged and costs nothing).
+  // a clip) and it had neither a session check nor a charge — any direct POST was free video. Now: a session, the
+  // remix price RESERVED before any render (a read-only balance check let parallel requests all pass it), and that
+  // reservation handed back through the ledger when no re-cut is delivered — a remix whose scenes all failed returns
+  // the original film unchanged and costs nothing.
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) return json(signInToGenerateBody(), 401);
   const remixCost = creditCostFor('remix');
-  if (user?.id && !(await hasSufficientBalance(user.id, remixCost))) {
-    return json({ success: false, error: 'insufficient_credits', requiredCredits: remixCost, message: `Not enough credits for a remix (needs ${remixCost}). Please top up to continue.` }, 402);
-  }
 
   const stamp = Date.now();
 
@@ -134,6 +132,28 @@ export async function POST(req: NextRequest): Promise<Response> {
         .map((c) => ({ ordinal: c.ordinal, url: c.url }))
     : [];
 
+  // A remix re-cuts an EXISTING film: without at least two of its landed clips there is nothing to re-stitch, and the
+  // "not enough clips" exit below used to answer AFTER the re-renders — handing back freshly rendered, unpaid clips.
+  if (new Set(landedClips.map((c) => c.ordinal)).size < 2) {
+    return json({ success: false, error: 'landed_clips_required', message: 'A remix needs the film\u2019s rendered clips (at least two).' }, 400);
+  }
+
+  // Reserve the remix price up front (deduct_credits refuses an overdraw). Admin/demo callers without a user id pay
+  // nothing. The ref is per request; the refund below pays back exactly what the ledger shows under it.
+  const chargeRef = user?.id ? `pipeline-remix:${user.id}:${stamp}` : null;
+  if (user?.id && chargeRef) {
+    const debit = await deductCredits(user.id, remixCost, chargeRef);
+    if (!debit.ok && debit.reason === 'insufficient') {
+      return json({ success: false, error: 'insufficient_credits', requiredCredits: remixCost, message: `Not enough credits for a remix (needs ${remixCost}). Please top up to continue.` }, 402);
+    }
+    if (!debit.ok && debit.reason === 'error') {
+      return json({ success: false, error: 'ledger_unavailable', message: 'Credit ledger unavailable — please retry.' }, 503);
+    }
+  }
+  const releaseCharge = async (): Promise<void> => {
+    if (user?.id && chargeRef) await refundDebitByRef(user.id, chargeRef).catch(() => null);
+  };
+
   // 1. Re-derive the EXACT original scene plan (deterministic → same seed + prompts).
   // The GRID has to be re-derived too, from the clips that actually landed: a film is no longer always
   // 3 × 8s (a script written as 4 × 6s renders as 4 × 6s). Re-planning at the default grid gave a
@@ -152,6 +172,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // 2. Interpret the edit → affected ordinals (+ per-scene instruction).
   const remix = planRemixFromText(editRequest, sceneCount);
   if (remix.editedScenes.length === 0) {
+    await releaseCharge();
     return json({ success: false, message: `I couldn’t map “${editRequest}” to a scene. Try e.g. “make scene 2 darker” or “change the ending’s lighting”.` }, 200);
   }
 
@@ -195,11 +216,12 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   if (segments.length < 2) {
+    await releaseCharge();
+    // No clip URLs in this answer: a re-rendered clip is part of the paid re-cut, never a free hand-out.
     return json({
       success: false,
       message: 'Not enough clips to re-stitch the edited film (need ≥2). The edited scene couldn’t render in this environment — the original film is unchanged.',
       summary: remix.summary,
-      continuity: cut,
     }, 200);
   }
 
@@ -225,10 +247,8 @@ export async function POST(req: NextRequest): Promise<Response> {
   // (generation_jobs), exactly like a fresh film, so the edited version shows in
   // History instead of being lost. Best-effort + signed-in only (anonymous trials
   // have no account to file it under); keyed by the remix session for idempotency.
-  if (masterUrl && user?.id && rerendered.size > 0) {
-    // Post-delivery, idempotent per remix; deduct_credits refuses an overdraw, so the balance never goes negative.
-    await deductCredits(user.id, remixCost, `pipeline-remix:${user.id}:${stamp}`).catch(() => { /* best-effort */ });
-  }
+  // The reservation stands only for a delivered re-cut that actually changed a scene.
+  if (!masterUrl || rerendered.size === 0) await releaseCharge();
   if (masterUrl) {
     try {
       if (user?.id) {

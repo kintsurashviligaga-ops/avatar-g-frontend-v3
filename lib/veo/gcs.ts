@@ -148,6 +148,7 @@ function sniffImageType(b: Buffer): string | null {
     if (/^(heic|heix|hevc|mif1|msf1)$/.test(brand)) return 'image/heic';
   }
   if (b.length >= 2 && b[0] === 0x42 && b[1] === 0x4d) return 'image/bmp';
+  if (b.length >= 4 && (b.toString('latin1', 0, 4) === 'II*\x00' || b.toString('latin1', 0, 4) === 'MM\x00*')) return 'image/tiff';
   return null;
 }
 
@@ -157,15 +158,32 @@ function mimeLabel(raw: string | null | undefined): string | null {
   return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(m) ? m : null;
 }
 
-const KNOWN_UNSUPPORTED_IMAGE = /^image\/(webp|gif|heic|heif|avif|svg\+xml|bmp|tiff|x-icon|vnd\.microsoft\.icon)$/;
+/**
+ * Raster formats Vertex refuses but we can re-encode to JPEG here. ⚠️ The Gemini-API transport forwards a WebP (or a
+ * GIF, an AVIF…) inline and Veo accepts it there, so refusing them on Vertex made the SAME film fail the moment the
+ * transport switched. HEIC stays refused: the stock sharp build cannot decode HEVC-based HEIC.
+ */
+const CONVERTIBLE_IMAGE = /^image\/(webp|gif|avif|bmp|tiff)$/;
+const KNOWN_UNSUPPORTED_IMAGE = /^image\/(heic|heif|svg\+xml|x-icon|vnd\.microsoft\.icon)$/;
 
 function unsupported(label: string): VeoGcsError {
   return new VeoGcsError('unsupported_type', `Veo image inputs must be JPEG or PNG — got ${label}. Convert the image to JPEG or PNG first.`);
 }
 
-function acceptedImageType(bytes: Buffer, declared: string | null): VeoInputMime {
+/** The image as Vertex takes it: JPEG/PNG as-is, a convertible raster re-encoded to JPEG, anything else refused. */
+async function toVeoImage(bytes: Buffer, declared: string | null): Promise<{ bytes: Buffer; mimeType: VeoInputMime }> {
   const sniffed = sniffImageType(bytes);
-  if (sniffed === 'image/jpeg' || sniffed === 'image/png') return sniffed;
+  if (sniffed === 'image/jpeg' || sniffed === 'image/png') return { bytes, mimeType: sniffed };
+  if (sniffed && CONVERTIBLE_IMAGE.test(sniffed)) {
+    try {
+      const sharp = (await import('sharp')).default;
+      // First frame only (an animated GIF/WebP is a still here), EXIF orientation applied, sRGB JPEG.
+      const jpeg = await sharp(bytes, { animated: false, limitInputPixels: 50_000_000 }).rotate().jpeg({ quality: 92 }).toBuffer();
+      if (jpeg.length > 0 && jpeg.length <= VEO_INPUT_MAX_BYTES) return { bytes: jpeg, mimeType: 'image/jpeg' };
+    } catch {
+      /* undecodable → refused below, with the type it claimed to be */
+    }
+  }
   throw unsupported(sniffed ?? (declared ? `unrecognised bytes (declared ${declared})` : 'unrecognised bytes'));
 }
 
@@ -231,7 +249,7 @@ async function fetchInputImage(url: string): Promise<{ bytes: Buffer; declared: 
     }
     let res: Response;
     try {
-      res = await fetch(current, { redirect: 'manual', signal, headers: { accept: 'image/jpeg, image/png' } });
+      res = await fetch(current, { redirect: 'manual', signal, headers: { accept: 'image/jpeg, image/png, image/webp;q=0.8, image/*;q=0.5' } });
     } catch (err) {
       throw new VeoGcsError('fetch_failed', isTimeout(err) || signal.aborted ? 'Veo input fetch timed out after 15 s' : 'Veo input fetch failed (network error)');
     }
@@ -301,7 +319,9 @@ export async function uploadVeoInput(
     ({ bytes, declared } = await fetchInputImage(input.url));
   }
   if (!bytes.length) throw new VeoGcsError('invalid_input', 'Veo input image is empty');
-  const mimeType = acceptedImageType(bytes, declared);
+  const image = await toVeoImage(bytes, declared);
+  bytes = image.bytes;
+  const mimeType = image.mimeType;
 
   const objectPath = joinPath(prefix, 'inputs', sessionSegment(opts.sessionId), `${randomUUID()}.${mimeType === 'image/png' ? 'png' : 'jpg'}`);
   try {

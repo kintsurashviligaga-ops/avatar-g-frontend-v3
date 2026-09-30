@@ -22,6 +22,7 @@ const downloadGeminiVideo = jest.fn();
 const guardedCall = jest.fn();
 const uploadBufferAndSign = jest.fn();
 const stripBottomWatermark = jest.fn();
+const hostGcsVideo = jest.fn();
 
 jest.mock('../veo/engine', () => ({
   veoTransport: () => veoTransport(),
@@ -30,6 +31,7 @@ jest.mock('../veo/engine', () => ({
   deliverableUrl: (...a: unknown[]) => deliverableUrl(...a),
 }));
 jest.mock('../veo/geminiTransport', () => ({ downloadGeminiVideo: (...a: unknown[]) => downloadGeminiVideo(...a) }));
+jest.mock('../veo/deliver', () => ({ hostGcsVideo: (...a: unknown[]) => hostGcsVideo(...a) }));
 jest.mock('../services/billing/guardedCall', () => {
   class BudgetExceededError extends Error {
     readonly reason: string;
@@ -99,6 +101,7 @@ beforeEach(() => {
   createVeoClip.mockResolvedValue(accepted());
   pollVeoClip.mockResolvedValue({ state: 'succeeded', videos: [GEMINI_FILE] });
   deliverableUrl.mockResolvedValue(SIGNED);
+  hostGcsVideo.mockResolvedValue(SIGNED);
   downloadGeminiVideo.mockResolvedValue(MP4);
   uploadBufferAndSign.mockResolvedValue('https://supabase.example.com/renders/raw.mp4?token=t');
   stripBottomWatermark.mockResolvedValue('https://supabase.example.com/renders/veo-clean.mp4?token=t');
@@ -166,7 +169,7 @@ describe('what Veo is asked to render', () => {
 });
 
 describe('delivery', () => {
-  it('a Vertex AI clip is its signed URL — nothing downloaded, cropped or re-hosted', async () => {
+  it('a Vertex AI clip is copied once into Supabase (the Library re-signs only Supabase) — never downloaded from Gemini or cropped', async () => {
     veoTransport.mockReturnValue('vertex');
     createVeoClip.mockResolvedValue(accepted('vertex'));
     pollVeoClip
@@ -177,10 +180,9 @@ describe('delivery', () => {
 
     expect(res).toEqual({ url: SIGNED, engine: 'Veo on Vertex AI (veo-3.1-generate-001)' });
     expect(pollVeoClip).toHaveBeenCalledWith(VERTEX_OP);
-    expect(deliverableUrl).toHaveBeenCalledWith(expect.objectContaining({ kind: 'gcs' }), 604_800);
+    expect(hostGcsVideo).toHaveBeenCalledWith(expect.objectContaining({ kind: 'gcs' }), expect.stringMatching(/\.mp4$/));
     expect(downloadGeminiVideo).not.toHaveBeenCalled();
     expect(stripBottomWatermark).not.toHaveBeenCalled();
-    expect(uploadBufferAndSign).not.toHaveBeenCalled();
     // The Vertex price, not the Gemini one.
     const model = resolveModel('vertex', 'standard');
     expect(guardOpts().model).toBe(model);
@@ -241,7 +243,7 @@ describe('delivery', () => {
   it('returns null when a Vertex clip cannot be signed', async () => {
     createVeoClip.mockResolvedValue(accepted('vertex'));
     pollVeoClip.mockResolvedValue({ state: 'succeeded', videos: [{ kind: 'gcs', gcsUri: 'gs://bucket/x.mp4', mimeType: 'video/mp4' }] });
-    deliverableUrl.mockRejectedValue(new Error('signing failed'));
+    hostGcsVideo.mockResolvedValue(null); // hostGcsVideo is null only when the clip cannot be signed at all
 
     await expect(render()).resolves.toBeNull();
   });

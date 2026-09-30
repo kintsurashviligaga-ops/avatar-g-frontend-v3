@@ -23,7 +23,8 @@ import { expandCinematicPrompt } from '@/lib/video/cinematicPrompt';
 import { llmText } from '@/lib/ai/llmText';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { hasRunwayProvider, runwayModel, createRunwayI2V, pollRunwayTask } from '@/lib/ai/runway';
-import { createVeoClip, deliverableUrl, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
+import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo/engine';
+import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, DEFAULT_TIER as DEFAULT_VEO_TIER, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
@@ -681,6 +682,9 @@ export class ServiceManager {
     if (veoEligible) {
       const veo = await this.submitVeoClip(request, startImage, enrichedPrompt);
       if (veo.ok) return veo.response;
+      // ⚠️ An AMBIGUOUS Veo submit (timeout / 5xx) may already have created a job Google will bill — falling through
+      // to Runway / Kling would pay for the same clip twice. Only a provable refusal hands the clip to the next engine.
+      if (veo.reason === 'ambiguous') return this.veoFailureResponse(request, veo);
     }
     // Every remaining premium engine is image-to-video only.
     if (!startImage) return null;
@@ -953,7 +957,11 @@ export class ServiceManager {
     const startImage = this.resolveClipImage(request);
     const enrichedPrompt = await expandCinematicPrompt(request.userPrompt, (o) => llmText({ ...o, googleOnly: true }), { timeoutMs: 9_000 });
     const veo = await this.submitVeoClip(request, startImage, enrichedPrompt);
-    if (veo.ok) return veo.response;
+    return veo.ok ? veo.response : this.veoFailureResponse(request, veo);
+  }
+
+  /** A Veo submit that did not produce a job, as a failed leg carrying the engine's reason. */
+  private veoFailureResponse(request: ServiceManagerRequest, veo: Extract<VeoSubmit, { ok: false }>): ServiceManagerResponse {
     return {
       success: false, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
       message: VEO_FAILURE_MESSAGE[veo.reason],
@@ -1121,13 +1129,13 @@ export class ServiceManager {
   /** A playable URL for a finished Veo video, or null when it cannot be delivered. Never throws. */
   private async deliverVeoVideo(video: VeoVideo | undefined, operation: string, sessionId: string, aspect: '9:16' | '16:9' | '1:1'): Promise<string | null> {
     if (!video) return null;
-    if (video.kind === 'gcs') {
-      // 7 days, like every other clip URL the film hands to the assembler and the library.
-      try { return await deliverableUrl(video, 604_800); } catch { return null; }
-    }
     const opKey = createHash('sha256').update(operation).digest('hex').slice(0, 24);
     const session = sessionId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'session';
     const path = `veo/${session}/${opKey}.mp4`;
+    // Vertex: our own bucket, no visible watermark — copied once into Supabase so the Library can keep re-signing it
+    // (a GCS V4 signature dies after 7 days). Idempotent on the same fixed path.
+    if (video.kind === 'gcs') return hostGcsVideo(video, path);
+
     const existing = await createSignedAssetUrl('renders', path, 604_800);
     if (existing) return existing;
 
@@ -1137,9 +1145,20 @@ export class ServiceManager {
     const rawPath = `veo/${session}/${opKey}-raw.mp4`;
     const raw = await uploadBufferAndSign('renders', rawPath, buf, 'video/mp4', 3_600);
     if (!raw) return null;
-    const clean = await stripBottomWatermark(raw, aspect, undefined, { bucket: 'renders', path }).catch(() => null);
-    // A crop miss keeps the uncropped clip — at the SAME fixed path, so the next tick finds it and stops here too.
-    const final = clean ?? (await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800));
+    // Only a Gemini-API file carries the visible bottom mark. Inline `bytes` come from Vertex, which stamps none —
+    // cropping those would cut real picture off the bottom.
+    const clean = video.kind === 'gemini-file'
+      ? await stripBottomWatermark(raw, aspect, undefined, { bucket: 'renders', path }).catch(() => null)
+      : null;
+    // ⚠️ stripBottomWatermark hands back its INPUT when the crop is switched off (VEO_WATERMARK_CROP_PCT=0) — that is
+    // the raw staging URL, deleted three lines down. Only a result hosted at the fixed path is the cropped clip.
+    let final = clean && clean !== raw ? clean : null;
+    if (!final) {
+      // A crop miss keeps the uncropped clip at the SAME fixed path, so the next tick finds it and stops — unless a
+      // concurrent poll has meanwhile put the CROPPED clip there, which must not be replaced by the watermarked one.
+      final = (await createSignedAssetUrl('renders', path, 604_800))
+        ?? (await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800));
+    }
     await removeStorageObjects('renders', [rawPath]);
     return final;
   }

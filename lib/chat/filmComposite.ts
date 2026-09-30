@@ -290,7 +290,9 @@ async function renderClip(
   // when NEITHER provider exists — which the door-level pre-flight already caught.
   // Using hasLtxApiKey() here would skip every clip on a Replicate-only config the
   // pre-flight had waved through, re-creating the ~38% silent-skip-after-spend trap.
-  if (!hasVideoProvider()) {
+  // The same test the door used: a Google-only film needs a Veo route (a Vertex-only deployment has no Gemini, LTX or
+  // Replicate key at all, and hasVideoProvider() would skip every clip the door had just waved through).
+  if (!(isGoogleOnly() ? veoTransport() !== null : hasVideoProvider())) {
     return { ordinal: scene.ordinal, taskRef: null, status: 'skipped', attempts: 0, debited: false };
   }
 

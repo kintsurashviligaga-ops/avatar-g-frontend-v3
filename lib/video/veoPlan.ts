@@ -251,11 +251,13 @@ export function toRenderOptions(plan: VeoPlan, sceneCount?: number): VeoRenderOp
   const n = typeof sceneCount === 'number' && Number.isFinite(sceneCount) && sceneCount >= 1
     ? Math.min(12, Math.floor(sceneCount))
     : plan.scenes.length;
+  const last = plan.scenes.length - 1;
   const scenes = Array.from({ length: n }, (_, i) => {
     const s = plan.scenes[i];
-    return s
-      ? { camera: { ...s.camera }, transitionOut: s.transitionOut }
-      : { camera: { ...plan.cameraDefault }, transitionOut: plan.transitionDefault };
+    if (!s) return { camera: { ...plan.cameraDefault }, transitionOut: plan.transitionDefault };
+    // The plan's LAST scene has no visible join (nothing follows it in the panel), so when more scenes render its
+    // hidden value must not become a real join — the join out of it is the film's default like every padded one.
+    return { camera: { ...s.camera }, transitionOut: i === last && n > plan.scenes.length ? plan.transitionDefault : s.transitionOut };
   });
   return {
     tier: plan.tier,

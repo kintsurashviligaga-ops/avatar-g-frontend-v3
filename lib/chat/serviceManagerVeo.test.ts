@@ -28,6 +28,7 @@ jest.mock('../veo/engine', () => ({
   transportOf: jest.fn((name: string) => (name.startsWith('projects/') ? 'vertex' : name.startsWith('models/') ? 'gemini' : null)),
 }));
 jest.mock('../veo/geminiTransport', () => ({ downloadGeminiVideo: jest.fn() }));
+jest.mock('../veo/deliver', () => ({ hostGcsVideo: jest.fn() }));
 jest.mock('../orchestrator/storage-adapter', () => ({
   uploadAndSign: jest.fn(),
   uploadBufferAndSign: jest.fn(),
@@ -66,6 +67,7 @@ jest.mock('../video/videoProviderCascade', () => ({
 import { ServiceManager, type ServiceManagerRequest, type ServiceManagerResponse } from './ServiceManager';
 import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport } from '../veo/engine';
 import { downloadGeminiVideo } from '../veo/geminiTransport';
+import { hostGcsVideo } from '../veo/deliver';
 import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '../orchestrator/storage-adapter';
 import { stripBottomWatermark } from '../video/remixOps';
 import { guardedCall } from '../services/billing/guardedCall';
@@ -78,6 +80,7 @@ import type { VeoTransport, VeoVideo } from '../veo/types';
 const createVeoClipMock = createVeoClip as jest.MockedFunction<typeof createVeoClip>;
 const pollVeoClipMock = pollVeoClip as jest.MockedFunction<typeof pollVeoClip>;
 const deliverableUrlMock = deliverableUrl as jest.MockedFunction<typeof deliverableUrl>;
+const hostGcsMock = hostGcsVideo as jest.MockedFunction<typeof hostGcsVideo>;
 const veoTransportMock = veoTransport as jest.MockedFunction<typeof veoTransport>;
 const downloadMock = downloadGeminiVideo as jest.MockedFunction<typeof downloadGeminiVideo>;
 const signedMock = createSignedAssetUrl as jest.MockedFunction<typeof createSignedAssetUrl>;
@@ -285,19 +288,50 @@ async function taskRefFor(operation: string, transport: VeoTransport = 'gemini')
 }
 
 describe('poll() → deliver a finished Veo clip', () => {
-  it('a Vertex "gcs" video is delivered through a 7-day signed URL — no download, no storage', async () => {
+  it('a Vertex "gcs" video is hosted once at its fixed path (the Library cannot re-sign a GCS link) — never cropped', async () => {
     const ref = await taskRefFor(VERTEX_OP, 'vertex');
     const video: VeoVideo = { kind: 'gcs', gcsUri: 'gs://bucket/veo/out/sample_0.mp4', mimeType: 'video/mp4' };
     pollVeoClipMock.mockResolvedValue({ state: 'succeeded', videos: [video] });
-    deliverableUrlMock.mockResolvedValue('https://storage.googleapis.com/bucket/veo/out/sample_0.mp4?X-Goog-Signature=abc');
+    hostGcsMock.mockResolvedValue('https://x.supabase.co/storage/v1/object/sign/renders/veo/vertex.mp4?token=t');
 
     const res = await new ServiceManager().poll(ref, SESSION);
     expect(pollVeoClipMock).toHaveBeenCalledWith(VERTEX_OP);
-    expect(deliverableUrlMock).toHaveBeenCalledWith(video, 604_800);
-    expect(res).toMatchObject({ success: true, predictionStatus: 'succeeded', assetUrl: expect.stringContaining('X-Goog-Signature') });
+    expect(hostGcsMock).toHaveBeenCalledWith(video, expect.stringMatching(new RegExp(`^veo/${SESSION}/[0-9a-f]{24}\\.mp4$`)));
+    expect(res).toMatchObject({ success: true, predictionStatus: 'succeeded', assetUrl: expect.stringContaining('supabase.co') });
     expect(res.metadata.veoTransport).toBe('vertex');
-    expect(signedMock).not.toHaveBeenCalled();
     expect(downloadMock).not.toHaveBeenCalled();
+    expect(stripMock).not.toHaveBeenCalled();
+  });
+
+  it('with the crop switched off (the raw URL comes back) the clip is hosted at the fixed path — never the deleted staging URL', async () => {
+    const ref = await taskRefFor(GEMINI_OP);
+    pollVeoClipMock.mockResolvedValue({ state: 'succeeded', videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/abc:download', mimeType: 'video/mp4' }] });
+    signedMock.mockResolvedValue(null);
+    downloadMock.mockResolvedValue(Buffer.alloc(4_096, 1));
+    uploadBufMock
+      .mockResolvedValueOnce('https://x.supabase.co/raw-staging.mp4')
+      .mockResolvedValueOnce('https://x.supabase.co/final.mp4');
+    stripMock.mockResolvedValue('https://x.supabase.co/raw-staging.mp4'); // VEO_WATERMARK_CROP_PCT=0 returns the input
+
+    const res = await new ServiceManager().poll(ref, SESSION);
+    expect(res.assetUrl).toBe('https://x.supabase.co/final.mp4');
+    expect(uploadBufMock.mock.calls[1]![1]).toMatch(/^veo\/.+\/[0-9a-f]{24}\.mp4$/);
+    expect(removeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a crop miss does not overwrite a cropped clip a concurrent poll already hosted', async () => {
+    const ref = await taskRefFor(GEMINI_OP);
+    pollVeoClipMock.mockResolvedValue({ state: 'succeeded', videos: [{ kind: 'gemini-file', uri: 'https://generativelanguage.googleapis.com/v1beta/files/abc:download', mimeType: 'video/mp4' }] });
+    signedMock
+      .mockResolvedValueOnce(null) // not hosted yet when this poll started
+      .mockResolvedValueOnce('https://x.supabase.co/cropped-by-the-other-poll.mp4');
+    downloadMock.mockResolvedValue(Buffer.alloc(4_096, 1));
+    uploadBufMock.mockResolvedValueOnce('https://x.supabase.co/raw-staging.mp4');
+    stripMock.mockResolvedValue(null); // this poll's crop failed
+
+    const res = await new ServiceManager().poll(ref, SESSION);
+    expect(res.assetUrl).toBe('https://x.supabase.co/cropped-by-the-other-poll.mp4');
+    expect(uploadBufMock).toHaveBeenCalledTimes(1); // only the staging copy — the fixed path was left alone
   });
 
   it('a Gemini-file video already hosted at its fixed path is re-signed, NOT downloaded again', async () => {

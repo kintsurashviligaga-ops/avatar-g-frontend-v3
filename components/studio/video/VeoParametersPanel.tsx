@@ -63,11 +63,13 @@ const TRANSITIONS: ReadonlyArray<{ id: Transition; glyph: string; ka: string; en
 /** A move with no motion has no speed to set. */
 const hasSpeed = (move: CameraSpec['move']) => move !== 'auto' && move !== 'static';
 
-function CameraFields({ camera, onChange, locale, idPrefix }: {
+function CameraFields({ camera, onChange, locale, idPrefix, context }: {
   camera: CameraSpec;
   onChange: (patch: Partial<CameraSpec>) => void;
   locale: Locale;
   idPrefix: string;
+  /** Which scene these controls belong to ("Scene 2", "All scenes") — part of every control's accessible name. */
+  context: string;
 }) {
   const fields: Array<{ key: 'move' | 'shot' | 'angle' | 'lens'; label: string; options: readonly CinematographyOption<string>[] }> = [
     { key: 'move', label: tr(locale, 'მოძრაობა', 'Move', 'Движение'), options: CAMERA_MOVES },
@@ -81,7 +83,7 @@ function CameraFields({ camera, onChange, locale, idPrefix }: {
         {fields.map((f) => (
           <label key={f.key} htmlFor={`${idPrefix}-${f.key}`} className="min-w-0">
             <span className="mb-1 block text-[11px] font-medium text-app-muted">{f.label}</span>
-            <Select id={`${idPrefix}-${f.key}`} value={camera[f.key]}
+            <Select id={`${idPrefix}-${f.key}`} value={camera[f.key]} aria-label={`${f.label} — ${context}`}
               onChange={(e) => onChange({ [f.key]: e.target.value } as Partial<CameraSpec>)}>
               {f.options.map((o) => <option key={o.id} value={o.id}>{optLabel(o, locale)}</option>)}
             </Select>
@@ -93,7 +95,7 @@ function CameraFields({ camera, onChange, locale, idPrefix }: {
           <span className="whitespace-nowrap text-[11px] text-app-muted">{tr(locale, 'სიჩქარე', 'Speed', 'Скорость')}</span>
           <input type="range" min={1} max={10} step={1} value={camera.intensity}
             onChange={(e) => onChange({ intensity: Number(e.target.value) })}
-            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label={tr(locale, 'კამერის სიჩქარე', 'Camera speed', 'Скорость камеры')} />
+            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label={`${tr(locale, 'კამერის სიჩქარე', 'Camera speed', 'Скорость камеры')} — ${context}`} />
           <span className="w-9 text-right text-[10.5px] tabular-nums text-app-text">{camera.intensity}/10</span>
         </label>
       )}
@@ -101,10 +103,10 @@ function CameraFields({ camera, onChange, locale, idPrefix }: {
   );
 }
 
-/** `value` null = the joins differ, so no single chip is "the" choice. */
-function TransitionChips({ value, onChange, locale }: { value: Transition | null; onChange: (t: Transition) => void; locale: Locale }) {
+/** `value` null = the joins differ, so no single chip is "the" choice. `label` names the join for screen readers. */
+function TransitionChips({ value, onChange, locale, label }: { value: Transition | null; onChange: (t: Transition) => void; locale: Locale; label: string }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
       {TRANSITIONS.map((t) => (
         <Chip key={t.id} active={value === t.id} onClick={() => onChange(t.id)}>
           <span aria-hidden className="mr-1">{t.glyph}</span>{tr(locale, t.ka, t.en, t.ru)}
@@ -179,10 +181,11 @@ export function VeoParametersPanel({ plan, dispatch, locale, engine, sceneTexts,
         {scenes.length > 1 && (
           <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-bg/30 p-2.5">
             <span className="block text-[12px] font-semibold text-app-text">{tr(locale, 'ყველა სცენა', 'All scenes', 'Все сцены')}</span>
-            <CameraFields idPrefix="veo-all" locale={locale} camera={plan.cameraDefault}
+            <CameraFields idPrefix="veo-all" locale={locale} camera={plan.cameraDefault} context={tr(locale, 'ყველა სცენა', 'All scenes', 'Все сцены')}
               onChange={(patch) => dispatch({ type: 'cameraAll', camera: patch })} />
             <span className="block pt-1 text-[11px] font-medium text-app-muted">{tr(locale, 'გადასვლა სცენებს შორის', 'Between scenes', 'Между сценами')}</span>
-            <TransitionChips locale={locale} value={mixedJoins ? null : (joins[0] ?? plan.transitionDefault)} onChange={setTransitionAll} />
+            <TransitionChips locale={locale} label={tr(locale, 'გადასვლა ყველა სცენას შორის', 'Transition between all scenes', 'Переход между всеми сценами')}
+              value={mixedJoins ? null : (joins[0] ?? plan.transitionDefault)} onChange={setTransitionAll} />
           </div>
         )}
 
@@ -200,13 +203,14 @@ export function VeoParametersPanel({ plan, dispatch, locale, engine, sceneTexts,
                   <p className="line-clamp-2 text-[11px] leading-snug text-app-muted">
                     {words || tr(locale, 'მოქმედებას რეჟისორი დაწერს ბრიფის მიხედვით.', 'The director writes the action from your brief.', 'Действие напишет режиссёр по брифу.')}
                   </p>
-                  <CameraFields idPrefix={`veo-s${i}`} locale={locale} camera={s.camera}
+                  <CameraFields idPrefix={`veo-s${i}`} locale={locale} camera={s.camera} context={`${tr(locale, 'სცენა', 'Scene', 'Сцена')} ${i + 1}`}
                     onChange={(patch) => dispatch({ type: 'sceneCamera', index: i, camera: patch })} />
                 </div>
                 {i < scenes.length - 1 && (
                   <div className="flex min-w-0 flex-col gap-1 pl-3">
                     <span className="text-[10.5px] text-app-muted">{tr(locale, `სცენა ${i + 1} → ${i + 2}`, `Scene ${i + 1} → ${i + 2}`, `Сцена ${i + 1} → ${i + 2}`)}</span>
                     <TransitionChips locale={locale} value={s.transitionOut}
+                      label={tr(locale, `გადასვლა: სცენა ${i + 1} → ${i + 2}`, `Transition: scene ${i + 1} → ${i + 2}`, `Переход: сцена ${i + 1} → ${i + 2}`)}
                       onChange={(t) => dispatch({ type: 'sceneTransition', index: i, transition: t })} />
                   </div>
                 )}

@@ -1,7 +1,8 @@
 import 'server-only';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
 import { costPerSecondUsd, DEFAULT_TIER, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
-import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
+import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
+import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { OutputFormat, VeoAspect, VeoDuration, VeoPollOutcome, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -147,8 +148,8 @@ async function cropAndHost(buf: Buffer, aspect: VeoAspect): Promise<string | nul
 
 /**
  * A playable URL for a finished clip, or null. Never throws.
- *   · gcs (Vertex AI)  → a V4 signed read URL on our own bucket. Nothing to download, and no crop: Vertex
- *                        stamps no visible mark, so cropping would only cut real picture off the bottom.
+ *   · gcs (Vertex AI)  → copied once from our own bucket into Supabase (lib/veo/deliver) so the Library can keep
+ *                        re-signing it; no crop — Vertex stamps no visible mark, so cropping would cut real picture.
  *   · gemini-file      → the raw URI needs the API key to read, so it can never be handed to a client:
  *                        downloaded SERVER-SIDE (the key never leaves), watermark cropped, hosted ONCE.
  *   · bytes            → inline output (only Vertex returns it — no GCS prefix): hosted as-is, uncropped
@@ -157,11 +158,10 @@ async function cropAndHost(buf: Buffer, aspect: VeoAspect): Promise<string | nul
 async function deliver(video: VeoVideo | undefined, nativeAspect: VeoAspect, folder: string): Promise<string | null> {
   if (!video) return null;
   if (video.kind === 'gcs') {
-    try {
-      return await deliverableUrl(video, DELIVERY_TTL_SEC);
-    } catch {
-      return null; // signing failed (VeoGcsError) — a miss, never a dead URL
-    }
+    // Copied into Supabase once: a product ad lands in the user's Library, which re-signs Supabase objects only —
+    // a bare 7-day GCS signature would leave a dead Library entry a week later. hostGcsVideo falls back to that
+    // GCS link if the copy fails, and is null only when the clip cannot be signed at all (a miss, never a dead URL).
+    return hostGcsVideo(video, `${folder}/${Date.now()}.mp4`);
   }
   const buf = video.kind === 'bytes' ? Buffer.from(video.base64, 'base64') : await downloadGeminiVideo(video.uri);
   if (!buf || buf.byteLength < MIN_CLIP_BYTES) return null;

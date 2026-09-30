@@ -30,7 +30,7 @@ import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifac
 import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoComposite';
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
-import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, insufficientCreditsResponse } from './chatBilling';
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
@@ -449,6 +449,12 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
       : null;
     const cost = intent ? billableCreditCost(intent) : 0;
     if (cost > 0) await deductCredits(userId, cost, `poll:${predictionId}`).catch(() => { /* best-effort */ });
+  }
+  // A render charged at acceptance (handleDeterministicIntent) that ends in a terminal failure is paid back — exactly
+  // what the ledger shows under its ref, so a poller who was never charged gets nothing. ('error' is a routing blip,
+  // e.g. a session mismatch, not a verdict.)
+  if (userId && userId !== 'anonymous' && (mapped.predictionStatus === 'failed' || mapped.predictionStatus === 'canceled')) {
+    await refundDebitByRef(userId, `poll:${predictionId}`).catch(() => null);
   }
 
   return mapped;
@@ -1388,6 +1394,14 @@ async function handleDeterministicIntent(
   if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
     await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
       .catch(() => { /* best-effort — the asset is already delivered */ });
+  }
+  // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
+  // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
+  // all and reads the clip some other way) was a free Veo clip. The ref is the SAME `poll:<predictionId>` the poll
+  // path charges under, so its charge dedupes into this one; a terminal failure there refunds it through the ledger.
+  const acceptedAsync = response.success && response.predictionStatus === 'processing' && !!response.predictionId;
+  if (uid && uid !== 'anonymous' && billCost > 0 && acceptedAsync) {
+    await deductCredits(uid, billCost, `poll:${response.predictionId}`).catch(() => { /* the poll-path charge is the backstop */ });
   }
 
   const mapped = toChatResponse(response, detected.intent);
