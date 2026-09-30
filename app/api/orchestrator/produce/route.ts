@@ -14,6 +14,7 @@
  * best-effort; if Claude/LTX are unavailable the stream emits a `failed` event.
  */
 import { NextRequest } from 'next/server';
+import { forwardSessionHeaders } from '@/lib/api/forwardSession';
 import Anthropic from '@anthropic-ai/sdk';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
@@ -99,11 +100,12 @@ async function genClipWithRetry(origin: string, pipelineId: string, idx: number,
   return null;
 }
 
-async function genVoice(origin: string, pipelineId: string, segments: ScriptSegment[]): Promise<string | null> {
+async function genVoice(origin: string, pipelineId: string, segments: ScriptSegment[], session: Record<string, string>): Promise<string | null> {
   try {
     const text = segments.map(s => s.prompt).join('. ').slice(0, 800);
+    // The caller's session travels with the self-call — the TTS route is sign-in only.
     const r = await fetch(`${origin}/api/elevenlabs/tts`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...session },
       body: JSON.stringify({ text, locale: 'en' }),
       signal: AbortSignal.timeout(VOICE_FETCH_TIMEOUT_MS),
     });
@@ -196,7 +198,7 @@ export async function POST(req: NextRequest) {
 
         // ── Agent H: voiceover (best-effort) ──
         let voiceUrl: string | null = null;
-        if (withVoice) { emit({ stage: 'voiceover', pct: 72 }); voiceUrl = await genVoice(origin, pipelineId, segments); }
+        if (withVoice) { emit({ stage: 'voiceover', pct: 72 }); voiceUrl = await genVoice(origin, pipelineId, segments, forwardSessionHeaders(req)); }
         emit({ stage: 'audio.segments.ready', pct: 78, voice: Boolean(voiceUrl) });
 
         // ── Agent L: assemble ──

@@ -275,3 +275,28 @@ describe('buildFilterComplex', () => {
     expect(duckRatio(undefined, 0.3)).toBe(12); // no dB → pure duckPct baseline
   });
 });
+
+describe('native audio follows the picture join by join (Veo in-clip dialogue stays on the lips)', () => {
+  const graph = (transitions: string[]) =>
+    buildFilterComplex({
+      nClips: 3, hasVoice: false, hasMusic: false, hasSfx: false, fps: 24, duckPct: 30,
+      transition: 'crossfade', transitions, nativeAudio: [true, true, true],
+    } as Parameters<typeof buildFilterComplex>[0]);
+
+  test('a cut inside a mixed chain crossfades the audio by ONE FRAME, a dissolve by the full second — same as the video', () => {
+    const g = graph(['cut', 'dissolve']);
+    const audio = [...g.filter.matchAll(/acrossfade=d=([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(audio).toHaveLength(2);
+    expect(audio[0]).toBeCloseTo(1 / 24, 3);
+    expect(audio[1]).toBeCloseTo(1, 3);
+    const video = [...g.filter.matchAll(/xfade=transition=\w+:duration=([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(video).toHaveLength(2);
+    // Equal total overlap → equal timeline lengths → no drift.
+    expect(audio.reduce((a, b) => a + b, 0)).toBeCloseTo(video.reduce((a, b) => a + b, 0), 3);
+  });
+
+  test('a uniform soft chain still crossfades every join by the full second', () => {
+    const audio = [...graph(['dissolve', 'dissolve']).filter.matchAll(/acrossfade=d=([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(audio).toEqual([1, 1]);
+  });
+});

@@ -283,16 +283,19 @@ export class ServiceManager {
       : 'video';
     // A Google-only clip renders on Veo and nothing else, so the guard can price it exactly (tier × resolution ×
     // audio) instead of the flat video line — which under-reserves a Standard clip ~3×.
-    const veoPrice = service === 'video' && this.isGoogleOnlyVideo(request) ? this.veoGuardPrice(request) : null;
+    // Any request that will RENDER on Veo is priced as a Veo clip — including an "avatar" request whose provider
+    // option routes it past HeyGen (it would otherwise be booked at the $0.05 avatar line for a $0.40/s render).
+    const rendersOnVeo = operation !== 'text-to-image' && this.resolveVideoProvider(request) !== 'heygen' && this.isGoogleOnlyVideo(request);
+    const veoPrice = rendersOnVeo ? this.veoGuardPrice(request) : null;
     // Seconds for video (the guard prices video per second), one artefact otherwise. ⚠️ NEVER the raw option: the
     // duration is caller-supplied, and `duration: '0.001'` booked a whole clip at a fraction of a cent — the budget
     // guard is the last line against a drain, so it counts the seconds the engine will actually render.
-    const units = service === 'video' ? (veoPrice?.seconds ?? this.guardVideoSeconds(request)) : 1;
+    const units = veoPrice ? veoPrice.seconds : service === 'video' ? this.guardVideoSeconds(request) : 1;
 
     try {
       return await guardedCall(
         {
-          service,
+          service: veoPrice ? 'video' : service,
           model: veoPrice?.model ?? (request.videoModel || (service === 'image' ? 'imagen-4' : 'veo-3.1')),
           units,
           promptSummary: request.userPrompt,

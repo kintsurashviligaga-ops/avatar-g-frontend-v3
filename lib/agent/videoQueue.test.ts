@@ -30,6 +30,7 @@ const deliverableUrl = jest.fn();
 const downloadGeminiVideo = jest.fn();
 const uploadBufferAndSign = jest.fn();
 const guardedCall = jest.fn();
+const hostGcsVideo = jest.fn();
 
 jest.mock('../orchestrator/ledger', () => ({
   deductCredits: (...a: unknown[]) => deductCredits(...a),
@@ -43,6 +44,7 @@ jest.mock('../veo/engine', () => ({
   deliverableUrl: (...a: unknown[]) => deliverableUrl(...a),
 }));
 jest.mock('../veo/geminiTransport', () => ({ downloadGeminiVideo: (...a: unknown[]) => downloadGeminiVideo(...a) }));
+jest.mock('../veo/deliver', () => ({ hostGcsVideo: (...a: unknown[]) => hostGcsVideo(...a) }));
 jest.mock('../services/billing/guardedCall', () => {
   class BudgetExceededError extends Error {
     readonly reason: string;
@@ -71,20 +73,21 @@ function fakeDb(rows: Row[]) {
       let patch: Row = {};
       const filters: Array<[string, unknown]> = [];
       const match = () => rows.filter((r) => filters.every(([k, v]) => r[k] === v));
+      let returning = false;
       const self = {
-        select() { mode = 'select'; return self; },
+        select() { if (mode === 'update') returning = true; else mode = 'select'; return self; },
         update(p: Row) { mode = 'update'; patch = p; return self; },
         order() { return self; },
         limit() { return self; },
         maybeSingle: async () => ({ data: match()[0] ? { ...match()[0] } : null, error: null }),
-        eq(k: string, v: unknown) {
-          filters.push([k, v]);
-          // An update is awaited straight off .eq() — a select keeps chaining.
-          if (mode === 'update') {
-            for (const r of match()) Object.assign(r, patch);
-            return Promise.resolve({ error: null }) as never;
-          }
-          return self;
+        eq(k: string, v: unknown) { filters.push([k, v]); return self; },
+        // Like PostgREST, an update runs when it is AWAITED — after every .eq() filter is in (a conditional claim
+        // `.eq('status','queued')` must see the row as it is at that moment) — and `.select()` returns the rows hit.
+        then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+          if (mode !== 'update') return Promise.resolve({ data: match(), error: null }).then(resolve, reject);
+          const hit = match();
+          for (const r of hit) Object.assign(r, patch);
+          return Promise.resolve(returning ? { data: hit.map((r) => ({ id: r.id })), error: null } : { error: null }).then(resolve, reject);
         },
       };
       return self;
@@ -243,7 +246,8 @@ describe('a clip that succeeds', () => {
     expect(db.rows[0].credits).toBe(25);
   });
 
-  it('delivers a Vertex AI clip as a signed URL — nothing downloaded or re-hosted', async () => {
+  it('delivers a Vertex AI clip copied once into Supabase (the Library re-signs only Supabase) — nothing downloaded from Gemini', async () => {
+    hostGcsVideo.mockResolvedValue('https://x.supabase.co/storage/v1/object/sign/renders/agentq/item-1.mp4?token=t');
     pollVeoClip.mockResolvedValue({
       state: 'succeeded',
       videos: [{ kind: 'gcs', gcsUri: 'gs://bucket/veo/s/0-ab/sample_0.mp4', mimeType: 'video/mp4' }],
@@ -253,10 +257,10 @@ describe('a clip that succeeds', () => {
     const res = await drainOnce(db as never, UID);
 
     expect(res.action).toBe('done');
-    expect(deliverableUrl).toHaveBeenCalledWith(expect.objectContaining({ kind: 'gcs' }), 604_800);
+    expect(hostGcsVideo).toHaveBeenCalledWith(expect.objectContaining({ kind: 'gcs' }), 'agentq/item-1.mp4');
     expect(downloadGeminiVideo).not.toHaveBeenCalled();
     expect(uploadBufferAndSign).not.toHaveBeenCalled();
-    expect(db.rows[0].video_url).toMatch(/^https:\/\/storage\.googleapis\.com\//);
+    expect(db.rows[0].video_url).toMatch(/supabase\.co/);
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
@@ -314,5 +318,38 @@ describe('a clip that is accepted', () => {
       sessionId: 'agentq-b1',
       ordinal: 0,
     }));
+  });
+});
+
+describe('two drains at once', () => {
+  it('only one drain claims a queued row — the other neither charges nor submits', async () => {
+    veoTransport.mockReturnValue('gemini');
+    deductCredits.mockResolvedValue({ ok: true });
+    guardedCall.mockImplementation(async (_o: unknown, fn: () => Promise<unknown>) => fn());
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    createVeoClip.mockImplementation(async () => { await gate; return accepted(); });
+    const db = fakeDb([queued()]);
+
+    const first = drainOnce(db as never, UID);
+    await new Promise((r) => setImmediate(r)); // the first drain has claimed the row and is waiting on Google
+    const second = await drainOnce(db as never, UID);
+    release();
+    const done = await first;
+
+    expect(done.action).toBe('submitted');
+    expect(second.action).toBe('pending'); // it saw a claimed row with no operation yet — in progress, not failed
+    expect(createVeoClip).toHaveBeenCalledTimes(1);
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+    expect(db.rows[0]).toMatchObject({ status: 'submitted', operation: GEMINI_OP });
+  });
+
+  it('a claim abandoned by a dead drain is failed and refunded once it is stale', async () => {
+    refundCredits.mockResolvedValue({ ok: true });
+    const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const db = fakeDb([queued({ status: 'submitted', operation: null, credits: 25, charge_ref: 'agentq:item-1', updated_at: stale })]);
+    const res = await drainOnce(db as never, UID);
+    expect(res.action).toBe('failed');
+    expect(refundCredits).toHaveBeenCalled();
   });
 });

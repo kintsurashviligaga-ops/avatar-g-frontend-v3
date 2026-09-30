@@ -33,6 +33,7 @@ import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, insufficientCreditsResponse } from './chatBilling';
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
+import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
@@ -1365,48 +1366,67 @@ async function handleDeterministicIntent(
   // a free paid generation. Block it up front. Authed only; fail-open on read miss (post-charge stays
   // the backstop). Wires the previously-dead insufficientCreditsResponse.
   const gateCost = billableCreditCost(detected.intent);
-  if (input.userId && input.userId !== 'anonymous' && gateCost > 0 && !(await hasSufficientBalance(input.userId, gateCost))) {
-    return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
+  const payingUser = input.userId && input.userId !== 'anonymous' && gateCost > 0 ? input.userId : null;
+  // ⚠️ ONE PAID DISPATCH AT A TIME PER USER. The balance check below is a READ, and the charge lands after Google
+  // accepts the job — so N parallel requests all passed the check and all rendered, while only the first charge fit
+  // the balance (deduct_credits refuses an overdraw): N−1 free clips. Serialising check → submit → charge per user
+  // makes each check see the previous charge. A contender waits (bounded) for the lock; Redis down = fail-open.
+  const dispatchLock = 'chat-paid-dispatch';
+  if (payingUser) {
+    let held = await claimIdempotencyKey(payingUser, dispatchLock, 90).catch(() => true);
+    for (let i = 0; !held && i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 1_500));
+      held = await claimIdempotencyKey(payingUser, dispatchLock, 90).catch(() => true);
+    }
+    if (!held) {
+      const busy = input.locale === 'en' ? 'Another generation is starting — try again in a moment.'
+        : input.locale === 'ru' ? 'Запускается другая генерация — попробуйте через мгновение.'
+        : 'სხვა გენერაცია იწყება — სცადე ცოტა ხანში.';
+      return { success: false, intent: detected.intent, responseType: 'text', message: busy, metadata: { provider: 'billing', dispatchBusy: true } };
+    }
   }
+  try {
+    if (payingUser && !(await hasSufficientBalance(payingUser, gateCost))) {
+      return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
+    }
 
-  const response = await serviceManager.execute({
-    sessionId: input.sessionId,
-    serviceContext: input.serviceContext,
-    intent: detected.intent,
-    userPrompt: iterative.prompt,
-    selectedOptions: input.selectedOptions,
-    imageUrl: input.imageUrl,
-    locale: input.locale,
-    confidence: detected.confidence,
-  });
+    const response = await serviceManager.execute({
+      sessionId: input.sessionId,
+      serviceContext: input.serviceContext,
+      intent: detected.intent,
+      userPrompt: iterative.prompt,
+      selectedOptions: input.selectedOptions,
+      imageUrl: input.imageUrl,
+      locale: input.locale,
+      confidence: detected.confidence,
+    });
 
-  // DAY-6 — charge AFTER a successful, TERMINAL (synchronous) generation, via the balance-of-record
-  // deduct_credits RPC. Charging post-success (not reserve-before) is deliberately safe: it can NEVER bill a
-  // thrown error (control never reaches here), a `success:false` failure, or an async `processing` render that
-  // might still fail downstream — async avatar/video resolve on the POLL path (which has no refund), so they are
-  // NOT billed here (avatar/video credit accounting is deferred to their own pipeline). This covers the primary
-  // leak: standalone SYNC image/photo generations. Authed only (anon/preview free); idempotent per-call ref;
-  // fail-open + best-effort (a ledger hiccup never breaks the already-delivered asset); deduct_credits rejects
-  // overdraw so the balance can never go negative.
-  const billCost = billableCreditCost(detected.intent);
-  const uid = input.userId;
-  const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
-  if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
-    await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
-      .catch(() => { /* best-effort — the asset is already delivered */ });
+    // DAY-6 — a SYNCHRONOUS generation (image / photo) is charged after it delivered, via the balance-of-record
+    // deduct_credits RPC: it can never bill a thrown error or a `success:false` failure. Authed only; idempotent
+    // per-call ref; fail-open (a ledger hiccup never breaks the delivered asset); deduct_credits rejects overdraw.
+    // An ASYNC render (video / avatar) is charged at acceptance just below, and refunded on the poll path if it fails.
+    const billCost = billableCreditCost(detected.intent);
+    const uid = input.userId;
+    const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
+    if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
+      await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
+        .catch(() => { /* best-effort — the asset is already delivered */ });
+    }
+    // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
+    // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
+    // all and reads the clip some other way) was a free Veo clip. The ref is the SAME `poll:<predictionId>` the poll
+    // path charges under, so its charge dedupes into this one; a terminal failure there refunds it through the ledger.
+    const acceptedAsync = response.success && response.predictionStatus === 'processing' && !!response.predictionId;
+    if (uid && uid !== 'anonymous' && billCost > 0 && acceptedAsync) {
+      await deductCredits(uid, billCost, `poll:${response.predictionId}`).catch(() => { /* the poll-path charge is the backstop */ });
+    }
+
+    const mapped = toChatResponse(response, detected.intent);
+    mapped.metadata.iteration = iterative.iteration;
+    return mapped;
+  } finally {
+    if (payingUser) await releaseIdempotencyKey(payingUser, dispatchLock).catch(() => undefined);
   }
-  // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
-  // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
-  // all and reads the clip some other way) was a free Veo clip. The ref is the SAME `poll:<predictionId>` the poll
-  // path charges under, so its charge dedupes into this one; a terminal failure there refunds it through the ledger.
-  const acceptedAsync = response.success && response.predictionStatus === 'processing' && !!response.predictionId;
-  if (uid && uid !== 'anonymous' && billCost > 0 && acceptedAsync) {
-    await deductCredits(uid, billCost, `poll:${response.predictionId}`).catch(() => { /* the poll-path charge is the backstop */ });
-  }
-
-  const mapped = toChatResponse(response, detected.intent);
-  mapped.metadata.iteration = iterative.iteration;
-  return mapped;
 }
 
 function toChatResponse(

@@ -436,12 +436,15 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
       parts.push(`${labels}concat=n=${nClips}:v=0:a=1[natcat]`);
       natLabel = '[natcat]';
     } else {
-      // Mirror the video xfade: acrossfade by TRANSITION_SEC at every join, so the diegetic sound stays
-      // frame-aligned with the picture. (A plain concat would run (N−1)s long and drift progressively.)
+      // Mirror the video xfade JOIN BY JOIN: acrossfade by the same overlap the picture takes at that join, so the
+      // diegetic sound stays frame-aligned with it. ⚠️ With the studio's mixed joins a 'cut' overlaps the picture
+      // by ONE FRAME, not a second — crossfading the audio by a full second there ran Veo's in-clip dialogue ~1 s
+      // ahead of the lips per cut join. (A plain concat would instead run long and drift the other way.)
       let prevA = 'na0';
       for (let i = 1; i < nClips; i++) {
         const out = `nax${i}`;
-        parts.push(`[${prevA}][na${i}]acrossfade=d=${TRANSITION_SEC}:c1=tri:c2=tri[${out}]`);
+        const ov = overlaps[i - 1] ?? TRANSITION_SEC;
+        parts.push(`[${prevA}][na${i}]acrossfade=d=${ov.toFixed(4)}:c1=tri:c2=tri[${out}]`);
         prevA = out;
       }
       natLabel = `[${prevA}]`;

@@ -7,7 +7,7 @@ import type { RateLimitConfig } from './rate-limit';
 // after the test run has completed"), which looks exactly like a hung test. Loading the module on the
 // fake clock puts that interval on the fake clock, and it is discarded when the real one comes back.
 jest.useFakeTimers();
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { checkRateLimit } = require('./rate-limit') as typeof import('./rate-limit');
 jest.useRealTimers();
 

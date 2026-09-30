@@ -5,7 +5,8 @@ import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
 import { costPerSecondUsd, DEFAULT_TIER, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
-import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
+import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
+import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { OutputFormat } from '@/lib/veo/types';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -73,10 +74,14 @@ export interface QueueItem {
   watermark: boolean; status: 'queued' | 'submitted' | 'done' | 'failed';
   operation: string | null; video_url: string | null; error: string | null;
   credits: number; attempts: number;
+  /** When the row last changed — dates a CLAIMED row that has no operation yet (see drainOnce). */
+  updated_at?: string | null;
 }
 
 type Svc = ReturnType<typeof createServiceRoleClient>;
-const COLS = 'id, batch_id, ordinal, prompt, aspect, watermark, status, operation, video_url, error, credits, attempts';
+const COLS = 'id, batch_id, ordinal, prompt, aspect, watermark, status, operation, video_url, error, credits, attempts, updated_at';
+/** A claimed row with no operation for longer than this belongs to a drain that died mid-submit — it is failed + refunded. */
+const CLAIM_STALE_MS = 10 * 60 * 1000;
 
 /** Enqueue a batch. Charges NOTHING — see the header. */
 export async function enqueueBatch(
@@ -157,7 +162,15 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
 
   if (inflight) {
     const item = inflight as QueueItem;
-    if (!item.operation) { await fail(svc, item, userId, 'submitted without an operation handle'); return { action: 'failed', item }; }
+    if (!item.operation) {
+      // CLAIMED, not yet submitted: another drain holds this row between its claim and Google's answer (see step 2).
+      // Leave it to that drain — unless the claim is so old that drain must have died, in which case it is failed
+      // and its charge refunded.
+      const since = item.updated_at ? Date.parse(item.updated_at) : NaN;
+      if (Number.isFinite(since) && Date.now() - since < CLAIM_STALE_MS) return { action: 'pending', item };
+      await fail(svc, item, userId, 'submitted without an operation handle');
+      return { action: 'failed', item };
+    }
     const res = await pollVeoClip(item.operation).catch(() => null);
     // `processing` covers every transient/unknown outcome by design — keep waiting rather than refunding
     // a clip that is still rendering. Only an explicit verdict (`filtered` / `failed`) ends the item.
@@ -168,9 +181,9 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
 
     let url: string | null;
     if (video.kind === 'gcs') {
-      // Vertex AI wrote the clip into our own bucket: a signed read URL IS the delivery — nothing to download
-      // or re-host. A signing error is a delivery miss like any other, so it refunds.
-      url = await deliverableUrl(video, DELIVERY_TTL_SEC).catch(() => null);
+      // Vertex AI wrote the clip into our own bucket; it is copied once into Supabase at a path fixed per item, so
+      // the user's Library can keep re-signing it (a GCS signature dies after 7 days). An unsignable clip refunds.
+      url = await hostGcsVideo(video, `agentq/${item.id}.mp4`).catch(() => null);
       if (!url) { await fail(svc, item, userId, 'video could not be hosted'); return { action: 'failed', item }; }
     } else {
       // A Gemini API file needs the key to read, so it is downloaded server-side (the key never leaves);
@@ -208,6 +221,16 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
 
   const transport = veoTransport();
   if (!transport) { await fail(svc, item, userId, 'video provider is not configured'); return { action: 'failed', item }; }
+
+  // ⚠️ CLAIM THE ROW BEFORE CHARGING OR SUBMITTING. Two overlapping drains used to SELECT the same queued row, both
+  // pass the (ref-idempotent) charge and both submit it to Veo — the second overwrote `operation`, so one paid job was
+  // never delivered. An atomic queued → submitted flip lets exactly one drain own the row; the other finds nothing to
+  // claim and stops. `operation` stays null until Google answers, which step 1 reads as "in progress".
+  const { data: claimed } = await svc.from('agent_video_queue')
+    .update({ status: 'submitted', operation: null, updated_at: new Date().toISOString() })
+    .eq('id', item.id).eq('status', 'queued')
+    .select('id');
+  if (!Array.isArray(claimed) || claimed.length === 0) return { action: 'pending', item };
 
   // ⚠️ CHARGE HERE, NOT AT ENQUEUE, AND UNDER THIS ITEM'S OWN REF. `agentq:<item id>` is unique per row
   // and the column is UNIQUE, so a retried drain re-uses the same ref and deduct_credits — which is
