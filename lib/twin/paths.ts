@@ -6,7 +6,8 @@
  * sample (lib/avatar/twinStorage.ts twinVoicePath), so ONE prefix holds everything biometric a user has:
  *
  *   twins/<uid>/twin.json                 the manifest — the source of truth (lib/twin/types.ts)
- *   twins/<uid>/staging/<slot>.<ext>      the ONLY paths a signed upload URL is ever issued for
+ *   twins/<uid>/staging/<nonce>/<slot>.<ext>  the ONLY paths a signed upload URL is ever issued for (one folder per
+ *                                         capture: the nonce lives in the capture ticket, lib/twin/ticket.ts)
  *   twins/<uid>/twin-<captureId>/…        a committed capture: server-side copies of staging, never upload targets
  *   twins/<uid>/voice.<ext>               the Live-Avatar enrollment voice sample (lib/avatar/enroll.ts)
  *   handoff/<jti>                         used phone-handoff tokens (lib/avatar/handoff.ts) — no user data
@@ -31,6 +32,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SAFE_PATH_RE = /^[A-Za-z0-9._/-]+$/;
 /** A committed capture id: 8 random bytes as hex (lib/twin/store.ts newCaptureId). */
 const CAPTURE_ID_RE = /^[0-9a-f]{16}$/;
+/** A capture's staging nonce: 16 random bytes as hex (lib/twin/ticket.ts newStagingNonce). */
+const NONCE_RE = /^[0-9a-f]{32}$/;
 /** A handoff token id (lib/avatar/handoff.ts mints 16 random bytes, base64url → 22 chars). */
 const JTI_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_PATH = 256;
@@ -41,6 +44,10 @@ export function isTwinUserId(uid: unknown): uid is string {
 
 export function isCaptureId(id: unknown): id is string {
   return typeof id === 'string' && CAPTURE_ID_RE.test(id);
+}
+
+export function isStagingNonce(n: unknown): n is string {
+  return typeof n === 'string' && NONCE_RE.test(n);
 }
 
 function requireUid(uid: string): string {
@@ -75,9 +82,22 @@ export function twinStagingDir(uid: string): string {
   return `${twinUserPrefix(uid)}staging`;
 }
 
-/** Deterministic upload target: the same (user, slot, extension) always names the same staging object. */
-export function twinStagingPath(uid: string, slot: TwinSlot, ext: string): string {
-  return `${twinStagingDir(uid)}/${slotFile(slot, ext)}`;
+/** One capture's own staging folder (no trailing slash). */
+export function twinStagingNonceDir(uid: string, nonce: string): string {
+  if (!isStagingNonce(nonce)) throw new Error('twin: bad staging nonce');
+  return `${twinStagingDir(uid)}/${nonce}`;
+}
+
+/**
+ * Upload target: the same (user, capture nonce, slot, extension) always names the same staging object.
+ *
+ * ⚠️ PER-CAPTURE, NOT PER-USER. Upload tokens are upsert-able for 2 hours. With one shared `staging/<slot>.<ext>`, a token
+ * from an EARLIER capture (another tab, a leaked URL) could overwrite a later capture's photo between its PUT and its
+ * commit — and the commit would keep a face nobody reviewed. Each capture now stages under its own random nonce, and the
+ * commit copies only from the nonce its ticket names.
+ */
+export function twinStagingPath(uid: string, nonce: string, slot: TwinSlot, ext: string): string {
+  return `${twinStagingNonceDir(uid, nonce)}/${slotFile(slot, ext)}`;
 }
 
 /** A committed capture's folder (no trailing slash). */

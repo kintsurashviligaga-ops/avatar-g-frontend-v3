@@ -1,28 +1,43 @@
 /**
  * lib/twin/ticket.ts — the CAPTURE TICKET /api/twin/upload-url hands out and /api/twin/commit requires.
  *
- * It binds, under an HMAC, everything the server decided when it signed the uploads: whose twin (u), the extension each
- * slot was signed for (s), and the DIGITS shown for the voice step (d). So the commit records digits the server
- * issued — not digits a client picked after recording — and can't be pointed at another user's staging objects. The day speech-to-text is funded, these are the digits a transcript is checked
+ * It binds, under an HMAC, everything the server decided when it signed the uploads: whose twin (u), the capture's own
+ * staging folder (n), the extension each slot was signed for (s), the DIGITS shown for the voice step (d), when the
+ * consent was recorded (c) and — for a phone capture — which handoff link started it (j). So the commit records digits
+ * the server issued — not digits a client picked after recording — and can't be pointed at another user's staging
+ * objects, or at another capture's. The day speech-to-text is funded, these are the digits a transcript is checked
  * against (left dark in v0: `voiceVerified` stays false).
+ *
+ * ⚠️ THE CONSENT TIME IS THE SERVER'S (c). /api/twin/upload-url is called the moment the box is ticked and Continue is
+ * pressed, so its clock is the consent time. A client-sent timestamp made a phone with a skewed clock fail every
+ * commit, forever, with "consent required".
+ * ⚠️ THE LINK'S jti (j) LETS A LONG CAPTURE FINISH. The phone link lives 15 minutes, the capture up to 2 hours: the
+ * commit accepts an EXPIRED-but-unclaimed link only together with a valid ticket minted for that very link (and still
+ * claims it — one link, one twin).
  *
  * Same key policy as lib/avatar/handoff.ts (AVATAR_HANDOFF_SECRET, else the service-role key; fail-closed with
  * neither), with its own domain prefix in the MAC so a ticket can never verify as a handoff token or vice versa.
  */
 import 'server-only';
-import { createHmac, randomInt, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 
 import { TWIN_PHOTO_MIMES, TWIN_PHOTO_SLOTS, TWIN_LIMITS, TWIN_VOICE_MIMES, type TwinSlot } from './types';
-import { isTwinUserId } from './paths';
+import { isStagingNonce, isTwinUserId } from './paths';
 
 export interface CaptureTicket {
-  v: 1;
+  v: 2;
   /** The user whose twin this capture is. */
   u: string;
+  /** This capture's staging folder `staging/<n>/` — the only place its uploads land and its commit copies from. */
+  n: string;
   /** The digits shown for the voice step. */
   d: string;
   /** Slot → the path extension it was signed for (photos always; voice only when requested). */
   s: Partial<Record<TwinSlot, string>>;
+  /** When the consent was recorded: the SERVER's clock at /api/twin/upload-url (epoch ms). */
+  c: number;
+  /** The phone-handoff link's jti, when the capture was started through one. */
+  j?: string;
   iat: number;
   exp: number;
 }
@@ -30,14 +45,16 @@ export interface CaptureTicket {
 /** A signed upload URL is valid for 2 hours; the ticket that commits those uploads lives exactly as long. */
 export const CAPTURE_TICKET_TTL_MS = 2 * 60 * 60 * 1000;
 
-const PREFIX = 'tw1';
+const PREFIX = 'tw2';
+/** lib/avatar/handoff.ts mints 16 random bytes → 22 base64url chars; the path guard (lib/twin/paths.ts) allows 16–64. */
+const JTI_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 function key(): string {
   return process.env.AVATAR_HANDOFF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 }
 
 function mac(payload: string): string {
-  return createHmac('sha256', key()).update(`twin-capture:v1:${payload}`).digest('base64url');
+  return createHmac('sha256', key()).update(`twin-capture:v2:${payload}`).digest('base64url');
 }
 
 /** True when tickets can be minted (checked before any upload URL is signed). */
@@ -52,6 +69,11 @@ export function newCaptureDigits(n: number = TWIN_LIMITS.digits): string {
   return s;
 }
 
+/** A fresh staging nonce (16 bytes, hex) — one per capture. */
+export function newStagingNonce(): string {
+  return randomBytes(16).toString('hex');
+}
+
 function validSlots(s: unknown): s is CaptureTicket['s'] {
   if (!s || typeof s !== 'object') return false;
   const map = s as Record<string, unknown>;
@@ -62,10 +84,27 @@ function validSlots(s: unknown): s is CaptureTicket['s'] {
   return Object.keys(map).every((k) => (TWIN_PHOTO_SLOTS as readonly string[]).includes(k) || k === 'voice');
 }
 
-/** Mint a ticket. null when no key is configured, or the input is not a well-formed capture. */
-export function signCaptureTicket(t: { u: string; d: string; s: CaptureTicket['s'] }, now: number = Date.now()): string | null {
-  if (!key() || !isTwinUserId(t.u) || !/^\d{4,12}$/.test(t.d) || !validSlots(t.s)) return null;
-  const body: CaptureTicket = { v: 1, u: t.u, d: t.d, s: { ...t.s }, iat: now, exp: now + CAPTURE_TICKET_TTL_MS };
+/**
+ * Mint a ticket. null when no key is configured, or the input is not a well-formed capture. The consent time is `now` —
+ * the server's clock at the moment upload-url signs the capture.
+ */
+export function signCaptureTicket(
+  t: { u: string; n: string; d: string; s: CaptureTicket['s']; j?: string },
+  now: number = Date.now(),
+): string | null {
+  if (!key() || !isTwinUserId(t.u) || !isStagingNonce(t.n) || !/^\d{4,12}$/.test(t.d) || !validSlots(t.s)) return null;
+  if (t.j !== undefined && !JTI_RE.test(t.j)) return null;
+  const body: CaptureTicket = {
+    v: 2,
+    u: t.u,
+    n: t.n,
+    d: t.d,
+    s: { ...t.s },
+    c: now,
+    ...(t.j !== undefined ? { j: t.j } : {}),
+    iat: now,
+    exp: now + CAPTURE_TICKET_TTL_MS,
+  };
   const payload = Buffer.from(JSON.stringify(body)).toString('base64url');
   return `${PREFIX}.${payload}.${mac(payload)}`;
 }
@@ -85,8 +124,10 @@ export function verifyCaptureTicket(token: unknown, now: number = Date.now()): C
   } catch {
     return null;
   }
-  if (!p || p.v !== 1 || !isTwinUserId(p.u)) return null;
+  if (!p || p.v !== 2 || !isTwinUserId(p.u) || !isStagingNonce(p.n)) return null;
   if (typeof p.d !== 'string' || !/^\d{4,12}$/.test(p.d) || !validSlots(p.s)) return null;
+  if (p.j !== undefined && !(typeof p.j === 'string' && JTI_RE.test(p.j))) return null;
+  if (typeof p.c !== 'number' || !Number.isFinite(p.c)) return null;
   if (typeof p.iat !== 'number' || typeof p.exp !== 'number' || !Number.isFinite(p.exp) || now > p.exp) return null;
-  return { v: 1, u: p.u, d: p.d, s: { ...p.s }, iat: p.iat, exp: p.exp };
+  return { v: 2, u: p.u, n: p.n, d: p.d, s: { ...p.s }, c: p.c, ...(p.j !== undefined ? { j: p.j } : {}), iat: p.iat, exp: p.exp };
 }

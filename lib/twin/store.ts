@@ -9,12 +9,13 @@
  * TwinStorageError (the routes answer 503); "storage was down" is never reported as "no twin" or "deleted".
  *
  * The commit flow (POST /api/twin/upload-url → browser uploads → POST /api/twin/commit):
- *   1. signStagingUploads — signed upload URLs for `staging/<slot>.<ext>` only (cleared first).
- *   2. promoteCapture     — COPIES staging into a fresh `twin-<captureId>/` and validates the COPIES (size, MIME, magic
- *                           bytes). Staging stays writable through its 2-hour upload URLs; the copies are never an upload
- *                           target, so what was checked is what is kept.
+ *   1. signStagingUploads — signed upload URLs for `staging/<nonce>/<slot>.<ext>` only (staging cleared first); the
+ *                           nonce is this capture's, carried in its ticket.
+ *   2. promoteCapture     — COPIES the ticket's nonce folder (and nothing else) into a fresh `twin-<captureId>/` and
+ *                           validates the COPIES (size, MIME, magic bytes). Staging stays writable through its 2-hour
+ *                           upload URLs; the copies are never an upload target, so what was checked is what is kept.
  *   3. writeTwinManifest  — the switch. Until it lands, the previous twin (if any) is still the twin.
- *   4. pruneTwinCaptures  — best-effort removal of the previous capture and staging.
+ *   4. pruneTwinCaptures  — best-effort removal of the previous capture and of this capture's staging folder.
  */
 import 'server-only';
 import { randomBytes } from 'crypto';
@@ -33,6 +34,7 @@ import {
   twinCapturePath,
   twinManifestPath,
   twinStagingDir,
+  twinStagingNonceDir,
   twinStagingPath,
   twinUserPrefix,
 } from './paths';
@@ -195,22 +197,27 @@ async function removePaths(api: TwinBucketApi, paths: string[]): Promise<void> {
   }
 }
 
-/** Empty the caller's staging folder (an abandoned capture's uploads go before a new one is signed). */
-export async function clearStaging(sb: TwinStorageClient, uid: string): Promise<void> {
+/**
+ * Empty the caller's staging: all of it (an abandoned capture's uploads go before a new one is signed), or — with a
+ * nonce — just that capture's folder.
+ */
+export async function clearStaging(sb: TwinStorageClient, uid: string, nonce?: string): Promise<void> {
   const api = twins(sb);
-  await removePaths(api, await listTree(api, twinStagingDir(uid), under(`${twinStagingDir(uid)}/`)));
+  const dir = nonce === undefined ? twinStagingDir(uid) : twinStagingNonceDir(uid, nonce);
+  await removePaths(api, await listTree(api, dir, under(`${dir}/`)));
 }
 
-/** One upsert-able signed upload per requested slot, all into the caller's staging folder. */
+/** One upsert-able signed upload per requested slot, all into this capture's own staging folder. */
 export async function signStagingUploads(
   sb: TwinStorageClient,
   uid: string,
+  nonce: string,
   slots: CaptureTicket['s'],
 ): Promise<Partial<Record<TwinSlot, { path: string; token: string }>>> {
   const api = twins(sb);
   const out: Partial<Record<TwinSlot, { path: string; token: string }>> = {};
   for (const slot of Object.keys(slots) as TwinSlot[]) {
-    const path = assertOwnTwinPath(uid, twinStagingPath(uid, slot, slots[slot]!));
+    const path = assertOwnTwinPath(uid, twinStagingPath(uid, nonce, slot, slots[slot]!));
     const { data, error } = await api.createSignedUploadUrl(path, { upsert: true });
     if (error || !data?.token) throw new TwinStorageError('sign_upload');
     out[slot] = { path, token: data.token };
@@ -247,11 +254,12 @@ export type PromoteResult =
 export async function promoteCapture(sb: TwinStorageClient, uid: string, ticket: CaptureTicket): Promise<PromoteResult> {
   if (ticket.u !== uid) return { ok: false, status: 400, error: 'ticket_mismatch' };
   const api = twins(sb);
-  const staged = new Map((await listDir(api, twinStagingDir(uid))).filter((e) => !isFolder(e)).map((e) => [e.name, e]));
+  // ⚠️ ONLY the ticket's nonce folder: an older capture's still-valid upload token can write to ITS folder, never this one.
+  const staged = new Map((await listDir(api, twinStagingNonceDir(uid, ticket.n))).filter((e) => !isFolder(e)).map((e) => [e.name, e]));
   const slots = (Object.keys(ticket.s) as TwinSlot[]).filter((slot) => staged.has(`${slot}.${ticket.s[slot]}`));
   const refuse = async (status: 400 | 413 | 415, error: string, slot?: TwinSlot, copies: string[] = []): Promise<PromoteResult> => {
     await removePaths(api, copies).catch(() => undefined);
-    await clearStaging(sb, uid).catch(() => undefined);
+    await clearStaging(sb, uid, ticket.n).catch(() => undefined);
     return { ok: false, status, error, ...(slot ? { slot } : {}) };
   };
 
@@ -270,7 +278,7 @@ export async function promoteCapture(sb: TwinStorageClient, uid: string, ticket:
     for (const slot of slots) {
       const ext = ticket.s[slot]!;
       const to = assertOwnTwinPath(uid, twinCapturePath(uid, captureId, slot, ext));
-      const { error } = await api.copy(assertOwnTwinPath(uid, twinStagingPath(uid, slot, ext)), to);
+      const { error } = await api.copy(assertOwnTwinPath(uid, twinStagingPath(uid, ticket.n, slot, ext)), to);
       if (error) throw new TwinStorageError('copy');
       copies.push(to);
     }
@@ -324,8 +332,9 @@ export async function writeTwinManifest(sb: TwinStorageClient, manifest: TwinMan
 }
 
 /**
- * After a commit: remove staging and every capture folder the CURRENT manifest does not point at (best-effort — the
- * caller logs a miss).
+ * After a commit: remove the committed capture's staging folder (`staging`, its nonce) and every capture folder the
+ * CURRENT manifest does not point at (best-effort — the caller logs a miss). Another capture's staging folder is left
+ * alone: it may be a capture still in progress (the next upload-url, or DELETE /api/twin, clears abandoned ones).
  *
  * ⚠️ RELATIVE TO THE MANIFEST AS IT IS NOW, AND NEVER A YOUNG FOLDER. Two overlapping commits (a double submit, two
  * tabs) each promote their own folder before writing the manifest. Pruning "everything but mine" let commit A delete
@@ -337,15 +346,15 @@ export async function writeTwinManifest(sb: TwinStorageClient, manifest: TwinMan
 export async function pruneTwinCaptures(
   sb: TwinStorageClient,
   uid: string,
-  opts: { previous?: string | null; now?: number } = {},
+  opts: { previous?: string | null; staging?: string | null; now?: number } = {},
 ): Promise<void> {
   const api = twins(sb);
   const root = twinUserPrefix(uid).slice(0, -1);
   const now = opts.now ?? Date.now();
+  if (opts.staging) await clearStaging(sb, uid, opts.staging);
   const live = (await readTwinManifest(sb, uid))?.captureId ?? null;
   const stale = (await listDir(api, root)).filter((e) => {
     if (!isFolder(e)) return false;
-    if (e.name === 'staging') return true;
     if (!e.name.startsWith('twin-') || e.name === `twin-${live}`) return false;
     const id = e.name.slice('twin-'.length);
     return id === opts.previous || !isCaptureId(id) || captureIdAgeMs(id, now) >= CAPTURE_GRACE_MS;

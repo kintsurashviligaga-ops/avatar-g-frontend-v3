@@ -91,24 +91,39 @@ test('a guest is refused (401) and nothing is signed', async () => {
   expect(signed()).toEqual([]);
 });
 
-test('signed in → one upsert-able signed upload per slot into the caller’s own staging, digits, and a ticket binding them', async () => {
-  mockFake.put('twins', `twins/${UID}/staging/front.png`, fileBytes('png'), 'image/png'); // an abandoned capture
+test('signed in → one upsert-able signed upload per slot into this capture’s own staging folder, digits, and a ticket binding them', async () => {
+  mockFake.put('twins', `twins/${UID}/staging/front.png`, fileBytes('png'), 'image/png'); // an abandoned capture (old layout)
+  mockFake.put('twins', `twins/${UID}/staging/ffeeddccbbaa99887766554433221100/front.jpg`, fileBytes('jpeg'), 'image/jpeg'); // and another
+  const before = Date.now();
   const res = await post({ slots: SLOTS });
   expect(res.status).toBe(200);
   expect(res.headers.get('cache-control')).toBe('no-store');
   const j = await res.json();
+  const ticket = verifyCaptureTicket(j.ticket)!;
+  expect(ticket.n).toMatch(/^[0-9a-f]{32}$/);
   expect(j.bucket).toBe('twins');
   expect(j.uploads).toEqual({
-    front: { path: `twins/${UID}/staging/front.jpg`, token: expect.any(String) },
-    left: { path: `twins/${UID}/staging/left.jpg`, token: expect.any(String) },
-    right: { path: `twins/${UID}/staging/right.jpg`, token: expect.any(String) },
-    voice: { path: `twins/${UID}/staging/voice.webm`, token: expect.any(String) },
+    front: { path: `twins/${UID}/staging/${ticket.n}/front.jpg`, token: expect.any(String) },
+    left: { path: `twins/${UID}/staging/${ticket.n}/left.jpg`, token: expect.any(String) },
+    right: { path: `twins/${UID}/staging/${ticket.n}/right.jpg`, token: expect.any(String) },
+    voice: { path: `twins/${UID}/staging/${ticket.n}/voice.webm`, token: expect.any(String) },
   });
   expect(signed().every((c) => c.bucket === 'twins' && (c.opts as { upsert: boolean }).upsert === true)).toBe(true);
   expect(j.digits).toMatch(/^\d{8}$/);
-  expect(verifyCaptureTicket(j.ticket)).toMatchObject({ u: UID, d: j.digits, s: { front: 'jpg', left: 'jpg', right: 'jpg', voice: 'webm' } });
+  expect(ticket).toMatchObject({ u: UID, d: j.digits, s: { front: 'jpg', left: 'jpg', right: 'jpg', voice: 'webm' } });
+  expect(ticket.j).toBeUndefined(); // a session capture is bound to no link
+  // ⚠️ The consent time is the SERVER's clock right now — the client sends none.
+  expect(ticket.c).toBeGreaterThanOrEqual(before);
+  expect(ticket.c).toBeLessThanOrEqual(Date.now());
   expect(Date.parse(j.expiresAt) - Date.now()).toBeGreaterThan(110 * 60_000);
   expect(mockFake.paths('twins')).toEqual([]); // the abandoned staging object went first
+});
+
+test('every capture gets its OWN staging folder: a second start never re-signs the first one’s paths', async () => {
+  const a = await (await post({ slots: SLOTS })).json();
+  const b = await (await post({ slots: SLOTS })).json();
+  expect(verifyCaptureTicket(a.ticket)!.n).not.toBe(verifyCaptureTicket(b.ticket)!.n);
+  expect(a.uploads.front.path).not.toBe(b.uploads.front.path);
 });
 
 test('photo-only (a browser that cannot record) → no voice slot', async () => {
@@ -131,12 +146,28 @@ test.each([
 });
 
 describe('the phone (QR) flow — the desktop user’s handoff link', () => {
-  test('a valid link signs into the LINK’s user, even on a phone signed into another account', async () => {
+  test('a valid link on a phone with NO session signs into the LINK’s user, and the ticket is bound to that link', async () => {
+    mockUser = null;
+    const token = signHandoffToken(UID)!;
+    const j = await (await post({ slots: SLOTS, handoffToken: token })).json();
+    const ticket = verifyCaptureTicket(j.ticket)!;
+    expect(j.uploads.front.path).toBe(`twins/${UID}/staging/${ticket.n}/front.jpg`);
+    expect(ticket.u).toBe(UID);
+    expect(ticket.j).toBe(verifyHandoffToken(token)!.jti);
+  });
+
+  test('a phone signed into the SAME account as the link is fine', async () => {
+    mockUser = { id: UID };
+    const res = await post({ slots: SLOTS, handoffToken: signHandoffToken(UID) });
+    expect(res.status).toBe(200);
+  });
+
+  test('⚠️ a phone signed into ANOTHER account is refused (409 account_mismatch) — never a silent cross-account capture', async () => {
     mockUser = { id: PHONE_SESSION };
-    const j = await (await post({ slots: SLOTS, handoffToken: signHandoffToken(UID) })).json();
-    expect(j.uploads.front.path).toBe(`twins/${UID}/staging/front.jpg`);
-    expect(verifyCaptureTicket(j.ticket)!.u).toBe(UID);
-    expect(signed().some((c) => c.path!.includes(PHONE_SESSION))).toBe(false);
+    const res = await post({ slots: SLOTS, handoffToken: signHandoffToken(UID) });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'account_mismatch' });
+    expect(signed()).toEqual([]);
   });
 
   test('a link that was already used is refused', async () => {

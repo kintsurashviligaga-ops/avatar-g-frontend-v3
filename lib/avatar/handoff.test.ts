@@ -124,6 +124,23 @@ describe('single use (jti) — a handoff link completes exactly once', () => {
     await expect(h.consumeHandoffToken(h.signHandoffToken(UID)!, store)).resolves.toEqual({ ok: false, reason: 'unavailable' });
   });
 
+  test('graceJti: an EXPIRED link verifies only for the jti a capture ticket names — and is still single-use', async () => {
+    const h = fresh();
+    const store = memoryStore();
+    const expired = h.signHandoffToken(UID, -1)!;
+    const jti = JSON.stringify(h.verifyHandoffToken(expired, { graceJti: 'x'.repeat(22) })); // wrong jti → still refused
+    expect(jti).toBe('null');
+    expect(h.verifyHandoffToken(expired)).toBeNull();
+    // The jti is inside the signed payload — read it the way the twin ticket recorded it at upload-url.
+    const own = Buffer.from(expired.split('.')[0]!, 'base64url').toString('utf8').split('.')[2]!;
+    expect(h.verifyHandoffToken(expired, { graceJti: own })).toMatchObject({ userId: UID, jti: own });
+    await expect(h.consumeHandoffToken(expired, store)).resolves.toEqual({ ok: false, reason: 'invalid' });
+    await expect(h.consumeHandoffToken(expired, store, { graceJti: own })).resolves.toMatchObject({ ok: true });
+    await expect(h.consumeHandoffToken(expired, store, { graceJti: own })).resolves.toEqual({ ok: false, reason: 'used' });
+    // A grace never rescues a forged signature.
+    expect(h.verifyHandoffToken(`${expired.split('.')[0]}.forged`, { graceJti: own })).toBeNull();
+  });
+
   test('a pre-jti token (userId.exp, correctly signed) is refused — it could never be single-use', () => {
     const h = fresh();
     const { createHmac } = jest.requireActual('crypto') as typeof import('crypto');

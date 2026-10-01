@@ -21,7 +21,9 @@ import {
   twinCaptureDir,
   twinCapturePath,
   twinManifestPath,
+  isStagingNonce,
   twinStagingDir,
+  twinStagingNonceDir,
   twinStagingPath,
   twinUserPrefix,
 } from './paths';
@@ -29,6 +31,8 @@ import {
 const UID = '11111111-2222-4333-8444-555555555555';
 const OTHER = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const CAP = '0123456789abcdef';
+const NONCE = '00112233445566778899aabbccddeeff';
+const NONCE2 = 'ffeeddccbbaa99887766554433221100';
 
 describe('deterministic paths in the private twins bucket', () => {
   test('the bucket is the dedicated private one, shared with the Live-Avatar voice writer', () => {
@@ -40,12 +44,18 @@ describe('deterministic paths in the private twins bucket', () => {
     expect(twinUserPrefix(UID)).toBe(`twins/${UID}/`);
     expect(twinManifestPath(UID)).toBe(`twins/${UID}/twin.json`);
     expect(twinStagingDir(UID)).toBe(`twins/${UID}/staging`);
-    expect(twinStagingPath(UID, 'front', 'jpg')).toBe(`twins/${UID}/staging/front.jpg`);
-    expect(twinStagingPath(UID, 'voice', 'webm')).toBe(`twins/${UID}/staging/voice.webm`);
+    expect(twinStagingNonceDir(UID, NONCE)).toBe(`twins/${UID}/staging/${NONCE}`);
+    expect(twinStagingPath(UID, NONCE, 'front', 'jpg')).toBe(`twins/${UID}/staging/${NONCE}/front.jpg`);
+    expect(twinStagingPath(UID, NONCE, 'voice', 'webm')).toBe(`twins/${UID}/staging/${NONCE}/voice.webm`);
     expect(twinCaptureDir(UID, CAP)).toBe(`twins/${UID}/twin-${CAP}`);
     expect(twinCapturePath(UID, CAP, 'left', 'jpg')).toBe(`twins/${UID}/twin-${CAP}/left.jpg`);
     expect(twinCapturePath(UID, CAP, 'right', 'jpg')).toBe(twinCapturePath(UID, CAP, 'right', 'jpg'));
     expect(handoffJtiPath('AbCdEfGhIjKlMnOpQrStUv')).toBe('handoff/AbCdEfGhIjKlMnOpQrStUv');
+  });
+
+  test('each capture stages in its OWN folder: two captures of one user never name the same upload target', () => {
+    expect(twinStagingPath(UID, NONCE, 'front', 'jpg')).not.toBe(twinStagingPath(UID, NONCE2, 'front', 'jpg'));
+    expect(twinStagingPath(UID, NONCE, 'front', 'jpg').startsWith(`${twinStagingDir(UID)}/`)).toBe(true);
   });
 
   test('one prefix holds everything biometric: the Live-Avatar voice sample is under it too', () => {
@@ -62,10 +72,14 @@ describe('deterministic paths in the private twins bucket', () => {
     for (const bad of ['', 'anonymous', '../x', `${UID}/../${OTHER}`, UID.toUpperCase() + '0']) {
       expect(() => twinUserPrefix(bad)).toThrow();
     }
-    expect(() => twinStagingPath(UID, 'front', 'webm')).toThrow(); // a photo slot never takes an audio extension
-    expect(() => twinStagingPath(UID, 'voice', 'jpg')).toThrow();
-    expect(() => twinStagingPath(UID, 'back' as never, 'jpg')).toThrow();
-    expect(() => twinStagingPath(UID, 'front', 'jpg/../../x')).toThrow();
+    expect(() => twinStagingPath(UID, NONCE, 'front', 'webm')).toThrow(); // a photo slot never takes an audio extension
+    expect(() => twinStagingPath(UID, NONCE, 'voice', 'jpg')).toThrow();
+    expect(() => twinStagingPath(UID, NONCE, 'back' as never, 'jpg')).toThrow();
+    expect(() => twinStagingPath(UID, NONCE, 'front', 'jpg/../../x')).toThrow();
+    for (const nonce of ['', '..', 'front.jpg', NONCE.toUpperCase(), `${NONCE}/..`, NONCE.slice(1)]) {
+      expect(isStagingNonce(nonce)).toBe(false);
+      expect(() => twinStagingPath(UID, nonce, 'front', 'jpg')).toThrow();
+    }
     expect(() => twinCaptureDir(UID, '../staging')).toThrow();
     expect(() => twinCaptureDir(UID, 'ABCDEF0123456789')).toThrow();
     for (const jti of ['', 'short', '../../twins/x', 'has space in it padding']) expect(() => handoffJtiPath(jti)).toThrow();
@@ -74,7 +88,7 @@ describe('deterministic paths in the private twins bucket', () => {
 
 describe('owner-prefix check', () => {
   test('the caller’s own objects pass', () => {
-    for (const p of [twinManifestPath(UID), twinStagingPath(UID, 'front', 'jpg'), twinCapturePath(UID, CAP, 'voice', 'm4a')]) {
+    for (const p of [twinManifestPath(UID), twinStagingPath(UID, NONCE, 'front', 'jpg'), twinCapturePath(UID, CAP, 'voice', 'm4a')]) {
       expect(isOwnTwinPath(UID, p)).toBe(true);
       expect(assertOwnTwinPath(UID, p)).toBe(p);
     }

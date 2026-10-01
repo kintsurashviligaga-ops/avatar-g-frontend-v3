@@ -13,6 +13,7 @@ jest.mock('../../lib/supabase/browser', () => ({
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import TwinCapture from './TwinCapture';
+import { twinCopy } from './copy';
 import { TWIN_CONSENT } from '@/lib/legal/content';
 
 // ── device fakes ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -59,12 +60,14 @@ class FakeImage {
   set src(_v: string) { void Promise.resolve().then(() => this.onload?.()); }
 }
 
+const ACCOUNT = 'gi•••i@gmail.com';
+
 // ── network fakes ─────────────────────────────────────────────────────────────────────────────────────────────────
 const UPLOADS = {
-  front: { path: 'twins/u/staging/front.jpg', token: 't-front' },
-  left: { path: 'twins/u/staging/left.jpg', token: 't-left' },
-  right: { path: 'twins/u/staging/right.jpg', token: 't-right' },
-  voice: { path: 'twins/u/staging/voice.webm', token: 't-voice' },
+  front: { path: 'twins/u/staging/n1/front.jpg', token: 't-front' },
+  left: { path: 'twins/u/staging/n1/left.jpg', token: 't-left' },
+  right: { path: 'twins/u/staging/n1/right.jpg', token: 't-right' },
+  voice: { path: 'twins/u/staging/n1/voice.webm', token: 't-voice' },
 };
 /** A minimal fetch Response (jsdom has no Response class): only what the component reads. */
 const json = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as unknown as Response;
@@ -95,7 +98,7 @@ beforeEach(() => {
   HTMLCanvasElement.prototype.getContext = jest.fn(() => ({ drawImage: jest.fn() })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.toBlob = function toBlob(cb: BlobCallback) { cb(new Blob([new Uint8Array(5_000)], { type: 'image/jpeg' })); };
   fetchMock = jest.fn(async (url: string) => {
-    if (url === '/api/twin/upload-url') return json(200, { bucket: 'twins', uploads: UPLOADS, digits: '40917263', ticket: 'tw1.ticket.sig', expiresAt: '2026-10-02T12:00:00.000Z' });
+    if (url === '/api/twin/upload-url') return json(200, { bucket: 'twins', uploads: UPLOADS, digits: '40917263', ticket: 'tw2.ticket.sig', expiresAt: '2026-10-02T12:00:00.000Z' });
     if (url === '/api/twin/commit') return json(200, { ok: true, committedAt: '2026-10-02T10:00:00.000Z', hasVoice: true });
     if (url === '/api/twin') return json(200, { status: 'none' });
     return json(404, {});
@@ -127,7 +130,7 @@ async function uploadPhoto() {
 
 describe('consent comes first', () => {
   test.each(['ka', 'en', 'ru'] as const)('(%s) the consent text, marked as a draft, and nothing starts until the box is ticked', async (locale) => {
-    render(<TwinCapture locale={locale} onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale={locale} onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     expect(screen.getByText(TWIN_CONSENT.title[locale])).toBeTruthy();
     for (const p of TWIN_CONSENT.points[locale]) expect(screen.getByText(p)).toBeTruthy();
     expect(screen.getByTestId('twin-consent-draft').textContent).toBe(TWIN_CONSENT.draftNotice[locale]);
@@ -139,7 +142,7 @@ describe('consent comes first', () => {
   });
 
   test('Continue asks for the uploads — photo types, the recordable voice type, and the phone link', async () => {
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     expect(bodyOf('/api/twin/upload-url')).toEqual({
       slots: { front: 'image/jpeg', left: 'image/jpeg', right: 'image/jpeg', voice: 'audio/webm;codecs=opus' },
@@ -148,9 +151,43 @@ describe('consent comes first', () => {
     expect(screen.getByTestId('twin-step').textContent).toBe('1/5 · Front');
   });
 
+  test('the phone says WHICH account it saves to before anything is captured (ka/en/ru)', async () => {
+    for (const locale of ['ka', 'en', 'ru'] as const) {
+      const { unmount } = render(<TwinCapture locale={locale} onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
+      const box = screen.getByTestId('twin-saving-to');
+      expect(box.textContent).toContain(ACCOUNT);
+      expect(box.textContent).toContain(twinCopy(locale).savingTo);
+      expect(box.textContent).toContain(twinCopy(locale).savingToHint);
+      unmount();
+    }
+  });
+
+  test('a phone capture with no account to show never starts (fail closed)', async () => {
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    expect(screen.queryByTestId('twin-saving-to')).toBeNull();
+    fireEvent.click(screen.getByTestId('twin-consent-agree'));
+    expect((screen.getByTestId('twin-continue') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { fireEvent.click(screen.getByTestId('twin-continue')); });
+    expect(callsTo('/api/twin/upload-url')).toHaveLength(0);
+  });
+
+  test('the desktop (own session) shows no "Saving to" box', async () => {
+    render(<TwinCapture locale="en" onClose={jest.fn()} />);
+    await flush();
+    expect(screen.queryByTestId('twin-saving-to')).toBeNull();
+  });
+
+  test('a phone signed into ANOTHER account is refused with a clear message (409 account_mismatch)', async () => {
+    fetchMock.mockImplementationOnce(async () => json(409, { error: 'account_mismatch' }));
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
+    await agreeAndBegin();
+    expect(screen.getByRole('alert').textContent).toBe(twinCopy('en').err.accountMismatch);
+    expect(screen.getByTestId('twin-consent')).toBeTruthy();
+  });
+
   test('a spent or expired phone link says so on the consent screen', async () => {
     fetchMock.mockImplementationOnce(async () => json(401, { error: 'link_already_used' }));
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     expect(screen.getByRole('alert').textContent).toMatch(/already used or has expired/);
     expect(screen.getByTestId('twin-consent')).toBeTruthy();
@@ -160,7 +197,7 @@ describe('consent comes first', () => {
 describe('photos — oval, 3-2-1, and graceful fallbacks', () => {
   test('3-2-1 then the shot; the camera is released once the preview shows', async () => {
     jest.useFakeTimers();
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     await flush();
     expect(gum).toHaveBeenCalledTimes(1);
@@ -176,7 +213,7 @@ describe('photos — oval, 3-2-1, and graceful fallbacks', () => {
 
   test('camera blocked → it says so, and an uploaded photo still works', async () => {
     gum.mockRejectedValue(Object.assign(new Error('denied'), { name: 'NotAllowedError' }));
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     await flush();
     expect(screen.getByTestId('twin-camera-error').textContent).toMatch(/Camera access is blocked/);
@@ -186,7 +223,7 @@ describe('photos — oval, 3-2-1, and graceful fallbacks', () => {
 
   test('no camera API at all → "upload a photo instead"', async () => {
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined });
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     await flush();
     expect(screen.getByTestId('twin-camera-error').textContent).toMatch(/No camera found/);
@@ -195,7 +232,7 @@ describe('photos — oval, 3-2-1, and graceful fallbacks', () => {
 
 describe('voice — the server’s digits, a 12 s minimum, a 30 s auto-stop', () => {
   async function toVoiceStep() {
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     for (let i = 0; i < 3; i += 1) await uploadPhoto();
     expect(screen.getByTestId('twin-step').textContent).toBe('4/5 · Voice');
@@ -256,8 +293,8 @@ describe('save — straight to storage, then the commit with the consent record'
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Next' })); });
   }
 
-  test('every file is PUT through its own signed URL; the commit carries the ticket, the consent record and the link', async () => {
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+  test('every file is PUT through its own signed URL; the commit carries the ticket, the consent version (no client time) and the link', async () => {
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await captureAll();
     await act(async () => { fireEvent.click(screen.getByTestId('twin-save')); });
     await flush();
@@ -268,16 +305,23 @@ describe('save — straight to storage, then the commit with the consent record'
       ['twins', UPLOADS.voice.path, 't-voice', { contentType: 'audio/webm;codecs=opus', upsert: true }],
     ]);
     expect(bodyOf('/api/twin/commit')).toEqual({
-      ticket: 'tw1.ticket.sig',
-      consent: { version: TWIN_CONSENT.version, acceptedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/) },
+      ticket: 'tw2.ticket.sig',
+      // ⚠️ No acceptedAt: the server records the consent time at upload-url — a skewed phone clock must not matter.
+      consent: { version: TWIN_CONSENT.version },
       voiceSeconds: 14,
       handoffToken: 'tok',
     });
     expect(screen.getByTestId('twin-done').textContent).toMatch(/Return to your computer/);
   });
 
+  test('the review step repeats which account the twin is saved to', async () => {
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
+    await captureAll();
+    expect(screen.getByTestId('twin-review-account').textContent).toContain(ACCOUNT);
+  });
+
   test('a photo the server refuses sends the person back to exactly that shot', async () => {
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await captureAll();
     fetchMock.mockImplementationOnce(async () => json(415, { error: 'content_mismatch', slot: 'left' }));
     await act(async () => { fireEvent.click(screen.getByTestId('twin-save')); });
@@ -288,7 +332,7 @@ describe('save — straight to storage, then the commit with the consent record'
   });
 
   test('a failed upload never commits', async () => {
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await captureAll();
     mockUpload.mockResolvedValueOnce({ data: null as never, error: { message: 'boom' } });
     await act(async () => { fireEvent.click(screen.getByTestId('twin-save')); });
@@ -318,7 +362,7 @@ describe('desktop extras and cleanup', () => {
   });
 
   test('closing mid-capture releases the camera', async () => {
-    const { unmount } = render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    const { unmount } = render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     await flush();
     const cam = tracks.find((t) => t.kind === 'video')!;
@@ -330,7 +374,7 @@ describe('desktop extras and cleanup', () => {
   test('a camera that answers after the live view ended (a photo was uploaded meanwhile) is stopped, not left hot', async () => {
     let resolve!: (s: MediaStream) => void;
     gum.mockImplementationOnce(() => new Promise<MediaStream>((r) => { resolve = r; }));
-    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     await act(async () => {
       fireEvent.change(screen.getByTestId('twin-photo-input'), { target: { files: [new File(['x'], 'me.jpg', { type: 'image/jpeg' })] } });
@@ -345,7 +389,7 @@ describe('desktop extras and cleanup', () => {
   test('a camera that answers AFTER close is stopped at once (no orphaned hot camera)', async () => {
     let resolve!: (s: MediaStream) => void;
     gum.mockImplementationOnce(() => new Promise<MediaStream>((r) => { resolve = r; }));
-    const { unmount } = render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" />);
+    const { unmount } = render(<TwinCapture locale="en" onClose={jest.fn()} handoffToken="tok" handoffAccount={ACCOUNT} />);
     await agreeAndBegin();
     unmount();
     const late = fakeStream('video');

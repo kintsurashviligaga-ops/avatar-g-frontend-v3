@@ -80,11 +80,20 @@ export function signHandoffToken(userId: string, ttlMs: number = DEFAULT_TTL_MS)
   return `${Buffer.from(payload).toString('base64url')}.${hmac(payload)}`;
 }
 
+export interface VerifyHandoffOptions {
+  /**
+   * Accept this ONE token past its expiry when its jti equals `graceJti`. Only the twin commit passes it — with the jti
+   * bound into a valid capture ticket that was minted while the link was still live (lib/twin/ticket.ts `j`). A capture
+   * takes up to 2 hours on the phone; the link only 15 minutes. The link is still single-use: the commit claims it.
+   */
+  graceJti?: string | null;
+}
+
 /**
  * Verify a handoff token's signature, shape and expiry. Does NOT mark it used — reading is not completing (the twin
  * capture verifies once to sign its uploads, then consumes at the commit).
  */
-export function verifyHandoffToken(token: string): HandoffClaims | null {
+export function verifyHandoffToken(token: string, opts: VerifyHandoffOptions = {}): HandoffClaims | null {
   if (!signingKey() || typeof token !== 'string' || token.length > 1024) return null;
   const dot = token.indexOf('.');
   if (dot <= 0) return null;
@@ -101,7 +110,8 @@ export function verifyHandoffToken(token: string): HandoffClaims | null {
   if (parts.length !== 3) return null; // a pre-jti token (`userId.exp`) can never be single-use — refused
   const [userId, expStr, jti] = parts as [string, string, string];
   const exp = Number(expStr);
-  if (!userId || !/^\d+$/.test(expStr) || !JTI_RE.test(jti) || !Number.isFinite(exp) || Date.now() > exp) return null;
+  if (!userId || !/^\d+$/.test(expStr) || !JTI_RE.test(jti) || !Number.isFinite(exp)) return null;
+  if (Date.now() > exp && !(opts.graceJti && opts.graceJti === jti)) return null;
   return { userId, jti, exp };
 }
 
@@ -113,8 +123,8 @@ export type ConsumeResult =
  * Verify AND claim: succeeds for the token's FIRST use only. 'invalid' (bad/expired) and 'used' are the caller's 401;
  * 'unavailable' (the store could not answer) is a retryable 503 — nothing was claimed, so the link still works.
  */
-export async function consumeHandoffToken(token: string, store: HandoffJtiStore): Promise<ConsumeResult> {
-  const claims = verifyHandoffToken(token);
+export async function consumeHandoffToken(token: string, store: HandoffJtiStore, opts: VerifyHandoffOptions = {}): Promise<ConsumeResult> {
+  const claims = verifyHandoffToken(token, opts);
   if (!claims) return { ok: false, reason: 'invalid' };
   try {
     return (await store.claim(claims.jti, claims.exp)) === 'claimed' ? { ok: true, claims } : { ok: false, reason: 'used' };
