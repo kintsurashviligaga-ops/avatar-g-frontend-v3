@@ -15,8 +15,13 @@
  * NEW, optional: `personaId` / `customPersona` (the PersonaPicker choice — until now Live ignored it), `onTurn` (the
  * transcript sink; without it every closed turn is dispatched as the window event LIVE_TRANSCRIPT_EVENT,
  * 'myavatar:live-transcript', for OmniStudio to append to the thread) and `onUsage`.
+ *
+ * VOICE-TO-ACTION (docs/voice/LIVE_ACTIONS.md): the call asks for the UI-action functions and EXECUTES them here —
+ * live/liveActions.ts validates each call, dispatches `myavatar:live-action` (OmniStudio switches + prefills, never
+ * runs) / `myavatar:open-artifact` (code), answers the model at once, and the overlay shows a card per action. A card's
+ * Open ends the call and brings that studio (focused) or the canvas to the front; end_call hangs up after the goodbye.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // Volume2, not AudioLines — this lucide version does not export the latter (verified against the installed package,
 // the same trap that once cost a build over `Waves` vs `AudioLines`).
 import { Volume2 } from 'lucide-react';
@@ -26,6 +31,13 @@ import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 import LiveModeOverlay from './live/LiveModeOverlay';
+import {
+  LIVE_END_CALL_GRACE_MS,
+  LIVE_END_CALL_MAX_WAIT_MS,
+  revealLiveAction,
+  useLiveActions,
+  type LiveActionCard,
+} from './live/liveActions';
 import {
   buildLiveInstruction,
   useGeminiLiveSession,
@@ -98,6 +110,10 @@ export default function GeminiLiveConversation({
   const [voiceGender, setVoiceGender] = useState<Gender>(gender ?? profileGender);
   const voiceName = voiceGender === profileGender ? instruction.voiceName : GEMINI_LIVE_VOICES[voiceGender];
 
+  // Voice-to-action: the server decides whether the token carries the functions (GEMINI_LIVE_ACTIONS); this screen
+  // asks because it executes them.
+  const liveActions = useLiveActions();
+
   const session = useGeminiLiveSession({
     locale: loc,
     voiceName,
@@ -110,6 +126,9 @@ export default function GeminiLiveConversation({
     onTurn,
     onUsage,
     onUnavailable,
+    actions: true,
+    onToolCall: liveActions.onToolCall,
+    onToolCallCancellation: liveActions.onToolCallCancellation,
   });
   const { start, stop, sendVideoFrame, status } = session;
 
@@ -151,6 +170,28 @@ export default function GeminiLiveConversation({
     stop();
     onClose();
   }, [onClose, stop, stopCamera]);
+
+  // end_call. ⚠️ Function calls BLOCK the model's turn: it speaks its goodbye only AFTER our answer, so hanging up on
+  // the call itself cut the goodbye off. Hang up once nothing is playing (a short grace), or — if the goodbye is
+  // playing — when it ends, bounded. Through a ref: ChatChrome passes a fresh onClose every render, and a re-armed
+  // timer per parent render could postpone the hang-up forever.
+  const endCallRef = useRef(endCall);
+  endCallRef.current = endCall;
+  const { endRequested } = liveActions;
+  useEffect(() => {
+    if (!endRequested || status === 'closed') return; // 'closed' = already hung up (no second onClose)
+    const goodbyePlaying = status === 'speaking' || status === 'thinking';
+    const timer = setTimeout(() => endCallRef.current(), goodbyePlaying ? LIVE_END_CALL_MAX_WAIT_MS : LIVE_END_CALL_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [endRequested, status]);
+
+  // A card's Open: end the call, then bring what was prepared to the front. ⚠️ A task LATER, not now: the overlay's
+  // useDialogA11y hands focus back to the Live chip synchronously as it unmounts, and the studio's composer must take
+  // focus after that — never while the call's modal dialog is still up.
+  const openAction = useCallback((card: LiveActionCard) => {
+    endCall();
+    setTimeout(() => revealLiveAction(card.action), 0);
+  }, [endCall]);
 
   const flipCamera = camera.flip;
   const onFlipCamera = useCallback(() => { void flipCamera(); }, [flipCamera]);
@@ -200,6 +241,8 @@ export default function GeminiLiveConversation({
       onResumeAudio={session.resumeAudio}
       extraControls={voiceSwitch}
       showCaptions={!session.degraded}
+      actions={liveActions.cards}
+      onOpenAction={openAction}
     />
   );
 }

@@ -6,17 +6,24 @@
  *   • a closed turn is delivered to onTurn when the host passes one;
  *   • a mic failure reaches the screen as a MICROPHONE error with the browser's error name, opens no socket, and
  *     leaves one telemetry beacon at /api/log-error;
- *   • the Live button's gesture prime (lib/voice/livePrime) is adopted: its context and its mic, no second request.
+ *   • the Live button's gesture prime (lib/voice/livePrime) is adopted: its context and its mic, no second request;
+ *   • voice-to-action: the call asks for the functions, each toolCall becomes the window event + an immediate
+ *     toolResponse (ok:false when no studio took it), a card per action, Open ends the call and reveals the studio,
+ *     a cancellation drops the card, end_call hangs up after the goodbye.
  */
 const mockReportError = jest.fn();
 jest.mock('../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReportError(...a) }));
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MotionGlobalConfig } from 'framer-motion';
 
 import { __resetLiveTelemetryBudget } from '@/lib/voice/liveTelemetry';
 import { primeLive } from '@/lib/voice/livePrime';
+import { LIVE_ACTION_EVENT, LIVE_FUNCTION_DECLARATIONS, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail } from '@/lib/voice/liveTools';
 
 import GeminiLiveConversation from './GeminiLiveConversation';
+import { LIVE_ACTION_STRINGS } from './live/LiveActionCards';
+import { LIVE_END_CALL_GRACE_MS, LIVE_END_CALL_MAX_WAIT_MS } from './live/liveActions';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
 
 class FakeSocket {
@@ -175,4 +182,143 @@ test('the Live button\'s gesture prime is adopted: one getUserMedia, the primed 
   expect(gum).toHaveBeenCalledTimes(1);
   // Only the 16 kHz capture context was added; playback is the primed one.
   expect(Ctx.all.filter((c) => c !== primedCtx).every((c) => c.sampleRate === 16000)).toBe(true);
+});
+
+// ─── Voice-to-action (lib/voice/liveTools.ts → live/liveActions.ts → the overlay strip) ─────────────────────────
+
+describe('voice-to-action', () => {
+  const S = LIVE_ACTION_STRINGS.en;
+  const live: Array<{ detail: LiveActionEventDetail; took: boolean }> = [];
+  let studioOnPage = true;
+  // Stands in for OmniStudio's one listener: applies, then preventDefault() as the receipt.
+  const studio = (e: Event) => {
+    const detail = (e as CustomEvent<LiveActionEventDetail>).detail;
+    const took = studioOnPage && (detail.type === 'prepare_generation' || detail.type === 'open_studio');
+    live.push({ detail, took });
+    if (took) e.preventDefault();
+  };
+  beforeEach(() => {
+    MotionGlobalConfig.skipAnimations = true;
+    live.length = 0;
+    studioOnPage = true;
+    window.addEventListener(LIVE_ACTION_EVENT, studio);
+  });
+  afterEach(() => {
+    window.removeEventListener(LIVE_ACTION_EVENT, studio);
+    MotionGlobalConfig.skipAnimations = false;
+  });
+
+  async function connectedCall(onClose = jest.fn()) {
+    render(<GeminiLiveConversation userId="u1" locale="en" onClose={onClose} />);
+    await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+    const ws = FakeSocket.all[0]!;
+    act(() => ws.open());
+    act(() => ws.receive({ setupComplete: {} }));
+    await screen.findByText(LIVE_OVERLAY_STRINGS.en.status.listening);
+    return { ws, onClose };
+  }
+  const lastToolResponse = (ws: FakeSocket) =>
+    [...ws.sent].reverse().find((f) => 'toolResponse' in f) as { toolResponse: { functionResponses: Array<{ id: string; name: string; response: Record<string, unknown> }> } } | undefined;
+
+  test('the call asks for the actions and its frame declares them', async () => {
+    const { ws } = await connectedCall();
+    const mint = (g.fetch as jest.Mock).mock.calls.find((c) => c[0] === '/api/voice/live')!;
+    expect(JSON.parse(String((mint[1] as RequestInit).body))).toMatchObject({ actions: true, transcribe: true });
+    // (This mint mock returns no server setup, so the hook builds the frame: declarations first, then the persona's search.)
+    const tools = (ws.sent[0]!.setup as { tools?: unknown[] }).tools;
+    expect(tools?.[0]).toEqual({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
+  });
+
+  test('prepare_generation → the studio event, an ok:true answer, a card; Open ends the call and reveals the studio', async () => {
+    const { ws, onClose } = await connectedCall();
+    act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'c1', name: 'prepare_generation', args: { tool: 'video', prompt: 'A cat surfing', aspectRatio: 'portrait' } }] } }));
+    await waitFor(() => expect(lastToolResponse(ws)).toBeTruthy());
+    expect(live[0]).toEqual({ detail: { type: 'prepare_generation', tool: 'video', prompt: 'A cat surfing', aspectRatio: '9:16' }, took: true });
+    const r = lastToolResponse(ws)!.toolResponse.functionResponses;
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ id: 'c1', name: 'prepare_generation', response: { ok: true } });
+    expect(String(r[0]!.response.summary)).toMatch(/no credits were spent/);
+    // Nothing but the answer went to Google: no render, no second call.
+    expect((g.fetch as jest.Mock).mock.calls.filter((c) => c[0] !== '/api/voice/live' && c[0] !== '/api/avatar/core')).toEqual([]);
+
+    expect(await screen.findByText('Prepared a video prompt')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Prepared a video prompt. Not started — you run it from the studio.');
+    fireEvent.click(screen.getByRole('button', { name: S.openStudioLabel }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(ws.readyState).toBe(FakeSocket.CLOSED);
+    await waitFor(() => expect(live.some((e) => e.detail.reveal === true)).toBe(true));
+    expect(live[live.length - 1]!.detail).toEqual({ type: 'prepare_generation', tool: 'video', prompt: 'A cat surfing', aspectRatio: '9:16', reveal: true });
+  });
+
+  test('no studio on the page → ok:false studio_unavailable and no card; junk args → invalid_args', async () => {
+    studioOnPage = false;
+    const { ws } = await connectedCall();
+    act(() => ws.receive({ toolCall: { functionCalls: [
+      { id: 'a', name: 'open_studio', args: { tool: 'video' } },
+      { id: 'b', name: 'prepare_generation', args: { tool: 'hologram', prompt: 'x' } },
+      { id: 'c', name: 'buy_credits', args: {} },
+    ] } }));
+    await waitFor(() => expect(lastToolResponse(ws)).toBeTruthy());
+    expect(lastToolResponse(ws)!.toolResponse.functionResponses.map((f) => [f.id, f.response.ok, f.response.error])).toEqual([
+      ['a', false, 'studio_unavailable'],
+      ['b', false, 'invalid_args'],
+      ['c', false, 'unknown_tool'],
+    ]);
+    expect(screen.queryByTestId('live-action-card')).toBeNull();
+  });
+
+  test('show_code → the canvas gets {title, language, code}; a toolCallCancellation removes the card', async () => {
+    const artifacts: unknown[] = [];
+    const canvas = (e: Event) => artifacts.push((e as CustomEvent).detail);
+    window.addEventListener(OPEN_ARTIFACT_EVENT, canvas);
+    try {
+      const { ws } = await connectedCall();
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'k1', name: 'show_code', args: { title: 'Hello', language: 'TypeScript', code: 'export const x = 1;' } }] } }));
+      await waitFor(() => expect(lastToolResponse(ws)).toBeTruthy());
+      expect(artifacts).toEqual([{ title: 'Hello', language: 'typescript', code: 'export const x = 1;' }]);
+      expect(lastToolResponse(ws)!.toolResponse.functionResponses[0]).toMatchObject({ id: 'k1', response: { ok: true } });
+      expect(await screen.findByText('Hello')).toBeTruthy();
+
+      act(() => ws.receive({ toolCallCancellation: { ids: ['k1'] } }));
+      await waitFor(() => expect(screen.queryByTestId('live-action-card')).toBeNull());
+    } finally {
+      window.removeEventListener(OPEN_ARTIFACT_EVENT, canvas);
+    }
+  });
+
+  test('end_call hangs up after the goodbye: a short grace when nothing plays, bounded while the goodbye plays', async () => {
+    const { ws, onClose } = await connectedCall();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'e1', name: 'end_call', args: {} }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(lastToolResponse(ws)!.toolResponse.functionResponses[0]).toMatchObject({ id: 'e1', response: { ok: true } });
+      // The goodbye starts playing → wait for it (bounded), not the short grace.
+      act(() => ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AAAAAAAAAAA=' } }] } } }));
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_GRACE_MS + 100); });
+      expect(onClose).not.toHaveBeenCalled();
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_MAX_WAIT_MS); });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(ws.readyState).toBe(FakeSocket.CLOSED);
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_MAX_WAIT_MS); });
+      expect(onClose).toHaveBeenCalledTimes(1); // hung up once
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('end_call with nothing playing → hangs up after the short grace', async () => {
+    const { ws, onClose } = await connectedCall();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    try {
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'e2', name: 'end_call' }] } }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      act(() => { jest.advanceTimersByTime(LIVE_END_CALL_GRACE_MS - 50); });
+      expect(onClose).not.toHaveBeenCalled();
+      act(() => { jest.advanceTimersByTime(100); });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
