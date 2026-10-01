@@ -49,7 +49,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
             <div
               className="absolute -inset-6 rounded-full logo-glow-breathe"
               style={{
-                background: 'radial-gradient(circle, rgba(0,229,255,0.16) 0%, rgba(6,182,212,0.06) 50%, transparent 70%)',
+                background: 'radial-gradient(circle, rgba(51,143,232,0.16) 0%, rgba(6,182,212,0.06) 50%, transparent 70%)',
                 filter: 'blur(20px)',
               }}
             />
@@ -63,7 +63,7 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
             />
           </>
         ) : (
-          <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(0,229,255,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
+          <div className="absolute inset-[10%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(51,143,232,0.05) 0%, transparent 70%)', filter: 'blur(6px)' }} />
         )}
         <Image
           src="/brand/gemini-rocket-clean.png"
@@ -73,8 +73,8 @@ export function BrandLogo({ href, size = 'md', showText = true, className = '', 
           priority
           className={`object-contain object-center ${
             isHero
-              ? 'drop-shadow-[0_8px_24px_rgba(0,229,255,0.28)]'
-              : 'drop-shadow-[0_2px_8px_rgba(0,229,255,0.15)]'
+              ? 'drop-shadow-[0_8px_24px_rgba(51,143,232,0.28)]'
+              : 'drop-shadow-[0_2px_8px_rgba(51,143,232,0.15)]'
           }`}
         />
       </div>

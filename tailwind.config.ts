@@ -25,6 +25,7 @@ const config: Config = {
         'app-text': 'rgb(var(--app-text) / <alpha-value>)',
         'app-muted': 'rgb(var(--app-muted) / <alpha-value>)',
         'app-accent': 'rgb(var(--app-accent) / <alpha-value>)',
+        'app-accent-deep': 'rgb(var(--app-accent-deep) / <alpha-value>)',
         'app-neon': 'rgb(var(--app-neon) / <alpha-value>)',
         'app-success': 'rgb(var(--app-success) / <alpha-value>)',
         'app-warning': 'rgb(var(--app-warning) / <alpha-value>)',
@@ -50,12 +51,14 @@ const config: Config = {
           muted:   '#1e1e35',
         },
         cyan: {
-          DEFAULT: '#00E5FF', // brand primary (was #00d4ff)
-          dim:    '#003d4d',
-          glow:   '#006680',
-          base:   '#00E5FF',
-          bright: '#33ddff',
-          white:  '#ccf7ff',
+          // The BRAND accent entries follow the rocket blue (docs/DESIGN.md §13); the numbered shades below stay
+          // Tailwind's own cyan (the rocket's flame), used for status and the success tone.
+          DEFAULT: '#338FE8', // rocket blue (was #00E5FF)
+          dim:    '#0B2747',
+          glow:   '#12406E',
+          base:   '#338FE8',
+          bright: '#5BA6F0',
+          white:  '#D6E8FB',
           300: '#67E8F9',
           400: '#22D3EE',
           500: '#06B6D4',
@@ -108,14 +111,14 @@ const config: Config = {
         'glass-lg': '0 16px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
         neon: '0 0 0 1px rgba(34, 211, 238, 0.25), 0 0 32px rgba(34, 211, 238, 0.2)',
         'neon-strong': '0 0 0 1px rgba(34,211,238,0.35), 0 0 48px rgba(34,211,238,0.25), 0 0 96px rgba(34,211,238,0.08)',
-        'neon-cyan': '0 0 20px rgba(0,212,255,0.3), 0 0 60px rgba(0,212,255,0.08)',
+        'neon-cyan': '0 0 20px rgba(51,143,232,0.3), 0 0 60px rgba(51,143,232,0.08)',
         'neon-violet': '0 0 20px rgba(14,165,233,0.3), 0 0 60px rgba(14,165,233,0.08)',
         'card': '0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3)',
         'premium': '0 20px 60px -12px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1)',
         'card-hover': '0 24px 80px -16px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.12)',
-        'glow-cyan': '0 0 20px rgba(0,212,255,0.4), 0 0 40px rgba(0,212,255,0.15)',
+        'glow-cyan': '0 0 20px rgba(51,143,232,0.4), 0 0 40px rgba(51,143,232,0.15)',
         'glow-violet': '0 0 20px rgba(14,165,233,0.45), 0 0 40px rgba(14,165,233,0.18)',
-        'float': '0 20px 60px rgba(0,0,0,0.8), 0 4px 16px rgba(0,212,255,0.1)',
+        'float': '0 20px 60px rgba(0,0,0,0.8), 0 4px 16px rgba(51,143,232,0.1)',
       },
       borderRadius: {
         xl: '0.9rem',
@@ -123,9 +126,9 @@ const config: Config = {
         '3xl': '1.5rem',
       },
       backgroundImage: {
-        'grid-cyan': 'linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px)',
-        'dot-pattern': 'radial-gradient(rgba(0,212,255,0.15) 1px, transparent 1px)',
-        'hero-gradient': 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,212,255,0.15), transparent)',
+        'grid-cyan': 'linear-gradient(rgba(51,143,232,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(51,143,232,0.03) 1px, transparent 1px)',
+        'dot-pattern': 'radial-gradient(rgba(51,143,232,0.15) 1px, transparent 1px)',
+        'hero-gradient': 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(51,143,232,0.15), transparent)',
       },
       backgroundSize: {
         'grid': '40px 40px',
@@ -242,16 +245,16 @@ const config: Config = {
           '100%': { transform: 'translateX(100vw) translateY(100vh) rotate(45deg)', opacity: '0' },
         },
         pulseGlow: {
-          '0%, 100%': { boxShadow: '0 0 8px rgba(0,212,255,0.2), 0 0 24px rgba(0,212,255,0.08)' },
-          '50%': { boxShadow: '0 0 16px rgba(0,212,255,0.4), 0 0 48px rgba(0,212,255,0.15)' },
+          '0%, 100%': { boxShadow: '0 0 8px rgba(51,143,232,0.2), 0 0 24px rgba(51,143,232,0.08)' },
+          '50%': { boxShadow: '0 0 16px rgba(51,143,232,0.4), 0 0 48px rgba(51,143,232,0.15)' },
         },
         counter: {
           '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'pulse-glow': {
-          '0%, 100%': { boxShadow: '0 0 8px rgba(0,212,255,0.3)' },
-          '50%': { boxShadow: '0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.2)' },
+          '0%, 100%': { boxShadow: '0 0 8px rgba(51,143,232,0.3)' },
+          '50%': { boxShadow: '0 0 40px rgba(51,143,232,0.5), 0 0 80px rgba(51,143,232,0.2)' },
         },
         scan: {
           '0%': { top: '-2px', opacity: '0' },
@@ -264,8 +267,8 @@ const config: Config = {
           '100%': { backgroundPosition: '100% 50%' },
         },
         'hexagon-glow': {
-          '0%, 100%': { filter: 'drop-shadow(0 0 8px rgba(0,212,255,0.6))' },
-          '50%': { filter: 'drop-shadow(0 0 24px rgba(0,212,255,0.9))' },
+          '0%, 100%': { filter: 'drop-shadow(0 0 8px rgba(51,143,232,0.6))' },
+          '50%': { filter: 'drop-shadow(0 0 24px rgba(51,143,232,0.9))' },
         },
       },
     },

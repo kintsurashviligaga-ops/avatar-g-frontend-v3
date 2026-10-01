@@ -52,7 +52,7 @@ const KIND_COLOR: Record<Kind, string> = {
   image: '#38bdf8',
   video: '#22d3ee',
   audio: '#34d399',
-  avatar: '#00d4ff',
+  avatar: '#338FE8',
   text: '#fbbf24',
   code: '#60a5fa',
 };
@@ -338,7 +338,7 @@ function CreditUsageBar({ creations, delay = 0 }: { creations: Creation[]; delay
 
           <div className="mt-3 flex items-center gap-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
             <span className="text-[11px] text-white/40">სულ გამოყენებული:</span>
-            <span className="font-mono text-[13px] font-bold" style={{ color: '#00d4ff' }}>{total.toLocaleString()}</span>
+            <span className="font-mono text-[13px] font-bold" style={{ color: '#338FE8' }}>{total.toLocaleString()}</span>
             <span className="text-[11px] text-white/40">კრედიტი</span>
           </div>
         </>
@@ -398,9 +398,9 @@ function RecentActivity({ creations, delay = 0 }: { creations: Creation[]; delay
                   <span
                     className="rounded-full px-1.5 py-0.5 font-mono text-[10px]"
                     style={{
-                      background: 'rgba(0,212,255,0.12)',
-                      color: '#00d4ff',
-                      border: '1px solid rgba(0,212,255,0.2)',
+                      background: 'rgba(51,143,232,0.12)',
+                      color: '#338FE8',
+                      border: '1px solid rgba(51,143,232,0.2)',
                     }}
                   >
                     -{c.credits_used}
@@ -595,7 +595,7 @@ export default function ActivityDashboard({ userId: _userId }: ActivityDashboard
                 label="გენერაციები"
                 value={totalGenerations}
                 icon="⚡"
-                color="#00d4ff"
+                color="#338FE8"
                 delay={0}
               />
               <StatCard

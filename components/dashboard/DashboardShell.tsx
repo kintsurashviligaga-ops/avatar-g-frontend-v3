@@ -104,7 +104,7 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
               <Sparkles className="h-4 w-4 text-slate-950" />
             </div>
             <span className="hf-heading text-sm font-bold text-white" style={{ letterSpacing: '-0.02em' }}>
-              MyAvatar<span style={{ color: '#00d4ff' }}>.ge</span>
+              MyAvatar<span style={{ color: '#338FE8' }}>.ge</span>
             </span>
           </Link>
           <button
@@ -192,7 +192,7 @@ export default function DashboardShell({ children, locale = 'ka' }: DashboardShe
             <Menu className="w-5 h-5" />
           </button>
           <span className="hf-heading text-sm font-bold text-white">
-            MyAvatar<span style={{ color: '#00d4ff' }}>.ge</span>
+            MyAvatar<span style={{ color: '#338FE8' }}>.ge</span>
           </span>
           <div className="ml-auto flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-2.5 py-1">
             <Zap className="h-3.5 w-3.5 text-cyan-300" />

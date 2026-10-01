@@ -17,7 +17,7 @@ interface Particle {
 }
 
 const PARTICLE_COLORS = [
-  '#00d4ff', '#0ea5e9', '#22d3ee', '#38bdf8',
+  '#338FE8', '#0ea5e9', '#22d3ee', '#38bdf8',
   '#0ea5e9', '#38bdf8', '#38bdf8', '#60a5fa',
   '#ffffff',
 ];
@@ -28,7 +28,7 @@ function generateParticles(count: number): Particle[] {
     x: 50 + (Math.random() - 0.5) * 4,
     y: 50 + (Math.random() - 0.5) * 4,
     size: Math.random() * 4 + 1,
-    color: PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)] ?? '#00d4ff',
+    color: PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)] ?? '#338FE8',
     angle: Math.random() * 360,
     speed: 20 + Math.random() * 55,
     opacity: 0.4 + Math.random() * 0.6,
@@ -102,7 +102,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
         animate={{ opacity: phase === 'particles' ? 0 : 0.6 }}
         transition={{ duration: 1.2 }}
         style={{
-          background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(14,165,233,0.18) 0%, rgba(0,212,255,0.10) 40%, transparent 70%)',
+          background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(14,165,233,0.18) 0%, rgba(51,143,232,0.10) 40%, transparent 70%)',
         }}
       />
 
@@ -167,12 +167,12 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
                   fontWeight: isCapital ? 800 : 400,
                   letterSpacing: '-0.02em',
                   color: isCapital
-                    ? '#00d4ff'
+                    ? '#338FE8'
                     : isDot
                     ? 'rgba(255,255,255,0.4)'
                     : '#ffffff',
                   textShadow: isCapital
-                    ? '0 0 24px rgba(0,212,255,0.6), 0 0 48px rgba(0,212,255,0.3)'
+                    ? '0 0 24px rgba(51,143,232,0.6), 0 0 48px rgba(51,143,232,0.3)'
                     : 'none',
                   lineHeight: 1,
                 }}
@@ -212,7 +212,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
           style={{
             height: 2,
             width: 120,
-            background: 'linear-gradient(90deg, transparent, #00d4ff, #0ea5e9, transparent)',
+            background: 'linear-gradient(90deg, transparent, #338FE8, #0ea5e9, transparent)',
             borderRadius: 999,
           }}
         />
@@ -236,7 +236,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
             <motion.div
               className="absolute left-0 right-0 h-8 pointer-events-none"
               style={{
-                background: 'linear-gradient(180deg, transparent, rgba(0,212,255,0.07), transparent)',
+                background: 'linear-gradient(180deg, transparent, rgba(51,143,232,0.07), transparent)',
               }}
               animate={{ top: ['-5%', '105%'] }}
               transition={{ duration: 1.2, ease: 'linear', repeat: 1 }}
@@ -276,7 +276,7 @@ export default function IntroSequence({ onComplete }: IntroSequenceProps) {
                 ...style,
                 width: 28,
                 height: 28,
-                borderColor: '#00d4ff',
+                borderColor: '#338FE8',
               }}
             />
           ))}

@@ -31,7 +31,7 @@ export function Interior3DViewer({ spatialLink, modelUrl }: Interior3DViewerProp
             href={modelUrl}
             download
             className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium"
-            style={{ border: '1px solid rgba(0,212,255,0.24)', color: '#22d3ee', background: 'rgba(0,212,255,0.06)' }}
+            style={{ border: '1px solid rgba(51,143,232,0.24)', color: '#22d3ee', background: 'rgba(51,143,232,0.06)' }}
           >
             Download 3D Model (.glb)
           </a>

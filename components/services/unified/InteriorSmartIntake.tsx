@@ -36,8 +36,8 @@ function renderOptionRow(input: {
               onClick={() => input.onSelect(option.value)}
               className="rounded-lg px-2 py-1.5 text-[11px] text-left transition-colors"
               style={{
-                border: active ? '1px solid rgba(0,212,255,0.5)' : '1px solid rgba(255,255,255,0.08)',
-                background: active ? 'rgba(0,212,255,0.12)' : 'rgba(255,255,255,0.02)',
+                border: active ? '1px solid rgba(51,143,232,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                background: active ? 'rgba(51,143,232,0.12)' : 'rgba(255,255,255,0.02)',
                 color: active ? '#22d3ee' : 'rgba(226,232,240,0.85)',
               }}
             >
@@ -71,7 +71,7 @@ export function InteriorSmartIntake({ prompt, values, onChange }: SmartIntakePro
   return (
     <div
       className="rounded-xl p-4 space-y-3"
-      style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.14)' }}
+      style={{ background: 'rgba(51,143,232,0.04)', border: '1px solid rgba(51,143,232,0.14)' }}
     >
       <div>
         <p className="text-xs font-semibold" style={{ color: '#22d3ee' }}>

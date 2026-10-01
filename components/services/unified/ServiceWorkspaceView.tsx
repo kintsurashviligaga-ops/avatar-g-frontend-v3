@@ -1786,7 +1786,7 @@ export default function ServiceWorkspaceView({
           <div className="flex items-center gap-3">
             <div
               className="flex items-center justify-center w-12 h-12 rounded-xl text-2xl"
-              style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.15)' }}
+              style={{ background: 'rgba(51,143,232,0.08)', border: '1px solid rgba(51,143,232,0.15)' }}
             >
               {serviceIcon}
             </div>
@@ -1796,7 +1796,7 @@ export default function ServiceWorkspaceView({
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-2xl font-bold" style={{ color: '#00d4ff' }}>{creditsBalance}</div>
+            <div className="text-2xl font-bold" style={{ color: '#338FE8' }}>{creditsBalance}</div>
             <p className="text-xs" style={{ color: 'rgba(148,163,184,0.5)' }}>{ui.credits}</p>
           </div>
         </div>
@@ -1945,9 +1945,9 @@ export default function ServiceWorkspaceView({
                 disabled={isGenerating || !canGenerate}
                 className="w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40"
                 style={{
-                  background: isGenerating ? 'rgba(0,212,255,0.1)' : 'linear-gradient(135deg, #00d4ff 0%, #0284c7 100%)',
+                  background: isGenerating ? 'rgba(51,143,232,0.1)' : 'linear-gradient(135deg, #338FE8 0%, #0284c7 100%)',
                   color: '#fff',
-                  boxShadow: !isGenerating && canGenerate ? '0 4px 20px rgba(0,212,255,0.25)' : 'none',
+                  boxShadow: !isGenerating && canGenerate ? '0 4px 20px rgba(51,143,232,0.25)' : 'none',
                 }}
               >
                 {isGenerating ? (
@@ -1978,9 +1978,9 @@ export default function ServiceWorkspaceView({
             {showQuickTip && (
               <div
                 className="rounded-xl p-4"
-                style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.08)' }}
+                style={{ background: 'rgba(51,143,232,0.04)', border: '1px solid rgba(51,143,232,0.08)' }}
               >
-                <p className="text-xs font-semibold mb-1" style={{ color: '#00d4ff' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: '#338FE8' }}>
                   💡 {ui.quickTip}
                 </p>
                 <p className="text-xs leading-relaxed" style={{ color: 'rgba(148,163,184,0.6)' }}>
@@ -2065,7 +2065,7 @@ export default function ServiceWorkspaceView({
                             className="h-full rounded-full transition-all duration-300"
                             style={{
                               width: `${Math.max(4, Math.min(100, Math.round(jobProgress.percent)))}%`,
-                              background: 'linear-gradient(90deg, #00d4ff 0%, #0284c7 100%)',
+                              background: 'linear-gradient(90deg, #338FE8 0%, #0284c7 100%)',
                             }}
                           />
                         </div>
@@ -2150,7 +2150,7 @@ export default function ServiceWorkspaceView({
                       <button
                         onClick={() => { setResult(null); setError(null); setIsGenerating(false) }}
                         className="px-4 py-2 rounded-lg text-xs font-medium transition-colors"
-                        style={{ background: 'rgba(255,255,255,0.04)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.15)' }}
+                        style={{ background: 'rgba(255,255,255,0.04)', color: '#338FE8', border: '1px solid rgba(51,143,232,0.15)' }}
                       >
                         {ui.retry}
                       </button>
@@ -2168,9 +2168,9 @@ export default function ServiceWorkspaceView({
                       {workspace.previewHint[lang] || workspace.previewHint.en}
                     </p>
                     <div className="flex items-center gap-4 mt-2">
-                      <div className="w-20 h-1 rounded-full" style={{ background: 'rgba(0,212,255,0.1)' }} />
+                      <div className="w-20 h-1 rounded-full" style={{ background: 'rgba(51,143,232,0.1)' }} />
                       <div className="w-12 h-1 rounded-full" style={{ background: 'rgba(2,132,199,0.1)' }} />
-                      <div className="w-16 h-1 rounded-full" style={{ background: 'rgba(0,212,255,0.06)' }} />
+                      <div className="w-16 h-1 rounded-full" style={{ background: 'rgba(51,143,232,0.06)' }} />
                     </div>
                   </div>
                 )}

@@ -33,7 +33,7 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-black/85 backdrop-blur-2xl">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#00D2FF]/30 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#338FE8]/30 to-transparent" />
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex h-16 items-center gap-3">
             <Link
@@ -45,7 +45,7 @@ export default function HistoryPage() {
             </Link>
             <div className="h-5 w-px bg-white/[0.12]" />
             <h1 className="flex items-center gap-2 text-sm font-bold text-white">
-              <History size={15} className="text-[#00D2FF]" />
+              <History size={15} className="text-[#338FE8]" />
               {h.title}
             </h1>
           </div>

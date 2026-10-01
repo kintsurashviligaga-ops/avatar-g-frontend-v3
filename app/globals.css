@@ -9,14 +9,16 @@
 
 :root,
 [data-theme='dark'] {
-  --app-bg: 10 10 10;          /* brand ink #0A0A0A */
-  --app-surface: 22 22 26;
-  --app-elevated: 32 32 38;
+  /* 2026-10-01 (docs/DESIGN.md §13): TRUE black, and the rocket's own blue as the one accent. */
+  --app-bg: 0 0 0;             /* true black */
+  --app-surface: 17 17 20;
+  --app-elevated: 28 28 33;
   --app-border: 255 255 255;
   --app-text: 240 240 245;
   --app-muted: 160 160 175;
-  --app-accent: 0 229 255;     /* brand primary #00E5FF */
-  --app-neon: 0 229 255;
+  --app-accent: 51 143 232;    /* rocket blue #338FE8 — 6.2:1 on black as text, and ink text on it reads 6.2:1 */
+  --app-accent-deep: 24 115 202; /* the rocket's body #1873CA — glows, gradients, large fills (not small text) */
+  --app-neon: 51 143 232;
   --app-success: 34 211 238;  /* cyan, not green — black/white/cyan palette */
   --app-warning: 245 158 11;
   --app-danger: 239 68 68;
@@ -26,7 +28,7 @@
      Deep charcoal canvas, zinc-800 borders, zinc-100 text. Keeps the cyan
      accent for status/active elements but holds it back from being the
      primary tone. */
-  --color-bg: #030303;
+  --color-bg: #000000;
   --color-surface: #0a0a0a;
   --color-elevated: #111111;
   --color-border: rgba(63, 63, 70, 0.6);   /* zinc-700/60 */
@@ -35,8 +37,8 @@
   --color-text-rgb: 250, 250, 250;          /* zinc-50 as r,g,b for rgba() */
   --color-text-secondary: #d4d4d8;          /* zinc-300 */
   --color-text-tertiary: rgba(212, 212, 216, 0.55); /* zinc-300/55 */
-  --color-accent: #00E5FF;
-  --color-accent-soft: rgba(0,229,255,0.10);
+  --color-accent: #338FE8;
+  --color-accent-soft: rgba(51,143,232,0.10);
   --nav-bg: rgba(3, 3, 3, 0.92);
   --nav-border: rgba(39, 39, 42, 0.7);      /* zinc-800/70 */
   --card-bg: rgba(255, 255, 255, 0.025);
@@ -47,20 +49,20 @@
   --pricing-contour-pop: rgba(255, 255, 255, 0.16);
   --input-bg: rgba(255, 255, 255, 0.03);
   --input-border: rgba(63, 63, 70, 0.6);
-  --input-focus: rgba(0, 229, 255, 0.45);
+  --input-focus: rgba(51, 143, 232, 0.45);
   --sidebar-bg: rgba(7, 7, 7, 0.96);
-  --hero-glow-primary: rgba(0, 229, 255, 0.08);
+  --hero-glow-primary: rgba(51, 143, 232, 0.08);
 
   /* Neo-Cosmic Futurism — extended palette */
-  --color-cyan: #00E5FF;
-  --color-cyan-dim: rgba(0, 229, 255, 0.15);
+  --color-cyan: #338FE8;               /* legacy name — the accent is the rocket blue now */
+  --color-cyan-dim: rgba(51, 143, 232, 0.15);
   --color-violet: #0ea5e9;
   --color-violet-dim: rgba(14, 165, 233, 0.15);
-  --color-bg-deep: #030303;
+  --color-bg-deep: #000000;
   --color-bg-card: rgba(255, 255, 255, 0.04);
   --color-bg-card-hover: rgba(255, 255, 255, 0.07);
-  --color-border-cyan: rgba(0, 229, 255, 0.12);
-  --color-border-cyan-hover: rgba(0, 229, 255, 0.35);
+  --color-border-cyan: rgba(51, 143, 232, 0.12);
+  --color-border-cyan-hover: rgba(51, 143, 232, 0.35);
   --color-muted: #94a3b8;
   --color-success: #22c55e;
   --color-error: #ef4444;
@@ -69,10 +71,10 @@
      Primary Blue, Accent Lime, Accent Gold, Dark. Space-separated channels for
      Tailwind's rgb(var(--x) / <alpha-value>). Lime is the ONE primary CTA per
      screen, always with dark text on it (--brand-on-lime). */
-  --brand-primary: 0 229 255;
+  --brand-primary: 51 143 232;
   --brand-lime: 197 255 0;
   --brand-gold: 212 175 55;
-  --brand-ink: 10 10 10;
+  --brand-ink: 0 0 0;
   --brand-on-lime: 10 10 10;
 
   /* Spacing scale */
@@ -94,9 +96,9 @@
    batch-by-batch on top of this foundation.
    ────────────────────────────────────────────────────────────────────────── */
 [data-theme='light'] {
-  /* Brand: identical in both themes. #00E5FF on white is ≈1.5:1, so light-mode TEXT accents use
-     --app-accent (cyan-600) below — --brand-primary is for fills, rings and glows. */
-  --brand-primary: 0 229 255;
+  /* Brand: identical in both themes. The lifted rocket blue is ≈3.6:1 on white, so light-mode TEXT accents use
+     --app-accent (the rocket's body blue, 4.8:1) below — --brand-primary is for fills, rings and glows. */
+  --brand-primary: 51 143 232;
   --brand-lime: 197 255 0;
   --brand-gold: 212 175 55;
   --brand-ink: 10 10 10;
@@ -109,8 +111,9 @@
   --app-border: 15 23 42;        /* dark borders over light surfaces (used w/ alpha) */
   --app-text: 15 23 42;          /* slate-900 */
   --app-muted: 100 116 139;      /* slate-500 */
-  --app-accent: 8 145 178;       /* cyan-600 — readable on white */
-  --app-neon: 6 182 212;         /* cyan-500 */
+  --app-accent: 24 115 202;      /* rocket body #1873CA — 4.8:1 on white */
+  --app-accent-deep: 2 83 167;   /* #0253A7 */
+  --app-neon: 51 143 232;
   --app-success: 8 145 178;      /* cyan-600 — black/white/cyan palette (was green-600) */
   --app-warning: 217 119 6;      /* amber-600 */
   --app-danger: 220 38 38;       /* red-600 */
@@ -127,8 +130,8 @@
   --color-text-rgb: 15, 23, 42;
   --color-text-secondary: #334155;             /* slate-700 */
   --color-text-tertiary: rgba(51, 65, 85, 0.6);
-  --color-accent: #0891b2;                     /* cyan-600 */
-  --color-accent-soft: rgba(8, 145, 178, 0.10);
+  --color-accent: #1873CA;                     /* rocket body blue */
+  --color-accent-soft: rgba(24, 115, 202, 0.10);
   --nav-bg: rgba(255, 255, 255, 0.92);
   --nav-border: rgba(15, 23, 42, 0.10);
   --card-bg: rgba(255, 255, 255, 0.85);
@@ -137,7 +140,7 @@
   --pricing-contour-pop: rgba(15, 23, 42, 0.18);
   --input-bg: rgba(15, 23, 42, 0.035);
   --input-border: rgba(15, 23, 42, 0.15);
-  --input-focus: rgba(8, 145, 178, 0.5);
+  --input-focus: rgba(24, 115, 202, 0.5);
   --sidebar-bg: rgba(255, 255, 255, 0.96);
   --hero-glow-primary: rgba(8, 145, 178, 0.08);
 
@@ -3894,24 +3897,24 @@ input[type="range"].appearance-none::-moz-range-thumb {
 
 /* Glow variables */
 :root {
-  --glow-cyan-sm:   0 0 8px rgba(0,212,255,0.3);
-  --glow-cyan-md:   0 0 20px rgba(0,212,255,0.4), 0 0 40px rgba(0,212,255,0.15);
-  --glow-cyan-lg:   0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.2);
+  --glow-cyan-sm:   0 0 8px rgba(51,143,232,0.3);
+  --glow-cyan-md:   0 0 20px rgba(51,143,232,0.4), 0 0 40px rgba(51,143,232,0.15);
+  --glow-cyan-lg:   0 0 40px rgba(51,143,232,0.5), 0 0 80px rgba(51,143,232,0.2);
   --glow-violet-sm: 0 0 8px rgba(14,165,233,0.35);
   --glow-violet-md: 0 0 20px rgba(14,165,233,0.45), 0 0 40px rgba(14,165,233,0.18);
   --shadow-card: 0 8px 40px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
-  --shadow-float: 0 20px 60px rgba(0,0,0,0.8), 0 4px 16px rgba(0,212,255,0.1);
+  --shadow-float: 0 20px 60px rgba(0,0,0,0.8), 0 4px 16px rgba(51,143,232,0.1);
 }
 
 /* Gradient text utilities */
 .gradient-text-cyan {
-  background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
+  background: linear-gradient(135deg, #338FE8 0%, #0ea5e9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 .gradient-text-violet {
-  background: linear-gradient(135deg, #0ea5e9 0%, #00d4ff 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #338FE8 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -3927,7 +3930,7 @@ input[type="range"].appearance-none::-moz-range-thumb {
 
 /* Selection */
 ::selection {
-  background: rgba(0,212,255,0.25);
+  background: rgba(51,143,232,0.25);
   color: white;
 }
 
@@ -3935,7 +3938,7 @@ input[type="range"].appearance-none::-moz-range-thumb {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #03030a; }
 ::-webkit-scrollbar-thumb { background: #1e1e35; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
+::-webkit-scrollbar-thumb:hover { background: #338FE8; }
 
 /* ── Neo-Cosmic Futurism: Additional Keyframes ── */
 @keyframes twinkle {
@@ -3974,8 +3977,8 @@ input[type="range"].appearance-none::-moz-range-thumb {
 }
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(0,212,255,0.3); }
-  50% { box-shadow: 0 0 40px rgba(0,212,255,0.6), 0 0 80px rgba(0,212,255,0.2); }
+  0%, 100% { box-shadow: 0 0 20px rgba(51,143,232,0.3); }
+  50% { box-shadow: 0 0 40px rgba(51,143,232,0.6), 0 0 80px rgba(51,143,232,0.2); }
 }
 
 @keyframes spin-slow {
@@ -3995,10 +3998,10 @@ input[type="range"].appearance-none::-moz-range-thumb {
 .chat-md li { margin: 0.2em 0; }
 .chat-md strong { font-weight: 600; color: #fff; }
 .chat-md em { font-style: italic; color: rgba(255,255,255,0.8); }
-.chat-md code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); border-radius: 4px; padding: 0.1em 0.35em; color: #7cd4ff; }
+.chat-md code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em; background: rgba(51,143,232,0.1); border: 1px solid rgba(51,143,232,0.2); border-radius: 4px; padding: 0.1em 0.35em; color: #7cd4ff; }
 .chat-md pre { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 0.9em 1em; margin: 0.6em 0; overflow-x: auto; }
 .chat-md pre code { background: none; border: none; padding: 0; color: rgba(255,255,255,0.85); font-size: 0.83em; }
-.chat-md blockquote { border-left: 3px solid rgba(0,212,255,0.4); padding-left: 0.8em; margin: 0.4em 0; color: rgba(255,255,255,0.6); font-style: italic; }
+.chat-md blockquote { border-left: 3px solid rgba(51,143,232,0.4); padding-left: 0.8em; margin: 0.4em 0; color: rgba(255,255,255,0.6); font-style: italic; }
 .chat-md table { border-collapse: collapse; width: 100%; margin: 0.6em 0; font-size: 0.85em; }
 .chat-md th,.chat-md td { border: 1px solid rgba(255,255,255,0.15); padding: 0.4em 0.7em; text-align: left; }
 .chat-md th { background: rgba(255,255,255,0.07); font-weight: 600; }

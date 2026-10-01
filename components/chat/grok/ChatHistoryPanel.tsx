@@ -162,13 +162,13 @@ function ConversationRow({
           tabIndex={0}
           onClick={() => { if (!editing && !confirming) onSelect(c.id) }}
           onKeyDown={(e) => { if (!editing && !confirming && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(c.id) } }}
-          className={`chat-history-item group flex cursor-pointer items-start gap-2 ${active ? 'active' : ''} ${c.isPinned ? 'border-l-2 border-l-[#00D2FF]/70' : ''}`}
+          className={`chat-history-item group flex cursor-pointer items-start gap-2 ${active ? 'active' : ''} ${c.isPinned ? 'border-l-2 border-l-[#338FE8]/70' : ''}`}
         >
           <ServiceIcon type={c.type} />
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              {c.isPinned && <Pin className="h-3 w-3 shrink-0 text-[#00D2FF]/70" aria-label="Pinned" />}
+              {c.isPinned && <Pin className="h-3 w-3 shrink-0 text-[#338FE8]/70" aria-label="Pinned" />}
               {editing ? (
                 <input
                   ref={editInputRef}
@@ -182,7 +182,7 @@ function ConversationRow({
                     if (e.key === 'Escape') cancelRename()
                   }}
                   onBlur={commitRename}
-                  className="w-full min-w-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[13px] font-medium text-white outline-none ring-1 ring-[#00D2FF]/40 focus:ring-[#00D2FF]"
+                  className="w-full min-w-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[13px] font-medium text-white outline-none ring-1 ring-[#338FE8]/40 focus:ring-[#338FE8]"
                 />
               ) : (
                 <div className="chat-history-item-title truncate">{c.title}</div>
@@ -216,7 +216,7 @@ function ConversationRow({
                     title={c.isPinned ? 'Unpin' : 'Pin'}
                     className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
                       c.isPinned
-                        ? 'text-[#00D2FF] hover:bg-[#00D2FF]/15'
+                        ? 'text-[#338FE8] hover:bg-[#338FE8]/15'
                         : 'text-white/60 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -252,7 +252,7 @@ function ConversationRow({
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); commitRename() }}
                 aria-label="Save name"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#00D2FF] hover:bg-[#00D2FF]/15"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#338FE8] hover:bg-[#338FE8]/15"
               >
                 <Check className="h-3.5 w-3.5" />
               </button>
@@ -441,7 +441,7 @@ export function ChatHistoryPanel({
               {pinned.length > 0 && (
                 <div>
                   <div className="chat-history-group-label flex items-center gap-1.5">
-                    <Pin className="h-3 w-3 text-[#00D2FF]/70" /> Pinned
+                    <Pin className="h-3 w-3 text-[#338FE8]/70" /> Pinned
                   </div>
                   <AnimatePresence initial={false}>
                     {pinned.map(c => (

@@ -101,9 +101,9 @@ export default function ServicePageClient(props: ServicePageClientProps) {
             onClick={() => setViewMode('workspace')}
             className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
             style={{
-              background: viewMode === 'workspace' ? 'rgba(0,212,255,0.12)' : 'transparent',
-              color: viewMode === 'workspace' ? '#00d4ff' : 'rgba(148,163,184,0.5)',
-              border: viewMode === 'workspace' ? '1px solid rgba(0,212,255,0.2)' : '1px solid transparent',
+              background: viewMode === 'workspace' ? 'rgba(51,143,232,0.12)' : 'transparent',
+              color: viewMode === 'workspace' ? '#338FE8' : 'rgba(148,163,184,0.5)',
+              border: viewMode === 'workspace' ? '1px solid rgba(51,143,232,0.2)' : '1px solid transparent',
             }}
           >
             <span className="flex items-center gap-1.5">
@@ -115,9 +115,9 @@ export default function ServicePageClient(props: ServicePageClientProps) {
             onClick={() => setViewMode('chat')}
             className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
             style={{
-              background: viewMode === 'chat' ? 'rgba(0,212,255,0.12)' : 'transparent',
-              color: viewMode === 'chat' ? '#00d4ff' : 'rgba(148,163,184,0.5)',
-              border: viewMode === 'chat' ? '1px solid rgba(0,212,255,0.2)' : '1px solid transparent',
+              background: viewMode === 'chat' ? 'rgba(51,143,232,0.12)' : 'transparent',
+              color: viewMode === 'chat' ? '#338FE8' : 'rgba(148,163,184,0.5)',
+              border: viewMode === 'chat' ? '1px solid rgba(51,143,232,0.2)' : '1px solid transparent',
             }}
           >
             <span className="flex items-center gap-1.5">

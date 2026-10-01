@@ -163,7 +163,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
           onClick={() => setOpen(true)}
           title={labels.title}
           data-testid="matilda-open"
-          className="fixed bottom-28 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-400/40 bg-[rgba(0,212,255,0.12)] text-cyan-300 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:border-cyan-300/60 hover:bg-[rgba(0,212,255,0.2)] sm:bottom-24 sm:right-6"
+          className="fixed bottom-28 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-400/40 bg-[rgba(51,143,232,0.12)] text-cyan-300 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:border-cyan-300/60 hover:bg-[rgba(51,143,232,0.2)] sm:bottom-24 sm:right-6"
         >
           <Volume2 className="h-6 w-6" />
         </button>
@@ -175,7 +175,7 @@ export default function MatildaVoiceChat({ locale = 'ka' }: MatildaVoiceChatProp
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_6px_2px_rgba(0,212,255,0.6)]" />
+              <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_6px_2px_rgba(51,143,232,0.6)]" />
               <span className="text-sm font-semibold text-white/90">{labels.title}</span>
             </div>
             <button

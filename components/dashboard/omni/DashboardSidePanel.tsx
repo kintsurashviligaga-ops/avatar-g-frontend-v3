@@ -119,7 +119,7 @@ const COPY = {
 
 const API_KEYS_DEF = [
   { id: 'elevenlabs', label: 'ElevenLabs', placeholder: 'sk_...', color: '#0284c7', icon: '🎙' },
-  { id: 'heygen',     label: 'HeyGen',     placeholder: 'NjYy...', color: '#00d4ff', icon: '👤' },
+  { id: 'heygen',     label: 'HeyGen',     placeholder: 'NjYy...', color: '#338FE8', icon: '👤' },
   { id: 'replicate',  label: 'Replicate',  placeholder: 'r8_...',  color: '#00c896', icon: '🖥' },
   { id: 'openai',     label: 'OpenAI',     placeholder: 'sk-...',  color: '#10a37f', icon: '✦' },
   { id: 'anthropic',  label: 'Anthropic',  placeholder: 'sk-ant-...', color: '#f59e0b', icon: '◉' },
@@ -341,7 +341,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, on
         {isAuthenticated ? (
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black text-white"
-              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.3), rgba(2,132,199,0.3))' }}>
+              style={{ background: 'linear-gradient(135deg, rgba(51,143,232,0.3), rgba(2,132,199,0.3))' }}>
               {userName.slice(0, 2).toUpperCase()}
             </div>
             <div>
@@ -359,7 +359,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, on
             </Link>
             <Link href={`/${loc}/signup`} onClick={onClose}
               className="flex-1 text-center py-2 rounded-xl text-sm font-bold text-white"
-              style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.85), rgba(2,132,199,0.85))' }}>
+              style={{ background: 'linear-gradient(135deg, rgba(51,143,232,0.85), rgba(2,132,199,0.85))' }}>
               {c.signup}
             </Link>
           </div>
@@ -369,14 +369,14 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, on
       {/* Navigation */}
       {navSection(c.navigation, [
         { icon: <MessageSquare className="w-4 h-4" />, label: 'Agent G', color: '#0284c7', onClick: onClose },
-        { icon: '✦', label: c.services, color: '#00d4ff', onClick: () => setSection('services') },
+        { icon: '✦', label: c.services, color: '#338FE8', onClick: () => setSection('services') },
       ])}
 
       <div className="mx-4 h-px bg-white/6" />
 
       {/* Account */}
       {navSection(c.account, [
-        { icon: <User className="w-4 h-4" />, label: c.account, color: '#00d4ff', onClick: () => setSection('account') },
+        { icon: <User className="w-4 h-4" />, label: c.account, color: '#338FE8', onClick: () => setSection('account') },
         { icon: <Crown className="w-4 h-4" />, label: c.packages, color: '#f59e0b', onClick: () => setSection('packages') },
         { icon: <Zap className="w-4 h-4" />, label: `${credits.toLocaleString()} ${c.credits}`, color: '#00c896', onClick: () => setSection('packages') },
       ])}
@@ -386,7 +386,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, on
       {/* Content */}
       {navSection(c.content, [
         { icon: <Folder className="w-4 h-4" />, label: c.projects, color: '#0284c7', onClick: () => setSection('projects') },
-        { icon: <BookOpen className="w-4 h-4" />, label: c.library, color: '#00d4ff', onClick: () => setSection('library') },
+        { icon: <BookOpen className="w-4 h-4" />, label: c.library, color: '#338FE8', onClick: () => setSection('library') },
       ])}
 
       <div className="mx-4 h-px bg-white/6" />
@@ -402,7 +402,7 @@ function renderMenu({ c, isAuthenticated, userName, credits, setSection, loc, on
 
       {/* Support */}
       {navSection(c.support, [
-        { icon: <HelpCircle className="w-4 h-4" />, label: c.help, color: '#00d4ff', onClick: onClose },
+        { icon: <HelpCircle className="w-4 h-4" />, label: c.help, color: '#338FE8', onClick: onClose },
         { icon: <Sparkles className="w-4 h-4" />, label: c.whatsNew, color: '#0284c7', onClick: onClose },
       ])}
 
@@ -458,7 +458,7 @@ function renderServices({ loc, selectService }: {
 
 const PLANS = [
   { id: 'starter', name: 'Starter', price: { monthly: 0, annual: 0 }, credits: 50, color: '#00c896', features: ['50 credits/mo', 'Images & Music', 'Agent G chat', '500MB storage'] },
-  { id: 'pro',     name: 'Pro',     price: { monthly: 19, annual: 13 }, credits: 500, color: '#00d4ff', popular: true, features: ['500 credits/mo', 'All services', 'Live voice mode', '10GB storage', 'Priority generation', 'Voice cloning'] },
+  { id: 'pro',     name: 'Pro',     price: { monthly: 19, annual: 13 }, credits: 500, color: '#338FE8', popular: true, features: ['500 credits/mo', 'All services', 'Live voice mode', '10GB storage', 'Priority generation', 'Voice cloning'] },
   { id: 'studio',  name: 'Studio',  price: { monthly: 49, annual: 34 }, credits: 2000, color: '#0284c7', features: ['2000 credits/mo', 'All services', 'HeyGen avatars', 'Unlimited storage', 'API access', 'Podcast studio'] },
 ];
 const CREDIT_PACKS = [
@@ -548,7 +548,7 @@ function renderAccount({ c, isAuthenticated, userName, locale }: {
     return (
       <div className="p-6 flex flex-col items-center gap-4 text-center">
         <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl"
-          style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)' }}>
+          style={{ background: 'rgba(51,143,232,0.1)', border: '1px solid rgba(51,143,232,0.2)' }}>
           👤
         </div>
         <div>
@@ -557,7 +557,7 @@ function renderAccount({ c, isAuthenticated, userName, locale }: {
         </div>
         <Link href={`/${locale}/login`}
           className="w-full py-3 rounded-xl text-sm font-bold text-white text-center"
-          style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.8), rgba(2,132,199,0.8))' }}>
+          style={{ background: 'linear-gradient(135deg, rgba(51,143,232,0.8), rgba(2,132,199,0.8))' }}>
           {c.login}
         </Link>
         <Link href={`/${locale}/signup`}
@@ -573,12 +573,12 @@ function renderAccount({ c, isAuthenticated, userName, locale }: {
       {/* Avatar */}
       <div className="flex items-center gap-4 p-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-black text-white"
-          style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.25), rgba(2,132,199,0.25))' }}>
+          style={{ background: 'linear-gradient(135deg, rgba(51,143,232,0.25), rgba(2,132,199,0.25))' }}>
           {userName.slice(0, 2).toUpperCase()}
         </div>
         <div>
           <p className="font-bold text-white">{userName}</p>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>Pro</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: 'rgba(51,143,232,0.15)', color: '#338FE8' }}>Pro</span>
         </div>
       </div>
 
@@ -746,7 +746,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
   return (
     <div className="p-4 space-y-3">
       {/* Info banner */}
-      <div className="flex gap-3 p-3 rounded-xl" style={{ background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.15)' }}>
+      <div className="flex gap-3 p-3 rounded-xl" style={{ background: 'rgba(51,143,232,0.06)', border: '1px solid rgba(51,143,232,0.15)' }}>
         <ShieldCheck className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
         <p className="text-[11px] text-white/55 leading-relaxed">{c.keystoreInfo}</p>
       </div>
@@ -783,7 +783,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
                 <button
                   onClick={() => { setEditingKey(def.id); setKeyDraft(value); }}
                   className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition"
-                  style={{ background: value ? 'rgba(255,255,255,0.05)' : 'rgba(0,212,255,0.1)', color: value ? 'rgba(255,255,255,0.5)' : '#00d4ff', border: `1px solid ${value ? 'rgba(255,255,255,0.08)' : 'rgba(0,212,255,0.25)'}` }}>
+                  style={{ background: value ? 'rgba(255,255,255,0.05)' : 'rgba(51,143,232,0.1)', color: value ? 'rgba(255,255,255,0.5)' : '#338FE8', border: `1px solid ${value ? 'rgba(255,255,255,0.08)' : 'rgba(51,143,232,0.25)'}` }}>
                   {value ? c.edit : c.add}
                 </button>
               </div>
@@ -802,7 +802,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
                 <div className="flex gap-2">
                   <button onClick={() => saveKey(def.id)}
                     className="flex-1 py-1.5 rounded-xl text-[12px] font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.7), rgba(2,132,199,0.7))' }}>
+                    style={{ background: 'linear-gradient(135deg, rgba(51,143,232,0.7), rgba(2,132,199,0.7))' }}>
                     {c.save2}
                   </button>
                   {value && (
@@ -829,7 +829,7 @@ function renderAPIKeys({ c, apiKeys, setApiKeys, editingKey, setEditingKey, keyD
 
 const MOCK_PROJECTS = [
   { id: '1', title: 'Tbilisi Night Video', type: 'video', color: '#0284c7', icon: '🎬', service: 'Video Studio', ago: '1h ago' },
-  { id: '2', title: 'Mountain Sunset', type: 'image', color: '#00d4ff', icon: '🖼', service: 'Image', ago: '3h ago' },
+  { id: '2', title: 'Mountain Sunset', type: 'image', color: '#338FE8', icon: '🖼', service: 'Image', ago: '3h ago' },
   { id: '3', title: 'Georgian Folk Remix', type: 'music', color: '#00c896', icon: '🎵', service: 'Music Studio', ago: '1d ago' },
   { id: '4', title: 'AI Avatar — Nino', type: 'avatar', color: '#f59e0b', icon: '👤', service: 'Avatar', ago: '2d ago' },
   { id: '5', title: 'Product Launch Script', type: 'text', color: '#9ca3af', icon: '📄', service: 'Content Writer', ago: '3d ago' },
@@ -886,23 +886,23 @@ const LIBRARY_TABS = ['prompts', 'styles', 'presets', 'templates'] as const;
 const LIBRARY_DATA = {
   prompts: [
     { title: 'Cinematic Tbilisi Night', service: 'Video Studio', color: '#0284c7', text: 'Cinematic Tbilisi night aerial with neon lights and mist' },
-    { title: 'Georgian Mountain', service: 'Image', color: '#00d4ff', text: 'Georgian mountain village at golden hour, hyperrealistic' },
+    { title: 'Georgian Mountain', service: 'Image', color: '#338FE8', text: 'Georgian mountain village at golden hour, hyperrealistic' },
     { title: 'Folk Electronic', service: 'Music Studio', color: '#00c896', text: 'Ambient electronic with Georgian folk instruments, 120 BPM' },
   ],
   styles: [
-    { title: 'Neo-Cosmic Futurism', tags: ['dark', 'neon'], color: '#00d4ff' },
+    { title: 'Neo-Cosmic Futurism', tags: ['dark', 'neon'], color: '#338FE8' },
     { title: 'Georgian Folk', tags: ['folk', 'warm'], color: '#00c896' },
     { title: 'Cyberpunk Tbilisi', tags: ['urban', 'neon'], color: '#0284c7' },
     { title: 'Cinematic Drama', tags: ['epic', 'moody'], color: '#f59e0b' },
   ],
   presets: [
-    { title: 'Quick Portrait', desc: '20s professional headshot', icon: '👤', color: '#00d4ff' },
+    { title: 'Quick Portrait', desc: '20s professional headshot', icon: '👤', color: '#338FE8' },
     { title: '30s Music Loop', desc: 'Background, any style', icon: '🎵', color: '#00c896' },
     { title: 'Social Video', desc: '9:16 format, 15s', icon: '🎬', color: '#0284c7' },
     { title: 'Blog Post', desc: '800-word SEO article', icon: '📄', color: '#9ca3af' },
   ],
   templates: [
-    { title: 'Brand Identity Kit', steps: 4, icon: '🎨', color: '#00d4ff' },
+    { title: 'Brand Identity Kit', steps: 4, icon: '🎨', color: '#338FE8' },
     { title: 'Music Release', steps: 3, icon: '🎵', color: '#00c896' },
     { title: 'Podcast Episode', steps: 3, icon: '🎙', color: '#0284c7' },
     { title: 'Product Launch', steps: 5, icon: '🚀', color: '#f59e0b' },

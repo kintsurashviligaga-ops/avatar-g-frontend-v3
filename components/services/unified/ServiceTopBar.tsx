@@ -47,7 +47,7 @@ export function ServiceTopBar({ activeService, onCommandBar, onDockToggle, local
       }}
     >
       {/* Subtle bottom glow */}
-      <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,212,255,0.1) 50%, transparent)' }} />
+      <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(51,143,232,0.1) 50%, transparent)' }} />
 
       {/* Left: mobile menu + breadcrumbs */}
       <div className="flex items-center gap-2 min-w-0">
@@ -96,7 +96,7 @@ export function ServiceTopBar({ activeService, onCommandBar, onDockToggle, local
                   initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
                   className="font-medium truncate"
-                  style={{ color: '#00d4ff' }}
+                  style={{ color: '#338FE8' }}
                 >
                   {activeService.title}
                 </motion.span>

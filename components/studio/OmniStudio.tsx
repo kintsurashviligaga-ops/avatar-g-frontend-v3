@@ -8,7 +8,7 @@
  * blueprint: a live MIC node (records a clip → /api/voice/transcribe → drops the
  * text into the prompt), an asset attachment broker (images sent natively as
  * Gemini image parts), and the director's text box. Strict skin — black · white ·
- * #00D2FF. Fail-soft throughout.
+ * #338FE8. Fail-soft throughout.
  */
 
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';

@@ -990,12 +990,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[288px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        {/* ONE mark: the name, set as text. ⚠️ „ორი ლოგო“ — the rocket raster sat here AND in the header, and the
-            owner's own profile photo (the same rocket) sat beside it: three rockets on one screen. The brand is
-            the name; the rocket stays the app icon and the social card, where it is the only mark. */}
+        {/* ONE lockup: the transparent rocket + the name (docs/DESIGN.md §13). ⚠️ „ორი ლოგო“ — the OPAQUE rocket tile
+            used to sit beside the name (and in the header), reading as a second logo; the cut-out has no box and
+            lives inside the wordmark's single role="img". */}
         <div className="flex items-center justify-between py-2.5 pl-4 pr-2">
           {/* Not a link: from the studio a document load to /{lang} (and back) would drop the jobs in flight and the draft. */}
-          <span className="flex h-11 min-w-0 items-center"><Wordmark size="sm" /></span>
+          <span className="flex h-11 min-w-0 items-center"><Wordmark size="sm" mark /></span>
           {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. */}
           <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
             aria-label={tCollapse} title={tCollapse}
@@ -1235,7 +1235,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   // All-or-nothing (brief §8, "MyAvata"): a 44 px-tall wrapping row, so when the name does not fit
                   // WHOLE it wraps to the clipped second line — shown entire or not at all, never cut.
                   <span className="flex h-11 min-w-0 flex-wrap items-center overflow-hidden">
-                    <span className="flex h-11 items-center"><Wordmark size="sm" /></span>
+                    <span className="flex h-11 items-center"><Wordmark size="sm" mark /></span>
                   </span>
                 )}
               </span>

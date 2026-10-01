@@ -7,7 +7,7 @@
  * read from GET /api/studio/library (RLS-scoped per user). Each card is a real
  * playable thumbnail with the clip duration, and Download / Share / Copy-prompt
  * / Delete quick actions revealed on hover. Strict studio palette: black ·
- * white · electric cyan (#00D2FF).
+ * white · electric cyan (#338FE8).
  *
  * Spec features wired here (Master Prompt §4):
  *   • Filter tabs — All / Videos / Soundtracks / Avatars · Images
@@ -246,11 +246,11 @@ const LibraryCard = memo(function LibraryCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-app-border/10 bg-black ring-1 ring-app-border/10 transition-colors hover:border-[#00D2FF]/40"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-app-border/10 bg-black ring-1 ring-app-border/10 transition-colors hover:border-[#338FE8]/40"
     >
       {/* VECTOR 6 — freshly-added asset badge (from a live remix/render refresh). */}
       {isNew ? (
-        <span className="absolute left-2 top-2 z-10 rounded-full bg-[#00D2FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black shadow-[0_2px_12px_-2px_rgba(0,210,255,0.75)]">
+        <span className="absolute left-2 top-2 z-10 rounded-full bg-[#338FE8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black shadow-[0_2px_12px_-2px_rgba(51,143,232,0.75)]">
           {t.newBadge}
         </span>
       ) : null}
@@ -290,15 +290,15 @@ const LibraryCard = memo(function LibraryCard({
           </>
         ) : isAudio(item.kind) ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4">
-            <Music2 className="h-8 w-8 text-[#00D2FF]/70" />
+            <Music2 className="h-8 w-8 text-[#338FE8]/70" />
             <audio src={item.url} controls className="w-full" onLoadedData={() => setLoaded(true)} />
           </div>
         ) : is3d(item.url) ? (
           // A MESH, not a picture. Rendering it in an <img> gave a permanently-shimmering black tile,
           // because a .glb never decodes and onLoad never fires. A labelled card instead — and the
           // download beside it now saves a real .glb, which is what makes the model usable at all.
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#00D2FF]/12 to-transparent p-4 text-center">
-            <Boxes className="h-8 w-8 text-[#00D2FF]/80" />
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#338FE8]/12 to-transparent p-4 text-center">
+            <Boxes className="h-8 w-8 text-[#338FE8]/80" />
             <span className="text-[11px] font-semibold uppercase tracking-wide text-white/70">3D · GLB</span>
             {item.prompt && <span className="line-clamp-2 text-[10px] text-white/45">{item.prompt}</span>}
           </div>
@@ -335,7 +335,7 @@ const LibraryCard = memo(function LibraryCard({
             disabled={downloading}
             title={t.download}
             aria-label={t.download}
-            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-[#00D2FF]/20 hover:text-[#00D2FF] disabled:opacity-60"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-[#338FE8]/20 hover:text-[#338FE8] disabled:opacity-60"
           >
             {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           </button>
@@ -344,9 +344,9 @@ const LibraryCard = memo(function LibraryCard({
             onClick={handleShare}
             title={t.share}
             aria-label={t.share}
-            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-[#00D2FF]/20 hover:text-[#00D2FF]"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/70 text-white ring-1 ring-app-border/15 backdrop-blur-sm transition-colors hover:bg-[#338FE8]/20 hover:text-[#338FE8]"
           >
-            {copied === 'link' ? <Check className="h-3.5 w-3.5 text-[#00D2FF]" /> : <Share2 className="h-3.5 w-3.5" />}
+            {copied === 'link' ? <Check className="h-3.5 w-3.5 text-[#338FE8]" /> : <Share2 className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"
@@ -374,7 +374,7 @@ const LibraryCard = memo(function LibraryCard({
             title={t.copyPrompt}
             className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-app-border/10 bg-app-elevated/50 text-[11px] font-medium text-app-text transition-colors hover:border-app-border/25 hover:text-white disabled:opacity-40"
           >
-            {copied === 'prompt' ? <Check className="h-3.5 w-3.5 text-[#00D2FF]" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied === 'prompt' ? <Check className="h-3.5 w-3.5 text-[#338FE8]" /> : <Copy className="h-3.5 w-3.5" />}
             <span>{copied === 'prompt' ? t.copied : t.copyPrompt}</span>
           </button>
         </div>
@@ -545,7 +545,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
         <button
           type="button"
           onClick={() => void load()}
-          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-app-border/10 bg-app-elevated/50 px-3 text-xs font-semibold text-app-text transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-app-border/10 bg-app-elevated/50 px-3 text-xs font-semibold text-app-text transition-colors hover:border-[#338FE8]/40 hover:text-[#338FE8]"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           {t.retry}
@@ -566,7 +566,7 @@ export default function StudioLibraryGrid({ locale = 'ka', onClose }: { locale?:
               aria-pressed={active}
               className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-colors ${
                 active
-                  ? 'bg-[#00D2FF] text-black shadow-[0_0_0_1px_rgba(0,210,255,0.4)]'
+                  ? 'bg-[#338FE8] text-black shadow-[0_0_0_1px_rgba(51,143,232,0.4)]'
                   : 'border border-app-border/10 bg-app-elevated/50 text-app-text hover:border-app-border/25 hover:text-app-text'
               }`}
             >

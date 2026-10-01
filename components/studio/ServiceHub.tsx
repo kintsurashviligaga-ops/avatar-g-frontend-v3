@@ -13,7 +13,7 @@
  *   C · Lip-Sync Studio   → LipsyncStudio (Wav2Lip on Replicate)
  *
  * Each launched studio shows a back control to return to the grid. Strict skin —
- * black · white · electric cyan (#00D2FF).
+ * black · white · electric cyan (#338FE8).
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -193,7 +193,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         {/* One mark: the name (docs/DESIGN.md §6). */}
         <div className="mb-8 flex items-center">
-          <Wordmark size="sm" />
+          <Wordmark size="sm" mark />
         </div>
 
         <header className="mb-7">

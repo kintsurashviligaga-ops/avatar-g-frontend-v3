@@ -26,7 +26,7 @@ interface AuditResponse {
 
 const STATUS_COLOR: Record<ProviderStatus, string> = {
   healthy: '#10b981',
-  configured: '#00d4ff',
+  configured: '#338FE8',
   unhealthy: '#ef4444',
   missing_key: '#6b7280',
 };

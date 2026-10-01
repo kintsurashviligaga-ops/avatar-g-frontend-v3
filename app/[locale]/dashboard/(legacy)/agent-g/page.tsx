@@ -231,7 +231,7 @@ export default function AgentGPage() {
                 onClick={() => send()}
                 disabled={!input.trim()}
                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
-                style={{ background: input.trim() ? 'linear-gradient(135deg,#0ea5e9,#00d4ff)' : 'rgba(255,255,255,0.06)' }}
+                style={{ background: input.trim() ? 'linear-gradient(135deg,#0ea5e9,#338FE8)' : 'rgba(255,255,255,0.06)' }}
               >
                 <Send className="w-4 h-4 text-white" />
               </button>

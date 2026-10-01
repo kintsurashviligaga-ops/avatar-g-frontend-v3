@@ -113,11 +113,11 @@ export function ServiceOrbitDock({
       style={{
         background: 'rgba(6,8,18,0.92)',
         backdropFilter: 'blur(24px) saturate(1.3)',
-        borderRight: '1px solid rgba(0,212,255,0.06)',
+        borderRight: '1px solid rgba(51,143,232,0.06)',
       }}
     >
       {/* Glow accent line */}
-      <div className="absolute top-0 right-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,212,255,0.15) 50%, transparent)' }} />
+      <div className="absolute top-0 right-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, transparent, rgba(51,143,232,0.15) 50%, transparent)' }} />
 
       {/* ── Toggle button ── */}
       <div className="flex items-center justify-center h-14 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -299,7 +299,7 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
           style={{
             padding: expanded ? '8px 10px' : '8px 0',
             justifyContent: expanded ? 'flex-start' : 'center',
-            background: active ? 'rgba(0,212,255,0.08)' : hovered ? 'rgba(255,255,255,0.03)' : 'transparent',
+            background: active ? 'rgba(51,143,232,0.08)' : hovered ? 'rgba(255,255,255,0.03)' : 'transparent',
           }}
           aria-label={service.title}
           aria-current={active ? 'page' : undefined}
@@ -311,8 +311,8 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
               className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full"
               style={{
                 height: 20,
-                background: 'linear-gradient(180deg, #00d4ff, #0284c7)',
-                boxShadow: '0 0 8px rgba(0,212,255,0.5)',
+                background: 'linear-gradient(180deg, #338FE8, #0284c7)',
+                boxShadow: '0 0 8px rgba(51,143,232,0.5)',
               }}
               transition={{ type: 'spring', stiffness: 350, damping: 30 }}
             />
@@ -325,9 +325,9 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
               width: 36,
               height: 36,
               fontSize: 18,
-              background: active ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.03)',
-              border: active ? '1px solid rgba(0,212,255,0.2)' : '1px solid rgba(255,255,255,0.04)',
-              boxShadow: active ? '0 0 12px rgba(0,212,255,0.15)' : 'none',
+              background: active ? 'rgba(51,143,232,0.1)' : 'rgba(255,255,255,0.03)',
+              border: active ? '1px solid rgba(51,143,232,0.2)' : '1px solid rgba(255,255,255,0.04)',
+              boxShadow: active ? '0 0 12px rgba(51,143,232,0.15)' : 'none',
             }}
           >
             {service.icon}
@@ -339,7 +339,7 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
               initial={{ opacity: 0, x: -4 }}
               animate={{ opacity: 1, x: 0 }}
               className="text-[13px] font-medium truncate"
-              style={{ color: active ? '#00d4ff' : '#e2e8f0' }}
+              style={{ color: active ? '#338FE8' : '#e2e8f0' }}
             >
               {service.title}
             </motion.span>
@@ -352,7 +352,7 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
             className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none"
             style={{
               background: 'rgba(10,14,28,0.95)',
-              border: '1px solid rgba(0,212,255,0.15)',
+              border: '1px solid rgba(51,143,232,0.15)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
             }}
           >

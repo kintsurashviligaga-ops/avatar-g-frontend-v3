@@ -114,7 +114,7 @@ export function AgentGChatInterface({ locale, initialQuery }: AgentGChatInterfac
       >
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
-          style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.15), rgba(2,132,199,0.15))' }}
+          style={{ background: 'linear-gradient(135deg, rgba(51,143,232,0.15), rgba(2,132,199,0.15))' }}
         >
           🤖
         </div>
@@ -142,9 +142,9 @@ export function AgentGChatInterface({ locale, initialQuery }: AgentGChatInterfac
                 className="max-w-[80%] rounded-2xl px-4 py-3 space-y-2"
                 style={{
                   background: msg.role === 'user'
-                    ? 'linear-gradient(135deg, rgba(0,212,255,0.12), rgba(2,132,199,0.12))'
+                    ? 'linear-gradient(135deg, rgba(51,143,232,0.12), rgba(2,132,199,0.12))'
                     : 'var(--color-bg-card)',
-                  border: `1px solid ${msg.role === 'user' ? 'rgba(0,212,255,0.2)' : 'var(--color-border)'}`,
+                  border: `1px solid ${msg.role === 'user' ? 'rgba(51,143,232,0.2)' : 'var(--color-border)'}`,
                 }}
               >
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text)' }}>
@@ -192,9 +192,9 @@ export function AgentGChatInterface({ locale, initialQuery }: AgentGChatInterfac
               style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
             >
               <div className="flex gap-1">
-                <span className="w-2 h-2 rounded-full bg-[#00d4ff] animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 rounded-full bg-[#00d4ff] animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 rounded-full bg-[#00d4ff] animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-2 h-2 rounded-full bg-[#338FE8] animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-[#338FE8] animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-[#338FE8] animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
               <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{t('thinking')}</span>
             </div>
@@ -205,7 +205,7 @@ export function AgentGChatInterface({ locale, initialQuery }: AgentGChatInterfac
       {/* Input */}
       <div className="shrink-0 px-5 py-4" style={{ borderTop: '1px solid var(--color-border)' }}>
         <div
-          className="relative rounded-2xl border transition-all duration-300 focus-within:border-[rgba(0,212,255,0.35)] focus-within:shadow-[0_0_24px_rgba(0,212,255,0.08)]"
+          className="relative rounded-2xl border transition-all duration-300 focus-within:border-[rgba(51,143,232,0.35)] focus-within:shadow-[0_0_24px_rgba(51,143,232,0.08)]"
           style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
         >
           <textarea
@@ -224,7 +224,7 @@ export function AgentGChatInterface({ locale, initialQuery }: AgentGChatInterfac
             onClick={() => handleSend()}
             disabled={!input.trim() || isThinking}
             className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-30"
-            style={{ background: 'linear-gradient(135deg, #00d4ff, #0284c7)', color: '#fff' }}
+            style={{ background: 'linear-gradient(135deg, #338FE8, #0284c7)', color: '#fff' }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
           </button>

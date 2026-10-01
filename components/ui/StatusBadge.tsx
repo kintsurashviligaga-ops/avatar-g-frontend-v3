@@ -12,9 +12,9 @@ const STATUS_STYLES: Record<Status, { bg: string; text: string; dot: string; lab
     label: { en: 'Queued', ka: 'რიგში', ru: 'В очереди' },
   },
   processing: {
-    bg: 'bg-[rgba(0,212,255,0.08)] border-[rgba(0,212,255,0.2)]',
-    text: 'text-[#00d4ff]',
-    dot: 'bg-[#00d4ff] animate-pulse',
+    bg: 'bg-[rgba(51,143,232,0.08)] border-[rgba(51,143,232,0.2)]',
+    text: 'text-[#338FE8]',
+    dot: 'bg-[#338FE8] animate-pulse',
     label: { en: 'Processing', ka: 'მუშავდება', ru: 'Обработка' },
   },
   done: {

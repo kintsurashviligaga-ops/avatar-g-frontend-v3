@@ -11,7 +11,7 @@
  *
  * Pure presentation: the caller passes the title + content (a native component
  * like the Library grid, or a same-origin iframe of an existing page). Strict
- * studio skin — black · white · electric cyan (#00D2FF).
+ * studio skin — black · white · electric cyan (#338FE8).
  */
 
 import { useEffect } from 'react';
@@ -56,7 +56,7 @@ export function StudioSheet({ open, title, onClose, children, flush }: StudioShe
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 360, damping: 38 }}
             onClick={(e) => e.stopPropagation()}
-            className="ml-auto flex h-full w-full max-w-2xl flex-col border-l border-white/10 bg-black shadow-[0_0_80px_-10px_rgba(0,210,255,0.25)]"
+            className="ml-auto flex h-full w-full max-w-2xl flex-col border-l border-white/10 bg-black shadow-[0_0_80px_-10px_rgba(51,143,232,0.25)]"
             style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
           >
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">

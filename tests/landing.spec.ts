@@ -90,9 +90,11 @@ for (const vp of VIEWPORTS) {
       }
     });
 
-    test('one mark: the name, with no rocket tile beside it in the header or the footer', async ({ page }) => {
+    test('one lockup: the transparent rocket inside the name, never the opaque tile', async ({ page }) => {
       await page.goto('/ka/landing');
-      await expect(page.locator('header').getByRole('img', { name: /MyAvatar/ })).toBeVisible();
+      const lockup = page.locator('header').getByRole('img', { name: /MyAvatar/ });
+      await expect(lockup).toBeVisible();
+      await expect(lockup.getByTestId('rocket-mark')).toBeVisible();
       await expect(page.locator('img[src*="gemini-rocket"]')).toHaveCount(0);
     });
 
@@ -432,12 +434,16 @@ for (const vp of VIEWPORTS) {
       await expect(page.locator('input[type="email"]')).toBeVisible();
     });
 
-    test('one mark: the name — no rocket tile and no "M" badge beside it', async ({ page }) => {
+    test('one lockup: the transparent rocket inside the name — no opaque tile and no "M" badge beside it', async ({ page, request }) => {
       // „ორი ლოგო არ უნდა ჩანდეს" — the rocket raster beside the wordmark (an opaque tile: the PNG has no alpha) and
-      // an "M" circle styled like the account initial read as a second logo.
+      // an "M" circle styled like the account initial read as a second logo. The cut-out lives INSIDE the lockup.
       await openDashboard(page);
       await expect(page.locator('img[src*="gemini-rocket"]')).toHaveCount(0);
       await expect(page.getByText('M', { exact: true })).toHaveCount(0);
+      const marks = page.locator('[role="img"][aria-label="MyAvatar.ge"] [data-testid="rocket-mark"]').filter({ visible: true });
+      await expect(marks.first()).toBeVisible();
+      const png = await (await request.get('/brand/rocket-mark.png')).body();
+      expect(png[25]).toBe(6); // PNG colour type 6: it has an alpha channel
     });
 
     test('the brand plate loads, and nothing overlaps or leaves the screen', async ({ page, request }) => {

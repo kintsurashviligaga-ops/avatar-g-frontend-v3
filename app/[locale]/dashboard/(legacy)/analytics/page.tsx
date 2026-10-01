@@ -7,7 +7,7 @@ const PERIODS = ['7 days', '30 days', '90 days', 'All time'];
 
 const STATS = [
   { label: 'Credits Used', value: '5,800', change: '+12%', up: true, icon: Zap, color: '#0ea5e9' },
-  { label: 'AI Sessions', value: '127', change: '+23%', up: true, icon: MessageSquare, color: '#00d4ff' },
+  { label: 'AI Sessions', value: '127', change: '+23%', up: true, icon: MessageSquare, color: '#338FE8' },
   { label: 'Generated Items', value: '48', change: '+8%', up: true, icon: Layers, color: '#10b981' },
   { label: 'Workflows Run', value: '12', change: '-3%', up: false, icon: Workflow, color: '#f59e0b' },
 ];
