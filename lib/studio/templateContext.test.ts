@@ -179,21 +179,38 @@ describe('the Georgian Folk brief', () => {
   });
 });
 
-describe('storyboard and render resolve the same look', () => {
-  test('the storyboard body and the render metadata, as the studio sends them, give one look per card', () => {
+describe('a film card matches on its LENGTH too, whenever the request states one', () => {
+  const sec = (id: string) => VIDEO_TEMPLATES.find((t) => t.id === id)!.values.duration;
+
+  test('every video card resolves at its own length (8 s · 24 s · 48 s)', () => {
     for (const t of VIDEO_TEMPLATES) {
-      const musicVideo = t.values.mode === 'musicvideo';
-      // The storyboard route: body.style (cleaned) + `body.musicVideoMode === true`.
-      const board = resolveFilmTemplate({ templateId: t.id, style: t.values.style, musicVideoMode: musicVideo });
-      // filmComposite: the metadata's style + `!!metadata.musicVideoMode` (orchestrate only forwards `true`).
-      const metadata: Record<string, unknown> = { templateId: t.id, style: t.values.style, ...(musicVideo ? { musicVideoMode: true } : {}) };
-      const render = resolveFilmTemplate({ templateId: metadata.templateId, style: metadata.style as string, musicVideoMode: !!metadata.musicVideoMode });
-      expect(board).not.toBeNull();
-      expect(render).toEqual(board);
+      const v = { style: t.values.style, musicVideoMode: t.values.mode === 'musicvideo', runtimeSec: t.values.duration };
+      expect(resolveTemplateContext('video', t.id, v)?.id).toBe(t.id);
     }
   });
 
-  test('a render whose style changed after the board was approved drops the look on both sides alike', () => {
-    expect(resolveFilmTemplate({ templateId: 'noir', style: 'Cinematic', musicVideoMode: false })).toBeNull();
+  test('the Reel and the Teaser share a style and a mode; the length tells them apart', () => {
+    const cinematic = { style: 'Cinematic', musicVideoMode: false };
+    expect(sec('reel')).toBe(24);
+    expect(sec('teaser')).toBe(8);
+    expect(resolveTemplateContext('video', 'teaser', { ...cinematic, runtimeSec: 24 })).toBeNull(); // a 24 s film
+    expect(resolveTemplateContext('video', 'reel', { ...cinematic, runtimeSec: 8 })).toBeNull();    // an 8 s film
+    expect(resolveTemplateContext('video', 'reel', { ...cinematic, runtimeSec: 24 })?.id).toBe('reel');
+    expect(resolveTemplateContext('video', 'teaser', { ...cinematic, runtimeSec: 8 })?.id).toBe('teaser');
+  });
+
+  test('the comparison is by scene count, so a script\'s own cadence (4 × 6 s = 24 s) still is the Reel', () => {
+    expect(resolveFilmTemplate({ templateId: 'reel', style: 'Cinematic', musicVideoMode: false, runtimeSec: 4 * 6 })?.id).toBe('reel');
+    expect(resolveFilmTemplate({ templateId: 'trailer', style: 'Dramatic', musicVideoMode: false, runtimeSec: 24 })).toBeNull();
+  });
+
+  test('a request that states no length (a storyboard frame call) is matched on style and mode alone', () => {
+    for (const runtimeSec of [undefined, null, 0, Number.NaN, -8]) {
+      expect(resolveFilmTemplate({ templateId: 'teaser', style: 'Cinematic', musicVideoMode: false, runtimeSec })?.id).toBe('teaser');
+    }
+  });
+
+  test('a render whose style changed after the board was approved drops the look', () => {
+    expect(resolveFilmTemplate({ templateId: 'noir', style: 'Cinematic', musicVideoMode: false, runtimeSec: 24 })).toBeNull();
   });
 });

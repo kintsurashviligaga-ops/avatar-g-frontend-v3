@@ -7,18 +7,26 @@
  * ⚠️ A CARD WRITES THE PANEL'S REAL PARAMETERS, AND MAY ADD ONE SERVER-RESOLVED CONTEXT (owner decision 2026-10-01 A-a).
  * It sets the same state the panel's own controls set (style, format, length, quality, genre, tempo, vocal, the
  * presenter's face…), and every individual control stays visible to fine-tune. On top of that, a video, image or
- * music request carries the card's `templateId`: an ID, never text. The route resolves it SERVER-SIDE
- * (lib/studio/templateContext.ts, `server-only`) into a short, capped context: an image prompt suffix, a music
- * descriptor, or a film look plus a director note. It adds that context ONLY when the request's own values still
- * select the card, so a stale, forged or mismatched id adds nothing. The client never supplies the context text, and
- * the context strings never ship to the browser. What a card adds is DISCLOSED on the card as one „Adds: …" line in
- * ka/en/ru (`adds` below, via `templateAddsLine`): client-safe copy that describes the effect. Presenter (avatar)
- * cards add no context (decision A-f): the face, voice and format are the whole of what they do.
+ * music request made after the user PICKED a card carries that card's `templateId`: an ID, never text. The route
+ * resolves it SERVER-SIDE (lib/studio/templateContext.ts, `server-only`) into a short, capped context: an image
+ * prompt suffix, a music descriptor, or a film look plus a director note. It adds that context ONLY when the request's
+ * own values still select the card, so a stale, forged or mismatched id adds nothing. The server never accepts context
+ * text from the client: the tables live in server-only code and a request can only name a card. (The text is not a
+ * secret: a film look is part of the storyboard's frame prompts, which the board returns for display and re-rolls.)
+ * What a card adds is DISCLOSED on the card as one „Adds: …" line in ka/en/ru (`adds` below, via `templateAddsLine`):
+ * client copy that describes the effect. Presenter (avatar) cards add no context (decision A-f): the face, voice and
+ * format are the whole of what they do.
  *
- * ⚠️ THE ACTIVE CARD IS DERIVED, NEVER STORED (the contract of lib/video/videoPresets and lib/image/imagePresets,
- * whose presets these cards absorb): `match*Template` recomputes it from the live values, so a card stops being lit
- * the moment the user edits a field it set, and the request stops carrying its id. Value tuples are unique per tool
- * (a test enforces it).
+ * ⚠️ THE LIT CARD IS DERIVED, NEVER STORED (the contract of lib/video/videoPresets and lib/image/imagePresets, whose
+ * presets these cards absorb): `match*Template` recomputes it from the live values, so a card stops being lit the
+ * moment the user edits a field it set. Value tuples are unique per tool (a test enforces it).
+ *
+ * ⚠️ BUT A LIT CARD IS NOT A PICKED CARD. Some panels' starting values ARE a card (the video panel's defaults are the
+ * Reel; the image panel plus the Photorealistic chip is the Product shot), so a card can light up without the user
+ * ever touching it. Its context is sent only for a card the user explicitly PICKED, and only while the live values
+ * still select it (`requestTemplateId`). The first edit away forgets the pick, so editing back re-lights the card
+ * without re-sending its context until it is picked again (hooks/usePickedTemplate). The panel defaults live here
+ * (`*_PANEL_DEFAULTS`) so a test can pin exactly that.
  *
  * Thumbnails: `thumb` is set ONLY when the file exists under public/ (a test enforces it), so a missing image is never
  * shipped as a broken <img> or a 404. A card without one renders its palette as a gradient tile. The generated set is
@@ -48,8 +56,8 @@ interface TemplateBase {
 }
 
 /**
- * What the card's server-resolved context ADDS, in plain words, for the „Adds: …" line. Client-safe copy that
- * describes the effect, never the context text itself, which stays server-only (lib/studio/templateContext.ts).
+ * What the card's server-resolved context ADDS, in plain words, for the „Adds: …" line. Copy that describes the
+ * effect, not the context text itself, whose tables live only in server code (lib/studio/templateContext.ts).
  * Required on every video, image and music card: each one resolves a context, and a test pins the two sets together.
  */
 interface ContextCard { adds: L10n }
@@ -356,6 +364,23 @@ export function templateAddsLine(t: StudioTemplate, lang: TemplateLang): string 
   if (t.tool === 'avatar') return null;
   const what = t.adds[lang]?.trim();
   return what ? `${ADDS_PREFIX[lang]}: ${what}` : null;
+}
+
+// ─── The studio panels' starting values ────────────────────────────────────────────────────────────────
+// What OmniStudio's image, video and music panels hold before the user touches anything (it initialises its state
+// from these). The video defaults ARE the Reel card, which is why a lit card never sends its context by itself.
+
+export const IMAGE_PANEL_DEFAULTS = { aspect: '1:1', quality: 'high', style: 'Auto' } as const;
+export const VIDEO_PANEL_DEFAULTS = { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Cinematic' } as const;
+export const MUSIC_PANEL_DEFAULTS = { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'female' } as const;
+
+/**
+ * The `templateId` a studio request may carry: the card the user PICKED, and only while the live values still
+ * select it (`liveId` is the panel's `match*Template` result). A card that is merely lit, because the panel's values
+ * happen to equal it, sends nothing; neither does a picked card the user has since edited away from.
+ */
+export function requestTemplateId(pickedId: string | null | undefined, liveId: string | null | undefined): string | null {
+  return pickedId && TEMPLATE_ID_RX.test(pickedId) && liveId === pickedId ? pickedId : null;
 }
 
 // ─── Derived selection (never stored) ──────────────────────────────────────────────────────────────────

@@ -506,10 +506,6 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     opts.style ||
     (typeof input.metadata?.style === 'string' ? input.metadata.style : null) ||
     null;
-  // ⚠️ THE TEMPLATE CARD'S LOOK + DIRECTOR NOTE ARE RESOLVED HERE, FROM ITS ID (metadata.templateId) — never accepted
-  // as text, and only when THIS render's style and music-video mode still select the card. The storyboard route runs
-  // the same resolver, so the approved board and the paid film are planned with one look.
-  const filmTemplate = resolveFilmTemplate({ templateId: input.metadata?.templateId, style, musicVideoMode: !!input.metadata?.musicVideoMode });
   // PHASE 2 L1 — user camera controls (video panel). Whitelisted; absent → the
   // storyboard's per-beat camera variety is unchanged (fully additive).
   const cameraMove = (() => {
@@ -534,6 +530,18 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     const n = Number(input.metadata?.sceneCount);
     return Number.isFinite(n) && n >= 1 && n <= 12 ? Math.round(n) : null;
   })();
+  // ⚠️ THE TEMPLATE CARD'S LOOK + DIRECTOR NOTE ARE RESOLVED HERE, FROM ITS ID (metadata.templateId) — never accepted
+  // as text, and only when THIS render's style and music-video mode still select the card, and its length when the
+  // render states one: the pinned scene count × the pinned clip length (a 4 × 6 s script is still a 24 s film). The
+  // storyboard route runs the same resolver, so the approved board and the paid film are planned with one look.
+  const filmTemplate = resolveFilmTemplate({
+    templateId: input.metadata?.templateId, style, musicVideoMode: !!input.metadata?.musicVideoMode,
+    runtimeSec: (() => {
+      if (!pinnedSceneCount) return null;
+      const c = Number(input.metadata?.clipSec);
+      return pinnedSceneCount * (Number.isFinite(c) && c >= 4 && c <= 8 ? c : FILM_CLIP_SEC);
+    })(),
+  });
   // Approved LLM story scenes from the storyboard step — the clips render from
   // these exact scene descriptions (real story) instead of the deterministic beats.
   let sceneScripts = Array.isArray(input.metadata?.sceneScripts)

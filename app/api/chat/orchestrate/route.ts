@@ -110,9 +110,10 @@ const orchestrateSchema = z.object({
   // The Video-panel effect (Cinematic / Vintage / Neon …) → drives the clip prompt's
   // visual style guide. Previously only reached the storyboard frames, never the render.
   style: z.string().max(80).optional(),
-  // The video template card the panel's values select (lib/studio/templates) — an ID, never text. filmComposite
-  // resolves its look + director note SERVER-SIDE (lib/studio/templateContext) and ignores an id that does not match
-  // this render's style and mode, so a malformed or stale one degrades to "no template" rather than a 400.
+  // The video template card the user picked (lib/studio/templates; sent only while the panel still matches it) — an
+  // ID, never text. filmComposite resolves its look + director note SERVER-SIDE (lib/studio/templateContext) and
+  // ignores an id that does not match this render's style, mode and length, so a malformed or stale one degrades to
+  // "no template" rather than a 400.
   // `.catch(undefined)`: an over-long or non-string id is dropped here instead of failing the whole render.
   templateId: z.string().max(40).optional().catch(undefined),
   // Prompt-Agent character LOCK — one detailed appearance fragment injected verbatim

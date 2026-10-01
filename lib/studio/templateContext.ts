@@ -5,14 +5,20 @@
  * says so („Adds: …", lib/studio/templates.ts). This module is the only place those context strings exist.
  *
  * ⚠️ THE CLIENT SENDS AN ID, NEVER TEXT. A request carries `templateId`; everything that reaches a prompt is looked
- * up here, from tables that never ship to the browser (hence `server-only`). An id is honoured only when:
+ * up here, in tables that live only in server code (hence `server-only`): the server never ACCEPTS context text from
+ * a client. (It is not a secret once used: a film look is part of the storyboard's frame prompts, which the board
+ * returns for display.) An id is honoured only when:
  *   1. it is a well-formed wire id (TEMPLATE_ID_RX) that names a real card of THAT tool, looked up as an OWN key
  *      ('constructor' is a well-formed id and a plain `table[id]` would "find" Object's constructor);
  *   2. the request's own values still select that card: image and music re-run `match*Template` on what the route
- *      actually received; video checks the style and the music-video mode (the two a storyboard request and a render
- *      both carry; their lengths and orientations are expressed differently, so those are not compared).
+ *      actually received. Video checks the style and the music-video mode, which every storyboard request and every
+ *      render carry, and the film's LENGTH whenever the request states it (`runtimeSec`, compared as a scene count:
+ *      8 s → 1, 24 s → 3, 48 s → 6), which is what tells the Reel (24 s) from the Teaser (8 s), the one pair that
+ *      shares a style and mode. A storyboard frame call states no length, so it is matched on style and mode alone.
+ *      Orientation is not compared: the two sides express it differently.
  * So a stale id (the user edited a field after picking the card), a tampered id, or one borrowed from another card
- * (`anime` sent with style `Photorealistic`) resolves to null and the request renders exactly as the controls say.
+ * (`anime` sent with style `Photorealistic`, `teaser` sent with a 24 s film) resolves to null and the request renders
+ * exactly as the controls say.
  *
  * Every string is capped (image suffix 200, music descriptor 160, film look 160, director note 400) — at the source
  * and again here, so a future edit to a table cannot ship a paragraph into a paid prompt.
@@ -24,6 +30,7 @@ import {
   IMAGE_TEMPLATES, MUSIC_TEMPLATES, TEMPLATE_ID_RX, VIDEO_TEMPLATES, matchImageTemplate, matchMusicTemplate,
   type ImageMatchInput, type MusicMatchInput, type TemplateTool,
 } from '@/lib/studio/templates';
+import { sceneCountForDuration } from '@/lib/video/sceneGrid';
 
 export const IMAGE_SUFFIX_MAX = 200;
 export const MUSIC_DESCRIPTOR_MAX = 160;
@@ -99,8 +106,17 @@ export interface MusicTemplateContext { tool: 'music'; id: string; descriptor: s
 export interface VideoTemplateContext { tool: 'video'; id: string; look: string; directorNote: string }
 export type TemplateContext = ImageTemplateContext | MusicTemplateContext | VideoTemplateContext;
 
-/** What a film request can vouch for: its style label and whether it is a music video. */
-export interface VideoMatchInput { style: string | null | undefined; musicVideoMode: boolean }
+/**
+ * What a film request can vouch for: its style label, whether it is a music video, and (when it knows it) the film's
+ * runtime in seconds. An absent or non-positive `runtimeSec` means "length not stated" and skips that comparison.
+ */
+export interface VideoMatchInput { style: string | null | undefined; musicVideoMode: boolean; runtimeSec?: number | null }
+
+/** True when the request states no length, or a length in the same scene-count bucket as the card's. */
+function lengthMatches(cardSec: number, runtimeSec: number | null | undefined): boolean {
+  if (typeof runtimeSec !== 'number' || !Number.isFinite(runtimeSec) || runtimeSec <= 0) return true;
+  return sceneCountForDuration(runtimeSec) === sceneCountForDuration(cardSec);
+}
 
 const own = (table: Readonly<Record<string, unknown>>, id: string): boolean => Object.prototype.hasOwnProperty.call(table, id);
 
@@ -138,6 +154,7 @@ export function resolveTemplateContext(tool: TemplateTool, rawId: unknown, value
       const v = values as VideoMatchInput | undefined;
       if (!card || !v || card.values.style !== v.style) return null;
       if ((card.values.mode === 'musicvideo') !== (v.musicVideoMode === true)) return null;
+      if (!lengthMatches(card.values.duration, v.runtimeSec)) return null;
       const ctx = VIDEO_CONTEXT[id]!;
       const look = bounded(ctx.look, VIDEO_LOOK_MAX);
       return look ? { tool: 'video', id, look, directorNote: bounded(ctx.note, DIRECTOR_NOTE_MAX) } : null;
@@ -151,10 +168,14 @@ export function resolveTemplateContext(tool: TemplateTool, rawId: unknown, value
 /**
  * The film template for a STORYBOARD request body and for a RENDER's metadata: one function on both sides, so the
  * board the user approves and the film they pay for are planned with the same look. Each caller passes the style
- * and mode it actually renders with (the storyboard's cleaned `style`; filmComposite's resolved `style`).
+ * and mode it actually renders with (the storyboard's cleaned `style`; filmComposite's resolved `style`) and the
+ * runtime it was asked for when the request states one (the storyboard's package `sceneCount` × 8 s; the render's
+ * pinned scene count × its clip length), else null.
  */
-export function resolveFilmTemplate(src: { templateId?: unknown; style: string | null | undefined; musicVideoMode: boolean }): VideoTemplateContext | null {
-  return resolveTemplateContext('video', src.templateId, { style: src.style, musicVideoMode: src.musicVideoMode });
+export function resolveFilmTemplate(src: {
+  templateId?: unknown; style: string | null | undefined; musicVideoMode: boolean; runtimeSec?: number | null;
+}): VideoTemplateContext | null {
+  return resolveTemplateContext('video', src.templateId, { style: src.style, musicVideoMode: src.musicVideoMode, runtimeSec: src.runtimeSec ?? null });
 }
 
 /** Every card id that resolves a context, per tool — for the parity test with the client's „Adds: …" copy. */

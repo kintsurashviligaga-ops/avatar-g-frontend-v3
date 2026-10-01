@@ -4,9 +4,10 @@ import { join } from 'path';
 import { IMAGE_PRESETS } from '@/lib/image/imagePresets';
 import { VIDEO_PRESETS } from '@/lib/video/videoPresets';
 import {
-  AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, TEMPLATES_BY_TOOL, TEMPLATE_ID_RX, VIDEO_TEMPLATES,
-  avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
-  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
+  AVATAR_TEMPLATES, IMAGE_PANEL_DEFAULTS, IMAGE_TEMPLATES, MUSIC_PANEL_DEFAULTS, MUSIC_TEMPLATES, TEMPLATES_BY_TOOL,
+  TEMPLATE_ID_RX, VIDEO_PANEL_DEFAULTS, VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues, matchAvatarTemplate,
+  matchImageTemplate, matchMusicTemplate, matchVideoTemplate, musicTemplateValues, requestTemplateId, templateAddsLine,
+  templateLang, videoTemplateValues,
 } from './templates';
 
 // The panels' own option lists (components/studio/OmniStudio.tsx). A template may only set values a control can show.
@@ -144,5 +145,22 @@ describe('avatar', () => {
       expect(avatarTemplateValues(t.id)).toEqual(t.values);
     }
     expect(matchAvatarTemplate({ preset: null, format: '9:16' })).toBeNull();
+  });
+});
+
+describe('a request names a card only when it was PICKED and still matches (requestTemplateId)', () => {
+  test('a lit card that nobody picked sends nothing — the defaults light the Reel, Photorealistic lights Product', () => {
+    expect(requestTemplateId(null, matchVideoTemplate(VIDEO_PANEL_DEFAULTS))).toBeNull();
+    expect(requestTemplateId(null, matchImageTemplate({ ...IMAGE_PANEL_DEFAULTS, style: 'Photorealistic' }))).toBeNull();
+    expect(requestTemplateId(undefined, matchMusicTemplate({ ...MUSIC_PANEL_DEFAULTS, instrumental: true }))).toBeNull();
+  });
+  test('a picked card is sent only while the live values still select it', () => {
+    expect(requestTemplateId('product', 'product')).toBe('product');
+    expect(requestTemplateId('product', null)).toBeNull();
+    expect(requestTemplateId('product', 'social')).toBeNull();
+  });
+  test('a malformed pick is never sent, even if it "matches"', () => {
+    expect(requestTemplateId('Product', 'Product')).toBeNull();
+    expect(requestTemplateId('', '')).toBeNull();
   });
 });

@@ -28,10 +28,11 @@ import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
+import { usePickedTemplate } from '@/hooks/usePickedTemplate';
 import {
-  AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues,
-  matchAvatarTemplate, matchImageTemplate, matchMusicTemplate, matchVideoTemplate, musicTemplateValues, templateAddsLine,
-  templateLang, videoTemplateValues,
+  AVATAR_TEMPLATES, IMAGE_PANEL_DEFAULTS, IMAGE_TEMPLATES, MUSIC_PANEL_DEFAULTS, MUSIC_TEMPLATES, VIDEO_PANEL_DEFAULTS,
+  VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
+  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
 } from '@/lib/studio/templates';
 import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
@@ -853,14 +854,10 @@ interface Media { dataUrl: string; mimeType: string; /** The original file name 
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
-// `templateId`: the template card these values selected when the request was made (lib/studio/templates) — sent with
-// the request AND its re-roll, so both get the card's server-resolved context (the route re-checks the match).
+// `templateId`: the template card the user PICKED, when it still matched these values at request time
+// (hooks/usePickedTemplate; a card that is merely lit sends nothing) — sent with the request AND its re-roll, so both
+// get the card's server-resolved context (the route re-checks the match).
 type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string; templateId?: string };
-/** The spec's `templateId` field: the card these values select right now (derived, never stored on the panel). */
-function imageTemplateField(v: { aspect: string; quality: string; style: string }): { templateId?: string } {
-  const id = matchImageTemplate(v);
-  return id ? { templateId: id } : {};
-}
 // MusicRegenSpec (+ duration / tempo / voice, and the body built from it) lives in lib/studio/musicRegen — tested there.
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
@@ -913,8 +910,9 @@ interface FilmSnap {
   /** Per-scene length (4-8s) the storyboard derived from the script's own timecodes; undefined = the
    *  default 8s grid. Rides in the snapshot so a QUEUED film keeps the grid it was planned on. */
   clipSec?: number;
-  /** The video template card the panel selected at submit (matchVideoTemplate) — sent as `templateId` so the render
-   *  gets the card's server-resolved look, like the storyboard did. Absent when no card is lit. */
+  /** The video template card the user PICKED, if the panel still matched it at submit (hooks/usePickedTemplate) —
+   *  sent as `templateId` so the render gets the card's server-resolved look, like the storyboard did. Absent when no
+   *  card was picked, including when the default panel merely lights the Reel. */
   videoTemplateId?: string;
 }
 
@@ -2047,12 +2045,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Scroll-to-bottom affordance — shown only when the user scrolled up.
   const [showJump, setShowJump] = useState(false);
   // Per-service generation options.
-  const [imgAspect, setImgAspect] = useState<ImgAspect>('1:1');
+  const [imgAspect, setImgAspect] = useState<ImgAspect>(IMAGE_PANEL_DEFAULTS.aspect);
   // Default to the 2K tier for sharper, higher-fidelity output. The wider provider
   // poll window now makes 2K reliable (~33s live) without the old timeouts; users can
   // drop to 1K for speed or pick 4K for maximum detail.
-  const [imgQuality, setImgQuality] = useState<ImgQuality>('high');
-  const [imgStyle, setImgStyle] = useState<string>('Auto');
+  const [imgQuality, setImgQuality] = useState<ImgQuality>(IMAGE_PANEL_DEFAULTS.quality);
+  const [imgStyle, setImgStyle] = useState<string>(IMAGE_PANEL_DEFAULTS.style);
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
   // The chat's MODEL is not component state: the header's ModelSwitcher writes it to lib/chat/chatModeStore and
@@ -2074,8 +2072,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Default to a SONG (vocals): a vocal R&B/pop track is the common case, and the engine writes
   // lyrics from the prompt when none are given. The panel's Track type chips (Instrumental / Song)
   // flip it — and gate the Lyrics / Vocal rows below.
-  const [musicInstrumental, setMusicInstrumental] = useState(false);
-  const [musicGenre, setMusicGenre] = useState<string>('r&b');
+  const [musicInstrumental, setMusicInstrumental] = useState<boolean>(MUSIC_PANEL_DEFAULTS.instrumental);
+  const [musicGenre, setMusicGenre] = useState<string>(MUSIC_PANEL_DEFAULTS.genre);
   // Custom lyrics for vocal tracks — empty means the engine (Lyria 3 first) writes them from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
@@ -2084,11 +2082,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
   // FIX 2 — duration 0 = "full song": billed at the 90s tier; each engine renders its own full length
   // (Udio untrimmed, ElevenLabs ~120s, MusicGen 90s) and the route settles the charge to what was delivered.
-  const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(30);
-  const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
+  const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(MUSIC_PANEL_DEFAULTS.duration);
+  const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>(MUSIC_PANEL_DEFAULTS.tempo);
   // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
   // descriptors appended to the music prompt server-side (female/male/duet).
-  const [musicVoiceType, setMusicVoiceType] = useState<'female' | 'male' | 'duet'>('female');
+  const [musicVoiceType, setMusicVoiceType] = useState<'female' | 'male' | 'duet'>(MUSIC_PANEL_DEFAULTS.voiceType);
   // In-app voice-sample recorder for "sing in my voice" — separate from the chat
   // dictation mic. Captures ≥15s of audio → added as the music voice reference.
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -2104,8 +2102,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // 16:9 landscape · 9:16 vertical · 1:1 square · 4:5 portrait. The render pipeline
   // currently masters landscape/vertical, so square/portrait map to the nearest
   // (vertical) at dispatch — the selector still records the user's exact choice.
-  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical' | 'square' | 'portrait'>('vertical');
-  const [videoStyle, setVideoStyle] = useState<string>('Cinematic');
+  const [videoOrientation, setVideoOrientation] = useState<'landscape' | 'vertical' | 'square' | 'portrait'>(VIDEO_PANEL_DEFAULTS.orientation);
+  const [videoStyle, setVideoStyle] = useState<string>(VIDEO_PANEL_DEFAULTS.style);
   // Spoken voice for the film — ON by default so the character actually TALKS (and,
   // with the lip-sync pass, the lips move with it). When on, a localized cue is
   // appended to the brief so the pipeline generates a voice-over + lip-syncs the master.
@@ -2133,13 +2131,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // storyboard scene count. 60s = a cinematic intro (first scenes establishing) →
   // the singer performance, for a full music-video edit.
   // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
-  const [videoDuration, setVideoDuration] = useState<8 | 24 | 48>(24);
+  const [videoDuration, setVideoDuration] = useState<8 | 24 | 48>(VIDEO_PANEL_DEFAULTS.duration);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
   // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
   // 'documentary' → narration-forward (voice on top, music ducked under it).
-  const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>('documentary');
+  const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>(VIDEO_PANEL_DEFAULTS.mode);
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
@@ -2219,28 +2217,43 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // fields it set, and a highlighted chip that no longer matches the form is a lie about the form.
   // Derived, never stored — same contract as the video and music rows.
   const activeImagePreset = matchImageTemplate({ aspect: imgAspect, quality: imgQuality, style: imgStyle });
+  // ⚠️ A LIT CARD IS NOT A PICKED CARD (hooks/usePickedTemplate). The highlight above is derived from the values, but
+  // a request names a card — and so gets its server-resolved context — only after the user PICKED it, and only while
+  // the values still select it. Without this, tapping just the Photorealistic chip lit (and sent) the Product card.
+  const { templateId: pickedImageTemplateId, pick: pickImageTemplate } = usePickedTemplate(activeImagePreset);
   const applyImagePreset = useCallback((id: string) => {
     const v = imageTemplateValues(id);
     if (!v) return;
     setImgAspect(v.aspect as typeof imgAspect);
     setImgQuality(v.quality);
     setImgStyle(v.style);
-  }, []);
+    pickImageTemplate(id);
+  }, [pickImageTemplate]);
 
   const activeVideoPreset = matchVideoTemplate({
     mode: videoMode, duration: videoDuration, orientation: videoOrientation, style: videoStyle,
   });
+  // The panel's DEFAULTS are the Reel card, so the lit id alone would give every default film the Reel's look and
+  // director note. Only a picked card's id rides on the storyboard and render requests.
+  const { templateId: pickedVideoTemplateId, pick: pickVideoTemplate } = usePickedTemplate(activeVideoPreset);
 
   const applyVideoPreset = useCallback((id: string) => {
     const v = videoTemplateValues(id);
     if (!v) return;
+    pickVideoTemplate(id);
     setVideoMode(v.mode);
     setVideoDuration(v.duration);
     setVideoStyle(v.style);
     // Music-Video mode is 9:16-locked in this panel (the Format buttons are disabled for it), so
     // writing any other orientation here would put the UI in a state its own controls forbid.
     setVideoOrientation(v.mode === 'musicvideo' ? 'vertical' : v.orientation);
-  }, []);
+  }, [pickVideoTemplate]);
+
+  // Music: the same lit-vs-picked split (the panel defaults switched to Instrumental light the R&B Beat card).
+  const activeMusicPreset = matchMusicTemplate({
+    genre: musicGenre, tempo: musicTempo, duration: musicDuration, instrumental: musicInstrumental, voiceType: musicVoiceType,
+  });
+  const { templateId: pickedMusicTemplateId, pick: pickMusicTemplate } = usePickedTemplate(activeMusicPreset);
 
   const sceneFrameCount = sceneCountForDuration(videoDuration);
   // Shrinking the film length drops scene frames beyond the new count (kept in order).
@@ -3059,7 +3072,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         musicVideoMode: isMusicVideo,
         // FIX B — the chosen effect reaches the CLIP prompts (not just the frames).
         style: videoStyle,
-        // …and the lit template card's id, so the clips get the same server-resolved look the storyboard frames did.
+        // …and the picked template card's id, so the clips get the same server-resolved look the storyboard frames did.
         ...(videoTemplateId ? { templateId: videoTemplateId } : {}),
         // FIX A — the Prompt-Agent locked character → identical protagonist every clip.
         ...(characterLock?.trim() ? { characterLock: characterLock.trim() } : {}),
@@ -3403,7 +3416,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       motionIntensity: veoPlan.cameraDefault.intensity,
       ...(clipSec ? { clipSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
-      ...(activeVideoPreset ? { videoTemplateId: activeVideoPreset } : {}),
+      // The PICKED card only (a default panel lights the Reel without anyone choosing it).
+      ...(pickedVideoTemplateId ? { videoTemplateId: pickedVideoTemplateId } : {}),
     };
     if (!ENABLE_PARALLEL_CINEMA) {
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
@@ -3428,7 +3442,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, activeVideoPreset]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -3739,8 +3753,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
     const sceneCount = sceneCountForDuration(videoDuration);
-    // The lit template card's id on every storyboard call, so the board is planned with the look the render will use.
-    const templateRef = activeVideoPreset ? { templateId: activeVideoPreset } : {};
+    // The PICKED template card's id on every storyboard call, so the board is planned with the look the render will use.
+    const templateRef = pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {};
     try {
       // STEP 1 — fast PLAN-ONLY call: deterministic scene beats, no LLM, no frames.
       // Returns in ~1s so the board opens immediately (no long "frozen" wait).
@@ -3935,7 +3949,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts, activeVideoPreset]);
+  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts, pickedVideoTemplateId]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
   // a hot-reload of just this one scene's agent thread, never the master loop. An
@@ -3961,7 +3975,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, ...(activeVideoPreset ? { templateId: activeVideoPreset } : {}), locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, ...(pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {}), locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
       if (j.success && typeof j.frameUrl === 'string') {
@@ -3977,7 +3991,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setRegenningOrdinal(null);
     }
-  }, [storyboard, regenningOrdinal, videoStyle, locale, activeVideoPreset]);
+  }, [storyboard, regenningOrdinal, videoStyle, locale, pickedVideoTemplateId]);
 
   // Edit a storyboard scene's shot description in place (Storyboard scene editing).
   // The edit is used when re-rolling that scene's frame AND threaded into the final
@@ -4364,6 +4378,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     prompt: string; userBubble: string; medias?: Media[]; useTrained: boolean;
     audioRef?: string; audioMime?: string; audioMode: string; genre: string;
     duration: number; tempo: string; instrumental: boolean; voiceType: string; lyrics: string;
+    /** The template card the user PICKED in the music panel (hooks/usePickedTemplate), or null — never the lit one. */
+    templateId?: string | null;
   }) => {
     const bubbleId = `music_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setMessages((prev) => [
@@ -4384,12 +4400,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Cover / voice: host the attached track first so the request body stays tiny.
         const uploadedAudioUrl = m.audioRef ? await uploadBigFile(m.audioRef, m.audioMime || 'audio/mpeg') : undefined;
         const isVoiceClone = !!uploadedAudioUrl && m.audioMode === 'voice' && !m.useTrained;
-        // The template card THIS body selects (the route re-derives it from the same fields). Only a composed track
-        // carries it: a cover or a cloned/trained voice keeps its own source, and the route adds no descriptor there.
-        const templateId = uploadedAudioUrl || m.useTrained ? null : musicRequestTemplateId({
+        // The PICKED template card, sent only while THIS body still selects it (the route re-derives the match from the
+        // same fields). Only a composed track carries it: a cover or a cloned/trained voice keeps its own source, and
+        // the route adds no descriptor there.
+        const bodyTemplateId = uploadedAudioUrl || m.useTrained ? null : musicRequestTemplateId({
           genre: m.genre, tempo: m.tempo, durationSec: m.duration, instrumental: m.instrumental,
           ...(!m.instrumental ? { voiceType: m.voiceType } : {}),
         });
+        const templateId = m.templateId && bodyTemplateId === m.templateId ? m.templateId : null;
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4637,19 +4655,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!p) return;
     if (service === 'image') {
       const neg = imgNegative.trim();
-      const spec: ImageRegenSpec = { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(neg ? { negativePrompt: neg } : {}), ...imageTemplateField({ aspect: imgAspect, quality: imgQuality, style: imgStyle }) };
+      const spec: ImageRegenSpec = { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
       runImageJob(p, undefined, spec);
     } else if (service === 'music') {
       runMusicJob({
         prompt: p, userBubble: p, useTrained: false, audioMode: musicAudioMode, genre: musicGenre,
         duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental, voiceType: musicVoiceType, lyrics: '',
+        templateId: pickedMusicTemplateId,
       });
     } else if (service === 'video') {
       setMode('video'); setInput(p);
     } else if (service === 'avatar') {
       setMode('lipsync'); setInput(p);
     }
-  }, [runImageJob, runMusicJob, imgNegative, imgQuality, imgAspect, imgStyle, musicAudioMode, musicGenre, musicDuration, musicTempo, musicInstrumental, musicVoiceType]);
+  }, [runImageJob, runMusicJob, imgNegative, imgQuality, imgAspect, imgStyle, musicAudioMode, musicGenre, musicDuration, musicTempo, musicInstrumental, musicVoiceType, pickedImageTemplateId, pickedMusicTemplateId]);
 
   // ── CHAT STREAM (hooks/chat/useChatStream) ─────────────────────────────────────────────────────────────────────
   // ⚠️ EVERY CHUNK USED TO RE-RENDER THIS WHOLE COMPONENT. The reply was appended with setMessages on each SSE chunk,
@@ -4929,7 +4948,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
       const neg = imgNegative.trim();
-      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...imageTemplateField({ aspect: imgAspect, quality: imgQuality, style: imgStyle }) };
+      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
       if (imgCount > 1) runImageBatch(spec, imgCount);
       else runImageJob(text, ref, spec);
       setInput('');
@@ -4956,7 +4975,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           prompt: musicPrompt, userBubble, medias: attachments, useTrained: mUseTrained,
           audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
           duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
-          voiceType: musicVoiceType, lyrics: musicLyrics.trim(),
+          voiceType: musicVoiceType, lyrics: musicLyrics.trim(), templateId: pickedMusicTemplateId,
         });
         setInput('');
         setAttachments([]);
@@ -5053,7 +5072,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
         const neg = imgNegative.trim();
-        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...imageTemplateField({ aspect: imgAspect, quality: imgQuality, style: imgStyle }) };
+        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...(pickedImageTemplateId ? { templateId: pickedImageTemplateId } : {}) };
         if (imgCount > 1) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
@@ -5075,7 +5094,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           prompt: text, userBubble: text, medias: attachments, useTrained: mUseTrained,
           audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
           duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
-          voiceType: musicVoiceType, lyrics: musicLyrics.trim(),
+          voiceType: musicVoiceType, lyrics: musicLyrics.trim(), templateId: pickedMusicTemplateId,
         });
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
@@ -5505,7 +5524,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -7901,12 +7920,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             setMusicDuration(p.duration);
             setMusicInstrumental(p.instrumental);
             setMusicVoiceType(p.voiceType);
+            // A tap is the only thing that makes a card's descriptor ride on the request (hooks/usePickedTemplate).
+            pickMusicTemplate(id);
           };
           // A chip is active when every core dial matches; instrumental presets exclude vocal from
           // the match (gender is hidden/moot for a bed), so their highlight stays stable.
-          const activePresetId = matchMusicTemplate({
-            genre: musicGenre, tempo: musicTempo, duration: musicDuration, instrumental: musicInstrumental, voiceType: musicVoiceType,
-          });
+          const activePresetId = activeMusicPreset;
           // Fine-tune accordion badge — a glanceable 3-part summary of the collapsed dials, e.g.
           // "30s · Medium · ♀" (song) or "Full · Slow · 🎹" (instrumental; gender is moot so the
           // vocal glyph becomes 🎹, keeping a stable shape). Locale-aware.
