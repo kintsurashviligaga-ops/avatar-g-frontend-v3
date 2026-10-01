@@ -173,6 +173,20 @@ export function pendingShots(shots: readonly Shot[], m: Manifest, o: { only?: st
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * ⚠️ A THROTTLE IS NOT A FAILURE. Replicate limits an account holding under $5 of credit to ~6 predictions a minute
+ * with a burst of ONE, and answers the rest 429 with `retry_after` (2026-10-01: all 20 shots but one were "refused"
+ * and the run ended having bought nothing). A 429 is refused BEFORE the job exists — nothing billed — so the same
+ * attempt is simply resent after the wait the provider names. Bounded: THROTTLE_RETRIES tries, each wait 2–60 s.
+ */
+const THROTTLE_RETRIES = 6;
+export function throttleWaitMs(detail: unknown): number {
+  let secs = NaN;
+  try { secs = Number((JSON.parse(String(detail)) as { retry_after?: unknown }).retry_after); } catch { /* not JSON */ }
+  if (!Number.isFinite(secs)) secs = 10;
+  return Math.min(60, Math.max(2, Math.ceil(secs) + 1)) * 1000;
+}
 const extOf = (type: string, url: string) =>
   type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('mp4') ? 'mp4' : type.includes('jpeg') || type.includes('jpg') ? 'jpg' : (url.match(/\.([a-z0-9]{2,4})(?:\?|$)/i)?.[1] ?? 'bin');
 
@@ -259,7 +273,11 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
   let projected = spent(m);
   let stopped = false;
   for (const s of queue) {
-    const tries = m.attempts.filter((a) => a.shot === s.id).length;
+    // ⚠️ Only attempts that could have COST something count toward the cap. A `refused` submit was turned away before a
+    // job existed (no credit, throttled past its retries, bad request) — three of those used to exhaust a shot forever, so
+    // the run after the owner funds the provider would have skipped it (2026-10-01: every shot was refused on 402).
+    const tries = m.attempts.filter((a) => a.shot === s.id && a.status !== 'refused').length;
+    const numbered = m.attempts.filter((a) => a.shot === s.id).length; // file names stay unique per attempt
     if (tries >= MAX_ATTEMPTS) { log(`${s.id}: ${MAX_ATTEMPTS} attempts used — skipped (brief: ≤ 2 retries per shot)`); continue; }
     const unmet = (s.needs ?? []).filter((need) => !m.selected[need]);
     if (unmet.length) { log(`${s.id}: waits for ${unmet.join(', ')} to be selected — skipped for now`); continue; }
@@ -291,7 +309,7 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
 
     // The manifest gets what is SENT (the provider's endpoint and body), not the Soul draft it was made from.
     const attempt: Attempt = {
-      shot: s.id, attempt: tries + 1, provider, endpoint, input, requestId: null, usd, listUsd: est.listUsd,
+      shot: s.id, attempt: numbered + 1, provider, endpoint, input, requestId: null, usd, listUsd: est.listUsd,
       status: 'submitting', outputs: [], at: new Date().toISOString(),
     };
     m.attempts.push(attempt);
@@ -299,7 +317,15 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
 
     let answered: ArtResult | undefined;
     try {
-      const sub = await client.submit(endpoint, input);
+      let sub: Awaited<ReturnType<ArtClient['submit']>>;
+      for (let tries429 = 0; ; tries429++) {
+        try { sub = await client.submit(endpoint, input); break; } catch (e) {
+          if ((e as { code?: string }).code !== 'concurrency' || tries429 >= THROTTLE_RETRIES) throw e;
+          const wait = throttleWaitMs((e as { detail?: unknown }).detail);
+          log(`${s.id}: throttled by the provider — waiting ${wait / 1000} s and sending the same request again`);
+          await (d.sleep ?? sleep)(wait);
+        }
+      }
       attempt.requestId = sub.requestId;
       attempt.status = sub.status;
       answered = sub.result && isTerminal(sub.result.status) ? sub.result : undefined;

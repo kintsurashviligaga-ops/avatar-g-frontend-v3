@@ -3,6 +3,7 @@ import {
   artClientFor, parseShots, pendingShots, providerFromArgv, runQueue, saveInline, saveOutputs, spent, substitute,
   PACKS, PRICES_USD, STOP_AT_USD, JOB_CAP_USD,
   type ArtClient, type Attempt, type Manifest, type Shot,
+  throttleWaitMs,
 } from './hf-art-pack';
 import { createImagenArtClient, createReplicateArtClient, IMAGEN_MODEL, REPLICATE_MODEL } from './art-providers';
 import { TEMPLATES_BY_TOOL } from '@/lib/studio/templates';
@@ -131,6 +132,36 @@ describe('a run — the provider and fetch stood in for, nothing leaves the mach
     expect(m.attempts[0]!.status).toBe('completed');
     expect(r).toEqual({ projectedUsd: 0.02, stopped: false });
     expect(save).toHaveBeenCalled();
+  });
+  test('a 429 throttle waits the named retry_after and resends the SAME attempt (nothing billed, no extra attempt)', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(reply(200));
+    const m = fresh();
+    const hf = client();
+    const throttled = Object.assign(new Error('concurrency'), { code: 'concurrency', detail: JSON.stringify({ status: 429, retry_after: 8 }) });
+    hf.submit.mockRejectedValueOnce(throttled).mockRejectedValueOnce(throttled);
+    const waits: number[] = [];
+    const r = await runQueue([shot('video/teaser')], m, { dry: false, stopUsd: 4.5 },
+      { client: hf, work, save: jest.fn(), log: () => {}, sleep: async (ms: number) => { waits.push(ms); } });
+    expect(hf.submit).toHaveBeenCalledTimes(3);
+    expect(waits.slice(0, 2)).toEqual([9000, 9000]);
+    expect(m.attempts).toHaveLength(1);
+    expect(m.attempts[0]!.status).toBe('completed');
+    expect(r.projectedUsd).toBe(0.02);
+  });
+  test('refused submits (nothing billed) do not use up the 3-attempt cap — the run after funding still goes', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(reply(200));
+    const m = fresh();
+    m.attempts.push(take('video/teaser', 'refused'), { ...take('video/teaser', 'refused'), attempt: 2 }, { ...take('video/teaser', 'refused'), attempt: 3 });
+    const hf = client();
+    await runQueue([shot('video/teaser')], m, { dry: false, stopUsd: 4.5 }, { client: hf, work, save: jest.fn(), log: () => {} });
+    expect(hf.submit).toHaveBeenCalledTimes(1);
+    expect(m.attempts[3]).toMatchObject({ attempt: 4, status: 'completed' });
+  });
+  test('throttleWaitMs reads retry_after and bounds it', () => {
+    expect(throttleWaitMs('{"retry_after":8}')).toBe(9000);
+    expect(throttleWaitMs('not json')).toBe(11000);
+    expect(throttleWaitMs('{"retry_after":600}')).toBe(60000);
+    expect(throttleWaitMs('{"retry_after":0}')).toBe(2000);
   });
   test('a download that fails is said out loud and never recorded as a file', async () => {
     const lines: string[] = [];
