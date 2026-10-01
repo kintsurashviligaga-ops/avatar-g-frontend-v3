@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { signInPath } from '@/lib/routing/signIn';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
         .eq('id', user.id);
     }
 
-    const shareUrl = `${BASE_URL}/signup?ref=${code}`;
+    const shareUrl = `${BASE_URL}${signInPath('ka', { mode: 'signup', ref: code })}`;
 
     return NextResponse.json({
       code,

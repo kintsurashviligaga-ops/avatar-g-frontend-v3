@@ -2199,8 +2199,8 @@ export function ConversationalFilmStudio({
 
               {/* Auth — Sign in + Sign up open the in-window AuthModal (no page
                   navigation). On success the onAuthStateChange listener flips the
-                  studio to the signed-in state instantly. The /{locale}/login and
-                  /{locale}/signup pages still exist as deep links. */}
+                  studio to the signed-in state instantly. (The standalone /login and
+                  /signup pages are gone — lib/routing/signIn.ts.) */}
               {!authed && (
                 <div className="grid grid-cols-2 gap-2">
                   <button

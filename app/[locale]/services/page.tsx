@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link';
 import { StudioPageShell } from '@/components/studio/StudioPageShell';
+import { signInPath } from '@/lib/routing/signIn';
 import Image from 'next/image';
 import type { Metadata } from 'next';
 import type { ComponentType } from 'react';
@@ -666,7 +667,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             {/* CTA row */}
             <div className='mt-10 flex flex-wrap items-center justify-center gap-3'>
               <Link
-                href={`/${locale}/signup`}
+                href={signInPath(locale, { mode: 'signup' })}
                 className='inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-bold transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20'
                 style={{ background: 'linear-gradient(135deg, #22d3ee, #06b6d4)', color: '#fff' }}
               >

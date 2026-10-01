@@ -23,11 +23,14 @@ describe('purpose → Supabase vocabulary', () => {
     // whole reason the client tracks which flow issued the code.
     expect(verifyTypeFor('signup')).toBe('signup');
     expect(verifyTypeFor('signin')).toBe('email');
+    expect(verifyTypeFor('continue')).toBe('email'); // new-account AND sign-in codes both verify as 'email'
+    expect(linkTypeFor('continue')).toBe('magiclink'); // first try; the route falls back to signup for a new address
   });
 
   it('validates the purpose rather than trusting the request body', () => {
     expect(isOtpPurpose('signup')).toBe(true);
     expect(isOtpPurpose('signin')).toBe(true);
+    expect(isOtpPurpose('continue')).toBe(true);
     expect(isOtpPurpose('magiclink')).toBe(false);
     expect(isOtpPurpose(undefined)).toBe(false);
   });
@@ -136,5 +139,15 @@ describe('provider-error classification — the silent-failure fix', () => {
     expect(isEmailTakenError('email address already exists')).toBe(true);
     expect(isEmailTakenError('Invalid API key')).toBe(false);
     expect(isEmailTakenError(null)).toBe(false);
+  });
+});
+
+describe("the one-field flow's mail", () => {
+  it('reads right whether the account is new or not, in every language', () => {
+    for (const locale of ['ka', 'en', 'ru'] as const) {
+      const m = buildOtpEmail('246810', 'continue', locale);
+      expect(m?.subject).toContain('246810');
+      expect(m?.text).toContain('246810');
+    }
   });
 });

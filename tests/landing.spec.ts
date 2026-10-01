@@ -32,7 +32,7 @@ for (const vp of VIEWPORTS) {
       await expect(cta).toHaveAttribute('href', '/ka/dashboard');
       const signIn = page.getByRole('link', { name: 'შესვლა' }).first();
       await expect(signIn).toBeVisible();
-      await expect(signIn).toHaveAttribute('href', '/ka/login');
+      await expect(signIn).toHaveAttribute('href', '/ka/dashboard?auth=login'); // the studio's sign-in sheet (lib/routing/signIn.ts)
       await noHorizontalScroll(page);
     });
 

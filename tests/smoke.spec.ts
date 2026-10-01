@@ -175,12 +175,15 @@ test.fixme('choosing a mode updates the composer and stays on the dashboard', as
 
 // ─── Auth pages ────────────────────────────────────────────────────
 
-test('login page renders an auth input', async ({ page }) => {
-  await page.goto('/en/login');
-  await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible();
+// There is no sign-in PAGE any more (deleted 2026-10-01): the old addresses open the studio's own sign-in sheet.
+test('the old /login address opens the studio with its sign-in sheet', async ({ page }) => {
+  await page.goto('/en/login?redirect=/en/pricing');
+  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page).toHaveURL(/\/en\/dashboard$/); // the sign-in params are read, then cleared from the address bar
 });
 
-test('signup page renders an auth input', async ({ page }) => {
+test('the old /signup address opens the sheet on account creation', async ({ page }) => {
   await page.goto('/en/signup');
-  await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible();
+  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page).toHaveURL(/\/en\/dashboard$/);
 });

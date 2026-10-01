@@ -73,6 +73,7 @@ import { Wordmark } from '@/components/brand/Wordmark';
 import { ModelSwitcher, OPEN_PERSONA_EVENT, PERSONA_CHANGED_EVENT, announcePersona } from '@/components/chat/ModelSwitcher';
 import { requestMicRelease } from '@/lib/voice/micBus';
 import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
+import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -234,6 +235,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  // A sign-in deep link (/{lang}/dashboard?auth=login&redirect=…&error=… — lib/routing/signIn.ts) carries where to go
+  // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
+  const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   // Library opens IN-WINDOW in this slide-over. Legal (Privacy/Terms) no longer use
   // it — they're INSTANT client-side modals (LegalModal) with zero network/iframe, so
   // they paint in one frame instead of flashing an iframe-loaded page.
@@ -335,6 +340,26 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       // is an authed feature. Decided only once auth is known; the param is removed so a reload does not re-open.
       try {
         const url = new URL(window.location.href);
+        // Deep link: ?auth=login|signup — THE sign-in address now that the standalone /login and /signup pages are
+        // gone (lib/routing/signIn.ts; next.config.js redirects the old ones here, query and all). A member is sent
+        // straight on to `redirect` (what the old page's server-side short-circuit did); a guest gets the sheet.
+        const link = readSignInDeepLink(url.searchParams);
+        if (link) {
+          for (const k of SIGN_IN_PARAMS) url.searchParams.delete(k);
+          window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+          try {
+            if (link.plan) sessionStorage.setItem('myavatar:intended-plan', link.plan);
+            if (link.ref) localStorage.setItem('myavatar:ref', link.ref.toUpperCase()); // AuthModal redeems it after sign-up
+          } catch { /* private mode */ }
+          if (data.user) {
+            if (link.redirect && link.redirect !== `${url.pathname}${url.search}`) window.location.replace(link.redirect);
+          } else {
+            setAuthReturnTo(link.redirect);
+            setAuthError(link.error);
+            setAuthMode(link.mode === 'signup' ? 'register' : 'login');
+            setAuthOpen(true);
+          }
+        }
         if (url.searchParams.get('voice') === '1') {
           url.searchParams.delete('voice');
           window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
@@ -449,8 +474,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   /**
    * Pick up a purchase the user started on the pricing page.
    *
-   * ⚠️ THEY CLICKED A PLAN AND WE FORGOT. PricingSection sends people to /signup?plan=pro; the signup
-   * page now stashes that choice, and this is the other half — once they are actually signed in, the
+   * ⚠️ THEY CLICKED A PLAN AND WE FORGOT. PricingSection sends people to the sign-in link with ?plan=pro; the
+   * deep-link reader above stashes that choice, and this is the other half — once they are actually signed in, the
    * checkout they were heading for opens by itself. Without this the stash is just a value nobody reads,
    * and the highest-intent click in the funnel still ends in a dashboard with no mention of the plan.
    * Consumed on read, so it fires exactly once and a later visit is not ambushed by a payment dialog.
@@ -1339,12 +1364,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               </div>
 
               <div className={settingsDivider} />
-              {/* SECTION 3 — ABOUT (instant legal modals · mailto support) */}
+              {/* SECTION 3 — ABOUT (instant legal modals · the support page: FAQ, the support chat, the email) */}
               <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
               <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v{process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0'}</p>
               <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
               <button type="button" onClick={() => setLegalOpen('terms')} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
-              <a href="mailto:support@myavatar.ge" className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
+              <a href={`/${lang}/support`} onClick={() => setMenuOpen(false)} className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
               {authed && (
                 <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
               )}
@@ -1401,7 +1426,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           </div>
         </div>
       )}
-      <AuthModal open={authOpen} locale={lang} initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); void refreshBalance(); }} />
+      <AuthModal open={authOpen} locale={lang} initialMode={authMode} initialError={authError} returnTo={authReturnTo}
+        onClose={() => { setAuthOpen(false); setAuthError(null); setAuthReturnTo(null); }}
+        onAuthed={() => {
+          setAuthOpen(false); setAuthError(null);
+          // Signed in from a deep link that named a destination (e.g. /memory sent them here): go there.
+          if (authReturnTo) { const to = authReturnTo; setAuthReturnTo(null); window.location.assign(to); return; }
+          void refreshBalance();
+        }} />
 
       {/* PHASE 3 Task 2 — first-login welcome (signed-in users who haven't seen it). */}
       {authed && !welcomed && (

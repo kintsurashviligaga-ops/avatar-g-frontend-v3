@@ -13,6 +13,7 @@ import { Wordmark } from '@/components/brand/Wordmark';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { LANDING_COPY, landingLang, type LandingLang, type ServiceKey } from './copy';
 import { ReelLoop } from './ReelLoop';
+import { signInPath } from '@/lib/routing/signIn';
 
 const SERVICES: ServiceKey[] = ['video', 'image', 'music', 'avatar'];
 /** Dashboard deep links (OmniStudio reads ?mode= once, then drops it). */
@@ -98,7 +99,7 @@ export function Landing({ locale }: { locale: string }) {
   const lang = landingLang(locale);
   const t = LANDING_COPY[lang];
   const studio = `/${lang}/dashboard`;
-  const signIn = `/${lang}/login`;
+  const signIn = signInPath(lang);
 
   return (
     <div className="landing min-h-[100svh] bg-[#0A0A0A] text-[#F2F2F3] antialiased">

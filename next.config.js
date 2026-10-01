@@ -305,8 +305,9 @@ const nextConfig = {
     // The OLD SHELL's pages, deleted 2026-10-01 with the owner's approval (docs/DESIGN.md §13): each old URL lands on the
     // nearest surface that exists now, instead of a 404 — bookmarks, old share links and search results keep working.
     // 307 (not permanent) on purpose: a browser caches a 308 forever, and these targets may still move.
-    // ⚠️ /avatar/:id is deliberately NOT here: it would also catch the live /avatar/enroll flow. Marketplace and
-    // online-shop redirect only their SUB-paths (:path+), so /services/<slug> landing pages keep working.
+    // ⚠️ /avatar/:id is deliberately NOT here: it would also catch the live /avatar/enroll flow. online-shop redirects
+    // only its SUB-paths (:path+) — its bare URL is a live service slug (308 → /services/shop). Marketplace had no slug
+    // page, so its bare URL goes too (:path* matches zero segments).
     const L = '/:locale(ka|en|ru)';
     const home = '/:locale';
     const tool = (t) => `/:locale/dashboard?tool=${t}`;
@@ -324,7 +325,7 @@ const nextConfig = {
       ['studio/video', tool('video')], ['studio/film', tool('video')], ['studio/copy', home],
       ['studio/history', '/:locale/library'], ['studio/pricing', '/:locale/pricing'],
       ['sell/:path*', home], ['tracking/:path*', home], ['tools/:path*', home],
-      ['services/marketplace/:path+', home], ['services/online-shop/:path+', home],
+      ['services/marketplace/:path*', home], ['services/online-shop/:path+', home],
       ['services/agent-g/calls', home], ['services/agent-g/settings', home],
       ['account/business', '/:locale/account/billing'], ['account/returns', '/:locale/account/billing'],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
@@ -334,6 +335,18 @@ const nextConfig = {
     if (!/^(1|true|on)$/i.test(String(process.env.STUDIO_V2 ?? '').trim())) {
       legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
     }
+    // THERE IS NO SIGN-IN PAGE (deleted 2026-10-01 at the owner's request): /login, /signup and the /auth alias — with
+    // or without a locale — open the studio's own sign-in sheet (lib/routing/signIn.ts). The request's query rides
+    // along (Next merges it into the destination's), so ?redirect= / ?error= / ?plan= / ?ref= still work. The bare
+    // /auth is where /auth/callback bounces an OAuth failure; /auth/callback itself is NOT matched (exact sources).
+    legacyRedirects.push(
+      { source: `${L}/login`, destination: '/:locale/dashboard?auth=login', permanent: false },
+      { source: `${L}/auth`, destination: '/:locale/dashboard?auth=login', permanent: false },
+      { source: `${L}/signup`, destination: '/:locale/dashboard?auth=signup', permanent: false },
+      { source: '/login', destination: '/ka/dashboard?auth=login', permanent: false },
+      { source: '/auth', destination: '/ka/dashboard?auth=login', permanent: false },
+      { source: '/signup', destination: '/ka/dashboard?auth=signup', permanent: false },
+    );
 
     return [
       ...legacyRedirects,

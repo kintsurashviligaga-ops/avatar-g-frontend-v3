@@ -127,7 +127,7 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
   const isImmersiveWorkspace = !!pathname && (
     /^\/(ka|en|ru)\/?$/.test(pathname) ||          // the home page IS the studio (opens on the chat)
     /\/services(\/[a-z0-9-]+)?\/?$/.test(pathname) || // the services hub and each service page
-    /\/(dashboard|hub|workspace|library|calendar-lab|pricing|settings|support)\/?$/.test(pathname) ||
+    /\/(dashboard|hub|workspace|library|calendar-lab|pricing|settings|support|memory|voice-lab)\/?$/.test(pathname) ||
     /\/account\/(billing|invoices|payments|delete)\/?$/.test(pathname)
   );
 

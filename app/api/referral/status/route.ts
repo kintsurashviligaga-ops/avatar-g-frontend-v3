@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { signInPath } from '@/lib/routing/signIn';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     const code = profile?.referral_code as string | null;
-    const shareUrl = code ? `${BASE_URL}/signup?ref=${code}` : null;
+    const shareUrl = code ? `${BASE_URL}${signInPath('ka', { mode: 'signup', ref: code })}` : null;
 
     return NextResponse.json({
       code,

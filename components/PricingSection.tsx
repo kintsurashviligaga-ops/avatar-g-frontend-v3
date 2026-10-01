@@ -5,6 +5,7 @@ import { Check, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { signInPath } from '@/lib/routing/signIn';
 
 // DAY-6 pricing reconciliation — the visible page renders the SINGLE SOURCE OF TRUTH tiers
 // (lib/billing/pricingConfig.ts: Starter 38 / Pro Creator 299 / Studio Annual 899 GEL). Features are
@@ -153,7 +154,7 @@ export function PricingSection() {
                     works — without nesting interactive elements inside each other, which would break
                     keyboard and screen-reader navigation. One card, one link, one accessible name. */}
                 <Link
-                  href={`/${locale}/signup?plan=${tier.id}`}
+                  href={signInPath(locale, { mode: 'signup', plan: tier.id })}
                   data-iap-external
                   aria-label={`${name} — ${tier.priceUsd > 0 ? `$${tier.priceUsd}${period}` : labels.ctaFree}`}
                   className={`mt-auto block w-full text-center rounded-xl min-h-[52px] leading-[52px] text-[15px] transition-all duration-200 active:scale-[0.98] hover:-translate-y-[1px] after:absolute after:inset-0 after:rounded-[inherit] after:content-[''] ${isPopular ? 'font-bold hover:brightness-110' : 'font-semibold'}`}

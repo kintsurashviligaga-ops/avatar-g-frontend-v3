@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supabase/server';
@@ -88,9 +89,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const admin = createServiceRoleClient();
     // GenerateLinkParams is a discriminated union — 'signup' carries a password, 'magiclink' does not,
     // so the two cases cannot be merged into one spread.
-    const { data, error } = linkTypeFor(purpose) === 'signup'
+    let { data, error } = linkTypeFor(purpose) === 'signup'
       ? await admin.auth.admin.generateLink({ type: 'signup', email, password })
       : await admin.auth.admin.generateLink({ type: 'magiclink', email });
+    // THE ONE-FIELD FLOW: an address with no account gets one. It is created UNCONFIRMED with a random password
+    // nobody knows (the person signs in with codes; „forgot password" sets a real one), and the code mailed below is
+    // the only way in — verifyOtp({ type: 'email' }) accepts it exactly like a sign-in code. The answer is the same
+    // OK either way, so this cannot be used to learn which addresses are registered.
+    if (purpose === 'continue' && error && isUserNotFoundError(error.message)) {
+      ({ data, error } = await admin.auth.admin.generateLink({ type: 'signup', email, password: randomBytes(32).toString('base64url') }));
+    }
 
     if (error) {
       const msg = String(error.message || '').toLowerCase();

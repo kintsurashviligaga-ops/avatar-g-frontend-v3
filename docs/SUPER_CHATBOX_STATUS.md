@@ -16,7 +16,8 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 4. ~~Delete the old shell and the legacy pages.~~ Done, §3.5.
 5. **A funded image provider for the template thumbnails.** Gemini is 402, Replicate and OpenAI have no credit, and Vercel withholds the production `HF_CREDENTIALS` value. Run `npm run hf:credentials` (enter the key locally), then `npx jiti scripts/hf-art-pack.ts --pack templates --yes-spend`. The cap is $5 and the stop line is $4.50; the expected cost is about $0.46.
 6. **Reconcile live Stripe.** No Stripe top-up has ever reached the ledger (§5.2). Check the live dashboard for paid `wallet_topup` sessions. Any you find can be replayed once the fix is deployed.
-7. **Vertex AI.** The switch is already automatic: `veoTransport()` prefers Vertex whenever the GCP variables are complete. None are set in production, so Veo runs on the Gemini API today. The variables are listed in `docs/VEO_VERTEX_SETUP.md`.
+7. **Phone sign-in.** The sign-in sheet already accepts a phone number, but it only offers one once Supabase has an SMS sender. Supabase → Authentication → Providers → Phone: switch it on and enter an SMS provider (Twilio Verify needs the Account SID, Auth Token and Verify Service SID; there are no Twilio credentials anywhere in production today). The field then reads „ელ.ფოსტა ან ტელეფონის ნომერი" by itself. SMS to Georgia is among the pricier routes, so set Twilio's geo-permissions to the countries you serve.
+8. **Vertex AI.** The switch is already automatic: `veoTransport()` prefers Vertex whenever the GCP variables are complete. None are set in production, so Veo runs on the Gemini API today. The variables are listed in `docs/VEO_VERTEX_SETUP.md`.
 
 ## 2. Phase 1: chat reliability (on main)
 
@@ -54,6 +55,11 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 - **Redirects.** `next.config.js` sends every old URL to its nearest surface with a temporary (307) redirect: `/ka/chat` → `/ka`, `/ka/dubbing` → `/ka/dashboard?tool=dubbing`, `/ka/contact` → `/ka/support`, `/ka/studio/history` → `/ka/library`, the blog and about pages → `/ka/landing`, and so on. `/avatar/:id` is deliberately not redirected, because it would also catch `/avatar/enroll`.
 - **What stays, in the studio's own shell** (`components/studio/StudioPageShell.tsx`): pricing, settings, support, the services hub, and account billing, invoices, payments and delete.
 - **How dead code was chosen.** Only files the deletion orphaned, found by diffing the import graph from every Next entry point before and after. 13 such modules are still imported by older dead code and were kept; the ~315 files that were already unreachable are a separate cleanup.
+
+### 3.6 Sign-in (2026-10-01, the owner's requests)
+- **No sign-in page.** `/{lang}/login`, `/signup`, `/auth` and their locale-less forms redirect to `/{lang}/dashboard?auth=login|signup`, keeping `redirect`, `error`, `plan` and `ref`. The studio opens its sign-in sheet; a signed-in visitor goes straight on to `redirect` (`lib/routing/signIn.ts`).
+- **One line.** The sheet asks for an email (or an email or phone number once Phone is on, §1.7) and sends a 6-digit code. The same code signs an existing account in or creates a new one: `/api/auth/email-otp/send` purpose `continue`, which answers the same either way so it reveals nothing about who is registered. Password sign-in and reset stay one small link away.
+- **Support chat.** The admin inbox's replies reach users again: the chat thread lives on `/{lang}/support` (it was the deleted floating bubble), and the settings drawer's „დახმარება" opens it.
 
 ## 4. Phase 3: omni-modal (`feat/chat-first-guest`)
 
