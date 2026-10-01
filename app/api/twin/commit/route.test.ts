@@ -37,7 +37,7 @@ import { signHandoffToken, verifyHandoffToken } from '../../../../lib/avatar/han
 import { TWIN_CONSENT_VERSION } from '../../../../lib/legal/content';
 import { FakeStorage, fileBytes } from '../../../../lib/twin/testing/fakeStorage';
 import { __resetTwinBucketCheck } from '../../../../lib/twin/store';
-import { signCaptureTicket } from '../../../../lib/twin/ticket';
+import { signCaptureTicket, verifyCaptureTicket } from '../../../../lib/twin/ticket';
 import { parseManifest } from '../../../../lib/twin/validate';
 
 const UID = '11111111-2222-4333-8444-555555555555';
@@ -122,7 +122,7 @@ describe('guards', () => {
     expect((await commit({ consent: consent() })).status).toBe(400);
     const s = await start();
     expect((await commit({ ticket: `${s.ticket}x`, consent: consent() })).status).toBe(400);
-    const theirs = signCaptureTicket({ u: OTHER, d: '12345678', s: { front: 'jpg', left: 'jpg', right: 'jpg' } });
+    const theirs = signCaptureTicket({ u: OTHER, n: '00112233445566778899aabbccddeeff', d: '12345678', s: { front: 'jpg', left: 'jpg', right: 'jpg' } });
     const res = await commit({ ticket: theirs, consent: consent() });
     expect(res.status).toBe(403);
     expect(mockFake.callsTo('copy')).toEqual([]);
@@ -131,9 +131,6 @@ describe('guards', () => {
   test.each([
     ['missing', undefined],
     ['an outdated text version', { version: '2025-01-01.old' }],
-    ['a time in the future', { acceptedAt: new Date(Date.now() + 3_600_000).toISOString() }],
-    ['a time from yesterday', { acceptedAt: new Date(Date.now() - 86_400_000).toISOString() }],
-    ['not a time', { acceptedAt: 'yesterday' }],
   ])('consent %s → 400 consent_required, nothing copied or written', async (_label, over) => {
     const s = await start();
     upload(s);
@@ -145,12 +142,26 @@ describe('guards', () => {
   });
 });
 
+describe('the consent time is the SERVER’s, never the client clock', () => {
+  test.each([
+    ['no client time at all (the current client)', { acceptedAt: undefined }],
+    ['an hour in the future (a phone clock set wrong)', { acceptedAt: new Date(Date.now() + 3_600_000).toISOString() }],
+    ['yesterday', { acceptedAt: new Date(Date.now() - 86_400_000).toISOString() }],
+    ['not a time (an old or odd client)', { acceptedAt: 'yesterday' }],
+  ])('%s → commits, and the record is the time upload-url signed the capture', async (_label, over) => {
+    const s = await start();
+    upload(s);
+    const res = await commit({ ticket: s.ticket, consent: consent(over) });
+    expect(res.status).toBe(200);
+    expect(manifest()!.consent.acceptedAt).toBe(new Date(verifyCaptureTicket(s.ticket)!.c).toISOString());
+  });
+});
+
 describe('a committed twin', () => {
   test('records consent (version + time) and the SERVER’s digits; voice unverified, no provider copies; staging cleared', async () => {
     const s = await start();
     upload(s);
-    const acceptedAt = new Date(Date.now() - 90_000).toISOString();
-    const res = await commit({ ticket: s.ticket, consent: consent({ acceptedAt }), voiceSeconds: 14.24 });
+    const res = await commit({ ticket: s.ticket, consent: consent({ acceptedAt: '1999-01-01T00:00:00.000Z' }), voiceSeconds: 14.24 });
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     const j = await res.json();
@@ -158,7 +169,8 @@ describe('a committed twin', () => {
 
     const m = manifest()!;
     expect(m).not.toBeNull();
-    expect(m.consent).toEqual({ version: TWIN_CONSENT_VERSION, acceptedAt, recordedAt: j.committedAt });
+    // acceptedAt = the server clock at upload-url (the ticket's c), not the 1999 the client sent.
+    expect(m.consent).toEqual({ version: TWIN_CONSENT_VERSION, acceptedAt: new Date(verifyCaptureTicket(s.ticket)!.c).toISOString(), recordedAt: j.committedAt });
     expect(m.digits).toBe(s.digits);
     expect(m.voiceVerified).toBe(false);
     expect(m.providerRefs).toEqual({});
@@ -180,6 +192,21 @@ describe('a committed twin', () => {
     expect((await commit({ ticket: second.ticket, consent: consent() })).status).toBe(200);
     expect(manifest()!.captureId).not.toBe(firstId);
     expect(captureFolders()).toEqual([`twin-${manifest()!.captureId}`]);
+  });
+
+  test('⚠️ an OLDER capture’s still-valid upload token cannot overwrite a later capture between its PUT and its commit', async () => {
+    const older = await start(); // e.g. another tab, or a URL that leaked — its upsert tokens live 2 h
+    const later = await start();
+    upload(later);
+    // The older token PUTs junk at the path it was signed for — after the later capture's own PUTs, before its commit.
+    mockFake.put('twins', older.uploads.front.path, fileBytes('html'), 'image/jpeg');
+    expect(older.uploads.front.path).not.toBe(later.uploads.front.path);
+    const res = await commit({ ticket: later.ticket, consent: consent() });
+    expect(res.status).toBe(200);
+    expect(Array.from(mockFake.get('twins', manifest()!.photos.front.path)!.bytes.slice(0, 3))).toEqual([0xff, 0xd8, 0xff]);
+    // This capture's staging folder is pruned after the promotion.
+    const nonce = verifyCaptureTicket(later.ticket)!.n;
+    expect(mockFake.paths('twins').filter((p) => p.includes(`/staging/${nonce}/`))).toEqual([]);
   });
 
   test('a photo-only capture (no voice recorded) commits with voice null', async () => {
@@ -268,6 +295,77 @@ describe('the phone link is spent exactly once', () => {
     expect(res.status).toBe(401);
     expect(manifest()).toBeNull();
     expect(captureFolders()).toEqual([]);
+  });
+});
+
+describe('⚠️ account confusion: a phone signed into another account never saves across accounts', () => {
+  test('the link’s capture committed from a phone signed in as SOMEONE ELSE → 409 account_mismatch, nothing copied or written', async () => {
+    mockUser = null;
+    const token = signHandoffToken(UID)!;
+    const s = await start({ handoffToken: token });
+    upload(s);
+    mockUser = { id: OTHER }; // the phone now has a session for another account
+    const res = await commit({ ticket: s.ticket, consent: consent(), handoffToken: token });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'account_mismatch' });
+    expect(mockFake.callsTo('copy')).toEqual([]);
+    expect(manifest()).toBeNull();
+    expect(mockFake.paths('twins').some((p) => p.startsWith('handoff/'))).toBe(false); // the link is not spent
+  });
+
+  test('a phone commit must present the ticket of ITS OWN link (not a session ticket of the same account) → 403', async () => {
+    const sessionCapture = await start(); // desktop session ticket: bound to no link
+    upload(sessionCapture);
+    mockUser = null;
+    const token = signHandoffToken(UID)!;
+    const res = await commit({ ticket: sessionCapture.ticket, consent: consent(), handoffToken: token });
+    expect(res.status).toBe(403);
+    expect(manifest()).toBeNull();
+  });
+});
+
+describe('⚠️ a long phone capture survives the link’s 15-minute expiry', () => {
+  const later = (ms: number) => {
+    const real = Date.now.bind(Date);
+    jest.spyOn(Date, 'now').mockImplementation(() => real() + ms);
+  };
+
+  test('link expired mid-capture, still unclaimed, with ITS OWN ticket → commits, and the link is claimed (single use)', async () => {
+    mockUser = null;
+    const token = signHandoffToken(UID)!;
+    const s = await start({ handoffToken: token });
+    upload(s);
+    later(40 * 60_000); // 40 minutes on the phone: the link (15 min) has expired, the ticket (2 h) has not
+    expect(verifyHandoffToken(token)).toBeNull();
+    const res = await commit({ ticket: s.ticket, consent: consent(), handoffToken: token });
+    expect(res.status).toBe(200);
+    expect(manifest()!.via).toBe('handoff');
+    expect(mockFake.get('twins', `handoff/${verifyHandoffToken(token, { graceJti: verifyCaptureTicket(s.ticket)!.j })!.jti}`)).toBeDefined();
+    // Spent: the same link + ticket cannot commit again.
+    const again = await commit({ ticket: s.ticket, consent: consent(), handoffToken: token });
+    expect(again.status).toBe(401);
+  });
+
+  test('an expired link WITHOUT its own ticket is still refused (401) — the grace is for that capture only', async () => {
+    mockUser = null;
+    const token = signHandoffToken(UID)!;
+    const other = signHandoffToken(UID)!;
+    const s = await start({ handoffToken: other }); // a ticket minted for ANOTHER link
+    upload(s);
+    later(40 * 60_000);
+    const res = await commit({ ticket: s.ticket, consent: consent(), handoffToken: token });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'invalid_or_expired_link' });
+    const noTicket = await commit({ ticket: 'tw2.bogus.sig', consent: consent(), handoffToken: token });
+    expect(noTicket.status).toBe(401);
+    expect(manifest()).toBeNull();
+  });
+
+  test('an expired link cannot START a capture (upload-url gives no grace)', async () => {
+    mockUser = null;
+    const token = signHandoffToken(UID)!;
+    later(16 * 60_000);
+    expect((await UPLOAD_URL(req('/api/twin/upload-url', { slots: SLOTS, handoffToken: token }))).status).toBe(401);
   });
 });
 

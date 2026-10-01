@@ -75,6 +75,8 @@ import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { nextAvatarAttempt, presenterMayFallBack } from '@/lib/avatar/renderAttempts';
+import { twinCopy } from '@/components/twin/copy';
+import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
@@ -147,7 +149,9 @@ function busyToastMessage(locale: Lang): string {
 // Upload a (possibly large) file straight to Supabase via a signed upload URL —
 // browser → Supabase, BYPASSING Vercel's ~4.5MB function-body limit (a real song
 // otherwise returns FUNCTION_PAYLOAD_TOO_LARGE). Returns a readable https URL or null.
-async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string | null> {
+// ⚠️ The SOURCE is read through fetchRehostSource: a lapsed signed URL (the "My twin" face) answers 400 with JSON, and
+// re-hosting that body as the face is a paid render of an error message. `onBadSource` lets the caller say so.
+async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e: RehostSourceError) => void): Promise<string | null> {
   try {
     const signRes = await fetch('/api/upload/sign', {
       method: 'POST',
@@ -157,7 +161,13 @@ async function uploadBigFile(dataUrl: string, mimeType: string): Promise<string 
     });
     const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string };
     if (!signRes.ok || !sign.path || !sign.token) return null;
-    const blob = await (await fetch(dataUrl)).blob();
+    let blob: Blob;
+    try {
+      blob = await fetchRehostSource(dataUrl, mimeType);
+    } catch (e) {
+      if (e instanceof RehostSourceError) onBadSource?.(e);
+      return null;
+    }
     const sb = createBrowserClient();
     const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: mimeType });
     if (error) return null;
@@ -5451,9 +5461,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       try {
         // A preset is a /public path → uploadBigFile re-fetches it same-origin and
         // re-hosts to the user's storage, giving the provider a known-good https face.
+        let faceSourceBad = false;
         const videoUrl = faceAtt
           ? await uploadBigFile(faceAtt.dataUrl, faceAtt.mimeType)
-          : await uploadBigFile(chosenPreset!, 'image/jpeg');
+          : await uploadBigFile(chosenPreset!, 'image/jpeg', () => { faceSourceBad = true; });
+        if (!videoUrl && faceSourceBad && (chosenPreset === myTwinFace || isTwinSignedUrl(chosenPreset))) {
+          // The picked twin face lapsed (or the twin was deleted): say so — never render an error body as a face.
+          setMessages((prev) => {
+            if (!mine()) return prev;
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${twinCopy(locale).myTwinStale}` };
+            return next;
+          });
+          return;
+        }
         if (!videoUrl) throw new Error('upload failed');
         const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType) : undefined;
         const startBody = JSON.stringify({
@@ -5564,7 +5586,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {

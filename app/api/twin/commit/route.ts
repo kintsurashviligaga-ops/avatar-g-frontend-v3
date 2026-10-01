@@ -1,15 +1,21 @@
 /**
- * POST /api/twin/commit — make the staged capture the caller's twin. Body: { ticket, consent: { version, acceptedAt },
- * voiceSeconds?, handoffToken? }.
+ * POST /api/twin/commit — make the staged capture the caller's twin. Body: { ticket, consent: { version },
+ * voiceSeconds?, handoffToken? }. (An old client's `consent.acceptedAt` is accepted and IGNORED.)
  *
- * Copies staging into a fresh capture folder and validates the COPIES (lib/twin/store.ts promoteCapture: size, MIME,
- * magic bytes), records the consent (the text version + when it was given) and the digits the server issued, then
- * writes the manifest — the switch. A phone-handoff link is CLAIMED just before that switch: one link, one twin.
+ * Copies the ticket's staging folder into a fresh capture folder and validates the COPIES (lib/twin/store.ts
+ * promoteCapture: size, MIME, magic bytes), records the consent (the text version + the time the SERVER recorded it at
+ * upload-url, from the ticket) and the digits the server issued, then writes the manifest — the switch. A phone-handoff
+ * link is CLAIMED just before that switch: one link, one twin.
+ *
+ * ⚠️ AN EXPIRED LINK STILL COMMITS ITS OWN CAPTURE. The link lives 15 minutes, the capture ticket 2 hours; re-checking the
+ * link's expiry here lost a long phone capture at Save. A link past its expiry is accepted ONLY with a valid ticket
+ * minted for that same link (its jti), and only while unclaimed — it is claimed here, exactly as before.
  *
  *   404  NEXT_PUBLIC_TWIN_ENABLED off — answered before auth
  *   429  RATE_LIMITS.WRITE
- *   401  no session / an invalid, expired or already-used link
- *   403  the capture ticket belongs to someone else
+ *   401  no session / an invalid or already-used link, or an expired one without its own ticket
+ *   409  a phone signed into a DIFFERENT account than the link's — refused, never saved across accounts
+ *   403  the capture ticket belongs to someone else, or to another link
  *   400  no valid ticket, consent missing or not the current version, a photo missing, a file empty
  *   413  a file over its slot's cap · 415  a type that is not allowed, or bytes that are not what they claim
  *   503  storage or keys unavailable — nothing was switched; the same commit can be retried
@@ -44,16 +50,17 @@ export const maxDuration = 30;
 
 const json = (body: unknown, status: number) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 
-/** A ticked box is at most a capture session old (the ticket lives 2 h) and never from the future (5 min of skew). */
-const CONSENT_MAX_AGE_MS = 3 * 60 * 60 * 1000;
-const CLOCK_SKEW_MS = 5 * 60 * 1000;
-
-function parseConsent(raw: unknown, now: number): { version: string; acceptedAt: string } | null {
-  const c = raw && typeof raw === 'object' ? (raw as { version?: unknown; acceptedAt?: unknown }) : null;
-  if (!c || c.version !== TWIN_CONSENT_VERSION || typeof c.acceptedAt !== 'string') return null;
-  const t = Date.parse(c.acceptedAt);
-  if (!Number.isFinite(t) || t > now + CLOCK_SKEW_MS || t < now - CONSENT_MAX_AGE_MS) return null;
-  return { version: TWIN_CONSENT_VERSION, acceptedAt: new Date(t).toISOString() };
+/**
+ * The consent the person gave: the current text version (from the body) at the time the SERVER recorded it (the
+ * ticket's `c`, stamped at upload-url right after the box was ticked).
+ *
+ * ⚠️ NO CLIENT CLOCK. A body `acceptedAt` used to be bounds-checked against the server's clock, so a phone set a few
+ * minutes (or a timezone) wrong could never commit. It is ignored now — accepted from old clients, never read.
+ */
+function parseConsent(raw: unknown, consentAtMs: number): { version: string; acceptedAt: string } | null {
+  const c = raw && typeof raw === 'object' ? (raw as { version?: unknown }) : null;
+  if (!c || c.version !== TWIN_CONSENT_VERSION) return null;
+  return { version: TWIN_CONSENT_VERSION, acceptedAt: new Date(consentAtMs).toISOString() };
 }
 
 function parseSeconds(raw: unknown): number | null {
@@ -76,14 +83,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return json({ error: 'unavailable' }, 503);
   }
   const jti = twinHandoffJtiStore(sb);
-  const caller = await resolveTwinCaller(req, body?.handoffToken, jti);
+  // The ticket is read FIRST (its HMAC is checked here) so the link it was minted for may finish past its 15 minutes.
+  const ticket = verifyCaptureTicket(body?.ticket);
+  const caller = await resolveTwinCaller(req, body?.handoffToken, jti, { ticketJti: ticket?.j ?? null });
   if (!caller.ok) return json({ error: caller.error }, caller.status);
 
-  const ticket = verifyCaptureTicket(body?.ticket);
   if (!ticket) return json({ error: 'invalid_ticket' }, 400);
   if (ticket.u !== caller.userId) return json({ error: 'ticket_mismatch' }, 403);
+  // A phone commit spends the link its capture was started with — not some other link of the same account.
+  if (caller.via === 'handoff' && ticket.j !== caller.claims.jti) return json({ error: 'ticket_mismatch' }, 403);
   const now = Date.now();
-  const consent = parseConsent(body?.consent, now);
+  const consent = parseConsent(body?.consent, ticket.c);
   if (!consent) return json({ error: 'consent_required', consentVersion: TWIN_CONSENT_VERSION }, 400);
 
   let captureId: string | null = null;
@@ -99,7 +109,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // The link is spent HERE — after every check passed, right before the switch. A second phone, a replayed QR or a
     // double-tap loses this race and keeps nothing.
     if (caller.via === 'handoff') {
-      const consumed = await consumeHandoffToken(caller.token, jti);
+      const consumed = await consumeHandoffToken(caller.token, jti, { graceJti: ticket.j ?? null });
       if (!consumed.ok) {
         await discardCapture(sb, caller.userId, captureId).catch(() => undefined);
         return consumed.reason === 'unavailable'
@@ -138,7 +148,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     try {
-      await pruneTwinCaptures(sb, caller.userId, { previous });
+      await pruneTwinCaptures(sb, caller.userId, { previous, staging: ticket.n });
     } catch (e) {
       // The twin is committed; a leftover older capture is erased by the next commit or by DELETE /api/twin.
       // eslint-disable-next-line no-console
