@@ -110,9 +110,9 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
   }
 }
 
-// v330 — standalone music composition via ElevenLabs Music (the master audio engine,
-// replacing Udio), with Replicate MusicGen as the graceful fallback. EL Music returns
-// audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
+// Standalone music composition: Google Lyria 3 (PRIMARY — live by default whenever a Gemini key is set,
+// kill-switch LYRIA_ENABLED=0) → Udio → ElevenLabs Music → Replicate MusicGen, as latency-failover
+// fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30): Promise<{ url: string; engine: string }> {
   // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
   // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.

@@ -96,6 +96,7 @@ import type { PanelService } from './ServiceParamsPanel';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
+import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { describeServiceError } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -852,7 +853,7 @@ interface Media { dataUrl: string; mimeType: string; /** The original file name 
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
 type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string };
-type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean; lyrics?: string };
+// MusicRegenSpec (+ duration / tempo / voice, and the body built from it) lives in lib/studio/musicRegen — tested there.
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
 // fills in independently as its own parallel generation lands.
@@ -2059,18 +2060,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Studio for review BEFORE export. `imgBoardScenes` populated ⇒ frames were generated; export bridges them.
   const [imgBoardScenes, setImgBoardScenes] = useState<StoryboardMatrixCell[]>([]);
   const [imgBoardCharacter, setImgBoardCharacter] = useState<string | undefined>(undefined);
-  // Default to VOCALS now that the redesigned Music panel has no instrumental/vocal
-  // toggle (a vocal R&B/pop track is the common case; the model writes lyrics from the
-  // prompt). Describe "instrumental …" in the prompt for an instrumental bed.
+  // Default to a SONG (vocals): a vocal R&B/pop track is the common case, and the engine writes
+  // lyrics from the prompt when none are given. The panel's Track type chips (Instrumental / Song)
+  // flip it — and gate the Lyrics / Vocal rows below.
   const [musicInstrumental, setMusicInstrumental] = useState(false);
   const [musicGenre, setMusicGenre] = useState<string>('r&b');
-  // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
+  // Custom lyrics for vocal tracks — empty means the engine (Lyria 3 first) writes them from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
   // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
-  // FIX 2 — duration 0 = "full song": skip the ffmpeg trim, keep Udio's full ~2-4 min output.
+  // FIX 2 — duration 0 = "full song": billed at the 90s tier; each engine renders its own full length
+  // (Udio untrimmed, ElevenLabs ~120s, MusicGen 90s) and the route settles the charge to what was delivered.
   const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(30);
   const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
   // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
@@ -4047,7 +4049,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         body: JSON.stringify(
           spec.kind === 'image'
             ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }
-            : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental, ...(spec.lyrics ? { lyrics: spec.lyrics } : {}) },
+            : musicRegenBody(spec),
         ),
         credentials: 'include',
         signal: ac.signal,
@@ -4074,7 +4076,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       });
       // Regenerate charges server-side exactly like the primary path — surface the deduction + refresh the
       // balance pill (runImageJob/runMusicJob do this; regenerate silently debited the wallet before).
-      if (ok && mine()) notifyCredit(spec.kind === 'image' ? 'image' : 'music');
+      // A music re-roll now keeps its duration, so its toast must price the tier the route billed (not the 30 s default).
+      if (ok && mine()) notifyCredit(spec.kind === 'image' ? 'image' : 'music', spec.kind === 'music' ? { seconds: musicRegenBilledSeconds(spec) } : undefined);
     } catch {
       if (!mine()) return;
       setMessages((prev) => {
@@ -4335,9 +4338,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /**
    * MUSIC generation → a capped-parallel queue JOB (own signal + jobId + durable row), so a
    * track renders ALONGSIDE images/product/swap through the tray instead of the old
-   * single-slot busy path. The server keeps its Udio→ElevenLabs→MusicGen latency-failover
-   * (/api/ai/music); we pass the jobId so its completion row upserts under the client id
-   * (one row, no duplicate). Result lands in its OWN chat bubble by id.
+   * single-slot busy path. The server keeps its Lyria 3→Udio→ElevenLabs Music→MusicGen
+   * latency-failover (/api/ai/music — Lyria is primary whenever a Gemini key is set); we pass
+   * the jobId so its completion row upserts under the client id (one row, no duplicate).
+   * Result lands in its OWN chat bubble by id.
    */
   const runMusicJob = useCallback((m: {
     prompt: string; userBubble: string; medias?: Media[]; useTrained: boolean;
@@ -4380,12 +4384,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
-          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: m.prompt, genre: m.genre, instrumental: m.instrumental, ...(!m.instrumental && m.lyrics ? { lyrics: m.lyrics } : {}) } });
           // A COVER (audioReference: an uploaded track, not a trained/cloned voice) is billed a FLAT 30s
           // server-side regardless of the duration picker, so the toast must show the 30s tier — otherwise a
           // 90s/Full cover shows "−12 credits" while the wallet is only debited the 30s tier (−5). Mirror
           // the server's `audioReference ? 30 : …` rule so the deduction shown matches the deduction made.
           const coverBilledFlat30 = !!uploadedAudioUrl && !m.useTrained && !isVoiceClone;
+          // ⚠️ The re-roll spec records what this request SENT, not the raw panel: a trained / cloned voice forced a
+          // song and sent no voiceType, and a cover rendered (and billed) 30 s — so its re-roll asks for the same.
+          const sungByUser = m.useTrained || isVoiceClone;
+          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: makeMusicRegenSpec({
+            prompt: m.prompt, genre: m.genre, instrumental: sungByUser ? false : m.instrumental, lyrics: m.lyrics,
+            durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { voiceType: m.voiceType }),
+          }) });
           notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
           return j.url;
         }
@@ -7911,7 +7921,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                     <div className="flex flex-wrap gap-1.5">
                       {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
-                      {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
+                      {/* FIX 2 — full song: duration 0 (billed at the 90s tier; see musicDuration). */}
                       <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>{locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
                     </div>
                   </div>
