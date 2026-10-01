@@ -583,7 +583,7 @@ export default function ServiceChatLayout({
                         <div className="flex gap-3">
                           {/* Agent avatar */}
                           <div className="chat-agent-avatar mt-0.5">
-                            <Image src="/brand/gemini-rocket-clean.png" alt="Agent G" width={24} height={24} className="object-contain" />
+                            <Image src="/brand/rocket-mark.png" alt="Agent G" width={24} height={24} className="object-contain" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="chat-bubble-agent whitespace-pre-wrap">

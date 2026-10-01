@@ -63,8 +63,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // was absent while its 14 detail pages were listed. Its own 200 canonical belongs in the index.
     { slug: 'services', priority: 0.85, changeFrequency: 'weekly' },
     { slug: 'dashboard', priority: 0.8, changeFrequency: 'daily' },
-    { slug: 'chat', priority: 0.7, changeFrequency: 'daily' },
-    { slug: 'agent', priority: 0.7, changeFrequency: 'weekly' },
+    // /chat (the old chat) and /agent were deleted with the old shell on 2026-10-01 — the chat IS the home page now.
   ];
   const corePages = locales.flatMap(locale =>
     coreSlugs.map(({ slug, priority, changeFrequency }) => ({

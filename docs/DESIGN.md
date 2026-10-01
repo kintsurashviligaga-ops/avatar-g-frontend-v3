@@ -117,7 +117,7 @@ The price teaser states only what is true for every visitor: the price is on the
 
 ## 9. Routes (invariants)
 
-- `/{lang}/dashboard`, `/chat`, `/agent`, `/pricing` and `/services/*` are untouched.
+- `/{lang}/dashboard`, `/pricing` and `/services/*` are untouched. (`/chat`, `/agent` and the other old-shell pages were deleted on 2026-10-01 — §13; next.config.js redirects their URLs.)
 - Auth, the credit ledger and the generation contracts are untouched.
 - `/{lang}` is **the studio, opening on the chat**, for guests (anyone without a session cookie, crawlers included), with the site's home metadata. `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard` — the same studio with their session (`lib/routing/landing.ts`, §13).
 - `/{lang}/landing` is the marketing landing (server-rendered, self-canonical). Its language switch stays on `/{lang}/landing`.
@@ -210,3 +210,4 @@ Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f9650
 - **Guest mode** (`lib/chat/guestChat.ts`, server-enforced). A visitor without an account can chat: Fast only, text only, no Google Search grounding (unless `CHAT_GUEST_SEARCH=1`), answers capped at 2,048 tokens, 10 turns a day per IP and 250 a day for all guests together. A spent allowance, a file or an over-long message is answered in-stream with `auth_required`, which opens the sign-in sheet. `CHAT_GUEST_ENABLED=0` closes it.
 - **Premium tools ask first.** In the browser, send() lets only a plain chat turn through for a guest; a non-chat tool, files, a generate command („გამიკეთე ვიდეო…") or a studio request opens the sign-in sheet before anything is sent, and the composer keeps the text. Dictation, read-aloud and Live do the same.
 - **Look.** True black (`#000`) under every surface, the rocket's blue (`#338FE8`) as the one accent (§2), and the rocket — cut out, no box — in front of the name in every navbar (§8).
+- **No marketing shell.** The old top bar (☰ · the opaque rocket tile · „დაწყება"), the bottom navigation and the floating support bubble were deleted with the pages only they framed (2026-10-01, the owner's approval): the old `/chat`, Agent G / business / executive dashboards, marketplace, online-shop, sell, the standalone 3D / dubbing / montage / slides pages, the `/studio/*` and `/dashboard/*` sub-pages, and placeholders. `next.config.js` redirects every old URL to its nearest surface. Pricing, settings, support, the services hub and the account pages render in the studio's own shell (`components/studio/StudioPageShell.tsx`). The rocket is the transparent mark everywhere — the opaque tile is gone from sign-in, share and the hub too.

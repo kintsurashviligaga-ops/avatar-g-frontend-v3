@@ -63,7 +63,7 @@ export function GrokEmptyState({ serviceIcon: _serviceIcon, onSuggestionClick, a
       <div className="grok-empty-logo mb-6">
         <div className="grok-empty-glow" />
         <Image
-          src="/brand/gemini-rocket-clean.png"
+          src="/brand/rocket-mark.png"
           alt="MyAvatar"
           width={56}
           height={56}

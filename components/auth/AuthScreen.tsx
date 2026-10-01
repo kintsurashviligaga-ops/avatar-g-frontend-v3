@@ -431,7 +431,7 @@ function DemoScreen({ locale }: { locale: string }) {
     <div className="min-h-[100dvh] flex items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
       <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/gemini-rocket-clean.png" alt="" aria-hidden="true" width={56} height={56} className="mx-auto h-14 w-14 object-contain" />
+        <img src="/brand/rocket-mark.png" alt="" aria-hidden="true" width={56} height={56} className="mx-auto h-14 w-14 object-contain" />
         <h2 className="text-2xl font-bold text-white"><Wordmark size="lg" tone="onDark" /></h2>
         <p className="text-slate-300">{c.demoMode}</p>
         <a
@@ -856,7 +856,7 @@ function AuthScreenInner({ mode: initialMode, locale, redirectTo = '/', initialE
         <div className="text-center mb-8">
           <div className="w-12 h-12 mx-auto mb-4 relative">
             <Image
-              src="/brand/gemini-rocket-clean.png"
+              src="/brand/rocket-mark.png"
               alt="MyAvatar"
               fill
               sizes="48px"

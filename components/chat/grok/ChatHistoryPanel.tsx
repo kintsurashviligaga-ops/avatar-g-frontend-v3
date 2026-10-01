@@ -381,7 +381,7 @@ export function ChatHistoryPanel({
           <div className="flex items-center gap-3">
             <div className="chat-history-logo">
               <Image
-                src="/brand/gemini-rocket-clean.png"
+                src="/brand/rocket-mark.png"
                 alt="MyAvatar"
                 width={28}
                 height={28}

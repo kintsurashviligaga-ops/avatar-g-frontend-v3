@@ -80,7 +80,7 @@ export function CallScreen({ open, onClose, onSendVoiceMessage: _onSendVoiceMess
           <div className={`call-screen-avatar-glow ${callState === 'connected' ? 'active' : ''}`} />
           <div className="call-screen-avatar-img">
             <Image
-              src="/brand/gemini-rocket-clean.png"
+              src="/brand/rocket-mark.png"
               alt="Agent G"
               width={80}
               height={80}

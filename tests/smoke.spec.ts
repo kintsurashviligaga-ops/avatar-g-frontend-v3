@@ -173,13 +173,6 @@ test.fixme('choosing a mode updates the composer and stays on the dashboard', as
   await expect(page).toHaveURL(/\/en\/dashboard\/?$/);
 });
 
-test('agent g panel renders as a dedicated dashboard route', async ({ page }) => {
-  await page.goto('/en/dashboard/agent-g');
-
-  await expect(page.getByRole('heading', { name: /^Agent G$/ }).first()).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('textarea').last()).toBeVisible();
-});
-
 // ─── Auth pages ────────────────────────────────────────────────────
 
 test('login page renders an auth input', async ({ page }) => {
