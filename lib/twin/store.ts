@@ -218,8 +218,12 @@ export async function signStagingUploads(
   return out;
 }
 
-/** A commit in flight is younger than this; pruning never touches a capture folder that young (see pruneTwinCaptures). */
-export const CAPTURE_GRACE_MS = 10 * 60 * 1000;
+/**
+ * A commit in flight is younger than this; pruning never touches a capture folder that young (see pruneTwinCaptures).
+ * 4× the commit route's maxDuration (30 s) — long enough for any commit to land, short enough that a burst of
+ * commits cannot park many unpruned captures.
+ */
+export const CAPTURE_GRACE_MS = 2 * 60 * 1000;
 
 /** 16 hex chars: the creation second (8) + 4 random bytes (8) — unique per user, and its age is readable from the name. */
 export function newCaptureId(now: number = Date.now()): string {
