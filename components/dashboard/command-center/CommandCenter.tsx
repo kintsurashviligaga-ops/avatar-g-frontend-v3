@@ -63,7 +63,7 @@ type View = 'chat' | 'library' | 'pricing' | 'activity' | 'admin';
 type ServiceId = 'chat' | 'avatar' | 'image' | 'video' | 'music' | 'voice' | 'interior' | 'app';
 type OrbState = 'idle' | 'listening' | 'speaking';
 type LibraryFilter = 'all' | 'images' | 'videos' | 'audio' | 'avatars';
-type ModelId = 'gemini-2.0-flash' | 'gemini-2.0-pro' | 'gemini-1.5-ultra';
+type ModelId = 'gemini-3.8-flash' | 'gemini-2.5-pro' | 'gemini-3.1-pro-preview';
 
 interface ChatMessage {
   id: string;
@@ -261,9 +261,9 @@ const SERVICE_COLORS: Record<ServiceId, string> = {
 };
 
 const MODELS: Array<{ id: ModelId; label: string; badge: string; badgeColor: string }> = [
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', badge: 'FAST', badgeColor: '#22c55e' },
-  { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro', badge: 'PRO', badgeColor: '#0ea5e9' },
-  { id: 'gemini-1.5-ultra', label: 'Gemini 1.5 Ultra', badge: 'BEST', badgeColor: '#f59e0b' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', badge: 'FAST', badgeColor: '#22c55e' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', badge: 'PRO', badgeColor: '#0ea5e9' },
+  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', badge: 'BEST', badgeColor: '#f59e0b' },
 ];
 
 // Quick-pick services shown on the standby screen — the 4 most-used.
@@ -371,7 +371,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [attachedImage, setAttachedImage] = useState<{ base64: string; mimeType: string } | null>(null);
   const [voiceMode, setVoiceMode] = useState(true);
-  const [selectedModel, setSelectedModel] = useState<ModelId>('gemini-2.0-flash');
+  const [selectedModel, setSelectedModel] = useState<ModelId>('gemini-3.8-flash');
 
   // Drawer / overlay state
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -1302,7 +1302,7 @@ export default function CommandCenter({ locale, userName, isAuthenticated }: Com
           <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{copy.title}</span>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>·</span>
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>
-            {MODELS.find(m => m.id === selectedModel)?.label ?? 'Gemini 2.0 Flash'}
+            {MODELS.find(m => m.id === selectedModel)?.label ?? 'Gemini 3.8 Flash'}
           </span>
         </div>
         <button type="button" className="cc-icon-btn" onClick={() => { setProfileOpen(true); setHistoryOpen(false); }} aria-label="Profile">

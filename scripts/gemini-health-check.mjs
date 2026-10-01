@@ -17,7 +17,14 @@
  */
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-const MODEL = 'gemini-2.0-flash';
+// Probe what chat actually calls: the first usable id of the operator chat chain (GEMINI_CHAT_MODELS), else the
+// code default primary in lib/ai/google/models.ts. gemini-2.0-flash used to be hard-coded here — Google retired it (404).
+const MODEL =
+  (process.env.GEMINI_CHAT_MODELS ?? '')
+    .split(/[,;\n\r]+/)
+    .map((m) => m.trim().replace(/^models\//i, ''))
+    .find((m) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(m) && !/^gemini-(?:1\.0|1\.5|2\.0)(?:-|$)/i.test(m)) ||
+  'gemini-3.8-flash';
 const TTFT_THRESHOLD_MS = 3_000;
 
 const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';

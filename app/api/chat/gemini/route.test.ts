@@ -486,6 +486,23 @@ describe('the Gemini call', () => {
     expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.pro]);
   });
 
+  test('no model handed to Gemini matches /gemini-(1\.5|2\.0)-/ on either tier, even with stale env overrides', async () => {
+    const RETIRED_LITERAL = /gemini-(1\.5|2\.0)-/;
+    // Defaults first, then the operator overrides an old deployment might still carry.
+    for (const stale of [false, true]) {
+      if (stale) {
+        process.env.GEMINI_CHAT_MODELS = 'gemini-2.0-flash,gemini-2.0-flash-lite,gemini-3.8-flash';
+        process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-1.5-pro-latest,gemini-2.5-pro';
+      }
+      for (const tier of ['standard', 'pro'] as const) {
+        await (await POST(post({ ...userTurn('hi'), tier }))).text();
+        const { models } = lastCall();
+        expect(models.length).toBeGreaterThan(0);
+        for (const m of models) expect(m).not.toMatch(RETIRED_LITERAL);
+      }
+    }
+  });
+
   test('a built-in persona keeps the old numbers and is appended LAST (platform rules keep precedence)', async () => {
     await (await POST(post({ ...userTurn('hi'), personaId: 'film-director' }))).text();
     const { system, temperature, topP, topK, maxOutputTokens, googleSearch } = lastCall().config;

@@ -6,15 +6,25 @@
  * Uses native fetch — no SDK package required at compile time.
  */
 
+import { isRetiredModel, normalizeModelId } from '@/lib/ai/google/models';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
-// gemini-2.0-flash is deprecated ("no longer available to new users", 404).
-// Default to current GA models; override via env if Google rotates names again.
+/**
+ * An env / per-call model id when it is a well-formed, non-retired bare id; otherwise null (→ the tier default).
+ * The old .env.example shipped GEMINI_MODEL_PRO=gemini-1.5-pro-latest and GEMINI_MODEL_FLASH=gemini-1.5-flash-8b —
+ * an environment copied from it would 404 every call. A retired or malformed value now falls back instead.
+ */
+function usableModel(raw: string | null | undefined): string | null {
+  const id = normalizeModelId(raw);
+  return id && !isRetiredModel(id) ? id : null;
+}
+
+// gemini-2.0-flash is retired (404). Default to current GA models; override via env if Google rotates names again.
 export const GEMINI_MODELS = {
-  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-2.5-pro',
-  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-2.5-flash',
+  pro: usableModel(process.env.GEMINI_MODEL_PRO) ?? 'gemini-2.5-pro',
+  flash: usableModel(process.env.GEMINI_MODEL_FLASH) ?? 'gemini-2.5-flash',
 } as const;
 
 export type GeminiModelTier = 'pro' | 'flash';
@@ -126,7 +136,7 @@ function buildParts(prompt: string, attachments?: GeminiAttachment[]): Part[] {
 
 export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResponse> {
   const tier: GeminiModelTier = req.tier ?? 'pro';
-  const modelName = req.model?.trim() || GEMINI_MODELS[tier];
+  const modelName = usableModel(req.model) ?? GEMINI_MODELS[tier];
   const apiKey = resolveGeminiKey();
 
   if (!apiKey) {

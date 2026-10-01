@@ -244,6 +244,25 @@ describe('chatModelChain', () => {
       expect(chatModelChain(tier).some(isRetiredModel)).toBe(false);
     }
   });
+
+  // A literal check, deliberately independent of isRetiredModel: if that helper is ever loosened, this still fails.
+  // Production logged Google's 404 "models/gemini-2.0-flash is no longer available" on 2026-09-29.
+  it('no id in either chat rotation matches /gemini-(1\.5|2\.0)-/ — defaults or a stale env override', () => {
+    const RETIRED_LITERAL = /gemini-(1\.5|2\.0)-/;
+    const chains = () => [
+      ...DEFAULT_CHAT_MODELS.standard,
+      ...DEFAULT_CHAT_MODELS.pro,
+      ...chatModelChain('standard'),
+      ...chatModelChain('pro'),
+    ];
+    for (const id of chains()) expect(id).not.toMatch(RETIRED_LITERAL);
+
+    process.env.GEMINI_CHAT_MODELS = 'gemini-2.0-flash, models/gemini-2.0-flash-lite, gemini-1.5-flash-8b, gemini-3.8-flash';
+    process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-1.5-pro-latest;GEMINI-2.0-PRO-EXP';
+    for (const id of chains()) expect(id).not.toMatch(RETIRED_LITERAL);
+    expect(chatModelChain('standard')).toEqual(['gemini-3.8-flash']);
+    expect(chatModelChain('pro')).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+  });
 });
 
 describe('resolveLiveModel / defaultLiveModel', () => {
