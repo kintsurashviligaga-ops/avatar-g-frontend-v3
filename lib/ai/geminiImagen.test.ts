@@ -1,5 +1,8 @@
 /** @jest-environment node */
-import { mapImagenAspect, geminiImagenModel, hasGeminiImagenProvider } from './geminiImagen';
+jest.mock('./geminiFallbackReport', () => ({ reportGeminiFallback: jest.fn() }));
+
+import { mapImagenAspect, geminiImagenModel, hasGeminiImagenProvider, generateImagenImages } from './geminiImagen';
+import { reportGeminiFallback } from './geminiFallbackReport';
 
 describe('Imagen 4 — aspect mapping', () => {
   it('passes through the five ratios Imagen actually accepts', () => {
@@ -53,5 +56,62 @@ describe('Imagen 4 — model + kill switch', () => {
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     delete process.env.GEMINI_IMAGEN_ENABLED;
     expect(hasGeminiImagenProvider()).toBe(false);
+  });
+});
+
+describe('Imagen 4 — the key travels ONLY in the x-goog-api-key header', () => {
+  const KEY = 'AQ.test-imagen-key-0123456789abcdef';
+  const KEY_VARS = ['GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_IMAGEN_MODEL'] as const;
+  const saved: Record<string, string | undefined> = {};
+  const realFetch = global.fetch;
+  const fetchMock = jest.fn();
+  const reported = reportGeminiFallback as jest.MockedFunction<typeof reportGeminiFallback>;
+
+  beforeEach(() => {
+    for (const k of KEY_VARS) { saved[k] = process.env[k]; delete process.env[k]; }
+    process.env.GEMINI_API_KEY = KEY;
+    fetchMock.mockReset();
+    reported.mockClear();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+  afterEach(() => {
+    global.fetch = realFetch;
+    for (const k of KEY_VARS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  });
+
+  it('POSTs :predict with no key in the URL, the key in the header, and redirect: manual', async () => {
+    const png = Buffer.from('fake-png-bytes').toString('base64');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ predictions: [{ bytesBase64Encoded: png, mimeType: 'image/png' }] }), { status: 200 }));
+
+    const out = await generateImagenImages({ prompt: 'a red kite over a green hill' });
+
+    expect(out).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict');
+    expect(url).not.toMatch(/[?&]key=/);
+    expect(url).not.toContain(KEY);
+    expect(init.headers['x-goog-api-key']).toBe(KEY);
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(init.redirect).toBe('manual');
+  });
+
+  it('an error body that echoes the key reaches the fallback report redacted', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(`bad request for ${KEY}`, { status: 400 }));
+
+    expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
+    const { detail, status } = reported.mock.calls[0][0];
+    expect(status).toBe(400);
+    expect(detail).not.toContain(KEY);
+    expect(detail).toContain('[redacted]');
+  });
+
+  it('a thrown fetch error that echoes the key reaches the fallback report redacted', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError(`Headers.append: "${KEY}" is an invalid header value.`));
+
+    expect(await generateImagenImages({ prompt: 'x' })).toBeNull();
+    const { detail } = reported.mock.calls[0][0];
+    expect(detail).not.toContain(KEY);
+    expect(detail).toContain('[redacted]');
   });
 });

@@ -8,7 +8,8 @@
  * proven FLUX → NanoBanana cascade. Adding a primary engine must not be able to break image generation.
  *
  * WIRE CONTRACT (the `:predict` surface, NOT `:generateContent`):
- *   POST /v1beta/models/<model>:predict?key=…
+ *   POST /v1beta/models/<model>:predict   (key ONLY in the x-goog-api-key header — never `?key=`: a URL lands in
+ *   logs, traces and error reports; Google's own 404 page echoes the request URL back into `detail`)
  *   { instances: [{ prompt }], parameters: { sampleCount, aspectRatio, personGeneration, negativePrompt? } }
  *   → { predictions: [{ bytesBase64Encoded, mimeType }] }
  * Imagen returns base64 IMAGE BYTES inline — there is no operation to poll and no URL to fetch, so the
@@ -90,10 +91,11 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
   if (negative) parameters.negativePrompt = negative.slice(0, 480);
 
   try {
-    const res = await fetch(`${GL_BASE}/models/${model}:predict?key=${encodeURIComponent(key)}`, {
+    const res = await fetch(`${GL_BASE}/models/${model}:predict`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       cache: 'no-store',
+      redirect: 'manual',
       body: JSON.stringify({ instances: [{ prompt: prompt.slice(0, 2000) }], parameters }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -103,7 +105,8 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
       // identically for every caller until the operator acts, so arm the wall instead of re-paying the
       // latency on each generation.
       if (res.status === 429 || res.status === 402 || res.status === 403) quotaWallUntil = Date.now() + QUOTA_WALL_MS;
-      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body, model: geminiImagenModel() });
+      // `detail` goes to Sentry: whatever a provider body or a thrown message carries, never the key.
+      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body.split(key).join('[redacted]'), model: geminiImagenModel() });
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as {
@@ -120,7 +123,8 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
     }
     return out.length ? out : null;
   } catch (e) {
-    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', detail: e instanceof Error ? e.message : String(e), model: geminiImagenModel() });
+    const detail = (e instanceof Error ? e.message : String(e)).split(key).join('[redacted]');
+    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', detail, model: geminiImagenModel() });
     return null;
   }
 }
