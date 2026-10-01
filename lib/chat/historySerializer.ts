@@ -18,7 +18,8 @@
  * with no parts, which plausibly broke every later turn of that thread (not verified live). It also meant
  * the model never knew what it had made, so "make it warmer" had nothing to refer to. Such a turn now reads
  * `[generated image: https://…]`. A turn that has neither text nor an asset (an aborted or failed reply) is
- * dropped, and the two user turns around it are merged so roles still alternate.
+ * dropped, and the two user turns around it are merged so roles still alternate. A 3D result's model (`glbUrl`)
+ * reads `[generated 3D model: https://…]` the same way.
  *
  * ⚠️ MEDIA BYTES ONLY IN THE LAST N MEDIA TURNS. This is `lib/chat/mediaWindow.ts`, reused as is (see its
  * header for why a window and not a strip). Older attachments become `[earlier image attachment]`.
@@ -60,7 +61,7 @@ import { mediaCarryingIndices, mediaPlaceholder, MEDIA_WINDOW_TURNS, type TurnLi
 // ─── Shared interface (lib/chat/historySerializer — see the architecture brief) ──────────────────────────
 
 export interface HistoryMedia { kind: 'image' | 'audio' | 'video' | 'pdf' | 'file'; dataUrl?: string; url?: string; mimeType?: string; name?: string }
-export interface HistoryMsg { role: 'user' | 'assistant'; text: string; medias?: HistoryMedia[]; imageUrl?: string; videoUrl?: string; audioUrl?: string }
+export interface HistoryMsg { role: 'user' | 'assistant'; text: string; medias?: HistoryMedia[]; imageUrl?: string; videoUrl?: string; audioUrl?: string; glbUrl?: string }
 export type WirePart = { type: 'text'; text: string } | { type: 'image'; image: string; mimeType?: string } | { type: 'file'; data: string; mimeType: string; name?: string };
 export interface WireMessage { role: 'user' | 'assistant'; content: string | WirePart[] }
 
@@ -295,7 +296,7 @@ function refUrl(raw: unknown): string | null {
   return u.replace(/\[/g, '%5B').replace(/\]/g, '%5D');
 }
 
-function assetRef(role: 'user' | 'assistant', kind: 'image' | 'video' | 'audio', raw: unknown): string | null {
+function assetRef(role: 'user' | 'assistant', kind: 'image' | 'video' | 'audio' | '3D model', raw: unknown): string | null {
   if (typeof raw !== 'string' || !raw.trim()) return null;
   const verb = role === 'assistant' ? 'generated' : 'attached';
   const url = refUrl(raw);
@@ -309,7 +310,7 @@ function assetRef(role: 'user' | 'assistant', kind: 'image' | 'video' | 'audio',
  * Bounded, with no nested quantifiers, so it runs in linear time. Global: reset `lastIndex` or use
  * `stripHistoryMarkers`.
  */
-export const HISTORY_MARKER_RE = /\[(?:generated|attached) (?:image|video|audio|file)\b[^\]\n]{0,2200}\]|\[earlier (?:image|video|audio|file) attachment[^\]\n]{0,200}\]/g;
+export const HISTORY_MARKER_RE = /\[(?:generated|attached) (?:image|video|audio|file|3D model)\b[^\]\n]{0,2200}\]|\[earlier (?:image|video|audio|file) attachment[^\]\n]{0,200}\]/g;
 
 /** Removes the serializer's markers from a text, for script and locale detection. Leaves everything else as it was. */
 export function stripHistoryMarkers(text: string): string {
@@ -437,6 +438,7 @@ export function serializeHistory(msgs: readonly HistoryMsgInput[], opts?: Serial
       assetRef(role, 'image', m.imageUrl),
       assetRef(role, 'video', m.videoUrl),
       assetRef(role, 'audio', m.audioUrl),
+      assetRef(role, '3D model', m.glbUrl),
     ].filter((r): r is string => !!r);
 
     if (role === 'assistant') {
