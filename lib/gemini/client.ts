@@ -6,7 +6,7 @@
  * Uses native fetch — no SDK package required at compile time.
  */
 
-import { geminiTierModel } from '@/lib/ai/google/models';
+import { geminiTierModel, isRetiredModel, normalizeModelId } from '@/lib/ai/google/models';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
@@ -127,7 +127,10 @@ function buildParts(prompt: string, attachments?: GeminiAttachment[]): Part[] {
 
 export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResponse> {
   const tier: GeminiModelTier = req.tier ?? 'pro';
-  const modelName = req.model?.trim() || GEMINI_MODELS[tier];
+  // A per-call override (llmText's geminiModel ← VEO_DIRECTOR_MODEL) gets the tier env's guard: a retired, empty or
+  // malformed id falls back to the tier model instead of 404ing, and a `models/` prefix no longer doubles in the URL.
+  const override = normalizeModelId(req.model);
+  const modelName = override && !isRetiredModel(override) ? override : GEMINI_MODELS[tier];
   const apiKey = resolveGeminiKey();
 
   if (!apiKey) {
