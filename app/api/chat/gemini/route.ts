@@ -54,6 +54,7 @@ import { chatModelChain } from '@/lib/ai/google/models';
 import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig } from '@/lib/ai/google/chatStream';
+import { wantsUrlContext } from '@/lib/chat/urlContext';
 import { encodeFrame, SSE_KEEPALIVE, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
 import {
   estimateWireChars,
@@ -626,6 +627,8 @@ export async function POST(req: NextRequest) {
         // The persona block is APPENDED by the profile, so the platform rules keep precedence over what is, for a
         // custom persona, untrusted user text.
         const config = applyChatMode(toGeminiChatConfig(profile, platformSystem), mode);
+        // URL reading only for a turn that carries a link, and only behind GEMINI_CHAT_URL_CONTEXT=1 (lib/chat/urlContext.ts).
+        if (wantsUrlContext(latestUserText)) config.urlContext = true;
         const inputChars = platformSystem.length + historyChars;
 
         const result = await streamGeminiChat({

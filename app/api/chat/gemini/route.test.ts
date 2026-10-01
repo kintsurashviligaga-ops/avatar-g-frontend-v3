@@ -861,3 +861,36 @@ describe('a turn that thinks before it answers', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 });
+
+// ─── URL reading (url_context) ───────────────────────────────────────────────
+
+describe('URL reading (GEMINI_CHAT_URL_CONTEXT)', () => {
+  // ⚠️ Default OFF: google_search + url_context on gemini-3.8-flash is unverified live, and a 400 there is bad_request,
+  // which never rotates. On only with the switch at exactly "1" AND a link in the LATEST user message.
+  const lastConfig = () => mockStream.mock.calls[mockStream.mock.calls.length - 1]![0].config;
+
+  test('off by default: a link alone does not add url_context', async () => {
+    delete process.env.GEMINI_CHAT_URL_CONTEXT;
+    await (await POST(post(userTurn('შეაჯამე https://example.com/article')))).text();
+    expect('urlContext' in lastConfig()).toBe(false);
+  });
+
+  test('switch on + a link in the latest message → urlContext: true', async () => {
+    process.env.GEMINI_CHAT_URL_CONTEXT = '1';
+    await (await POST(post(userTurn('შეაჯამე https://example.com/article')))).text();
+    expect(lastConfig()).toMatchObject({ urlContext: true, googleSearch: true });
+  });
+
+  test('switch on, but no link in the latest message (one earlier in the history does not count)', async () => {
+    process.env.GEMINI_CHAT_URL_CONTEXT = '1';
+    const body = {
+      messages: [
+        { role: 'user', content: 'read https://example.com' },
+        { role: 'assistant', content: 'Done.' },
+        { role: 'user', content: 'thanks, and now a joke' },
+      ],
+    };
+    await (await POST(post(body))).text();
+    expect('urlContext' in lastConfig()).toBe(false);
+  });
+});

@@ -44,6 +44,12 @@
  * `escapeNonMathDollars` keeps only pandoc-style pairs (no space inside the delimiters, no digit right
  * after the closer, no `$` in between) and escapes every other dollar. Prices stay prices.
  *
+ * ⚠️ "OPEN IN CANVAS" ONLY ON A FINISHED BLOCK, AND ONLY WHERE A CANVAS IS MOUNTED. A code block gets a second button
+ * (Preview for html / svg) that hands its code to `components/chat/artifacts/` — but not while the reply streams (a
+ * half-written page is not an artifact, and the button appearing mid-stream would be a moving target), and not on a
+ * surface with no `ArtifactCanvas` (the button would do nothing). The streaming flag reaches `CodeBlock` through a
+ * context, NOT a prop of the memoized block, for the same reason as the fade: finishing a stream must re-parse nothing.
+ *
  * The prose inherits the page font, so the Georgian stack (`var(--font-georgian)`, Noto Sans Georgian)
  * applies unchanged. Code uses a monospace stack that ends in the Georgian faces, so Georgian comments in
  * code don't fall back to an arbitrary system font.
@@ -66,7 +72,9 @@ import {
 } from 'react';
 import ReactMarkdown, { type Components, type Options as ReactMarkdownOptions } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Eye, PanelRightOpen } from 'lucide-react';
+import { useArtifactStore } from '@/components/chat/artifacts/artifactStore';
+import { ARTIFACT_LANGUAGES, fitsArtifactBound, isPreviewable, normalizeArtifactLanguage } from '@/components/chat/artifacts/artifactSpec';
 
 type MdLocale = 'ka' | 'en' | 'ru';
 type Pluggable = NonNullable<ReactMarkdownOptions['rehypePlugins']>[number];
@@ -489,15 +497,17 @@ export function loadMathExtension(): Promise<void> {
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
 const MarkdownLocaleContext = createContext<MdLocale | undefined>(undefined);
+/** True while the reply is arriving. Read by CodeBlock only (see the header: a context, not a block prop). */
+const MarkdownStreamingContext = createContext(false);
 
-const COPY_LABELS: Record<MdLocale, { copy: string; copied: string }> = {
-  ka: { copy: 'კოპირება', copied: 'დაკოპირდა' },
-  en: { copy: 'Copy', copied: 'Copied' },
-  ru: { copy: 'Копировать', copied: 'Скопировано' },
+const COPY_LABELS: Record<MdLocale, { copy: string; copied: string; openCanvas: string; preview: string }> = {
+  ka: { copy: 'კოპირება', copied: 'დაკოპირდა', openCanvas: 'კანვასში გახსნა', preview: 'გადახედვა' },
+  en: { copy: 'Copy', copied: 'Copied', openCanvas: 'Open in canvas', preview: 'Preview' },
+  ru: { copy: 'Копировать', copied: 'Скопировано', openCanvas: 'Открыть в холсте', preview: 'Просмотр' },
 };
 
 /** Monospace first, then the Georgian faces the prose uses, so Georgian comments in code match the text. */
-const MONO_STACK =
+export const MONO_STACK =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', var(--font-georgian), 'Noto Sans Georgian', monospace";
 
 /**
@@ -505,7 +515,7 @@ const MONO_STACK =
  * (no highlight.js theme stylesheet is shipped). The palette stays inside the brand's black/white/cyan
  * system: keywords take the accent, literals the warning tone, comments the muted tone.
  */
-const HLJS_THEME = [
+export const HLJS_THEME = [
   '[&_.hljs-comment]:italic [&_.hljs-comment]:text-app-muted [&_.hljs-quote]:italic [&_.hljs-quote]:text-app-muted',
   '[&_.hljs-keyword]:text-app-accent [&_.hljs-selector-tag]:text-app-accent [&_.hljs-doctag]:text-app-accent',
   '[&_.hljs-built_in]:text-app-accent/80 [&_.hljs-type]:text-app-accent/80 [&_.hljs-class]:text-app-accent/80',
@@ -531,7 +541,8 @@ function languageOf(className: string | undefined): string {
   return m ? m[1]!.toLowerCase() : '';
 }
 
-async function copyText(text: string): Promise<boolean> {
+/** Clipboard write with the legacy fallback. Shared with the artifact canvas. */
+export async function copyText(text: string): Promise<boolean> {
   try {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -559,6 +570,8 @@ async function copyText(text: string): Promise<boolean> {
 
 function CodeBlock({ className, children }: { className?: string; children?: ReactNode }) {
   const locale = useContext(MarkdownLocaleContext) ?? 'en';
+  const streaming = useContext(MarkdownStreamingContext);
+  const canvasMounted = useArtifactStore((s) => s.hosts > 0);
   const labels = COPY_LABELS[locale];
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -566,6 +579,22 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
   // Read at click time from the latest children, so a copy during streaming takes what is on screen.
   const childrenRef = useRef(children);
   childrenRef.current = children;
+
+  // An unlabelled fence opens as text; a label off the allowlist gets no canvas button at all.
+  const artifactLang = normalizeArtifactLanguage(lang || 'text');
+  // Measured only once the block can offer the button: never per streamed frame.
+  const canOpen = useMemo(
+    () => !streaming && canvasMounted && artifactLang !== null && fitsArtifactBound(nodeToText(children).replace(/\n$/, '')),
+    [streaming, canvasMounted, artifactLang, children],
+  );
+  const previewable = artifactLang !== null && isPreviewable(artifactLang);
+  const openLabel = previewable ? labels.preview : labels.openCanvas;
+  const openCanvas = useCallback(() => {
+    if (!artifactLang) return;
+    useArtifactStore
+      .getState()
+      .openArtifact({ language: artifactLang, code: nodeToText(childrenRef.current).replace(/\n$/, '') }, { tab: previewable ? 'preview' : 'code' });
+  }, [artifactLang, previewable]);
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
@@ -586,17 +615,33 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
         <span className="truncate text-[12px] font-medium lowercase tracking-wide text-app-muted" style={{ fontFamily: MONO_STACK }}>
           {lang || 'code'}
         </span>
-        {/* ⚠️ Always visible. The old button was opacity-0 until hover, so on a phone it did not exist. */}
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={copied ? labels.copied : labels.copy}
-          title={labels.copy}
-          className="flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8"
-        >
-          {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
-          <span>{copied ? labels.copied : labels.copy}</span>
-        </button>
+        <span className="flex shrink-0 items-center">
+          {canOpen && (
+            <button
+              type="button"
+              onClick={openCanvas}
+              aria-label={openLabel}
+              title={openLabel}
+              data-md-open-canvas={artifactLang ?? ''}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8"
+            >
+              {previewable ? <Eye size={14} aria-hidden /> : <PanelRightOpen size={14} aria-hidden />}
+              {/* Icon-only on a phone: „კანვასში გახსნა“ beside „კოპირება“ squeezed the language label to „pyth…“. */}
+              <span className="hidden sm:inline">{openLabel}</span>
+            </button>
+          )}
+          {/* ⚠️ Always visible. The old button was opacity-0 until hover, so on a phone it did not exist. */}
+          <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? labels.copied : labels.copy}
+            title={labels.copy}
+            className="flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8"
+          >
+            {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+            <span>{copied ? labels.copied : labels.copy}</span>
+          </button>
+        </span>
       </div>
       <pre className={`overflow-x-auto px-4 pb-4 pt-1 text-[14px] leading-[1.6] text-app-text ${HLJS_THEME}`}>
         <code className={className} style={{ fontFamily: MONO_STACK }}>
@@ -741,22 +786,81 @@ function MarkdownViewImpl({ source, streaming = false, locale, className }: Mark
   const rootClass = [ROOT_CLASS, streaming ? STREAMING_CLASS : '', className ?? ''].filter(Boolean).join(' ');
   return (
     <MarkdownLocaleContext.Provider value={locale}>
-      <div className={rootClass} data-md-root="">
-        {blocks.map((b, i) => (
-          <MarkdownBlock
-            key={i}
-            source={b.source}
-            // Only the blocks that need an extension get it, so a chunk loading doesn't re-parse the others.
-            highlight={b.code ? ext.highlight : null}
-            math={b.math ? ext.math : null}
-          />
-        ))}
-      </div>
+      <MarkdownStreamingContext.Provider value={streaming}>
+        <div className={rootClass} data-md-root="">
+          {blocks.map((b, i) => (
+            <MarkdownBlock
+              key={i}
+              source={b.source}
+              // Only the blocks that need an extension get it, so a chunk loading doesn't re-parse the others.
+              highlight={b.code ? ext.highlight : null}
+              math={b.math ? ext.math : null}
+            />
+          ))}
+        </div>
+      </MarkdownStreamingContext.Provider>
     </MarkdownLocaleContext.Provider>
   );
 }
 
 /** Memoized on its props: history bubbles whose text did not change never re-render. */
 export const MarkdownView = memo(MarkdownViewImpl);
+
+// ─── A bare highlighted block (the artifact canvas's Code tab) ──────────────
+
+/** Past this, the Code tab stays plain: highlight.js over 200 KB is a visible stall, and plain text is still exact. */
+const HIGHLIGHT_MAX_CHARS = 80_000;
+
+/**
+ * A fence that cannot be closed from inside `code`: one backtick longer than the longest backtick run in it
+ * (CommonMark: a closing fence must be at least as long as the opening one). Exported for tests.
+ */
+export function fenceCode(code: string, grammar: string): string {
+  let longest = 0;
+  for (const m of code.matchAll(/`+/g)) longest = Math.max(longest, m[0].length);
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  const info = /^[a-z0-9_+-]{1,24}$/i.test(grammar) ? grammar : '';
+  return `${fence}${info}\n${code}\n${fence}`;
+}
+
+const BARE_CODE_COMPONENTS: Components = {
+  pre: ({ node: _n, children }: WithNode<{ children?: ReactNode }>) => (
+    <pre className={`min-w-0 px-4 py-3 text-[13.5px] leading-[1.6] text-app-text ${HLJS_THEME}`} data-artifact-code="">
+      {children}
+    </pre>
+  ),
+  code: ({ node: _n, className, children }: WithNode<{ className?: string; children?: ReactNode }>) => (
+    <code className={className} style={{ fontFamily: MONO_STACK }}>
+      {children}
+    </code>
+  ),
+};
+
+export interface HighlightedCodeProps {
+  code: string;
+  /** A key of `ARTIFACT_LANGUAGES`; its highlight.js grammar colours the code. */
+  language: string;
+}
+
+/**
+ * One code block with no header, on the same lazy highlighter and token colours as the chat. It is still rendered
+ * through react-markdown + rehype-highlight (hast → React elements), so the code is never injected as HTML.
+ */
+export const HighlightedCode = memo(function HighlightedCode({ code, language }: HighlightedCodeProps) {
+  const ext = useSyncExternalStore(subscribeExtensions, getExtensions, getExtensions);
+  const lang = normalizeArtifactLanguage(language);
+  const grammar = lang ? ARTIFACT_LANGUAGES[lang].hljs : 'plaintext';
+  const highlight = code.length <= HIGHLIGHT_MAX_CHARS && grammar !== 'plaintext';
+  useEffect(() => {
+    if (highlight) void loadHighlightExtension();
+  }, [highlight]);
+  const source = useMemo(() => fenceCode(code, highlight ? grammar : ''), [code, grammar, highlight]);
+  const rehypePlugins = highlight && ext.highlight ? [ext.highlight] : [];
+  return (
+    <ReactMarkdown rehypePlugins={rehypePlugins} components={BARE_CODE_COMPONENTS} urlTransform={safeUrlTransform}>
+      {source}
+    </ReactMarkdown>
+  );
+});
 
 export default MarkdownView;

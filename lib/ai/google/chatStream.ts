@@ -46,6 +46,11 @@ export interface GeminiChatConfig {
   safetySettings: Array<{ category: string; threshold: string }>;
   thinking?: { level: 'off' | 'low' | 'high' };
   googleSearch: boolean;
+  /**
+   * Gemini's native URL reading (`url_context`), beside google_search. Set by the route only for a turn whose latest
+   * user message carries a link AND while `GEMINI_CHAT_URL_CONTEXT=1` (lib/chat/urlContext.ts); absent = off.
+   */
+  urlContext?: boolean;
 }
 
 export interface StreamGeminiChatInput {
@@ -471,6 +476,27 @@ function createEmitter(onFrame: StreamGeminiChatInput['onFrame'], onGone: () => 
   };
 }
 
+type GoogleProviderTools = ReturnType<typeof createGoogleGenerativeAI>['tools'];
+
+/**
+ * The provider tools one turn carries: `google_search` when the profile searches, `url_context` when the route
+ * asked for it (`=== true` only — a truthy non-boolean from a hand-built config is not an opt-in). Undefined = none.
+ *
+ * ⚠️ ai@6 and @ai-sdk/google@3 disagree on the provider tool's inputSchema generic (<{}> vs <never>); the
+ * provider-defined tools are valid at runtime, so the ToolSet cast only bridges the type skew.
+ * ⚠️ url_context + google_search together on gemini-3.8-flash is UNVERIFIED live; a 400 there is `bad_request`, which
+ * does not rotate. That is why the route keeps it behind GEMINI_CHAT_URL_CONTEXT (default off).
+ */
+export function chatToolsFor(
+  config: Pick<GeminiChatConfig, 'googleSearch' | 'urlContext'>,
+  tools: Pick<GoogleProviderTools, 'googleSearch' | 'urlContext'>,
+): ToolSet | undefined {
+  const set: Record<string, unknown> = {};
+  if (config.googleSearch) set.google_search = tools.googleSearch({});
+  if (config.urlContext === true) set.url_context = tools.urlContext({});
+  return Object.keys(set).length > 0 ? (set as unknown as ToolSet) : undefined;
+}
+
 function buildProviderOptions(modelId: string, config: GeminiChatConfig): GoogleLanguageModelOptions | undefined {
   const opts: GoogleLanguageModelOptions = {};
   const safety = sanitizeSafetySettings(config.safetySettings);
@@ -509,11 +535,7 @@ async function runAttempt(
     const { config } = input;
     const google = createGoogleGenerativeAI({ apiKey: input.apiKey });
     const providerOptions = buildProviderOptions(modelId, config);
-    // ⚠️ ai@6 and @ai-sdk/google@3 disagree on the provider tool's inputSchema generic (<{}> vs <never>); the
-    // provider-defined googleSearch tool is valid at runtime, so the ToolSet cast only bridges the type skew.
-    const tools: ToolSet | undefined = config.googleSearch
-      ? ({ google_search: google.tools.googleSearch({}) } as unknown as ToolSet)
-      : undefined;
+    const tools = chatToolsFor(config, google.tools);
 
     const result = streamText({
       model: google(modelId),

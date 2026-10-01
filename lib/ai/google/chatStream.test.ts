@@ -35,6 +35,7 @@ jest.mock('@ai-sdk/google', () => {
 // eslint-disable-next-line import/first
 import {
   streamGeminiChat,
+  chatToolsFor,
   classifyChatError,
   unbookedAttempts,
   thinkingConfigFor,
@@ -241,6 +242,76 @@ describe('streamGeminiChat — happy path', () => {
     const call = model.doStreamCalls[0]!;
     expect(call.tools ?? []).toEqual([]);
     expect(call.providerOptions).toBeUndefined();
+  });
+});
+
+describe('streamGeminiChat — tool selection (google_search, url_context)', () => {
+  // ⚠️ url_context + google_search together on gemini-3.8-flash is UNVERIFIED live, and a 400 is `bad_request`, which
+  // does not rotate — so url_context must be sent ONLY when the config says `urlContext: true` (the route sets it
+  // behind GEMINI_CHAT_URL_CONTEXT=1 and only for a turn with a link; see lib/chat/urlContext.ts).
+  const toolIds = (model: MockLanguageModelV3) =>
+    (model.doStreamCalls[0]!.tools ?? []).map((t) => (t.type === 'provider' ? t.id : t.name));
+
+  async function toolsSentFor(config: Partial<GeminiChatConfig>) {
+    const model = streamModel([...textParts(['ok']), finishPart()]);
+    mockModels.set('gemini-3.8-flash', model);
+    await run(['gemini-3.8-flash'], { config: { ...BASE_CONFIG, ...config } }).promise;
+    return toolIds(model);
+  }
+
+  it('urlContext: true sends url_context beside google_search', async () => {
+    expect(await toolsSentFor({ urlContext: true })).toEqual(['google.google_search', 'google.url_context']);
+  });
+
+  it('urlContext without search sends url_context alone', async () => {
+    expect(await toolsSentFor({ googleSearch: false, urlContext: true })).toEqual(['google.url_context']);
+  });
+
+  it('absent, false or a truthy non-boolean sends no url_context', async () => {
+    expect(await toolsSentFor({})).toEqual(['google.google_search']);
+    expect(await toolsSentFor({ urlContext: false })).toEqual(['google.google_search']);
+    expect(await toolsSentFor({ urlContext: 'yes' as unknown as boolean })).toEqual(['google.google_search']);
+  });
+
+  it('every rotated attempt carries the same tools', async () => {
+    const first = failingModel(apiError(503, 'The model is overloaded.', 'UNAVAILABLE'));
+    const second = streamModel([...textParts(['ok']), finishPart()]);
+    mockModels.set('gemini-3.8-flash', first);
+    mockModels.set('gemini-3.6-flash', second);
+    await run(['gemini-3.8-flash', 'gemini-3.6-flash'], { config: { ...BASE_CONFIG, urlContext: true } }).promise;
+    expect(toolIds(second)).toEqual(['google.google_search', 'google.url_context']);
+  });
+
+  it('chatToolsFor is a pure selection over the provider tool factories', () => {
+    const factories = { googleSearch: jest.fn(() => ({ kind: 'search' })), urlContext: jest.fn(() => ({ kind: 'url' })) };
+    const f = factories as unknown as Parameters<typeof chatToolsFor>[1];
+    expect(chatToolsFor({ googleSearch: false }, f)).toBeUndefined();
+    expect(chatToolsFor({ googleSearch: true }, f)).toEqual({ google_search: { kind: 'search' } });
+    expect(chatToolsFor({ googleSearch: true, urlContext: true }, f)).toEqual({ google_search: { kind: 'search' }, url_context: { kind: 'url' } });
+    expect(factories.urlContext).toHaveBeenCalledWith({});
+  });
+
+  it('on the wire (the real @ai-sdk/google request builder, fetch mocked): tools = [{googleSearch}, {urlContext}]', async () => {
+    const { createGoogleGenerativeAI } = jest.requireActual('@ai-sdk/google') as typeof import('@ai-sdk/google');
+    const { streamText } = jest.requireActual('ai') as typeof import('ai');
+    const bodies: Array<Record<string, unknown>> = [];
+    const sse = 'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}\n\n';
+    const fetch = jest.fn(async (_url: unknown, init?: { body?: unknown }) => {
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    });
+    const google = createGoogleGenerativeAI({ apiKey: 'test-key', fetch: fetch as unknown as typeof globalThis.fetch });
+    const result = streamText({
+      model: google('gemini-3.8-flash'),
+      prompt: 'read https://example.com',
+      tools: chatToolsFor({ googleSearch: true, urlContext: true }, google.tools),
+      maxRetries: 0,
+    });
+    let text = '';
+    for await (const delta of result.textStream) text += delta;
+    expect(text).toBe('ok');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(bodies[0]!.tools).toEqual([{ googleSearch: {} }, { urlContext: {} }]);
   });
 });
 
