@@ -44,7 +44,7 @@ const ZERO = '00000000-0000-0000-0000-000000000000';
 /** Tables an anonymous visitor must see ZERO rows of. */
 const TABLES = ['profiles', 'credit_ledger', 'wallet_topups', 'jobs', 'job_steps', 'artifacts', 'project_intelligence',
   'generation_jobs', 'agent_evolution_traces', 'music_jobs', 'avatar_builder_jobs', 'image_architect_jobs', 'transactions',
-  'studio_jobs', 'provider_webhook_events'];
+  'studio_jobs', 'provider_webhook_events', 'longform_jobs', 'longform_scenes'];
 
 /** Functions an anonymous visitor must NOT be able to execute, with no-op arguments. */
 const RPCS = [
@@ -57,6 +57,9 @@ const RPCS = [
   ['restore_free_film', { p_user_id: ZERO }],
   ['restore_free_avatar_chat', { p_user_id: ZERO }],
   ['set_avatar_name', { p_user_id: ZERO, p_name: '' }],
+  // A no-op even if executable: the all-zero job has no scenes and the ordinal list is empty. (claim_longform_jobs is
+  // deliberately NOT probed — were it executable, the probe itself would lease real jobs.)
+  ['claim_longform_scenes', { p_job_id: ZERO, p_ordinals: [] }],
 ];
 
 async function countRows(table) {
