@@ -75,6 +75,14 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { streamText } from 'ai';
 import { decodeFrames, type ChatFrame } from '../../../../lib/chat/sse';
 import { DEFAULT_CHAT_MODELS } from '../../../../lib/ai/google/models';
+import {
+  GUEST_GLOBAL_KEY,
+  GUEST_MAX_MESSAGE_CHARS,
+  GUEST_MAX_OUTPUT_TOKENS,
+  GUEST_NOTICE,
+  guestChatDailyLimit,
+  guestChatGlobalDailyLimit,
+} from '../../../../lib/chat/guestChat';
 
 const USER_ID = '6f1c2b3a-1111-4222-8333-444455556666';
 const OUR_OUTAGE_KA = '⚠️ AI სერვისი დროებით მიუწვდომელია ჩვენი მხრიდან. სცადე ცოტა ხანში.';
@@ -90,6 +98,9 @@ const post = (body: unknown, headers: Record<string, string> = {}) =>
   });
 
 const framesOf = async (res: Response) => decodeFrames(await res.text());
+
+/** The input of the most recent streamGeminiChat call. */
+const lastStreamInput = (): StreamGeminiChatInput => mockStream.mock.calls[mockStream.mock.calls.length - 1]![0];
 
 const userTurn = (text: string) => ({ messages: [{ role: 'user', content: text }] });
 
@@ -160,8 +171,9 @@ afterEach(() => {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 describe('sign-in', () => {
-  test('a guest gets 401 in the generationGate shape, before any model, budget, limiter or memory call', async () => {
+  test('CHAT_GUEST_ENABLED=0: a guest gets 401 in the generationGate shape, before any model, budget, limiter or memory call', async () => {
     mockUser = null;
+    process.env.CHAT_GUEST_ENABLED = '0';
     const res = await POST(post(userTurn('გამარჯობა')));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({
@@ -179,14 +191,19 @@ describe('sign-in', () => {
 
   test('the 401 message follows the page locale from the referer', async () => {
     mockUser = null;
+    process.env.CHAT_GUEST_ENABLED = 'off';
     const res = await POST(post(userTurn('hi'), { referer: 'https://myavatar.ge/en/dashboard' }));
     expect(res.status).toBe(401);
     expect((await res.json()).message).toBe('Sign in to use the chat.');
   });
 
-  test('a user id of "anonymous" is a guest', async () => {
+  test('a user id of "anonymous" is a guest (answered under the guest policy, never as an account)', async () => {
     mockUser = { id: 'anonymous' };
-    expect((await POST(post(userTurn('hi')))).status).toBe(401);
+    const res = await POST(post({ ...userTurn('hi'), mode: 'pro' }));
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(lastStreamInput().models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(checkRateLimitByKey).not.toHaveBeenCalledWith('anonymous', expect.anything());
   });
 
   test('FILM_ALLOW_ANONYMOUS=1 re-opens it: capped per IP, no memory lookups, booked with no user', async () => {
@@ -202,6 +219,95 @@ describe('sign-in', () => {
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
     expect(embed).not.toHaveBeenCalled();
     expect(bookChatUsage).toHaveBeenCalledWith(expect.objectContaining({ userId: null }));
+  });
+});
+
+// ─── Guest chat (the home page opens on the chat) ────────────────────────────
+
+describe('guest chat', () => {
+  const capped = () => new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 });
+  const authNotice = (frames: Array<ChatFrame | 'DONE'>) =>
+    frames.find((f): f is Extract<ChatFrame, { error: unknown }> => typeof f === 'object' && 'error' in f)?.error;
+
+  beforeEach(() => {
+    mockUser = null;
+  });
+
+  test('a guest turn is answered: Fast chain, no grounding, a short answer, no memory, booked with no user', async () => {
+    mockStream.mockImplementation(
+      gemini([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'გამარჯობა' }], { text: 'გამარჯობა', usage: { inputTokens: 9, outputTokens: 3 } }),
+    );
+    const res = await POST(post({ ...userTurn('გამარჯობა'), mode: 'pro', protocol: 2 }));
+    expect(res.status).toBe(200);
+    const frames = await framesOf(res);
+    expect(frames).toContainEqual({ text: 'გამარჯობა' });
+    const input = lastStreamInput();
+    expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]); // asked for Pro, got Fast — Pro is per account
+    expect(input.config.googleSearch).toBe(false);
+    expect(input.config.maxOutputTokens).toBeLessThanOrEqual(GUEST_MAX_OUTPUT_TOKENS);
+    expect(embed).not.toHaveBeenCalled();
+    expect(bookChatUsage).toHaveBeenCalledWith(expect.objectContaining({ userId: null }));
+    // The guest buckets — per IP first, then all guests together — and never the signed-in one.
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), guestChatDailyLimit());
+    expect(checkRateLimitByKey).toHaveBeenCalledWith(GUEST_GLOBAL_KEY, guestChatGlobalDailyLimit());
+    expect(checkRateLimit).not.toHaveBeenCalledWith(expect.anything(), RATE_LIMITS.CHAT_USER);
+  });
+
+  test('CHAT_GUEST_SEARCH=1 grounds guest turns too', async () => {
+    process.env.CHAT_GUEST_SEARCH = '1';
+    await (await POST(post(userTurn('ამინდი თბილისში')))).text();
+    expect(lastStreamInput().config.googleSearch).toBe(true);
+  });
+
+  test('a guest turn with a photo is a sign-in notice — the model, the budget and the caps are never touched', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const res = await POST(post({ messages: [{ role: 'user', content: [{ type: 'text', text: 'რა არის?' }, { type: 'image', image: png }] }], protocol: 2 }));
+    expect(res.status).toBe(200);
+    const frames = await framesOf(res);
+    expect(authNotice(frames)).toEqual({ code: 'auth_required', retryable: false, message: GUEST_NOTICE.media.ka });
+    expect(frames[frames.length - 1]).toBe('DONE');
+    expect(mockStream).not.toHaveBeenCalled();
+    expect(chatBudgetAllows).not.toHaveBeenCalled();
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
+  });
+
+  test('an over-long guest message is a sign-in notice', async () => {
+    const frames = await framesOf(await POST(post({ ...userTurn('ა'.repeat(GUEST_MAX_MESSAGE_CHARS + 1)), protocol: 2 })));
+    expect(authNotice(frames)?.message).toBe(GUEST_NOTICE.too_long.ka);
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  test('a spent per-IP allowance is a sign-in notice, and the shared bucket is not drawn on', async () => {
+    (checkRateLimit as jest.Mock).mockImplementation(async (_req: unknown, cfg: { keyPrefix?: string }) =>
+      cfg.keyPrefix === 'rl:chat:guest' ? capped() : null,
+    );
+    const frames = await framesOf(await POST(post({ ...userTurn('hi'), protocol: 2 }, { referer: 'https://myavatar.ge/en/dashboard' })));
+    expect(authNotice(frames)).toEqual({ code: 'auth_required', retryable: false, message: GUEST_NOTICE.cap.en });
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  test('a spent guest-wide ceiling is a sign-in notice too (it protects the budget paying users share)', async () => {
+    (checkRateLimitByKey as jest.Mock).mockImplementation(async (key: string) => (key === GUEST_GLOBAL_KEY ? capped() : null));
+    const frames = await framesOf(await POST(post({ ...userTurn('hi'), protocol: 2 })));
+    expect(authNotice(frames)?.code).toBe('auth_required');
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  test('the legacy (v1) client also gets the notice as text', async () => {
+    (checkRateLimit as jest.Mock).mockImplementation(async (_req: unknown, cfg: { keyPrefix?: string }) =>
+      cfg.keyPrefix === 'rl:chat:guest' ? capped() : null,
+    );
+    const frames = await framesOf(await POST(post(userTurn('გამარჯობა'))));
+    expect(frames).toContainEqual({ text: GUEST_NOTICE.cap.ka });
+  });
+
+  test('a signed-in user never draws on the guest buckets', async () => {
+    mockUser = { id: USER_ID };
+    await (await POST(post(userTurn('hi')))).text();
+    expect(checkRateLimit).not.toHaveBeenCalledWith(expect.anything(), guestChatDailyLimit());
+    expect(checkRateLimitByKey).not.toHaveBeenCalledWith(GUEST_GLOBAL_KEY, expect.anything());
+    expect(checkRateLimitByKey).toHaveBeenCalledWith(USER_ID, RATE_LIMITS.CHAT_USER);
   });
 });
 

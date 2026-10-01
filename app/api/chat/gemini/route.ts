@@ -3,9 +3,11 @@
  *
  * Order of work, cheapest refusal first:
  *   1. per-IP burst limit (READ) and the 16 MB body cap — before any network call;
- *   2. a verified session (`mustSignInToChat` → 401 in the generationGate body shape);
+ *   2. a verified session — or, without one, the GUEST policy (lib/chat/guestChat: Fast, text only, no grounding,
+ *      short answers); CHAT_GUEST_ENABLED=0 answers a guest 401 in the generationGate body shape instead;
  *   3. the history re-validated server-side through lib/chat/historySerializer (400 when nothing usable is left);
- *   4. the per-user daily cap (CHAT_USER, keyed on the user id) — refused IN-STREAM;
+ *   4. the daily caps — per user (CHAT_USER, keyed on the user id), or for a guest per IP AND for all guests
+ *      together; refused IN-STREAM (a guest's refusal is `auth_required`, which opens the sign-in sheet);
  *   5. the chat MODE (the header's Fast · Thinking · Pro · Lite picker, lib/chat/chatModes): a Pro turn also draws on
  *      the per-user Pro allowance (CHAT_PRO_USER) and is DOWNGRADED to Fast — not refused — once that is spent;
  *   6. the platform budget pre-check at the mode's primary model's rate (BillingGuard, fails open) — refused IN-STREAM;
@@ -48,7 +50,17 @@ import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUse
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { detectReplyLocale } from '@/lib/chat/replyLocale';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
-import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { anonymousGenerationAllowed, isAnonymousUser, signInToGenerateBody } from '@/lib/auth/generationGate';
+import {
+  GUEST_GLOBAL_KEY,
+  GUEST_MAX_OUTPUT_TOKENS,
+  GUEST_NOTICE,
+  guestChatDailyLimit,
+  guestChatEnabled,
+  guestChatGlobalDailyLimit,
+  guestSearchEnabled,
+  guestTurnRefusal,
+} from '@/lib/chat/guestChat';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { chatModelChain } from '@/lib/ai/google/models';
 import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
@@ -444,13 +456,18 @@ export async function POST(req: NextRequest) {
   const contentLength = Number(req.headers.get('content-length') ?? 0);
   if (contentLength > MAX_BODY_BYTES) return json({ error: 'Request body too large (max 16 MB)' }, 413);
 
-  // ⚠️ SIGN-IN, SERVER-SIDE. This route used to answer anyone: the studio stopped guests in the browser only, so the
-  // one anonymous caller left was a script spending our Gemini balance (plus grounding) at 100 turns/min per IP.
-  // A failed session lookup is treated as anonymous — fail closed. FILM_ALLOW_ANONYMOUS=1 re-opens it for demos.
+  // ⚠️ SIGN-IN, SERVER-SIDE — OR THE GUEST POLICY. This route used to answer anyone at 100 turns/min per IP (a script
+  // spending our Gemini balance), then refused every anonymous caller. The home page now opens on the chat, so a
+  // visitor may talk to it under lib/chat/guestChat: Fast only, text only, no grounding, short answers, capped per IP
+  // AND for all guests together. A failed session lookup is treated as anonymous — fail closed into that policy.
+  // CHAT_GUEST_ENABLED=0 restores the 401; FILM_ALLOW_ANONYMOUS=1 (demos) keeps its older, looser meaning.
   const auth: { supabase: AnyAuthedClient | null; user: { id: string } | null } =
     await authedClientFromRequest(req).catch(() => ({ supabase: null, user: null }));
   const userId = auth.user?.id ?? null;
-  if (mustSignInToChat(userId)) {
+  /** The verified ACCOUNT, or null — a session id of "anonymous" is not an account (generationGate.isAnonymousUser). */
+  const accountId = isAnonymousUser(userId) ? null : userId;
+  const guest = !accountId && !anonymousGenerationAllowed();
+  if (guest && !guestChatEnabled()) {
     const loc = requestLocale(req);
     return json({ ...signInToGenerateBody(loc), message: SIGN_IN_TO_CHAT[loc] }, 401);
   }
@@ -486,9 +503,29 @@ export async function POST(req: NextRequest) {
   // Per-ACCOUNT daily cap, keyed on the verified user id (IP rotation cannot defeat it). A guest only gets here when
   // FILM_ALLOW_ANONYMOUS re-opened chat; they are capped per IP instead. Refused IN-STREAM, like the budget: an HTTP
   // 429 renders as a dead "something went wrong" turn in the chat shell, a notice tells the user what happened.
-  const capped = userId
-    ? await checkRateLimitByKey(userId, RATE_LIMITS.CHAT_USER)
-    : await checkRateLimit(req, RATE_LIMITS.CHAT_USER);
+  if (guest) {
+    // What a guest turn may carry is checked BEFORE the caps, so a refused file does not spend an allowance.
+    const refusal = guestTurnRefusal(wire);
+    // The per-IP allowance first, then the shared ceiling — so one IP that is already capped cannot keep spending
+    // the global bucket on turns it would be refused anyway.
+    const guestCapped =
+      !refusal &&
+      ((await checkRateLimit(req, guestChatDailyLimit())) ?? (await checkRateLimitByKey(GUEST_GLOBAL_KEY, guestChatGlobalDailyLimit())));
+    if (refusal || guestCapped) {
+      if (guestCapped) console.warn('[/api/chat/gemini] guest chat cap reached');
+      const message = GUEST_NOTICE[refusal ?? 'cap'][respLocale];
+      return frameResponse([
+        ...(v2 ? [] : [{ text: message }]),
+        { error: { code: 'auth_required', retryable: false, message } },
+        'DONE',
+      ]);
+    }
+  }
+  const capped = guest
+    ? null
+    : accountId
+      ? await checkRateLimitByKey(accountId, RATE_LIMITS.CHAT_USER)
+      : await checkRateLimit(req, RATE_LIMITS.CHAT_USER);
   if (capped) {
     console.warn('[/api/chat/gemini] daily chat cap reached');
     const message = DAILY_CAP_NOTICE[respLocale];
@@ -502,13 +539,13 @@ export async function POST(req: NextRequest) {
   // ── MODE. Resolved against the catalogue (unknown → Fast, legacy tier:'pro' → Pro) — the body names a mode, the
   //    chain is chosen here. A guest only reaches this line when FILM_ALLOW_ANONYMOUS re-opened chat, and always gets
   //    Fast: the Pro allowance is per ACCOUNT, and a guest has none to draw on.
-  const requestedMode: ChatModeId = userId ? resolveChatMode(body.mode, body.tier) : 'fast';
+  const requestedMode: ChatModeId = accountId ? resolveChatMode(body.mode, body.tier) : 'fast';
   let mode: ChatModeId = requestedMode;
   let downgrade: Pick<ChatMeta, 'requestedMode' | 'reason' | 'resetAt'> | null = null;
-  if (requestedMode === 'pro' && userId) {
+  if (requestedMode === 'pro' && accountId) {
     // AFTER CHAT_USER, so a Pro turn draws on both buckets. A spent Pro allowance does not refuse the turn — like the
     // Gemini app, it is answered by Fast and the `{meta}` says so (the stored choice stays Pro; it resumes at reset).
-    const proSpent = await checkRateLimitByKey(userId, chatProUserLimit());
+    const proSpent = await checkRateLimitByKey(accountId, chatProUserLimit());
     if (proSpent) {
       mode = 'fast';
       const resetAt = resetAtOf(proSpent);
@@ -524,7 +561,10 @@ export async function POST(req: NextRequest) {
     personaId: typeof body.personaId === 'string' ? body.personaId : null,
     customPersona: body.customPersona,
   });
-  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: profile.googleSearch });
+  // A guest's turn is never grounded unless CHAT_GUEST_SEARCH=1 (lib/chat/guestChat) — the prompt must not promise
+  // a search the config will not run.
+  const groundingOn = profile.googleSearch && (!guest || guestSearchEnabled());
+  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn });
   const modelMessages = toModelMessages(wire);
   const latestUserText = stripHistoryMarkers(textOfWire(lastTurn)).trim();
   const historyChars = wire.reduce((n, m) => n + estimateWireChars(m), 0);
@@ -534,10 +574,10 @@ export async function POST(req: NextRequest) {
   // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
   const budgetPromise = chatBudgetAllows(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => true);
   const preamblesPromise: Promise<[string | null, string | null]> =
-    auth.supabase && userId
+    auth.supabase && accountId
       ? Promise.all([
-          buildProfileFactsPreamble(auth.supabase, userId, latestUserText),
-          buildMemoryPreamble(auth.supabase, userId, latestUserText),
+          buildProfileFactsPreamble(auth.supabase, accountId, latestUserText),
+          buildMemoryPreamble(auth.supabase, accountId, latestUserText),
         ])
       : Promise.resolve([null, null]);
 
@@ -625,7 +665,14 @@ export async function POST(req: NextRequest) {
         const platformSystem = [platformPrompt, profilePreamble, memoryPreamble].filter(Boolean).join('\n\n');
         // The persona block is APPENDED by the profile, so the platform rules keep precedence over what is, for a
         // custom persona, untrusted user text.
-        const config = applyChatMode(toGeminiChatConfig(profile, platformSystem), mode);
+        const modeConfig = applyChatMode(toGeminiChatConfig(profile, platformSystem), mode);
+        const config: GeminiChatConfig = guest
+          ? {
+              ...modeConfig,
+              googleSearch: groundingOn,
+              maxOutputTokens: Math.min(modeConfig.maxOutputTokens, GUEST_MAX_OUTPUT_TOKENS),
+            }
+          : modeConfig;
         const inputChars = platformSystem.length + historyChars;
 
         const result = await streamGeminiChat({
@@ -652,7 +699,7 @@ export async function POST(req: NextRequest) {
               ...result.usage,
               chars: result.text.length,
               inputChars,
-              userId,
+              userId: accountId,
               groundingQueries: result.groundingQueries ?? 0,
             }),
           );
@@ -660,7 +707,7 @@ export async function POST(req: NextRequest) {
         // …and every EARLIER attempt Google billed before the rotation (a text-less 200 — thinking ate the budget —
         // still consumed tokens and search queries), each against the model that consumed it.
         for (const a of unbookedAttempts(result)) {
-          bookings.push(bookChatUsage({ model: a.model, ...a.usage, inputChars, userId, groundingQueries: a.groundingQueries ?? 0 }));
+          bookings.push(bookChatUsage({ model: a.model, ...a.usage, inputChars, userId: accountId, groundingQueries: a.groundingQueries ?? 0 }));
         }
 
         if (deadlineHit && !result.ok) {
@@ -704,7 +751,7 @@ export async function POST(req: NextRequest) {
                 ...fb.usage,
                 chars: fb.text.length,
                 inputChars,
-                userId,
+                userId: accountId,
               }),
             );
           }

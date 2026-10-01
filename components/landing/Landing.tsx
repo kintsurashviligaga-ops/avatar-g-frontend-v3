@@ -135,8 +135,8 @@ export function Landing({ locale }: { locale: string }) {
             <Link href={`/${lang}/pricing`} className="hidden min-h-[44px] items-center px-2 text-[14px] text-white/80 transition-colors hover:text-white sm:flex">
               {t.nav.pricing}
             </Link>
-            <LangMenu lang={lang} path={(l) => `/${l}`} label={t.footer.language} />
-            <LangSwitch lang={lang} path={(l) => `/${l}`} label={t.footer.language} className="hidden sm:flex" />
+            <LangMenu lang={lang} path={(l) => `/${l}/landing`} label={t.footer.language} />
+            <LangSwitch lang={lang} path={(l) => `/${l}/landing`} label={t.footer.language} className="hidden sm:flex" />
             <Link href={signIn} className="flex min-h-[44px] items-center rounded-full px-2.5 text-[14px] font-medium text-white transition-colors hover:bg-white/10 sm:px-3">
               {t.nav.signIn}
             </Link>
@@ -284,7 +284,7 @@ export function Landing({ locale }: { locale: string }) {
               <Link href={`/${lang}/privacy`} className="min-h-[44px] content-center hover:text-white">{t.footer.privacy}</Link>
               <Link href={`/${lang}/refund`} className="min-h-[44px] content-center hover:text-white">{t.footer.refund}</Link>
             </nav>
-            <LangSwitch lang={lang} path={(l) => `/${l}`} label={t.footer.language} />
+            <LangSwitch lang={lang} path={(l) => `/${l}/landing`} label={t.footer.language} />
             <p className="text-[13px] text-white/45">© 2026 MyAvatar.ge · {t.footer.rights}</p>
           </div>
         </div>

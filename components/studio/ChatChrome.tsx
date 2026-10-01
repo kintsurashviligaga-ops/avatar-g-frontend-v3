@@ -22,6 +22,10 @@ import {
   Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
 } from 'lucide-react';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
+import { isStudioPath } from '@/lib/routing/landing';
+
+/** The chat's own icon, from the tool list — the hub row and the tool rows can never draw different marks. */
+const ChatIcon = TOOL_META.chat.Icon;
 import dynamic from 'next/dynamic';
 
 // DAY-5 — the real-time voice node. Lazy-loaded so it (and its media plumbing) never enters the initial
@@ -683,21 +687,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [searchOpen, setSearchOpen] = useState(false);
   // Picking a service from the sidebar: in the studio it switches the tool in place; anywhere else it opens the
   // studio on that tool (`?tool=`, read once by OmniStudio).
-  const onStudioHome = (pathname ?? '').includes('/dashboard') && !onBack;
+  const onStudioHome = isStudioPath(pathname) && !onBack;
   const selectTool = useCallback((id: ToolId) => {
     setSidebarOpen(false);
     if (onStudioHome) { window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: id })); return; }
     const url = `/${locale}/dashboard?tool=${id}`;
     // ⚠️ On the dashboard's own #lipsync / #agent surfaces a client push is a no-op: Next keys the page without the
     // query and pushState fires no hashchange, so ServiceHub stayed where it was. A document load lands on the studio.
-    if ((pathname ?? '').includes('/dashboard')) window.location.assign(url);
+    if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
   }, [onStudioHome, router, locale, pathname]);
   const handleSelectConversation = useCallback((id: string) => {
     // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
     // active conversation and navigate; OmniStudio restores it from localStorage on mount.
-    if ((pathname ?? '').includes('/dashboard')) {
+    if (isStudioPath(pathname)) {
       window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
     } else {
       // One-shot handoff: OmniStudio consumes this on mount. Writing OMNI_CURRENT_ID_KEY instead would
@@ -715,7 +719,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // so mutating storage here would be resurrected on its next render — let OmniStudio do
   // the delete (it also resets the open chat if that's the one deleted). On a secondary
   // surface (e.g. /library) OmniStudio isn't mounted, so mutate localStorage directly.
-  const onDashboard = (pathname ?? '').includes('/dashboard');
+  const onDashboard = isStudioPath(pathname);
   const handleDeleteConversation = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setConversations((prev) => prev.filter((c) => c.id !== id)); // optimistic
@@ -999,6 +1003,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </div>
 
         <div className="space-y-0.5 px-2">
+          {/* CHAT IS THE HUB, so it is the first row (the owner's 2026-10-01 directive) — above „New session“, and
+              out of the „სერვისები“ list below so it is never named twice. */}
+          <button type="button" onClick={() => selectTool('chat')} aria-current={onStudioHome && activeTool === 'chat' ? 'true' : undefined}
+            data-testid="sidebar-chat"
+            className={`${sideRow} font-medium ${onStudioHome && activeTool === 'chat' ? 'bg-app-elevated' : ''}`}>
+            <ChatIcon className={`h-[17px] w-[17px] ${onStudioHome && activeTool === 'chat' ? 'text-app-accent' : 'text-app-text'}`} aria-hidden="true" />
+            {TOOL_META.chat.name[lang]}
+          </button>
           <button type="button" onClick={handleNewChat} className={sideRow}>
             <PenSquare className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tNewSession}
           </button>
@@ -1023,7 +1035,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               reads the same list, so a service can never be reachable from one door and missing from the other. */}
           <p className={sideHdr}>{t.services}</p>
           <div className="space-y-0.5">
-            {PRIMARY_TOOLS.map((id) => {
+            {PRIMARY_TOOLS.filter((id) => id !== 'chat').map((id) => {
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (

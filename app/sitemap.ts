@@ -35,16 +35,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   });
 
-  // The landing, per locale. `/{locale}` renders it (200) for every visitor without a session — crawlers
-  // included — and is self-canonical. The bare root is NOT listed: it only redirects to the visitor's locale
-  // (middleware.ts → lib/routing/landing.ts), and this file lists no redirects.
-  const landingPages = locales.map(locale => ({
-    url: `${baseUrl}/${locale}`,
-    lastModified: now,
-    changeFrequency: 'weekly' as const,
-    priority: localePriority(locale, 1),
-    alternates: langAlternates(''),
-  }));
+  // The home page, per locale. `/{locale}` renders the studio (it opens on the chat) for every visitor without a
+  // session — crawlers included — with the site's home metadata, and is self-canonical. The bare root is NOT listed:
+  // it only redirects to the visitor's locale (middleware.ts → lib/routing/landing.ts), and this file lists no
+  // redirects. The marketing landing moved to `/{locale}/landing` (200, self-canonical) and is listed beside it.
+  const landingPages = locales.flatMap(locale => [
+    {
+      url: `${baseUrl}/${locale}`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: localePriority(locale, 1),
+      alternates: langAlternates(''),
+    },
+    {
+      url: `${baseUrl}/${locale}/landing`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: localePriority(locale, 0.9),
+      alternates: langAlternates('/landing'),
+    },
+  ]);
 
   // Core app / marketing pages, emitted per-locale at their canonical 200 URL.
   const coreSlugs: { slug: string; priority: number; changeFrequency: 'daily' | 'weekly' }[] = [

@@ -24,7 +24,7 @@ export function SupportWidgetMount({ hidden = false }: { /** The shell knows a r
 
   const immersive =
     /\/services\/[a-z0-9-]+\/?$/.test(pathname) || /\/(dashboard|hub|workspace|library)\/?$/.test(pathname);
-  const authOrLanding = /\/(login|signup|reset|auth)(\/|$)/.test(pathname) || /^\/[a-z]{2}\/?$/.test(pathname);
+  const authOrLanding = /\/(login|signup|reset|auth)(\/|$)/.test(pathname) || /^\/[a-z]{2}(\/landing)?\/?$/.test(pathname);
   const admin = pathname.includes('/admin');
 
   if (hidden || immersive || authOrLanding || admin) return null;

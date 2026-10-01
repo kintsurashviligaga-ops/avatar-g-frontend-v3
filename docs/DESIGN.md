@@ -4,7 +4,7 @@ Written before any pixel or any Higgsfield request. The landing page, the dashbo
 
 ## 1. What the product is
 
-**A Tbilisi video production studio for Reels.** You describe a shot in Georgian and get a finished vertical video: footage, Georgian voice, music, subtitles and edit. Image, music, voice and avatar are part of the same studio, always one click away. Video leads.
+**A Tbilisi video production studio for Reels, entered through the chat.** You describe a shot in Georgian and get a finished vertical video: footage, Georgian voice, music, subtitles and edit. Image, music, voice and avatar are part of the same studio, always one click away. **Since 2026-10-01 the chat is the hub and the home page (§13); video leads the generators.**
 
 A guest must understand "video studio" within three seconds of landing. The picture says it, the headline says it, and the first card says it.
 
@@ -119,9 +119,9 @@ The price teaser states only what is true for every visitor: the price is on the
 
 - `/{lang}/dashboard`, `/chat`, `/agent`, `/pricing` and `/services/*` are untouched.
 - Auth, the credit ledger and the generation contracts are untouched.
-- `/{lang}` is the marketing landing for **guests** (anyone without a session cookie, crawlers included). `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard`, as today (`lib/routing/landing.ts`).
-- The sitemap lists `/ka`, `/en` and `/ru` and never the bare `/`, which only redirects.
-- `/{lang}/landing`, the retired route, redirects to `/{lang}`.
+- `/{lang}` is **the studio, opening on the chat**, for guests (anyone without a session cookie, crawlers included), with the site's home metadata. `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard` — the same studio with their session (`lib/routing/landing.ts`, §13).
+- `/{lang}/landing` is the marketing landing (server-rendered, self-canonical). Its language switch stays on `/{lang}/landing`.
+- The sitemap lists `/ka`, `/en`, `/ru` and their `/landing` pages, and never the bare `/`, which only redirects.
 - The PWA `start_url` stays `/ka/dashboard`.
 
 ## 10. Audit — the burger, the service menu, the rest (2026-09-29)
@@ -183,7 +183,7 @@ The full studios, Montage, Dubbing, 3D and Presentation, stay below a divider in
 - The options panel's ✕ switched the service to chat. A guest who opened „პარამეტრები“ and closed it was left in a chat box. ✕ now only collapses the panel. It still falls back to chat in one case: on desktop, with a conversation under way, where the panel is pinned open and chat is the only mode without one.
 - Picking the already-checked service in the menu toggled it off, to chat. A radio item no longer un-checks itself.
 
-Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f96506`, the production build before this fix. Chat stays in the menu, last among the modes, and is never the default.
+Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f96506`, the production build before this fix. ~~Chat stays in the menu, last among the modes, and is never the default.~~ Superseded 2026-10-01 (§13): chat is the default and the first row. The two fixes stand — closing a panel or re-picking a tool still keeps the tool you are on.
 
 ## 12. The chat — Gemini parity (2026-09-30)
 
@@ -200,3 +200,12 @@ Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f9650
 - **Streaming.** A quiet spark with „ფიქრობს…“ before the first token — no bouncing dots, no caret.
 - **Live.** A full-screen dark frame, the orb with its one cyan halo (§6), a fluid waveform, and plain mute and end controls. A microphone failure names the microphone, never "connection dropped".
 - **Georgian reading text** in all of the above stays at 16 px on a 1.6 line (§3); Latin and Cyrillic captions keep Gemini's 13 px.
+
+## 13. Super Chatbox — the chat is home (2026-10-01)
+
+**Sign-off.** The owner's Master Directive of 2026-10-01: "The homepage (`/`) must instantly render the Chat interface. Implement a limited Guest Mode. The minimalist Auth modal triggers only for premium tools. 'Chat' must be the absolute primary hub at the top of the sidebar." It overrides §1's "video first" for the studio's entry point and §11's "chat is never the default".
+
+- **Home.** `/{lang}` renders the studio and it opens on the chat (§9). The marketing landing lives at `/{lang}/landing`.
+- **Sidebar.** „ჩატი" is the first row, above „ახალი სესია"; „სერვისები" below lists the generators (video first) and never repeats the chat. The one tool list (`lib/studio/tools.ts`) leads with chat, so the „+" sheet and the collapsed rail agree.
+- **Guest mode** (`lib/chat/guestChat.ts`, server-enforced). A visitor without an account can chat: Fast only, text only, no Google Search grounding (unless `CHAT_GUEST_SEARCH=1`), answers capped at 2,048 tokens, 10 turns a day per IP and 250 a day for all guests together. A spent allowance, a file or an over-long message is answered in-stream with `auth_required`, which opens the sign-in sheet. `CHAT_GUEST_ENABLED=0` closes it.
+- **Premium tools ask first.** In the browser, send() lets only a plain chat turn through for a guest; a non-chat tool, files, a generate command („გამიკეთე ვიდეო…") or a studio request opens the sign-in sheet before anything is sent, and the composer keeps the text. Dictation, read-aloud and Live do the same.

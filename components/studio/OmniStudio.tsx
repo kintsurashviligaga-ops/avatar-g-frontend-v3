@@ -1733,11 +1733,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
   // (image / track / film) rendered inline in the feed.
-  // DEFAULT = VIDEO (the owner's 2026-09-29 brief). Safe as a default because a video send first builds a
-  // STORYBOARD the user approves before any render is paid for, and send() stops a guest at sign-in in every mode.
-  // A chat restart (initialTool 'chat') opens straight on the chat — set here, not by an effect, so the new session
-  // never flashes the video empty state first.
-  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>(() => (initialTool === 'chat' ? 'chat' : 'video'));
+  // DEFAULT = CHAT (the owner's 2026-10-01 directive: "Chat must be the absolute primary hub"; it replaced the
+  // 2026-09-29 video-first brief). The home page opens here for guests too — send() lets a guest's plain chat turn
+  // through (the guest policy lives server-side, lib/chat/guestChat) and stops every paid tool at sign-in. A restart
+  // on another tool (initialTool) is selected by the deep-link effect through the same path the sidebar uses.
+  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -2754,8 +2754,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
         return;
       }
-      // A restart that asked to stay on a tool (ServiceHub's „New session“). Chat is already the initial mode (no
-      // flash); any other tool is selected here, through the same path the sidebar uses.
+      // A restart that asked to stay on a tool (ServiceHub's „New session“). Chat is the initial mode (no flash);
+      // any other tool is selected here, through the same path the sidebar uses.
       if (initialTool && initialTool !== 'chat') { selectTool(initialTool); return; }
       const d = url.searchParams.get('mode');
       if (d !== 'image' && d !== 'music' && d !== 'video' && d !== 'lipsync') return;
@@ -4835,15 +4835,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean }) => {
-    // ⚠️ GUESTS ARE STOPPED HERE, BEFORE ANY REQUEST LEAVES. The API routes now reject them (assemble,
-    // music, upscale), which stops the cost leak — but a 401 arriving after the send is a bad
-    // experience for something the UI already knew: the user watches a spinner, then gets an error for
-    // being logged out. Reading the flag ChatChrome publishes on <html> is synchronous, so this costs
-    // nothing at the moment of the tap, and the composer keeps its text — nothing is lost by signing in
-    // and pressing send again.
+    // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
+    // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
+    // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
+    // video", a studio intent) is stopped HERE, before any request: the API routes reject guests too, but a 401 after
+    // a spinner is a worse experience for something the UI already knows. The flag ChatChrome publishes on <html> is
+    // read synchronously, and the composer keeps its text — nothing is lost by signing in and pressing send again.
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
-      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
-      return;
+      const guestText = (opts?.promptOverride ?? input).trim();
+      const plainChat =
+        mode === 'chat' && attachments.length === 0 && !!guestText &&
+        !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
+      if (!plainChat) {
+        window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+        return;
+      }
     }
     const text = (opts?.promptOverride ?? input).trim();
     // Was this send's text dictated (mic) or typed? Drives inputMethod + whether the reply auto-plays.
@@ -5763,6 +5769,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Tapping the active bubble (loading OR playing) stops it — bump the token so any
     // in-flight synthesis for it is abandoned rather than auto-playing later, and unblock+revoke the current chunk.
     if (speakingIdx === i) { ttsTokenRef.current++; if (ttsAudioRef.current) ttsAudioRef.current.pause(); ttsResolveRef.current?.(); setSpeakingIdx(null); setSpeakPhase(null); return; }
+    // Read-aloud is a signed-in tool (/api/tts/gemini refuses guests): a guest's tap opens sign-in instead of a
+    // spinner that quietly plays nothing.
+    if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+      window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
+      return;
+    }
     // Switching to a DIFFERENT message mid-read: unblock+revoke the prior chunk before we retarget the element.
     ttsResolveRef.current?.();
     const token = ++ttsTokenRef.current;

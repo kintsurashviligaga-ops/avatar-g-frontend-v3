@@ -123,13 +123,14 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
   // because it wraps itself in the ChatChrome studio shell (dark sidebar + header), so
   // the marketing TopNavbar/SidebarMenu/BottomNav would double up on top of it.
   const isImmersiveWorkspace = !!pathname && (
+    /^\/(ka|en|ru)\/?$/.test(pathname) ||          // the home page IS the studio (opens on the chat)
     /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
     /\/(dashboard|hub|workspace|library|calendar-lab)\/?$/.test(pathname)
   );
 
   // Landing & auth pages manage their own navbar — strip the app shell
   const isLandingOrAuth = !!pathname && (
-    /^\/(ka|en|ru)\/?$/.test(pathname) ||          // /ka  /en  /ru
+    /^\/(ka|en|ru)\/landing\/?$/.test(pathname) ||  // /ka/landing — the marketing landing
     /^\/$/.test(pathname) ||                        // bare /
     /\/(login|signup|auth|register)(\/|$)/.test(pathname)
   );
@@ -155,9 +156,9 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
   const isStudioV2 = studioV2 && !!pathname && /^(\/(ka|en|ru))?\/studio\/?$/.test(pathname);
 
   const hideShellChrome = isImmersiveWorkspace || isStudioV2 || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed || isLegalDoc;
-  // The marketing landing (/{lang}) paints its own opaque, cinematic page — the animated environment behind it
-  // would cost frames nobody sees (docs/DESIGN.md: low motion).
-  const isMarketingLanding = !!pathname && /^\/(ka|en|ru)\/?$/.test(pathname);
+  // The marketing landing (/{lang}/landing) paints its own opaque, cinematic page — the animated environment behind
+  // it would cost frames nobody sees (docs/DESIGN.md: low motion).
+  const isMarketingLanding = !!pathname && /^\/(ka|en|ru)\/landing\/?$/.test(pathname);
 
   return (
     <div
