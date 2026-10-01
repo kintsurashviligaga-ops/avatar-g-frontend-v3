@@ -23,37 +23,48 @@
  * pipeline re-hosts an uncompressed GLB for exactly that reason.
  *
  * Mounted through next/dynamic({ ssr: false }) by its parent — three touches `window` on import.
+ *
+ * `FramedGlb` (the loader + the framing) is exported for the 3D scene (components/studio/scene/SceneCanvas), so the
+ * two never drift into two ways of loading a model.
  */
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useMemo } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { Box3, Vector3, type Group } from 'three';
+import { Box3 } from 'three';
+import { fitToBox, type FitAnchor } from '@/lib/studio/scene3d';
 
-function Model({ url }: { url: string }) {
-  // useLoader suspends and caches by url; the Suspense boundary below holds until the mesh is ready.
+/**
+ * One GLB, loaded and framed: `size` units on its longest side, centred on the origin (`anchor: 'base'` — standing on
+ * it instead). Suspends while loading and THROWS when the file cannot be loaded (an expired signed URL, a truncated
+ * file): the caller owns the Suspense and the ErrorBoundary.
+ */
+export function FramedGlb({ url, size = 2, anchor = 'center' }: { url: string; size?: number; anchor?: FitAnchor }) {
+  // useLoader suspends and caches by url; the caller's Suspense boundary holds until the mesh is ready.
   const gltf = useLoader(GLTFLoader, url);
-  const ref = useRef<Group>(null);
 
   // A generated mesh arrives at an arbitrary scale and offset — a 200-unit model or one centred at the
   // origin of some CAD space renders as an empty canvas. `Stage` did this framing for us; doing it by
   // hand is ~10 lines and costs nothing at build time.
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf]);
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const box = new Box3().setFromObject(node);
-    const size = box.getSize(new Vector3());
-    const centre = box.getCenter(new Vector3());
-    const longest = Math.max(size.x, size.y, size.z);
-    if (longest > 0 && Number.isFinite(longest)) {
-      const k = 2 / longest;
-      node.scale.setScalar(k);
-      node.position.set(-centre.x * k, -centre.y * k, -centre.z * k);
-    }
-  }, [scene]);
+  // ⚠️ MEASURED ON THE DETACHED CLONE, APPLIED BY A WRAPPER GROUP. Box3.setFromObject reads WORLD matrices, so
+  // measuring the mounted node counted its parents' transforms too: fine alone in this viewer, wrong for a scene
+  // object that sits inside a moved / rotated / scaled group. A fresh clone has no parent — its world space is its
+  // own — and the fit goes on a wrapper, so whatever is above it composes cleanly.
+  const { scene, fit } = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(clone);
+    return {
+      scene: clone,
+      fit: box.isEmpty() ? null : fitToBox([box.min.x, box.min.y, box.min.z], [box.max.x, box.max.y, box.max.z], size, anchor),
+    };
+  }, [gltf, size, anchor]);
 
-  return <primitive ref={ref} object={scene} />;
+  return (
+    <group scale={fit?.scale ?? 1} position={fit?.offset ?? [0, 0, 0]}>
+      <primitive object={scene} />
+    </group>
+  );
 }
 
 export default function GlbViewer({ url }: { url: string }) {
@@ -71,7 +82,7 @@ export default function GlbViewer({ url }: { url: string }) {
         <directionalLight position={[5, 5, 5]} intensity={1.1} />
         <directionalLight position={[-5, -2, -5]} intensity={0.4} />
         <Suspense fallback={null}>
-          <Model url={url} />
+          <FramedGlb url={url} />
         </Suspense>
         <OrbitControls makeDefault enablePan={false} />
       </Canvas>

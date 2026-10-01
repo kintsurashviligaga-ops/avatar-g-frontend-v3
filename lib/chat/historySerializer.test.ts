@@ -139,6 +139,7 @@ describe('a result bubble is never an empty model turn', () => {
     ['image', { imageUrl: 'https://x.supabase.co/storage/v1/object/public/studio/cat.png' }, '[generated image: https://x.supabase.co/storage/v1/object/public/studio/cat.png]'],
     ['video', { videoUrl: 'https://x.supabase.co/storage/v1/object/public/studio/film.mp4' }, '[generated video: https://x.supabase.co/storage/v1/object/public/studio/film.mp4]'],
     ['audio', { audioUrl: 'https://x.supabase.co/storage/v1/object/public/studio/song.mp3' }, '[generated audio: https://x.supabase.co/storage/v1/object/public/studio/song.mp3]'],
+    ['3D model', { glbUrl: 'https://x.supabase.co/storage/v1/object/sign/renders/models3d/p1.glb?token=t' }, '[generated 3D model: https://x.supabase.co/storage/v1/object/sign/renders/models3d/p1.glb?token=t]'],
   ])('an empty %s result becomes a text reference', (_k, asset, ref) => {
     const out = serializeHistory([u('make it'), a('', asset), u('now make it warmer')]);
     expect(out).toEqual([
@@ -152,6 +153,16 @@ describe('a result bubble is never an empty model turn', () => {
   it('a result with a caption keeps the caption and adds the reference on its own line', () => {
     const out = serializeHistory([u('cat'), a('Here is your cat 🐱', { imageUrl: 'https://cdn.example.com/cat.png' }), u('bigger')]);
     expect(out[1]).toEqual({ role: 'assistant', content: 'Here is your cat 🐱\n[generated image: https://cdn.example.com/cat.png]' });
+  });
+
+  it("a 3D result (OmniStudio's ServiceParamsPanel delivery: a caption, a reference image and the model) names both assets", () => {
+    const glb = 'https://x.supabase.co/storage/v1/object/sign/renders/models3d/p1.glb?token=t';
+    const ref = 'https://x.supabase.co/storage/v1/object/sign/renders/models3d/ref.png?token=t';
+    const out = serializeHistory([u('make a clay jug in 3D'), a('**3D Model** — ready.', { imageUrl: ref, glbUrl: glb }), u('now a lid for it')]);
+    expect(out[1]).toEqual({ role: 'assistant', content: `**3D Model** — ready.\n[generated image: ${ref}]\n[generated 3D model: ${glb}]` });
+    expectRouteSafe(out);
+    // A data: / blob: model is named without its bytes, like every other asset.
+    expect(serializeHistory([u('x'), a('', { glbUrl: 'blob:https://myavatar.ge/1' }), u('y')])[1]).toEqual({ role: 'assistant', content: '[generated 3D model]' });
   });
 
   it('a data: or blob: asset is referenced without its bytes', () => {
@@ -444,6 +455,8 @@ describe('Georgian text survives intact', () => {
     expect(stripHistoryMarkers('შეაჯამე\n[attached file: ანგარიში.docx — this format cannot be read here]').trim()).toBe('შეაჯამე');
     expect(stripHistoryMarkers('ok [earlier image attachment] and [earlier file attachment: a.pdf]')).toBe('ok   and  ');
     expect(stripHistoryMarkers('a [link](https://x.y) stays')).toBe('a [link](https://x.y) stays');
+    // The 3D marker is stripped too, so a model's Latin marker cannot flip a Georgian thread to English.
+    expect(stripHistoryMarkers('მზადაა [generated 3D model: https://x.supabase.co/a.glb] და [generated 3D model]')).toBe('მზადაა   და  ');
   });
 });
 

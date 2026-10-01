@@ -51,6 +51,7 @@ import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
 import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
+import { SceneDock } from './scene/SceneDock';
 import { ModelSwitcher, OPEN_PERSONA_EVENT, selectPersona, useActivePersona } from '@/components/chat/ModelSwitcher';
 import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@/lib/chat/chatModes';
 import { getChatMode } from '@/lib/chat/chatModeStore';
@@ -934,7 +935,10 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Googl
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** The queue job rendering this bubble, when it is not the bubble's own id — what its ResultCard's cancel stops. */
-  jobId?: string }
+  jobId?: string;
+  /** A 3D result's model (our Storage, .glb) — kept as data, not only as the link in the text, so it survives a reload
+   *  (leanMessages) and the chat model is told what was made (lib/chat/historySerializer). */
+  glbUrl?: string }
 
 /**
  * Seconds a render of this tier is EXPECTED to take — the curve both the inline card and the durable
@@ -1176,6 +1180,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
       ...(m.coverUrl ? { coverUrl: m.coverUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+      ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
       // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
       ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
       ...(m.chatMode ? { chatMode: m.chatMode } : {}),
@@ -4721,6 +4726,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
+      ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
     })));
     // THE MODEL — read at send time too, exactly like the persona below: a switch in the header applies to the very
     // next turn (regenerate, edit-resend and the queued type-ahead included) without rebuilding streamChat, and it
@@ -8238,7 +8244,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               if (r.glbUrl) {
                 // No 3D branch exists in the message renderer, so this is a link rather than a viewer —
                 // a link that persists beats a viewer that is destroyed the moment the panel closes.
-                setMessages((prev) => [...prev, { role: 'assistant', text: `${done}\n\n[${en ? 'Open the 3D model' : ru ? 'Открыть 3D-модель' : '3D მოდელის გახსნა'}](${r.glbUrl})`, ...(r.referenceUrl ? { imageUrl: r.referenceUrl } : {}) }]);
+                // `glbUrl` rides along as DATA too: it survives a reload and tells the chat model what was made.
+                setMessages((prev) => [...prev, { role: 'assistant', text: `${done}\n\n[${en ? 'Open the 3D model' : ru ? 'Открыть 3D-модель' : '3D მოდელის გახსნა'}](${r.glbUrl})`, glbUrl: r.glbUrl, ...(r.referenceUrl ? { imageUrl: r.referenceUrl } : {}) }]);
               }
             }}
             onClose={() => { setPanelService(null); setStudioPrefill(undefined); setOptionsOpen(false); }}
@@ -9123,6 +9130,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     </div>
     </div>
     <ArtifactCanvas locale={locale} />
+    {/* The 3D scene (Wave 3b) — the same right-hand panel / bottom sheet as the code canvas; one of the two at a time.
+        Light: the 3D view inside it is next/dynamic and loads only when a scene opens. */}
+    <SceneDock locale={locale} />
 
     {/* „პარამეტრები" — ONE element at ONE position in the tree for every width: the right column of AI Studio on a
         desktop (open by default), Gemini's bottom sheet below `lg`. Only its classes change with the width.
