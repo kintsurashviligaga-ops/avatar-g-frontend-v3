@@ -32,17 +32,19 @@ import { twinVoicePath } from '../avatar/twinStorage';
 
 const UID = '11111111-2222-4333-8444-555555555555';
 const OTHER = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-const TICKET: CaptureTicket = { v: 1, u: UID, d: '40917263', s: { front: 'jpg', left: 'jpg', right: 'jpg', voice: 'webm' }, iat: 0, exp: 1 };
+const N = '00112233445566778899aabbccddeeff';
+const N_OLD = 'ffeeddccbbaa99887766554433221100';
+const TICKET: CaptureTicket = { v: 2, u: UID, n: N, d: '40917263', s: { front: 'jpg', left: 'jpg', right: 'jpg', voice: 'webm' }, c: 0, iat: 0, exp: 1 };
 
 let fake: FakeStorage;
 const sb = () => fake.client();
 
 /** What the browser does with the signed upload URLs. */
-function stageAll(uid = UID, over: Partial<Record<'front' | 'left' | 'right' | 'voice', { bytes: Uint8Array; type: string } | null>> = {}) {
+function stageAll(uid = UID, over: Partial<Record<'front' | 'left' | 'right' | 'voice', { bytes: Uint8Array; type: string } | null>> = {}, nonce = N) {
   const def = { front: { bytes: fileBytes('jpeg'), type: 'image/jpeg' }, left: { bytes: fileBytes('jpeg'), type: 'image/jpeg' }, right: { bytes: fileBytes('jpeg'), type: 'image/jpeg' }, voice: { bytes: fileBytes('webm', 20_000), type: 'audio/webm' } };
   for (const slot of ['front', 'left', 'right', 'voice'] as const) {
     const v = slot in over ? over[slot] : def[slot];
-    if (v) fake.put('twins', twinStagingPath(uid, slot, TICKET.s[slot]!), v.bytes, v.type);
+    if (v) fake.put('twins', twinStagingPath(uid, nonce, slot, TICKET.s[slot]!), v.bytes, v.type);
   }
 }
 
@@ -61,29 +63,38 @@ afterEach(() => {
 
 describe('signed uploads target staging only', () => {
   test('one upsert-able signed upload per slot, in the private bucket, at the derived staging path', async () => {
-    const uploads = await signStagingUploads(sb(), UID, TICKET.s);
+    const uploads = await signStagingUploads(sb(), UID, N, TICKET.s);
     expect(uploads).toEqual({
-      front: { path: `twins/${UID}/staging/front.jpg`, token: `upload-token:twins/twins/${UID}/staging/front.jpg` },
-      left: { path: `twins/${UID}/staging/left.jpg`, token: expect.any(String) },
-      right: { path: `twins/${UID}/staging/right.jpg`, token: expect.any(String) },
-      voice: { path: `twins/${UID}/staging/voice.webm`, token: expect.any(String) },
+      front: { path: `twins/${UID}/staging/${N}/front.jpg`, token: `upload-token:twins/twins/${UID}/staging/${N}/front.jpg` },
+      left: { path: `twins/${UID}/staging/${N}/left.jpg`, token: expect.any(String) },
+      right: { path: `twins/${UID}/staging/${N}/right.jpg`, token: expect.any(String) },
+      voice: { path: `twins/${UID}/staging/${N}/voice.webm`, token: expect.any(String) },
     });
     expect(fake.callsTo('createSignedUploadUrl').map((c) => [c.bucket, c.opts])).toEqual(Array(4).fill(['twins', { upsert: true }]));
   });
 
   test('clearing staging removes only staging (never the twin, its manifest or the Live voice sample)', async () => {
-    fake.put('twins', twinStagingPath(UID, 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
+    fake.put('twins', twinStagingPath(UID, N, 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
+    fake.put('twins', `twins/${UID}/staging/front.jpg`, fileBytes('jpeg'), 'image/jpeg'); // the pre-nonce layout
     fake.put('twins', twinManifestPath(UID), '{}', 'application/json');
     fake.put('twins', twinCapturePath(UID, '0123456789abcdef', 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
     fake.put('twins', twinVoicePath(UID, 'webm'), fileBytes('webm'), 'audio/webm');
-    fake.put('twins', twinStagingPath(OTHER, 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
+    fake.put('twins', twinStagingPath(OTHER, N, 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
     await clearStaging(sb(), UID);
     expect(fake.paths('twins')).toEqual([
-      twinStagingPath(OTHER, 'front', 'jpg'),
+      twinStagingPath(OTHER, N, 'front', 'jpg'),
       twinManifestPath(UID),
       twinCapturePath(UID, '0123456789abcdef', 'front', 'jpg'),
       twinVoicePath(UID, 'webm'),
     ].sort());
+  });
+
+  test('clearing ONE capture’s staging leaves another capture’s folder alone', async () => {
+    stageAll(UID, {}, N);
+    stageAll(UID, {}, N_OLD);
+    await clearStaging(sb(), UID, N);
+    expect(fake.paths('twins').every((p) => p.includes(`/staging/${N_OLD}/`))).toBe(true);
+    expect(fake.paths('twins')).toHaveLength(4);
   });
 });
 
@@ -155,6 +166,29 @@ describe('promoteCapture — copy, then validate the copies', () => {
     stageAll();
     expect(await promoteCapture(sb(), UID, { ...TICKET, u: OTHER })).toMatchObject({ ok: false, error: 'ticket_mismatch' });
     expect(fake.callsTo('copy')).toEqual([]);
+  });
+
+  test('⚠️ an OLDER capture’s upload token cannot change what this capture commits: only the ticket’s nonce folder is read', async () => {
+    stageAll(); // this capture's own, clean uploads
+    // A still-valid upsert token from an earlier capture writes junk — into ITS folder, the only place it can write.
+    stageAll(UID, { front: { bytes: fileBytes('html'), type: 'image/jpeg' }, left: { bytes: fileBytes('svg'), type: 'image/svg+xml' } }, N_OLD);
+    const r = await promoteCapture(sb(), UID, TICKET);
+    if (!r.ok) throw new Error(`expected ok, got ${JSON.stringify(r)}`);
+    expect(fake.callsTo('copy').every((c) => c.path!.startsWith(`twins/${UID}/staging/${N}/`))).toBe(true);
+    expect(Array.from(fake.get('twins', r.photos.front.path)!.bytes.slice(0, 3))).toEqual([0xff, 0xd8, 0xff]);
+  });
+
+  test('a capture whose uploads went to ANOTHER nonce folder has nothing to commit (missing_photo)', async () => {
+    stageAll(UID, {}, N_OLD);
+    expect(await promoteCapture(sb(), UID, TICKET)).toEqual({ ok: false, status: 400, error: 'missing_photo', slot: 'front' });
+    expect(fake.callsTo('copy')).toEqual([]);
+  });
+
+  test('a refused capture drops only its own staging folder', async () => {
+    stageAll(UID, { right: { bytes: fileBytes('svg'), type: 'image/svg+xml' } });
+    stageAll(UID, {}, N_OLD);
+    expect(await promoteCapture(sb(), UID, TICKET)).toMatchObject({ ok: false, status: 415 });
+    expect(fake.paths('twins').every((p) => p.includes(`/staging/${N_OLD}/`))).toBe(true);
   });
 
   test('a storage failure mid-copy throws (→ 503) and leaves no half-made capture behind; staging stays for a retry', async () => {
@@ -232,7 +266,7 @@ describe('the manifest', () => {
     expect(newCaptureId(now)).not.toBe(id);
   });
 
-  test('pruning keeps the LIVE capture, the manifest, the Live voice and a young (in-flight) folder; drops the replaced capture, old leftovers and staging', async () => {
+  test('pruning keeps the LIVE capture, the manifest, the Live voice, a young (in-flight) folder and ANOTHER capture’s staging; drops the replaced capture, old leftovers and this capture’s staging', async () => {
     const now = Date.parse('2026-10-02T10:00:00.000Z');
     const live = newCaptureId(now);
     const replaced = newCaptureId(now - 2000);
@@ -240,13 +274,15 @@ describe('the manifest', () => {
     const inFlight = newCaptureId(now - 1000); // another commit promoted this and has not written its manifest yet
     await writeTwinManifest(sb(), manifest(live));
     for (const cap of [live, replaced, leftover, inFlight]) fake.put('twins', twinCapturePath(UID, cap, 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
-    fake.put('twins', twinStagingPath(UID, 'voice', 'webm'), fileBytes('webm'), 'audio/webm');
+    fake.put('twins', twinStagingPath(UID, N, 'voice', 'webm'), fileBytes('webm'), 'audio/webm');
+    fake.put('twins', twinStagingPath(UID, N_OLD, 'voice', 'webm'), fileBytes('webm'), 'audio/webm'); // another capture, maybe in progress
     fake.put('twins', twinVoicePath(UID, 'webm'), fileBytes('webm'), 'audio/webm');
-    await pruneTwinCaptures(sb(), UID, { previous: replaced, now });
+    await pruneTwinCaptures(sb(), UID, { previous: replaced, staging: N, now });
     expect(fake.paths('twins')).toEqual([
       twinManifestPath(UID),
       twinCapturePath(UID, live, 'front', 'jpg'),
       twinCapturePath(UID, inFlight, 'front', 'jpg'),
+      twinStagingPath(UID, N_OLD, 'voice', 'webm'),
       twinVoicePath(UID, 'webm'),
     ].sort());
   });
@@ -269,7 +305,7 @@ describe('deleteTwinData — erases every path, in both buckets, and nobody else
       twinManifestPath(UID),
       twinCapturePath(UID, '0123456789abcdef', 'front', 'jpg'),
       twinCapturePath(UID, '0123456789abcdef', 'voice', 'webm'),
-      twinStagingPath(UID, 'left', 'jpg'),
+      twinStagingPath(UID, N, 'left', 'jpg'),
       twinVoicePath(UID, 'm4a'),
     ];
     for (const p of mine) fake.put('twins', p, fileBytes('jpeg'), 'image/jpeg');

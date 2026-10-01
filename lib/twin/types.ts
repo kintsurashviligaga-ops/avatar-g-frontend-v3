@@ -10,7 +10,7 @@
  * never the twin.
  *
  * ⚠️ UPLOADS NEVER LAND IN THE LIVE TWIN. A signed upload URL stays valid for 2 hours and lets its holder overwrite its
- * path, so the browser only ever uploads into `staging/`; the commit COPIES those objects server-side into a fresh
+ * path, so the browser only ever uploads into its own capture's `staging/<nonce>/`; the commit COPIES those objects server-side into a fresh
  * `twin-<captureId>/` folder no upload URL has ever named, and validates the copies. A stale or leaked upload URL can
  * then only touch staging — never the twin a person already approved.
  */
@@ -70,7 +70,10 @@ export interface TwinManifest {
   consent: {
     /** lib/legal/content.ts TWIN_CONSENT.version the person agreed to. */
     version: string;
-    /** When the person ticked the box (client clock, sanity-bounded by the server). */
+    /**
+     * When the person agreed: the SERVER's clock at /api/twin/upload-url, which the capture calls right after the box is
+     * ticked (lib/twin/ticket.ts `c`). Never a client timestamp — a skewed phone clock must not block or fake it.
+     */
     acceptedAt: string;
     /** When the server recorded it (server clock). */
     recordedAt: string;

@@ -11,12 +11,18 @@
  * (the same QR handoff as the Live Avatar) and, when a twin exists, deleting it. On the phone (`handoffToken`) the
  * link authorizes the capture; the phone has no session.
  *
+ * ⚠️ THE PHONE SAYS WHOSE TWIN THIS IS before anything is captured ("Saving to: gi•••i@gmail.com", resolved and masked
+ * by the enroll page — lib/twin/account.ts). Without it a stranger's QR captures your face into their account with
+ * nothing on screen to say so; with no account to show, the phone capture does not start.
+ * ⚠️ NO CLIENT CLOCK IN THE CONSENT. The server records the consent time when upload-url signs the capture (right after
+ * the box is ticked); the commit sends only the text version.
+ *
  * ⚠️ CAMERA AND MIC ARE RELEASED WHENEVER THEY ARE NOT NEEDED: the camera runs on the photo steps only, the mic only
  * while recording, and both stop on close. Each start has a reentrancy guard and a post-await bail — a double tap must
  * never leave an orphaned stream holding a hot camera or mic (the defect class fixed in 6ef8642).
  * ⚠️ Nothing is uploaded before Save, and nothing is the twin before the commit answers ok.
  */
-import { Camera, Check, Loader2, Lock, Mic, RotateCcw, ShieldCheck, Smartphone, Square, Trash2, Upload, X } from 'lucide-react';
+import { Camera, Check, Loader2, Lock, Mic, RotateCcw, ShieldCheck, Smartphone, Square, Trash2, Upload, UserCircle, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { useDialogA11y } from '@/hooks/useDialogA11y';
@@ -55,6 +61,8 @@ interface Props {
   onDone?: () => void;
   /** The PHONE side of the QR handoff: this signed link authorizes upload-url and commit (the phone has no session). */
   handoffToken?: string;
+  /** The phone: the MASKED account the link saves to (the enroll page resolves it). Required to start a phone capture. */
+  handoffAccount?: string;
 }
 
 const STEPS: Step[] = ['front', 'left', 'right', 'voice', 'review'];
@@ -94,6 +102,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 
 /** What a failed upload-url / commit answer means to the person. */
 function errorText(t: TwinCopy, status: number, body: { error?: string }, phone: boolean): string {
+  if (status === 409 || body.error === 'account_mismatch') return t.err.accountMismatch;
   if (status === 401) return phone ? t.err.link : t.err.signIn;
   if (status === 404) return t.err.unavailable;
   if (status === 429) return t.err.rate;
@@ -123,14 +132,15 @@ const primaryBtn =
 const secondaryBtn =
   'flex h-12 min-w-[44px] items-center justify-center gap-2 rounded-2xl bg-app-surface px-4 text-[14px] text-app-text transition hover:bg-app-elevated disabled:opacity-40';
 
-export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffToken }: Props) {
+export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffToken, handoffAccount }: Props) {
   const t = twinCopy(locale);
   const lang = resolveLegalLang(locale);
   const phone = !!handoffToken;
+  // A phone capture that cannot say which account it saves to does not start (fail closed).
+  const accountKnown = !phone || !!handoffAccount;
 
   const [step, setStep] = useState<Step>('consent');
   const [agreed, setAgreed] = useState(false);
-  const [consentAt, setConsentAt] = useState<string | null>(null);
   const [session, setSession] = useState<TwinUploadUrlResponse | null>(null);
   const [voiceMime, setVoiceMime] = useState<string | null>(null);
   const [photos, setPhotos] = useState<Partial<Record<TwinPhotoSlot, Shot>>>({});
@@ -512,7 +522,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
 
   // ── start (after consent) and save ────────────────────────────────────────────────────────────────────────────────
   const begin = useCallback(async () => {
-    if (!agreed || busy) return;
+    if (!agreed || busy || !accountKnown) return;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -542,10 +552,10 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
     } finally {
       setBusy(false);
     }
-  }, [agreed, busy, handoffToken, phone, t]);
+  }, [accountKnown, agreed, busy, handoffToken, phone, t]);
 
   const save = useCallback(async () => {
-    if (!session || busy || !consentAt) return;
+    if (!session || busy) return;
     const shots = TWIN_PHOTO_SLOTS.map((s) => photos[s]);
     if (shots.some((s) => !s)) return;
     setBusy(true);
@@ -572,7 +582,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
         credentials: 'include',
         body: JSON.stringify({
           ticket: session.ticket,
-          consent: { version: TWIN_CONSENT.version, acceptedAt: consentAt },
+          consent: { version: TWIN_CONSENT.version },
           voiceSeconds: voice?.seconds ?? null,
           ...(handoffToken ? { handoffToken } : {}),
         }),
@@ -596,7 +606,6 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
       } else if (j.error === 'consent_required' || j.error === 'invalid_ticket' || r.status === 403) {
         setSession(null);
         setAgreed(false);
-        setConsentAt(null);
         setStep('consent');
         setError(errorText(t, r.status, j, phone));
       } else {
@@ -607,7 +616,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
     } finally {
       setBusy(false);
     }
-  }, [busy, consentAt, handoffToken, phone, photos, session, t, voice, voiceMime]);
+  }, [busy, handoffToken, phone, photos, session, t, voice, voiceMime]);
 
   // ── render ────────────────────────────────────────────────────────────────────────────────────────────────────────
   const stepIndex = STEPS.indexOf(step);
@@ -624,6 +633,15 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
 
   let body: React.ReactNode = null;
   let footer: React.ReactNode = null;
+  const savingTo = (
+    <div data-testid="twin-saving-to" className="space-y-1 rounded-2xl bg-app-accent/10 px-4 py-3 ring-1 ring-app-accent/30">
+      <p className="flex items-center gap-2 text-[14px] text-app-text">
+        <UserCircle size={16} className="shrink-0 text-app-accent" aria-hidden="true" />
+        <span>{t.savingTo}: <span className="font-semibold">{handoffAccount}</span></span>
+      </p>
+      <p className="text-[12.5px] leading-relaxed text-app-muted">{t.savingToHint}</p>
+    </div>
+  );
 
   if (qr) {
     body = (
@@ -645,6 +663,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
             {TWIN_CONSENT.draftNotice[lang]}
           </p>
         )}
+        {phone && handoffAccount && savingTo}
         <h2 className="text-[18px] font-semibold leading-snug text-app-text">{TWIN_CONSENT.title[lang]}</h2>
         <p className="text-[14px] leading-relaxed text-app-muted">{TWIN_CONSENT.intro[lang]}</p>
         <ul className="space-y-2.5">
@@ -660,10 +679,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
             type="checkbox"
             data-testid="twin-consent-agree"
             checked={agreed}
-            onChange={(e) => {
-              setAgreed(e.target.checked);
-              setConsentAt(e.target.checked ? new Date().toISOString() : null);
-            }}
+            onChange={(e) => setAgreed(e.target.checked)}
             className="h-5 w-5 shrink-0 accent-app-accent"
           />
           {TWIN_CONSENT.agree[lang]}
@@ -696,7 +712,7 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
       </section>
     );
     footer = (
-      <button type="button" onClick={() => void begin()} disabled={!agreed || busy} className={primaryBtn} data-testid="twin-continue">
+      <button type="button" onClick={() => void begin()} disabled={!agreed || busy || !accountKnown} className={primaryBtn} data-testid="twin-continue">
         {busy ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : null} {t.continue}
       </button>
     );
@@ -807,6 +823,11 @@ export default function TwinCapture({ locale = 'ka', onClose, onDone, handoffTok
         <p className="flex items-center gap-2 rounded-2xl bg-app-surface px-4 py-3 text-[13.5px] text-app-text">
           <Mic size={16} className="text-app-accent" aria-hidden="true" /> {voice ? t.voiceDone(Math.round(voice.seconds)) : t.noVoice}
         </p>
+        {phone && handoffAccount && (
+          <p className="flex items-center gap-2 text-[12.5px] text-app-muted" data-testid="twin-review-account">
+            <UserCircle size={14} aria-hidden="true" /> {t.savingTo}: <span className="font-semibold text-app-text">{handoffAccount}</span>
+          </p>
+        )}
         <p className="flex items-center gap-2 text-[12.5px] text-app-muted"><Lock size={14} aria-hidden="true" /> {t.privacyNote}</p>
       </section>
     );

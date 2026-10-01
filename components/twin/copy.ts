@@ -52,6 +52,11 @@ export interface TwinCopy {
   linkInvalid: string;
   myTwin: string;
   myTwinHint: string;
+  /** The picked "My twin" face could not be fetched for the render (its signed URL expired, or the twin was deleted). */
+  myTwinStale: string;
+  /** The phone (handoff) consent screen: which account the capture saves to. */
+  savingTo: string;
+  savingToHint: string;
   err: {
     generic: string;
     signIn: string;
@@ -62,6 +67,8 @@ export interface TwinCopy {
     badVoice: string;
     consent: string;
     expired: string;
+    /** The phone is signed into a different account than the one that showed the QR. */
+    accountMismatch: string;
   };
 }
 
@@ -115,6 +122,9 @@ export const TWIN_COPY: Record<TwinLocale, TwinCopy> = {
     linkInvalid: 'ბმული არასწორია ან ვადაგასულია. თავიდან დაიწყე „ჩემი ტყუპის შექმნა" კომპიუტერიდან.',
     myTwin: 'ჩემი ტყუპი',
     myTwinHint: 'შენი სახე, შენი ციფრული ტყუპიდან',
+    myTwinStale: 'ტყუპის ფოტო ვერ ჩაიტვირთა (ბმულს ვადა გაუვიდა ან ტყუპი წაიშალა). თავიდან გახსენი ავატარის პანელი და აირჩიე „ჩემი ტყუპი".',
+    savingTo: 'შეინახება ანგარიშზე',
+    savingToHint: 'ეს შენი ანგარიში არ არის? შეჩერდი — შენი სახე და ხმა სხვისთვის არ გადაიღო. გამოიყენე QR შენივე კომპიუტერიდან.',
     err: {
       generic: 'ვერ შეინახა — სცადე თავიდან.',
       signIn: 'ტყუპის შესაქმნელად შედი ანგარიშზე.',
@@ -125,6 +135,7 @@ export const TWIN_COPY: Record<TwinLocale, TwinCopy> = {
       badVoice: 'ხმის ჩანაწერის გამოყენება ვერ მოხერხდა — ჩაწერე თავიდან.',
       consent: 'თანხმობის ტექსტი შეიცვალა — გთხოვ, თავიდან წაიკითხე და დაეთანხმე.',
       expired: 'გადაღების სესია ამოიწურა — დაიწყე თავიდან.',
+      accountMismatch: 'ეს ტელეფონი სხვა ანგარიშზეა შესული, ვიდრე ის, რომელმაც ეს QR აჩვენა. აქ გამოდი ანგარიშიდან, ან დაასკანერე QR შენივე ანგარიშიდან.',
     },
   },
   en: {
@@ -176,6 +187,9 @@ export const TWIN_COPY: Record<TwinLocale, TwinCopy> = {
     linkInvalid: 'This link is invalid or has expired. Start "Create my twin" again from your computer.',
     myTwin: 'My twin',
     myTwinHint: 'Your own face, from your digital twin',
+    myTwinStale: 'Your twin’s photo could not be loaded (its link expired or the twin was deleted). Reopen the Avatar panel and pick "My twin" again.',
+    savingTo: 'Saving to',
+    savingToHint: 'Not your account? Stop here — don’t capture your face and voice for someone else. Use the QR from your own computer.',
     err: {
       generic: 'Could not save — try again.',
       signIn: 'Sign in to create your twin.',
@@ -186,6 +200,7 @@ export const TWIN_COPY: Record<TwinLocale, TwinCopy> = {
       badVoice: 'The voice recording could not be used — record it again.',
       consent: 'The consent text has changed — please read it and agree again.',
       expired: 'This capture has expired — start again.',
+      accountMismatch: 'This phone is signed in to a different account than the one that showed this QR. Sign out here, or scan the QR from your own account.',
     },
   },
   ru: {
@@ -237,6 +252,9 @@ export const TWIN_COPY: Record<TwinLocale, TwinCopy> = {
     linkInvalid: 'Ссылка недействительна или истекла. Запустите «Создать двойника» снова на компьютере.',
     myTwin: 'Мой двойник',
     myTwinHint: 'Ваше лицо из цифрового двойника',
+    myTwinStale: 'Не удалось загрузить фото двойника (ссылка истекла или двойник удалён). Откройте панель «Аватар» заново и снова выберите «Мой двойник».',
+    savingTo: 'Сохранится в аккаунт',
+    savingToHint: 'Это не ваш аккаунт? Остановитесь — не снимайте своё лицо и голос для чужого аккаунта. Используйте QR со своего компьютера.',
     err: {
       generic: 'Не удалось сохранить — попробуйте снова.',
       signIn: 'Войдите, чтобы создать двойника.',
@@ -247,6 +265,7 @@ export const TWIN_COPY: Record<TwinLocale, TwinCopy> = {
       badVoice: 'Запись голоса не подошла — запишите её снова.',
       consent: 'Текст согласия изменился — прочитайте его и подтвердите снова.',
       expired: 'Сеанс съёмки истёк — начните заново.',
+      accountMismatch: 'Этот телефон вошёл в другой аккаунт, а не в тот, что показал этот QR. Выйдите из аккаунта здесь или отсканируйте QR из своего аккаунта.',
     },
   },
 };

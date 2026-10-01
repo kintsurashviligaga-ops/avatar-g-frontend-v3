@@ -138,7 +138,7 @@ describe('DELETE removes every path', () => {
   test('twins/<uid>/** (manifest, capture, staging, Live voice) and live-avatars/<uid>/** — and nobody else’s', async () => {
     await seedTwin();
     await seedTwin(OTHER);
-    mockFake.put('twins', twinStagingPath(UID, 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
+    mockFake.put('twins', twinStagingPath(UID, '00112233445566778899aabbccddeeff', 'front', 'jpg'), fileBytes('jpeg'), 'image/jpeg');
     mockFake.put('twins', twinVoicePath(UID, 'webm'), fileBytes('webm'), 'audio/webm');
     mockFake.put('avatars', `live-avatars/${UID}/poster.jpg`, fileBytes('jpeg'), 'image/jpeg');
     mockFake.put('avatars', `live-avatars/${UID}/voice.m4a`, fileBytes('m4a'), 'audio/mp4');
