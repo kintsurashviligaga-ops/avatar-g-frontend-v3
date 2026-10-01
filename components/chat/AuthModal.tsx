@@ -273,7 +273,12 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   // caller's requested tab — 'login' for "Sign in", 'register' for "Sign up" —
   // and clear any stale error/notice from a previous session.
   useEffect(() => {
-    if (open) { setMode(entryMode(initialMode)); setError(initialError ? humanizeAuthError(initialError, t) : null); setNotice(null); }
+    // ⚠️ initialError comes from the URL (?error=), so anyone can write it: show only what humanizeAuthError RECOGNISES —
+    // free text it would pass through verbatim becomes the generic line (no spoofed messages in our own sheet).
+    if (open) {
+      const known = initialError ? humanizeAuthError(initialError, t) : null;
+      setMode(entryMode(initialMode)); setError(known && known === (initialError ?? "").trim() ? t.errGeneric : known); setNotice(null);
+    }
   }, [open, initialMode, initialError, t]);
   const backTo = returnTo || `/${locale}/dashboard`;
 

@@ -4,9 +4,13 @@
 
 jest.mock('server-only', () => ({}));
 const mockGenerateLink = jest.fn();
+const mockUpdateUser = jest.fn(async () => ({ data: null, error: null }));
 jest.mock('../../../../../lib/supabase/server', () => ({
   isSupabaseConfiguredServer: () => true,
-  createServiceRoleClient: () => ({ auth: { admin: { generateLink: (...a: unknown[]) => mockGenerateLink(...a) } } }),
+  createServiceRoleClient: () => ({ auth: { admin: {
+    generateLink: (...a: unknown[]) => mockGenerateLink(...a),
+    updateUserById: (...a: unknown[]) => mockUpdateUser(...a),
+  } } }),
 }));
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
@@ -68,6 +72,21 @@ describe("purpose 'continue'", () => {
     mockGenerateLink.mockResolvedValueOnce(otp('111111'));
     const res = await send({ email: 'a@example.com', purpose: 'continue' });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('pre-account takeover', () => {
+  it("an UNCONFIRMED account's password (anyone could have set it) is replaced before its owner gets in", async () => {
+    mockUpdateUser.mockClear();
+    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'u1', email_confirmed_at: null }, properties: { email_otp: '222222' } }, error: null });
+    await send({ email: 'victim@example.com', purpose: 'continue' });
+    expect(mockUpdateUser).toHaveBeenCalledWith('u1', { password: expect.any(String) });
+  });
+  it('a confirmed account keeps its password', async () => {
+    mockUpdateUser.mockClear();
+    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'u2', email_confirmed_at: '2026-01-01' }, properties: { email_otp: '333333' } }, error: null });
+    await send({ email: 'member@example.com', purpose: 'continue' });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 });
 

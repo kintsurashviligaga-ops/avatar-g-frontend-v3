@@ -99,6 +99,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (purpose === 'continue' && error && isUserNotFoundError(error.message)) {
       ({ data, error } = await admin.auth.admin.generateLink({ type: 'signup', email, password: randomBytes(32).toString('base64url') }));
     }
+    // ⚠️ PRE-ACCOUNT TAKEOVER. An address can already hold an UNCONFIRMED account whose password a stranger chose
+    // (purpose 'signup' never proved the address). The code proves the address now — so whatever password the
+    // unproven account carried must not survive into the owner's account.
+    const pending = (data as { user?: { id?: string; email_confirmed_at?: string | null } } | null)?.user;
+    if (purpose === 'continue' && !error && pending?.id && !pending.email_confirmed_at) {
+      await admin.auth.admin.updateUserById(pending.id, { password: randomBytes(32).toString('base64url') });
+    }
 
     if (error) {
       const msg = String(error.message || '').toLowerCase();
