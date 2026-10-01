@@ -53,3 +53,6 @@ vercel-project-inspect.txt
 # GCP service-account keys (scripts/gcp/setup-veo-vertex.sh writes one) — a long-lived secret, never committed.
 *-key.json
 *service-account*.json
+
+# Template gallery thumbnails: raw takes stay local (only the selected, resized cards are committed).
+/public/templates/raw/
