@@ -7,197 +7,28 @@
  * unaffordable act holds and then fails at the deadline with nothing charged; cancel; a missed refund is retried on a
  * later tick; stitch failures (retryable, final, deferred for time); the tick budget; and per-job error isolation.
  */
-import type { CreateVeoClipInput } from '@/lib/veo/engine';
-import { coerceBible, type LongformBible } from './director';
 import { DEFAULT_MACHINE_CONFIG, type SceneState } from './stateMachine';
+import { actChargeRef, runLongformTick, sceneRefundRef } from './tick';
 import {
-  actChargeRef,
-  runLongformTick,
-  sceneRefundRef,
-  type JobPatch,
-  type LongformJobRecord,
-  type LongformSceneRecord,
-  type LongformStore,
-  type LongformTickDeps,
-  type PollResult,
-  type ReserveOutcome,
-  type ScenePatch,
-  type StitchOutcome,
-  type SubmitResult,
-} from './tick';
+  harness,
+  makeJob,
+  makeScenes,
+  MIN,
+  T0,
+  runUntilTerminal as runAll,
+  TICK_OPTS as OPTS,
+  type Harness,
+} from './testing/tickFakes';
 
-const MIN = 60_000;
-const T0 = 1_800_000_000_000;
-const BIBLE = coerceBible({
-  characters: [{ id: 'ana', name: 'Ana', description: 'a woman in a red coat' }],
-  look: { colorGrade: 'neutral', negativePrompt: 'crowds' },
-  arc: [{ summary: 'one' }, { summary: 'two' }],
-}, 2) as LongformBible;
-
-const shot = (ordinal: number) => ({
-  ordinal, subject: 'a woman in a red coat', action: `does beat ${ordinal}`,
-  camera: { move: 'static' as const, intensity: 5, shot: 'medium' as const, angle: 'eye_level' as const, lens: 'auto' as const },
-  audio: { dialogue: [] }, hasStartImage: false, transitionOut: 'cut' as const,
-});
-
-function makeJob(o: Partial<LongformJobRecord> = {}): LongformJobRecord {
-  return {
-    id: 'j1', userId: 'u1', status: 'planned', cancelRequested: false, holdUntil: null, holdReason: null, stitchAttempts: 0,
-    deadlineAt: T0 + 24 * 60 * MIN, errorCode: null, outputUrl: null, sceneCount: 13, tier: 'fast', format: '16:9',
-    resolution: '1080p', generateAudio: true, bible: BIBLE, options: {}, seed: 77, creditsPerScene: 39, refundsPending: false, ...o,
-  };
-}
-function makeScenes(n: number, firstOfAct2 = 7, o: (i: number) => Partial<LongformSceneRecord> = () => ({})): LongformSceneRecord[] {
-  return Array.from({ length: n }, (_, i) => ({
-    ordinal: i, act: i < firstOfAct2 ? 0 : 1, status: 'queued', attempts: 0, operation: null, nextAttemptAt: null, submittedAt: null,
-    dependsOn: i === firstOfAct2 ? firstOfAct2 - 1 : null, seedFrameUrl: null, chargeRef: null, chargeCredits: 0, refunded: false,
-    outputUrl: null, error: null, spec: { shot: shot(i) }, outputBytes: null, ...o(i),
-  }));
-}
-
-/** An in-memory store with the same semantics as the two claim functions. */
-class MemoryStore implements LongformStore {
-  jobs = new Map<string, LongformJobRecord & { leaseUntil: number | null }>();
-  scenes = new Map<string, LongformSceneRecord[]>();
-  jobPatches: JobPatch[] = [];
-  scenePatches: Array<{ ordinal: number; patch: ScenePatch }> = [];
-  claimCalls = 0;
-  constructor(private clock: () => number) {}
-  add(job: LongformJobRecord, scenes: LongformSceneRecord[]) {
-    this.jobs.set(job.id, { ...job, leaseUntil: null });
-    this.scenes.set(job.id, scenes.map((s) => ({ ...s })));
-  }
-  async claimJobs(limit: number, leaseSec: number) {
-    const now = this.clock();
-    const out = [...this.jobs.values()]
-      .filter((j) => (['planned', 'rendering', 'stitching'].includes(j.status) || j.refundsPending) && (j.leaseUntil === null || j.leaseUntil < now))
-      .slice(0, limit);
-    out.forEach((j) => { j.leaseUntil = now + leaseSec * 1000; });
-    return out.map(({ leaseUntil: _l, ...j }) => ({ ...j }));
-  }
-  async loadScenes(jobId: string) {
-    return (this.scenes.get(jobId) ?? []).map((s) => ({ ...s }));
-  }
-  async claimScenes(jobId: string, ordinals: number[]) {
-    this.claimCalls++;
-    const now = this.clock();
-    const out: Array<{ ordinal: number; attempts: number; submittedAt: number }> = [];
-    for (const s of this.scenes.get(jobId) ?? []) {
-      if (!ordinals.includes(s.ordinal) || s.status !== 'queued' || !s.chargeRef || (s.nextAttemptAt ?? 0) > now) continue;
-      Object.assign(s, { status: 'submitted', attempts: s.attempts + 1, operation: null, submittedAt: now, nextAttemptAt: null, error: null });
-      out.push({ ordinal: s.ordinal, attempts: s.attempts, submittedAt: now });
-    }
-    return out;
-  }
-  async patchScene(jobId: string, ordinal: number, patch: ScenePatch) {
-    this.scenePatches.push({ ordinal, patch });
-    const s = (this.scenes.get(jobId) ?? []).find((x) => x.ordinal === ordinal);
-    if (s) Object.assign(s, patch);
-  }
-  async patchJob(jobId: string, patch: JobPatch) {
-    this.jobPatches.push(patch);
-    const j = this.jobs.get(jobId);
-    if (j) Object.assign(j, patch);
-  }
-  async releaseJob(jobId: string) {
-    const j = this.jobs.get(jobId);
-    if (j) j.leaseUntil = null;
-  }
-  job(id = 'j1') { return this.jobs.get(id)!; }
-  scene(o: number, id = 'j1') { return this.scenes.get(id)!.find((s) => s.ordinal === o)!; }
-}
-
-interface Harness {
-  deps: LongformTickDeps;
-  store: MemoryStore;
-  clock: { t: number };
-  submits: Array<{ ordinal: number; input: CreateVeoClipInput }>;
-  debits: Array<{ ref: string; credits: number }>;
-  refunds: Array<{ ref: string; credits: number; chargeRef: string }>;
-  stitchCalls: Array<{ ordinals: number[]; budgetMs: number }>;
-  logs: string[];
-}
-
-function harness(o: {
-  submit?: (ordinal: number, n: number) => SubmitResult | Error;
-  poll?: (ordinal: number, n: number) => PollResult;
-  reserve?: (ref: string) => ReserveOutcome;
-  refund?: (refundRef: string, attempt: number) => boolean;
-  stitch?: (n: number) => StitchOutcome;
-  frame?: (url: string) => string | null;
-  tickCost?: number;
-} = {}): Harness {
-  const clock = { t: T0 };
-  const store = new MemoryStore(() => clock.t);
-  const submits: Harness['submits'] = [];
-  const debits: Harness['debits'] = [];
-  const refunds: Harness['refunds'] = [];
-  const stitchCalls: Harness['stitchCalls'] = [];
-  const logs: string[] = [];
-  const submitN = new Map<number, number>();
-  const pollN = new Map<string, number>();
-  const refundTries = new Map<string, number>();
-  let stitchN = 0;
-  const deps: LongformTickDeps = {
-    store,
-    now: () => clock.t,
-    log: (l) => logs.push(l),
-    engine: {
-      async submit(input, ctx) {
-        const n = (submitN.get(ctx.ordinal) ?? 0) + 1;
-        submitN.set(ctx.ordinal, n);
-        submits.push({ ordinal: ctx.ordinal, input });
-        const r = o.submit?.(ctx.ordinal, n) ?? { report: { kind: 'outcome', outcome: { ok: true, operation: { transport: 'gemini', name: `models/veo/operations/${ctx.ordinal}-${n}`, model: 'veo-3.1-fast-generate-preview' } } }, transport: 'gemini', model: 'veo-3.1-fast-generate-preview' } as SubmitResult;
-        if (r instanceof Error) throw r;
-        return r;
-      },
-      async poll(operation, ctx) {
-        const n = (pollN.get(operation) ?? 0) + 1;
-        pollN.set(operation, n);
-        return o.poll?.(ctx.ordinal, n) ?? (n >= 2 ? { state: 'delivered', url: `https://cdn/${ctx.ordinal}.mp4`, bytes: 4_000_000, path: `longform/j1/${ctx.ordinal}.mp4` } : { state: 'processing' });
-      },
-      async extractLastFrame(url) {
-        return o.frame ? o.frame(url) : url.replace('.mp4', '-last.jpg');
-      },
+/** Every tick: never more than the concurrency cap in flight. */
+const runUntilTerminal = (h: Harness, maxTicks = 60) =>
+  runAll(h, {
+    maxTicks,
+    onTick: () => {
+      const inFlight = h.store.scenes.get('j1')!.filter((s) => s.status === 'submitted' || s.status === 'rendering').length;
+      expect(inFlight).toBeLessThanOrEqual(DEFAULT_MACHINE_CONFIG.maxConcurrentPerJob);
     },
-    billing: {
-      async reserveAct(_u, ref, credits) {
-        const r = o.reserve?.(ref) ?? 'ok';
-        if (r === 'ok') debits.push({ ref, credits });
-        return r;
-      },
-      async refundScene(_u, chargeRef, credits, refundRef) {
-        const attempt = (refundTries.get(refundRef) ?? 0) + 1;
-        refundTries.set(refundRef, attempt);
-        const ok = o.refund?.(refundRef, attempt) ?? true;
-        if (ok) refunds.push({ ref: refundRef, credits, chargeRef });
-        return ok;
-      },
-    },
-    stitcher: {
-      async stitch(_job, clips, budgetMs) {
-        stitchN++;
-        stitchCalls.push({ ordinals: clips.map((c) => c.ordinal), budgetMs });
-        return o.stitch?.(stitchN) ?? { ok: true, url: 'https://cdn/film.mp4', path: 'longform/j1/film.mp4', bytes: 40_000_000 };
-      },
-    },
-  };
-  return { deps, store, clock, submits, debits, refunds, stitchCalls, logs };
-}
-
-const OPTS = { timeBudgetMs: 10 * MIN, minStitchBudgetMs: 0 };
-
-async function runUntilTerminal(h: Harness, maxTicks = 60) {
-  const reports = [];
-  for (let i = 0; i < maxTicks; i++) {
-    h.clock.t += MIN;
-    reports.push(await runLongformTick(h.deps, OPTS));
-    const inFlight = h.store.scenes.get('j1')!.filter((s) => s.status === 'submitted' || s.status === 'rendering').length;
-    expect(inFlight).toBeLessThanOrEqual(DEFAULT_MACHINE_CONFIG.maxConcurrentPerJob);
-    if (['done', 'failed', 'canceled'].includes(h.store.job().status) && !h.store.job().refundsPending) break;
-  }
-  return reports;
-}
+  });
 
 describe('a whole 13-scene film (acts 7 / 6), tick by tick', () => {
   test('debits act by act, one submit per scene, act 2 opens from act 1\'s last frame, stitches, done', async () => {
@@ -461,5 +292,105 @@ describe('tick mechanics', () => {
       'refunded', 'outputUrl', 'error', 'transport', 'model', 'outputBytes', 'outputPath', 'deliveredAt',
     ]);
     for (const { patch } of h.store.scenePatches) for (const k of Object.keys(patch)) expect(allowed.has(k as never)).toBe(true);
+  });
+});
+
+describe('after the stitch: the Library and the scene media', () => {
+  test('a done film is filed once and the clips + seed frames it was cut from are removed — never the film', async () => {
+    const h = harness();
+    h.store.add(makeJob(), makeScenes(13));
+    const reports = await runUntilTerminal(h);
+    expect(h.store.job().status).toBe('done');
+    expect(h.filed).toEqual([{ jobId: 'j1', userId: 'u1', film: { url: 'https://cdn/film.mp4', path: 'longform/j1/film.mp4', bytes: 40_000_000 } }]);
+    expect(h.removed).toHaveLength(1);
+    expect(h.removed[0]!.clipPaths.slice().sort()).toEqual(Array.from({ length: 13 }, (_, i) => `longform/j1/${i}.mp4`).sort());
+    expect(h.removed[0]!.seedOrdinals).toEqual([7]); // the act-2 opener's seed frame
+    expect(h.removed[0]!.filmPath).toBe('longform/j1/film.mp4');
+    expect(h.removed[0]!.clipPaths).not.toContain('longform/j1/film.mp4');
+    expect(reports.reduce((s, r) => s + r.filed, 0)).toBe(1);
+    expect(reports.every((r) => r.fileMisses === 0 && r.cleanupMisses === 0)).toBe(true);
+  });
+
+  test('ONLY after `done` is persisted: a failed done-write files nothing, removes nothing, and the next tick re-stitches', async () => {
+    const h = harness();
+    h.store.add(makeJob({ status: 'rendering' }), makeScenes(13, 7, (i) => ({ status: 'delivered', outputUrl: `https://cdn/${i}.mp4`, outputPath: `longform/j1/${i}.mp4`, chargeRef: actChargeRef('j1', i < 7 ? 0 : 1), chargeCredits: 39 })));
+    const patchJob = h.store.patchJob.bind(h.store);
+    let failDone = true;
+    h.store.patchJob = async (id, patch) => {
+      if (patch.status === 'done' && failDone) { failDone = false; throw new Error('db blip'); }
+      return patchJob(id, patch);
+    };
+    h.clock.t += MIN;
+    const r1 = await runLongformTick(h.deps, OPTS);
+    expect(r1.errors).toBe(1);
+    expect(h.store.job().status).toBe('stitching');
+    expect(h.filed).toEqual([]);
+    expect(h.removed).toEqual([]);
+    h.clock.t += MIN;
+    await runLongformTick(h.deps, OPTS);
+    expect(h.store.job().status).toBe('done');
+    expect(h.stitchCalls).toHaveLength(2);
+    expect(h.filed).toHaveLength(1);
+    expect(h.removed).toHaveLength(1);
+  });
+
+  test('a Library miss or a refused delete is counted and logged; the film is done either way', async () => {
+    const h = harness({ file: () => false, remove: () => new Error('storage 500') });
+    h.store.add(makeJob(), makeScenes(13));
+    const reports = await runUntilTerminal(h);
+    expect(h.store.job()).toMatchObject({ status: 'done', outputUrl: 'https://cdn/film.mp4' });
+    expect(reports.reduce((s, r) => s + r.fileMisses, 0)).toBe(1);
+    expect(reports.reduce((s, r) => s + r.cleanupMisses, 0)).toBe(1);
+    expect(reports.every((r) => r.errors === 0)).toBe(true);
+    expect(h.logs.some((l) => l.includes('not filed in the Library'))).toBe(true);
+    expect(h.logs.some((l) => l.includes('scene media not removed: storage 500'))).toBe(true);
+    const thrower = harness({ file: () => new Error('boom') });
+    thrower.store.add(makeJob(), makeScenes(13));
+    await runUntilTerminal(thrower);
+    expect(thrower.store.job().status).toBe('done');
+    expect(thrower.removed).toHaveLength(1);
+  });
+
+  test('a failed or canceled film keeps its delivered clips (they are the user\'s) and is not filed', async () => {
+    const failed = harness({ stitch: () => ({ ok: false, reason: 'needs_resumable_upload', retryable: false }) });
+    failed.store.add(makeJob(), makeScenes(13));
+    await runUntilTerminal(failed);
+    expect(failed.store.job().status).toBe('failed');
+    const canceled = harness();
+    canceled.store.add(makeJob(), makeScenes(13));
+    for (let i = 0; i < 3; i++) { canceled.clock.t += MIN; await runLongformTick(canceled.deps, OPTS); }
+    canceled.store.job().cancelRequested = true;
+    await runUntilTerminal(canceled);
+    expect(canceled.store.job().status).toBe('canceled');
+    for (const h of [failed, canceled]) {
+      expect(h.filed).toEqual([]);
+      expect(h.removed).toEqual([]);
+    }
+  });
+
+  test('the queue runs without a finisher (it is optional in deps)', async () => {
+    const h = harness({ noFinisher: true });
+    h.store.add(makeJob(), makeScenes(13));
+    await runUntilTerminal(h);
+    expect(h.store.job().status).toBe('done');
+  });
+});
+
+describe('a `directing` job (the create route is still writing it)', () => {
+  test('is not claimed before its deadline; after it, it is failed with nothing charged, submitted or refunded', async () => {
+    const h = harness();
+    h.store.add(makeJob({ status: 'directing', deadlineAt: T0 + 10 * MIN }), makeScenes(13));
+    h.clock.t += MIN;
+    expect(await runLongformTick(h.deps, OPTS)).toMatchObject({ jobs: 0 });
+    h.clock.t = T0 + 11 * MIN;
+    expect(await runLongformTick(h.deps, OPTS)).toMatchObject({ jobs: 1, reserved: 0, submitted: 0, refunded: 0 });
+    expect(h.store.job()).toMatchObject({ status: 'failed', errorCode: 'directing_abandoned' });
+    expect(h.store.scenes.get('j1')!.every((s) => s.status === 'failed')).toBe(true);
+    expect(h.debits).toEqual([]);
+    expect(h.submits).toEqual([]);
+    expect(h.refunds).toEqual([]);
+    // Terminal now: never claimed again.
+    h.clock.t += MIN;
+    expect(await runLongformTick(h.deps, OPTS)).toMatchObject({ jobs: 0 });
   });
 });

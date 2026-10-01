@@ -11,6 +11,8 @@
  *                claim + submit due scenes (one claim per submit, so a tick that runs out of time strands nothing) →
  *                poll in-flight scenes (poll + delivery to our storage happen inside engine.poll).
  *   3. settle  — again, so a film whose last scene landed this tick moves to stitching (and stitches) now.
+ *   Once a stitch is persisted as `done`: the film is filed in the owner's Library and the scene clips + seed frames
+ *   it was cut from are deleted (deps.finisher) — bookkeeping that can miss without changing the job.
  *
  * ⚠️ A submit that THROWS is treated as `ambiguous` (the request may have reached Google and billed): the scene
  * fails and is refunded, never re-submitted — the same rule the engine's own outcome classification follows.
@@ -64,12 +66,18 @@ export interface LongformJobRecord extends JobState {
   seed: number | null;
   creditsPerScene: number;
   refundsPending: boolean;
+  /** The user's brief — read only by the finisher (the Library card's text). */
+  prompt?: string;
+  /** The migration's off-grid trim (trim_to_seconds). Always null today; nothing applies it yet. */
+  trimToSeconds?: number | null;
 }
 
 export interface LongformSceneRecord extends SceneState {
   /** The director's scene; only `shot` is needed to render. */
   spec: Pick<LongformScene, 'shot'> & Partial<LongformScene>;
   outputBytes: number | null;
+  /** Where the delivered clip is stored — deleted once the film is stitched. */
+  outputPath?: string | null;
 }
 
 /** Extra row fields the tick writes alongside a state transition. */
@@ -136,11 +144,29 @@ export interface LongformStitcher {
   stitch(job: LongformJobRecord, clips: Array<{ ordinal: number; url: string; bytes: number | null }>, budgetMs: number): Promise<StitchOutcome>;
 }
 
+export interface FinishedFilm {
+  url: string;
+  path: string | null;
+  bytes: number | null;
+}
+
+export interface LongformFinisher {
+  /** File the film in the owner's Library (generation_jobs, service_type 'film', service role). Idempotent per job. */
+  fileFilm(job: LongformJobRecord, film: FinishedFilm): Promise<boolean>;
+  /**
+   * Delete the scene clips and seed frames the film was cut from. Never anything outside this job's folder, never
+   * the film. Throws when storage refuses (the tick counts it; the job is done either way).
+   */
+  removeSceneMedia(job: LongformJobRecord, media: { clipPaths: string[]; seedOrdinals: number[]; filmPath: string | null }): Promise<void>;
+}
+
 export interface LongformTickDeps {
   store: LongformStore;
   engine: LongformEngine;
   billing: LongformBilling;
   stitcher: LongformStitcher;
+  /** Optional so the queue's own tests can run without it; runtime.createLongformTickDeps always wires it. */
+  finisher?: LongformFinisher;
   now: () => number;
   log?: (line: string) => void;
 }
@@ -167,6 +193,11 @@ export interface TickReport {
   refundMisses: number;
   stitched: number;
   stitchDeferred: number;
+  /** Finished films filed in the Library / not filed (a miss leaves the film reachable through its job only). */
+  filed: number;
+  fileMisses: number;
+  /** Scene-media deletions storage refused (orphaned objects, not money). */
+  cleanupMisses: number;
   timeBudgetExhausted: boolean;
   errors: number;
 }
@@ -196,7 +227,7 @@ const jobState = (j: LongformJobRecord | JobState): JobState => ({
 });
 
 export function emptyReport(): TickReport {
-  return { jobs: 0, submitted: 0, polled: 0, delivered: 0, failedScenes: 0, reserved: 0, holds: 0, refunded: 0, refundMisses: 0, stitched: 0, stitchDeferred: 0, timeBudgetExhausted: false, errors: 0 };
+  return { jobs: 0, submitted: 0, polled: 0, delivered: 0, failedScenes: 0, reserved: 0, holds: 0, refunded: 0, refundMisses: 0, stitched: 0, stitchDeferred: 0, filed: 0, fileMisses: 0, cleanupMisses: 0, timeBudgetExhausted: false, errors: 0 };
 }
 
 /** Advance every claimable job one step. Never throws; per-job errors are counted and the lease released. */
@@ -271,7 +302,12 @@ async function processJob(
     }
     const patch: ScenePatch = { ...diffState(sceneState(cur), t.scene), ...extras };
     if (persist && Object.keys(patch).length) await store.patchScene(job.id, ordinal, patch);
-    records.set(ordinal, { ...cur, ...t.scene, ...(extras.outputBytes !== undefined ? { outputBytes: extras.outputBytes } : {}) });
+    records.set(ordinal, {
+      ...cur,
+      ...t.scene,
+      ...(extras.outputBytes !== undefined ? { outputBytes: extras.outputBytes } : {}),
+      ...(extras.outputPath !== undefined ? { outputPath: extras.outputPath } : {}),
+    });
     if (t.scene.status === 'failed' && cur.status !== 'failed') report.failedScenes++;
     return true;
   };
@@ -317,6 +353,31 @@ async function processJob(
     }
   };
 
+  /**
+   * The film exists and `done` is persisted: file it in the Library, then delete what it was cut from.
+   * ⚠️ ONLY AFTER `done` IS WRITTEN: a failed write leaves the job stitching, and the next tick re-stitches from clips
+   * that must still exist. Neither step can change the job — the film is delivered either way; a miss is counted.
+   */
+  const finish = async (film: FinishedFilm): Promise<void> => {
+    const fin = deps.finisher;
+    if (!fin) return;
+    const filed = await fin.fileFilm(job, film).catch(() => false);
+    if (filed) report.filed++;
+    else {
+      report.fileMisses++;
+      log(`[longform] job ${job.id}: the finished film was not filed in the Library`);
+    }
+    const scenes = [...records.values()];
+    const clipPaths = scenes.map((s) => s.outputPath).filter((p): p is string => typeof p === 'string' && p.length > 0);
+    const seedOrdinals = scenes.filter((s) => s.seedFrameUrl !== null).map((s) => s.ordinal);
+    try {
+      await fin.removeSceneMedia(job, { clipPaths, seedOrdinals, filmPath: film.path });
+    } catch (e) {
+      report.cleanupMisses++;
+      log(`[longform] job ${job.id}: scene media not removed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const doSettle = async (): Promise<void> => {
     const s = settle(j, states(), now(), cfg);
     for (const ordinal of s.changed) {
@@ -341,7 +402,10 @@ async function processJob(
           .map((c) => ({ ordinal: c.ordinal, url: c.outputUrl as string, bytes: c.outputBytes }));
         const out = await stitcher.stitch(job, clips, timeLeft()).catch((e: unknown): StitchOutcome => ({ ok: false, reason: e instanceof Error ? e.message : 'stitch threw', retryable: true }));
         if (out.ok) {
-          if (await jobEvent({ type: 'stitch_ok', url: out.url }, { outputPath: out.path ?? null, outputBytes: out.bytes ?? null })) report.stitched++;
+          if (await jobEvent({ type: 'stitch_ok', url: out.url }, { outputPath: out.path ?? null, outputBytes: out.bytes ?? null })) {
+            report.stitched++;
+            await finish({ url: out.url, path: out.path ?? null, bytes: out.bytes ?? null });
+          }
         } else if (out.retryable) {
           await jobEvent({ type: 'stitch_failed' }, { errorDetail: out.reason.slice(0, 500) });
           // The attempt bound turns a repeatedly failing stitch into a terminal failure on the spot.

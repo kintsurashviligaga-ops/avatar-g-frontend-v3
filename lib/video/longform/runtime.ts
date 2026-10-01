@@ -7,7 +7,10 @@
  *   billing   lib/orchestrator/ledger: deductCredits per ACT, refundCredits per SCENE — both made idempotent here by
  *             reading the ledger first (netDebitedForRef / an existing credit under the refund ref)
  *   stitcher  stitch.buildStitchPlan executed with ffmpeg-static, the film uploaded to `renders`
- *   director  lib/ai/llmText adapted to director.DirectorGenerate (for the job-creation path; not used by the tick)
+ *   finisher  the finished film filed in the Library (generation_jobs via recordCompletedFilm, service role) and
+ *             the scene clips + seed frames deleted from `renders`
+ *   director  directorLlm.ts (re-exported): lib/ai/llmText as director.DirectorGenerate — the create route imports
+ *             it from there, so that route does not pull ffmpeg-static and the Veo engine into its bundle
  *
  * Nothing here runs unless the route's LONGFORM_VIDEO_ENABLED gate passes. Every provider call goes through the same
  * engine and guard the rest of the product uses — this module adds no new provider integration.
@@ -29,15 +32,14 @@ import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabil
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
-import { isGoogleOnly } from '@/lib/veo/policy';
-import { llmText } from '@/lib/ai/llmText';
-import type { DirectorGenerate } from './director';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { LONGFORM_SCENE_SEC } from './plan';
 import { jobFromRow, jobPatchToColumns, sceneFromRow, scenePatchToColumns, type Row } from './rows';
 import { buildLastFrameArgs, buildProbeArgs, buildStitchPlan, DEFAULT_MAX_UPLOAD_BYTES, parseProbe, type StitchClip } from './stitch';
 import type {
   LongformBilling,
   LongformEngine,
+  LongformFinisher,
   LongformStitcher,
   LongformStore,
   LongformTickDeps,
@@ -51,6 +53,16 @@ const BUCKET = 'renders';
 /** 7 days — V4 signing's own maximum, and what every other hosted clip in the product uses. */
 const WEEK_SEC = 604_800;
 const MIN_CLIP_BYTES = 1_024;
+
+/** Every object a job writes lives under this folder (clips, seed frames, the film). */
+export const jobFolder = (jobId: string): string => `longform/${jobId}/`;
+/** The seed frame extracted for `ordinal` (act chaining) — one name, used to write it and to delete it. */
+export const seedFramePath = (jobId: string, ordinal: number): string => `${jobFolder(jobId)}seed-${String(ordinal).padStart(2, '0')}.jpg`;
+/**
+ * The film's Library row id. ⚠️ PREFIXED: generation_jobs.id is text and recordCompletedFilm UPSERTS on it through
+ * the service role — an unprefixed id could only ever collide by accident, a prefixed one cannot collide at all.
+ */
+export const longformLibraryId = (jobId: string): string => `longform_${jobId}`;
 
 type Svc = ReturnType<typeof createServiceRoleClient>;
 
@@ -181,7 +193,7 @@ export function createVeoLongformEngine(): LongformEngine {
         await exec(bin, buildLastFrameArgs(clipUrl, out), { timeout: 30_000, killSignal: 'SIGKILL', maxBuffer: 1 << 22 });
         const jpg = await readFile(out);
         if (jpg.byteLength < 1_000) return null;
-        return await uploadBufferAndSign(BUCKET, `longform/${ctx.jobId}/seed-${String(ctx.ordinal).padStart(2, '0')}.jpg`, jpg, 'image/jpeg', WEEK_SEC);
+        return await uploadBufferAndSign(BUCKET, seedFramePath(ctx.jobId, ctx.ordinal), jpg, 'image/jpeg', WEEK_SEC);
       } catch {
         return null;
       } finally {
@@ -300,20 +312,38 @@ export function createFfmpegLongformStitcher(opts: { maxUploadBytes?: number } =
   };
 }
 
+// ── Finisher ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+export function createLongformFinisher(svc: Svc): LongformFinisher {
+  return {
+    async fileFilm(job, film) {
+      return recordCompletedFilm({
+        id: longformLibraryId(job.id),
+        userId: job.userId,
+        url: film.url,
+        prompt: job.prompt ? job.prompt.slice(0, 500) : null,
+        orientation: job.format === '9:16' || job.format === '4:5' ? 'vertical' : 'landscape',
+        // ⚠️ THE PATH IS THE DURABLE PART. `url` is signed for 7 days; the Library re-signs from bucket + path on every
+        // read (app/api/studio/library), so the card keeps playing after the signature expires.
+        result: { url: film.url, bucket: BUCKET, path: film.path, bytes: film.bytes, longformJobId: job.id, seconds: job.sceneCount * LONGFORM_SCENE_SEC },
+        subtype: 'longform',
+      });
+    },
+    async removeSceneMedia(job, media) {
+      const folder = jobFolder(job.id);
+      // ⚠️ Scoped by construction: only this job's folder, never the film, never a path that climbs out.
+      const paths = [...new Set([...media.clipPaths, ...media.seedOrdinals.map((o) => seedFramePath(job.id, o))])]
+        .filter((p) => p.startsWith(folder) && !p.includes('..') && p !== media.filmPath);
+      if (!paths.length) return;
+      const { error } = await svc.storage.from(BUCKET).remove(paths);
+      if (error) throw new Error(`remove scene media: ${error.message ?? 'unknown error'}`);
+    },
+  };
+}
+
 // ── Director LLM ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The same call runPromptAgent makes (Google-only JSON when VIDEO_GOOGLE_ONLY, VEO_DIRECTOR_MODEL honoured). */
-export const llmDirectorGenerate: DirectorGenerate = async (prompt, opts) => {
-  const directorModel = (process.env.VEO_DIRECTOR_MODEL || '').trim() || undefined;
-  return llmText({
-    system: opts.system,
-    user: prompt,
-    maxTokens: opts.maxTokens,
-    temperature: opts.temperature,
-    timeoutMs: Number(process.env.PROMPT_AGENT_TIMEOUT_MS) || 86_000,
-    ...(isGoogleOnly() ? { googleOnly: true, json: true, ...(directorModel ? { geminiModel: directorModel } : {}) } : {}),
-  });
-};
+export { llmDirectorGenerate } from './directorLlm';
 
 // ── All together ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -325,6 +355,7 @@ export function createLongformTickDeps(): LongformTickDeps {
     engine: createVeoLongformEngine(),
     billing: createLedgerLongformBilling(svc),
     stitcher: createFfmpegLongformStitcher(),
+    finisher: createLongformFinisher(svc),
     now: () => Date.now(),
     // console.warn, not .info/.log: production builds strip those (next.config removeConsole).
     log: (line) => console.warn(line),

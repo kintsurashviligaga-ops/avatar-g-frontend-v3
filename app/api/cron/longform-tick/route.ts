@@ -50,7 +50,10 @@ async function handle(req: NextRequest) {
       maxJobs: envMs('LONGFORM_TICK_MAX_JOBS', 5, 1, 20),
       minStitchBudgetMs: envMs('LONGFORM_MIN_STITCH_BUDGET_MS', 120_000, 10_000, 285_000),
     });
-    if (report.errors > 0 || report.refundMisses > 0 || report.stitchDeferred > 0 || report.timeBudgetExhausted) {
+    if (
+      report.errors > 0 || report.refundMisses > 0 || report.stitchDeferred > 0 || report.timeBudgetExhausted ||
+      report.fileMisses > 0 || report.cleanupMisses > 0
+    ) {
       opsMarker('warn', 'longform_tick', { ...report });
     }
     return NextResponse.json({ ok: true, ...report });

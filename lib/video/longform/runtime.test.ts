@@ -4,7 +4,8 @@
  * Rules under test: an act reservation is idempotent by reading the ledger first; a scene refund is skipped when its
  * ref already landed and is capped by what the act debit has left; the store throws on supabase-js `{ error }` (it
  * never throws itself); the engine submits inside the budget guard at the capabilities price and maps a budget
- * refusal; delivery hosts at a path fixed per operation and re-signs instead of re-uploading.
+ * refusal; delivery hosts at a path fixed per operation and re-signs instead of re-uploading; the finisher files the
+ * film in the Library under a prefixed id with its storage path, and deletes only this job's scene media.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../supabase/server', () => ({ createServiceRoleClient: jest.fn() }));
@@ -24,6 +25,7 @@ jest.mock('../../veo/engine', () => ({ createVeoClip: jest.fn(), pollVeoClip: je
 jest.mock('../../veo/deliver', () => ({ hostGcsVideo: jest.fn() }));
 jest.mock('../../veo/geminiTransport', () => ({ downloadGeminiVideo: jest.fn() }));
 jest.mock('../../ai/llmText', () => ({ llmText: jest.fn() }));
+jest.mock('../../orchestrator/jobs', () => ({ recordCompletedFilm: jest.fn() }));
 
 import { deductCredits, netDebitedForRef, refundCredits } from '@/lib/orchestrator/ledger';
 import { createSignedAssetUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -32,7 +34,19 @@ import { pollVeoClip, veoTransport } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import type { CreateVeoClipInput } from '@/lib/veo/engine';
-import { createLedgerLongformBilling, createSupabaseLongformStore, createVeoLongformEngine } from './runtime';
+import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { llmText } from '@/lib/ai/llmText';
+import {
+  createLedgerLongformBilling,
+  createLongformFinisher,
+  createLongformTickDeps,
+  createSupabaseLongformStore,
+  createVeoLongformEngine,
+  llmDirectorGenerate,
+  longformLibraryId,
+  seedFramePath,
+} from './runtime';
+import { makeJob } from './testing/tickFakes';
 
 const m = <T extends (...a: never[]) => unknown>(f: T) => f as unknown as jest.Mock;
 
@@ -228,5 +242,72 @@ describe('engine adapter', () => {
     expect(await e.extractLastFrame('http://cdn/x.mp4', ctx)).toBeNull();
     expect(await e.extractLastFrame('https://169.254.169.254/latest/meta-data', ctx)).toBeNull();
     expect(uploadBufferAndSign).not.toHaveBeenCalled();
+  });
+});
+
+describe('finisher — the Library and the scene media', () => {
+  const JOB = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const film = { url: `https://x.supabase.co/storage/v1/object/sign/renders/longform/${JOB}/film.mp4?token=t`, path: `longform/${JOB}/film.mp4`, bytes: 40_000_000 };
+
+  test('files the film through recordCompletedFilm (service role) under a PREFIXED id, keeping bucket + path', async () => {
+    m(recordCompletedFilm).mockResolvedValue(true);
+    const fin = createLongformFinisher(fakeSvc().svc);
+    expect(await fin.fileFilm(makeJob({ id: JOB, userId: 'u1', format: '9:16', sceneCount: 13, prompt: 'p'.repeat(900) }), film)).toBe(true);
+    expect(recordCompletedFilm).toHaveBeenCalledWith({
+      id: `longform_${JOB}`,
+      userId: 'u1',
+      url: film.url,
+      prompt: 'p'.repeat(500),
+      orientation: 'vertical',
+      result: { url: film.url, bucket: 'renders', path: film.path, bytes: 40_000_000, longformJobId: JOB, seconds: 104 },
+      subtype: 'longform',
+    });
+    expect(longformLibraryId(JOB)).toBe(`longform_${JOB}`);
+    m(recordCompletedFilm).mockResolvedValue(false);
+    expect(await fin.fileFilm(makeJob({ id: JOB }), film)).toBe(false);
+  });
+
+  function storageSvc(error: { message: string } | null = null) {
+    const removed: Array<{ bucket: string; paths: string[] }> = [];
+    const svc = { storage: { from: (bucket: string) => ({ remove: async (paths: string[]) => { removed.push({ bucket, paths }); return { data: null, error }; } }) } };
+    return { svc: svc as never, removed };
+  }
+
+  test('removes this job\'s clips and seed frames — never the film, never another folder, never a climbing path', async () => {
+    const { svc, removed } = storageSvc();
+    await createLongformFinisher(svc).removeSceneMedia(makeJob({ id: JOB }), {
+      clipPaths: [`longform/${JOB}/s00-ab.mp4`, `longform/${JOB}/s01-cd.mp4`, `longform/${JOB}/film.mp4`, 'longform/other-job/s00.mp4', `longform/${JOB}/../other/x.mp4`, 'avatars/u1/me.png', `longform/${JOB}/s00-ab.mp4`],
+      seedOrdinals: [7],
+      filmPath: film.path,
+    });
+    expect(removed).toEqual([{ bucket: 'renders', paths: [`longform/${JOB}/s00-ab.mp4`, `longform/${JOB}/s01-cd.mp4`, `longform/${JOB}/seed-07.jpg`] }]);
+    expect(seedFramePath(JOB, 7)).toBe(`longform/${JOB}/seed-07.jpg`);
+  });
+
+  test('the production tick deps carry the finisher (the tick files + cleans up only when it is wired)', () => {
+    expect(typeof createLongformTickDeps().finisher?.fileFilm).toBe('function');
+  });
+
+  test('nothing to remove → no storage call; storage answering { error } is THROWN (the tick counts it)', async () => {
+    const quiet = storageSvc();
+    await createLongformFinisher(quiet.svc).removeSceneMedia(makeJob({ id: JOB }), { clipPaths: [], seedOrdinals: [], filmPath: null });
+    expect(quiet.removed).toEqual([]);
+    const refused = storageSvc({ message: 'storage 500' });
+    await expect(createLongformFinisher(refused.svc).removeSceneMedia(makeJob({ id: JOB }), { clipPaths: [`longform/${JOB}/s00.mp4`], seedOrdinals: [], filmPath: null })).rejects.toThrow('storage 500');
+  });
+});
+
+describe('director LLM', () => {
+  const opts = { system: 's', maxTokens: 100, temperature: 0.5, json: true as const, purpose: 'bible' as const, attempt: 1 };
+
+  test('a deadline wrapper can only SHORTEN the call, and its abort signal reaches llmText', async () => {
+    m(llmText).mockResolvedValue('{}');
+    const controller = new AbortController();
+    await llmDirectorGenerate('p', { ...opts, timeoutMs: 30_000, signal: controller.signal });
+    expect(llmText).toHaveBeenLastCalledWith(expect.objectContaining({ timeoutMs: 30_000, signal: controller.signal }));
+    await llmDirectorGenerate('p', { ...opts, timeoutMs: 999_000 });
+    expect(llmText).toHaveBeenLastCalledWith(expect.objectContaining({ timeoutMs: 86_000 }));
+    await llmDirectorGenerate('p', opts);
+    expect(m(llmText).mock.calls.at(-1)![0]).not.toHaveProperty('signal');
   });
 });
