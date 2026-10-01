@@ -26,6 +26,7 @@ import { settleMusicCharge } from '@/lib/credits/musicSettlement';
 import { buildMusicBrief, flattenMusicBrief, type MusicBrief } from '@/lib/ai/musicBrief';
 import { promptToEnglish, lastTranslateOutcome } from '@/lib/ai/promptToEnglish';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
+import { sanitizeStyle } from '@/lib/studio/style';
 
 /**
  * Assistant music generation.
@@ -110,9 +111,9 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
   }
 }
 
-// v330 — standalone music composition via ElevenLabs Music (the master audio engine,
-// replacing Udio), with Replicate MusicGen as the graceful fallback. EL Music returns
-// audio BYTES, so they're hosted to Supabase first; the result is always a fetchable URL.
+// Standalone music composition: Google Lyria 3 (PRIMARY — live by default whenever a Gemini key is set,
+// kill-switch LYRIA_ENABLED=0) → Udio → ElevenLabs Music → Replicate MusicGen, as latency-failover
+// fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30): Promise<{ url: string; engine: string }> {
   // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
   // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.
@@ -279,7 +280,9 @@ export async function POST(req: NextRequest) {
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-    if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
+    // ⚠️ CLIENT TEXT INTO THE ENGINE BRIEF AND THE COVER-ART PROMPT — bounded and cleaned (lib/studio/style.ts).
+    const cleanStyle = sanitizeStyle(body.style);
+    if (cleanStyle) style = cleanStyle;
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
     // P6 — duration (15/30/60/90) + tempo (slow/medium/fast). Duration drives the track
     // length; tempo is folded into the prompt as a BPM/feel hint the model honours.

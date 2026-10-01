@@ -19,6 +19,7 @@ import {
   validateLiveToolCall,
   type LiveSchema,
 } from './liveTools';
+import { isPreviewable, normalizeArtifactLanguage } from '@/components/chat/artifacts/artifactSpec';
 
 const ALLOWED_SCHEMA_KEYS = new Set(['type', 'description', 'enum', 'properties', 'required']);
 
@@ -96,6 +97,23 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
   it('every aspect ratio is one the image studio already offers (no mapping needed downstream)', () => {
     const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'];
     for (const a of LIVE_ASPECT_RATIOS) expect(IMG_ASPECTS).toContain(a);
+  });
+
+  it('every code language opens in the canvas, and the canvas previews exactly html and svg of them', () => {
+    // The canvas re-validates the event (artifactSpec allowlist): a Live language it refused would be a silent no-op.
+    const previewable = LIVE_CODE_LANGUAGES.filter((l) => {
+      const canvas = normalizeArtifactLanguage(l);
+      expect([l, canvas]).toEqual([l, expect.any(String)]);
+      return isPreviewable(canvas!);
+    });
+    expect(previewable).toEqual(['html', 'svg']);
+  });
+
+  it('never claims code is on the user\'s screen — show_code SAVES it (the Live dialog covers the canvas)', () => {
+    const show = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'show_code')!;
+    expect(show.description).not.toMatch(/screen/i);
+    expect(LIVE_ACTIONS_RULE).not.toMatch(/on the screen/i);
+    expect(LIVE_ACTIONS_RULE).toMatch(/show_code saves code in the code canvas/);
   });
 });
 
@@ -184,6 +202,10 @@ describe('validateLiveToolCall — show_code', () => {
     expect(lang('C++')).toBe('cpp');
     expect(lang('sh')).toBe('bash');
     expect(lang('brainfuck')).toBe('plaintext');
+    // svg is its own language (the canvas previews it); xml stays xml.
+    expect(lang('svg')).toBe('svg');
+    expect(lang(' SVG ')).toBe('svg');
+    expect(lang('xml')).toBe('xml');
     expect(err('show_code', { title: 't', language: 7, code: 'x' })).toMatchObject({ field: 'language', allowed: LIVE_CODE_LANGUAGES });
     expect(err('show_code', { title: 't', language: '', code: 'x' })).toMatchObject({ field: 'language' });
     expect(err('show_code', { title: 't', language: 'x'.repeat(100), code: 'x' })).toMatchObject({ field: 'language' });

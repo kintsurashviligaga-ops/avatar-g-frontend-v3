@@ -10,7 +10,8 @@
  *  - Only html / svg get a Preview tab; other languages are Code only.
  *  - A load after the first is the page navigating itself away: the frame is put back, and it gives up eventually.
  *  - The `myavatar:open-artifact` event opens a valid detail and ignores an invalid one; the canvas registers itself
- *    as a host (that is what makes code blocks offer "Open in canvas").
+ *    as a host (that is what makes code blocks offer "Open in canvas"). Its preventDefault() is the receipt a Live
+ *    show_code waits for, so it is given only when the store actually took the artifact.
  *
  * MarkdownView's HighlightedCode is replaced by a plain <pre>: its rendering is covered in MarkdownView.test.tsx,
  * and the real one pulls in ESM-only react-markdown.
@@ -29,6 +30,8 @@ jest.mock('../MarkdownView', () => {
       createElement('pre', { 'data-testid': 'code', 'data-language': language }, code),
   };
 });
+
+import { browserLiveActionEnv, executeLiveToolCall } from '@/components/voice/live/liveActions';
 
 import { ArtifactCanvas, DESKTOP_QUERY, MAX_PREVIEW_RESETS } from './ArtifactCanvas';
 import { resetArtifactStore, useArtifactStore } from './artifactStore';
@@ -271,6 +274,44 @@ describe('the myavatar:open-artifact event', () => {
     });
     expect(useArtifactStore.getState().current).toMatchObject({ title: 'Voice page', language: 'html', code: '<p>hi</p>' });
     expect(screen.getByRole('heading', { name: 'Voice page' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Preview' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('preventDefault() is its receipt: given only once the store took the artifact', () => {
+    render(<ArtifactCanvas locale="en" />);
+    const send = (detail: unknown) => {
+      const ev = new CustomEvent(OPEN_ARTIFACT_EVENT, { detail, cancelable: true });
+      act(() => { window.dispatchEvent(ev); });
+      return ev.defaultPrevented;
+    };
+    expect(send({ language: 'exe', code: 'MZ' })).toBe(false); // refused by the validator
+    expect(send({ title: 'Page', language: 'html', code: '<p>hi</p>' })).toBe(true);
+
+    // Valid detail, but the store refuses it: still no receipt (the receipt follows the store, not the validator).
+    const realOpen = useArtifactStore.getState().openArtifact;
+    useArtifactStore.setState({ openArtifact: () => null });
+    try {
+      expect(send({ title: 'Other', language: 'css', code: 'p{}' })).toBe(false);
+    } finally {
+      useArtifactStore.setState({ openArtifact: realOpen });
+    }
+  });
+
+  it('a Live show_code lands as itself — svg with its Preview — and the model hears "saved" only with a canvas', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
+    const showCode = (id: string) =>
+      executeLiveToolCall({ id, name: 'show_code', args: { title: 'Dot', language: 'svg', code: svg } }, browserLiveActionEnv);
+
+    // No canvas mounted on this page: an honest ok:false, nothing opened.
+    expect(showCode('k0').response.response).toMatchObject({ ok: false, error: 'canvas_unavailable' });
+    expect(useArtifactStore.getState().open).toBe(false);
+
+    render(<ArtifactCanvas locale="en" />);
+    let out: ReturnType<typeof showCode> | undefined;
+    act(() => { out = showCode('k1'); });
+    expect(out!.response.response).toMatchObject({ ok: true });
+    expect(String(out!.response.response.summary)).toMatch(/saved in the code canvas/);
+    expect(useArtifactStore.getState().current).toMatchObject({ title: 'Dot', language: 'svg', code: svg });
     expect(screen.getByRole('tab', { name: 'Preview' }).getAttribute('aria-selected')).toBe('true');
   });
 

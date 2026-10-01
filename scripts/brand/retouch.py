@@ -7,7 +7,7 @@ attempts were used (docs/DESIGN.md: at most two retries). The mark sits on flat 
 classic way: mask the pale pixels inside a small box, then diffuse the surrounding stone into them (repeated
 blur, masked copy-back), and put back film grain of the same strength so the patch does not read smooth.
 
-    python3 scripts/brand/retouch.py        writes public/brand/v1/raw/A5r-1-0-retouched.png
+    python3 scripts/brand/retouch.py        writes design/brand/v1/raw/A5r-1-0-retouched.png
 
 The raw takes stay local (gitignored); the retouched result is committed as the master design/brand/v1/A5r.jpg,
 which is what scripts/brand/build-v1.mjs reads. This script is the record of how that master was made.
@@ -19,9 +19,10 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 ROOT = os.path.join(os.path.dirname(__file__), '..', '..')
-OUT = os.path.join(ROOT, 'public', 'brand', 'v1')
-SRC = os.path.join(OUT, 'raw', 'A5r-1-0.png')
-DST = os.path.join(OUT, 'raw', 'A5r-1-0-retouched.png')
+# The pack's private work dir (scripts/hf-art-pack.ts PACKS): manifest + raw takes, never under public/.
+WORK = os.path.join(ROOT, 'design', 'brand', 'v1')
+SRC = os.path.join(WORK, 'raw', 'A5r-1-0.png')
+DST = os.path.join(WORK, 'raw', 'A5r-1-0-retouched.png')
 
 # The box around the mark, measured on the 1296x1728 source: between the bottle's base and the glass foot.
 BOX = (488, 1352, 722, 1428)
@@ -58,7 +59,7 @@ def main():
     print('wrote', os.path.relpath(DST, ROOT), '· grain std', np.round(grain, 2).tolist())
 
     # Record it in the manifest: the selection points at the retouched file, with a note saying what was done.
-    mpath = os.path.join(OUT, 'manifest.json')
+    mpath = os.path.join(WORK, 'manifest.json')
     with open(mpath) as f:
         manifest = json.load(f)
     sel = manifest['selected'].get('A5r')

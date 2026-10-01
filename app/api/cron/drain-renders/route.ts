@@ -61,7 +61,9 @@ async function handle(req: NextRequest) {
       // finally ran, this drainer ran, or (after a failJob miss) a later tick re-runs it. Only charged
       // reservations carry `_reserve`; free-slot / skipped renders yield null → never minted.
       //
-      // ⚠️ THE ROW'S `_reserve.credits` IS A CLAIM, NOT A FACT. generation_jobs is owner-writable, so a user
+      // ⚠️ THE ROW'S `_reserve.credits` IS A CLAIM, NOT A FACT. generation_jobs WAS owner-writable (owner insert/
+      // update RLS — dropped 2026-10-01, 20261001f; /api/orchestrator/jobs now strips `_` keys and never revives a
+      // finished or billed row), so a user
       // could insert a stale `processing` row claiming any amount under a fresh ref and this loop paid it.
       // refundDebitByRef pays back only what the LEDGER shows was debited under that ref (capped at the
       // claim), still as `${ref}:refund` — so the collapse-to-one-refund guarantee above is unchanged.

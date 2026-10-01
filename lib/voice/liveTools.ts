@@ -38,10 +38,14 @@ export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
 export const LIVE_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:5', '3:4', '4:3'] as const;
 export type LiveAspectRatio = (typeof LIVE_ASPECT_RATIOS)[number];
 
-/** Canonical language ids for the canvas (common highlighter ids). Anything else well-formed → 'plaintext'. */
+/**
+ * Canonical language ids for the canvas (common highlighter ids). Anything else well-formed → 'plaintext'.
+ * ⚠️ `svg` IS ITS OWN LANGUAGE, NOT AN `xml` ALIAS: the canvas previews html and svg only (artifactSpec isPreviewable),
+ * so folding svg into xml silently cost every drawing the model showed its Preview tab.
+ */
 export const LIVE_CODE_LANGUAGES = [
-  'plaintext', 'javascript', 'typescript', 'jsx', 'tsx', 'python', 'html', 'css', 'json', 'bash', 'sql', 'java',
-  'kotlin', 'swift', 'go', 'rust', 'c', 'cpp', 'csharp', 'php', 'ruby', 'dart', 'yaml', 'markdown', 'xml',
+  'plaintext', 'javascript', 'typescript', 'jsx', 'tsx', 'python', 'html', 'svg', 'css', 'json', 'bash', 'sql',
+  'java', 'kotlin', 'swift', 'go', 'rust', 'c', 'cpp', 'csharp', 'php', 'ruby', 'dart', 'yaml', 'markdown', 'xml',
 ] as const;
 export type LiveCodeLanguage = (typeof LIVE_CODE_LANGUAGES)[number];
 
@@ -121,8 +125,8 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'show_code',
     description:
-      'Show code to the user in the code canvas on their screen. Use it whenever you would otherwise read code aloud; '
-      + 'then describe what the code does in a sentence or two instead of reading it.',
+      'Show code to the user by saving it in the app\'s code canvas. Use it whenever you would otherwise read code '
+      + 'aloud; then describe what the code does in a sentence or two instead of reading it.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -153,8 +157,8 @@ export const LIVE_ACTIONS_RULE = [
   'ACTIONS: while you talk you can act in the app through your functions.',
   'prepare_generation fills a studio with a prompt; it NEVER starts a generation or spends credits, so afterwards tell',
   'the user it is ready and that they start it themselves with the Run button. Call it only when the user clearly',
-  'wants something made. open_studio only switches the studio. show_code puts code on the screen: never read code',
-  'aloud, summarise it in a sentence. end_call hangs up: use it only when the user says goodbye.',
+  'wants something made. open_studio only switches the studio. show_code saves code in the code canvas: never read',
+  'code aloud, summarise it in a sentence. end_call hangs up: use it only when the user says goodbye.',
   'After a function answers, say in one short sentence what you did; if it answers ok:false, say so plainly and never',
   'pretend it worked.',
 ].join(' ');
@@ -256,7 +260,7 @@ const LANGUAGE_ALIASES: Readonly<Record<string, LiveCodeLanguage>> = {
   ts: 'typescript', py: 'python', python3: 'python', htm: 'html', sh: 'bash', shell: 'bash', zsh: 'bash',
   console: 'bash', terminal: 'bash', 'c++': 'cpp', cxx: 'cpp', 'c#': 'csharp', cs: 'csharp', golang: 'go',
   kt: 'kotlin', rb: 'ruby', rs: 'rust', yml: 'yaml', md: 'markdown', text: 'plaintext', txt: 'plaintext',
-  plain: 'plaintext', svg: 'xml',
+  plain: 'plaintext',
 };
 
 const fail = (code: LiveActionErrorCode, message: string, field?: string, allowed?: readonly string[]): LiveActionResult => ({

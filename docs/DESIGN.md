@@ -48,7 +48,7 @@ Every still is the same world with the same grade and the same seed family. Shot
 - **No text, logos, UI or watermarks inside an image.** Type is set in code over the picture.
 - A phone screen shows **footage**, never interface.
 - Images carry depth. The UI stays flat: hairlines and shadowless panels.
-- Generated only from `scripts/hf-art-pack.md`, all costs logged in `public/brand/v1/manifest.json`. The hard cap is $7 and generation stops at $6.50.
+- Generated only from `scripts/hf-art-pack.md`, all costs logged in `design/brand/v1/manifest.json` (never under `public/`, which deploys: the manifest holds prompts, prices and request ids). The hard cap is $7 and generation stops at $6.50.
 - **brand/v1.1 — reels.** Three 5-second vertical loops (R1 street, R2 product, R3 portrait), made by image-to-video from the brand/v1 masters, with no new stills, silent, and the last frame = the first. They are the landing's first proof that this is a video studio. They play only while on screen, never under reduced motion, and sit on their posters until then. Spend: $0.693, first attempt each; the manifest total is $1.437 of the $6.50 stop line.
 
 ## 5. Motion and density

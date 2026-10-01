@@ -27,10 +27,12 @@
  * buildLiveSetup and minted into the token's bidiGenerateContentSetup.
  *
  * VERIFIED LIVE 2026-09-30 (funded key, gemini-2.5-flash-native-audio-latest): the full lock — Georgian
- * `languageCodes` hint, both transcriptions, sessionResumption, contextWindowCompression, and the googleSearch tool —
- * mints (200) and completes setup on the Constrained endpoint; one turn returned audio, a Georgian outputTranscription
- * and a resumption handle, and a FRESH token minted with that handle resumed the session. The browser sends the
- * returned `setupMessage`, so the frame always matches the lock.
+ * `languageCodes` hint, both transcriptions, sessionResumption, contextWindowCompression — mints (200) and completes
+ * setup on the Constrained endpoint; one turn returned audio, a Georgian outputTranscription and a resumption handle,
+ * and a FRESH token minted with that handle resumed the session. The browser sends the returned `setupMessage`, so the
+ * frame always matches the lock.
+ *   ⚠️ googleSearch is NOT part of the default lock: it also minted and completed setup in that probe, but no
+ *   search-grounded answer has been verified, so it stays OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1 — the `search` gate in POST).
  * Fallback if Google ever rejects the lock (HTTP 400): the verified LEGACY lock (model + generationConfig +
  * systemInstruction — still server-owned, no tools) and `setupMessage` becomes that legacy frame; only if that is
  * rejected too does it drop to the {model}-only lock (`setupLocked: false`). Each step logs
@@ -44,7 +46,8 @@
  *   ⚠️ UNVERIFIED LIVE: that Google accepts functionDeclarations inside the ephemeral-token lock for
  *   gemini-2.5-flash-native-audio-latest. So a 400 on a lock WITH the declarations first retries the SAME parity lock
  *   WITHOUT them (captions, resumption and search survive; `actions: false` tells the browser) — only then the legacy
- *   chain above. A rejected declaration costs the actions, never the call.
+ *   chain above. A rejected declaration costs the actions, never the call. `node scripts/probe-live-actions.mjs` (owner,
+ *   funded key) mints + opens these three locks — full, actions dropped, no tools — and reports which reach setupComplete.
  * `tools: false` is the browser's degraded legacy retry: NO tools at all (search included), so the lock matches the
  * legacy frame it will send (useGeminiLiveSession strips PARITY_FIELDS, `tools` among them).
  */
@@ -188,8 +191,10 @@ export async function POST(request: NextRequest) {
     const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
     // `tools: false` = the browser's degraded legacy retry: no tools of any kind (see the header).
     const toolsAllowed = body.tools !== false;
-    // ⚠️ Google Search in Live is OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1) until it is verified live on the Constrained
-    // endpoint: a setup field the session rejects fails the WHOLE call after the token is spent, with no fallback.
+    // ⚠️ Google Search in Live is OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1) until a search-grounded answer is verified live on
+    // the Constrained endpoint (the 2026-09-30 probe got only as far as setupComplete with it): a setup field the
+    // session rejects fails the WHOLE call after the token is spent, with no fallback. (scripts/probe-live-actions.mjs
+    // --search re-checks the setup half only.)
     const search = toolsAllowed && profile.googleSearch && isTruthyFlag(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
     // Voice-to-action: default ON (GEMINI_LIVE_ACTIONS=0 is the kill switch), and only for a client that executes them.
     const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);

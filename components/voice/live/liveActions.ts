@@ -9,7 +9,8 @@
  *   • `myavatar:live-action` — detail = the typed LiveAction, for EVERY validated call. OmniStudio's one listener maps
  *     prepare_generation / open_studio onto its studio switch + prompt prefill and calls preventDefault() as its
  *     RECEIPT. No receipt (no studio on this page) → the model is told `ok:false`, never "done".
- *   • `myavatar:open-artifact` — detail `{title, language, code}` for show_code (the canvas another surface owns).
+ *   • `myavatar:open-artifact` — detail `{title, language, code}` for show_code (the canvas another surface owns),
+ *     cancelable too: ArtifactCanvas's preventDefault() is the receipt. No canvas on this page → `ok:false`.
  *
  * ⚠️ PREPARE-ONLY. Nothing here may start a render or charge a credit: the strongest thing a call can do is fill a
  * prompt the user then runs with their own tap. A future action that spends money needs a user gesture, not a call.
@@ -53,7 +54,7 @@ export interface LiveActionCard {
 export interface LiveActionEnv {
   /** Returns true when a studio took it (its preventDefault receipt). */
   dispatchAction: (detail: LiveActionEventDetail) => boolean;
-  /** Returns true when a canvas took it (optional receipt — the card offers Copy either way). */
+  /** Returns true when a canvas took it (its preventDefault receipt); false → show_code answers canvas_unavailable. */
   openArtifact: (detail: OpenArtifactDetail) => boolean;
 }
 
@@ -73,7 +74,7 @@ export function dispatchLiveAction(detail: LiveActionEventDetail): boolean {
   return dispatchCancelable(LIVE_ACTION_EVENT, detail);
 }
 
-/** `myavatar:open-artifact` with exactly `{title, language, code}` (the canvas contract). */
+/** `myavatar:open-artifact` with exactly `{title, language, code}` (the canvas contract), cancelable: true = shown. */
 export function dispatchOpenArtifact(detail: OpenArtifactDetail): boolean {
   return dispatchCancelable<OpenArtifactDetail>(OPEN_ARTIFACT_EVENT, { title: detail.title, language: detail.language, code: detail.code });
 }
@@ -95,6 +96,8 @@ function settingsSummary(a: PrepareGenerationAction): string {
 }
 
 const NO_STUDIO = 'No studio is open on this page, so nothing was prepared. Suggest the user opens the MyAvatar dashboard and asks again.';
+const NO_CANVAS = 'No code canvas is open on this page, so the code was not shown or saved. Do not read it aloud; '
+  + 'suggest the user opens the MyAvatar dashboard and asks again.';
 
 export interface LiveCallOutcome {
   response: LiveFunctionResponse;
@@ -138,13 +141,18 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
     }
     case 'show_code': {
       env.dispatchAction(action);
-      env.openArtifact({ title: action.title, language: action.language, code: action.code });
+      // ⚠️ The canvas's receipt, like the studio's above: the library and agent pages host Live but no canvas, and the
+      // model used to say "it's on your screen" there. And "saved", never "on screen": the Live dialog covers the
+      // canvas for the whole call — the user sees it after the card's Open (which hangs up) or after the call.
+      if (!env.openArtifact({ title: action.title, language: action.language, code: action.code })) {
+        return { response: answer({ ok: false, error: 'canvas_unavailable', message: NO_CANVAS }) };
+      }
       const lines = action.code.split('\n').length;
       return {
         response: answer({
           ok: true,
-          summary: `"${action.title}" (${action.language}, ${lines} line${lines === 1 ? '' : 's'}) is on the user's screen in the code canvas. `
-            + 'Do not read the code aloud; describe what it does in a sentence or two.',
+          summary: `"${action.title}" (${action.language}, ${lines} line${lines === 1 ? '' : 's'}) is saved in the code canvas, `
+            + 'ready for the user to open. Do not read the code aloud; describe what it does in a sentence or two.',
         }),
         card: card(action),
       };

@@ -8,7 +8,8 @@
  *     detail: { title?: string, language: string, code: string },
  *   }));
  *
- * or `dispatchOpenArtifact(detail)` below, which does the same. A mounted `ArtifactCanvas` listens for it.
+ * or `dispatchOpenArtifact(detail)` below, which does the same. A mounted `ArtifactCanvas` listens for it and, on a
+ * `cancelable` event, calls preventDefault() once it shows the artifact — the receipt the Live tools wait for.
  *
  * ⚠️ THE DETAIL IS UNTRUSTED INPUT. A Live tool call's arguments are model output, and the model can be steered by
  * whatever it was just shown. So the detail is re-validated here (`validateOpenArtifactDetail` → `toArtifactInput`):

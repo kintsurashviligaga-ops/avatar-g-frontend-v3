@@ -146,6 +146,17 @@ export interface PollResult {
   status: Model3dStatus;
   glbUrl: string | null;
   error?: string;
+  /**
+   * Replicate's `data_removed`, set only when Replicate sent a boolean. TRUE once the prediction's output
+   * files have been deleted (API outputs are kept for about an hour); FALSE while they still exist.
+   *
+   * ⚠️ THIS IS WHAT SEPARATES "OUTPUT DELETED" FROM "FINISHED WITHOUT A MODEL". Both arrive as a succeeded
+   * prediction with no .glb, and they must be billed in opposite ways: a deleted output may already have been
+   * delivered, while an output that is still there and holds no .glb never had one for any tick to deliver.
+   */
+  dataRemoved?: boolean;
+  /** Replicate's `completed_at` as epoch ms — when the prediction reached its terminal status. */
+  completedAtMs?: number;
 }
 
 export async function pollReconstruction(pollUrl: string, fetchImpl: FetchImpl = fetch): Promise<PollResult> {
@@ -160,15 +171,21 @@ export async function pollReconstruction(pollUrl: string, fetchImpl: FetchImpl =
     // A transient poll failure must NOT look like a failed job — the prediction is still running.
     if (!res.ok) return { status: 'processing', glbUrl: null };
 
-    const j = (await res.json().catch(() => null)) as { status?: unknown; output?: unknown; error?: unknown } | null;
+    const j = (await res.json().catch(() => null)) as
+      | { status?: unknown; output?: unknown; error?: unknown; data_removed?: unknown; completed_at?: unknown }
+      | null;
     if (!j) return { status: 'processing', glbUrl: null };
 
     const status = mapReplicateStatus(j.status);
     const err = typeof j.error === 'string' && j.error ? j.error : '';
+    const completedAtMs = typeof j.completed_at === 'string' ? Date.parse(j.completed_at) : NaN;
     return {
       status,
       glbUrl: pickGlbUrl(j.output),
       ...(err ? { error: err } : {}),
+      // Only a real boolean counts: an absent field is "unknown", never "not removed".
+      ...(typeof j.data_removed === 'boolean' ? { dataRemoved: j.data_removed } : {}),
+      ...(Number.isFinite(completedAtMs) ? { completedAtMs } : {}),
     };
   } catch {
     return { status: 'processing', glbUrl: null };

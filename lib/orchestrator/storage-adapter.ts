@@ -10,6 +10,7 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { isTwinBucket } from '@/lib/avatar/twinStorage';
 
 export const SIGNED_URL_TTL_SEC = 900; // 15 minutes
 
@@ -86,12 +87,67 @@ export async function removeStorageObjects(bucket: string, paths: string[]): Pro
   try { await sb.storage.from(bucket).remove(paths); } catch { /* ignore */ }
 }
 
-/** Mint a 15-minute signed URL for a stored object. Null when unavailable. */
+/**
+ * ⚠️ BIOMETRIC DENY-LIST — these signers never mint a URL for the twin bucket (voiceprints; posters in
+ * Wave 3). Many callers hand them a CLIENT-chosen object: a bare path (signed in `uploads`) or, through
+ * reSignIfInternal / the library re-sign, a bucket parsed straight out of a client-supplied URL — so without
+ * this any signed-in caller could name `twins/<victim uid>/voice.webm` and get it back signed by the service
+ * role. A twin reader signs on its own, scoped to the caller's own uid (lib/avatar/twinStorage.ts).
+ */
+function refuseTwin(bucket: string): boolean {
+  if (!isTwinBucket(bucket)) return false;
+  // eslint-disable-next-line no-console
+  console.warn('[storage] refused to sign an object in the private twin bucket via the generic signer');
+  return true;
+}
+
+
+type ListApi = {
+  storage: {
+    from: (bucket: string) => {
+      list: (
+        dir: string,
+        opts: { limit: number; search: string },
+      ) => Promise<{ data: Array<{ name?: string | null }> | null; error: { message: string } | null }>;
+    };
+  };
+};
+
+/**
+ * Does `bucket/path` exist? TRUE / FALSE only when storage actually answered; NULL when it could not be asked
+ * (unconfigured, an error, a throw). Anything that decides money on this must treat null as "cannot tell":
+ * "storage was down" is not "the object is absent".
+ *
+ * `search` is a pattern match on the name (`_` is a wildcard in it), so a hit is re-checked for the EXACT
+ * name here — a near-miss name can never stand in for the object asked about.
+ */
+export async function storageObjectExists(
+  bucket: string,
+  path: string,
+  sb: ListApi | null = client() as unknown as ListApi | null,
+): Promise<boolean | null> {
+  if (!sb) return null;
+  const slash = path.lastIndexOf('/');
+  const dir = slash >= 0 ? path.slice(0, slash) : '';
+  const name = slash >= 0 ? path.slice(slash + 1) : path;
+  if (!name) return null;
+  try {
+    const { data, error } = await sb.storage.from(bucket).list(dir, { limit: 100, search: name });
+    if (error || !Array.isArray(data)) return null;
+    return data.some((o) => o?.name === name);
+  } catch {
+    return null;
+  }
+}
+
+
+/** Mint a 15-minute signed URL for a stored object. Null when unavailable (and always for the twin bucket). */
 export async function createSignedAssetUrl(
   bucket: string,
   path: string,
   expiresSec: number = SIGNED_URL_TTL_SEC,
 ): Promise<string | null> {
+  if (refuseTwin(bucket)) return null;
   const sb = client();
   if (!sb) return null;
   try {
@@ -109,6 +165,7 @@ export async function createSignedAssetUrls(
   paths: string[],
   expiresSec: number = SIGNED_URL_TTL_SEC,
 ): Promise<Array<string | null>> {
+  if (refuseTwin(bucket)) return paths.map(() => null);
   const sb = client();
   if (!sb) return paths.map(() => null);
   try {

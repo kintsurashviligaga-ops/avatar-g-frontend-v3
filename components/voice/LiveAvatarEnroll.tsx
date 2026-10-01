@@ -6,9 +6,10 @@
  * Captures a SELFIE (live camera with front/back flip, or a photo upload) and an OPTIONAL ~15s voice
  * sample, then does exactly ONE thing on Save:
  *   • POST /api/avatar/enroll  → STORES the selfie (core avatar poster, shown + audio-reactive during the
- *     Gemini Live session) AND, when recorded, the voice sample — both to the user's public live-avatar
- *     storage (avatars/live-avatars/<uid>/…). It deliberately does NOT kick off any background voice-clone
- *     TRAINING or render, so nothing is queued in the corner; the Save button only enrolls.
+ *     Gemini Live session) to public live-avatar storage (avatars/live-avatars/<uid>/poster.jpg) AND, when
+ *     recorded, the voice sample to the dedicated PRIVATE `twins` bucket (twins/<uid>/voice.*). It deliberately does NOT kick
+ *     off any background voice-clone TRAINING or render, so nothing is queued in the corner; the Save
+ *     button only enrolls.
  *
  * The camera stream is acquired ONCE and reused across flips/captures (permission isn't re-prompted), and
  * fully released on close. Front camera is mirrored for a natural selfie. Fail-open throughout.

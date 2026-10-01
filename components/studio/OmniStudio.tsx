@@ -70,6 +70,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
+import { nextAvatarAttempt, presenterMayFallBack } from '@/lib/avatar/renderAttempts';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
@@ -96,6 +97,7 @@ import type { PanelService } from './ServiceParamsPanel';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
+import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { describeServiceError } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -852,7 +854,7 @@ interface Media { dataUrl: string; mimeType: string; /** The original file name 
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
 type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string };
-type MusicRegenSpec = { kind: 'music'; prompt: string; genre: string; instrumental: boolean; lyrics?: string };
+// MusicRegenSpec (+ duration / tempo / voice, and the body built from it) lives in lib/studio/musicRegen — tested there.
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
 // fills in independently as its own parallel generation lands.
@@ -2059,18 +2061,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Studio for review BEFORE export. `imgBoardScenes` populated ⇒ frames were generated; export bridges them.
   const [imgBoardScenes, setImgBoardScenes] = useState<StoryboardMatrixCell[]>([]);
   const [imgBoardCharacter, setImgBoardCharacter] = useState<string | undefined>(undefined);
-  // Default to VOCALS now that the redesigned Music panel has no instrumental/vocal
-  // toggle (a vocal R&B/pop track is the common case; the model writes lyrics from the
-  // prompt). Describe "instrumental …" in the prompt for an instrumental bed.
+  // Default to a SONG (vocals): a vocal R&B/pop track is the common case, and the engine writes
+  // lyrics from the prompt when none are given. The panel's Track type chips (Instrumental / Song)
+  // flip it — and gate the Lyrics / Vocal rows below.
   const [musicInstrumental, setMusicInstrumental] = useState(false);
   const [musicGenre, setMusicGenre] = useState<string>('r&b');
-  // Custom lyrics for vocal tracks — empty means Udio writes the lyrics from the prompt.
+  // Custom lyrics for vocal tracks — empty means the engine (Lyria 3 first) writes them from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
   // 'voice' clones the uploaded VOICE and sings the lyrics in it (MiniMax music-01).
   const [musicAudioMode, setMusicAudioMode] = useState<'cover' | 'voice'>('cover');
   // P6 — track length + tempo, passed to /api/ai/music (durationSec + tempo).
-  // FIX 2 — duration 0 = "full song": skip the ffmpeg trim, keep Udio's full ~2-4 min output.
+  // FIX 2 — duration 0 = "full song": billed at the 90s tier; each engine renders its own full length
+  // (Udio untrimmed, ElevenLabs ~120s, MusicGen 90s) and the route settles the charge to what was delivered.
   const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(30);
   const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>('medium');
   // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
@@ -4047,7 +4050,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         body: JSON.stringify(
           spec.kind === 'image'
             ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }
-            : { prompt: spec.prompt, style: spec.genre, instrumental: spec.instrumental, ...(spec.lyrics ? { lyrics: spec.lyrics } : {}) },
+            : musicRegenBody(spec),
         ),
         credentials: 'include',
         signal: ac.signal,
@@ -4074,7 +4077,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       });
       // Regenerate charges server-side exactly like the primary path — surface the deduction + refresh the
       // balance pill (runImageJob/runMusicJob do this; regenerate silently debited the wallet before).
-      if (ok && mine()) notifyCredit(spec.kind === 'image' ? 'image' : 'music');
+      // A music re-roll now keeps its duration, so its toast must price the tier the route billed (not the 30 s default).
+      if (ok && mine()) notifyCredit(spec.kind === 'image' ? 'image' : 'music', spec.kind === 'music' ? { seconds: musicRegenBilledSeconds(spec) } : undefined);
     } catch {
       if (!mine()) return;
       setMessages((prev) => {
@@ -4335,9 +4339,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /**
    * MUSIC generation → a capped-parallel queue JOB (own signal + jobId + durable row), so a
    * track renders ALONGSIDE images/product/swap through the tray instead of the old
-   * single-slot busy path. The server keeps its Udio→ElevenLabs→MusicGen latency-failover
-   * (/api/ai/music); we pass the jobId so its completion row upserts under the client id
-   * (one row, no duplicate). Result lands in its OWN chat bubble by id.
+   * single-slot busy path. The server keeps its Lyria 3→Udio→ElevenLabs Music→MusicGen
+   * latency-failover (/api/ai/music — Lyria is primary whenever a Gemini key is set); we pass
+   * the jobId so its completion row upserts under the client id (one row, no duplicate).
+   * Result lands in its OWN chat bubble by id.
    */
   const runMusicJob = useCallback((m: {
     prompt: string; userBubble: string; medias?: Media[]; useTrained: boolean;
@@ -4380,12 +4385,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
-          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: { kind: 'music', prompt: m.prompt, genre: m.genre, instrumental: m.instrumental, ...(!m.instrumental && m.lyrics ? { lyrics: m.lyrics } : {}) } });
           // A COVER (audioReference: an uploaded track, not a trained/cloned voice) is billed a FLAT 30s
           // server-side regardless of the duration picker, so the toast must show the 30s tier — otherwise a
           // 90s/Full cover shows "−12 credits" while the wallet is only debited the 30s tier (−5). Mirror
           // the server's `audioReference ? 30 : …` rule so the deduction shown matches the deduction made.
           const coverBilledFlat30 = !!uploadedAudioUrl && !m.useTrained && !isVoiceClone;
+          // ⚠️ The re-roll spec records what this request SENT, not the raw panel: a trained / cloned voice forced a
+          // song and sent no voiceType, and a cover rendered (and billed) 30 s — so its re-roll asks for the same.
+          const sungByUser = m.useTrained || isVoiceClone;
+          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: makeMusicRegenSpec({
+            prompt: m.prompt, genre: m.genre, instrumental: sungByUser ? false : m.instrumental, lyrics: m.lyrics,
+            durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { voiceType: m.voiceType }),
+          }) });
           notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
           return j.url;
         }
@@ -5250,6 +5261,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Output format the user picked: presenter dimension + the result player's box.
       const lipOrientation = lipFormat === '9:16' ? 'vertical' : lipFormat === '1:1' ? 'square' : 'landscape';
       const lipResultOrientation: 'landscape' | 'vertical' = lipFormat === '16:9' ? 'landscape' : 'vertical';
+      // A render still going when the poll budget ran out. It is already paid for (reserved at POST), so no fallback
+      // starts a second paid job beside it (lib/avatar/renderAttempts) — the user is told it ran long instead.
+      const lipStillRendering = locale === 'en'
+        ? 'The avatar is still rendering after several minutes, so we stopped waiting. Please try again later.'
+        : locale === 'ru'
+          ? 'Аватар всё ещё рендерится спустя несколько минут — ожидание остановлено. Попробуйте позже.'
+          : 'ავატარი რამდენიმე წუთის შემდეგაც მზადდება — ლოდინი შევწყვიტეთ. სცადე მოგვიანებით.';
       // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
@@ -5269,36 +5287,42 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Honour the panel's Voice (Female/Male) + Format selections.
             body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string };
           let sj: { success?: boolean; videoId?: string } = {};
           // No HeyGen key → don't burn a round-trip on a submit that must 503; the SadTalker
           // fallback below runs on the SAME cloned-voice audio. (undefined = older server → try.)
           if (syn.success && syn.audioUrl && syn.heygenReady !== false) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation }),
+              // chargeToken = Phase A's price hold; the server releases it as it reserves this render (one presenter, one charge).
+              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation, chargeToken: syn.chargeToken }),
             });
             sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
           }
           let url: string | null = null;
           let failReason: string | null = null;
-          if (sj.success && sj.videoId) {
+          const heygenVideoId = sj.success && sj.videoId ? sj.videoId : null;
+          let heygenSettled = false;
+          if (heygenVideoId) {
             for (let i = 0; i < 90 && !url && !failReason; i++) { // ~9 min of quick polls
               if (!mine()) return;
               await new Promise((r) => setTimeout(r, 6000));
-              const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(sj.videoId)}`, { credentials: 'include', signal: ac.signal });
+              const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(heygenVideoId)}`, { credentials: 'include', signal: ac.signal });
               const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
               // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              if (pj.done) { if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
+              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
             }
+            // ⚠️ Out of polls with no verdict = the HeyGen video is STILL RENDERING, and it is paid for. Falling back
+            // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
+            if (!url && !heygenSettled) failReason = lipStillRendering;
           }
-          // HeyGen unavailable / unpaid package → fall back to Replicate SadTalker: the default
-          // presenter face speaks the SAME cloned-voice audio. Keeps the presenter working without HeyGen.
-          if (!url && syn.success && syn.audioUrl) {
+          // HeyGen unavailable / unpaid package / a terminal HeyGen failure (refunded by its poll) → fall back to
+          // Replicate SadTalker: the default presenter face speaks the SAME cloned-voice audio.
+          if (!url && syn.success && syn.audioUrl && presenterMayFallBack({ videoId: heygenVideoId, settled: heygenSettled })) {
             try {
               const fbRes = await fetch('/api/video/lipsync', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation }),
+                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation, chargeToken: syn.chargeToken }),
               });
               const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
               // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
@@ -5365,6 +5389,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Avatar engine = HeyGen first; if a HeyGen job fails (create OR render), the next
         // attempt forces the proven SadTalker engine — so the service NEVER hard-fails.
         let forceSadTalker = false;
+        let stillRendering = false;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
           const body = forceSadTalker ? JSON.stringify({ ...JSON.parse(startBody), forceSadTalker: true }) : startBody;
@@ -5373,18 +5398,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (!startJson.jobId) { resultErr = 'start failed'; continue; }
           const usedHeygen = String(startJson.jobId).startsWith('heygen:');
           resultErr = null;
+          let settled = false;
           for (let i = 0; i < 70; i++) { // ~7 min per attempt; each poll is a quick request
             if (!mine()) return;
             await new Promise((r) => setTimeout(r, 6000));
             const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
             const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-            if (pj.done) { resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
           }
-          if (resultUrl) break;
-          // A failed HeyGen job → fall back to the proven SadTalker engine on the next try.
-          if (usedHeygen) { forceSadTalker = true; continue; }
-          // SadTalker: retry only the known transient model crash; bail on anything else.
-          if (resultErr && !/antialias|has no attribute|cuda|out of memory|memory|runtimeerror|baseexception|must derive/i.test(resultErr)) break;
+          // A failed HeyGen job → the proven SadTalker engine next; SadTalker retries only its known transient crash.
+          // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
+          // reserve a second price for the same video (lib/avatar/renderAttempts).
+          const next = nextAvatarAttempt({ settled, url: resultUrl, error: resultErr, usedHeygen });
+          if (next === 'deliver') break;
+          if (next === 'fallback-sadtalker') { forceSadTalker = true; continue; }
+          if (next === 'stop') { stillRendering = !settled; break; }
         }
         setMessages((prev) => {
           if (!mine()) return prev;
@@ -5393,7 +5421,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
-              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
+              : stillRendering
+                ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
+                : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
         });
@@ -7911,7 +7941,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                     <div className="flex flex-wrap gap-1.5">
                       {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
-                      {/* FIX 2 — full song: duration 0 keeps Udio's full ~2-4 min output (no trim). */}
+                      {/* FIX 2 — full song: duration 0 (billed at the 90s tier; see musicDuration). */}
                       <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>{locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
                     </div>
                   </div>

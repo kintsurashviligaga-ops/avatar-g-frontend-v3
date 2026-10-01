@@ -14,7 +14,7 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 2. ~~Merge `feat/chat-first-guest` to main.~~ Done.
 3. **Gemini prepay is empty again.** Production logged `402 "Your prepayment credits are depleted"` on `/api/chat/gemini` at 17:09 on 09-30, and the local key returns the same today. Until the AI Studio prepay is topped up, chat, Veo, Lyria and TTS all fail.
 4. ~~Delete the old shell and the legacy pages.~~ Done, §3.5.
-5. **A funded image provider for the template thumbnails.** Gemini is 402, Replicate and OpenAI have no credit, and Vercel withholds the production `HF_CREDENTIALS` value. Run `npm run hf:credentials` (enter the key locally), then `npx jiti scripts/hf-art-pack.ts --pack templates --yes-spend`. The cap is $5 and the stop line is $4.50; the expected cost is about $0.46.
+5. **A funded image provider for the template thumbnails.** Gemini is 402, Replicate and OpenAI have no credit, and Vercel withholds the production `HF_CREDENTIALS` value. Run `npm run hf:credentials` (enter the key locally), then `npm run art:templates -- --dry` (free: it prices every shot and adds the quotes up against the stop line) and `npm run art:templates -- --yes-spend`. Takes land in `scripts/templates/raw/`, the spend log in `scripts/templates/manifest.json` — neither under `public/`. The cap is $5 and the stop line is $4.50; the expected cost is about $0.46.
 6. **Reconcile live Stripe.** No Stripe top-up has ever reached the ledger (§5.2). Check the live dashboard for paid `wallet_topup` sessions. Any you find can be replayed once the fix is deployed.
 7. **Phone sign-in.** The sign-in sheet already accepts a phone number, but it only offers one once Supabase has an SMS sender. Supabase → Authentication → Providers → Phone: switch it on and enter an SMS provider (Twilio Verify needs the Account SID, Auth Token and Verify Service SID; there are no Twilio credentials anywhere in production today). The field then reads „ელ.ფოსტა ან ტელეფონის ნომერი" by itself. SMS to Georgia is among the pricier routes, so set Twilio's geo-permissions to the countries you serve.
 8. **Vertex AI.** The switch is already automatic: `veoTransport()` prefers Vertex whenever the GCP variables are complete. None are set in production, so Veo runs on the Gemini API today. The variables are listed in `docs/VEO_VERTEX_SETUP.md`.
@@ -69,6 +69,16 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 - **Forgot password** now ends on a „new password" step in the sign-in sheet (the reset mail signs the person in through `/auth/callback`, then `?auth=recover` asks for the new password). An expired or used link says so.
 - **Locale.** `/login`, `/signup`, `/auth` without a language keep the visitor's language (NEXT_LOCALE), and a failed Google sign-in returns in the language it started from.
 - **Profile bootstrap.** The OAuth / reset callback fills a missing name or photo but never overwrites one the person set.
+
+### 3.8 Super-App plan, Wave 1: leaks and shipped bugs (2026-10-01)
+The plan for Phases 2–4 is `docs/SUPER_APP_PLAN.md`. Wave 1 closed what the mapping found already broken in production:
+- **Avatar renders are paid before they run.** Lip-sync and the HeyGen presenter now require sign-in, reserve the price at POST (a ledger error refuses with 503 — it used to let the render through free) and refund a failed render. The signed charge token rides inside the job id the eight call sites already poll. The Film Studio's dead whole-master lip-sync toggle (it never polled, so it would have charged for nothing) is gone; a guard test fails if any caller starts a lip-sync job without polling it.
+- **3D models cost 5 credits** (owner decision), reserved before the provider and refunded when Replicate reports a failure; a delivered model is never re-downloaded on every poll; the panel prefill, thumbnail and an expired-GLB crash are fixed.
+- **Voice:** training needs a signed-in user (no demo fallback); cloning is rate-limited, audio-only, ≤ 10 MB; deleting a clone deletes it at ElevenLabs — only voices tagged with the caller's own id.
+- **Biometrics:** Live Avatar voice samples go to the new private `twins` bucket, which every generic signer refuses. `scripts/avatar/migrate-live-avatar-voice.mjs` lists the old public samples; moving them (`--yes`) is the owner's call.
+- **Client `style` text** is capped at 80 characters and stripped of invisible/bidi characters before it reaches an image, film or music prompt.
+- **The stale-render refund exploit** (live): the drainer refunds `processing` job rows carrying a reservation, and users could write those rows. Owner insert/update RLS on `generation_jobs` is dropped and the progress route can no longer forge or revive billing state (`20261001f`).
+- **Also:** music re-rolls keep their length, tempo and singer; the thumbnail runner writes nested takes, projects dry-run totals and no longer deploys its manifest publicly (`/brand/v1/manifest.json` now 404s); Live's „show code" says „saved in the canvas" only when the canvas confirms.
 
 ## 4. Phase 3: omni-modal (`feat/chat-first-guest`)
 

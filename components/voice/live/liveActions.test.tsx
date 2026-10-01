@@ -1,7 +1,8 @@
 /**
  * The voice-to-action executor: each validated call becomes the window event the app listens for, and is answered
  * at once — ok:true with a summary ONLY when a studio took it (its preventDefault receipt), ok:false otherwise; the
- * canvas gets exactly {title, language, code}; nothing here can start a render; cards are newest-first, capped at 3,
+ * canvas gets exactly {title, language, code} and show_code is "saved" only on the canvas's own receipt (no canvas →
+ * canvas_unavailable); nothing here can start a render; cards are newest-first, capped at 3,
  * and a toolCallCancellation drops them; a looping model is cut off.
  */
 import { act, renderHook } from '@testing-library/react';
@@ -19,12 +20,13 @@ import {
   type LiveActionEnv,
 } from './liveActions';
 
-function spyEnv(receipt = true) {
+/** `receipt` = a studio took the live-action event; `canvasReceipt` = a canvas took the open-artifact event. */
+function spyEnv(receipt = true, canvasReceipt = true) {
   const actions: LiveActionEventDetail[] = [];
   const artifacts: OpenArtifactDetail[] = [];
   const env: LiveActionEnv = {
     dispatchAction: (d) => { actions.push(d); return receipt; },
-    openArtifact: (d) => { artifacts.push(d); return false; },
+    openArtifact: (d) => { artifacts.push(d); return canvasReceipt; },
   };
   return { env, actions, artifacts };
 }
@@ -67,14 +69,28 @@ describe('executeLiveToolCall', () => {
   });
 
   test('show_code → the live-action event AND the canvas event with exactly {title, language, code}', () => {
-    const { env, actions, artifacts } = spyEnv(false);
+    // No studio receipt needed: the canvas is what takes code.
+    const { env, actions, artifacts } = spyEnv(false, true);
     const out = executeLiveToolCall(call('c9', 'show_code', { title: 'Fib', language: 'py', code: 'def f():\n  pass', extra: 1 }), env);
     expect(actions).toEqual([{ type: 'show_code', title: 'Fib', language: 'python', code: 'def f():\n  pass' }]);
     expect(artifacts).toEqual([{ title: 'Fib', language: 'python', code: 'def f():\n  pass' }]);
     expect(Object.keys(artifacts[0]!).sort()).toEqual(['code', 'language', 'title']);
     expect(out.response.response).toMatchObject({ ok: true });
-    expect(String(out.response.response.summary)).toMatch(/2 lines\) is on the user's screen.*Do not read the code aloud/);
+    // "Saved", never "on screen": the Live dialog covers the canvas for the whole call.
+    const summary = String(out.response.response.summary);
+    expect(summary).toMatch(/2 lines\) is saved in the code canvas.*Do not read the code aloud/);
+    expect(summary).not.toMatch(/screen/);
     expect(out.card?.id).toBe('c9');
+  });
+
+  test('show_code with no canvas on the page (no receipt) → ok:false canvas_unavailable, no card — never "it\'s shown"', () => {
+    const { env, artifacts } = spyEnv(true, false);
+    const out = executeLiveToolCall(call('c10', 'show_code', { title: 'Fib', language: 'python', code: 'pass' }), env);
+    expect(artifacts).toHaveLength(1); // it was offered to a canvas; nobody took it
+    expect(out.response).toMatchObject({ id: 'c10', name: 'show_code', response: { ok: false, error: 'canvas_unavailable' } });
+    expect(String(out.response.response.message)).toMatch(/not shown/);
+    expect(out.response.response).not.toHaveProperty('summary');
+    expect(out.card).toBeUndefined();
   });
 
   test('end_call → ok:true goodbye summary, endCall, no card', () => {
@@ -130,6 +146,22 @@ describe('window events', () => {
     } finally {
       window.removeEventListener(LIVE_ACTION_EVENT, boom);
       window.removeEventListener('error', onError);
+    }
+  });
+
+  test('myavatar:open-artifact is cancelable: a canvas\'s preventDefault() is the receipt', () => {
+    const detail: OpenArtifactDetail = { title: 'T', language: 'svg', code: '<svg/>' };
+    expect(dispatchOpenArtifact(detail)).toBe(false); // no canvas on the page
+    const looks = () => {}; // a listener that does not take it is not a receipt either
+    const take = (e: Event) => e.preventDefault();
+    window.addEventListener(OPEN_ARTIFACT_EVENT, looks);
+    try {
+      expect(dispatchOpenArtifact(detail)).toBe(false);
+      window.addEventListener(OPEN_ARTIFACT_EVENT, take);
+      expect(dispatchOpenArtifact(detail)).toBe(true);
+    } finally {
+      window.removeEventListener(OPEN_ARTIFACT_EVENT, looks);
+      window.removeEventListener(OPEN_ARTIFACT_EVENT, take);
     }
   });
 

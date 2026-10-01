@@ -1,5 +1,5 @@
 /**
- * brand/v1 — the generated image pack (scripts/hf-art-pack.md, costs in public/brand/v1/manifest.json).
+ * brand/v1 — the generated image pack (scripts/hf-art-pack.md, costs in design/brand/v1/manifest.json).
  * One world, one grade (docs/DESIGN.md §4). Web files are produced from the selected raw outputs by
  * `node scripts/brand/build-v1.mjs`; nothing here is referenced before that script has written it
  * (lib/brand/v1.test.ts checks every file exists).

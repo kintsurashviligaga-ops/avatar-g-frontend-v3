@@ -17,6 +17,7 @@ import { generateFluxProImage } from '@/lib/ai/fluxImage';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { isKnownStyle, sanitizeStyle } from '@/lib/studio/style';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -138,6 +139,9 @@ export async function POST(req: NextRequest) {
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
     }
+    // ⚠️ `style` IS CLIENT TEXT THAT LANDS IN THE PAID PROMPT (lib/studio/style.ts): one line, ≤80 chars, no
+    // control/bidi characters. Cleaned here, before the mutex key, so every use below sees the same value.
+    const styleLabel = sanitizeStyle(body.style);
 
     // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
     // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
@@ -163,7 +167,7 @@ export async function POST(req: NextRequest) {
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: body.style ?? '', ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
@@ -186,8 +190,10 @@ export async function POST(req: NextRequest) {
 
     const quality     = body.quality ?? 'high';
     const endpoint    = (body.endpoint ?? QUALITY_ENDPOINT[quality] ?? 'v2-2k') as NanoBananaEndpoint;
-    const styleLabel  = body.style ?? '';
-    const styleSuffix = STYLE_SUFFIXES[styleLabel] ?? styleLabel;
+    // ⚠️ ONLY A KNOWN LABEL IS FORWARDED AS THE PROVIDER'S `style` FIELD — free text still shapes the prompt (capped
+    // above) but never becomes a provider parameter. Own keys only: a bare STYLE_SUFFIXES[k] also "knew" 'constructor'.
+    const knownStyle  = isKnownStyle(STYLE_SUFFIXES, styleLabel) ? styleLabel : '';
+    const styleSuffix = knownStyle ? STYLE_SUFFIXES[knownStyle] : styleLabel;
     // A style brings its own quality descriptors; an un-styled ("Auto") prompt gets a
     // light universal boost so every image is crisp + detailed, not flat.
     // ⚠️ EVERY ENGINE THIS ROUTE CAN REACH READS ENGLISH ONLY — NanoBanana, Grok and FLUX 1.1 Pro are
@@ -238,7 +244,7 @@ export async function POST(req: NextRequest) {
           prompt:      finalPrompt,
           endpoint,
           aspectRatio: body.aspectRatio ?? '1:1',
-          style:       styleLabel || undefined,
+          style:       knownStyle || undefined,
           ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
           // Poll budget matched to the engine's REAL latency AND to what this function can afford.
           // maxDuration is 300s; the FLUX leg (45s) + the re-host copy (25s) still have to run AFTER
