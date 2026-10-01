@@ -21,7 +21,13 @@ import { reportError } from '@/lib/observability/report-error';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 // Text mode does an Imagen call before submitting; the reconstruction itself is polled from the browser.
-export const maxDuration = 120;
+//
+// ⚠️ SIZED TO THE SERIAL WORST CASE, BECAUSE THE CHARGE IS TAKEN FIRST. The reservation lands before every
+// paid leg, and a lambda the platform kills between that debit and a refund or response strands it: there is
+// no `_reserve` stamp for the drainer, and no charge signature ever reached the client. Worst case after the
+// debit: 2 × 12 s translation + 20 s Imagen + 2 × 90 s reference upload + 30 s version lookup + 30 s submit
+// = 284 s. This was 120 here and 60 in vercel.json. Keep both at or above that sum.
+export const maxDuration = 300;
 
 const WEEK_SEC = 604_800;
 
@@ -53,8 +59,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Same as dubbing: the image-to-3D reference is uploaded browser-direct to storage, so it arrives as
   // a PATH. Signing it here is what lets the panel offer a real file picker instead of demanding a URL.
+  // Signed for a WEEK, like the text path's reference: this URL comes back as `referenceUrl`, which the chat
+  // keeps as the 3D message's thumbnail. At resolveUploadRef's default hour, every photo-mode thumbnail
+  // went blank in saved history about an hour after it was made.
   const body = raw && typeof raw === 'object'
-    ? { ...(raw as Record<string, unknown>), imageUrl: await resolveUploadRef((raw as Record<string, unknown>).imageUrl) }
+    ? { ...(raw as Record<string, unknown>), imageUrl: await resolveUploadRef((raw as Record<string, unknown>).imageUrl, WEEK_SEC) }
     : raw;
 
   const parsed = validateModel3dRequest(body);

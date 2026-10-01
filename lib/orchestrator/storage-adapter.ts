@@ -86,6 +86,44 @@ export async function removeStorageObjects(bucket: string, paths: string[]): Pro
   try { await sb.storage.from(bucket).remove(paths); } catch { /* ignore */ }
 }
 
+type ListApi = {
+  storage: {
+    from: (bucket: string) => {
+      list: (
+        dir: string,
+        opts: { limit: number; search: string },
+      ) => Promise<{ data: Array<{ name?: string | null }> | null; error: { message: string } | null }>;
+    };
+  };
+};
+
+/**
+ * Does `bucket/path` exist? TRUE / FALSE only when storage actually answered; NULL when it could not be asked
+ * (unconfigured, an error, a throw). Anything that decides money on this must treat null as "cannot tell":
+ * "storage was down" is not "the object is absent".
+ *
+ * `search` is a pattern match on the name (`_` is a wildcard in it), so a hit is re-checked for the EXACT
+ * name here — a near-miss name can never stand in for the object asked about.
+ */
+export async function storageObjectExists(
+  bucket: string,
+  path: string,
+  sb: ListApi | null = client() as unknown as ListApi | null,
+): Promise<boolean | null> {
+  if (!sb) return null;
+  const slash = path.lastIndexOf('/');
+  const dir = slash >= 0 ? path.slice(0, slash) : '';
+  const name = slash >= 0 ? path.slice(slash + 1) : path;
+  if (!name) return null;
+  try {
+    const { data, error } = await sb.storage.from(bucket).list(dir, { limit: 100, search: name });
+    if (error || !Array.isArray(data)) return null;
+    return data.some((o) => o?.name === name);
+  } catch {
+    return null;
+  }
+}
+
 /** Mint a 15-minute signed URL for a stored object. Null when unavailable. */
 export async function createSignedAssetUrl(
   bucket: string,

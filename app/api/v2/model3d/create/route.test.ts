@@ -52,8 +52,11 @@ jest.mock('../../../../../lib/orchestrator/ledger', () => ({
 }));
 jest.mock('../../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { POST, maxDuration } from './route';
+import { resolveUploadRef } from '../../../../../lib/services/resolveUpload';
 import { submitReconstruction } from '../../../../../lib/services/model3d/replicate3dClient';
 import { generateImagenImages } from '../../../../../lib/ai/geminiImagen';
 import { guardedCall, BudgetExceededError } from '../../../../../lib/services/billing/guardedCall';
@@ -202,6 +205,29 @@ describe('refund on every exit that delivers nothing', () => {
     expect(res.status).toBe(200);
     expect(refund).not.toHaveBeenCalled();
     expect(failJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('a charge taken first must not be stranded by the platform timeout', () => {
+  // After the debit, the serial worst case is 2 × 12 s translation + 20 s Imagen + 2 × 90 s reference upload
+  // + 30 s version lookup + 30 s submit. A lambda killed inside that window strands the charge: no `_reserve`
+  // for the drainer, no signature for the client. It was 120 s in the route and 60 s in vercel.json.
+  const WORST_CASE_SEC = 2 * 12 + 20 + 2 * 90 + 30 + 30;
+
+  it('the route\'s maxDuration covers it', () => {
+    expect(maxDuration).toBeGreaterThanOrEqual(WORST_CASE_SEC);
+  });
+
+  it('…and so does vercel.json, which overrides the route', () => {
+    const vercel = JSON.parse(readFileSync(join(process.cwd(), 'vercel.json'), 'utf8')) as { functions: Record<string, { maxDuration?: number }> };
+    expect(vercel.functions['app/api/v2/model3d/create/route.ts']?.maxDuration).toBeGreaterThanOrEqual(WORST_CASE_SEC);
+  });
+});
+
+describe('the photo-mode reference is signed to outlive the chat thumbnail it becomes', () => {
+  it('signs an uploaded path for a week, like the text path\'s reference — not resolveUploadRef\'s 1-hour default', async () => {
+    await POST(post({ mode: 'image', imageUrl: 'user-1/uploads/jug.jpg', quality: 'draft' }));
+    expect(resolveUploadRef).toHaveBeenCalledWith('user-1/uploads/jug.jpg', 604_800);
   });
 });
 
