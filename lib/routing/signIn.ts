@@ -16,7 +16,12 @@
  */
 import { safeInternalPath } from '@/lib/auth/safeRedirect';
 
-export type SignInMode = 'login' | 'signup';
+/**
+ * `recover` is where the password-reset mail lands (through /auth/callback, which has already signed the person in
+ * with the mailed code): the sheet asks for a NEW password. Without it, „forgot password" signed people in and never
+ * let them set one (security review, 2026-10-01).
+ */
+export type SignInMode = 'login' | 'signup' | 'recover';
 
 const LOCALES = new Set(['ka', 'en', 'ru']);
 
@@ -53,7 +58,7 @@ const clip = (v: string | null, max: number): string | null => {
 export function readSignInDeepLink(search: string | URLSearchParams): SignInDeepLink | null {
   const q = typeof search === 'string' ? new URLSearchParams(search) : search;
   const auth = q.get('auth');
-  if (auth !== 'login' && auth !== 'signup') return null;
+  if (auth !== 'login' && auth !== 'signup' && auth !== 'recover') return null;
   const target = q.get('redirect') ?? q.get('next');
   const redirect = safeInternalPath(target, '') || null;
   return {

@@ -21,6 +21,7 @@ import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browse
 import { track } from '@/lib/analytics/track';
 import { SUPPORT_EMAIL, buildSupportMailto } from '@/lib/support';
 import { formatPhone, looksLikePhone, parseIdentifier } from '@/lib/auth/identifier';
+import { signInPath } from '@/lib/routing/signIn';
 
 type Lang = 'ka' | 'en' | 'ru';
 /**
@@ -30,8 +31,10 @@ type Lang = 'ka' | 'en' | 'ru';
  * `reset` stay one tap away for people who already have a password. `register` / `magic` are no longer offered;
  * a caller asking for them lands on `continue`.
  */
-type Mode = 'continue' | 'login' | 'register' | 'reset' | 'magic';
-const entryMode = (m: Mode): Mode => (m === 'reset' ? 'reset' : 'continue');
+type Mode = 'continue' | 'login' | 'register' | 'reset' | 'magic' | 'newPassword';
+/** `newPassword` is the last step of „forgot password": the reset mail signed the person in (/auth/callback) and the
+ *  studio opened this sheet from `?auth=recover` — they choose the new password here. */
+const entryMode = (m: Mode): Mode => (m === 'reset' || m === 'newPassword' ? m : 'continue');
 
 interface AuthModalProps {
   open: boolean;
@@ -67,6 +70,8 @@ type Strings = {
   // The one-field flow.
   cont: string; contCta: string; idPlaceholder: string; codeHint: string; useCode: string;
   errInvalidId: string; otpTitleAny: string; otpChangeId: string;
+  // The last step of „forgot password".
+  newPw: string; newPwHint: string; newPwRepeat: string; newPwCta: string; newPwSaved: string; errPwMismatch: string;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -93,6 +98,9 @@ function humanizeAuthError(err: unknown, t: Strings): string {
   if (!raw || /^[[{<]/.test(raw)) return t.errGeneric;
   const m = raw.toLowerCase();
   if (/invalid login credentials|invalid email or password|wrong password|bad credentials/.test(m)) return t.errInvalidCredentials;
+  // Expiry FIRST: Supabase's „Email link is invalid or has expired" also matches the invalid-email pattern below, and
+  // an expired reset link was answered with „enter a valid email address" (review, 2026-10-01).
+  if (/expired|otp_expired|link is invalid/.test(m)) return t.errOtpExpired;
   if (/unable to validate email|invalid.*email|email.*invalid|email address.*invalid/.test(m)) return t.errInvalidEmail;
   if (/already registered|already exists|already been registered|user already/.test(m)) return t.errEmailInUse;
   if (/rate limit|too many|429|over_email_send_rate/.test(m)) return t.errRateLimited;
@@ -142,6 +150,9 @@ const COPY: Record<Lang, Strings> = {
     useCode: 'კოდით შესვლა ან რეგისტრაცია',
     errInvalidId: 'შეიყვანე ელ.ფოსტა ან ტელეფონის ნომერი (მაგ. 599 12 34 56).',
     otpTitleAny: 'შეიყვანე კოდი', otpChangeId: 'შეცვლა',
+    newPw: 'ახალი პაროლი', newPwHint: 'შენ უკვე შესული ხარ. აირჩიე ახალი პაროლი — მინიმუმ 6 სიმბოლო.',
+    newPwRepeat: 'გაიმეორე პაროლი', newPwCta: 'პაროლის შენახვა', newPwSaved: 'პაროლი შეიცვალა.',
+    errPwMismatch: 'პაროლები არ ემთხვევა.',
   },
   en: {
     login: 'Sign in', register: 'Create account', reset: 'Reset password', magic: 'Magic link',
@@ -177,6 +188,9 @@ const COPY: Record<Lang, Strings> = {
     useCode: 'Sign in or sign up with a code',
     errInvalidId: 'Enter an email or a phone number (with the country code, e.g. +995 599 12 34 56).',
     otpTitleAny: 'Enter the code', otpChangeId: 'Change',
+    newPw: 'New password', newPwHint: "You're signed in. Choose a new password — at least 6 characters.",
+    newPwRepeat: 'Repeat the password', newPwCta: 'Save password', newPwSaved: 'Password changed.',
+    errPwMismatch: "The passwords don't match.",
   },
   ru: {
     login: 'Вход', register: 'Регистрация', reset: 'Сброс пароля', magic: 'Магическая ссылка',
@@ -212,6 +226,9 @@ const COPY: Record<Lang, Strings> = {
     useCode: 'Вход или регистрация по коду',
     errInvalidId: 'Введите e-mail или номер телефона (с кодом страны, напр. +995 599 12 34 56).',
     otpTitleAny: 'Введите код', otpChangeId: 'Изменить',
+    newPw: 'Новый пароль', newPwHint: 'Вы уже вошли. Придумайте новый пароль — не короче 6 символов.',
+    newPwRepeat: 'Повторите пароль', newPwCta: 'Сохранить пароль', newPwSaved: 'Пароль изменён.',
+    errPwMismatch: 'Пароли не совпадают.',
   },
 };
 
@@ -227,6 +244,9 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   // The number a code was texted to (E.164), or null when the code went to an email.
   const [otpPhone, setOtpPhone] = useState<string | null>(null);
   const [email, setEmail] = useState('');
+  // The new password and its repeat (mode `newPassword`).
+  const [newPassword, setNewPassword] = useState('');
+  const [newPassword2, setNewPassword2] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -305,10 +325,15 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
    * server to generate the code and deliver it through our own transport instead. The code is still
    * Supabase's, so verifyOtp() below validates it natively.
    */
-  const OTP_ERR: Record<'ka' | 'en' | 'ru', { taken: string; rate: string }> = {
-    ka: { taken: 'ეს ელფოსტა უკვე რეგისტრირებულია — გაიარეთ ავტორიზაცია.', rate: 'ძალიან ბევრი მცდელობა — სცადეთ რამდენიმე წუთში.' },
-    en: { taken: 'This email is already registered — sign in instead.', rate: 'Too many attempts — please wait a few minutes.' },
-    ru: { taken: 'Эта почта уже зарегистрирована — войдите в аккаунт.', rate: 'Слишком много попыток — подождите несколько минут.' },
+  // `rateIn` names the wait: the address budget is a 15-minute window, and „a few minutes" made people retry — which
+  // spent the budget again. `outdated` is the 410 an old build gets for the retired two-field sign-up.
+  const OTP_ERR: Record<'ka' | 'en' | 'ru', { taken: string; rate: string; rateIn: (m: number) => string; outdated: string }> = {
+    ka: { taken: 'ეს ელფოსტა უკვე რეგისტრირებულია — გაიარეთ ავტორიზაცია.', rate: 'ძალიან ბევრი მცდელობა — სცადეთ რამდენიმე წუთში.',
+          rateIn: (m) => `ძალიან ბევრი კოდი ითხოვეს ამ მისამართზე — სცადეთ ${m} წუთში.`, outdated: 'გვერდი განახლდა — გადატვირთეთ და სცადეთ ხელახლა.' },
+    en: { taken: 'This email is already registered — sign in instead.', rate: 'Too many attempts — please wait a few minutes.',
+          rateIn: (m) => `Too many codes were requested for this address — try again in ${m} min.`, outdated: 'MyAvatar was updated — reload the page and try again.' },
+    ru: { taken: 'Эта почта уже зарегистрирована — войдите в аккаунт.', rate: 'Слишком много попыток — подождите несколько минут.',
+          rateIn: (m) => `Для этого адреса запрошено слишком много кодов — попробуйте через ${m} мин.`, outdated: 'MyAvatar обновился — перезагрузите страницу и попробуйте снова.' },
   };
   const otpErr = OTP_ERR[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'];
 
@@ -321,7 +346,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (res.ok) return null;
     const j = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
     if (j?.error === 'email_taken') return otpErr.taken;
-    if (res.status === 429) return otpErr.rate;
+    if (res.status === 429) {
+      const secs = Number(res.headers.get('Retry-After'));
+      return Number.isFinite(secs) && secs > 0 ? otpErr.rateIn(Math.max(1, Math.ceil(secs / 60))) : otpErr.rate;
+    }
+    if (res.status === 410 || j?.error === 'client_outdated') return otpErr.outdated;
     if (j?.error === 'weak_password') return t.errWeakPassword;
     if (j?.error === 'invalid_email') return t.errInvalidEmail;
     // Infrastructure failures (mail_not_configured / not_configured / send_failed) carry an ENGLISH,
@@ -436,6 +465,29 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const submit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     reset();
+    if (mode === 'newPassword') {
+      // The reset mail's code already made a session (/auth/callback exchanged it); this sets the password on it.
+      if (newPassword.length < 6) { setError(t.errWeakPassword); return; }
+      if (newPassword !== newPassword2) { setError(t.errPwMismatch); return; }
+      const supabase = createBrowserClient();
+      if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
+      setBusy(true);
+      try {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        track('password_reset_completed', {});
+        setNewPassword(''); setNewPassword2('');
+        // Let „password changed" be READ before the sheet goes — closing in the same tick showed nothing, and people
+        // ran the reset again to be sure (review, 2026-10-01).
+        setNotice(t.newPwSaved);
+        window.setTimeout(() => { onAuthed?.(); onClose(); }, 1400);
+      } catch (err) {
+        setError(humanizeAuthError(err, t));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (mode === 'continue') {
       // ONE FIELD → ONE CODE. An email gets a code from our own route (purpose 'continue': an existing account gets a
       // sign-in code, a new address gets its account created — the answer never says which). A phone number gets an
@@ -511,7 +563,9 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
       } else if (mode === 'reset') {
         // Through /auth/callback, which exchanges the mailed code for a session server-side. (It pointed at the
         // standalone /login page, deleted on 2026-10-01 — the sign-in sheet is the only sign-in surface now.)
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(backTo)}` });
+        // …and lands on `?auth=recover`, which opens this sheet on the NEW-PASSWORD step (lib/routing/signIn.ts).
+        const recover = signInPath(locale, { mode: 'recover', redirect: returnTo ?? undefined });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(recover)}` });
         if (error) throw error;
         setNotice(t.checkEmail);
       }
@@ -520,11 +574,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setBusy(false);
     }
-  }, [mode, email, password, name, locale, t, onAuthed, onClose, reset, requestEmailCode, router, backTo, identifier, phoneEnabled]);
+  }, [mode, email, password, name, locale, t, onAuthed, onClose, reset, requestEmailCode, router, backTo, identifier, phoneEnabled, newPassword, newPassword2, returnTo]);
 
   const inputCls = 'w-full bg-app-elevated border border-app-border/15 rounded-xl pl-10 pr-3 py-3 text-[14px] text-app-text placeholder:text-app-muted outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all';
-  const title = mode === 'continue' ? t.cont : mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
-  const cta = mode === 'continue' ? t.contCta : mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
+  const title = mode === 'newPassword' ? t.newPw : mode === 'continue' ? t.cont : mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
+  const cta = mode === 'newPassword' ? t.newPwCta : mode === 'continue' ? t.contCta : mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
 
   if (!mounted || typeof document === 'undefined') return null;
   return createPortal(
@@ -549,7 +603,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
-                {!otpStage && mode !== 'continue' ? (
+                {!otpStage && mode !== 'continue' && mode !== 'newPassword' ? (
                   <button type="button" onClick={() => { setMode(mode === 'reset' ? 'login' : 'continue'); reset(); }} aria-label={t.back}
                     className="h-8 w-8 rounded-full hover:bg-app-border/10 flex items-center justify-center text-app-muted">
                     <ArrowLeft size={16} />
@@ -569,7 +623,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
 
             {/* WHY THIS CARD APPEARED. The gate used to open with nothing but the word "შესვლა" —
                 the visitor had just tapped send and was given no reason and no promise. */}
-            {!otpStage && (
+            {!otpStage && mode !== 'newPassword' && (
               <p className="-mt-3 mb-4 text-[12.5px] leading-snug text-app-muted">
                 {locale === 'en'
                   ? 'An account is needed to generate — it holds your balance and keeps every result you make.'
@@ -654,7 +708,22 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.name} className={inputCls} autoComplete="name" />
                 </div>
               )}
-              {mode !== 'continue' && (
+              {mode === 'newPassword' && (
+                <>
+                  <p className="px-1 text-[12.5px] leading-snug text-app-muted">{t.newPwHint}</p>
+                  <div className="relative">
+                    <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
+                    <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" required minLength={6}
+                      autoFocus placeholder={t.newPw} aria-label={t.newPw} className={inputCls} autoComplete="new-password" />
+                  </div>
+                  <div className="relative">
+                    <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
+                    <input value={newPassword2} onChange={(e) => setNewPassword2(e.target.value)} type="password" required minLength={6}
+                      placeholder={t.newPwRepeat} aria-label={t.newPwRepeat} className={inputCls} autoComplete="new-password" />
+                  </div>
+                </>
+              )}
+              {mode !== 'continue' && mode !== 'newPassword' && (
                 <div className="relative">
                   <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
                   <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder={t.email} className={inputCls} autoComplete="email" />

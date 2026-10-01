@@ -61,6 +61,15 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 - **One line.** The sheet asks for an email (or an email or phone number once Phone is on, §1.7) and sends a 6-digit code. The same code signs an existing account in or creates a new one: `/api/auth/email-otp/send` purpose `continue`, which answers the same either way so it reveals nothing about who is registered. Password sign-in and reset stay one small link away.
 - **Support chat.** The admin inbox's replies reach users again: the chat thread lives on `/{lang}/support` (it was the deleted floating bubble), and the settings drawer's „დახმარება" opens it.
 
+### 3.7 Hotfixes (2026-10-01, "Super App" directive, Phase 1)
+- **Pricing cards.** Text no longer leaves the card at any width. The grid reads its OWN width (CSS container queries), not the window's: inside the studio shell the sidebar takes ~220 px, and at a 1024-px window the old rule packed four cards into 154-px columns. Now: 1 column, 2×2 from a 540-px container, 4 across from 1040 px. Every text run wraps; the price row wraps instead of pushing „/თვე" out; the button is one 52-px line. The hard-coded cyan is gone — the cards, the credit packages and `/account/billing` use the rocket-blue tokens. `tests/pricing-layout.spec.ts` measures every TEXT run against its card at 375/1024/1440 px in all three languages (proven to fail on the old cards).
+- **Starter credits only for proven accounts** (live migrations `20261001c–e`). The 50-credit bonus, the free film and the 3 free avatar chats are granted when the email or phone is confirmed (Google sign-ups arrive confirmed and get them at once). Found while testing it: a PHONE sign-up crashed the profile trigger (no email → NOT NULL), and an address held by an orphaned profile (18 exist) aborted its sign-up — both fixed.
+- **Code-email limits.** At most 5 codes per address per 15 minutes, whatever IP asks (on top of the per-IP limits); the sheet says how long to wait. No daily cap: anyone can spend an address's budget, so a day-long cap would let one IP lock a person out.
+- **Old sign-up endpoint.** The retired two-field purpose answers the same 410 for every address — it no longer reveals who is registered.
+- **Forgot password** now ends on a „new password" step in the sign-in sheet (the reset mail signs the person in through `/auth/callback`, then `?auth=recover` asks for the new password). An expired or used link says so.
+- **Locale.** `/login`, `/signup`, `/auth` without a language keep the visitor's language (NEXT_LOCALE), and a failed Google sign-in returns in the language it started from.
+- **Profile bootstrap.** The OAuth / reset callback fills a missing name or photo but never overwrites one the person set.
+
 ## 4. Phase 3: omni-modal (`feat/chat-first-guest`)
 
 | Capability | State | Notes |

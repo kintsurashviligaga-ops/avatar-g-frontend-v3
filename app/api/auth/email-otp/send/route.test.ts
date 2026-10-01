@@ -12,9 +12,11 @@ jest.mock('../../../../../lib/supabase/server', () => ({
     updateUserById: (...a: unknown[]) => mockUpdateUser(...a),
   } } }),
 }));
+const mockByKey = jest.fn(async (..._a: unknown[]): Promise<Response | null> => null);
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { AUTH: {}, AUTH_IP: {} },
+  checkRateLimitByKey: (...a: unknown[]) => mockByKey(...a),
+  RATE_LIMITS: { AUTH: {}, AUTH_IP: {}, OTP_ADDRESS: { keyPrefix: 'rl:otp:addr' } },
 }));
 
 import { NextRequest } from 'next/server';
@@ -28,6 +30,7 @@ const send = (body: Record<string, unknown>) =>
 const mail = jest.fn();
 beforeEach(() => {
   mockGenerateLink.mockReset();
+  mockByKey.mockReset().mockResolvedValue(null);
   mail.mockReset().mockResolvedValue(new Response('{}', { status: 200 }));
   process.env.RESEND_API_KEY = 're_test';
   global.fetch = mail as unknown as typeof fetch;
@@ -96,6 +99,37 @@ describe("purpose 'signin' is unchanged", () => {
     const res = await send({ email: 'ghost@example.com', purpose: 'signin' });
     expect(await res.json()).toEqual({ ok: true });
     expect(mockGenerateLink).toHaveBeenCalledTimes(1);
+    expect(mail).not.toHaveBeenCalled();
+  });
+});
+
+describe("the legacy 'signup' purpose is retired without revealing who is registered", () => {
+  it('answers the same 410 for ANY address, and creates nothing', async () => {
+    for (const email of ['member@example.com', 'nobody@example.com']) {
+      const res = await send({ email, purpose: 'signup', password: 'chosen-by-requester' });
+      expect(res.status).toBe(410);
+      expect(await res.json()).toEqual({ error: 'client_outdated' });
+    }
+    expect(mockGenerateLink).not.toHaveBeenCalled();
+    expect(mail).not.toHaveBeenCalled();
+  });
+});
+
+describe('the address budget (inbox flooding)', () => {
+  it('is checked by a HASH of the address — no plain email in the limiter — and only the short window', async () => {
+    mockGenerateLink.mockResolvedValueOnce(otp('777777'));
+    await send({ email: 'Victim@Example.com', purpose: 'continue' });
+    expect(mockByKey).toHaveBeenCalledTimes(1); // no 24-h bucket: it let anyone lock a person out for a day
+    const [key, cap] = mockByKey.mock.calls[0] as [string, { keyPrefix: string }];
+    expect(key).toMatch(/^[0-9a-f]{32}$/);
+    expect(key).not.toContain('victim');
+    expect(cap.keyPrefix).toBe('rl:otp:addr');
+  });
+  it('refuses BEFORE a code is generated, so the one already in the inbox stays valid', async () => {
+    mockByKey.mockResolvedValueOnce(new Response('{}', { status: 429 }));
+    const res = await send({ email: 'victim@example.com', purpose: 'continue' });
+    expect(res.status).toBe(429);
+    expect(mockGenerateLink).not.toHaveBeenCalled();
     expect(mail).not.toHaveBeenCalled();
   });
 });

@@ -250,7 +250,8 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
               <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.balance}</p>
               <p className="mt-0.5 text-[34px] font-bold leading-none tabular-nums text-app-text">{formatCreditBalance(balanceGel, locale)}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] text-app-muted">
-                🎬 {t.freeVideos}: <span className="font-semibold tabular-nums text-app-text">{loading && freeFilms === null ? <Loader2 size={12} className="inline animate-spin" /> : (freeFilms ?? '—')}</span> / 3
+                {/* The count only: a fixed „/ 3" read as „you used two" to every new account (the allowance is 1). */}
+                🎬 {t.freeVideos}: <span className="font-semibold tabular-nums text-app-text">{loading && freeFilms === null ? <Loader2 size={12} className="inline animate-spin" /> : (freeFilms ?? '—')}</span>
               </p>
             </div>
 
@@ -282,35 +283,37 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                     // unbalanced rather than deliberate. All three now share one frame and one elevation;
                     // the ONLY thing that still marks the popular tier is the small badge above it, which is
                     // information rather than a different visual class.
-                    className="relative cursor-pointer rounded-2xl border border-app-border/15 bg-app-elevated p-4 transition-transform active:scale-[0.99]"
-                    style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(6,182,212,0.14), 0 22px 48px -26px rgba(6,182,212,0.42)' }}>
+                    className="relative min-w-0 cursor-pointer rounded-2xl border border-app-border/15 bg-app-elevated p-4 transition-transform active:scale-[0.99]"
+                    style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgb(var(--app-accent) / 0.14), 0 22px 48px -26px rgb(var(--app-accent-deep) / 0.45)' }}>
                     {highlight && (
-                      <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg"
-                        style={{ background: 'linear-gradient(180deg, rgb(34,211,238), rgb(6,182,212))', boxShadow: '0 6px 16px -5px rgba(6,182,212,0.6)' }}>
+                      <span className="absolute -top-2.5 left-4 inline-flex max-w-[calc(100%-2rem)] items-center gap-1 overflow-hidden whitespace-nowrap rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg"
+                        style={{ background: 'linear-gradient(180deg, rgb(var(--app-accent)), rgb(var(--app-accent-deep)))', boxShadow: '0 6px 16px -5px rgb(var(--app-accent) / 0.6)' }}>
                         <Sparkles size={10} strokeWidth={2.6} /> {popular}
                       </span>
                     )}
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[14.5px] font-bold tracking-tight text-app-text">{TIER_NAME[p.id][lang]}</span>
-                      <span className="flex flex-col items-end">
-                        <span className="text-[21px] font-black leading-none tabular-nums text-app-text">${p.priceUsd}<span className="ml-1 text-[11px] font-medium text-app-muted">{period}</span></span>
+                    {/* Name left, price right — the NAME gives way (wraps) and the price never splits: min-w-0 on the
+                        flexible side, shrink-0 + nowrap on the fixed one, so nothing can push past the card's edge. */}
+                    <div className="flex min-w-0 items-baseline justify-between gap-3">
+                      <span className="min-w-0 break-words text-[14.5px] font-bold leading-snug tracking-tight text-app-text">{TIER_NAME[p.id][lang]}</span>
+                      <span className="flex shrink-0 flex-col items-end">
+                        <span className="whitespace-nowrap text-[21px] font-black leading-none tabular-nums text-app-text">${p.priceUsd}<span className="ml-1 text-[11px] font-medium text-app-muted">{period}</span></span>
                         <span className="mt-1 text-[10.5px] font-medium tabular-nums text-app-muted">≈ {p.priceGel} ₾</span>
                       </span>
                     </div>
                     <ul className="mt-3 space-y-1.5">
                       {TIER_FEATURES[p.id][lang].map((f) => (
-                        <li key={f} className="flex items-start gap-2 text-[12px] leading-snug text-app-text/80">
-                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(6,182,212,0.14)' }}>
+                        <li key={f} className="flex min-w-0 items-start gap-2 text-[12px] leading-snug text-app-text/80">
+                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgb(var(--app-accent) / 0.14)' }}>
                             <Check size={11} strokeWidth={3} className="text-app-accent" />
                           </span>
-                          {f}
+                          <span className="min-w-0 [overflow-wrap:anywhere]">{f}</span>
                         </li>
                       ))}
                     </ul>
                     <button type="button" onClick={(e) => { e.stopPropagation(); void startCheckout(p); }} disabled={busyId !== null}
                       // Same accent treatment on every tier — a muted button on two of three cards was the
                       // other half of the imbalance, and it made the cheaper packages look unavailable.
-                      className="mt-3.5 inline-flex min-h-[46px] w-full touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 disabled:opacity-60">
+                      className="mt-3.5 inline-flex min-h-[46px] w-full min-w-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2 text-center text-[13px] font-semibold leading-snug text-app-bg transition-opacity hover:opacity-90 disabled:opacity-60">
                       {busyId === p.id ? <><Loader2 size={13} className="animate-spin" /> {t.redirecting}</> : <>{t.pay} · ${p.priceUsd}</>}
                     </button>
                   </div>

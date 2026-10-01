@@ -96,8 +96,8 @@ export default function AccountBillingPage() {
     <div className="bg-transparent py-16 px-4">
       <div className="max-w-4xl mx-auto space-y-8">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-3">{t('title')}</h1>
-          <p className="text-gray-400">{t('subtitle')}</p>
+          <h1 className="text-4xl font-bold text-app-text mb-3">{t('title')}</h1>
+          <p className="text-app-muted">{t('subtitle')}</p>
         </div>
 
         {(error || actionError) && (
@@ -107,18 +107,18 @@ export default function AccountBillingPage() {
         )}
 
         {!data?.hasSubscription && (
-          <Card className="bg-black/40 border-white/10 p-6 space-y-4">
+          <Card className="bg-app-surface border-app-border/15 p-6 space-y-4">
             <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                <CreditCard className="w-5 h-5 text-cyan-300" />
+              <div className="w-10 h-10 rounded-full bg-app-accent/20 flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-app-accent" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-white">{t('empty.title')}</h2>
-                <p className="text-gray-400 mt-2">{t('empty.description')}</p>
+                <h2 className="text-xl font-semibold text-app-text">{t('empty.title')}</h2>
+                <p className="text-app-muted mt-2">{t('empty.description')}</p>
               </div>
             </div>
             <Link href="/pricing" className="inline-flex">
-              <Button className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white">
+              <Button className="bg-app-accent text-app-bg hover:opacity-90">
                 {t('empty.cta')}
               </Button>
             </Link>
@@ -126,14 +126,14 @@ export default function AccountBillingPage() {
         )}
 
         {data?.hasSubscription && (
-          <Card className="bg-black/40 border-white/10 p-6 space-y-6">
+          <Card className="bg-app-surface border-app-border/15 p-6 space-y-6">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <p className="text-sm text-gray-400">{t('summary.plan')}</p>
-                <h2 className="text-2xl font-semibold text-white">{planLabel}</h2>
+                <p className="text-sm text-app-muted">{t('summary.plan')}</p>
+                <h2 className="text-2xl font-semibold text-app-text">{planLabel}</h2>
               </div>
               <div className="text-right">
-                <p className="text-sm text-gray-400">{t('summary.status')}</p>
+                <p className="text-sm text-app-muted">{t('summary.status')}</p>
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {resolveStatusLabel(data.status)}
                 </span>
@@ -143,20 +143,20 @@ export default function AccountBillingPage() {
             <div className="grid md:grid-cols-2 gap-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-gray-300" />
+                  <Calendar className="w-5 h-5 text-app-muted" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400">{t('summary.nextBilling')}</p>
-                  <p className="text-white font-medium">{formatDate(data.currentPeriodEnd)}</p>
+                  <p className="text-sm text-app-muted">{t('summary.nextBilling')}</p>
+                  <p className="text-app-text font-medium">{formatDate(data.currentPeriodEnd)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
-                  <ArrowUpRight className="w-5 h-5 text-gray-300" />
+                  <ArrowUpRight className="w-5 h-5 text-app-muted" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400">{t('summary.cancelAtPeriodEnd')}</p>
-                  <p className="text-white font-medium">
+                  <p className="text-sm text-app-muted">{t('summary.cancelAtPeriodEnd')}</p>
+                  <p className="text-app-text font-medium">
                     {data.cancelAtPeriodEnd ? t('summary.cancelYes') : t('summary.cancelNo')}
                   </p>
                 </div>
@@ -173,12 +173,12 @@ export default function AccountBillingPage() {
                     setActionError(openError instanceof Error ? openError.message : t('errors.loadFailed'));
                   }
                 }}
-                className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white"
+                className="bg-app-accent text-app-bg hover:opacity-90"
               >
                 {t('actions.manageBilling')}
               </Button>
               <Link href="/pricing">
-                <Button variant="outline" className="border-white/20 text-white hover:bg-white/10">
+                <Button variant="outline" className="border-app-border/20 text-app-text hover:bg-app-elevated">
                   {t('actions.changePlan')}
                 </Button>
               </Link>
@@ -187,25 +187,25 @@ export default function AccountBillingPage() {
         )}
 
         {data?.hasSubscription && financeLoading && (
-          <Card className="bg-black/40 border-white/10 p-6 text-gray-300">
+          <Card className="bg-app-surface border-app-border/15 p-6 text-app-muted">
             {t('history.loading') || 'Loading payment history...'}
           </Card>
         )}
 
         {data?.hasSubscription && financeData && (
-          <Card className="bg-black/40 border-white/10 p-6 space-y-6">
+          <Card className="bg-app-surface border-app-border/15 p-6 space-y-6">
             <div className="grid md:grid-cols-3 gap-4">
               <div className="bg-white/5 rounded-lg p-4">
-                <p className="text-sm text-gray-400">{t('history.totalPaid') || 'Total Paid'}</p>
-                <p className="text-2xl font-bold text-white mt-2">{formatCurrency(financeData.totals?.totalPaid)}</p>
+                <p className="text-sm text-app-muted">{t('history.totalPaid') || 'Total Paid'}</p>
+                <p className="text-2xl font-bold text-app-text mt-2">{formatCurrency(financeData.totals?.totalPaid)}</p>
               </div>
               <div className="bg-white/5 rounded-lg p-4">
-                <p className="text-sm text-gray-400">{t('history.invoices') || 'Invoices'}</p>
-                <p className="text-2xl font-bold text-white mt-2">{financeData.totals?.invoiceCount ?? 0}</p>
+                <p className="text-sm text-app-muted">{t('history.invoices') || 'Invoices'}</p>
+                <p className="text-2xl font-bold text-app-text mt-2">{financeData.totals?.invoiceCount ?? 0}</p>
               </div>
               <div className="bg-white/5 rounded-lg p-4">
-                <p className="text-sm text-gray-400">{t('history.payments') || 'Transactions'}</p>
-                <p className="text-2xl font-bold text-white mt-2">{financeData.totals?.paymentCount ?? 0}</p>
+                <p className="text-sm text-app-muted">{t('history.payments') || 'Transactions'}</p>
+                <p className="text-2xl font-bold text-app-text mt-2">{financeData.totals?.paymentCount ?? 0}</p>
               </div>
             </div>
           </Card>

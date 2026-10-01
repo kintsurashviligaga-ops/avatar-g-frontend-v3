@@ -182,6 +182,20 @@ test('the old /login address opens the studio with its sign-in sheet', async ({ 
   await expect(page).toHaveURL(/\/en\/dashboard$/); // the sign-in params are read, then cleared from the address bar
 });
 
+test("a bare /login keeps the visitor's language (it used to force Georgian)", async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: baseURL ?? 'http://localhost:3000' }]);
+  await page.goto('/login');
+  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page).toHaveURL(/\/en\/dashboard$/);
+});
+
+test('a password-reset link opened without a session asks to sign in again', async ({ page }) => {
+  await page.goto('/en/dashboard?auth=recover');
+  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText(/expired/i).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/dashboard$/);
+});
+
 test('the old /signup address opens the sheet on account creation', async ({ page }) => {
   await page.goto('/en/signup');
   await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });

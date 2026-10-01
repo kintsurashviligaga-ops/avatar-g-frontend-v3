@@ -1,16 +1,14 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supabase/server';
 import {
   buildOtpEmail,
   extractEmailOtp,
   isOtpPurpose,
   isPlausibleEmail,
-  linkTypeFor,
   normalizeLocale,
   isUserNotFoundError,
-  isEmailTakenError,
   type OtpPurpose,
 } from '@/lib/auth/otpEmail';
 
@@ -64,16 +62,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // consume anyone else's. Applied after validation so a malformed request cannot spend it.
   const emailLimited = await checkRateLimit(req, RATE_LIMITS.AUTH, email);
   if (emailLimited) return emailLimited;
+  // …and the budget of the ADDRESS itself, whatever IP asks (lib/api/rate-limit OTP_ADDRESS*). Checked BEFORE a code
+  // is generated: a refused request must not replace the code already sitting in the person's inbox.
+  const addressKey = createHash('sha256').update(email).digest('hex').slice(0, 32);
+  const addressLimited = await checkRateLimitByKey(addressKey, RATE_LIMITS.OTP_ADDRESS);
+  if (addressLimited) return addressLimited;
 
+  // ⚠️ THE LEGACY 'signup' PURPOSE IS RETIRED. It answered 409 `email_taken` for a registered address — an
+  // account-enumeration oracle (security review, 2026-10-01) — and created the account with a password the REQUESTER
+  // chose for an address they had not proven. The two-field sign-up left the UI with the one-line sheet; a tab still
+  // running an older build gets 410 for EVERY address (so nothing leaks) and the sheet tells it to reload. Quietly
+  // serving it as 'continue' instead would hand that old client a code its verify type rejects.
   const purpose: OtpPurpose = isOtpPurpose(body?.purpose) ? body.purpose : 'signin';
-  const locale = normalizeLocale(body?.locale);
-  const password = typeof body?.password === 'string' ? body.password : '';
-
-  // A sign-up link CREATES the account, so it needs the password the user just chose. Without one,
-  // Supabase would create a passwordless account they could never sign into with a password again.
-  if (purpose === 'signup' && password.length < 6) {
-    return NextResponse.json({ error: 'weak_password' }, { status: 400 });
+  if (purpose === 'signup') {
+    return NextResponse.json({ error: 'client_outdated' }, { status: 410 });
   }
+  const locale = normalizeLocale(body?.locale);
 
   // Delivery must be configured. /api/mail/send fails OPEN because a missing newsletter is harmless; an
   // auth code that silently is not sent locks the user out with no explanation, so this fails LOUD.
@@ -87,11 +91,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const admin = createServiceRoleClient();
-    // GenerateLinkParams is a discriminated union — 'signup' carries a password, 'magiclink' does not,
-    // so the two cases cannot be merged into one spread.
-    let { data, error } = linkTypeFor(purpose) === 'signup'
-      ? await admin.auth.admin.generateLink({ type: 'signup', email, password })
-      : await admin.auth.admin.generateLink({ type: 'magiclink', email });
+    // Both remaining purposes start from a sign-in (magiclink) code; only 'continue' creates a missing account below.
+    let { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
     // THE ONE-FIELD FLOW: an address with no account gets one. It is created UNCONFIRMED with a random password
     // nobody knows (the person signs in with codes; „forgot password" sets a real one), and the code mailed below is
     // the only way in — verifyOtp({ type: 'email' }) accepts it exactly like a sign-in code. The answer is the same
@@ -109,11 +110,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (error) {
       const msg = String(error.message || '').toLowerCase();
-      // Sign-up on an existing address: say so. They need the sign-in tab, and hiding it just makes them
-      // retry forever. A sign-up form reveals this either way.
-      if (purpose === 'signup' && isEmailTakenError(msg)) {
-        return NextResponse.json({ error: 'email_taken' }, { status: 409 });
-      }
       // Sign-in for an UNKNOWN ADDRESS answers OK, because confirming which addresses have accounts
       // would turn this endpoint into an account-enumeration oracle.
       //

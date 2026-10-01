@@ -234,7 +234,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [genService, setGenService] = useState<string | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'newPassword'>('login');
   // A sign-in deep link (/{lang}/dashboard?auth=login&redirect=…&error=… — lib/routing/signIn.ts) carries where to go
   // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
   const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
@@ -351,7 +351,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             if (link.plan) sessionStorage.setItem('myavatar:intended-plan', link.plan);
             if (link.ref) localStorage.setItem('myavatar:ref', link.ref.toUpperCase()); // AuthModal redeems it after sign-up
           } catch { /* private mode */ }
-          if (data.user) {
+          if (link.mode === 'recover') {
+            // The password-reset mail: /auth/callback already signed them in with its code — ask for the NEW password.
+            // No session means the link was used or expired: say so on the sign-in sheet.
+            setAuthReturnTo(link.redirect);
+            if (data.user) { setAuthError(null); setAuthMode('newPassword'); }
+            else { setAuthError('Token has expired or is invalid'); setAuthMode('login'); }
+            setAuthOpen(true);
+          } else if (data.user) {
             if (link.redirect && link.redirect !== `${url.pathname}${url.search}`) window.location.replace(link.redirect);
           } else {
             setAuthReturnTo(link.redirect);
