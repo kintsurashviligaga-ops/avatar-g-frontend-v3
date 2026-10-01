@@ -10,6 +10,7 @@
 
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { isTwinBucket } from '@/lib/avatar/twinStorage';
 
 export const SIGNED_URL_TTL_SEC = 900; // 15 minutes
 
@@ -86,12 +87,27 @@ export async function removeStorageObjects(bucket: string, paths: string[]): Pro
   try { await sb.storage.from(bucket).remove(paths); } catch { /* ignore */ }
 }
 
-/** Mint a 15-minute signed URL for a stored object. Null when unavailable. */
+/**
+ * ⚠️ BIOMETRIC DENY-LIST — these signers never mint a URL for the twin bucket (voiceprints; posters in
+ * Wave 3). Many callers hand them a CLIENT-chosen object: a bare path (signed in `uploads`) or, through
+ * reSignIfInternal / the library re-sign, a bucket parsed straight out of a client-supplied URL — so without
+ * this any signed-in caller could name `twins/<victim uid>/voice.webm` and get it back signed by the service
+ * role. A twin reader signs on its own, scoped to the caller's own uid (lib/avatar/twinStorage.ts).
+ */
+function refuseTwin(bucket: string): boolean {
+  if (!isTwinBucket(bucket)) return false;
+  // eslint-disable-next-line no-console
+  console.warn('[storage] refused to sign an object in the private twin bucket via the generic signer');
+  return true;
+}
+
+/** Mint a 15-minute signed URL for a stored object. Null when unavailable (and always for the twin bucket). */
 export async function createSignedAssetUrl(
   bucket: string,
   path: string,
   expiresSec: number = SIGNED_URL_TTL_SEC,
 ): Promise<string | null> {
+  if (refuseTwin(bucket)) return null;
   const sb = client();
   if (!sb) return null;
   try {
@@ -109,6 +125,7 @@ export async function createSignedAssetUrls(
   paths: string[],
   expiresSec: number = SIGNED_URL_TTL_SEC,
 ): Promise<Array<string | null>> {
+  if (refuseTwin(bucket)) return paths.map(() => null);
   const sb = client();
   if (!sb) return paths.map(() => null);
   try {

@@ -9,9 +9,19 @@
  * applied — the DDL channel is unavailable), so those writes are wrapped and their failure NEVER fails
  * enrollment. avatar/core reads the poster back from the same storage path. This is exactly why the earlier
  * version hung on "save failed": it hard-depended on a table that doesn't exist.
+ *
+ * ⚠️ BIOMETRICS ARE SPLIT BY READER, NOT BY FOLDER: only the POSTER stays in the public `avatars` bucket
+ * (the Live orb + /api/avatar/core read it by public URL — moves private in Wave 3). The VOICE SAMPLE is a
+ * voiceprint nothing renders, so it goes to the dedicated PRIVATE `twins` bucket at `twins/<uid>/voice.<ext>`
+ * — NOT `uploads`, whose bare paths many routes sign for any caller (see lib/avatar/twinStorage.ts). Legacy
+ * public samples (`avatars/live-avatars/<uid>/voice.*`) are moved by scripts/avatar/migrate-live-avatar-voice.mjs.
  */
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { ensureBucket } from '@/lib/orchestrator/storage-adapter';
+import { TWIN_PRIVATE_BUCKET, TWIN_VOICE_EXTS, twinVoicePath } from '@/lib/avatar/twinStorage';
+
+export { TWIN_PRIVATE_BUCKET, twinVoicePath };
 
 const MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -21,22 +31,42 @@ export const LIVE_AVATAR_BUCKET = 'avatars';
 export function liveAvatarPath(userId: string): string {
   return `live-avatars/${userId}/poster.jpg`;
 }
-/** Deterministic per-user voice-sample object, stored ALONGSIDE the poster in the same live-avatar folder. */
-export function liveAvatarVoicePath(userId: string, ext: string): string {
-  return `live-avatars/${userId}/voice.${ext}`;
-}
 
 const VOICE_MIMES = new Set(['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/x-m4a']);
 const MAX_VOICE_BYTES = 16 * 1024 * 1024;
 
+type ServiceClient = ReturnType<typeof createServiceRoleClient>;
+
 /**
- * Store the enrollment VOICE SAMPLE next to the poster in the public `avatars` bucket. This is deliberately
+ * The twin bucket exists AND is private — or the voice write is skipped. It is self-provisioned (private) on
+ * first use; if it already exists it must REPORT `public: false`, because a hand-made public `twins` bucket
+ * would publish every voiceprint. supabase-js storage RETURNS `{ error }` — every answer is read, not caught.
+ */
+async function twinBucketIsPrivate(svc: ServiceClient): Promise<boolean> {
+  const made = await ensureBucket(svc as unknown as Parameters<typeof ensureBucket>[0], TWIN_PRIVATE_BUCKET);
+  if (made === 'created') return true; // ensureBucket only ever creates with public:false
+  const { data, error } = await svc.storage.getBucket(TWIN_PRIVATE_BUCKET);
+  if (error || !data) {
+    console.warn('[avatar/enroll] twin bucket unavailable — voice sample not stored:', error?.message ?? 'not found');
+    return false;
+  }
+  if (data.public !== false) {
+    console.error(`[avatar/enroll] ⚠️ bucket "${TWIN_PRIVATE_BUCKET}" is PUBLIC — refusing to store a voiceprint in it. Make it private.`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Store the enrollment VOICE SAMPLE in the PRIVATE twin bucket (never public, never a public URL; the generic
+ * signers refuse this bucket, so a later reader signs it itself, scoped to the owner). This is deliberately
  * STORAGE-ONLY: enrollment must NOT kick off any background voice-clone TRAINING / render (that surfaced as a
  * "training" job in the corner and is not what the Save button is for). The sample is simply persisted so it
- * can be used later on an explicit action. Best-effort: any miss returns { ok:false } and NEVER throws, so it
- * can never fail the selfie enrollment.
+ * can be used later on an explicit action. ONE current sample per user: a re-enroll from another browser
+ * (webm → m4a) removes the older sibling, so no stale voiceprint lingers. Best-effort: any miss returns
+ * { ok:false } and NEVER throws, so it can never fail the selfie enrollment.
  */
-export async function storeLiveAvatarVoice(userId: string, voiceDataUrl: string): Promise<{ ok: boolean; url?: string }> {
+export async function storeLiveAvatarVoice(userId: string, voiceDataUrl: string): Promise<{ ok: boolean; bucket?: string; path?: string }> {
   try {
     // Tolerant of a codec-parameterized media type — MediaRecorder on Chrome/Edge/Android/Firefox emits
     // e.g. `data:audio/webm;codecs=opus;base64,…`, so capture the whole type up to `;base64,` (it may itself
@@ -51,13 +81,24 @@ export async function storeLiveAvatarVoice(userId: string, voiceDataUrl: string)
     if (buf.byteLength < 256 || buf.byteLength > MAX_VOICE_BYTES) return { ok: false };
     const ext = /mp4|m4a/i.test(mime) ? 'm4a' : /mpeg|mp3/i.test(mime) ? 'mp3' : /ogg/i.test(mime) ? 'ogg' : /wav/i.test(mime) ? 'wav' : 'webm';
     const svc = createServiceRoleClient();
-    const path = liveAvatarVoicePath(userId, ext);
-    const { error } = await svc.storage.from(LIVE_AVATAR_BUCKET).upload(path, buf, { contentType: mime, upsert: true });
+    if (!(await twinBucketIsPrivate(svc))) return { ok: false };
+    const path = twinVoicePath(userId, ext);
+    const twins = svc.storage.from(TWIN_PRIVATE_BUCKET);
+    const { error } = await twins.upload(path, buf, { contentType: mime, upsert: true });
     if (error) {
       console.warn('[avatar/enroll] voice storage upload skipped:', error.message);
       return { ok: false };
     }
-    return { ok: true, url: svc.storage.from(LIVE_AVATAR_BUCKET).getPublicUrl(path).data.publicUrl };
+    // Only AFTER the new sample landed: drop the other-extension siblings (removing a missing path is a no-op).
+    // A miss is logged, never fatal — the new sample is stored either way.
+    const stale = TWIN_VOICE_EXTS.filter((e) => e !== ext).map((e) => twinVoicePath(userId, e));
+    try {
+      const { error: rmErr } = await twins.remove(stale);
+      if (rmErr) console.warn('[avatar/enroll] older voice sample cleanup skipped:', rmErr.message);
+    } catch (e) {
+      console.warn('[avatar/enroll] older voice sample cleanup skipped:', e instanceof Error ? e.message : e);
+    }
+    return { ok: true, bucket: TWIN_PRIVATE_BUCKET, path };
   } catch (e) {
     console.warn('[avatar/enroll] voice storage skipped:', e instanceof Error ? e.message : e);
     return { ok: false };
