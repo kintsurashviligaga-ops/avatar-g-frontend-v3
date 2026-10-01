@@ -70,6 +70,16 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 - **Locale.** `/login`, `/signup`, `/auth` without a language keep the visitor's language (NEXT_LOCALE), and a failed Google sign-in returns in the language it started from.
 - **Profile bootstrap.** The OAuth / reset callback fills a missing name or photo but never overwrites one the person set.
 
+### 3.8 Super-App plan, Wave 1: leaks and shipped bugs (2026-10-01)
+The plan for Phases 2–4 is `docs/SUPER_APP_PLAN.md`. Wave 1 closed what the mapping found already broken in production:
+- **Avatar renders are paid before they run.** Lip-sync and the HeyGen presenter now require sign-in, reserve the price at POST (a ledger error refuses with 503 — it used to let the render through free) and refund a failed render. The signed charge token rides inside the job id the eight call sites already poll. The Film Studio's dead whole-master lip-sync toggle (it never polled, so it would have charged for nothing) is gone; a guard test fails if any caller starts a lip-sync job without polling it.
+- **3D models cost 5 credits** (owner decision), reserved before the provider and refunded when Replicate reports a failure; a delivered model is never re-downloaded on every poll; the panel prefill, thumbnail and an expired-GLB crash are fixed.
+- **Voice:** training needs a signed-in user (no demo fallback); cloning is rate-limited, audio-only, ≤ 10 MB; deleting a clone deletes it at ElevenLabs — only voices tagged with the caller's own id.
+- **Biometrics:** Live Avatar voice samples go to the new private `twins` bucket, which every generic signer refuses. `scripts/avatar/migrate-live-avatar-voice.mjs` lists the old public samples; moving them (`--yes`) is the owner's call.
+- **Client `style` text** is capped at 80 characters and stripped of invisible/bidi characters before it reaches an image, film or music prompt.
+- **The stale-render refund exploit** (live): the drainer refunds `processing` job rows carrying a reservation, and users could write those rows. Owner insert/update RLS on `generation_jobs` is dropped and the progress route can no longer forge or revive billing state (`20261001f`).
+- **Also:** music re-rolls keep their length, tempo and singer; the thumbnail runner writes nested takes, projects dry-run totals and no longer deploys its manifest publicly (`/brand/v1/manifest.json` now 404s); Live's „show code" says „saved in the canvas" only when the canvas confirms.
+
 ## 4. Phase 3: omni-modal (`feat/chat-first-guest`)
 
 | Capability | State | Notes |
