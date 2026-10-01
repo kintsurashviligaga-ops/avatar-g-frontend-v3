@@ -13,7 +13,8 @@
  * It opens from two places, both through the store's one validator:
  *   · a finished code block's "Open in canvas" / "Preview" button (MarkdownView's CodeBlock, only while a canvas is
  *     mounted — `registerHost`);
- *   · the `myavatar:open-artifact` window event (openArtifactEvent.ts), e.g. from the Live voice tools.
+ *   · the `myavatar:open-artifact` window event (openArtifactEvent.ts), e.g. from the Live voice tools. The canvas
+ *     calls preventDefault() on it as its RECEIPT, only once the store has taken the artifact (see onOpen).
  *
  * ⚠️ MOTION IS TRANSFORM + OPACITY ONLY, AND NONE UNDER prefers-reduced-motion. Animating the panel's width would
  * re-lay-out the whole chat column every frame on a long thread. With reduced motion every transition is 0 s.
@@ -324,7 +325,9 @@ export function ArtifactCanvas({ locale = 'ka' }: ArtifactCanvasProps) {
         console.warn(`[artifacts] ${OPEN_ARTIFACT_EVENT} ignored: invalid detail (language off the allowlist, empty code or over 200 KB)`);
         return;
       }
-      useArtifactStore.getState().openArtifact(artifact);
+      // ⚠️ preventDefault() IS THE RECEIPT: a Live show_code tells the model the code is saved in the canvas only when
+      // it sees one (liveActions.ts), so it is given only after the store took the artifact — never for a refusal.
+      if (useArtifactStore.getState().openArtifact(artifact)) e.preventDefault();
     };
     window.addEventListener(OPEN_ARTIFACT_EVENT, onOpen);
     return () => {

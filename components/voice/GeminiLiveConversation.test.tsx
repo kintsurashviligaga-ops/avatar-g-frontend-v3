@@ -257,19 +257,22 @@ describe('voice-to-action', () => {
       { id: 'a', name: 'open_studio', args: { tool: 'video' } },
       { id: 'b', name: 'prepare_generation', args: { tool: 'hologram', prompt: 'x' } },
       { id: 'c', name: 'buy_credits', args: {} },
+      { id: 'd', name: 'show_code', args: { title: 'T', language: 'go', code: 'package main' } },
     ] } }));
     await waitFor(() => expect(lastToolResponse(ws)).toBeTruthy());
     expect(lastToolResponse(ws)!.toolResponse.functionResponses.map((f) => [f.id, f.response.ok, f.response.error])).toEqual([
       ['a', false, 'studio_unavailable'],
       ['b', false, 'invalid_args'],
       ['c', false, 'unknown_tool'],
+      ['d', false, 'canvas_unavailable'], // no canvas on this page either: never "it's on your screen"
     ]);
     expect(screen.queryByTestId('live-action-card')).toBeNull();
   });
 
   test('show_code → the canvas gets {title, language, code}; a toolCallCancellation removes the card', async () => {
     const artifacts: unknown[] = [];
-    const canvas = (e: Event) => artifacts.push((e as CustomEvent).detail);
+    // A canvas on the page takes it (preventDefault = its receipt, as ArtifactCanvas does).
+    const canvas = (e: Event) => { artifacts.push((e as CustomEvent).detail); e.preventDefault(); };
     window.addEventListener(OPEN_ARTIFACT_EVENT, canvas);
     try {
       const { ws } = await connectedCall();

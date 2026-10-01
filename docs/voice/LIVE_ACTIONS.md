@@ -36,7 +36,7 @@ Each declaration uses only the plain OpenAPI subset: `type` (with the proto name
 | Function | Arguments | What happens |
 | --- | --- | --- |
 | `prepare_generation` | `tool` (`video` · `image` · `music` · `avatar`, required), `prompt` (required, at most 2,000 characters), `aspectRatio?` (`16:9` · `9:16` · `1:1` · `4:5` · `3:4` · `4:3`), `durationSec?` (clamped to 1–120), `style?` (at most 60 characters) | The studio switches and the prompt is prefilled. Nothing runs. |
-| `show_code` | `title`, `language` (allowlist; aliases such as `js` and `py` are mapped; an unknown name becomes `plaintext`), `code` (at most 200 KB of UTF-8) | `myavatar:open-artifact` with `{ title, language, code }` |
+| `show_code` | `title`, `language` (allowlist; aliases such as `js` and `py` are mapped; an unknown name becomes `plaintext`; `svg` is its own language, so it keeps the canvas Preview), `code` (at most 200 KB of UTF-8) | `myavatar:open-artifact` with `{ title, language, code }` |
 | `open_studio` | `tool` | The studio switches. |
 | `end_call` | none | The call hangs up after the model's goodbye. |
 
@@ -53,7 +53,11 @@ structured error, `{ code, message, field?, allowed? }`, and the model can retry
   gets `ok:false`, never "done". After the call has closed, a card's Open sends the action again with `reveal: true`,
   and the composer takes focus.
 - **`myavatar:open-artifact`** has `detail` `{ title, language, code }`, exactly those three fields. Another surface
-  owns the canvas. The code card also offers Copy, so the code is never stranded.
+  owns the canvas. The event is cancelable too: `ArtifactCanvas` calls `preventDefault()` as its **receipt**, and only
+  after its store has taken the artifact. With no receipt (a page that hosts Live but no canvas, such as the library),
+  the model gets `ok:false` with `canvas_unavailable`, and no card appears. With a receipt, the model hears that the code
+  is **saved** in the canvas, not that it is on screen: the Live dialog covers the canvas for the whole call. The code
+  card also offers Copy.
 
 ### The answer to the model
 
@@ -65,7 +69,8 @@ model's turn, so a slow answer would be dead air.
   only the studio switch and the prompt; the requested aspect ratio, duration and style are shown on the card for the
   user to confirm in the studio settings.
 - `{ ok: false, error, message, field?, allowed? }`: `error` is one of `invalid_args`, `too_large`, `unknown_tool`,
-  `studio_unavailable` or `too_many_actions`. After 40 actions in one call, a looping model is cut off.
+  `studio_unavailable`, `canvas_unavailable` or `too_many_actions`. After 40 actions in one call, a looping model is
+  cut off.
 - When the server sends `toolCallCancellation`, the user has barged in, so the cards for those ids are dropped.
 
 ### The screen
@@ -103,6 +108,14 @@ funded key:
    mint returns 200 **and** that the socket reaches `setupComplete`.
 2. On that session, a spoken request such as "make me a vertical video of a cat surfing" must produce a `toolCall`, and
    the model must speak after our `toolResponse`.
+
+`scripts/probe-live-actions.mjs` checks both with the owner's key, which it never prints. By default it only mints a
+token and opens the setup for three locks: full, actions dropped, and no tools (the legacy wire). It reports which
+reach `setupComplete`, and nothing is generated. `--turn` opts in to check 2: one billable turn on the full lock. The
+probe types the request, because there is no microphone, then expects a `prepare_generation` call and the model
+speaking after the answer. `--search` adds `googleSearch`, and
+`--dry` prints the frames without a key or a network call. Its mirrored setup builder is pinned to `buildLiveSetup` by
+`scripts/probe-live-actions.test.ts`.
 
 If Google rejects the lock, calls do not break. The fallbacks above remove the actions, the route logs
 `setup_lock_rejected` with `lock: 'actions'`, and `GEMINI_LIVE_ACTIONS=0` turns the feature off without a client deploy.
