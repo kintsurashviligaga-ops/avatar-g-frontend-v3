@@ -38,6 +38,10 @@ const VoiceConversation = dynamic(() => import('@/components/voice/VoiceConversa
 const GeminiLiveConversation = dynamic(() => import('@/components/voice/GeminiLiveConversation'), { ssr: false });
 // Live Avatar enrollment (selfie + optional voice) → sets the user's core avatar shown in voice mode.
 const LiveAvatarEnroll = dynamic(() => import('@/components/voice/LiveAvatarEnroll'), { ssr: false });
+// Digital Twin v0 capture (consent → 3 photos → voice). It TAKES OVER the Live Avatar entry while NEXT_PUBLIC_TWIN_ENABLED
+// is on — off until legal approves the consent text (lib/legal/content.ts); with it off nothing here changes.
+const TwinCapture = dynamic(() => import('@/components/twin/TwinCapture'), { ssr: false });
+const TWIN_ENABLED = isTwinEnabled();
 // PREMIUM real-time lip-synced avatar (LiveAvatar/LiveKit). Attempted FIRST when enabled; auto-falls back to
 // the Gemini audio-reactive selfie avatar until LIVEAVATAR_API_KEY is set AND the account is funded.
 // ⚠️ OPT-IN (NEXT_PUBLIC_LIVEAVATAR_ENABLED=1). Live mode is Google-only by default: Gemini Live's native audio is
@@ -52,6 +56,8 @@ let liveAvatarCooldownUntil = 0;
 const LIVEAVATAR_COOLDOWN_MS = 5 * 60 * 1000;
 const GEMINI_LIVE_ENABLED = isEnabledByDefault(process.env.NEXT_PUBLIC_GEMINI_LIVE_ENABLED);
 import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
+import { isTwinEnabled } from '@/lib/twin/flag';
+import { twinCopy } from '@/components/twin/copy';
 import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -1344,7 +1350,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
-                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (
@@ -1469,8 +1475,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             : <VoiceConversation locale={lang} onClose={() => setVoiceOpen(false)} />
       )}
 
-      {/* Live Avatar enrollment — selfie + optional voice → the user's core avatar for voice mode. */}
-      {avatarEnrollOpen && <LiveAvatarEnroll locale={lang} onClose={() => setAvatarEnrollOpen(false)} />}
+      {/* Live Avatar enrollment — selfie + optional voice → the user's core avatar for voice mode. With the twin flag on,
+          the same entry (and the myavatar:avatar-enroll event) opens the Digital Twin capture instead. */}
+      {avatarEnrollOpen && (TWIN_ENABLED
+        ? <TwinCapture locale={lang} onClose={() => setAvatarEnrollOpen(false)} />
+        : <LiveAvatarEnroll locale={lang} onClose={() => setAvatarEnrollOpen(false)} />)}
 
       {/* Avatar-upload feedback toast — transient, self-contained (no global toast system here). */}
       {avatarError && (

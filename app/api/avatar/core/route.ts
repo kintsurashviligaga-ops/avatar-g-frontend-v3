@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
-import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
-import { LIVE_AVATAR_BUCKET, liveAvatarPath } from '@/lib/avatar/enroll';
+import { requireUser } from '@/lib/supabase/server';
+import { isTwinEnabled } from '@/lib/twin/flag';
+import { resolveCorePoster } from '@/lib/twin/resolve';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,25 +12,17 @@ export const dynamic = 'force-dynamic';
  * profiles.core_avatar_id columns are NOT provisioned in prod. Returns the poster URL (cache-busted by the
  * object's updated_at, so a re-enroll is detected by the desktop→phone handoff poll). Shape is unchanged:
  * { poster_url, status, updated_at, ... } — GeminiLiveConversation + the handoff poll read those fields.
+ *
+ * ⚠️ TWIN FIRST (NEXT_PUBLIC_TWIN_ENABLED): the poster is the Digital Twin's FRONT photo as a short-lived SIGNED url,
+ * updated_at its commit time; without a twin it is the legacy public poster exactly as before (lib/twin/resolve.ts).
  */
 export async function GET(_request: NextRequest) {
   try {
     const user = await requireUser();
 
-    let posterUrl: string | null = null;
-    let updatedAt: string | null = null;
+    let poster: Awaited<ReturnType<typeof resolveCorePoster>> = null;
     try {
-      const svc = createServiceRoleClient();
-      const { data: files } = await svc.storage
-        .from(LIVE_AVATAR_BUCKET)
-        .list(`live-avatars/${user.id}`, { limit: 10 });
-      const poster = files?.find((f) => f.name === 'poster.jpg');
-      if (poster) {
-        const base = svc.storage.from(LIVE_AVATAR_BUCKET).getPublicUrl(liveAvatarPath(user.id)).data.publicUrl;
-        updatedAt = poster.updated_at || poster.created_at || null;
-        const v = updatedAt ? new Date(updatedAt).getTime() : Date.now();
-        posterUrl = `${base}?v=${v}`;
-      }
+      poster = await resolveCorePoster(user.id, { twin: isTwinEnabled() });
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[avatar/core] storage read failed:', e instanceof Error ? e.message : e);
@@ -37,10 +30,10 @@ export async function GET(_request: NextRequest) {
 
     return apiSuccess({
       core_avatar_id: null,
-      status: posterUrl ? 'ready' : 'none',
+      status: poster ? 'ready' : 'none',
       model_glb_url: null,
-      poster_url: posterUrl,
-      updated_at: updatedAt,
+      poster_url: poster?.url ?? null,
+      updated_at: poster?.updatedAt ?? null,
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
