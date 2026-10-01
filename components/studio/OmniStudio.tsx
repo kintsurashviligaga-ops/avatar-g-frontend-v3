@@ -2604,7 +2604,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const el = taRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    // ⚠️ An EMPTY box keeps its one-line CSS height: Chrome counts a WRAPPED placeholder in scrollHeight, so sizing an
+    // empty box from it grew the phone composer to two lines around nothing (83 px pill, placeholder off the controls).
+    el.style.height = input ? `${Math.min(el.scrollHeight, 160)}px` : '';
     if (!input) setComposerWrapped(false);
     // One line is 44 px (24 px line + 20 px padding); anything taller has wrapped.
     else if (input.includes('\n') || el.scrollHeight > 48) setComposerWrapped(true);
@@ -8197,14 +8199,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   })();
   /**
    * Gemini's empty chat on a desktop: the greeting, the composer in the MIDDLE of the screen, the starter chips under
-   * it. Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold that node): the
-   * column centres its content with auto margins (`mt-auto` on the feed, `mb-auto` on the chips), which, unlike
-   * `justify-center`, can never push the greeting above an unreachable scroll edge on a short screen. Phones keep
-   * the composer docked at the bottom, as Gemini's phone app does.
+   * it. Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold that node). The feed
+   * above and the chips wrapper below are two EQUAL flex halves (`flex-1 basis-0`), so the composer block sits on the
+   * centre line. Both halves start from their padding (flex-basis 0 cannot go below it): the chips wrapper's 24 px,
+   * and the feed's 54 px = those same 24 px + the 30 px the composer block adds UNDER the pill beyond what it adds above
+   * (the disclaimer's 34 px vs the block's 4 px top padding) — so it is the PILL itself, not pill + disclaimer, that
+   * lands on the centre line (measured: ±1 px at 1280 × 800). The greeting is pushed to the bottom of its half with an auto
+   * margin (never `justify-end`, whose overflow on a short screen would be unreachable by scrolling). Phones keep the
+   * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
   // The chat composer's one-row shape (see the pill): while the text fits a line and nothing else needs the row.
-  const chatSingleRow = chatOnly && attachments.length === 0 && !composerWrapped && !activePersona.name;
+  // Desktop only: Gemini's PHONE composer is two rows (the text full width on top, the controls under it) — squeezing
+  // „+“, mic and Live beside the text left a ~180 px box that wrapped even the placeholder.
+  const chatSingleRow = chatOnly && isDesktop && attachments.length === 0 && !composerWrapped && !activePersona.name;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
   // Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two: on a phone that
@@ -8364,10 +8372,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           nearBottomRef.current = dist < 160;
           setShowJump(dist > 160);
         }}
-        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pb-3 pt-1 ${centred ? 'mt-auto flex-none' : 'flex-1'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-[54px]' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
         {messages.length === 0 ? (
-          <div className={`relative flex min-h-full flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'pb-7 pt-6' : 'py-6'}`}>
+          <div className={`relative flex flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'mt-auto w-full pb-7 pt-6' : 'min-h-full py-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
@@ -8666,13 +8674,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             disabled={enhancing}
             placeholder={composerPlaceholder}
             className={chatOnly
-              ? `max-h-40 min-h-[44px] resize-none border-0 bg-transparent py-2.5 text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-w-0 flex-1 px-2' : 'w-full px-3'}`
+              ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
               : 'max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60'}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : ''} mt-1 flex items-center gap-1`}>
+          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : 'mt-1'} flex items-center gap-1`}>
             <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
               aria-label={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
@@ -8848,7 +8856,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         )}
       </div>
       {/* The centred empty chat (desktop): the starter chips UNDER the composer, closing the centred group. */}
-      {centred && <div className="mb-auto flex w-full shrink-0 justify-center pt-6">{starterChips}</div>}
+      {centred && <div className="flex w-full flex-1 basis-0 items-start justify-center pt-6">{starterChips}</div>}
 
       {/* All full-screen overlays portal to document.body so they render above
           root-level chrome (the cookie banner) instead of being trapped in the chat

@@ -28,7 +28,9 @@ class InMemoryRateLimiter {
 
     if (!record || now > record.resetTime) {
       this.store.set(key, { count: 1, resetTime: now + config.windowMs });
-      return { allowed: true, remaining: config.maxRequests - 1, resetTime: now + config.windowMs };
+      // The first request counts like any other (1 ≤ max), exactly as the Redis path's INCR does: a bucket with
+      // maxRequests 0 (CHAT_PRO_DAILY_LIMIT=0 — "Pro off") used to let every key's first request through here.
+      return { allowed: config.maxRequests >= 1, remaining: Math.max(0, config.maxRequests - 1), resetTime: now + config.windowMs };
     }
 
     record.count++;
