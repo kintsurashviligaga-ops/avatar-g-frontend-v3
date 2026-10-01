@@ -7,8 +7,8 @@
  * all a talking-head Live session needs. Shares its core with the cross-device handoff (lib/avatar/enroll).
  *
  * Authed (the userId comes from the caller's session). Body: { dataUrl: "data:image/…;base64,…",
- * voiceDataUrl?: "data:audio/…;base64,…" }. The optional voice sample is STORED alongside the poster —
- * enrollment never kicks off any background voice-clone training / render.
+ * voiceDataUrl?: "data:audio/…;base64,…" }. The optional voice sample is STORED in the PRIVATE twin bucket
+ * (the poster stays public) — enrollment never kicks off any background voice-clone training / render.
  */
 import 'server-only';
 import { NextResponse, type NextRequest } from 'next/server';
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       console.error(`[avatar/enroll] FAILED for user ${user.id}: ${result.error} (${result.status})`);
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
-    // STORE the optional voice sample next to the poster — best-effort, never fails the selfie enrollment and
+    // STORE the optional voice sample (private bucket) — best-effort, never fails the selfie enrollment and
     // never triggers background training/generation (that's the "training in the corner" bug this fixes).
     if (typeof body?.voiceDataUrl === 'string' && body.voiceDataUrl.startsWith('data:')) {
       await storeLiveAvatarVoice(user.id, body.voiceDataUrl);

@@ -7,17 +7,35 @@
  * avatar for the token's userId. The desktop meanwhile polls its OWN /api/avatar/core and continues the
  * moment the avatar appears — so NO shared session store (Redis/DB table) is needed; the token is stateless.
  *
- * The signing key is the SERVER-ONLY service-role key (never shipped to the client), so a token can't be
- * forged. The token is single-purpose (only authorizes enrolling a 2D avatar — no financial or destructive
- * action) and short-lived, so its risk profile is that of a magic link.
+ * The signing key is the SERVER-ONLY AVATAR_HANDOFF_SECRET (falling back, loudly, to the service-role key;
+ * neither is ever shipped to the client), so a token can't be forged. The token is single-purpose (only
+ * authorizes enrolling a 2D avatar — no financial or destructive action) and short-lived, so its risk
+ * profile is that of a magic link.
  */
 import 'server-only';
 import { createHmac, timingSafeEqual } from 'crypto';
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 min to walk over to the phone and shoot the selfie
 
+let keyWarned = false;
+
 function signingKey(): string {
-  return process.env.AVATAR_HANDOFF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const dedicated = process.env.AVATAR_HANDOFF_SECRET;
+  if (dedicated) return dedicated;
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  // ⚠️ LOUD, once per instance: the fallback works, so nothing else would ever surface it. The service-role
+  // key is the database master key and already doubles as an HMAC key elsewhere (csrf, voice-v2v) — handoff
+  // links should have their own key so one can be rotated/revoked without the other. Names only, never values.
+  if (!keyWarned) {
+    keyWarned = true;
+    // eslint-disable-next-line no-console
+    console.error(
+      fallback
+        ? '[avatar/handoff] ⚠️ AVATAR_HANDOFF_SECRET is UNSET — phone-handoff tokens are being signed with SUPABASE_SERVICE_ROLE_KEY. Set a dedicated AVATAR_HANDOFF_SECRET.'
+        : '[avatar/handoff] ⚠️ AVATAR_HANDOFF_SECRET and SUPABASE_SERVICE_ROLE_KEY are both UNSET — phone handoff is DISABLED (fail-closed).',
+    );
+  }
+  return fallback;
 }
 
 function hmac(payload: string): string {
