@@ -1,6 +1,6 @@
 # brand/v1 art pack — exact prompts (written before any request)
 
-**Job cap: $7.00. Stop line: $6.50.** The runner is `scripts/hf-art-pack.ts`. It prices every request first, refuses to cross the stop line, allows at most 3 attempts per shot (the first plus 2 retries), and logs every request with its cost in `public/brand/v1/manifest.json`.
+**Job cap: $7.00. Stop line: $6.50.** The runner is `scripts/hf-art-pack.ts`. It prices every request first, refuses to cross the stop line, allows at most 3 attempts per shot (the first plus 2 retries), and logs every request with its cost in `design/brand/v1/manifest.json` (raw takes in `design/brand/v1/raw/`, gitignored — neither lives under `public/`, which deploys).
 
 **Rules:** see `docs/DESIGN.md` §4. One world, one grade, one seed family. There is no text, no logo, no UI and no mockup in any image; type is set in code. Buttons, logos and whole pages are never generated.
 

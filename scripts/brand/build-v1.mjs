@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * brand/v1 web files from the SELECTED raw outputs of the art pack (public/brand/v1/manifest.json → selected).
+ * brand/v1 web files from the SELECTED raw outputs of the art pack (design/brand/v1/manifest.json → selected).
  * No generation here and no drawing — crop, resize, grade-safe JPEG encode, and one composite: the share image,
  * where the brand lockup from GG's sheet is laid over the world still in code (docs/DESIGN.md: no text is ever
  * baked into a generated image).
@@ -18,10 +18,12 @@ import sharp from 'sharp';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = join(ROOT, 'public/brand/v1');
-const manifest = JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8'));
+/** The pack's private work dir (scripts/hf-art-pack.ts PACKS): its manifest + the local raw takes — never deployed. */
+const WORK = join(ROOT, 'design/brand/v1');
+const manifest = JSON.parse(readFileSync(join(WORK, 'manifest.json'), 'utf8'));
 const SHEET = join(ROOT, 'docs/brand/brand-sheet-2026-09-29.webp');
 /** The committed master of a selected take (design/brand/v1) — the raw takes themselves stay local, uncommitted. */
-const source = (pick) => (pick.master ? join(ROOT, pick.master) : join(OUT, pick.file));
+const source = (pick) => (pick.master ? join(ROOT, pick.master) : join(WORK, pick.file));
 
 /** shot → { name, box: [w, h], focus } — focus is sharp's crop position for `cover`. */
 const TARGETS = {

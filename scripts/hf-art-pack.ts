@@ -1,40 +1,46 @@
 /**
- * brand/v1 art pack — ⚠️ BILLABLE, HARD-CAPPED (docs/DESIGN.md §4).
+ * Art packs — ⚠️ BILLABLE, HARD-CAPPED (docs/DESIGN.md §4).
  *
- * The shots are NOT defined here. They live in scripts/hf-art-pack.md, as fenced ```json shot blocks, and
+ * The shots are NOT defined here. They live in each pack's markdown spec, as fenced ```json shot blocks, and
  * this runner reads them from there — so the prompts committed before the first call are exactly the
  * prompts that run. Nothing is invented at run time.
  *
  * Money rules:
- *   - every request is priced first (free POST /estimate) and refused if it would cross the STOP line
- *     ($6.50 of the $7.00 job cap), counting everything already submitted in this pack;
+ *   - every request is priced first (free POST /estimate) and refused if it would cross the pack's STOP line,
+ *     counting everything already submitted in this pack; a --dry run adds its quotes up against the same line;
  *   - one POST per attempt, never retried on its own (the provider has no idempotency key);
- *   - at most 3 attempts per shot (the first + 2 retries, the brief's limit);
- *   - every attempt — its prompt, model, input, request id and cost — is appended to
- *     public/brand/v1/manifest.json before and after it runs.
+ *   - at most 3 attempts per shot (the first + 2 retries, the brief's limit), and a shot whose take is still
+ *     waiting for review is not paid for again unless --retry says so;
+ *   - every attempt — its prompt, model, input, request id and cost — is appended to the pack's manifest.json
+ *     before and after it runs.
  *
  * Packs (`--pack`, default brand-v1): brand-v1 = the brand/v1 art pack ($7 cap); templates = the studio's template
- * gallery thumbnails (scripts/templates/thumbs.md → public/templates, $5 cap — the owner's 2026-10-01 budget).
+ * gallery thumbnails (scripts/templates/thumbs.md, $5 cap — the owner's 2026-10-01 budget).
+ * ⚠️ A pack's manifest and raw takes live in its `work` dir, never under public/: everything in public/ is deployed,
+ * and the manifest carries prompts, prices, request ids and provider URLs. Only the selected, resized finals go public.
  *
- * Usage (from the repo root):
- *   npx tsx --tsconfig scripts/tsconfig.scripts.json scripts/hf-art-pack.ts --dry            # price all pending shots
- *   … scripts/hf-art-pack.ts --pack templates --dry                                           # the template thumbnails
- *   npx tsx --tsconfig scripts/tsconfig.scripts.json scripts/hf-art-pack.ts --shot A1 --yes-spend
- *   npx tsx --tsconfig scripts/tsconfig.scripts.json scripts/hf-art-pack.ts --status         # spend so far
+ * Usage (from the repo root; `npm run art:templates --` is `npx jiti scripts/hf-art-pack.ts --pack templates`):
+ *   npm run art:templates -- --dry                            # price every pending shot (free) against the stop line
+ *   npm run art:templates -- --yes-spend                      # run the pending shots
+ *   npm run art:templates -- --shot video/teaser --yes-spend  # one shot (add --retry for another take)
+ *   npm run art:templates -- --status                         # spend so far, takes per shot
+ *   npm run art:templates -- --select video/teaser:1 --output 2
+ *   npx jiti scripts/hf-art-pack.ts --status                  # the brand-v1 pack
  */
 import { loadEnvConfig } from '@next/env';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import type { ProviderEstimate, ProviderResult, ProviderSubmission } from '@/lib/providers/types';
 
 const ROOT = process.cwd();
 
 export const JOB_CAP_USD = 7.0;
 export const STOP_AT_USD = 6.5;
 
-/** Each pack: its spec, where its manifest + raw takes live (raw is gitignored), and its hard money lines. */
+/** Each pack: its spec, its PRIVATE work dir (manifest + raw takes; raw is gitignored), and its hard money lines. */
 export const PACKS = {
-  'brand-v1': { spec: 'scripts/hf-art-pack.md', out: 'public/brand/v1', job: 'brand/v1 art pack', cap: JOB_CAP_USD, stop: STOP_AT_USD },
-  templates: { spec: 'scripts/templates/thumbs.md', out: 'public/templates', job: 'template gallery thumbnails', cap: 5.0, stop: 4.5 },
+  'brand-v1': { spec: 'scripts/hf-art-pack.md', work: 'design/brand/v1', job: 'brand/v1 art pack', cap: JOB_CAP_USD, stop: STOP_AT_USD },
+  templates: { spec: 'scripts/templates/thumbs.md', work: 'scripts/templates', job: 'template gallery thumbnails', cap: 5.0, stop: 4.5 },
 } as const;
 export type PackId = keyof typeof PACKS;
 
@@ -45,16 +51,15 @@ export function packFromArgv(argv: readonly string[]): PackId {
   return id;
 }
 
-const pack = PACKS[packFromArgv(process.argv.slice(2))];
-const SPEC = join(ROOT, pack.spec);
-const OUT = join(ROOT, pack.out);
-const RAW = join(OUT, 'raw');
-const MANIFEST = join(OUT, 'manifest.json');
-const PACK_CAP_USD = pack.cap;
-const PACK_STOP_USD = pack.stop;
 const MAX_ATTEMPTS = 3;
 const POLL_MS = 4_000;
 const WAIT_MS = 12 * 60_000;
+
+/** "A1", "A4r", "video/teaser": at most one folder, because the id becomes a file path under raw/. */
+const SHOT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]*(?:\/[A-Za-z0-9][A-Za-z0-9-]*)?$/;
+
+/** Outcomes with nothing to review — the only takes a plain re-run pays for again. */
+const DEAD_ENDS: ReadonlySet<string> = new Set(['failed', 'nsfw', 'canceled', 'refused']);
 
 export interface Shot {
   id: string;
@@ -98,6 +103,7 @@ export function parseShots(md: string): Shot[] {
   for (let m = re.exec(md); m; m = re.exec(md)) {
     const s = JSON.parse(m[1]!) as Shot;
     if (!s.id || !s.endpoint || !s.input) throw new Error(`shot block missing id/endpoint/input: ${m[1]!.slice(0, 80)}`);
+    if (!SHOT_ID_RE.test(s.id)) throw new Error(`shot id ${JSON.stringify(s.id)} is not a safe file name`);
     shots.push(s);
   }
   const ids = shots.map((s) => s.id);
@@ -121,25 +127,172 @@ export function substitute(value: unknown, selected: Manifest['selected']): unkn
   return value;
 }
 
+const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
+
 export function spent(m: Manifest): number {
   // Conservative: every SUBMITTED attempt counts at its quoted price, finished or not.
-  return Math.round(m.attempts.filter((a) => a.requestId).reduce((s, a) => s + (a.usd ?? 0), 0) * 10_000) / 10_000;
+  return round4(m.attempts.filter((a) => a.requestId).reduce((s, a) => s + (a.usd ?? 0), 0));
 }
 
-function loadManifest(): Manifest {
-  if (existsSync(MANIFEST)) return JSON.parse(readFileSync(MANIFEST, 'utf8')) as Manifest;
-  return { job: pack.job, capUsd: PACK_CAP_USD, stopAtUsd: PACK_STOP_USD, spentUsd: 0, attempts: [], selected: {} };
+/** A shot that has a take nobody has reviewed yet: completed but not selected, or submitted with its outcome open. */
+export function awaitingReview(m: Manifest, shot: string): boolean {
+  return !m.selected[shot] && m.attempts.some((a) => a.shot === shot && !DEAD_ENDS.has(a.status));
 }
 
-function saveManifest(m: Manifest) {
-  m.spentUsd = spent(m);
-  mkdirSync(OUT, { recursive: true });
-  writeFileSync(MANIFEST, `${JSON.stringify(m, null, 2)}\n`);
+/**
+ * The shots a run would submit, and the ones it holds back.
+ * ⚠️ A shot awaiting review is held unless `retry`: re-running the spend command before `--select` used to pay
+ * for every unselected shot again.
+ */
+export function pendingShots(shots: readonly Shot[], m: Manifest, o: { only?: string; retry?: boolean } = {}): { queue: Shot[]; held: Shot[] } {
+  const queue: Shot[] = [];
+  const held: Shot[] = [];
+  for (const s of shots.filter((x) => (o.only ? x.id === o.only : !m.selected[x.id] && !x.optional))) {
+    (awaitingReview(m, s.id) && !o.retry ? held : queue).push(s);
+  }
+  return { queue, held };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const extOf = (type: string, url: string) =>
   type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('mp4') ? 'mp4' : type.includes('jpeg') || type.includes('jpg') ? 'jpg' : (url.match(/\.([a-z0-9]{2,4})(?:\?|$)/i)?.[1] ?? 'bin');
+
+/**
+ * Downloads a take's outputs to <work>/raw/<shot>-<attempt>-<i>.<ext>. A file is recorded only once it is on disk.
+ * ⚠️ The folder is made for each FILE, not just raw/: template ids carry a slash (video/teaser → raw/video/), and
+ * with only raw/ in place every template write failed inside a silent catch — paid takes, no files.
+ */
+export async function saveOutputs(
+  urls: readonly string[], shot: string, attempt: number, work: string,
+  fetchImpl: typeof fetch = (...a) => fetch(...a), log: (line: string) => void = console.log,
+): Promise<Attempt['outputs']> {
+  const outputs: Attempt['outputs'] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i]!;
+    let file: string | null = null;
+    try {
+      const res = await fetchImpl(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const name = `raw/${shot}-${attempt}-${i}.${extOf(res.headers.get('content-type') ?? '', url)}`;
+      mkdirSync(dirname(join(work, name)), { recursive: true });
+      writeFileSync(join(work, name), buf);
+      file = name;
+    } catch (e) {
+      // The provider URL stays in the manifest (kept ≥ 7 days), so the file can be fetched again — but say so.
+      log(`${shot} #${attempt}: output ${i} not saved — ${e instanceof Error ? e.message : String(e)}`);
+    }
+    outputs.push({ url, file });
+  }
+  return outputs;
+}
+
+/** The provider calls the runner makes (lib/providers/higgsfield/client), as an interface a test can stand in for. */
+export interface ArtClient {
+  estimate(endpoint: string, input: Record<string, unknown>): Promise<ProviderEstimate>;
+  submit(endpoint: string, input: Record<string, unknown>): Promise<ProviderSubmission>;
+  status(requestId: string): Promise<ProviderResult>;
+}
+
+export interface RunOptions { dry: boolean; only?: string; retry?: boolean; stopUsd: number }
+
+export interface RunDeps {
+  hf: ArtClient;
+  /** The pack's work dir (absolute); raw takes land in <work>/raw/. */
+  work: string;
+  save: (m: Manifest) => void;
+  log?: (line: string) => void;
+  fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  pollMs?: number;
+  waitMs?: number;
+}
+
+/** Prices — and unless `dry`, submits, polls and downloads — every pending shot, in spec order, under the stop line. */
+export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOptions, d: RunDeps): Promise<{ projectedUsd: number; stopped: boolean }> {
+  const log = d.log ?? console.log;
+  const { hf } = d;
+  const { queue, held } = pendingShots(shots, m, o);
+  for (const s of held) log(`${s.id}: a take is waiting for review — --select it, or pass --retry to pay for another`);
+  if (!queue.length) { log('nothing to run'); return { projectedUsd: spent(m), stopped: false }; }
+
+  // A dry run submits nothing, so `spent` never moves: its quotes are added up here, against the same stop line.
+  let projected = spent(m);
+  let stopped = false;
+  for (const s of queue) {
+    const tries = m.attempts.filter((a) => a.shot === s.id).length;
+    if (tries >= MAX_ATTEMPTS) { log(`${s.id}: ${MAX_ATTEMPTS} attempts used — skipped (brief: ≤ 2 retries per shot)`); continue; }
+    const unmet = (s.needs ?? []).filter((need) => !m.selected[need]);
+    if (unmet.length) { log(`${s.id}: waits for ${unmet.join(', ')} to be selected — skipped for now`); continue; }
+
+    const input = substitute(s.input, m.selected) as Record<string, unknown>;
+    let est: ProviderEstimate;
+    try {
+      est = await hf.estimate(s.endpoint, input);
+    } catch (e) {
+      // The provider's own words (ProviderError keeps them off the enumerable fields) — local tool, so print them.
+      const detail = (e as { detail?: unknown }).detail;
+      log(`${s.id}: estimate refused — ${(e as { code?: string }).code ?? (e as Error).message}${detail ? ` · ${String(detail).slice(0, 400)}` : ''}`);
+      continue;
+    }
+    const usd = est.usd;
+    const before = o.dry ? projected : spent(m);
+    log(`${s.id} ${s.title}: quote ${usd === null ? `(described) ${est.pricingDescription?.slice(0, 80)}` : `$${usd.toFixed(4)}`}${est.listUsd && usd !== null && est.listUsd > usd ? ` (list $${est.listUsd.toFixed(4)})` : ''} · ${o.dry ? 'projected' : 'spent so far'} $${before.toFixed(4)}`);
+    if (usd === null) { log(`${s.id}: no numeric price — not run (priced models only)`); continue; }
+    if (before + usd > o.stopUsd) { log(`STOP: $${before.toFixed(4)} + $${usd.toFixed(4)} would pass the $${o.stopUsd} stop line`); stopped = true; break; }
+    if (o.dry) { projected = round4(before + usd); continue; }
+
+    const attempt: Attempt = {
+      shot: s.id, attempt: tries + 1, endpoint: s.endpoint, input, requestId: null, usd, listUsd: est.listUsd,
+      status: 'submitting', outputs: [], at: new Date().toISOString(),
+    };
+    m.attempts.push(attempt);
+    d.save(m);
+
+    try {
+      const sub = await hf.submit(s.endpoint, input);
+      attempt.requestId = sub.requestId;
+      attempt.status = sub.status;
+      d.save(m);
+      log(`${s.id} #${attempt.attempt}: request ${sub.requestId}`);
+    } catch (e) {
+      const ambiguous = (e as { ambiguous?: boolean }).ambiguous === true;
+      attempt.status = ambiguous ? 'submit_unknown' : 'refused';
+      attempt.note = String((e as Error).message).slice(0, 200);
+      // An ambiguous submit may have been charged: count it (requestId stays null → mark it explicitly).
+      if (ambiguous) attempt.requestId = 'unknown';
+      d.save(m);
+      log(`${s.id} #${attempt.attempt}: ${attempt.status} — ${attempt.note}`);
+      continue;
+    }
+
+    const deadline = Date.now() + (d.waitMs ?? WAIT_MS);
+    let result = await hf.status(attempt.requestId!);
+    while (!['completed', 'failed', 'nsfw', 'canceled'].includes(result.status) && Date.now() < deadline) {
+      await (d.sleep ?? sleep)(d.pollMs ?? POLL_MS);
+      result = await hf.status(attempt.requestId!).catch(() => result);
+    }
+    attempt.status = result.status;
+    attempt.outputs.push(...await saveOutputs(result.outputUrls, s.id, attempt.attempt, d.work, d.fetchImpl, log));
+    d.save(m);
+    log(`${s.id} #${attempt.attempt}: ${result.status} · ${attempt.outputs.map((x) => x.file ?? x.url).join(', ') || 'no output'} · spent $${spent(m).toFixed(4)}`);
+  }
+  return { projectedUsd: o.dry ? projected : spent(m), stopped };
+}
+
+type HfClientModule = typeof import('@/lib/providers/higgsfield/client');
+
+/**
+ * ⚠️ The provider client is loaded through jiti with the repo's two aliases, not `import('@/…')`: tsx is not a
+ * dependency and jiti ignores tsconfig `paths`, so every --dry / --yes-spend died "Cannot find module '@/…'".
+ * ('server-only' → the scripts shim, exactly as scripts/tsconfig.scripts.json maps it.)
+ */
+function loadHfClient(): HfClientModule {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jiti 1.x is CommonJS (installed with tailwindcss)
+  const createJiti = require('jiti') as (from: string, o: { alias: Record<string, string> }) => (id: string) => unknown;
+  const load = createJiti(__filename, { alias: { '@/': `${ROOT}/`, 'server-only': join(ROOT, 'scripts/shims/server-only.ts') } });
+  return load('@/lib/providers/higgsfield/client') as HfClientModule;
+}
 
 async function main() {
   loadEnvConfig(ROOT); // here, not at import: a test importing the helpers must not load real credentials
@@ -147,14 +300,26 @@ async function main() {
   const flag = (k: string) => argv.includes(k);
   const arg = (k: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
 
-  const shots = parseShots(readFileSync(SPEC, 'utf8'));
-  const m = loadManifest();
+  const pack = PACKS[packFromArgv(argv)];
+  const work = join(ROOT, pack.work);
+  const manifestPath = join(work, 'manifest.json');
+  const shots = parseShots(readFileSync(join(ROOT, pack.spec), 'utf8'));
+  const m: Manifest = existsSync(manifestPath)
+    ? JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest
+    : { job: pack.job, capUsd: pack.cap, stopAtUsd: pack.stop, spentUsd: 0, attempts: [], selected: {} };
+  const save = (x: Manifest) => {
+    x.spentUsd = spent(x);
+    mkdirSync(work, { recursive: true });
+    writeFileSync(manifestPath, `${JSON.stringify(x, null, 2)}\n`);
+  };
 
   if (flag('--status')) {
-    console.log(`spent $${spent(m).toFixed(4)} of $${PACK_STOP_USD.toFixed(2)} (cap $${PACK_CAP_USD.toFixed(2)})`);
+    const w = Math.max(3, ...shots.map((s) => s.id.length));
+    console.log(`spent $${spent(m).toFixed(4)} of $${pack.stop.toFixed(2)} (cap $${pack.cap.toFixed(2)})`);
     for (const s of shots) {
       const tries = m.attempts.filter((a) => a.shot === s.id);
-      console.log(`  ${s.id.padEnd(3)} ${s.title.padEnd(34)} attempts ${tries.length}/${MAX_ATTEMPTS}${m.selected[s.id] ? `  ✓ selected #${m.selected[s.id]!.attempt}` : ''}`);
+      const mark = m.selected[s.id] ? `  ✓ selected #${m.selected[s.id]!.attempt}` : awaitingReview(m, s.id) ? '  … awaiting review' : '';
+      console.log(`  ${s.id.padEnd(w)} ${s.title.padEnd(34)} attempts ${tries.length}/${MAX_ATTEMPTS}${mark}`);
     }
     return;
   }
@@ -166,7 +331,7 @@ async function main() {
     const out = a?.outputs[Number(arg('--output') ?? 0)];
     if (!a || !out?.file) throw new Error(`no completed attempt ${select} with a downloaded output`);
     m.selected[id!] = { url: out.url, file: out.file, attempt: a.attempt };
-    saveManifest(m);
+    save(m);
     console.log(`selected ${id} ← attempt ${n} (${out.file})`);
     return;
   }
@@ -174,85 +339,15 @@ async function main() {
   const dry = flag('--dry');
   if (!dry && !flag('--yes-spend')) throw new Error('refusing to spend without --yes-spend (use --dry to price only)');
 
-  const { createHfClient, hfAuthHeaderFromEnv } = await import('@/lib/providers/higgsfield/client');
+  const { createHfClient, hfAuthHeaderFromEnv } = loadHfClient();
   const auth = hfAuthHeaderFromEnv();
   if (!auth) throw new Error('HF credentials are not configured');
   const hf = createHfClient({ authHeader: auth });
 
-  const only = arg('--shot');
-  const queue = shots.filter((s) => (only ? s.id === only : !m.selected[s.id] && !s.optional));
-  if (!queue.length) { console.log('nothing to run'); return; }
-
-  for (const s of queue) {
-    const tries = m.attempts.filter((a) => a.shot === s.id).length;
-    if (tries >= MAX_ATTEMPTS) { console.log(`${s.id}: ${MAX_ATTEMPTS} attempts used — skipped (brief: ≤ 2 retries per shot)`); continue; }
-    const unmet = (s.needs ?? []).filter((need) => !m.selected[need]);
-    if (unmet.length) { console.log(`${s.id}: waits for ${unmet.join(', ')} to be selected — skipped for now`); continue; }
-
-    const input = substitute(s.input, m.selected) as Record<string, unknown>;
-    let est: Awaited<ReturnType<typeof hf.estimate>>;
-    try {
-      est = await hf.estimate(s.endpoint, input);
-    } catch (e) {
-      // The provider's own words (ProviderError keeps them off the enumerable fields) — local tool, so print them.
-      const detail = (e as { detail?: unknown }).detail;
-      console.log(`${s.id}: estimate refused — ${(e as { code?: string }).code ?? (e as Error).message}${detail ? ` · ${String(detail).slice(0, 400)}` : ''}`);
-      continue;
-    }
-    const usd = est.usd;
-    const before = spent(m);
-    console.log(`${s.id} ${s.title}: quote ${usd === null ? `(described) ${est.pricingDescription?.slice(0, 80)}` : `$${usd.toFixed(4)}`}${est.listUsd && usd !== null && est.listUsd > usd ? ` (list $${est.listUsd.toFixed(4)})` : ''} · spent so far $${before.toFixed(4)}`);
-    if (usd === null) { console.log(`${s.id}: no numeric price — not run (priced models only)`); continue; }
-    if (before + usd > PACK_STOP_USD) { console.log(`STOP: $${before.toFixed(4)} + $${usd.toFixed(4)} would pass the $${PACK_STOP_USD} stop line`); break; }
-    if (dry) continue;
-
-    const attempt: Attempt = {
-      shot: s.id, attempt: tries + 1, endpoint: s.endpoint, input, requestId: null, usd, listUsd: est.listUsd,
-      status: 'submitting', outputs: [], at: new Date().toISOString(),
-    };
-    m.attempts.push(attempt);
-    saveManifest(m);
-
-    try {
-      const sub = await hf.submit(s.endpoint, input);
-      attempt.requestId = sub.requestId;
-      attempt.status = sub.status;
-      saveManifest(m);
-      console.log(`${s.id} #${attempt.attempt}: request ${sub.requestId}`);
-    } catch (e) {
-      const ambiguous = (e as { ambiguous?: boolean }).ambiguous === true;
-      attempt.status = ambiguous ? 'submit_unknown' : 'refused';
-      attempt.note = String((e as Error).message).slice(0, 200);
-      // An ambiguous submit may have been charged: count it (requestId stays null → mark it explicitly).
-      if (ambiguous) attempt.requestId = 'unknown';
-      saveManifest(m);
-      console.log(`${s.id} #${attempt.attempt}: ${attempt.status} — ${attempt.note}`);
-      continue;
-    }
-
-    const deadline = Date.now() + WAIT_MS;
-    let result = await hf.status(attempt.requestId!);
-    while (!['completed', 'failed', 'nsfw', 'canceled'].includes(result.status) && Date.now() < deadline) {
-      await sleep(POLL_MS);
-      result = await hf.status(attempt.requestId!).catch(() => result);
-    }
-    attempt.status = result.status;
-    mkdirSync(RAW, { recursive: true });
-    for (let i = 0; i < result.outputUrls.length; i++) {
-      const url = result.outputUrls[i]!;
-      let file: string | null = null;
-      try {
-        const res = await fetch(url);
-        const buf = Buffer.from(await res.arrayBuffer());
-        file = `raw/${s.id}-${attempt.attempt}-${i}.${extOf(res.headers.get('content-type') ?? '', url)}`;
-        writeFileSync(join(OUT, file), buf);
-      } catch { /* the provider URL stays in the manifest; the file can be fetched again */ }
-      attempt.outputs.push({ url, file });
-    }
-    saveManifest(m);
-    console.log(`${s.id} #${attempt.attempt}: ${result.status} · ${attempt.outputs.map((o) => o.file ?? o.url).join(', ') || 'no output'} · spent $${spent(m).toFixed(4)}`);
-  }
-  console.log(`total spent $${spent(m).toFixed(4)} of $${PACK_STOP_USD.toFixed(2)} stop line`);
+  const r = await runQueue(shots, m, { dry, only: arg('--shot'), retry: flag('--retry'), stopUsd: pack.stop }, { hf, work, save });
+  console.log(dry
+    ? `projected total $${r.projectedUsd.toFixed(4)} of the $${pack.stop.toFixed(2)} stop line${r.stopped ? ' — a real run would STOP at the shot above' : ''} (dry run: nothing submitted)`
+    : `total spent $${r.projectedUsd.toFixed(4)} of the $${pack.stop.toFixed(2)} stop line`);
 }
 
 if (require.main === module || process.argv[1]?.endsWith('hf-art-pack.ts')) {
