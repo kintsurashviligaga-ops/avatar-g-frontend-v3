@@ -52,7 +52,7 @@ import { lipsyncCreate, lipsyncFetch, filmLipsyncCreate } from '../../../../lib/
 import { textToHostedSpeech } from '../../../../lib/chat/filmVoiceover';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
 import { creditCostFor } from '../../../../lib/credits/pricing';
-import { avatarChargeRef, signAvatarCharge, withChargeToken } from '../../../../lib/billing/avatarCharge';
+import { audioFingerprint, avatarChargeRef, signAvatarCharge, withChargeToken } from '../../../../lib/billing/avatarCharge';
 
 const deductMock = deductCredits as jest.MockedFunction<typeof deductCredits>;
 const refundMock = refundDebitByRef as jest.MockedFunction<typeof refundDebitByRef>;
@@ -226,13 +226,34 @@ describe('signed in — the reservation is the gate', () => {
     expect(deductMock).toHaveBeenCalledTimes(1);
   });
 
+  const TTS = 'https://x.supabase.co/tts.mp3';
+  const PRESENTER_FACE = 'https://myavatar.ge/presenter/default-female.jpg';
+  const FALLBACK = { characterRef: PRESENTER_FACE, audioUrl: TTS, forceSadTalker: true, orientation: 'vertical' };
+  const holdRef = avatarChargeRef('presenter-tts', 'user-42', '00000000-0000-4000-8000-00000000000a');
+  const holdFor = (audio: string | undefined) => signAvatarCharge({ k: 'presenter-hold', u: 'user-42', r: holdRef, j: null, ...(audio ? { a: audioFingerprint(audio) } : {}) });
+
   it('presenter fallback: a valid presenter-hold token for THIS user is released as the render reserves', async () => {
-    const holdRef = avatarChargeRef('presenter-tts', 'user-42', '00000000-0000-4000-8000-00000000000a');
-    const hold = signAvatarCharge({ k: 'presenter-hold', u: 'user-42', r: holdRef, j: null });
-    const res = await POST(post({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: 'https://x.supabase.co/tts.mp3', forceSadTalker: true, chargeToken: hold }));
+    const res = await POST(post({ ...FALLBACK, chargeToken: holdFor(TTS) }));
     expect(res.status).toBe(200);
     expect(refundMock).toHaveBeenCalledWith('user-42', holdRef, COST);
     expect(deductMock).toHaveBeenCalledTimes(1); // the render still reserves its own price
+  });
+
+  it.each([
+    ['a junk face SadTalker cannot read', { ...FALLBACK, characterRef: 'https://attacker.example/no-face.jpg' }],
+    ['a different audio file', { ...FALLBACK, audioUrl: 'https://attacker.example/junk.mp3' }],
+    ["the video engine (kind:'film') fed a still", { ...FALLBACK, kind: 'film' }],
+    ['fresh `text` that replaces the held audio', { ...FALLBACK, text: 'სხვა ტექსტი' }],
+  ])('a hold is NOT released toward %s — its failure refund would make the TTS free', async (_l, body) => {
+    const res = await POST(post({ ...body, chargeToken: holdFor(TTS) }));
+    expect(res.status).toBe(200);
+    expect(refundMock).not.toHaveBeenCalled();
+    expect(deductMock).toHaveBeenCalledTimes(1); // the render pays its own reservation; the hold stays taken
+  });
+
+  it('a hold token with no audio binding releases nothing', async () => {
+    await POST(post({ ...FALLBACK, chargeToken: holdFor(undefined) }));
+    expect(refundMock).not.toHaveBeenCalled();
   });
 
   it("another user's hold token (or a forged one) releases nothing", async () => {

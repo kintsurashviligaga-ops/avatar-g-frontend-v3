@@ -8,7 +8,7 @@ import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
+import { PRESENTER_DEFAULT_FACE_URL, audioFingerprint, avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
 import { randomUUID } from 'crypto';
 
 /**
@@ -37,7 +37,7 @@ const HEYGEN_BASE = 'https://api.heygen.com';
 /** Bundled default presenter portrait — pin to the CANONICAL public domain, never
  *  req.nextUrl.origin (on Vercel that can be the auth-protected *.vercel.app
  *  deployment host, which 401s the self-fetch). Overridable via env. */
-const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || 'https://myavatar.ge/presenter/default-female.jpg';
+const DEFAULT_FACE_URL = process.env.PRESENTER_FACE_URL || PRESENTER_DEFAULT_FACE_URL;
 
 // SECURITY (audit HIGH — cross-tenant leak): the presenter face is a DEDICATED, non-user photo,
 // NEVER an arbitrary account photo. HeyGen's talking_photo.list is shared across ALL users of
@@ -123,7 +123,9 @@ export async function POST(req: NextRequest) {
       if (userId && hold.ref) await refundDebitByRef(userId, hold.ref, cost).catch(() => null);
       return NextResponse.json({ success: false, error: 'voice synthesis failed (no cloned-voice audio)' }, { status: 502 });
     }
-    const chargeToken = userId && hold.ref ? signAvatarCharge({ k: 'presenter-hold', u: userId, r: hold.ref, j: null }) : null;
+    // The hold is bound to THIS audio (lib/billing/avatarCharge holdReleasableFor): only a render of exactly this
+    // file, on the presenter face, may release it — never one the caller can make fail on purpose.
+    const chargeToken = userId && hold.ref ? signAvatarCharge({ k: 'presenter-hold', u: userId, r: hold.ref, j: null, a: audioFingerprint(audioUrl) }) : null;
     // heygenReady tells the client whether Phase B is even worth attempting; when false it
     // goes straight to the SadTalker tier with this same audioUrl.
     return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, heygenReady: !!apiKey, voiceProvider: 'elevenlabs:cloned-ka', ...(chargeToken ? { chargeToken } : {}) });
@@ -140,8 +142,10 @@ export async function POST(req: NextRequest) {
   // Release Phase A's hold, then reserve THIS render. Release-then-reserve (never "adopt"): a hold token replayed
   // N times releases once — refundDebitByRef is net-capped by the ledger — while every HeyGen render still reserves
   // its own price. Releasing first also means a user whose balance covers exactly one presenter is not refused.
+  // ⚠️ Only toward the render the hold paid the voice for: Phase A's own audio on the default face. A different
+  // `audioUrl` (or a custom face) is a render the caller can make fail — its refund would hand the TTS out free.
   const holdToken = verifyAvatarCharge(body.chargeToken, 'presenter-hold');
-  if (userId && holdToken && holdToken.u === userId) await refundDebitByRef(userId, holdToken.r, cost).catch(() => null);
+  if (userId && holdReleasableFor(holdToken, userId, { audioUrl, faceUrl })) await refundDebitByRef(userId, holdToken.r, cost).catch(() => null);
   const reserve = await reservePresenter(userId, 'presenter');
   if (!reserve.ok) return reserve.res;
   const chargeRef = reserve.ref;
@@ -267,6 +271,14 @@ export async function GET(req: NextRequest) {
       // signed token is bound to — never a client claim — and net-capped + idempotent, so repeated polls refund once.
       if (charge) await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
       return NextResponse.json({ done: true, error: reason.slice(0, 300) });
+    }
+    // ⚠️ COMPLETED WITHOUT A FILE IS A FAILURE, NOT "STILL WORKING". It missed the `completed && video_url` branch
+    // above and used to fall through to `{done:false}` on every poll: the reservation was never refunded, and after
+    // ~9 min the client gave up on a render that had in fact ended. Same rule as the lip-sync GET's `succeeded`
+    // without a url.
+    if (status === 'completed') {
+      if (charge) await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
+      return NextResponse.json({ done: true, error: 'the provider finished without a usable video file' });
     }
     return NextResponse.json({ done: false });
   } catch {

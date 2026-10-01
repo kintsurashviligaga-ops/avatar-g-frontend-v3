@@ -19,7 +19,7 @@
  * ref (refundDebitByRef → netDebitedForRef), never what the token claims. The token only names WHICH ref and binds
  * it to one user and one provider job, so it cannot be re-pointed at another job's failure.
  */
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 /** What a token authorises. A token is checked against the kind the route expects, so one can't cross routes. */
 export type AvatarChargeKind =
@@ -27,7 +27,8 @@ export type AvatarChargeKind =
   | 'lipsync'
   /** GET /api/heygen/presenter — a reserved HeyGen presenter job. */
   | 'presenter'
-  /** Presenter Phase A (TTS) hold: lets the NEXT phase (HeyGen submit, or the SadTalker fallback) release it. */
+  /** Presenter Phase A (TTS) hold: lets the NEXT phase (HeyGen submit, or the SadTalker fallback) release it —
+   *  only toward a render of its own audio on the presenter face (holdReleasableFor). */
   | 'presenter-hold';
 
 export interface AvatarCharge {
@@ -43,6 +44,8 @@ export interface AvatarCharge {
    *  taken, refund a net-capped reservation on that job's terminal failure) are not more dangerous with age, and
    *  an expired token would fall back to the legacy deduct and DOUBLE-charge a long render. */
   iat: number;
+  /** presenter-hold only: fingerprint of the hosted TTS audio the hold paid for (see holdReleasableFor). */
+  a?: string;
 }
 
 const TOKEN_PREFIX = 'av1';
@@ -66,7 +69,7 @@ export function avatarChargeSigningReady(): boolean {
 /** Mint a token. null when no signing key is configured (fail-closed — the caller must not proceed unbilled). */
 export function signAvatarCharge(c: Omit<AvatarCharge, 'v' | 'iat'> & { iat?: number }): string | null {
   if (!signingKey() || !c.u || !c.r) return null;
-  const body: AvatarCharge = { v: 1, k: c.k, u: c.u, r: c.r, j: c.j ?? null, iat: c.iat ?? Date.now() };
+  const body: AvatarCharge = { v: 1, k: c.k, u: c.u, r: c.r, j: c.j ?? null, iat: c.iat ?? Date.now(), ...(c.a ? { a: c.a } : {}) };
   const payload = Buffer.from(JSON.stringify(body)).toString('base64url');
   return `${TOKEN_PREFIX}.${payload}.${hmac(payload)}`;
 }
@@ -88,7 +91,8 @@ export function verifyAvatarCharge(token: unknown, kind?: AvatarChargeKind): Ava
   if (p.k !== 'lipsync' && p.k !== 'presenter' && p.k !== 'presenter-hold') return null;
   if (kind && p.k !== kind) return null;
   if (p.j !== null && typeof p.j !== 'string') return null;
-  return { v: 1, k: p.k, u: p.u, r: p.r, j: p.j ?? null, iat: typeof p.iat === 'number' ? p.iat : 0 };
+  if (p.a !== undefined && typeof p.a !== 'string') return null;
+  return { v: 1, k: p.k, u: p.u, r: p.r, j: p.j ?? null, iat: typeof p.iat === 'number' ? p.iat : 0, ...(p.a ? { a: p.a } : {}) };
 }
 
 /** `<providerJobId>~<token>` — what POST returns as `jobId` / `videoId`. */
@@ -119,4 +123,44 @@ export function chargeForPolledId(id: string, kind: 'lipsync' | 'presenter'): { 
 /** A fresh server-side reservation ref. Never client-derived (a client-keyed ref is a free-replay exploit). */
 export function avatarChargeRef(kind: 'lipsync' | 'presenter' | 'presenter-tts', userId: string, uuid: string): string {
   return `avatar:${kind}:${uuid}:${userId}`;
+}
+
+/** The bundled default presenter portrait (public, non-user). The presenter route may override it via env. */
+export const PRESENTER_DEFAULT_FACE_URL = 'https://myavatar.ge/presenter/default-female.jpg';
+
+/** True for the presenter's own default face — the canonical URL or the deployment's PRESENTER_FACE_URL override. */
+export function isPresenterDefaultFace(url: unknown): boolean {
+  if (typeof url !== 'string' || !url) return false;
+  const override = process.env.PRESENTER_FACE_URL?.trim();
+  return url === PRESENTER_DEFAULT_FACE_URL || (!!override && url === override);
+}
+
+/** A short, stable fingerprint of a hosted audio URL — what a presenter-hold binds to (the URL itself is long). */
+export function audioFingerprint(url: string): string {
+  return createHash('sha256').update(`presenter-audio:${url}`).digest('base64url').slice(0, 32);
+}
+
+/**
+ * May this presenter-hold be released toward THIS render?
+ *
+ * ⚠️ FREE CLONED-VOICE TTS. Phase A hands the hosted TTS `audioUrl` to the client together with the hold; the next
+ * render releases the hold as it reserves its own price, and that reservation is refunded on any submit or poll
+ * failure. If the render could be made to fail at will — a junk `audioUrl` HeyGen rejects, a face SadTalker cannot
+ * read, a `kind:'film'` engine fed a still — the net charge was 0 and the caller kept up to 1,500 characters of
+ * cloned-voice audio. So a hold is released only toward the render it paid the voice FOR: the same user, exactly the
+ * audio it produced, on the presenter's own default face. Anything else still renders (paying its own reservation)
+ * but leaves the hold in place. What remains refundable is a GENUINE provider failure on those inputs.
+ */
+export function holdReleasableFor(
+  hold: AvatarCharge | null,
+  userId: string | null,
+  render: { audioUrl: unknown; faceUrl: unknown },
+): hold is AvatarCharge {
+  if (!hold || hold.k !== 'presenter-hold' || !userId || hold.u !== userId) return false;
+  if (typeof hold.a !== 'string' || !hold.a) return false;
+  if (typeof render.audioUrl !== 'string' || !render.audioUrl) return false;
+  const a = Buffer.from(audioFingerprint(render.audioUrl));
+  const b = Buffer.from(hold.a);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
+  return isPresenterDefaultFace(render.faceUrl);
 }

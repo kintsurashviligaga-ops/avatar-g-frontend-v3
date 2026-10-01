@@ -26,7 +26,7 @@ import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orc
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
-import { avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
+import { avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
 import { randomUUID } from 'crypto';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { reportError } from '@/lib/observability/report-error';
@@ -209,7 +209,8 @@ export async function POST(req: NextRequest) {
   // lit face, and feeding it a stylized cinematic SCENE FRAME is exactly why the
   // music-video lip-sync was returning null (the HeyGen path itself self-tests as
   // working). `sceneIndex` rides along for callers that lip-sync a single scene clip.
-  const videoUrl = (await resolveMedia(body.characterRef)) ?? (await resolveMedia(body.videoUrl));
+  const characterUrl = await resolveMedia(body.characterRef);
+  const videoUrl = characterUrl ?? (await resolveMedia(body.videoUrl));
   // Same reasoning as the provider gate above: a bare null told the user their files were wrong when the
   // real problem is that the reference could not be resolved to a fetchable URL at all.
   if (!videoUrl) return NextResponse.json({ jobId: null, error: 'media_unresolved', code: 'media_unresolved' }, { status: 400 });
@@ -229,8 +230,16 @@ export async function POST(req: NextRequest) {
     // about to animate). Release that hold; the reservation below is this render's charge. Release-then-reserve,
     // never "adopt": a hold token replayed N times releases once (net-capped by the ledger) while every render
     // still reserves its own price, so one token can never fund more than one render.
+    // ⚠️ Only toward the presenter render the hold paid the voice for: exactly Phase A's audio (no `text` — that
+    // would re-voice it), on the presenter's default face, on the talking-photo engine (never `kind:'film'`, which
+    // cannot read a still). Any other shape is a render the caller can make fail on purpose, and its refund would
+    // hand the cloned-voice TTS out for free — it still renders, paying its own reservation, but the hold stays.
     const hold = verifyAvatarCharge(body.chargeToken, 'presenter-hold');
-    if (hold && hold.u === userId) await refundDebitByRef(hold.u, hold.r, cost).catch(() => null);
+    const speaksHeldAudio = !(typeof body.text === 'string' && body.text.trim()) && body.kind !== 'film';
+    const faceRef = characterUrl ? body.characterRef : body.videoUrl;
+    if (speaksHeldAudio && holdReleasableFor(hold, userId, { audioUrl: body.audioUrl, faceUrl: faceRef })) {
+      await refundDebitByRef(hold.u, hold.r, cost).catch(() => null);
+    }
     chargeRef = avatarChargeRef('lipsync', userId, randomUUID());
     const debit = await deductCredits(userId, cost, chargeRef);
     if (!debit.ok) {

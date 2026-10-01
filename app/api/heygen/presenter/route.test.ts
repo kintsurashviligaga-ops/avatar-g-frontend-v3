@@ -9,7 +9,10 @@
  *   · a short balance → 402, an unusable ledger → 503, both before any paid call;
  *   · one presenter = one charge: Phase A holds the price, Phase B releases the hold as it reserves the render, and
  *     the GET poll of a reserved video never deducts again;
- *   · a TTS / HeyGen failure, or HeyGen's terminal "failed" on the poll → exactly one refund of that reservation.
+ *   · a TTS / HeyGen failure, or HeyGen's terminal "failed" (or "completed" with no file) on the poll → exactly one
+ *     refund of that reservation;
+ *   · the hold is released only toward a render of Phase A's OWN audio on the default face — a render the caller can
+ *     make fail (a junk audioUrl, a custom face) must not refund its way to free cloned-voice TTS.
  * HeyGen is a stubbed global fetch; ledger, TTS and storage are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
@@ -37,6 +40,7 @@ import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/le
 import { textToHostedSpeech } from '../../../../lib/chat/filmVoiceover';
 import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
 import { creditCostFor } from '../../../../lib/credits/pricing';
+import { audioFingerprint, verifyAvatarCharge } from '../../../../lib/billing/avatarCharge';
 
 const deductMock = deductCredits as jest.MockedFunction<typeof deductCredits>;
 const refundMock = refundDebitByRef as jest.MockedFunction<typeof refundDebitByRef>;
@@ -210,6 +214,38 @@ describe('signed in', () => {
     expect(refundMock).toHaveBeenCalledTimes(1);
     expect(refundMock).toHaveBeenCalledWith('user-42', ref, COST);
     expect(deductMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("HeyGen 'completed' with NO video_url → terminal: one refund, done:true — never {done:false} forever", async () => {
+    const sj = (await (await POST(post({ audioUrl: AUDIO }).req)).json()) as { videoId: string };
+    const ref = deductMock.mock.calls[0][2];
+    heygen.status = () => Response.json({ data: { status: 'completed' } });
+    const res = await GET(poll(sj.videoId));
+    expect(await res.json()).toEqual({ done: true, error: 'the provider finished without a usable video file' });
+    expect(refundMock).toHaveBeenCalledTimes(1);
+    expect(refundMock).toHaveBeenCalledWith('user-42', ref, COST);
+    expect(recordCompletedFilm).not.toHaveBeenCalled();
+    expect(deductMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Phase A's hold is bound to the audio it produced", async () => {
+    const syn = (await (await POST(post({ text: 'გამარჯობა' }).req)).json()) as { chargeToken: string };
+    expect(verifyAvatarCharge(syn.chargeToken, 'presenter-hold')).toMatchObject({ u: 'user-42', a: audioFingerprint(AUDIO) });
+  });
+
+  it.each([
+    ['a different audioUrl (one HeyGen can be made to reject)', { audioUrl: 'https://attacker.example/junk.mp3' }],
+    ['a custom face (one that can be made unreachable)', { audioUrl: AUDIO, faceUrl: 'https://attacker.example/404.jpg' }],
+  ])('the hold is NOT released for %s — a failed render cannot refund the TTS away', async (_l, phaseB) => {
+    const syn = (await (await POST(post({ text: 'გამარჯობა' }).req)).json()) as { chargeToken: string };
+    const holdRef = deductMock.mock.calls[0][2];
+    heygen.generate = () => new Response('rejected', { status: 400 });
+    const res = await POST(post({ ...phaseB, chargeToken: syn.chargeToken }).req);
+    expect(res.status).toBe(502);
+    // The failed render's own reservation goes back; the hold (the TTS the caller already holds) does not.
+    expect(refundMock).toHaveBeenCalledTimes(1);
+    expect(refundMock).not.toHaveBeenCalledWith('user-42', holdRef, expect.anything());
+    expect(refundMock).toHaveBeenCalledWith('user-42', expect.stringMatching(RENDER_REF), COST);
   });
 
   it('a legacy bare videoId keeps deduct-on-success (never free) and is never refunded', async () => {

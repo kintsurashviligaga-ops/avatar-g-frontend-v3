@@ -5,9 +5,13 @@
  * tampered or re-pointed token reads as "no token" (the route then falls back to charging, never to free).
  */
 import {
+  PRESENTER_DEFAULT_FACE_URL,
+  audioFingerprint,
   avatarChargeRef,
   avatarChargeSigningReady,
   chargeForPolledId,
+  holdReleasableFor,
+  isPresenterDefaultFace,
   signAvatarCharge,
   splitChargedJobId,
   verifyAvatarCharge,
@@ -91,5 +95,44 @@ describe('composite job ids', () => {
     expect(chargeForPolledId(withChargeToken('job-A', t), 'lipsync').charge).not.toBeNull();
     const moved = chargeForPolledId(withChargeToken('job-B', t), 'lipsync');
     expect(moved).toEqual({ jobId: 'job-B', charge: null });
+  });
+});
+
+describe('presenter-hold binding (free cloned-voice TTS)', () => {
+  const TTS = 'https://x.supabase.co/storage/v1/object/sign/uploads/tts/a.mp3?token=t';
+  const HOLD_REF = avatarChargeRef('presenter-tts', 'user-1', '00000000-0000-4000-8000-000000000002');
+  const hold = () => verifyAvatarCharge(signAvatarCharge({ k: 'presenter-hold', u: 'user-1', r: HOLD_REF, j: null, a: audioFingerprint(TTS) }), 'presenter-hold');
+
+  it('the audio fingerprint survives the round trip and is tamper-evident', () => {
+    expect(hold()).toMatchObject({ k: 'presenter-hold', a: audioFingerprint(TTS) });
+    expect(audioFingerprint(TTS)).not.toBe(audioFingerprint(`${TTS}x`));
+  });
+
+  it('releases only toward its own audio, on the default face, for its own user', () => {
+    expect(holdReleasableFor(hold(), 'user-1', { audioUrl: TTS, faceUrl: PRESENTER_DEFAULT_FACE_URL })).toBe(true);
+    expect(holdReleasableFor(hold(), 'user-2', { audioUrl: TTS, faceUrl: PRESENTER_DEFAULT_FACE_URL })).toBe(false);
+    expect(holdReleasableFor(hold(), 'user-1', { audioUrl: 'https://attacker.example/junk.mp3', faceUrl: PRESENTER_DEFAULT_FACE_URL })).toBe(false);
+    expect(holdReleasableFor(hold(), 'user-1', { audioUrl: TTS, faceUrl: 'https://attacker.example/face.jpg' })).toBe(false);
+    expect(holdReleasableFor(hold(), 'user-1', { audioUrl: undefined, faceUrl: PRESENTER_DEFAULT_FACE_URL })).toBe(false);
+    expect(holdReleasableFor(null, 'user-1', { audioUrl: TTS, faceUrl: PRESENTER_DEFAULT_FACE_URL })).toBe(false);
+  });
+
+  it('an unbound hold (no audio fingerprint) releases toward nothing', () => {
+    const bare = verifyAvatarCharge(signAvatarCharge({ k: 'presenter-hold', u: 'user-1', r: HOLD_REF, j: null }), 'presenter-hold');
+    expect(holdReleasableFor(bare, 'user-1', { audioUrl: TTS, faceUrl: PRESENTER_DEFAULT_FACE_URL })).toBe(false);
+  });
+
+  it('the default face is the canonical portrait or the deployment override', () => {
+    const prev = process.env.PRESENTER_FACE_URL;
+    try {
+      delete process.env.PRESENTER_FACE_URL;
+      expect(isPresenterDefaultFace(PRESENTER_DEFAULT_FACE_URL)).toBe(true);
+      expect(isPresenterDefaultFace('https://cdn.example.com/face.jpg')).toBe(false);
+      process.env.PRESENTER_FACE_URL = 'https://cdn.example.com/face.jpg';
+      expect(isPresenterDefaultFace('https://cdn.example.com/face.jpg')).toBe(true);
+      expect(isPresenterDefaultFace(undefined)).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.PRESENTER_FACE_URL; else process.env.PRESENTER_FACE_URL = prev;
+    }
   });
 });
