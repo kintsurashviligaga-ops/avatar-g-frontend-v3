@@ -4,11 +4,13 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
 import { prepareDatasetZip, startRvcTraining, pollRvcPrediction, rehostModel, rvcNameFor } from '@/lib/audio/rvc';
 import { saveTrainingJob, getLatestTraining, markTrainingDone, markTrainingFailed, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 
 /**
  * Train (and check) a personal RVC voice model.
  *
- * POST { voiceReference } → splits the voice into a dataset, starts training on
+ * POST { voiceReference } (signed-in only) → splits the voice into a dataset, starts training on
  * Replicate (~10–20 min), records the job, returns { jobId }. The training runs
  * async — far past the function budget — so the client polls GET, which checks the
  * Replicate prediction and stores the trained model URL on completion.
@@ -31,19 +33,44 @@ async function hostVoiceData(dataUrl: string): Promise<string | null> {
   }
 }
 
+function localeFromHeader(acceptLanguage: string | null): 'ka' | 'en' | 'ru' {
+  const first = (acceptLanguage ?? '').split(',')[0]?.trim().slice(0, 2).toLowerCase();
+  return first === 'en' || first === 'ru' ? first : 'ka';
+}
+
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
-  const { user } = await authedClientFromRequest(req);
-  // No sign-in required to TEST — fall back to a shared demo identity.
-  const userId = user?.id ?? DEMO_VOICE_USER_ID;
+
+  // ⚠️ SIGNED-IN ONLY, AND THE LOOKUP FAILS CLOSED — checked before the body (a data: URL can be MBs) is parsed.
+  // A guest used to fall back to the shared DEMO_VOICE_USER_ID, so any anonymous POST started a paid Replicate GPU
+  // training (~10–20 min) on the platform's key AND overwrote the demo voice everyone's GET falls back to.
+  // FILM_ALLOW_ANONYMOUS does NOT re-open this lane (hence `!user?.id` beside the gate): a model needs a real owner
+  // to be trained for — without one the only identity left is that shared demo voice. GET keeps the fallback (a
+  // free status poll).
+  let user: Awaited<ReturnType<typeof authedClientFromRequest>>['user'] = null;
+  try {
+    ({ user } = await authedClientFromRequest(req));
+  } catch {
+    user = null;
+  }
+  if (!user?.id || mustSignInToGenerate(user.id)) {
+    return NextResponse.json(signInToGenerateBody(localeFromHeader(req.headers.get('accept-language'))), { status: 401 });
+  }
+  const userId = user.id;
 
   const body = (await req.json().catch(() => ({}))) as { voiceReference?: unknown };
   const voiceRef = typeof body.voiceReference === 'string' ? body.voiceReference.trim() : '';
   if (!voiceRef) return NextResponse.json({ success: false, error: 'voiceReference is required' }, { status: 400 });
 
+  const isUrl = /^https?:\/\//i.test(voiceRef);
+  // prepareDatasetZip fetches this URL from OUR server — never at a loopback / private / metadata host (SSRF).
+  if (isUrl && !isPublicHttpUrl(voiceRef)) {
+    return NextResponse.json({ success: false, error: 'Could not read the voice file.' }, { status: 400 });
+  }
+
   const voiceUrl = voiceRef.startsWith('data:')
     ? await hostVoiceData(voiceRef)
-    : /^https?:\/\//i.test(voiceRef)
+    : isUrl
       ? voiceRef
       : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceRef, 3600);
   if (!voiceUrl) return NextResponse.json({ success: false, error: 'Could not read the voice file.' }, { status: 502 });
