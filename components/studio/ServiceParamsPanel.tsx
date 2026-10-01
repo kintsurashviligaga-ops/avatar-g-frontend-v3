@@ -34,6 +34,7 @@ import { DeckViewer } from './ui/DeckViewer';
 import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckTheme } from '@/lib/services/presentation/deckPlan';
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 import { describeServiceError } from './ui/serviceError';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -76,6 +77,7 @@ const COPY = {
     describePh: 'აღწერე ობიექტი — ერთი საგანი, სუფთა ფონი',
     describeHint: 'ერთი საგანი ყველაზე კარგად მუშაობს — არა სცენა.',
     removeBgHint: 'ფონი მოცილდება რეკონსტრუქციამდე.',
+    viewerFailed: '3D გადახედვა ვერ ჩაიტვირთა — მოდელის გადმოწერა მაინც შეგიძლია.',
   },
   en: {
     close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
@@ -100,6 +102,7 @@ const COPY = {
     describePh: 'Describe the object — a single item, plain background',
     describeHint: 'A single object reconstructs best — not a scene.',
     removeBgHint: 'Cuts the background out before reconstruction.',
+    viewerFailed: 'The 3D preview could not load — you can still download the model.',
   },
   ru: {
     close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
@@ -124,6 +127,7 @@ const COPY = {
     describePh: 'Опишите объект — один предмет, чистый фон',
     describeHint: 'Один объект реконструируется лучше всего — не сцена.',
     removeBgHint: 'Удаляет фон перед реконструкцией.',
+    viewerFailed: 'Не удалось загрузить 3D-просмотр — модель всё равно можно скачать.',
   },
 } satisfies Record<Lang, Record<string, string>>;
 
@@ -359,7 +363,13 @@ export function ServiceParamsPanel({
     if (typeof prefill.slideCount === 'number' && Number.isFinite(prefill.slideCount)) {
       setSlideCount(Math.max(MIN_SLIDES, Math.min(MAX_SLIDES, Math.round(prefill.slideCount))));
     }
-    if (prefill.topic && prefill.topic.trim()) setTopic(prefill.topic.trim().slice(0, 400));
+    if (prefill.topic && prefill.topic.trim()) {
+      // ⚠️ studioIntent mines `topic` for 3D too ("make a 3D model of an old clay jug" → "old clay jug"),
+      // but it only ever reached the DECK's topic box — so the 3D panel opened with its description blank
+      // and the chat claiming it had been filled. For 3D the subject IS the prompt.
+      if (service === 'model3d') setPrompt3d(prefill.topic.trim().slice(0, MAX_PROMPT_CHARS));
+      else setTopic(prefill.topic.trim().slice(0, 400));
+    }
   }, [prefill, service]);
   const [deckLang, setDeckLang] = useState<DeckLanguage>(lang);
   const [withImages, setWithImages] = useState(false);
@@ -409,19 +419,22 @@ export function ServiceParamsPanel({
   }, []);
 
   // 3D is the only one that submits then polls — reconstruction runs far past any request budget.
-  const poll3d = useCallback(async (predictionId: string, jobId: string) => {
+  const poll3d = useCallback(async (predictionId: string, jobId: string, charge: string, referenceUrl?: string) => {
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
       if (cancelled.current) return;
       await new Promise((r) => setTimeout(r, pollDelayMs(attempt)));
       if (cancelled.current) return;
       const res = await fetch(
-        `/api/v2/model3d/status?predictionId=${encodeURIComponent(predictionId)}&jobId=${encodeURIComponent(jobId)}`,
+        // `charge` is create's signature over this job + prediction; status refunds a provider failure only with it.
+        `/api/v2/model3d/status?predictionId=${encodeURIComponent(predictionId)}&jobId=${encodeURIComponent(jobId)}${charge ? `&charge=${encodeURIComponent(charge)}` : ''}`,
       ).catch(() => null);
       const j = await res?.json().catch(() => null);
       if (!j) continue;
       if (j.status === 'succeeded' && j.glbUrl) {
         setResult((p) => ({ ...(p ?? {}), glbUrl: j.glbUrl }));
-        onDeliveredRef.current?.('model3d', { glbUrl: j.glbUrl });
+        // The reference rides along: OmniStudio posts it as the message's image, so the chat entry has a
+        // thumbnail instead of a bare link. It was dropped here, so every 3D message arrived picture-less.
+        onDeliveredRef.current?.('model3d', { glbUrl: j.glbUrl, ...(referenceUrl ? { referenceUrl } : {}) });
         return;
       }
       // Same defect, shorter form — see the note on the submit path below.
@@ -502,7 +515,7 @@ export function ServiceParamsPanel({
         if (typeof j?.jobId === 'string' && j.jobId) claimJob(j.jobId);
         // Show the reference image immediately; the mesh arrives via the poll below.
         setResult({ referenceUrl: j.referenceUrl });
-        await poll3d(j.predictionId, j.jobId);
+        await poll3d(j.predictionId, j.jobId, typeof j?.charge === 'string' ? j.charge : '', typeof j?.referenceUrl === 'string' ? j.referenceUrl : undefined);
       } else {
         setResult(j as Result);
         // Post it to the conversation as well as showing it here, so closing the panel cannot destroy it.
@@ -872,7 +885,13 @@ export function ServiceParamsPanel({
               {/* Actions ABOVE the canvas: OrbitControls owns every touch inside the viewer, so anything
                   placed below it can be hard to reach on a phone. Belt and braces with the height fix. */}
               <ResultActions url={result.glbUrl} kind="model3d" locale={lang} onNote={setNote} />
-              <GlbViewer url={result.glbUrl} />
+              {/* ⚠️ A GLB THAT FAILS TO LOAD (an expired signed URL, a truncated file) THROWS OUT OF THE R3F
+                  CANVAS, and the nearest boundary above was ServiceHub's — so one dead preview replaced the
+                  whole studio with "Something went wrong". Contained here; keyed on the url so a new model
+                  gets a fresh boundary. The download above does not depend on the viewer. */}
+              <ErrorBoundary key={result.glbUrl} fallback={<Note tone="warn">{t.viewerFailed}</Note>}>
+                <GlbViewer url={result.glbUrl} />
+              </ErrorBoundary>
             </>
           )}
         </div>
