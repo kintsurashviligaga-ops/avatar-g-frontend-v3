@@ -131,6 +131,9 @@ const nextConfig = {
       // ffmpeg-static — without this the binary is absent in the lambda, the mix
       // exec ENOENTs, and the route silently fail-opens to the English path.
       '/api/audio/georgian-song': ['./node_modules/ffmpeg-static/**'],
+      // Long-form tick (dark unless LONGFORM_VIDEO_ENABLED): probes delivered clips, extracts each act's last
+      // frame and stream-copies the film with ffmpeg-static (lib/video/longform/runtime.ts).
+      '/api/cron/longform-tick': ['./node_modules/ffmpeg-static/**'],
       // The runtime migration gate reads raw .sql by path at request time. Next
       // only bundles files it can statically trace, so without this the lambda's
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace
