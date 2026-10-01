@@ -35,6 +35,8 @@ import {
 } from '@/lib/studio/templates';
 import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
+// Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
+const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <div className="h-24" /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
@@ -1706,7 +1708,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // 2026-09-29 video-first brief). The home page opens here for guests too — send() lets a guest's plain chat turn
   // through (the guest policy lives server-side, lib/chat/guestChat) and stops every paid tool at sign-in. A restart
   // on another tool (initialTool) is selected by the deep-link effect through the same path the sidebar uses.
-  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat');
+  const [mode, setModeRaw] = useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo'>('chat');
   // "Open in Editor" bridge — a generated asset forwarded from a chat bubble into the Surgical Editor. Agent G may
   // additionally seed `autoActions` (a chain) so the editor auto-runs the AI op(s) (remove_bg → upscale …) on arrival.
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
@@ -1747,7 +1749,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * `setMode('chat')` deliberately does NOT clear the panel — opening a panel parks `mode` at 'chat',
    * so clearing there would close the panel the same tick it opened.
    */
-  const setMode = useCallback((m: 'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical') => {
+  const setMode = useCallback((m: 'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo') => {
     setModeRaw(m);
     if (m !== 'chat') { setPanelServiceRaw(null); setStudioPrefill(undefined); }
     // ⚠️ THE TAB IS PART OF THE TOOL NOW. A product / swap / motion tab left over from earlier turned the Image→Video
@@ -2609,6 +2611,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
       case 'chat': setPanelService(null); setStudioPrefill(undefined); setMode('chat'); break;
+      // Photo culling replaces the chat like the editor does; it runs on the device and spends nothing.
+      case 'photo': setMode('photo'); break;
       default: setMode(id); // image · music · remix
     }
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
@@ -2637,7 +2641,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (activeTool === 'chat') return;
     if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
   }, [isDesktop, activeTool]);
-  useEffect(() => { if (mode === 'surgical') setOptionsOpen(false); }, [mode]);
+  useEffect(() => { if (mode === 'surgical' || mode === 'photo') setOptionsOpen(false); }, [mode]);
   // Entering the chat puts a phone's settings sheet away (it has nothing to show there), so switching back to a tool
   // never springs a sheet open by itself. The desktop PANEL is not touched: `panelOpen` is the user's choice, and
   // leaving the chat brings the panel back exactly as it was (AI Studio).
@@ -6923,6 +6927,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           onReturnToChat={handleReturnToChat}
           onExit={() => { setEditorAsset(null); setEditorMode(null); setMode('chat'); }}
         />
+      </div>
+    );
+  }
+  // Photo culling — the same full-panel shape as the editor (components/studio/photo/PhotoWorkspace.tsx).
+  if (mode === 'photo') {
+    return (
+      <div className="flex h-full w-full min-w-0 flex-col overflow-hidden text-app-text">
+        <PhotoWorkspace locale={locale} onExit={() => setMode('chat')} />
       </div>
     );
   }
