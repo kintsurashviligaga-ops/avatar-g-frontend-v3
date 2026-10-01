@@ -46,13 +46,16 @@ lint-target-summary.txt
 copilot_marker.txt
 vercel-project-inspect.txt
 
-# brand/v1 art pack: every raw take stays local — only the selected masters (design/brand/v1) are committed,
-# and nothing raw may ever deploy from public/.
+# Art packs (scripts/hf-art-pack.ts): every raw take stays local, in the pack's work dir OUTSIDE public/ (which deploys).
+# brand/v1 — only the selected masters (design/brand/v1/*.jpg|mp4) and the manifest are committed.
+/design/brand/v1/raw/
+# The old raw locations (before 2026-10-01): still ignored, so a take left there locally is never committed.
 /public/brand/v1/raw/
+/public/templates/raw/
 
 # GCP service-account keys (scripts/gcp/setup-veo-vertex.sh writes one) — a long-lived secret, never committed.
 *-key.json
 *service-account*.json
 
-# Template gallery thumbnails: raw takes stay local (only the selected, resized cards are committed).
-/public/templates/raw/
+# Template gallery thumbnails: raw takes stay local (only the manifest and the selected, resized cards are committed).
+/scripts/templates/raw/

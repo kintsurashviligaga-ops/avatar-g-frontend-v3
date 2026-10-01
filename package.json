@@ -29,6 +29,7 @@
     "hf:smoke": "node --experimental-strip-types scripts/hf-smoke.ts",
     "hf:credentials": "bash scripts/higgsfield/credentials.sh",
     "hf:example": "node --experimental-strip-types --no-warnings scripts/higgsfield/index.ts",
+    "art:templates": "jiti scripts/hf-art-pack.ts --pack templates",
     "preflight": "node scripts/preflight-check.mjs",
     "db:apply-ledger": "node scripts/apply-ledger-migration.mjs",
     "db:apply-jobs": "node scripts/apply-generation-jobs-migration.mjs",

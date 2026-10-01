@@ -17,7 +17,7 @@ describe('brand/v1 — every file the site references exists, and the spend is o
   });
 
   test('the manifest logs every request and stays under the $6.50 stop line', () => {
-    const m = JSON.parse(readFileSync(join(process.cwd(), 'public/brand/v1/manifest.json'), 'utf8')) as {
+    const m = JSON.parse(readFileSync(join(process.cwd(), 'design/brand/v1/manifest.json'), 'utf8')) as {
       spentUsd: number; stopAtUsd: number; capUsd: number; attempts: Array<{ shot: string; usd: number | null; requestId: string | null }>;
     };
     expect(m.capUsd).toBe(7);

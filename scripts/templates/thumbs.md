@@ -1,15 +1,21 @@
 # Template gallery thumbnails — the shot list (BILLABLE, hard-capped)
 
 The prompts committed before the first call are exactly the prompts that run (scripts/hf-art-pack.ts reads these
-```json shot``` blocks). One Soul v2 call per template returns four 3:4 variants; the best one is selected after review
+```json shot``` blocks). One Soul v2 call per template returns four 3:4 variants, downloaded to
+`scripts/templates/raw/<tool>/` (gitignored); the best one is selected after review
 (`--select <id>:<attempt> --output <n>`), resized to 600×800 and written to `public/templates/<tool>/<id>.jpg`, and
-the template's `thumb` in lib/studio/templates.ts is pointed at it.
+the template's `thumb` in lib/studio/templates.ts is pointed at it. Every request — prompt, price, request id — is
+logged in `scripts/templates/manifest.json`, never under `public/` (which deploys).
 
 Money: the `templates` pack is capped at $5.00 (the owner's 2026-10-01 budget) with a stop line at $4.50; every
-request is priced first by the provider's free /estimate. Run:
+request is priced first by the provider's free /estimate, and a dry run adds its quotes up against the stop line.
+Run (from the repo root, after `npm run hf:credentials`):
 
-    npx jiti scripts/hf-art-pack.ts --pack templates --dry        # price everything (free)
-    npx jiti scripts/hf-art-pack.ts --pack templates --yes-spend  # run the pending shots
+    npm run art:templates -- --dry         # price everything (free): the projected total, and where it would STOP
+    npm run art:templates -- --yes-spend   # run the pending shots
+    npm run art:templates -- --status      # spend so far, takes per shot
+
+A second `--yes-spend` skips every shot whose take is still waiting for review; add `--retry` to pay for another.
 
 Art direction (shared tail): premium dark cinematic thumbnails, deep true blacks, one clear subject, empty lower third
 for the card's label, and never any text, logo or UI — the label is set by the app, not baked into the picture.
