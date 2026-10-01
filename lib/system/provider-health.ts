@@ -179,10 +179,12 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
     }
 
     if (provider === 'gemini') {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
-        { cache: 'no-store' },
-      );
+      // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+        headers: { 'x-goog-api-key': key },
+        cache: 'no-store',
+        redirect: 'manual',
+      });
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
       }
@@ -236,7 +238,8 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
   } catch (error) {
     return {
       ok: false,
-      detail: error instanceof Error ? error.message : 'Provider probe failed',
+      // `detail` is served by the unauthenticated /api/app/health — a thrown message must never carry the key back.
+      detail: error instanceof Error ? error.message.split(key).join('[redacted]') : 'Provider probe failed',
       creditsRemaining: null,
     };
   }
