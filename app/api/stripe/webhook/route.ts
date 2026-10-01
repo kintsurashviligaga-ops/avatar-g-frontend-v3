@@ -23,6 +23,7 @@ import {
   SILENT_SKIPS,
   type InvoiceLike,
 } from '@/lib/billing/subscriptionAllowance';
+import { customerIdOf, resolveTopupPayer, type TopupSessionLike } from '@/lib/billing/topupPayer';
 import { createNotification } from '@/lib/notifications/store';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
 import { enqueueQueueItem } from '@/lib/platform/queues';
@@ -354,26 +355,41 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     // the user's balance. Credit it here too — creditWalletGel is idempotent on
     // `stripe:<session.id>`, so a double-delivery across both webhooks is a no-op.
     if (session.metadata?.kind === 'wallet_topup') {
-      const customerId = session.customer ? String(session.customer) : '';
       const amountGel = Number(session.metadata?.amount_gel);
-      if (customerId && Number.isFinite(amountGel) && amountGel > 0) {
-        const sb = createRouteHandlerClient();
-        const { data } = await sb
-          .from('subscriptions')
-          .select('user_id')
-          .eq('stripe_customer_id', customerId)
-          .maybeSingle();
-        const userId = (data?.user_id as string | undefined) ?? null;
+      if (Number.isFinite(amountGel) && amountGel > 0) {
+        // ⚠️ THE PAYER, FROM THE STRONGEST EVIDENCE FIRST (lib/billing/topupPayer). This used to be a `subscriptions`
+        // lookup through the anon client only — no cookie on a webhook, a table production does not have — so paid
+        // top-ups were charged and never credited.
+        let payer: Awaited<ReturnType<typeof resolveTopupPayer>>;
+        try {
+          payer = await resolveTopupPayer(session as unknown as TopupSessionLike, {
+            userForCustomer: (customerId) => findUserIdForStripeSubscription({ subscriptionId: '', customerId }),
+            customerMetadataUserId: async (customerId) => {
+              const customer = await getStripe().customers.retrieve(customerId);
+              if (!customer || (customer as { deleted?: boolean }).deleted) return null;
+              const md = (customer as Stripe.Customer).metadata ?? {};
+              return md.userId ?? md.user_id ?? null;
+            },
+          });
+        } catch (e) {
+          // Stripe unreachable while resolving a PAID top-up: ask Stripe to redeliver (creditWalletGel is idempotent).
+          throw new RetryableWebhookError(`wallet top-up payer lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        const userId = payer?.userId ?? null;
         if (userId) {
           await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
-          console.info('[Stripe Webhook] wallet top-up credited', { userId, amountGel, sessionId: session.id });
+          console.info('[Stripe Webhook] wallet top-up credited', { userId, amountGel, sessionId: session.id, via: payer?.via });
           // PHASE 3 Task 3 — payment-success notification (service role; fail-open).
           try {
             const svc = createServiceRoleClient();
             if (svc) await createNotification(svc, userId, 'payment', `კრედიტები დამატებულია: +${amountGel} ₾ ✅`);
           } catch { /* fail-open — never block the credit on a notification */ }
         } else {
-          console.error('[Stripe Webhook] wallet top-up: no user for customer', customerId);
+          // Money was taken and nobody can be credited: an alert, not a log line (reconcile by session id).
+          reportError(new Error('Stripe wallet top-up paid but the payer could not be resolved'), {
+            route: 'stripe.webhook', stage: 'wallet-topup-unresolved', sessionId: session.id,
+            customerId: customerIdOf(session as unknown as TopupSessionLike), amountGel,
+          });
         }
       }
       return;

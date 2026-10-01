@@ -12,10 +12,12 @@ jest.mock('server-only', () => ({}));
 let mockEvent: Record<string, unknown> | null = null;
 const mockConstructEvent = jest.fn();
 const mockSubscriptionsRetrieve = jest.fn();
+const mockCustomersRetrieve = jest.fn();
 jest.mock('../../../../lib/billing/stripe', () => ({
   getStripe: () => ({
     webhooks: { constructEvent: (...a: unknown[]) => mockConstructEvent(...a) },
     subscriptions: { retrieve: (...a: unknown[]) => mockSubscriptionsRetrieve(...a) },
+    customers: { retrieve: (...a: unknown[]) => mockCustomersRetrieve(...a) },
     charges: { retrieve: jest.fn() },
   }),
 }));
@@ -301,17 +303,50 @@ describe('pre-existing paths are unchanged', () => {
     expect(mockReportError).toHaveBeenCalledTimes(1);
   });
 
-  it('checkout.session.completed wallet_topup credits the GEL wallet when the customer maps to a user', async () => {
-    mockDb.rows.subscriptions = { user_id: USER };
-    const r = await deliver({
-      id: 'evt_cs_3',
-      type: 'checkout.session.completed',
-      livemode: false,
-      created: PERIOD_START,
-      data: { object: { id: 'cs_3', mode: 'payment', customer: 'cus_1', metadata: { kind: 'wallet_topup', amount_gel: '29' } } },
-    });
+  const topup = (object: Record<string, unknown>) => ({
+    id: `evt_${String(object.id)}`, type: 'checkout.session.completed', livemode: false, created: PERIOD_START,
+    data: { object: { mode: 'payment', customer: 'cus_1', ...object } },
+  });
+
+  it('wallet_topup credits the user the SERVER put on the session (metadata.user_id) — no table, no Stripe lookup', async () => {
+    const r = await deliver(topup({ id: 'cs_3', metadata: { kind: 'wallet_topup', amount_gel: '29', user_id: USER } }));
     expect(r.status).toBe(200);
     expect(mockCreditWalletGel).toHaveBeenCalledWith(USER, 29, 'stripe:cs_3');
+    expect(mockFindUserIdForStripeSubscription).not.toHaveBeenCalled();
+    expect(mockCustomersRetrieve).not.toHaveBeenCalled();
+  });
+
+  it('wallet_topup from an older session (no user id on it) still credits via the subscriptions row', async () => {
+    mockFindUserIdForStripeSubscription.mockResolvedValueOnce(USER);
+    const r = await deliver(topup({ id: 'cs_4', metadata: { kind: 'wallet_topup', amount_gel: '29' } }));
+    expect(r.status).toBe(200);
+    expect(mockFindUserIdForStripeSubscription).toHaveBeenCalledWith({ subscriptionId: '', customerId: 'cus_1' });
+    expect(mockCreditWalletGel).toHaveBeenCalledWith(USER, 29, 'stripe:cs_4');
+  });
+
+  it('wallet_topup with no subscriptions row (production) credits via the Stripe customer’s own metadata.userId', async () => {
+    mockFindUserIdForStripeSubscription.mockResolvedValueOnce(null);
+    mockCustomersRetrieve.mockResolvedValueOnce({ id: 'cus_1', metadata: { userId: USER } });
+    const r = await deliver(topup({ id: 'cs_5', metadata: { kind: 'wallet_topup', amount_gel: '49' } }));
+    expect(r.status).toBe(200);
+    expect(mockCreditWalletGel).toHaveBeenCalledWith(USER, 49, 'stripe:cs_5');
+  });
+
+  it('a paid top-up nobody can be matched to is an ALERT (Sentry), not a silent log line — and credits no one', async () => {
+    mockFindUserIdForStripeSubscription.mockResolvedValueOnce(null);
+    mockCustomersRetrieve.mockResolvedValueOnce({ id: 'cus_1', metadata: {} });
+    const r = await deliver(topup({ id: 'cs_6', metadata: { kind: 'wallet_topup', amount_gel: '29' } }));
+    expect(r.status).toBe(200);
+    expect(mockCreditWalletGel).not.toHaveBeenCalled();
+    expect(mockReportError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ stage: 'wallet-topup-unresolved', sessionId: 'cs_6', amountGel: 29 }));
+  });
+
+  it('Stripe unreachable while resolving a PAID top-up → 500 so Stripe redelivers (the credit is idempotent)', async () => {
+    mockFindUserIdForStripeSubscription.mockResolvedValueOnce(null);
+    mockCustomersRetrieve.mockRejectedValueOnce(new Error('ECONNRESET'));
+    const r = await deliver(topup({ id: 'cs_7', metadata: { kind: 'wallet_topup', amount_gel: '29' } }));
+    expect(r.status).toBe(500);
+    expect(mockCreditWalletGel).not.toHaveBeenCalled();
   });
 
   it('invoice.payment_succeeded still only syncs the subscription (no allowance there)', async () => {

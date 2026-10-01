@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
     try {
       const url = await createWalletTopupSession({
         customerId,
+        userId: user.id,
         amountGel,
         successUrl: `${origin}/dashboard?topup=success`,
         cancelUrl: `${origin}/dashboard?topup=canceled`,
