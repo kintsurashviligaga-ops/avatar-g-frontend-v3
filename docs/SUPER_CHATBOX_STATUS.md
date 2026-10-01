@@ -6,15 +6,14 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 
 | Branch | State |
 |---|---|
-| `main` @ `1d59084` | Phase 1 (`d11bc1e` plus the SSE keep-alive). **Not live**: every production build fails, see §1. |
-| `feat/chat-first-guest` @ `f1c9276` (local) | Phases 2–4 plus the four foundation branches merged in. tsc is clean, jest is 348 suites / 5,527 tests (3 skipped), the Playwright specs pass. **Not merged to main**: that needs the owner (§1). |
+| `main` | Everything below, merged on 2026-10-01 with the owner's explicit approval: Phase 1 (`d11bc1e` + the SSE keep-alive), the Node 24 runtime, `feat/chat-first-guest` (Phases 2–4, the four foundation branches, the Stripe top-up fix, the old-shell deletion). |
 
 ## 1. Blockers only the owner can clear (in order)
 
-1. **Production cannot deploy.** Vercel discontinued Node 20.x, and every build since `30dee4a` fails in about 4 seconds. The fix is ready on `chore/node-24-runtime` (`d02d637`): `engines.node` 24.x in `package.json`, the lockfile, `.nvmrc` and both CI workflows. Merging it needs your approval.
-2. **Merge `feat/chat-first-guest` to main.** This is everything below.
+1. ~~Production cannot deploy (Node 20.x discontinued).~~ Done: `chore/node-24-runtime` merged (`engines.node` 24.x, lockfile, `.nvmrc`, both CI workflows).
+2. ~~Merge `feat/chat-first-guest` to main.~~ Done.
 3. **Gemini prepay is empty again.** Production logged `402 "Your prepayment credits are depleted"` on `/api/chat/gemini` at 17:09 on 09-30, and the local key returns the same today. Until the AI Studio prepay is topped up, chat, Veo, Lyria and TTS all fail.
-4. **Delete the old shell and the legacy pages.** You chose this, but the auto-mode classifier blocked the `git rm`. The plan is in §3.5.
+4. ~~Delete the old shell and the legacy pages.~~ Done, §3.5.
 5. **A funded image provider for the template thumbnails.** Gemini is 402, Replicate and OpenAI have no credit, and Vercel withholds the production `HF_CREDENTIALS` value. Run `npm run hf:credentials` (enter the key locally), then `npx jiti scripts/hf-art-pack.ts --pack templates --yes-spend`. The cap is $5 and the stop line is $4.50; the expected cost is about $0.46.
 6. **Reconcile live Stripe.** No Stripe top-up has ever reached the ledger (§5.2). Check the live dashboard for paid `wallet_topup` sessions. Any you find can be replayed once the fix is deployed.
 7. **Vertex AI.** The switch is already automatic: `veoTransport()` prefers Vertex whenever the GCP variables are complete. None are set in production, so Veo runs on the Gemini API today. The variables are listed in `docs/VEO_VERTEX_SETUP.md`.
@@ -50,11 +49,11 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 - **What a card does.** A card writes the panel's real parameters: style, format, length, quality, genre, tempo and vocal, or for a presenter the face, voice and format. The routes already turn those into context, for example the image route's `STYLE_SUFFIXES` and the film director's style and scene count. A card adds no hidden prompt. The selected card is derived from the panel's values, never stored.
 - **Images.** Four cards use honest matches from the brand pack, and the presenters use the real preset faces. The other 20 show palette tiles until the capped Higgsfield pack runs (§1.5).
 
-### 3.5 Old shell deletion (approved by the owner, blocked by the classifier)
-- **What it removes.** 36 route directories: the old `/chat`, marketplace, online-shop, sell, executive, analytics, placeholders (about, blog, careers, contact), the old `/studio/*` and `/dashboard/*` sub-pages, the duplicate standalone `3d`/`dubbing`/`montage`/`slides` pages, and `account/business` and `account/returns`.
-- **What replaces them.** Redirects to the nearest new surface, and removal of the old top bar, bottom nav and support bubble.
-- **What stays, in the new shell:** pricing, settings, support, the services hub, and account billing, invoices, payments and delete.
-- **How dead code is chosen.** Only files the deletion orphans are removed, found by diffing the import graph before and after. 315 files were already unreachable before today and are listed as a follow-up.
+### 3.5 Old shell deletion (done, `6c7961b`)
+- **What it removed.** 37 route directories: the old `/chat`, `/agent`, marketplace and online-shop sub-pages, sell, tracking, tools, business, executive, analytics, config, app-preview, voice-smoke, the placeholders (about, blog, careers, contact), the old `/studio/*` and `/dashboard/*` sub-pages, the duplicate standalone `3d`/`dubbing`/`montage`/`slides` pages, `account/business`, `account/returns`, `avatar/[id]` and the two locale-less stubs. Then the 41 modules only those pages used (the old top bar and bottom nav, the support bubble, MyAvatarChatV2, the business and executive dashboards, the Vapi call UI, …).
+- **Redirects.** `next.config.js` sends every old URL to its nearest surface with a temporary (307) redirect: `/ka/chat` → `/ka`, `/ka/dubbing` → `/ka/dashboard?tool=dubbing`, `/ka/contact` → `/ka/support`, `/ka/studio/history` → `/ka/library`, the blog and about pages → `/ka/landing`, and so on. `/avatar/:id` is deliberately not redirected, because it would also catch `/avatar/enroll`.
+- **What stays, in the studio's own shell** (`components/studio/StudioPageShell.tsx`): pricing, settings, support, the services hub, and account billing, invoices, payments and delete.
+- **How dead code was chosen.** Only files the deletion orphaned, found by diffing the import graph from every Next entry point before and after. 13 such modules are still imported by older dead code and were kept; the ~315 files that were already unreachable are a separate cleanup.
 
 ## 4. Phase 3: omni-modal (`feat/chat-first-guest`)
 
