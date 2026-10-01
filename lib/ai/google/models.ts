@@ -91,6 +91,17 @@ export const STT_MODELS: readonly string[] = [
 /** Streaming transcription model on the key (Live-style). Not used by any path yet. */
 export const TRANSCRIBE_LIVE_MODEL = 'gemini-3.5-transcribe-live';
 
+export type GeminiRestTier = 'pro' | 'flash';
+
+/**
+ * The two tiers of the lib/gemini/client.ts REST client (analysis, vision, helpers — not product chat).
+ * GEMINI_MODEL_PRO / GEMINI_MODEL_FLASH override them; see geminiTierModel.
+ */
+export const DEFAULT_REST_TIER_MODELS: Readonly<Record<GeminiRestTier, string>> = {
+  pro: 'gemini-2.5-pro',
+  flash: 'gemini-2.5-flash',
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
@@ -154,6 +165,17 @@ export function chatModelChain(tier: ChatTier): string[] {
   const t: ChatTier = tier === 'pro' ? 'pro' : 'standard';
   const override = parseModelList(t === 'pro' ? process.env.GEMINI_CHAT_PRO_MODELS : process.env.GEMINI_CHAT_MODELS);
   return override.length ? override : [...DEFAULT_CHAT_MODELS[t]];
+}
+
+/**
+ * The REST client's model for a tier: GEMINI_MODEL_PRO / GEMINI_MODEL_FLASH when well-formed and not retired, else
+ * DEFAULT_REST_TIER_MODELS. Operator policy, like the chat chains. The old `env ?? default` read let an EMPTY var
+ * through as the model name, and .env.example shipped `gemini-1.5-*` values for both — each would 404 every call.
+ */
+export function geminiTierModel(tier: GeminiRestTier): string {
+  const t: GeminiRestTier = tier === 'pro' ? 'pro' : 'flash';
+  const id = normalizeModelId(t === 'pro' ? process.env.GEMINI_MODEL_PRO : process.env.GEMINI_MODEL_FLASH);
+  return id && !isRetiredModel(id) ? id : DEFAULT_REST_TIER_MODELS[t];
 }
 
 /** The effective Live default: GEMINI_LIVE_MODEL when allowlisted, else DEFAULT_LIVE_MODEL. Bare id. */

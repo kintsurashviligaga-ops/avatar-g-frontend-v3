@@ -4,6 +4,7 @@
  * Validates inputs, selects agent + model, executes, normalizes output.
  */
 
+import { geminiTierModel } from '@/lib/ai/google/models';
 import { shouldUseRealProvider } from '@/lib/server/provider-mode';
 
 export interface RouterInput {
@@ -141,7 +142,7 @@ const AGENTS: Record<string, AgentDef> = {
     id: 'gemini_pro_agent',
     name: 'Gemini Pro Analyst',
     provider: 'gemini' as const,
-    model: 'gemini-1.5-pro-latest',
+    model: geminiTierModel('pro'),
     systemPrompt: 'Premium multimodal AI consultant for MyAvatar.ge with Georgian language support.',
     capabilities: ['multimodal', 'image-analysis', 'material-recognition', 'design-audit', 'interior', 'text-generation'],
   },
@@ -149,7 +150,7 @@ const AGENTS: Record<string, AgentDef> = {
     id: 'gemini_flash_agent',
     name: 'Gemini Flash Assistant',
     provider: 'gemini' as const,
-    model: 'gemini-1.5-flash-8b',
+    model: geminiTierModel('flash'),
     systemPrompt: 'Fast, responsive AI assistant for quick queries and real-time interactions.',
     capabilities: ['text-generation', 'quick-response', 'live-chat', 'realtime'],
   },
