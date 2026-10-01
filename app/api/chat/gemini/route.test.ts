@@ -64,7 +64,7 @@ jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: jest.fn(() => mockAnthr
 jest.mock('ai', () => ({ streamText: jest.fn() }));
 
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { POST, HEARTBEAT_MS, TURN_DEADLINE_MS, maxDuration } from './route';
 import { streamGeminiChat, type StreamGeminiChatInput, type StreamGeminiChatResult } from '../../../../lib/ai/google/chatStream';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '../../../../lib/services/billing/chatBudget';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, RATE_LIMITS } from '../../../../lib/api/rate-limit';
@@ -769,5 +769,82 @@ describe('the Pro allowance (CHAT_PRO_USER)', () => {
     process.env.CHAT_PRO_DAILY_LIMIT = '3';
     await (await POST(post({ ...userTurn('hi'), mode: 'pro' }))).text();
     expect(checkRateLimitByKey).toHaveBeenLastCalledWith(USER_ID, { ...RATE_LIMITS.CHAT_PRO_USER, maxRequests: 3 });
+  });
+});
+
+// ─── Keep-alive and the turn deadline ────────────────────────────────────────
+
+describe('a turn that thinks before it answers', () => {
+  /** Reads the whole body while fake timers advance; returns the raw SSE text. */
+  async function drain(res: Response, advance: () => Promise<void>): Promise<string> {
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let raw = '';
+    const reading = (async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        raw += dec.decode(value, { stream: true });
+      }
+    })();
+    await advance();
+    await reading;
+    return raw;
+  }
+
+  beforeEach(() => {
+    // Promise and stream plumbing must keep running; only the route's interval / timeout are driven by hand.
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('the stream opens with a keep-alive and sends one every HEARTBEAT_MS while the model is silent', async () => {
+    const thinkMs = 3 * HEARTBEAT_MS + 1_000; // longer than the browser's 20 s first-token window
+    mockStream.mockImplementation(async (input) => {
+      await new Promise((r) => setTimeout(r, thinkMs));
+      await input.onFrame({ meta: { provider: 'gemini', model: 'gemini-3.1-pro-preview' } });
+      await input.onFrame({ text: 'ფიქრის შემდეგ' });
+      return { ok: true, model: 'gemini-3.1-pro-preview', text: 'ფიქრის შემდეგ', sources: [], attempts: [{ model: 'gemini-3.1-pro-preview' }] };
+    });
+    const res = await POST(post({ ...userTurn('რთული ამოცანა'), mode: 'pro', protocol: 2 }));
+    const raw = await drain(res, () => jest.advanceTimersByTimeAsync(thinkMs + 10));
+
+    expect(raw.startsWith(': keep-alive\n\n')).toBe(true); // bytes before budget, memory or thinking
+    expect(raw.match(/^: keep-alive$/gm)!.length).toBeGreaterThanOrEqual(4); // the opener + one per 8 s of thinking
+    // No gap the browser's 20 s first-token watchdog could see: every heartbeat lands before the next window closes.
+    expect(HEARTBEAT_MS).toBeLessThan(20_000 / 2);
+    const frames = decodeFrames(raw); // the comments are invisible to the frame parser
+    expect(frames).toContainEqual({ text: 'ფიქრის შემდეგ' });
+    expect(frames.some((f) => typeof f === 'object' && 'error' in f)).toBe(false);
+    expect(frames[frames.length - 1]).toBe('DONE');
+  });
+
+  test('no heartbeat outlives the turn (the interval is cleared when the stream closes)', async () => {
+    mockStream.mockImplementation(gemini([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'ok' }], { text: 'ok' }));
+    const res = await POST(post(userTurn('hi')));
+    await drain(res, () => jest.advanceTimersByTimeAsync(0));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('a hung model is cut at TURN_DEADLINE_MS with a retryable notice, before the platform kills the function', async () => {
+    expect(TURN_DEADLINE_MS).toBeLessThan(maxDuration * 1000);
+    mockStream.mockImplementation(
+      (input) =>
+        new Promise<StreamGeminiChatResult>((resolve) => {
+          input.abortSignal!.addEventListener('abort', () =>
+            resolve({ ok: false, model: 'gemini-3.1-pro-preview', text: '', sources: [], attempts: [{ model: 'gemini-3.1-pro-preview' }] }),
+          );
+        }),
+    );
+    const res = await POST(post({ ...userTurn('hi'), mode: 'pro', protocol: 2 }));
+    const raw = await drain(res, () => jest.advanceTimersByTimeAsync(TURN_DEADLINE_MS + 10));
+    const frames = decodeFrames(raw);
+    const err = frames.find((f): f is Extract<ChatFrame, { error: unknown }> => typeof f === 'object' && 'error' in f);
+    expect(err?.error).toMatchObject({ code: 'unavailable', retryable: true });
+    expect(frames[frames.length - 1]).toBe('DONE');
+    expect(reportError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ stage: 'turn-deadline', mode: 'pro' }));
+    expect(jest.getTimerCount()).toBe(0);
   });
 });

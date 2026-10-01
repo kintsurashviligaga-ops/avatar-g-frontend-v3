@@ -54,7 +54,7 @@ import { chatModelChain } from '@/lib/ai/google/models';
 import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig } from '@/lib/ai/google/chatStream';
-import { encodeFrame, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
+import { encodeFrame, SSE_KEEPALIVE, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
 import {
   estimateWireChars,
   serializeHistory,
@@ -73,7 +73,12 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 // Vision (multimodal) requests can take significantly longer for large photos. 120 s gives Gemini room to analyse
 // and start streaming before any function timeout interrupts the connection.
-export const maxDuration = 120;
+/**
+ * 300 s, mirrored in vercel.json (which used to pin this route to 60 s while this file said 120 — the docs do not
+ * say which wins, so they now agree). A Pro or Thinking turn can reason for a minute before its first token and then
+ * stream a long answer; 60 s cut those off mid-sentence. TURN_DEADLINE_MS ends a stuck turn cleanly before this.
+ */
+export const maxDuration = 300;
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -85,6 +90,19 @@ const MAX_BODY_BYTES = 16_000_000;
 
 /** How long the stream may stay open after [DONE] waiting for the usage booking (see the finally block). */
 const BOOKING_WAIT_MS = 1_500;
+
+/**
+ * SSE keep-alive cadence. The browser's watchdog gives the first token 20 s and a stalled answer 45 s, re-arming on
+ * any bytes (hooks/chat/useChatStream); 8 s leaves two heartbeats inside the tighter window even with jitter.
+ */
+export const HEARTBEAT_MS = 8_000;
+
+/**
+ * The server's own ceiling on one turn. With heartbeats flowing, the browser watchdog no longer catches a hung
+ * upstream, so the route must: past this the model call is aborted and the user gets a retryable notice instead of a
+ * connection the platform kills at maxDuration with no explanation. 20 s of headroom covers the notice + booking.
+ */
+export const TURN_DEADLINE_MS = (maxDuration - 20) * 1000;
 
 /** Output floor for the reasoning modes (Thinking, Pro) — see `applyChatMode`. The persona upper bound. */
 const REASONING_MIN_OUTPUT_TOKENS = 8192;
@@ -528,9 +546,35 @@ export async function POST(req: NextRequest) {
   req.signal?.addEventListener?.('abort', onClientGone, { once: true });
   let open = true;
   const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  /** True once TURN_DEADLINE_MS aborted the model call — distinguishes "too slow" from "the user left". */
+  let deadlineHit = false;
+  const stopTimers = () => {
+    if (heartbeat !== undefined) clearInterval(heartbeat);
+    if (deadline !== undefined) clearTimeout(deadline);
+    heartbeat = deadline = undefined;
+  };
 
   const readable = new ReadableStream<Uint8Array>({
     async start(controller) {
+      /** A comment line between frames; a failed enqueue means the consumer is gone, which the frame writes handle. */
+      const keepAlive = (): void => {
+        if (!open) return stopTimers();
+        try {
+          controller.enqueue(encoder.encode(SSE_KEEPALIVE));
+        } catch {
+          stopTimers();
+        }
+      };
+      // The first bytes go out NOW (budget, memory and the model's thinking all come before the first frame), then
+      // every HEARTBEAT_MS until the finally block — see SSE_KEEPALIVE.
+      keepAlive();
+      heartbeat = setInterval(keepAlive, HEARTBEAT_MS);
+      deadline = setTimeout(() => {
+        deadlineHit = true;
+        abort.abort();
+      }, TURN_DEADLINE_MS);
       /** Throws when the consumer is gone — chatStream reads that as "stop, nobody is listening". */
       const write = (frame: ChatFrame | 'DONE'): void => {
         if (!open) throw new Error('chat stream closed');
@@ -619,6 +663,18 @@ export async function POST(req: NextRequest) {
           bookings.push(bookChatUsage({ model: a.model, ...a.usage, inputChars, userId, groundingQueries: a.groundingQueries ?? 0 }));
         }
 
+        if (deadlineHit && !result.ok) {
+          // Too slow, not gone: the browser is still listening, so say so (retryable) instead of closing in silence.
+          reportError(new Error('Gemini chat turn hit the server deadline'), {
+            route: 'chat.gemini',
+            stage: 'turn-deadline',
+            mode,
+            partial: result.text.length > 0,
+            attempts: result.attempts.map((a) => `${a.model}:${a.code ?? 'ok'}`).join(','),
+          });
+          notice('unavailable', { afterText: result.text.length > 0, retryable: true });
+          return;
+        }
         if (abort.signal.aborted || result.ok) return;
 
         const failure = result.error ?? { code: 'unavailable' as const, retryable: true, message: 'no result', status: undefined };
@@ -660,6 +716,7 @@ export async function POST(req: NextRequest) {
         reportError(err, { route: '/api/chat/gemini', stage: 'stream' });
         if (!abort.signal.aborted) notice('unavailable', { afterText: false });
       } finally {
+        stopTimers();
         tryWrite('DONE');
         // ⚠️ THE BOOKING IS AWAITED BEFORE THE STREAM CLOSES. Once the response ends, a serverless function can be
         // frozen with the insert still in flight, and a lost booking is spend the budget guard never sees. [DONE] is
@@ -677,6 +734,7 @@ export async function POST(req: NextRequest) {
     },
     cancel() {
       open = false;
+      stopTimers();
       abort.abort();
     },
   });

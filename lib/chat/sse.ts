@@ -111,6 +111,17 @@ const DONE_PAYLOAD = '[DONE]';
  */
 export const MAX_SSE_LINE_CHARS = 1_000_000;
 
+/**
+ * An SSE comment: real bytes on the wire that every SSE parser ignores (ours drops `:` lines in `dataValue`).
+ *
+ * ⚠️ A THINKING OR PRO MODEL CAN REASON LONGER THAN THE BROWSER WAITS. The client watchdog
+ * (hooks/chat/useChatStream) aborts a turn that receives no bytes for 20 s before the first token, and Gemini sends
+ * nothing at all while it thinks — so a hard question on Pro died as "timeout" while Google was still working on it.
+ * The route sends this once when the stream opens and again every heartbeat while the turn is in flight; the
+ * watchdog re-arms on any received bytes, so only a genuinely dead connection trips it.
+ */
+export const SSE_KEEPALIVE = ': keep-alive\n\n';
+
 /** Encodes one frame as an SSE event: `data: <json>\n\n`, or `data: [DONE]\n\n` for the terminator. */
 export function encodeFrame(frame: ChatFrame | 'DONE'): string {
   if (frame === 'DONE') return `data: ${DONE_PAYLOAD}\n\n`;
