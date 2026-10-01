@@ -459,7 +459,7 @@ describe('the Gemini call', () => {
     const input = lastCall();
     expect(input.apiKey).toBe('pool-key-1');
     expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
-    expect(input.models.some((m) => m.startsWith('gemini-2.0'))).toBe(false);
+    for (const m of input.models) expect(m).not.toMatch(/gemini-(1\.5|2\.0)-/);
     const { system, ...settings } = input.config;
     expect(settings).toEqual({
       temperature: 0.7,
@@ -484,6 +484,17 @@ describe('the Gemini call', () => {
   test('the Pro tier uses the Pro chain', async () => {
     await (await POST(post({ ...userTurn('hi'), tier: 'pro' }))).text();
     expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+  });
+
+  test.each(['standard', 'pro'] as const)('a retired id in the %s env chain never reaches Gemini', async (tier) => {
+    // What prod rotated through until 2026-09-29: Google answered 404 "no longer available" on each.
+    const env = 'gemini-2.0-flash,gemini-2.0-flash-lite,gemini-3.8-flash,gemini-1.5-pro';
+    if (tier === 'pro') process.env.GEMINI_CHAT_PRO_MODELS = env;
+    else process.env.GEMINI_CHAT_MODELS = env;
+    await (await POST(post({ ...userTurn('hi'), tier }))).text();
+    const { models } = lastCall();
+    expect(models).toEqual(['gemini-3.8-flash']);
+    for (const m of models) expect(m).not.toMatch(/gemini-(1\.5|2\.0)-/);
   });
 
   test('a built-in persona keeps the old numbers and is appended LAST (platform rules keep precedence)', async () => {

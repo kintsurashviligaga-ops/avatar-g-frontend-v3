@@ -8,6 +8,7 @@
  * Usage:
  *   GEMINI_API_KEY=xxx node scripts/gemini-health-check.mjs
  *   node scripts/gemini-health-check.mjs            # reads from .env.local via --env-file if Node 20+
+ *   GEMINI_HEALTH_MODEL=gemini-2.5-flash node scripts/gemini-health-check.mjs   # probe another model
  *
  * Exit codes:
  *   0 — healthy
@@ -17,7 +18,9 @@
  */
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-const MODEL = 'gemini-2.0-flash';
+// The chat primary (DEFAULT_CHAT_MODELS.standard[0] in lib/ai/google/models.ts) — keep the two in step.
+// gemini-2.0-flash used to sit here; Google retired it (404), so this check failed on a healthy key.
+const MODEL = (process.env.GEMINI_HEALTH_MODEL || 'gemini-3.8-flash').trim();
 const TTFT_THRESHOLD_MS = 3_000;
 
 const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '';
