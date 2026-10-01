@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Smartphone, Clapperboard, Zap, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -28,9 +28,12 @@ import { describeOpFailure } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
-import { PresetRow } from './ui/controls';
-import { VIDEO_PRESETS, matchVideoPreset, videoPresetValues } from '@/lib/video/videoPresets';
-import { IMAGE_PRESETS, matchImagePreset, imagePresetValues } from '@/lib/image/imagePresets';
+import {
+  AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues,
+  matchAvatarTemplate, matchImageTemplate, matchMusicTemplate, matchVideoTemplate, musicTemplateValues, templateLang,
+  videoTemplateValues,
+} from '@/lib/studio/templates';
+import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
@@ -383,8 +386,6 @@ const VEO_TIER_LABEL: Record<VeoTier, Record<Lang, string>> = {
 };
 const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
 
-/** Line icons for the video presets (their catalogue still carries emoji; docs/DESIGN.md bans emoji as UI). */
-const VIDEO_PRESET_ICON: Record<string, LucideIcon> = { reel: Smartphone, trailer: Clapperboard, teaser: Zap };
 
 /**
  * The four starter chips of the empty state (the owner's 2026-09-29 brief, docs/DESIGN.md §8), video first.
@@ -662,18 +663,6 @@ function parseRemixScenes(text: string, total: number): number[] {
   return [...nums].sort((a, b) => a - b);
 }
 
-// P8 — built-in avatar presets (1024² studio portraits in /public/avatars).
-// Selecting one uses it as the talking face — no upload needed — and suggests the
-// matching cloned-voice gender. Diverse on gender + age so most users find a fit.
-const AVATAR_PRESETS: { src: string; gender: 'female' | 'male' }[] = [
-  { src: '/avatars/preset-1.jpg', gender: 'female' },
-  { src: '/avatars/preset-2.jpg', gender: 'male' },
-  { src: '/avatars/preset-3.jpg', gender: 'female' },
-  { src: '/avatars/preset-4.jpg', gender: 'male' },
-  { src: '/avatars/preset-5.jpg', gender: 'male' },
-  { src: '/avatars/preset-6.jpg', gender: 'female' },
-];
-
 // ── Per-service options (real backend capabilities) ──────────────────────────
 /**
  * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist —
@@ -716,30 +705,7 @@ const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru
   ['k-pop', { ka: 'K-Pop', en: 'K-Pop', ru: 'K-Pop' }],
 ];
 
-// PHASE 31 — reasoning-backed one-tap Music presets. Each preset writes the FULL parameter set the
-// panel + send() already consume (genre · tempo · duration · track-type · vocal), so a single tap
-// gives a production-ready starting point without touching the Fine-tune dials. Weights are musically
-// tuned: a cinematic score is instrumental + slow + long; an R&B core is a sung male mid-tempo hook;
-// an ambient underscore is instrumental + slow + full-length. Purely additive — a preset is just state.
-// The spread is deliberate: 2 instrumental + 3 sung, tempos spanning slow/medium/fast, 5 distinct
-// genres, and the vocal surface exercised (male · duet · female). Genre values are exact MUSIC_STYLES ids.
-type MusicPreset = {
-  id: string;
-  emoji: string;
-  label: { ka: string; en: string; ru: string };
-  genre: string;
-  tempo: 'slow' | 'medium' | 'fast';
-  duration: 0 | 15 | 30 | 60 | 90;
-  instrumental: boolean;
-  voiceType: 'female' | 'male' | 'duet';
-};
-const MUSIC_PRESETS: ReadonlyArray<MusicPreset> = [
-  { id: 'hollywood-cinematic', emoji: '🎬', label: { ka: 'ჰოლივუდური კინო', en: 'Hollywood Cinematic', ru: 'Голливудское кино' }, genre: 'classical', tempo: 'slow', duration: 90, instrumental: true, voiceType: 'female' },
-  { id: 'rnb-hiphop-core', emoji: '🎤', label: { ka: 'R&B / ჰიპ-ჰოპი', en: 'R&B / Hip-Hop Core', ru: 'R&B / Хип-хоп' }, genre: 'hip-hop', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'male' },
-  { id: 'documentary-ambient', emoji: '🌫️', label: { ka: 'დოკუმენტური ემბიენტი', en: 'Documentary Ambient', ru: 'Документальный эмбиент' }, genre: 'ambient', tempo: 'slow', duration: 0, instrumental: true, voiceType: 'female' },
-  { id: 'retro-jazz-lounge', emoji: '🎷', label: { ka: 'რეტრო ჯაზ-ლაუნჯი', en: 'Retro Jazz Lounge', ru: 'Ретро джаз-лаунж' }, genre: 'jazz', tempo: 'slow', duration: 60, instrumental: false, voiceType: 'female' },
-  { id: 'electronic-cyber', emoji: '🕹️', label: { ka: 'ელექტრონული კიბერ', en: 'Electronic Cyber', ru: 'Электронный кибер' }, genre: 'electronic', tempo: 'fast', duration: 60, instrumental: true, voiceType: 'female' },
-];
+// The music templates (genre · tempo · length · track type · vocal) live in lib/studio/templates.ts.
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'] as const;
 
 /**
@@ -2238,21 +2204,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // see lib/video/videoPresets: a stored selection would stay lit after the user edits one of the
   // fields it set, and a highlighted chip that no longer matches the form is a lie about the form.
   // Derived, never stored — same contract as the video and music rows.
-  const activeImagePreset = matchImagePreset({ aspect: imgAspect, quality: imgQuality, style: imgStyle });
+  const activeImagePreset = matchImageTemplate({ aspect: imgAspect, quality: imgQuality, style: imgStyle });
   const applyImagePreset = useCallback((id: string) => {
-    const v = imagePresetValues(id);
+    const v = imageTemplateValues(id);
     if (!v) return;
     setImgAspect(v.aspect as typeof imgAspect);
     setImgQuality(v.quality);
     setImgStyle(v.style);
   }, []);
 
-  const activeVideoPreset = matchVideoPreset({
+  const activeVideoPreset = matchVideoTemplate({
     mode: videoMode, duration: videoDuration, orientation: videoOrientation, style: videoStyle,
   });
 
   const applyVideoPreset = useCallback((id: string) => {
-    const v = videoPresetValues(id);
+    const v = videoTemplateValues(id);
     if (!v) return;
     setVideoMode(v.mode);
     setVideoDuration(v.duration);
@@ -6956,15 +6922,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 `count` is deliberately NOT part of any preset: it fans out into N separately billed
                 requests, and a chip that quadruples a bill is not a chip. */}
             <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">
-                {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
-              </span>
-              <PresetRow
-                presets={IMAGE_PRESETS.map((pr) => ({
-                  id: pr.id,
-                  label: pr.label[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
-                  hint: pr.hint[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
-                  icon: pr.emoji,
+              <TemplateGallery
+                testId="image-templates"
+                label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
+                items={IMAGE_TEMPLATES.map((tp) => ({
+                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+                  thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
                 }))}
                 activeId={activeImagePreset}
                 onPick={applyImagePreset}
@@ -7136,37 +7099,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </div>
               );
             })()}
-            {/* P8 — built-in avatar gallery: tap to use as the talking face (no upload). */}
-            <div>
-              <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Or pick an avatar' : locale === 'ru' ? 'Или выберите аватар' : 'ან აირჩიე ავატარი'}</span>
-              {/* ⚠️ SIX COLUMNS MADE EVERY TILE 42px ON A 320px SCREEN — measured in the production build.
-                  These are aspect-square, so the column count IS the touch-target size: there is no
-                  padding to add. Five columns puts them over the 44px floor at the narrowest width and
-                  back to six once there is room for it. */}
-              <div className="grid grid-cols-5 gap-1.5 min-[380px]:grid-cols-6 lg:grid-cols-5">
-                {AVATAR_PRESETS.map((p, i) => {
-                  const selected = lipPreset === p.src;
-                  return (
-                    <button key={p.src} type="button" aria-pressed={selected} aria-label={`Avatar ${i + 1}`}
-                      onClick={() => {
-                        if (selected) { setLipPreset(null); return; }
-                        setLipPreset(p.src);
-                        setLipGender(p.gender); // match the cloned voice to the face
-                        setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)));
-                      }}
-                      className={`relative aspect-square overflow-hidden rounded-lg ring-1 transition active:scale-95 ${selected ? 'ring-2 ring-app-accent' : 'ring-app-border/15 hover:ring-app-accent/50'}`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.src} alt="" loading="lazy" className="h-full w-full object-cover" />
-                      {selected && (
-                        <span className="absolute inset-0 flex items-center justify-center bg-app-accent/30">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-app-accent text-app-bg"><Check size={12} /></span>
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {/* The presenters — each card is a face AND its voice AND a format, for a use case (lib/studio/templates).
+                The face IS the presenter, so the card's picture is the face itself. Uploading a face above
+                supersedes it; the ✕ on the photo clears it. */}
+            <TemplateGallery
+              testId="avatar-templates"
+              label={locale === 'en' ? 'Presenters' : locale === 'ru' ? 'Ведущие' : 'წამყვანები'}
+              items={AVATAR_TEMPLATES.map((tp) => ({
+                id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+                thumb: tp.thumb, palette: tp.palette, Icon: ScanFace, meta: tp.values.format,
+              }))}
+              activeId={matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
+              onPick={(id) => {
+                const v = avatarTemplateValues(id);
+                if (!v) return;
+                setLipPreset(v.preset);
+                setLipGender(v.gender); // match the cloned voice to the face
+                setLipFormat(v.format);
+                setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)));
+              }}
+            />
             <span className="block text-[11px] leading-relaxed text-app-muted">{locale === 'en' ? 'Pick or attach a face → type what it says (it speaks). Or leave it empty — an AI presenter speaks your script in the cloned voice.' : locale === 'ru' ? 'Выберите или прикрепите лицо → введите текст (оно произнесёт). Или оставьте пустым — AI-ведущий озвучит ваш текст клонированным голосом.' : 'აირჩიე ან მიამაგრე სახე → ჩაწერე ტექსტი (ალაპარაკდება). ან დატოვე ცარიელი — AI წამყვანი წაიკითხავს კლონირებული ხმით.'}</span>
             {/* Voice (cloned Georgian Female/Male) + output Format — always available. */}
             <div className="grid grid-cols-2 gap-2">
@@ -7235,25 +7187,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 about three of them. A preset answers all four from something they DO have an opinion
                 about ("this is for Instagram"), and every individual control stays visible below — so
                 it is a starting point, not a mode they are locked into.
-                The highlight is DERIVED from the live values (matchVideoPreset), never stored: a chip
+                The highlight is DERIVED from the live values (matchVideoTemplate), never stored: a chip
                 that stayed lit after you changed the length would be describing settings you no longer
                 have, which is worse than no highlight at all. */}
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">
-                <Sparkles size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Start from' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
-              </span>
-              <div className="mt-2">
-                <PresetRow
-                  presets={VIDEO_PRESETS.map((pr) => ({
-                    id: pr.id,
-                    label: pr.label[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
-                    hint: pr.hint[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'],
-                    icon: (() => { const I = VIDEO_PRESET_ICON[pr.id] ?? Film; return <I size={14} aria-hidden="true" />; })(),
-                  }))}
-                  activeId={activeVideoPreset}
-                  onPick={applyVideoPreset}
-                />
-              </div>
+              <TemplateGallery
+                testId="video-templates"
+                label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
+                items={VIDEO_TEMPLATES.map((tp) => ({
+                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+                  thumb: tp.thumb, palette: tp.palette, Icon: Film,
+                  meta: `${ORIENT_ASPECT[tp.values.orientation]} · ${tp.values.duration}${locale === 'en' ? 's' : locale === 'ru' ? ' с' : 'წმ'}`,
+                }))}
+                activeId={activeVideoPreset}
+                onPick={applyVideoPreset}
+              />
             </div>
 
             {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
@@ -7871,7 +7819,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // PHASE 31 — apply a preset in one tap: write the full parameter set. The active pill is
           // DERIVED from live state (below), so there is no "clear on manual edit" bookkeeping —
           // editing any dial simply stops matching.
-          const applyMusicPreset = (p: (typeof MUSIC_PRESETS)[number]) => {
+          const applyMusicPreset = (id: string) => {
+            const p = musicTemplateValues(id);
+            if (!p) return;
             setMusicGenre(p.genre);
             setMusicTempo(p.tempo);
             setMusicDuration(p.duration);
@@ -7880,10 +7830,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           };
           // A chip is active when every core dial matches; instrumental presets exclude vocal from
           // the match (gender is hidden/moot for a bed), so their highlight stays stable.
-          const activePresetId = MUSIC_PRESETS.find((p) =>
-            p.genre === musicGenre && p.tempo === musicTempo && p.duration === musicDuration
-            && p.instrumental === musicInstrumental && (p.instrumental || p.voiceType === musicVoiceType),
-          )?.id ?? null;
+          const activePresetId = matchMusicTemplate({
+            genre: musicGenre, tempo: musicTempo, duration: musicDuration, instrumental: musicInstrumental, voiceType: musicVoiceType,
+          });
           // Fine-tune accordion badge — a glanceable 3-part summary of the collapsed dials, e.g.
           // "30s · Medium · ♀" (song) or "Full · Slow · 🎹" (instrumental; gender is moot so the
           // vocal glyph becomes 🎹, keeping a stable shape). Locale-aware.
@@ -7900,23 +7849,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* ✨ Presets — one-tap vibe row (horizontal scroll). Sets every dial at once; the active
                 pill is derived from the live parameter state. Above Style so most users tap a vibe
                 and never need to open Fine-tune. */}
-            <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Presets' : locale === 'ru' ? 'Пресеты' : 'პრესეტები'}</span>
-              {/* Migrated to the shared PresetRow: it WRAPS instead of scrolling — a scroller hides the
-                  later presets behind an edge with no affordance — and its buttons carry a 44px floor,
-                  which the local Chip only gained recently. The derived `activePresetId` is unchanged:
-                  it was already computed from the live values rather than stored, which is the property
-                  that matters and the reason this row needed no logic change. */}
-              <PresetRow
-                presets={MUSIC_PRESETS.map((p) => ({
-                  id: p.id,
-                  label: p.label[locale] ?? p.label.en,
-                  icon: p.emoji,
-                }))}
-                activeId={activePresetId}
-                onPick={(id) => { const hit = MUSIC_PRESETS.find((x) => x.id === id); if (hit) applyMusicPreset(hit); }}
-              />
-            </div>
+            <TemplateGallery
+              testId="music-templates"
+              label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
+              items={MUSIC_TEMPLATES.map((tp) => ({
+                id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+                thumb: tp.thumb, palette: tp.palette, Icon: Music2,
+                meta: tp.hint[templateLang(locale)],
+              }))}
+              activeId={activePresetId}
+              onPick={applyMusicPreset}
+            />
 
             {/* A — Style (single select, horizontal scroll) */}
             <div>
