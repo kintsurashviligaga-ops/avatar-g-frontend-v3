@@ -124,7 +124,7 @@ describe('ChatChrome and ServiceHub', () => {
   it('the studio opens on the chat, and „New session“ keeps whatever tool you were on', () => {
     expect(hub).toContain("setRestartTool(isToolId(active) && active !== 'chat' ? active : undefined)");
     expect(hub).toContain('<OmniStudio key={chatResetKey} locale={lang} initialTool={restartTool} />');
-    expect(omni).toContain("useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat')");
+    expect(omni).toContain("useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical' | 'photo'>('chat')");
     expect(omni).toContain("if (initialTool && initialTool !== 'chat') { selectTool(initialTool); return; }");
   });
 });

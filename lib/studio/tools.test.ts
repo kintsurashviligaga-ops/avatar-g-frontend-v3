@@ -8,7 +8,7 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and every service the studio had is still here', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'model3d', 'montage', 'motion', 'music', 'presentation', 'product', 'remix', 'swap', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'model3d', 'montage', 'motion', 'music', 'photo', 'presentation', 'product', 'remix', 'swap', 'video'].sort());
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });
 
@@ -21,6 +21,16 @@ describe('studio tools', () => {
       }
     }
     expect(toolName('video', 'de')).toBe('ვიდეო'); // an unshipped locale falls back to Georgian
+  });
+
+  it('photo culling sits one level down and says, in every language, that the photos stay on the device', () => {
+    expect(MORE_TOOLS).toContain('photo');
+    expect(PRIMARY_TOOLS).not.toContain('photo');
+    expect(toolName('photo', 'en')).toBe('Photo culling');
+    expect(toolSub('photo', 'en')).toBe('Photos never leave your device');
+    expect(toolSub('photo', 'ru')).toBe('Фото не покидают ваше устройство');
+    expect(toolSub('photo', 'ka')).toBe('ფოტოები შენს მოწყობილობას არ ტოვებს');
+    expect(isToolId('photo')).toBe(true);
   });
 
   it('isToolId accepts the ids and nothing else (it guards window events and ?tool=)', () => {
