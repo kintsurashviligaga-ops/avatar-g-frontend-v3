@@ -11,22 +11,27 @@
  *
  * Why: until Wave 1, lib/avatar/enroll.ts wrote every enrollment voice sample (a voiceprint) to
  * `avatars/live-avatars/<uid>/voice.<ext>` — a PUBLIC bucket, so anyone with the URL could fetch it. New writes now
- * go to `uploads/twins/<uid>/voice.<ext>` (private). Nothing reads either path, so moving them breaks nothing.
- * The poster (`poster.jpg`) in the same folder is NOT touched: the Live orb still reads it publicly until Wave 3.
+ * go to the dedicated PRIVATE `twins` bucket at `twins/<uid>/voice.<ext>` — NOT `uploads`, whose bare paths many
+ * routes sign for any signed-in caller (see lib/avatar/twinStorage.ts). Nothing reads either path, so moving them
+ * breaks nothing. The poster (`poster.jpg`) in the same folder is NOT touched: the Live orb still reads it publicly
+ * until Wave 3.
  *
  * ⚠️ ORDER IS THE SAFETY: copy, then VERIFY the private object (exists, same size), and only then delete the public
  * one. Any miss leaves the public file where it is and is reported — a re-run picks it up. supabase-js storage
  * RETURNS `{ error }` and never throws, so every call's error is read, not caught.
- * ⚠️ `--yes` refuses to run unless the target bucket reports `public: false` — a voiceprint must never be "moved"
- * into another public bucket.
+ * ⚠️ ONE SAMPLE PER USER: if `twins/<uid>/voice.*` already holds a sample (any extension — a newer enrollment since
+ * the Wave 1 deploy, an earlier run, or the newer of two legacy files, which is processed first), the copy is skipped
+ * and only the public file is deleted — a stale voiceprint is never carried over next to the current one.
+ * ⚠️ `--yes` creates the `twins` bucket (private) if it is missing, then refuses to run unless it reports
+ * `public: false` — a voiceprint must never be "moved" into another public bucket.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export const LEGACY_BUCKET = 'avatars';
 export const LEGACY_PREFIX = 'live-avatars';
-/** Must match TWIN_PRIVATE_BUCKET / twinVoicePath in lib/avatar/enroll.ts. */
-export const PRIVATE_BUCKET = 'uploads';
+/** Must match TWIN_PRIVATE_BUCKET / twinVoicePath in lib/avatar/twinStorage.ts (a test pins them equal). */
+export const PRIVATE_BUCKET = 'twins';
 export const twinVoicePath = (uid, ext) => `twins/${uid}/voice.${ext}`;
 
 const PAGE = 1000;
@@ -45,9 +50,15 @@ async function listAll(bucket, prefix) {
   }
 }
 
+/** Newest first (updated_at, then created_at); entries without a timestamp sort last. */
+const stamp = (e) => String(e.updated_at || e.created_at || '');
+const newestFirst = (a, b) => stamp(b).localeCompare(stamp(a));
+
 /**
  * Find every legacy public voice sample. Read-only. Folders that are not a user id and files that are not
- * `voice.<ext>` (the poster, anything else) are ignored.
+ * `voice.<ext>` (the poster, anything else) are ignored. Within one user the NEWEST sample comes first, so a
+ * user who enrolled from two browsers (voice.webm + voice.m4a) has the current one copied and the stale one
+ * only deleted (see moveVoice).
  * @returns {Promise<Array<{ uid: string, ext: string, from: string, to: string, size: number | null, mimetype: string }>>}
  */
 export async function findLegacyVoices(sb) {
@@ -56,7 +67,7 @@ export async function findLegacyVoices(sb) {
   const items = [];
   for (const folder of folders) {
     const uid = folder.name;
-    for (const f of await listAll(legacy, `${LEGACY_PREFIX}/${uid}`)) {
+    for (const f of (await listAll(legacy, `${LEGACY_PREFIX}/${uid}`)).sort(newestFirst)) {
       const m = f.id ? VOICE_RE.exec(f.name) : null;
       if (!m) continue;
       const ext = m[1].toLowerCase();
@@ -68,32 +79,47 @@ export async function findLegacyVoices(sb) {
   return items;
 }
 
-/** Refuse unless the target bucket exists AND says it is private. */
-export async function assertPrivateTarget(sb) {
-  const { data, error } = await sb.storage.getBucket(PRIVATE_BUCKET);
-  if (error || !data) throw new Error(`target bucket "${PRIVATE_BUCKET}" unreadable: ${error?.message ?? 'not found'}`);
-  if (data.public !== false) throw new Error(`target bucket "${PRIVATE_BUCKET}" is PUBLIC — refusing to move voiceprints into it`);
-}
-
-/** The private object's listing entry, or null. */
-async function privateEntry(sb, item) {
-  const { data, error } = await sb.storage.from(PRIVATE_BUCKET).list(`twins/${item.uid}`, { limit: 100, search: `voice.${item.ext}` });
-  if (error) throw new Error(`verify list: ${error.message}`);
-  return (data ?? []).find((e) => e.name === `voice.${item.ext}` && !!e.id) ?? null;
-}
-
 const isAlreadyExists = (error) =>
   !!error && (String(error.statusCode) === '409' || error.status === 409 || /already exists|duplicate/i.test(error.message ?? ''));
 
 /**
+ * Make sure the target bucket exists — creating it PRIVATE when missing (the app self-provisions it on the first
+ * enrollment too, but this may run first) — and refuse unless it then says it is private.
+ */
+export async function ensurePrivateTarget(sb) {
+  let { data, error } = await sb.storage.getBucket(PRIVATE_BUCKET);
+  if (error || !data) {
+    const { error: mkErr } = await sb.storage.createBucket(PRIVATE_BUCKET, { public: false });
+    if (mkErr && !isAlreadyExists(mkErr)) throw new Error(`target bucket "${PRIVATE_BUCKET}" missing and could not be created: ${mkErr.message}`);
+    ({ data, error } = await sb.storage.getBucket(PRIVATE_BUCKET));
+    if (error || !data) throw new Error(`target bucket "${PRIVATE_BUCKET}" unreadable: ${error?.message ?? 'not found'}`);
+  }
+  if (data.public !== false) throw new Error(`target bucket "${PRIVATE_BUCKET}" is PUBLIC — refusing to move voiceprints into it`);
+}
+
+/** Every private voice sample of this user (`twins/<uid>/voice.*`, any extension). */
+async function privateVoices(sb, uid) {
+  const { data, error } = await sb.storage.from(PRIVATE_BUCKET).list(`twins/${uid}`, { limit: 100 });
+  if (error) throw new Error(`private list: ${error.message}`);
+  return (data ?? []).filter((e) => !!e.id && VOICE_RE.test(e.name));
+}
+
+/**
  * Move ONE sample: copy → verify → delete the public copy.
- * - Upload is `upsert: false`: if a private copy already exists (an earlier run, or a newer enrollment since the
- *   Wave 1 deploy) it is KEPT — it is the same or newer — and only the public copy is removed.
+ * - If the user ALREADY has a private sample of ANY extension (a newer enrollment since the Wave 1 deploy, an earlier
+ *   run, or the newer legacy file processed just before this one), the copy is SKIPPED — that sample is the current
+ *   one — and only the public copy is removed. One voiceprint per user, never a stale sibling.
+ * - Upload is `upsert: false`: a private copy that appears between that check and the upload is likewise kept.
  * @returns {Promise<{ status: 'moved' | 'already-private' | 'failed', reason?: string }>}
  */
 export async function moveVoice(sb, item) {
   try {
     const legacy = sb.storage.from(LEGACY_BUCKET);
+    if ((await privateVoices(sb, item.uid)).length) {
+      const { error: rmErr } = await legacy.remove([item.from]);
+      if (rmErr) return { status: 'failed', reason: `delete public copy: ${rmErr.message} (a private sample is in place)` };
+      return { status: 'already-private' };
+    }
     const { data: blob, error: dlErr } = await legacy.download(item.from);
     if (dlErr || !blob) return { status: 'failed', reason: `download: ${dlErr?.message ?? 'empty'}` };
     // ⚠️ Re-upload as a Buffer, not the Blob: storage-js sends a Blob as multipart and IGNORES `contentType`.
@@ -106,7 +132,7 @@ export async function moveVoice(sb, item) {
     const already = isAlreadyExists(upErr);
     if (upErr && !already) return { status: 'failed', reason: `upload: ${upErr.message}` };
 
-    const entry = await privateEntry(sb, item);
+    const entry = (await privateVoices(sb, item.uid)).find((e) => e.name === `voice.${item.ext}`) ?? null;
     if (!entry) return { status: 'failed', reason: 'verify: private copy not found after upload' };
     const privSize = typeof entry.metadata?.size === 'number' ? entry.metadata.size : null;
     if (!already && privSize !== null && privSize !== bytes) {
@@ -135,7 +161,7 @@ export async function run(sb, { yes = false, log = console.log } = {}) {
   }
   if (!items.length) return summary;
 
-  await assertPrivateTarget(sb);
+  await ensurePrivateTarget(sb);
   for (const it of items) {
     const r = await moveVoice(sb, it);
     if (r.status === 'moved') summary.moved++;

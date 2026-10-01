@@ -7,7 +7,7 @@
  * sample, then does exactly ONE thing on Save:
  *   • POST /api/avatar/enroll  → STORES the selfie (core avatar poster, shown + audio-reactive during the
  *     Gemini Live session) to public live-avatar storage (avatars/live-avatars/<uid>/poster.jpg) AND, when
- *     recorded, the voice sample to PRIVATE storage (uploads/twins/<uid>/…). It deliberately does NOT kick
+ *     recorded, the voice sample to the dedicated PRIVATE `twins` bucket (twins/<uid>/voice.*). It deliberately does NOT kick
  *     off any background voice-clone TRAINING or render, so nothing is queued in the corner; the Save
  *     button only enrolls.
  *
