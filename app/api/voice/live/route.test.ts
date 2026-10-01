@@ -8,7 +8,9 @@
  *     bidiGenerateContentSetup (built by buildLiveSetup) and returned as `setupMessage` for the browser;
  *   · the key rides in x-goog-api-key, never the URL;
  *   · a 400 on the full lock falls back to the verified {model}-only lock; GEMINI_LIVE_LOCK_SETUP=0 forces it;
- *   · the platform budget refuses before the mint.
+ *   · the platform budget refuses before the mint;
+ *   · voice-to-action: `actions: true` locks the UI-action functionDeclarations (+ their instruction) ahead of search;
+ *     GEMINI_LIVE_ACTIONS=0 / no opt-in / `tools: false` (the degraded retry) lock none; a 400 drops ONLY them first.
  */
 let mockUserId: string | null = 'user-1';
 jest.mock('../../../../lib/supabase/server', () => ({
@@ -48,6 +50,7 @@ import { chatBudgetAllows } from '../../../../lib/services/billing/chatBudget';
 import { structuredLog } from '../../../../lib/logger';
 import { liveVoicePersona } from '../../../../lib/voice/voicePrompt';
 import { LIVE_SPOKEN_RULE } from '../../../../lib/agents/profile';
+import { LIVE_ACTIONS_RULE, LIVE_FUNCTION_DECLARATIONS } from '../../../../lib/voice/liveTools';
 
 const ipLimitMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
 const perUserMock = checkRateLimitByKey as jest.MockedFunction<typeof checkRateLimitByKey>;
@@ -90,6 +93,7 @@ beforeEach(() => {
   delete process.env.GEMINI_LIVE_MODEL;
   delete process.env.GEMINI_LIVE_LOCK_SETUP;
   delete process.env.GEMINI_LIVE_GOOGLE_SEARCH;
+  delete process.env.GEMINI_LIVE_ACTIONS;
   delete process.env.GEMINI_API_KEYS;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   process.env.GEMINI_API_KEY = 'test-gemini-key';
@@ -310,5 +314,118 @@ describe('the mint', () => {
     expect(raw).not.toContain('internal detail');
     expect(raw).not.toContain('test-gemini-key');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('voice-to-action (lib/voice/liveTools.ts)', () => {
+  const DECLS = { functionDeclarations: LIVE_FUNCTION_DECLARATIONS };
+
+  test('actions: true → the locked setup carries the declarations and the instruction that explains them', async () => {
+    const res = await POST(post({ locale: 'en', transcribe: true, compression: true, actions: true }));
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const s = mintBody().bidiGenerateContentSetup;
+    expect(s.tools).toEqual([DECLS]);
+    expect(lockedText()).toContain(LIVE_ACTIONS_RULE);
+    // The rest of the parity lock is untouched.
+    expect(s.inputAudioTranscription).toEqual({ languageCodes: ['en-US'] });
+    expect(s.contextWindowCompression).toEqual({ slidingWindow: {} });
+    const j = await res.json();
+    expect(j.actions).toBe(true);
+    // The browser sends exactly the frame the token was minted for.
+    expect(j.setupMessage).toEqual({ setup: s });
+  });
+
+  test('with Google Search on: declarations FIRST, then googleSearch', async () => {
+    process.env.GEMINI_LIVE_GOOGLE_SEARCH = '1';
+    await POST(post({ actions: true }));
+    expect(mintBody().bidiGenerateContentSetup.tools).toEqual([DECLS, { googleSearch: {} }]);
+  });
+
+  test('GEMINI_LIVE_ACTIONS=0 is the kill switch: no declarations, no rule, and the call still mints', async () => {
+    for (const off of ['0', 'false', 'off']) {
+      fetchSpy.mockClear();
+      process.env.GEMINI_LIVE_ACTIONS = off;
+      const res = await POST(post({ locale: 'en', actions: true }));
+      expect(res.status).toBe(200);
+      const s = mintBody().bidiGenerateContentSetup;
+      expect(s.tools).toBeUndefined();
+      expect(lockedText()).not.toContain(LIVE_ACTIONS_RULE);
+      expect(lockedText()).toMatch(/name it and say how to open it/);
+      const j = await res.json();
+      expect(j).toMatchObject({ token: 'auth_tokens/eph-123', setupLocked: true, actions: false });
+    }
+  });
+
+  test('default ON — but only for a client that asks (a bundle that cannot execute them gets none)', async () => {
+    process.env.GEMINI_LIVE_ACTIONS = '1';
+    await POST(post({ locale: 'en' }));
+    expect(mintBody(0).bidiGenerateContentSetup.tools).toBeUndefined();
+    await POST(post({ locale: 'en', actions: 'yes' }));
+    expect(mintBody(1).bidiGenerateContentSetup.tools).toBeUndefined();
+    delete process.env.GEMINI_LIVE_ACTIONS; // unset = ON
+    await POST(post({ locale: 'en', actions: true }));
+    expect(mintBody(2).bidiGenerateContentSetup.tools).toEqual([DECLS]);
+  });
+
+  test('tools: false (the browser\'s degraded legacy retry) locks NO tools at all — search included', async () => {
+    process.env.GEMINI_LIVE_GOOGLE_SEARCH = '1';
+    const res = await POST(post({ locale: 'en', actions: true, tools: false }));
+    const s = mintBody().bidiGenerateContentSetup;
+    expect(s.tools).toBeUndefined();
+    expect(lockedText()).not.toContain(LIVE_ACTIONS_RULE);
+    expect(lockedText()).toMatch(/cannot search the web during this call/);
+    expect((await res.json()).actions).toBe(false);
+  });
+
+  test('a 400 on the lock WITH declarations retries the same parity lock WITHOUT them first (captions survive)', async () => {
+    process.env.GEMINI_LIVE_GOOGLE_SEARCH = '1';
+    fetchSpy
+      .mockImplementationOnce(async () => new Response('Invalid JSON payload: functionDeclarations', { status: 400 }))
+      .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-na' }), { status: 200 }));
+    const res = await POST(post({ locale: 'ka', transcribe: true, compression: true, actions: true }));
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mintBody(0).bidiGenerateContentSetup.tools).toEqual([DECLS, { googleSearch: {} }]);
+    const retry = mintBody(1).bidiGenerateContentSetup;
+    expect(retry.tools).toEqual([{ googleSearch: {} }]);
+    expect(retry.inputAudioTranscription).toEqual({ languageCodes: ['ka-GE'] });
+    expect(retry.contextWindowCompression).toEqual({ slidingWindow: {} });
+    expect(retry.systemInstruction?.parts[0]?.text).not.toContain(LIVE_ACTIONS_RULE);
+    const j = await res.json();
+    expect(j).toMatchObject({ token: 'auth_tokens/eph-na', setupLocked: true, actions: false });
+    expect(j.setupMessage).toEqual({ setup: retry });
+    expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock: 'actions' }));
+  });
+
+  test('…then the legacy lock, then {model}-only — the frame never carries the rejected declarations again', async () => {
+    fetchSpy
+      .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
+      .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
+      .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
+      .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-m' }), { status: 200 }));
+    const res = await POST(post({ locale: 'en', transcribe: true, actions: true }));
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    const legacy = mintBody(2).bidiGenerateContentSetup;
+    expect(legacy.tools).toBeUndefined();
+    expect(legacy.inputAudioTranscription).toBeUndefined();
+    expect(legacy.systemInstruction?.parts[0]?.text).not.toContain(LIVE_ACTIONS_RULE);
+    expect(mintBody(3).bidiGenerateContentSetup).toEqual({ model: 'models/gemini-2.5-flash-native-audio-latest' });
+    const j = await res.json();
+    expect(j).toMatchObject({ setupLocked: false, actions: false });
+    expect(j.setupMessage.setup.tools).toBeUndefined();
+    expect(j.setupMessage.setup.inputAudioTranscription).toEqual({ languageCodes: ['en-US'] });
+    for (const lock of ['actions', 'full', 'legacy']) {
+      expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock }));
+    }
+  });
+
+  test('a non-400 failure with declarations is still a clean 503 (no retry loop, nothing leaked)', async () => {
+    fetchSpy.mockImplementation(async () => new Response('upstream test-gemini-key', { status: 500 }));
+    const res = await POST(post({ actions: true }));
+    expect(res.status).toBe(503);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(await res.text()).not.toContain('test-gemini-key');
   });
 });

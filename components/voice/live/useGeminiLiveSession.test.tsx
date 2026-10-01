@@ -577,6 +577,96 @@ test('a tool call nobody handles is answered not_supported, so the model never w
   unmount();
 });
 
+// ─── Voice-to-action transport (lib/voice/liveTools.ts) ────────────────────────
+
+test('actions: the mint asks for the declarations; the host answers each call by id; a cancellation reaches the host', async () => {
+  const h = harness();
+  const onToolCall = jest.fn((calls: Array<{ id: string; name: string }>) =>
+    calls.map((c) => ({ id: c.id, name: c.name, response: { ok: true, summary: 'done' } })));
+  const onToolCallCancellation = jest.fn();
+  const { ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall, onToolCallCancellation });
+  expect(h.mintBodies[0]).toMatchObject({ transcribe: true, actions: true });
+  expect(h.mintBodies[0]).not.toHaveProperty('tools');
+
+  act(() => ws.receive({ toolCall: { functionCalls: [
+    { id: 'c1', name: 'open_studio', args: { tool: 'video' } },
+    { id: 'c2', name: 'end_call', args: {} },
+  ] } }));
+  await waitFor(() => expect(ws.sent[ws.sent.length - 1]).toEqual({ toolResponse: { functionResponses: [
+    { id: 'c1', name: 'open_studio', response: { ok: true, summary: 'done' } },
+    { id: 'c2', name: 'end_call', response: { ok: true, summary: 'done' } },
+  ] } }));
+  expect(onToolCall).toHaveBeenCalledTimes(1);
+
+  act(() => ws.receive({ toolCallCancellation: { ids: ['c1'] } }));
+  expect(onToolCallCancellation).toHaveBeenCalledWith(['c1']);
+  unmount();
+});
+
+test('without the opt-in nothing asks for actions; parity:false mints with tools:false (lock = the tool-less frame)', async () => {
+  const h = harness();
+  const { unmount } = await connected({ deps: h.deps, onToolCall: () => [] });
+  expect(h.mintBodies[0]).not.toHaveProperty('actions');
+  unmount();
+  FakeSocket.all = [];
+  const h2 = harness();
+  const { unmount: u2 } = await connected({ deps: h2.deps, parity: false, actions: true });
+  expect(h2.mintBodies[0]).toMatchObject({ transcribe: false, tools: false });
+  expect(h2.mintBodies[0]).not.toHaveProperty('actions');
+  u2();
+});
+
+test('a refused handshake WITH actions retries the parity wire WITHOUT them (captions kept), then the tool-less legacy wire', async () => {
+  const h = harness();
+  const { result, unmount } = await startCall({ deps: h.deps, actions: true, setupTimeoutMs: 5000 });
+  act(() => FakeSocket.last.close(1007, 'Invalid argument: function_declarations')); // the session refused the setup
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  // Step 2: fresh token, still parity, no declarations.
+  expect(h.mintBodies[1]).toMatchObject({ transcribe: true, compression: true });
+  expect(h.mintBodies[1]).not.toHaveProperty('actions');
+  expect(h.mintBodies[1]).not.toHaveProperty('tools');
+  expect(result.current.degraded).toBe(false);
+
+  act(() => FakeSocket.last.close(1007, 'still refused'));
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(3));
+  // Step 3: the legacy wire — its mint locks no tools at all.
+  expect(h.mintBodies[2]).toMatchObject({ transcribe: false, tools: false });
+  expect(h.mintBodies[2]).not.toHaveProperty('actions');
+  expect(result.current.degraded).toBe(true);
+  act(() => FakeSocket.last.open());
+  expect(FakeSocket.last.sent[0]!.setup).not.toHaveProperty('tools');
+  act(() => FakeSocket.last.receive({ setupComplete: {} }));
+  expect(result.current.status).toBe('listening');
+  unmount();
+});
+
+test('a mint that locked no declarations (actions:false) skips the pointless no-actions retry', async () => {
+  const h = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: future(), actions: false }));
+  const { result, unmount } = await startCall({ deps: h.deps, actions: true, setupTimeoutMs: 5000 });
+  act(() => FakeSocket.last.close(1007, 'refused'));
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  expect(h.fetchImpl).toHaveBeenCalledTimes(2);
+  expect(h.mintBodies[1]).toMatchObject({ transcribe: false, tools: false }); // straight to the legacy wire
+  expect(result.current.degraded).toBe(true);
+  unmount();
+});
+
+test('the no-actions retry that connects keeps the parity wire: captions on, resumption asked', async () => {
+  const h = harness();
+  const { result, unmount } = await startCall({ deps: h.deps, actions: true, setupTimeoutMs: 5000 });
+  act(() => FakeSocket.last.close(1007, 'refused'));
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
+  const ws2 = FakeSocket.last;
+  act(() => ws2.open());
+  expect(ws2.sent[0]!.setup.inputAudioTranscription).toBeDefined();
+  expect(ws2.sent[0]!.setup.sessionResumption).toEqual({});
+  expect(ws2.sent[0]!.setup).not.toHaveProperty('tools');
+  act(() => ws2.receive({ setupComplete: {} }));
+  expect(result.current.status).toBe('listening');
+  expect(result.current.degraded).toBe(false);
+  unmount();
+});
+
 test('mute stops sending (and holds nothing), tells the server the stream ended, and zeroes the input level', async () => {
   const h = harness();
   const { result, ws, unmount } = await connected({ deps: h.deps });

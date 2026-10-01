@@ -4512,6 +4512,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => window.removeEventListener('myavatar:live-transcript', onTurn);
   }, [persistChatTurn]);
 
+  // LIVE → THE STUDIO (voice-to-action, lib/voice/liveTools.ts). A Live call PREPARES: the same studio switch + prompt
+  // prefill as dispatchServiceBlock's video/avatar branch, for every tool — and NEVER a run (its image/music branch
+  // renders at once; this must not). The user reviews and taps Run. preventDefault() is the receipt the call waits for
+  // before telling the model "done"; `reveal` = the card's Open, after the call has closed, so the composer takes focus.
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const a = (e as CustomEvent<{ type?: unknown; tool?: unknown; prompt?: unknown; reveal?: unknown }>).detail;
+      if ((a?.type !== 'prepare_generation' && a?.type !== 'open_studio') || !isToolId(a.tool)) return;
+      selectTool(a.tool);
+      if (a.type === 'prepare_generation' && typeof a.prompt === 'string') setInput(a.prompt.slice(0, 2000));
+      if (a.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
+      e.preventDefault();
+    };
+    window.addEventListener('myavatar:live-action', onAction);
+    return () => window.removeEventListener('myavatar:live-action', onAction);
+  }, [selectTool]);
+
   // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────
   // For an AUTHENTICATED user, once on mount:
   //  • local view EMPTY (fresh device / cleared cache) → hydrate the text transcript from Supabase

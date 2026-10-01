@@ -13,8 +13,9 @@
  * a per-USER daily ceiling (defeats IP rotation across throwaway signups) + the platform budget guard.
  *
  * Body (all optional): { model, locale: 'ka'|'en'|'ru', personaId, customPersona, gender: 'male'|'female',
- *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null }
- * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale }.
+ *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null,
+ *   actions: boolean, tools: false }
+ * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions }.
  *   `setupMessage` is the complete first WS frame ({ setup }) — pass it as GeminiLiveConfig.setupMessage so the
  *   browser sends exactly what the token was minted for.
  *
@@ -34,6 +35,18 @@
  * systemInstruction — still server-owned, no tools) and `setupMessage` becomes that legacy frame; only if that is
  * rejected too does it drop to the {model}-only lock (`setupLocked: false`). Each step logs
  * `voice.live.setup_lock_rejected`. GEMINI_LIVE_LOCK_SETUP=0 forces the {model}-only lock.
+ *
+ * VOICE-TO-ACTION (lib/voice/liveTools.ts, docs/voice/LIVE_ACTIONS.md): with `actions: true` the lock also carries
+ * `{functionDeclarations}` (prepare a studio, show code, open a studio, end the call — PREPARE-ONLY, never a render or a
+ * charge) ahead of the optional googleSearch block, plus the instruction paragraph that explains them. ON unless
+ * GEMINI_LIVE_ACTIONS is falsy, but only for a client that ASKS: a browser that cannot execute the calls (an old
+ * bundle, the degraded retry) must not hand the model functions that silently do nothing.
+ *   ⚠️ UNVERIFIED LIVE: that Google accepts functionDeclarations inside the ephemeral-token lock for
+ *   gemini-2.5-flash-native-audio-latest. So a 400 on a lock WITH the declarations first retries the SAME parity lock
+ *   WITHOUT them (captions, resumption and search survive; `actions: false` tells the browser) — only then the legacy
+ *   chain above. A rejected declaration costs the actions, never the call.
+ * `tools: false` is the browser's degraded legacy retry: NO tools at all (search included), so the lock matches the
+ * legacy frame it will send (useGeminiLiveSession strips PARITY_FIELDS, `tools` among them).
  */
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -42,7 +55,8 @@ import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { requireUser } from '@/lib/supabase/server';
-import { buildLiveSetup, type LiveTool } from '@/lib/voice/geminiLive';
+import { buildLiveSetup, type LiveSetupMessage, type LiveTool } from '@/lib/voice/geminiLive';
+import { LIVE_ACTIONS_RULE } from '@/lib/voice/liveTools';
 import { resolveLiveModel, toModelResource } from '@/lib/ai/google/models';
 import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
@@ -108,14 +122,17 @@ function voiceFor(profile: AgentProfile, voice: unknown, gender: unknown): LiveV
 /**
  * The last block of the Live system instruction. buildPlatformPrompt is written for the TEXT chat (a Markdown
  * FORMAT rule, "you have Google Search"), so a voice call overrides both explicitly — last, where the model weighs
- * instructions most.
+ * instructions most. With `actions` the session carries the UI-action declarations, and LIVE_ACTIONS_RULE replaces
+ * the "name the tool and say how to open it" advice (the model can now open it itself).
  */
-function liveCallRule(search: boolean): string {
+function liveCallRule(search: boolean, actions: boolean): string {
   return [
     'LIVE VOICE CALL: everything you say is spoken aloud in real time. The FORMAT guidance above does not apply here —',
     'speak natural sentences with no Markdown, lists, headings, tables, code blocks, LaTeX or emoji; describe structure',
-    'in words. If the user speaks another language, answer in that language. When a studio tool fits, name it and say',
-    'how to open it; keep any suggested prompt short enough to say aloud.',
+    'in words. If the user speaks another language, answer in that language.',
+    actions
+      ? LIVE_ACTIONS_RULE
+      : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud.',
     search
       ? ''
       : 'You cannot search the web during this call: for anything that changes over time (news, prices, scores, weather), say you cannot check it live right now and suggest asking in the text chat.',
@@ -169,28 +186,40 @@ export async function POST(request: NextRequest) {
       customPersona: body.customPersona,
     });
     const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+    // `tools: false` = the browser's degraded legacy retry: no tools of any kind (see the header).
+    const toolsAllowed = body.tools !== false;
     // ⚠️ Google Search in Live is OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1) until it is verified live on the Constrained
     // endpoint: a setup field the session rejects fails the WHOLE call after the token is spent, with no fallback.
-    const search = profile.googleSearch && isTruthyFlag(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
-    const live = toGeminiLiveSetup(
-      { ...profile, voice: voiceFor(profile, body.voice, body.gender) },
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: new Date(), googleSearch: search })}\n\n${liveCallRule(search)}` },
+    const search = toolsAllowed && profile.googleSearch && isTruthyFlag(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
+    // Voice-to-action: default ON (GEMINI_LIVE_ACTIONS=0 is the kill switch), and only for a client that executes them.
+    const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);
+    const voice = voiceFor(profile, body.voice, body.gender);
+    const promptNow = new Date();
+    // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
+    const liveFor = (withActions: boolean) => toGeminiLiveSetup(
+      { ...profile, voice },
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}\n\n${liveCallRule(search, withActions)}` },
     );
+    const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;
-    const tools: LiveTool[] | undefined = search ? ['google_search'] : undefined;
-    const setupMessage = buildLiveSetup({
-      model,
-      systemInstruction: live.systemInstruction,
-      voiceName: live.voiceName,
-      // The Live session has always run at the model's default temperature; only an active persona changes that.
-      ...(personaActive ? { temperature: live.temperature } : {}),
-      ...(transcribe ? { transcribe: true, languageCode: TRANSCRIPTION_LANGUAGE[locale] } : {}),
-      ...(body.compression === true ? { compression: true } : {}),
-      ...('resumptionHandle' in body
-        ? { resumptionHandle: typeof body.resumptionHandle === 'string' ? body.resumptionHandle : null }
-        : {}),
-      ...(tools ? { tools } : {}),
-    });
+    const parityFor = (withActions: boolean) => {
+      const l = withActions === actionsWanted ? live : liveFor(withActions);
+      const tools: LiveTool[] = [...(withActions ? ['live_actions' as const] : []), ...(search ? ['google_search' as const] : [])];
+      return buildLiveSetup({
+        model,
+        systemInstruction: l.systemInstruction,
+        voiceName: l.voiceName,
+        // The Live session has always run at the model's default temperature; only an active persona changes that.
+        ...(personaActive ? { temperature: l.temperature } : {}),
+        ...(transcribe ? { transcribe: true, languageCode: TRANSCRIPTION_LANGUAGE[locale] } : {}),
+        ...(body.compression === true ? { compression: true } : {}),
+        ...('resumptionHandle' in body
+          ? { resumptionHandle: typeof body.resumptionHandle === 'string' ? body.resumptionHandle : null }
+          : {}),
+        ...(tools.length ? { tools } : {}),
+      });
+    };
+    const setupMessage = parityFor(actionsWanted);
 
     // ── Gate 6: platform budget (fails OPEN inside chatBudgetAllows, like every budget check). A refusal is a 503,
     // so the client drops to the REST loop, which speaks the budget message instead of dead-ending. ──
@@ -216,17 +245,26 @@ export async function POST(request: NextRequest) {
 
     let setupLocked = isEnabledByDefault(process.env.GEMINI_LIVE_LOCK_SETUP);
     // The frame the browser will send — always the one the token was minted for.
-    let frame: { setup: object } = setupMessage;
+    let frame: LiveSetupMessage = setupMessage;
     let res = await mint(setupLocked ? setupMessage.setup : { model: modelResource }, 12_000);
+    if (!res.ok && setupLocked && res.status === 400 && actionsWanted) {
+      const detail = await res.text().catch(() => '');
+      structuredLog('warn', 'voice.live.setup_lock_rejected', { lock: 'actions', status: res.status, detail: detail.slice(0, 300) });
+      // The declarations are the newest, unverified part of the lock: drop ONLY them first. From here on the frame
+      // never carries them again — not even on the {model}-only fallback below, which sends the parity frame.
+      frame = parityFor(false);
+      res = await mint(frame.setup, 8_000);
+    }
     if (!res.ok && setupLocked && res.status === 400) {
       const detail = await res.text().catch(() => '');
       structuredLog('warn', 'voice.live.setup_lock_rejected', { lock: 'full', status: res.status, detail: detail.slice(0, 300) });
       // Still server-owned: the legacy wire the product ran on before parity (no transcription/resumption/tools).
+      const plain = actionsWanted ? liveFor(false) : live;
       const legacy = buildLiveSetup({
         model,
-        systemInstruction: live.systemInstruction,
-        voiceName: live.voiceName,
-        ...(personaActive ? { temperature: live.temperature } : {}),
+        systemInstruction: plain.systemInstruction,
+        voiceName: plain.voiceName,
+        ...(personaActive ? { temperature: plain.temperature } : {}),
       });
       res = await mint(legacy.setup, 8_000);
       if (res.ok) {
@@ -245,6 +283,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'live_token_unavailable', status: res.status }, { status: 503 });
     }
     const data = (await res.json().catch(() => ({}))) as { name?: string };
+    // Tells the browser whether this call's frame declares the UI actions (false after any fallback that dropped them).
+    const actions = !!frame.setup.tools?.some((block) => 'functionDeclarations' in block);
     const token = String(data.name || '').trim();
     if (!token) {
       return NextResponse.json({ error: 'live_token_empty' }, { status: 503 });
@@ -258,6 +298,7 @@ export async function POST(request: NextRequest) {
       setupLocked,
       voice: live.voiceName,
       locale,
+      actions,
     });
   } catch (error) {
     structuredLog('error', 'voice.live.failed', { error: error instanceof Error ? error.message : 'unknown' });

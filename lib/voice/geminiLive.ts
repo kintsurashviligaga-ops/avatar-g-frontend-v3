@@ -44,7 +44,8 @@
  *     endOfSpeechSensitivity, prefixPaddingMs, silenceDurationMs}, activityHandling
  *     (START_OF_ACTIVITY_INTERRUPTS = default barge-in | NO_INTERRUPTION), turnCoverage}. The defaults are
  *     what a voice call wants (server VAD + barge-in), so it is not emitted.
- *   - tools: [{googleSearch: {}}] and/or [{functionDeclarations: [...]}].
+ *   - tools: [{googleSearch: {}}] and/or [{functionDeclarations: [...]}]. The UI-action declarations (voice-to-action:
+ *     prepare a studio, show code, end the call) live in lib/voice/liveTools.ts and ride in as LiveTool 'live_actions'.
  *   - thinking: 2.5 native-audio honours thinkingConfig.thinkingBudget (0 verified live, ~40% faster first
  *     audio). gemini-3.8-live does NOT support thinkingLevel ("omit from setup"); 3.1-flash-live defaults to
  *     `minimal`. So thinkingConfig is sent to the 2.5 family only.
@@ -63,7 +64,8 @@
  *     groundingMetadata, inputTranscription, interimInputTranscription, outputTranscription,
  *     urlContextMetadata, waitingForInput, interactionStatus. Transcription = {text, languageCode}
  *     (+ `finished` on the Vertex reference — honoured when present).
- *   toolCall {functionCalls: [{id, name, args}]}; toolCallCancellation {ids[]};
+ *   toolCall {functionCalls: [{id, name, args}]}; toolCallCancellation {ids[]} (the user barged in before the call's
+ *     response mattered — drop whatever UI those ids produced);
  *   goAway {timeLeft: google.protobuf.Duration → JSON string like "9.5s"};
  *   sessionResumptionUpdate {newHandle, resumable}; usageMetadata {promptTokenCount, responseTokenCount,
  *     totalTokenCount, …TokensDetails[]}.
@@ -82,6 +84,8 @@
  *
  * STATUS: feature-flagged (NEXT_PUBLIC_GEMINI_LIVE_ENABLED / GEMINI_LIVE_ENABLED kill switches).
  */
+
+import { LIVE_FUNCTION_DECLARATIONS, type LiveFunctionDeclaration } from './liveTools';
 
 // Native-audio Live model: Gemini generates expressive voice audio DIRECTLY over the WS (no external
 // TTS). Verified live (2026-07-24) with the project's key: ephemeral-token mint + v1alpha Constrained
@@ -206,7 +210,13 @@ export function buildVideoMessage(frameBase64: string, mimeType = 'image/jpeg'):
 
 // ─── Parity setup builder ────────────────────────────────────────────────────
 
-export type LiveTool = 'google_search';
+/** 'google_search' = Google Search grounding; 'live_actions' = the UI-action declarations (lib/voice/liveTools.ts). */
+export type LiveTool = 'google_search' | 'live_actions';
+
+/** One entry of setup.tools. */
+export type LiveToolBlock =
+  | { googleSearch: Record<string, never> }
+  | { functionDeclarations: readonly LiveFunctionDeclaration[] };
 
 export interface BuildLiveSetupOptions {
   /** Live model id, bare or `models/`-prefixed. Allowlist it first (lib/ai/google/models.ts resolveLiveModel);
@@ -246,7 +256,7 @@ export interface LiveSetup {
   outputAudioTranscription?: Record<string, never>;
   sessionResumption?: { handle?: string };
   contextWindowCompression?: { slidingWindow: Record<string, never> };
-  tools?: Array<{ googleSearch: Record<string, never> }>;
+  tools?: LiveToolBlock[];
 }
 
 /** The complete first client frame. */
@@ -330,8 +340,13 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
 
   if (opts?.compression === true) setup.contextWindowCompression = { slidingWindow: {} };
 
-  if (Array.isArray(opts?.tools) && opts.tools.includes('google_search')) {
-    setup.tools = [{ googleSearch: {} }];
+  if (Array.isArray(opts?.tools)) {
+    // ⚠️ Declarations FIRST, search second — the order the actions brief locked and the route tests pin. Each block
+    // is emitted once however often the caller lists it; unknown names are ignored (never forwarded to Google).
+    const tools: LiveToolBlock[] = [];
+    if (opts.tools.includes('live_actions')) tools.push({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
+    if (opts.tools.includes('google_search')) tools.push({ googleSearch: {} });
+    if (tools.length) setup.tools = tools;
   }
 
   return { setup };
@@ -431,6 +446,7 @@ export type LiveServerEvent =
   | { kind: 'resumption'; handle: string; resumable: boolean }
   | { kind: 'usage'; totalTokens?: number }
   | { kind: 'toolCall'; calls: Array<{ id: string; name: string; args: unknown }> }
+  | { kind: 'toolCallCancellation'; ids: string[] }
   | { kind: 'error'; message: string };
 
 type Obj = Record<string, unknown>;
@@ -510,6 +526,13 @@ function parseMessageObject(msg: Obj): LiveServerEvent[] {
     if (calls.length) events.push({ kind: 'toolCall', calls });
   }
 
+  const tcc = msg.toolCallCancellation;
+  if (isObj(tcc) && Array.isArray(tcc.ids)) {
+    // Bounded: ids only ever name calls this session made; a flood of junk must not become a flood of UI work.
+    const ids = tcc.ids.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 256).slice(0, 64);
+    if (ids.length) events.push({ kind: 'toolCallCancellation', ids });
+  }
+
   if (isObj(msg.goAway)) {
     const timeLeftMs = parseDurationMs(msg.goAway.timeLeft);
     events.push(timeLeftMs === undefined ? { kind: 'goAway' } : { kind: 'goAway', timeLeftMs });
@@ -549,9 +572,9 @@ function parseMessageObject(msg: Obj): LiveServerEvent[] {
 /**
  * Parse ONE server frame (the JSON object, or its raw JSON string) into parity events, in the order a
  * player should apply them: setupComplete, interrupted, inputTranscript, audio…, outputTranscript,
- * turnComplete, toolCall, goAway, resumption, usage, error. A frame can yield several (e.g. audio +
- * turnComplete + usage). Unknown kinds (toolCallCancellation, generationComplete, groundingMetadata,
- * waitingForInput, …) yield nothing. Malformed input → []. Never throws.
+ * turnComplete, toolCall, toolCallCancellation, goAway, resumption, usage, error. A frame can yield several (e.g.
+ * audio + turnComplete + usage). Unknown kinds (generationComplete, groundingMetadata, waitingForInput, …) yield
+ * nothing. Malformed input → []. Never throws.
  */
 export function parseLiveServerMessage(raw: unknown): LiveServerEvent[] {
   try {
