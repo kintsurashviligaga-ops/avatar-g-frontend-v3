@@ -511,12 +511,6 @@ export function ConversationalFilmStudio({
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
   const [filmQa, setFilmQa] = useState<FilmQaSummary | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  // §5 Lip-sync (opt-in, experimental): when on, the finished music-video master
-  // is run through a Wav2Lip pass keyed to its own soundtrack. `lipsyncing` drives
-  // a non-blocking "enhancing" note — the film is delivered FIRST, the synced cut
-  // swaps in only if/when the fail-open pass returns one.
-  const [mvLipsync, setMvLipsync] = useState(false);
-  const [lipsyncing, setLipsyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A landed scene the user tapped to preview before the master is stitched.
   // Cleared on every new run so a stale scene from a prior render never lingers.
@@ -966,35 +960,12 @@ export function ConversationalFilmStudio({
         } else {
           pushMessage('system', t.ready);
           analytics.generationSuccess('film', billedGel, Date.now() - startedAt);
-          // §5 Opt-in lip-sync — runs in the BACKGROUND (not awaited) so the film
-          // shows immediately and the composer frees up; it swaps in the synced
-          // cut only if the fail-open Wav2Lip pass returns one. Music-video mode
-          // only, and only on a hosted https master (anonymous data-URL previews
-          // are skipped). Never blocks or fails the delivered film.
-          if (mvMode && mvLipsync && typeof res.masterUrl === 'string' && res.masterUrl.startsWith('https://')) {
-            const masterForSync = res.masterUrl;
-            const tx = (en: string, ka: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
-            setLipsyncing(true);
-            pushMessage('system', tx('Lip-syncing the performance…', 'ვასინქრონებ ტუჩებს მუსიკაზე…', 'Синхронизирую губы под музыку…'));
-            void (async () => {
-              try {
-                const lr = await fetch('/api/video/lipsync', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ videoUrl: masterForSync }),
-                });
-                const lj = (await lr.json().catch(() => ({}))) as { url?: string | null };
-                if (lj.url && lj.url.startsWith('https://')) {
-                  setMasterUrl(lj.url);
-                  pushMessage('system', tx('Lip-sync applied.', 'ლიფსინქი დასრულდა.', 'Синхронизация губ готова.'));
-                }
-              } catch {
-                /* fail-open — keep the original, already-perfect master */
-              } finally {
-                setLipsyncing(false);
-              }
-            })();
-          }
+          // ⚠️ NO WHOLE-MASTER LIP-SYNC PASS HERE. A beta toggle used to fire POST /api/video/lipsync with the finished
+          // master and read `url` off the reply — but that route only ever returned a `jobId` to poll, so the pass
+          // never delivered anything. Once the route started RESERVING the avatar price at POST, every such call
+          // charged 20 credits that nothing polled, delivered or refunded. Whole-master sync also warps the wide shots
+          // (reverted 3×); the real music-video lip-sync is OmniStudio's per-shot singer performance. Any new caller of
+          // that route must poll `?id=<jobId>` to a terminal verdict — app/api/video/lipsync/callers.test.ts holds it.
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unexpected error.';
@@ -1016,7 +987,7 @@ export function ConversationalFilmStudio({
         void refreshBalance();
       }
     },
-    [slots, docs, mvMode, mvLipsync, mvGenre, mvShot, mvCamera, mvLighting, mvAudioDataUrl, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
+    [slots, docs, mvMode, mvGenre, mvShot, mvCamera, mvLighting, mvAudioDataUrl, locale, pushMessage, t.producing, t.ready, t.failed, refreshFreeFilms, refreshBalance, estCost, isFreeFilm],
   );
 
   // Reload-recovery: on first mount, if a film was mid-render when the tab was
@@ -1564,25 +1535,6 @@ export function ConversationalFilmStudio({
                       {mvText('Upload track', 'ატვირთე ტრეკი', 'Загрузить трек')}
                     </button>
                   )}
-                </div>
-
-                {/* Opt-in lip-sync (experimental). Off by default; keys the
-                    on-screen mouth to the soundtrack as a fail-open final pass. */}
-                <div className="flex items-center gap-2 pt-0.5">
-                  <span className="w-14 shrink-0 text-[12px] text-white/40">{mvText('Lip-sync', 'ლიფსინქი', 'Синхр. губ')}</span>
-                  <button
-                    type="button"
-                    onClick={() => setMvLipsync((v) => !v)}
-                    aria-pressed={mvLipsync}
-                    className={[
-                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] transition-colors',
-                      mvLipsync ? 'border-[#338FE8]/40 bg-[#338FE8]/10 text-[#338FE8]' : 'border-white/15 text-white/50 hover:text-white',
-                    ].join(' ')}
-                  >
-                    {mvLipsync ? mvText('On', 'ჩართ.', 'Вкл') : mvText('Off', 'გამორთ.', 'Выкл')}
-                    <span className="text-[10px] uppercase tracking-wide opacity-60">{mvText('beta', 'ბეტა', 'бета')}</span>
-                  </button>
-                  {lipsyncing && <span className="text-[11px] text-[#338FE8]/80">{mvText('syncing…', 'სინქრონი…', 'синхр…')}</span>}
                 </div>
 
                 <p className="text-[12px] leading-snug text-white/35">

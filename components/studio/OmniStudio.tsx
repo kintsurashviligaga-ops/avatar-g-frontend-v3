@@ -70,6 +70,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
+import { nextAvatarAttempt, presenterMayFallBack } from '@/lib/avatar/renderAttempts';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
@@ -5260,6 +5261,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Output format the user picked: presenter dimension + the result player's box.
       const lipOrientation = lipFormat === '9:16' ? 'vertical' : lipFormat === '1:1' ? 'square' : 'landscape';
       const lipResultOrientation: 'landscape' | 'vertical' = lipFormat === '16:9' ? 'landscape' : 'vertical';
+      // A render still going when the poll budget ran out. It is already paid for (reserved at POST), so no fallback
+      // starts a second paid job beside it (lib/avatar/renderAttempts) — the user is told it ran long instead.
+      const lipStillRendering = locale === 'en'
+        ? 'The avatar is still rendering after several minutes, so we stopped waiting. Please try again later.'
+        : locale === 'ru'
+          ? 'Аватар всё ещё рендерится спустя несколько минут — ожидание остановлено. Попробуйте позже.'
+          : 'ავატარი რამდენიმე წუთის შემდეგაც მზადდება — ლოდინი შევწყვიტეთ. სცადე მოგვიანებით.';
       // The "face" can be a VIDEO or a still PHOTO (Wav2Lip animates a portrait into a
       // talking clip) → covers both "dub a video" and "make a character speak".
       const faceAtt = attachments.find((a) => isImage(a.mimeType)) ?? attachments.find((a) => isVideo(a.mimeType));
@@ -5279,36 +5287,42 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Honour the panel's Voice (Female/Male) + Format selections.
             body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string };
           let sj: { success?: boolean; videoId?: string } = {};
           // No HeyGen key → don't burn a round-trip on a submit that must 503; the SadTalker
           // fallback below runs on the SAME cloned-voice audio. (undefined = older server → try.)
           if (syn.success && syn.audioUrl && syn.heygenReady !== false) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation }),
+              // chargeToken = Phase A's price hold; the server releases it as it reserves this render (one presenter, one charge).
+              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation, chargeToken: syn.chargeToken }),
             });
             sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
           }
           let url: string | null = null;
           let failReason: string | null = null;
-          if (sj.success && sj.videoId) {
+          const heygenVideoId = sj.success && sj.videoId ? sj.videoId : null;
+          let heygenSettled = false;
+          if (heygenVideoId) {
             for (let i = 0; i < 90 && !url && !failReason; i++) { // ~9 min of quick polls
               if (!mine()) return;
               await new Promise((r) => setTimeout(r, 6000));
-              const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(sj.videoId)}`, { credentials: 'include', signal: ac.signal });
+              const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(heygenVideoId)}`, { credentials: 'include', signal: ac.signal });
               const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
               // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              if (pj.done) { if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
+              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
             }
+            // ⚠️ Out of polls with no verdict = the HeyGen video is STILL RENDERING, and it is paid for. Falling back
+            // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
+            if (!url && !heygenSettled) failReason = lipStillRendering;
           }
-          // HeyGen unavailable / unpaid package → fall back to Replicate SadTalker: the default
-          // presenter face speaks the SAME cloned-voice audio. Keeps the presenter working without HeyGen.
-          if (!url && syn.success && syn.audioUrl) {
+          // HeyGen unavailable / unpaid package / a terminal HeyGen failure (refunded by its poll) → fall back to
+          // Replicate SadTalker: the default presenter face speaks the SAME cloned-voice audio.
+          if (!url && syn.success && syn.audioUrl && presenterMayFallBack({ videoId: heygenVideoId, settled: heygenSettled })) {
             try {
               const fbRes = await fetch('/api/video/lipsync', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation }),
+                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation, chargeToken: syn.chargeToken }),
               });
               const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
               // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
@@ -5375,6 +5389,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Avatar engine = HeyGen first; if a HeyGen job fails (create OR render), the next
         // attempt forces the proven SadTalker engine — so the service NEVER hard-fails.
         let forceSadTalker = false;
+        let stillRendering = false;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
           const body = forceSadTalker ? JSON.stringify({ ...JSON.parse(startBody), forceSadTalker: true }) : startBody;
@@ -5383,18 +5398,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (!startJson.jobId) { resultErr = 'start failed'; continue; }
           const usedHeygen = String(startJson.jobId).startsWith('heygen:');
           resultErr = null;
+          let settled = false;
           for (let i = 0; i < 70; i++) { // ~7 min per attempt; each poll is a quick request
             if (!mine()) return;
             await new Promise((r) => setTimeout(r, 6000));
             const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
             const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-            if (pj.done) { resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
           }
-          if (resultUrl) break;
-          // A failed HeyGen job → fall back to the proven SadTalker engine on the next try.
-          if (usedHeygen) { forceSadTalker = true; continue; }
-          // SadTalker: retry only the known transient model crash; bail on anything else.
-          if (resultErr && !/antialias|has no attribute|cuda|out of memory|memory|runtimeerror|baseexception|must derive/i.test(resultErr)) break;
+          // A failed HeyGen job → the proven SadTalker engine next; SadTalker retries only its known transient crash.
+          // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
+          // reserve a second price for the same video (lib/avatar/renderAttempts).
+          const next = nextAvatarAttempt({ settled, url: resultUrl, error: resultErr, usedHeygen });
+          if (next === 'deliver') break;
+          if (next === 'fallback-sadtalker') { forceSadTalker = true; continue; }
+          if (next === 'stop') { stillRendering = !settled; break; }
         }
         setMessages((prev) => {
           if (!mine()) return prev;
@@ -5403,7 +5421,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (last && last.role === 'assistant') {
             next[next.length - 1] = resultUrl
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
-              : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
+              : stillRendering
+                ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
+                : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
         });
