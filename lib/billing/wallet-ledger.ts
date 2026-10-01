@@ -61,6 +61,87 @@ export async function grantPurchasedCredits(userId: string, credits: number, ref
   }
 }
 
+/** Input to the subscription allowance grant — the shape lib/billing/subscriptionAllowance hands over. */
+export interface SubscriptionAllowanceGrant {
+  userId: string;
+  invoiceId: string;
+  tier: string;
+  credits: number;
+  subscriptionId: string;
+  customerId: string | null;
+  priceId: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+}
+
+/**
+ * Grant one paid invoice's monthly allowance via the `grant_subscription_allowance` RPC (migration 20261001a):
+ * ONE transaction that records the grant (PK invoice_id), writes the ledger row with reason 'purchase' and ref
+ * `sub:<invoice id>`, and refreshes the entitlement row in `subscriptions`.
+ *
+ * Returns { granted, balance } — granted=false means this invoice was already granted (a redelivery), which is
+ * success. null means the grant did NOT happen (RPC missing, DB error, unknown user) and the caller must make Stripe
+ * retry; never read null as "granted".
+ *
+ * ⚠️ NOT refund_credits. One-time tier packs still go through grantPurchasedCredits above and are booked as
+ * 'refund' — that mislabel is documented in docs/billing/TIERS.md; subscription revenue does not inherit it.
+ */
+export async function grantSubscriptionAllowance(
+  g: SubscriptionAllowanceGrant,
+): Promise<{ granted: boolean; balance: number } | null> {
+  const sb = client();
+  if (!sb || !g.userId || !g.invoiceId || !Number.isInteger(g.credits) || g.credits <= 0) return null;
+  try {
+    const { data, error } = await sb.rpc('grant_subscription_allowance', {
+      p_user_id: g.userId,
+      p_invoice_id: g.invoiceId,
+      p_tier: g.tier,
+      p_credits: g.credits,
+      p_subscription_id: g.subscriptionId,
+      p_customer_id: g.customerId,
+      p_price_id: g.priceId,
+      p_period_start: g.periodStart,
+      p_period_end: g.periodEnd,
+    });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[wallet-ledger] grant_subscription_allowance failed:', (error as { message?: string }).message ?? error);
+      return null;
+    }
+    const row = (data ?? null) as { granted?: unknown; balance?: unknown } | null;
+    if (!row || typeof row !== 'object') return null;
+    const balance = Number(row.balance);
+    return { granted: row.granted === true, balance: Number.isFinite(balance) ? balance : 0 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which user a Stripe subscription belongs to, from `subscriptions` (service role). Fallback for invoices whose
+ * subscription metadata carries no user_id — subscriptions created outside /api/billing/subscribe. Subscription id
+ * first (unique), then the customer id. null when unknown or unreadable.
+ */
+export async function findUserIdForStripeSubscription(q: {
+  subscriptionId: string;
+  customerId: string | null;
+}): Promise<string | null> {
+  const sb = client();
+  if (!sb) return null;
+  const lookup = async (column: string, value: string | null): Promise<string | null> => {
+    if (!value) return null;
+    const { data, error } = await sb.from('subscriptions').select('user_id').eq(column, value).limit(1).maybeSingle();
+    if (error || !data) return null;
+    const id = (data as { user_id?: unknown }).user_id;
+    return typeof id === 'string' && id ? id : null;
+  };
+  try {
+    return (await lookup('stripe_subscription_id', q.subscriptionId)) ?? (await lookup('stripe_customer_id', q.customerId));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Atomically consume one free avatar response.
  *   >= 0 → a free slot was burned (new remaining count)

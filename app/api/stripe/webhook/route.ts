@@ -11,7 +11,18 @@ import {
 import { updateAccountStatus } from '@/lib/stripe/connect';
 import { updateCommissionStatus } from '@/lib/stripe/payments';
 import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { creditWalletGel, grantPurchasedCredits } from '@/lib/billing/wallet-ledger';
+import {
+  creditWalletGel,
+  findUserIdForStripeSubscription,
+  grantPurchasedCredits,
+  grantSubscriptionAllowance,
+} from '@/lib/billing/wallet-ledger';
+import {
+  applyInvoiceAllowance,
+  RetryableWebhookError,
+  SILENT_SKIPS,
+  type InvoiceLike,
+} from '@/lib/billing/subscriptionAllowance';
 import { createNotification } from '@/lib/notifications/store';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
 import { enqueueQueueItem } from '@/lib/platform/queues';
@@ -245,9 +256,21 @@ export async function POST(request: NextRequest) {
           await handleChargeRefunded(event);
           break;
 
-        case 'invoice.paid':
-          await handleInvoicePaid(event);
+        case 'invoice.paid': {
+          // Subscription tiers: grant the paid month's credit allowance (inert until STRIPE_PRICE_<TIER> is set).
+          // ⚠️ THE TWO HALVES MUST NOT TAKE EACH OTHER DOWN. The affiliate commission below is the pre-existing
+          // path and runs exactly as before whatever the grant does; a grant failure is re-thrown only AFTER it.
+          const allowanceFailure = await handleSubscriptionAllowance(event).then(() => null, (e: unknown) => e);
+          let commissionFailure: unknown = null;
+          try {
+            await handleInvoicePaid(event);
+          } catch (e) {
+            commissionFailure = e;
+          }
+          if (allowanceFailure) throw allowanceFailure;
+          if (commissionFailure) throw commissionFailure;
           break;
+        }
 
         // Stripe Connect Events
         case 'account.updated':
@@ -283,6 +306,13 @@ export async function POST(request: NextRequest) {
       });
       // Surface the money-critical "paid-but-handler-failed" case to Sentry — it was console-only.
       reportError(handlerError, { route: 'stripe.webhook', eventId: event.id, eventType: event.type });
+      // ⚠️ ONLY A RetryableWebhookError ASKS STRIPE TO REDELIVER. A paid subscription month that could not be
+      // credited (no user resolved yet, grant RPC down) must not end as a log line; the event is NOT marked
+      // processed, and every effect on the retry is idempotent on the invoice (`sub:<invoice id>`, the
+      // commission's stripe_event_id check). Every other handler error keeps the original behaviour below.
+      if (handlerError instanceof RetryableWebhookError) {
+        return NextResponse.json({ error: 'Retryable handler failure' }, { status: 500 });
+      }
       // Still return 200 - we don't want Stripe to retry
       // Error is logged for manual investigation
     }
@@ -681,6 +711,56 @@ async function handleChargeRefunded(event: Stripe.Event) {
     commissionAmountCents: -commissionAmount,
     status: 'reversed',
   });
+}
+
+/**
+ * invoice.paid → the subscription tier's monthly credit allowance, once per invoice (lib/billing/subscriptionAllowance).
+ *
+ * INERT until a STRIPE_PRICE_<TIER> env var matches the invoice's price: until then every invoice resolves to
+ * 'no_tier' and this returns without any I/O. Throws RetryableWebhookError (→ 500 → Stripe redelivers) when a
+ * tier invoice could not be credited.
+ *
+ * ⚠️ SERVICE ROLE, NOT createRouteHandlerClient(). A webhook has no session cookie, so the route-handler client is
+ * anon and RLS hides every row — the reason the rest of this file cannot read `subscriptions` (docs/billing/TIERS.md).
+ */
+async function handleSubscriptionAllowance(event: Stripe.Event): Promise<void> {
+  const invoice = event.data.object as unknown as InvoiceLike;
+  let outcome: Awaited<ReturnType<typeof applyInvoiceAllowance>>;
+  try {
+    outcome = await applyInvoiceAllowance(invoice, {
+      env: process.env,
+      findUserId: findUserIdForStripeSubscription,
+      grant: grantSubscriptionAllowance,
+    });
+  } catch (error) {
+    console.error('[Stripe Webhook] subscription allowance NOT granted — Stripe will retry', {
+      eventId: event.id,
+      invoiceId: invoice?.id ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  if (outcome.status === 'skipped') {
+    if (!SILENT_SKIPS.has(outcome.reason)) {
+      console.info('[Stripe Webhook] tier invoice paid, no allowance', { invoiceId: invoice?.id ?? null, reason: outcome.reason });
+    }
+    return;
+  }
+
+  console.info('[Stripe Webhook] subscription allowance', {
+    status: outcome.status,
+    userId: outcome.userId,
+    tier: outcome.tier,
+    credits: outcome.credits,
+    ref: outcome.ref,
+  });
+  if (outcome.status === 'granted') {
+    try {
+      const svc = createServiceRoleClient();
+      if (svc) await createNotification(svc, outcome.userId, 'payment', `კრედიტები დამატებულია: +${outcome.credits} ✅`);
+    } catch { /* fail-open — never block the grant on a notification */ }
+  }
 }
 
 async function handleInvoicePaid(event: Stripe.Event) {

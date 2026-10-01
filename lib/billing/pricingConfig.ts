@@ -1,9 +1,10 @@
 // lib/billing/pricingConfig.ts
-// ─── THE ONLY place that defines NEW pricing tiers, credits, limits. ────────
-// UI + API + workers ALL import from here. Never duplicate these values.
+// ─── Pricing-page ladder (PRICING_TIERS) + the older PLANS / CREDIT_PACKS / CREDIT_COSTS tables. ────────
+// ⚠️ SUBSCRIPTION TIERS ARE DEFINED IN ./tiers (TIERS) — PRICING_TIERS below is DERIVED from it. Do not put a
+// tier price or credit number in this file; change the catalogue and the page follows.
 // ADDITIVE — does NOT replace the existing lib/billing/plans.ts (PlanTier system).
-import { CREDIT_COSTS as MEDIA_CREDIT_COSTS } from '@/lib/credits/pricing'
 import { GEL_PER_USD } from './fx'
+import { TIERS, priceIdForTier, tierCreditPool, tierFromStripePriceId, type TierId } from './tiers'
 
 export type PlanId = 'trial' | 'pro' | 'business' | 'executive'
 export type Priority = 'standard' | 'priority' | 'executive'
@@ -132,13 +133,18 @@ export function getSoftCap(planId: PlanId): number | null {
   return PLANS[planId].fairUseSoftCapCredits ?? null
 }
 
-// ─── PRICING TIERS (Day-1 Task 6) — single source of truth for the credit-pool subscription tiers ───────────
-// creditsIncluded is DERIVED from the media credit costs (Σ ceiling × cost) so a cost change flows through
-// automatically — no hardcoded totals to drift. Render the pricing UI FROM this constant.
+// ─── PRICING TIERS — the live pricing page's ladder, DERIVED from lib/billing/tiers.ts ───────────────────────
 //
-// ⚠️ NOT YET WIRED TO LIVE CHECKOUT. app/api/billing/checkout charges via FIXED Stripe price IDs, so the amount
-// billed is the Stripe price object, NOT priceGel here. Flipping the displayed price without a matching Stripe
-// (or dynamic BOG) price object would charge the WRONG amount. Going live needs those price objects + wiring.
+// ⚠️ THE NUMBERS NO LONGER LIVE HERE. Price, ceiling and credit pool of every rung come from the subscription
+// catalogue (lib/billing/tiers.ts) through PRICING_TIER_TO_TIER below. This ladder keeps its OWN ids and English
+// names because they are on the wire and in the copy: /api/billing/tier-checkout takes `tierId: basic|pro|business`,
+// PricingSection / CreditsModal key their localized names and bullets on them, and the JSON-LD product names must
+// match what the page shows. Renaming the visible rungs to Starter / Creator is a product call for launch day,
+// not a side effect of this refactor.
+//
+// ⚠️ NOT YET WIRED TO LIVE CHECKOUT. /api/billing/tier-checkout sells these as ONE-TIME packs (mode:'payment',
+// inline USD price_data validated against USD_TIER_PRICES). The recurring subscription for the same rung is
+// /api/billing/subscribe, inert until STRIPE_PRICE_<TIER> is set (docs/billing/TIERS.md).
 
 export type PricingTierId = 'free' | 'basic' | 'pro' | 'business'
 
@@ -153,7 +159,7 @@ export interface PricingTier {
   billing: 'monthly' | 'annual'
   /** Marketing ceilings the price is framed around. */
   creditCeiling: { videos: number; music: number; images: number }
-  /** Credit-pool grant on the tier (Master Contract V1/V2 fixed the marketing totals: 150 / 1200 / 4500). */
+  /** Credit-pool grant on the tier (Σ ceiling × media cost — see tierCreditPool). */
   creditsIncluded: number
 }
 
@@ -162,59 +168,41 @@ export interface PricingTier {
 // it can't drift from credits/pricing's USD_TO_GEL; re-exported here so every existing importer is unchanged.
 export { GEL_PER_USD }
 
-/** Σ (ceiling × per-asset media credit cost). Retained: the credit-pool equivalent of the per-asset ceilings. */
-export function tierCreditPool(ceiling: { videos: number; music: number; images: number }): number {
-  return (
-    ceiling.videos * MEDIA_CREDIT_COSTS.video_30s +
-    ceiling.music * MEDIA_CREDIT_COSTS.music_30s +
-    ceiling.images * MEDIA_CREDIT_COSTS.image_generate
-  )
+// Σ (ceiling × per-asset media credit cost) — now defined next to the catalogue it prices; re-exported so every
+// existing importer (and pricingTiers.test.ts) is unchanged.
+export { tierCreditPool }
+
+/** Which catalogue tier each pricing-page rung IS. basic→starter and pro→creator are renames, not new offers. */
+export const PRICING_TIER_TO_TIER: Readonly<Record<PricingTierId, TierId>> = {
+  free: 'free',
+  basic: 'starter',
+  pro: 'creator',
+  business: 'business',
 }
 
-function makeTier(id: PricingTierId, name: string, priceUsd: number, billing: 'monthly' | 'annual', creditCeiling: PricingTier['creditCeiling'], creditsIncluded: number): PricingTier {
-  return { id, name, priceUsd, priceGel: Math.round(priceUsd * GEL_PER_USD), billing, creditCeiling, creditsIncluded }
+function fromCatalogue(id: PricingTierId, name: string): PricingTier {
+  const t = TIERS[PRICING_TIER_TO_TIER[id]]
+  const creditCeiling = { ...t.creditCeiling }
+  return {
+    id,
+    name,
+    priceUsd: t.monthlyPriceUsd,
+    priceGel: Math.round(t.monthlyPriceUsd * GEL_PER_USD),
+    billing: 'monthly',
+    creditCeiling,
+    creditsIncluded: tierCreditPool(creditCeiling),
+  }
 }
 
 /**
- * The 4-tier subscription ladder. Ceilings are sized so the PROVIDER cost of a fully-consumed tier lands
- * near ⅓ of its price — the 200%-margin structure — using the Master Task §1.8 unit costs
- * ($0.12/video-second → $0.96 per 8s clip · $0.10/track · $0.03/image):
- *
- *   Basic     4×8s video $3.84 + 10 music $1.00 + 40 images $1.20  = $6.04   of $19.99  (≈3.3×)
- *   Pro       8×8s video $7.68 + 25 music $2.50 + 100 images $3.00 = $13.18  of $39.99  (≈3.0×)
- *   Business 16×8s video $15.36 + 50 music $5.00 + 200 images $6.00 = $26.36 of $79.99  (≈3.0×)
- *
- * Free grants images + chat only — no video/music — matching the §2.5.1 free-tier rate limits.
- * `creditsIncluded` is DERIVED from the ceilings (tierCreditPool) so a media-cost change flows through
- * instead of silently drifting from a hardcoded total.
+ * The 4-rung ladder the live pricing page renders: Free $0 · Basic $19.99 · Pro $39.99 · Business $79.99, with
+ * 50 / 230 / 525 / 1200 credits. The margin structure and the history of every ceiling are documented on TIERS.
  */
 export const PRICING_TIERS: PricingTier[] = [
-  // ⚠️ THE FREE TIER WAS THREE CONTRADICTORY PROMISES. The card advertised 6 images (12 credits), the DB
-  // trigger granted 10, and `profiles.free_films_remaining` handed out 3 free VIDEOS that the credit
-  // ledger knew nothing about — so a new user was told three different numbers and none of them was what
-  // they got. One grant now: 50 credits, with the video quota expressed IN the ceiling.
-  //
-  // The ceiling sums to exactly 50 (1x25 + 1x5 + 10x2), so `creditsIncluded` stays DERIVED rather than a
-  // hardcoded total that can drift — the property the test below pins. It is also a real allocation: a
-  // user can genuinely do one video, one track and ten images, or spend the same 50 on 25 images instead.
-  //
-  // ⚠️ THE 1-VIDEO CAP IS THE WHOLE COST CONTROL, AND IT IS ENFORCED — `free_films_remaining` (default 1)
-  // via the race-safe consume_free_film RPC, not by this number. Video is the one medium sold BELOW cost
-  // (25 credits = $0.926 of revenue against $0.96 of Veo), so an uncapped free grant spendable on video
-  // is a cash transfer. Worst-case provider spend per signup is now $1.46 (1 video + 5 tracks), against
-  // $3.06 for the 6-images-plus-3-films it replaces.
-  makeTier('free', 'Free', 0, 'monthly', { videos: 1, music: 1, images: 10 }, tierCreditPool({ videos: 1, music: 1, images: 10 })),
-  makeTier('basic', 'Basic', 19.99, 'monthly', { videos: 4, music: 10, images: 40 }, tierCreditPool({ videos: 4, music: 10, images: 40 })),
-  makeTier('pro', 'Pro', 39.99, 'monthly', { videos: 8, music: 25, images: 100 }, tierCreditPool({ videos: 8, music: 25, images: 100 })),
-  // ⚠️ BUSINESS WAS PRO x2 EXACTLY — 16=2x8 videos, 50=2x25 music, 200=2x100 images, at 2x the price — so
-  // it delivered 13.1266 credits/$ against Pro's 13.1283. Paying twice as much bought you very slightly
-  // FEWER credits per dollar, because the price ratio (2.00025) beat the credit ratio (2.00000). A
-  // three-rung ladder that was really two rungs, with no economic reason to climb the last one.
-  // Music and images carry the bonus, NOT video: video is the loss-making medium, so buying the same
-  // ~1200 credits with 5 extra videos instead would have pushed the margin to 2.57x and made the richer
-  // tier worse for the platform. Now 15.00 credits/$ (+14.3% over Pro), margin 2.772x — inside the
-  // 2.5-4.5 corridor, price untouched at $79.99.
-  makeTier('business', 'Business', 79.99, 'monthly', { videos: 16, music: 60, images: 250 }, tierCreditPool({ videos: 16, music: 60, images: 250 })),
+  fromCatalogue('free', 'Free'),
+  fromCatalogue('basic', 'Basic'),
+  fromCatalogue('pro', 'Pro'),
+  fromCatalogue('business', 'Business'),
 ]
 
 /**
@@ -231,25 +219,29 @@ export const USD_TIER_PRICES: readonly number[] = PRICING_TIERS.filter((t) => t.
 // ─── Live Stripe Price ID resolution (env placeholders — you insert the real IDs in Vercel) ─────────────────
 // The code NEVER hardcodes a price ID. Each tier's live Stripe Price ID lives in an env var; until it's set,
 // the tier is NOT purchasable — and that is the SAFETY property: no env → no charge → a wrong-amount charge is
-// impossible. When you add the IDs, checkout + the webhook credit-grant can be wired to these resolvers.
+// impossible.
+//
+// ⚠️ THE ENV NAMES MOVED TO THE CATALOGUE'S, AND THE OLD ONES WERE A TRAP. This map used to say basic →
+// STRIPE_PRICE_BASIC and pro → STRIPE_PRICE_PRO — but STRIPE_PRICE_PRO is ALREADY the legacy PlanTier 'PRO' price
+// (lib/billing/stripe-prices.ts, .env.example, README's "$30 Basic"). Setting it for one system would have
+// resolved the other's subscription into the wrong tier. One name per tier now, owned by lib/billing/tiers.ts:
+// STRIPE_PRICE_STARTER / STRIPE_PRICE_CREATOR / STRIPE_PRICE_BUSINESS (each a RECURRING monthly price).
 export const TIER_STRIPE_PRICE_ENV: Record<PricingTierId, string> = {
   // The free tier has no Stripe price object by definition — it is granted, never checked out.
-  free: '',
-  basic: 'STRIPE_PRICE_BASIC',
-  pro: 'STRIPE_PRICE_PRO',
-  business: 'STRIPE_PRICE_BUSINESS',
+  free: TIERS.free.stripePriceEnv ?? '',
+  basic: TIERS.starter.stripePriceEnv ?? '',
+  pro: TIERS.creator.stripePriceEnv ?? '',
+  business: TIERS.business.stripePriceEnv ?? '',
 }
 
 /** Resolve a tier's live Stripe Price ID from env; null when unset (tier not yet purchasable). */
 export function stripePriceIdForTier(id: PricingTierId): string | null {
-  const key = TIER_STRIPE_PRICE_ENV[id]
-  if (!key) return null // free tier — never purchasable
-  const v = process.env[key]
-  return typeof v === 'string' && v.trim() ? v.trim() : null
+  return priceIdForTier(PRICING_TIER_TO_TIER[id], process.env)
 }
 
-/** Reverse lookup: which tier a completed Stripe Price ID belongs to (for the webhook credit grant). */
+/** Reverse lookup: which pricing-page rung a Stripe Price ID belongs to (null when unknown or ambiguous). */
 export function tierByStripePriceId(priceId: string | null | undefined): PricingTier | null {
-  if (!priceId) return null
-  return PRICING_TIERS.find((t) => stripePriceIdForTier(t.id) === priceId) ?? null
+  const tier = tierFromStripePriceId(priceId, process.env)
+  if (!tier) return null
+  return PRICING_TIERS.find((t) => PRICING_TIER_TO_TIER[t.id] === tier) ?? null
 }
