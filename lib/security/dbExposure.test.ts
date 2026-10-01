@@ -93,7 +93,9 @@ describe('every migration from the P0 on', () => {
 
 describe('application code never calls a money RPC through a session client', () => {
   const MONEY_RPCS = ['refund_credits', 'credit_wallet_gel', 'deduct_credits', 'consume_free_film',
-    'consume_free_avatar_chat', 'restore_free_film', 'restore_free_avatar_chat', 'add_credits'];
+    'consume_free_avatar_chat', 'restore_free_film', 'restore_free_avatar_chat', 'add_credits',
+    // 20261001a — subscription allowances. Called only from lib/billing/wallet-ledger.ts (service role).
+    'grant_subscription_allowance'];
   /** The service-role modules allowed to call them. Everything else goes through these helpers. */
   const ALLOWED = new Set(['lib/orchestrator/ledger.ts', 'lib/billing/wallet-ledger.ts', 'lib/admin/users.ts']);
 
