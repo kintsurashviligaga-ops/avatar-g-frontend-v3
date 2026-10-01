@@ -74,6 +74,7 @@ import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { nextAvatarAttempt, presenterMayFallBack } from '@/lib/avatar/renderAttempts';
+import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
 import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '@/lib/ai/productAdAgent';
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
@@ -2120,6 +2121,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // P8 — selected built-in avatar preset (a /public path used as the talking face).
   // Mutually exclusive with an uploaded face: picking one clears the other.
   const [lipPreset, setLipPreset] = useState<string | null>(null);
+  // Digital Twin v0 (NEXT_PUBLIC_TWIN_ENABLED): the caller's own face as the first Avatar card. Its URL is a short-lived
+  // signed URL renewed while the panel is open; a picked twin follows the renewal (components/twin/useMyTwin).
+  const myTwinFace = useMyTwin(mode === 'lipsync', (stale, fresh) => setLipPreset((p) => (p === stale ? fresh : p)));
   // Lip-sync mode sub-tab: 'avatar' (talking photo) vs 'motion' (Kling Motion Control).
   const [lipTab, setLipTab] = useState<'avatar' | 'motion'>('avatar');
   // The whole film's join in the stitch (mirrors the Veo panel's "between scenes" choice; per-scene joins ride in the
@@ -7209,12 +7213,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <TemplateGallery
               testId="avatar-templates"
               label={locale === 'en' ? 'Presenters' : locale === 'ru' ? 'Ведущие' : 'წამყვანები'}
-              items={AVATAR_TEMPLATES.map((tp) => ({
+              items={[...(myTwinFace ? [myTwinCardItem(locale, myTwinFace)] : []), ...AVATAR_TEMPLATES.map((tp) => ({
                 id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
                 thumb: tp.thumb, palette: tp.palette, Icon: ScanFace, meta: tp.values.format,
-              }))}
-              activeId={matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
+              }))]}
+              activeId={myTwinFace && lipPreset === myTwinFace ? MY_TWIN_CARD_ID : matchAvatarTemplate({ preset: lipPreset, format: lipFormat })}
               onPick={(id) => {
+                if (id === MY_TWIN_CARD_ID) {
+                  // The twin's face stands in like a preset (the send path re-hosts it for the render); voice/format stay.
+                  if (myTwinFace) setLipPreset(myTwinFace);
+                  setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType)));
+                  return;
+                }
                 const v = avatarTemplateValues(id);
                 if (!v) return;
                 setLipPreset(v.preset);
