@@ -101,6 +101,10 @@ import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
+import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
+import { Slider } from './ui/controls';
+import { StyleChips } from './ui/StyleChips';
+import { musicControlsCopy, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
 import { describeServiceError } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -689,7 +693,8 @@ const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime
 // Curated style set for the redesigned Music panel (Section A). Each entry maps a
 // user-facing label (per locale) to a genre value the score engine understands.
 const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru: string }]> = [
-  ['folk', { ka: 'ქართული ფოლკი', en: 'Georgian Folk', ru: 'Грузинский фолк' }],
+  // ⚠️ The VALUE is what the engines read: 'folk' asked for generic folk under a chip that says Georgian Folk.
+  ['georgian folk', { ka: 'ქართული ფოლკი', en: 'Georgian Folk', ru: 'Грузинский фолк' }],
   ['r&b', { ka: 'R&B', en: 'R&B', ru: 'R&B' }],
   ['hip-hop', { ka: 'ჰიპ-ჰოპი', en: 'Hip-Hop', ru: 'Хип-хоп' }],
   ['pop', { ka: 'პოპი', en: 'Pop', ru: 'Поп' }],
@@ -919,6 +924,8 @@ interface FilmSnap {
 }
 
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+  /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate). */
+  musicControlsMode?: MusicControlMode;
   /** Legacy: a preformatted engine label (a raw model id, or "⚠ … (fallback)" for a non-Gemini provider). Still read. */
   chatModel?: string;
   /** The model that ACTUALLY answered this chat turn (the stream's meta frame) — formatted at render in the UI language. */
@@ -2072,10 +2079,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [imgBoardScenes, setImgBoardScenes] = useState<StoryboardMatrixCell[]>([]);
   const [imgBoardCharacter, setImgBoardCharacter] = useState<string | undefined>(undefined);
   // Default to a SONG (vocals): a vocal R&B/pop track is the common case, and the engine writes
-  // lyrics from the prompt when none are given. The panel's Track type chips (Instrumental / Song)
+  // lyrics from the prompt when none are given. The panel's Track type chips (Lyrics / Instrumental)
   // flip it — and gate the Lyrics / Vocal rows below.
   const [musicInstrumental, setMusicInstrumental] = useState<boolean>(MUSIC_PANEL_DEFAULTS.instrumental);
-  const [musicGenre, setMusicGenre] = useState<string>(MUSIC_PANEL_DEFAULTS.genre);
+  // Up to three styles, in the order picked (lib/ai/musicControls). `musicGenre` is the ONE line the engines read
+  // ("georgian folk, jazz"): the template match, the request's `style` and the re-roll spec all use it, so a card stays
+  // lit only while its genre is the sole style.
+  const [musicStyles, setMusicStyles] = useState<string[]>([MUSIC_PANEL_DEFAULTS.genre]);
+  const musicGenre = musicStyleLine(musicStyles);
   // Custom lyrics for vocal tracks — empty means the engine (Lyria 3 first) writes them from the prompt.
   const [musicLyrics, setMusicLyrics] = useState('');
   // With an audio attached in Music mode: 'cover' remixes its melody (MusicGen);
@@ -2086,9 +2097,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // (Udio untrimmed, ElevenLabs ~120s, MusicGen 90s) and the route settles the charge to what was delivered.
   const [musicDuration, setMusicDuration] = useState<0 | 15 | 30 | 60 | 90>(MUSIC_PANEL_DEFAULTS.duration);
   const [musicTempo, setMusicTempo] = useState<'slow' | 'medium' | 'fast'>(MUSIC_PANEL_DEFAULTS.tempo);
-  // Sung-vocal gender when the track is a SONG (not instrumental). Maps to vocal
-  // descriptors appended to the music prompt server-side (female/male/duet).
-  const [musicVoiceType, setMusicVoiceType] = useState<'female' | 'male' | 'duet'>(MUSIC_PANEL_DEFAULTS.voiceType);
+  // Sung-vocal gender when the track is a SONG (not instrumental) — the 4-stop Auto / Female / Male / Duet (owner
+  // decision A-e), sent as `vocalGender`. Female/male/duet become vocal descriptors server-side; Auto names no singer.
+  const [musicVoiceType, setMusicVoiceType] = useState<VocalGender>(MUSIC_PANEL_DEFAULTS.voiceType);
+  // Weirdness (Variety merged in — decision A-d) and Style influence, 0–100. One object, so the job runners and their
+  // dependency lists carry one value. Approximate on Lyria / ElevenLabs (they only steer the brief), native on MusicGen.
+  const [musicSliders, setMusicSliders] = useState({ weirdness: SLIDER_DEFAULT, styleInfluence: SLIDER_DEFAULT });
   // In-app voice-sample recorder for "sing in my voice" — separate from the chat
   // dictation mic. Captures ≥15s of audio → added as the music voice reference.
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -4089,7 +4103,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         credentials: 'include',
         signal: ac.signal,
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; controls?: { mode?: MusicControlMode } };
       const ok = !!(j.success && j.url);
       setMessages((prev) => {
         if (!mine()) return prev;
@@ -4099,7 +4113,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           next[next.length - 1] = ok
             ? (spec.kind === 'image'
                 ? { role: 'assistant', text: '', imageUrl: j.url, regen: spec }
-                : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), regen: spec })
+                : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.controls?.mode ? { musicControlsMode: j.controls.mode } : {}), regen: spec })
             // ⚠️ `j.error` is a MACHINE CODE. A 409 put the literal bubble "⚠️ duplicate_request" into a
             // Georgian conversation — the user's own chat, speaking to them in snake_case English. The
             // helper that turns a route body into a sentence already existed (lib/ui/opFailure) and was
@@ -4384,7 +4398,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     duration: number; tempo: string; instrumental: boolean; voiceType: string; lyrics: string;
     /** The template card the user PICKED in the music panel (hooks/usePickedTemplate), or null — never the lit one. */
     templateId?: string | null;
+    /** Weirdness / Style influence (lib/ai/musicControls); absent → neutral. `genre` is the style line, `voiceType` the 4-stop singer. */
+    sliders?: { weirdness: number; styleInfluence: number };
   }) => {
+    const sliders = m.sliders ?? { weirdness: SLIDER_DEFAULT, styleInfluence: SLIDER_DEFAULT };
     const bubbleId = `music_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setMessages((prev) => [
       ...prev,
@@ -4409,7 +4426,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // the route adds no descriptor there.
         const bodyTemplateId = uploadedAudioUrl || m.useTrained ? null : musicRequestTemplateId({
           genre: m.genre, tempo: m.tempo, durationSec: m.duration, instrumental: m.instrumental,
-          ...(!m.instrumental ? { voiceType: m.voiceType } : {}),
+          ...(!m.instrumental ? { vocalGender: m.voiceType } : {}),
         });
         const templateId = m.templateId && bodyTemplateId === m.templateId ? m.templateId : null;
         const res = await fetch('/api/ai/music', {
@@ -4418,16 +4435,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           credentials: 'include',
           signal,
           body: JSON.stringify({
-            prompt: m.prompt, style: m.genre, durationSec: m.duration, tempo: m.tempo, jobId,
+            // `styles` is the list the route reads (lib/ai/musicControls); `style` is the same line, for anything older.
+            prompt: m.prompt, style: m.genre, styles: stylesFromLine(m.genre), durationSec: m.duration, tempo: m.tempo, jobId,
+            weirdness: sliders.weirdness, styleInfluence: sliders.styleInfluence,
             ...(templateId ? { templateId } : {}),
             ...(m.useTrained ? { useMyVoice: true } : {}),
             instrumental: (m.useTrained || isVoiceClone) ? false : m.instrumental,
-            ...(!m.instrumental && !m.useTrained && !isVoiceClone ? { voiceType: m.voiceType } : {}),
+            ...(!m.instrumental && !m.useTrained && !isVoiceClone ? { vocalGender: m.voiceType } : {}),
             ...((m.useTrained || isVoiceClone || !m.instrumental) && m.lyrics ? { lyrics: m.lyrics } : {}),
             ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: { mode?: MusicControlMode } };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           // A COVER (audioReference: an uploaded track, not a trained/cloned voice) is billed a FLAT 30s
@@ -4436,11 +4455,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // the server's `audioReference ? 30 : …` rule so the deduction shown matches the deduction made.
           const coverBilledFlat30 = !!uploadedAudioUrl && !m.useTrained && !isVoiceClone;
           // ⚠️ The re-roll spec records what this request SENT, not the raw panel: a trained / cloned voice forced a
-          // song and sent no voiceType, and a cover rendered (and billed) 30 s — so its re-roll asks for the same.
+          // song and sent no vocalGender, and a cover rendered (and billed) 30 s — so its re-roll asks for the same.
           const sungByUser = m.useTrained || isVoiceClone;
-          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: makeMusicRegenSpec({
+          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), ...(j.controls?.mode ? { musicControlsMode: j.controls.mode } : {}), regen: makeMusicRegenSpec({
             prompt: m.prompt, genre: m.genre, instrumental: sungByUser ? false : m.instrumental, lyrics: m.lyrics,
-            durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { voiceType: m.voiceType }),
+            durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { vocalGender: m.voiceType }),
+            weirdness: sliders.weirdness, styleInfluence: sliders.styleInfluence,
             templateId,
           }) });
           notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
@@ -4665,14 +4685,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       runMusicJob({
         prompt: p, userBubble: p, useTrained: false, audioMode: musicAudioMode, genre: musicGenre,
         duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental, voiceType: musicVoiceType, lyrics: '',
-        templateId: pickedMusicTemplateId,
+        templateId: pickedMusicTemplateId, sliders: musicSliders,
       });
     } else if (service === 'video') {
       setMode('video'); setInput(p);
     } else if (service === 'avatar') {
       setMode('lipsync'); setInput(p);
     }
-  }, [runImageJob, runMusicJob, imgNegative, imgQuality, imgAspect, imgStyle, musicAudioMode, musicGenre, musicDuration, musicTempo, musicInstrumental, musicVoiceType, pickedImageTemplateId, pickedMusicTemplateId]);
+  }, [runImageJob, runMusicJob, imgNegative, imgQuality, imgAspect, imgStyle, musicAudioMode, musicGenre, musicDuration, musicTempo, musicInstrumental, musicVoiceType, musicSliders, pickedImageTemplateId, pickedMusicTemplateId]);
 
   // ── CHAT STREAM (hooks/chat/useChatStream) ─────────────────────────────────────────────────────────────────────
   // ⚠️ EVERY CHUNK USED TO RE-RENDER THIS WHOLE COMPONENT. The reply was appended with setMessages on each SSE chunk,
@@ -4979,7 +4999,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           prompt: musicPrompt, userBubble, medias: attachments, useTrained: mUseTrained,
           audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
           duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
-          voiceType: musicVoiceType, lyrics: musicLyrics.trim(), templateId: pickedMusicTemplateId,
+          voiceType: musicVoiceType, lyrics: musicLyrics.trim(), templateId: pickedMusicTemplateId, sliders: musicSliders,
         });
         setInput('');
         setAttachments([]);
@@ -5098,7 +5118,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           prompt: text, userBubble: text, medias: attachments, useTrained: mUseTrained,
           audioRef: mAudioRef, audioMime: mAudioMime, audioMode: musicAudioMode, genre: musicGenre,
           duration: musicDuration, tempo: musicTempo, instrumental: musicInstrumental,
-          voiceType: musicVoiceType, lyrics: musicLyrics.trim(), templateId: pickedMusicTemplateId,
+          voiceType: musicVoiceType, lyrics: musicLyrics.trim(), templateId: pickedMusicTemplateId, sliders: musicSliders,
         });
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
@@ -5528,7 +5548,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -6457,7 +6477,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.audioUrl && (
                   <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                     {/* Polished Suno-style player (album art + play/scrub/time). */}
-                    <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} />
+                    <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={t.modeMusic} engine={m.engine} note={musicControlsNote(m.musicControlsMode, m.regen?.kind === 'music' ? m.regen : undefined, locale)} />
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
@@ -7927,11 +7947,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const applyMusicPreset = (id: string) => {
             const p = musicTemplateValues(id);
             if (!p) return;
-            setMusicGenre(p.genre);
+            setMusicStyles([p.genre]); // a card is ONE style; adding a second is an edit away from it
             setMusicTempo(p.tempo);
             setMusicDuration(p.duration);
             setMusicInstrumental(p.instrumental);
-            setMusicVoiceType(p.voiceType);
+            // A sung card names its singer; an instrumental one leaves the (hidden, moot) singer as the user set it.
+            if (!p.instrumental) setMusicVoiceType(p.voiceType);
             // A tap is the only thing that makes a card's descriptor ride on the request (hooks/usePickedTemplate).
             pickMusicTemplate(id);
           };
@@ -7945,10 +7966,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ? (locale === 'en' ? 'Full' : locale === 'ru' ? 'Полная' : 'სრული')
             : `${musicDuration}${locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}`;
           const tempoBadge = tempos.find(([v]) => v === musicTempo)?.[1] ?? musicTempo;
-          const vocalBadge = musicInstrumental
-            ? (locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრ.')
-            : musicVoiceType === 'male' ? (locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცის') : musicVoiceType === 'duet' ? (locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი') : (locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალის');
-          const fineTuneBadge = `${durBadge} · ${tempoBadge} · ${vocalBadge}`;
+          // The granular controls' copy (ka/en/ru): the singer's four stops, the sliders and their „approximate" hint.
+          const mc = musicControlsCopy(locale);
+          const vocalBadge = musicInstrumental ? mc.instrumentalShort : mc.vocalShort[musicVoiceType];
+          // …plus only the sliders someone moved ("Weirdness 80"), so an untouched panel's badge reads as before.
+          const fineTuneBadge = [durBadge, tempoBadge, vocalBadge, ...sliderBadgeParts(musicSliders, locale)].join(' · ');
           return (
           <div className="mb-2 space-y-4">
             {/* ✨ Presets — one-tap vibe row (horizontal scroll). Sets every dial at once; the active
@@ -7967,28 +7989,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               onPick={applyMusicPreset}
             />
 
-            {/* A — Style (single select, horizontal scroll) */}
-            <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {MUSIC_STYLES.map(([val, label]) => (
-                  <Chip key={val} active={musicGenre === val} onClick={() => setMusicGenre(val)}>{label[locale] ?? label.en}</Chip>
-                ))}
-              </div>
-            </div>
+            {/* A — Style: up to three, in the order picked (the engines read them as one line, the first leading). */}
+            <StyleChips
+              testId="music-styles"
+              label={mc.styles}
+              options={MUSIC_STYLES.map(([val, label]) => ({ id: val, label: label[locale] ?? label.en }))}
+              value={musicStyles}
+              onChange={setMusicStyles}
+            />
 
-            {/* Track type (instrumental vs song) — kept PRIMARY: it gates whether the Lyrics /
+            {/* Track type (Lyrics | Instrumental) — kept PRIMARY: it gates whether the Lyrics /
                 Your-voice / Vocal subtrees render below, so hiding it would hide the cause of those
                 sections appearing and disappearing. */}
             <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Track type' : locale === 'ru' ? 'Тип трека' : 'ტიპი'}</span>
+              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{mc.trackType}</span>
               <div className="flex gap-1.5">
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{locale === 'en' ? 'Instrumental' : locale === 'ru' ? 'Инструментал' : 'ინსტრუმენტული'}</Chip>
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{locale === 'en' ? 'Song' : locale === 'ru' ? 'Песня' : 'სიმღერა'}</Chip>
+                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{mc.lyrics}</Chip>
+                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{mc.instrumental}</Chip>
               </div>
             </div>
 
-            {/* ⚙️ Fine-tune — the set-once dials (Duration · Tempo · Vocal) folded behind one collapsed
+            {/* ⚙️ Fine-tune — the set-once dials (Duration · Tempo · Vocal · Weirdness · Style influence) folded behind one collapsed
                 Section so the default panel stays calm. Every preset already writes these, so most users
                 never open it; the badge surfaces the live values. The Vocal sub-row renders only for a
                 sung track (the same !instrumental gate as before). */}
@@ -8010,21 +8031,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </div>
                   </div>
                 </div>
-                {/* Vocal gender — only meaningful for a sung track */}
+                {/* Vocal gender — only meaningful for a sung track. Auto / Female / Male / Duet (decision A-e). */}
               {!musicInstrumental && (
                 <div>
-                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Vocal' : locale === 'ru' ? 'Вокал' : 'ვოკალი'}</span>
+                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{mc.vocal}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {([
-                      ['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალის'],
-                      ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცის'],
-                      ['duet', locale === 'en' ? 'Duet' : locale === 'ru' ? 'Дуэт' : 'დუეტი'],
-                    ] as const).map(([id, label]) => (
-                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{label}</Chip>
+                    {VOCAL_GENDERS.map((id) => (
+                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{mc.vocalGender[id]}</Chip>
                     ))}
                   </div>
                 </div>
               )}
+                {/* Weirdness (Variety merged in — decision A-d) and Style influence. Labelled approximate, because on
+                    Lyria and ElevenLabs they can only add a sentence to the brief (lib/ai/musicControls). Stacked: the
+                    settings column is 300px on desktop. */}
+                <div className="space-y-2" data-testid="music-sliders">
+                  <Slider stacked label={mc.weirdness} min={0} max={100} suffix="" value={musicSliders.weirdness}
+                    onChange={(v) => setMusicSliders((s) => ({ ...s, weirdness: v }))} ends={mc.weirdnessEnds} />
+                  <Slider stacked label={mc.styleInfluence} min={0} max={100} suffix="" value={musicSliders.styleInfluence}
+                    onChange={(v) => setMusicSliders((s) => ({ ...s, styleInfluence: v }))} ends={mc.styleInfluenceEnds} hint={mc.approximate} />
+                </div>
             </div>
             </Section>
 
@@ -8101,7 +8127,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
                 {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
-                <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} />
+                <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} note={musicControlsNote(lastMusic.musicControlsMode, lastMusic.regen?.kind === 'music' ? lastMusic.regen : undefined, locale)} />
                 <div className="flex flex-wrap gap-1.5">
                   <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.imgDownload} aria-label={t.imgDownload}
                     className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">

@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'timers/promises';
 import { resolveUdioApiKey, UDIO_API_KEY_ALIASES } from '@/lib/chat/mediaKeys';
+import { musicSunoParamsEnabled, type UdioControlParams } from '@/lib/ai/musicControls';
 
 export type UdioTaskStatus = 'queued' | 'processing' | 'succeeded' | 'failed';
 
@@ -15,6 +16,12 @@ export interface UdioGenerationInput {
   model?: string;
   makeInstrumental?: boolean;
   callbackUrl?: string;
+  /**
+   * The music panel's granular controls (lib/ai/musicControls `udioParams`). Sent ONLY with MUSIC_SUNO_PARAMS on —
+   * see `sunoControlFields`; with it off (the default) this field is ignored and the controls reach Udio through the
+   * brief, like every other engine.
+   */
+  controls?: UdioControlParams;
 }
 
 /** Input for extending an existing Udio track */
@@ -316,6 +323,28 @@ function parseFeed(payload: unknown, workId: string): UdioStatusResult {
   };
 }
 
+/**
+ * The gateway's native control fields for the Suno-family models it serves (`chirp-*`): the singer (`gender`, f / m)
+ * and two 0–1 sliders (`style_weight`, `weirdness_constraint`).
+ *
+ * ⚠️ BEHIND MUSIC_SUNO_PARAMS, OFF BY DEFAULT, BECAUSE THE WIRE FORMAT IS UNCONFIRMED. These names and scales follow
+ * the Suno model family; they have not been checked against this gateway. An unknown field is at best ignored and at
+ * worst a 4xx — which would knock Udio out of the music failover chain for every track — so they stay dark until one
+ * live probe confirms them (docs/SUPER_APP_PLAN.md, "One Udio live probe"). If the probe finds other names, this
+ * function is the only place to change. Absent controls (or the flag off) add nothing at all.
+ */
+function sunoControlFields(c: UdioControlParams | undefined): Record<string, unknown> {
+  if (!c || !musicSunoParamsEnabled()) return {};
+  const out: Record<string, unknown> = {};
+  if (c.vocalGender === 'female' || c.vocalGender === 'male') out.gender = c.vocalGender === 'female' ? 'f' : 'm';
+  const unit = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : undefined);
+  const styleWeight = unit(c.styleWeight);
+  const weirdness = unit(c.weirdnessConstraint);
+  if (styleWeight !== undefined) out.style_weight = styleWeight;
+  if (weirdness !== undefined) out.weirdness_constraint = weirdness;
+  return out;
+}
+
 function buildGenerateBody(input: UdioGenerationInput): Record<string, unknown> {
   const model = (input.model || process.env.UDIO_MODEL || DEFAULT_UDIO_MODEL).trim();
   const makeInstrumental = toBoolean(input.makeInstrumental);
@@ -359,6 +388,9 @@ function buildGenerateBody(input: UdioGenerationInput): Record<string, unknown> 
   if (negativeTags) {
     body.tags = negativeTags;
   }
+
+  // A singer is moot on an instrumental, whatever the caller passed.
+  Object.assign(body, sunoControlFields(makeInstrumental && input.controls ? { ...input.controls, vocalGender: undefined } : input.controls));
 
   return body;
 }

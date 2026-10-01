@@ -28,6 +28,10 @@ import { promptToEnglish, lastTranslateOutcome } from '@/lib/ai/promptToEnglish'
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
+import {
+  controlModeFor, musicStyleLine, musicgenParams, parseMusicControls, promptDirectives, udioParams,
+  type MusicControlMode, type MusicControls, type MusicEngineId,
+} from '@/lib/ai/musicControls';
 
 /**
  * Assistant music generation.
@@ -44,6 +48,11 @@ import { resolveTemplateContext } from '@/lib/studio/templateContext';
  * safety fallbacks for the rare Lyria miss (503/quota/timeout). Set MUSIC_PROVIDER=elevenlabs to drop Udio.
  * Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id; cloned voice IDs apply to
  * TTS/narration, not music generation).
+ *
+ * Granular controls (lib/ai/musicControls): up to three `styles`, `vocalGender` (auto/female/male/duet), and the
+ * Weirdness / Style influence sliders. On Lyria and ElevenLabs the sliders are sentences in the brief — approximate by
+ * design; MusicGen takes them as sampling parameters, Udio only behind MUSIC_SUNO_PARAMS. The response's
+ * `controls: { engine, mode }` says which happened, so the result card can be honest about it.
  *
  * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
  * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
@@ -115,7 +124,10 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // Standalone music composition: Google Lyria 3 (PRIMARY — live by default whenever a Gemini key is set,
 // kill-switch LYRIA_ENABLED=0) → Udio → ElevenLabs Music → Replicate MusicGen, as latency-failover
 // fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
-async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30): Promise<{ url: string; engine: string }> {
+// `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
+// others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
+type ControlsReport = { engine: MusicEngineId; mode: MusicControlMode };
+async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls): Promise<{ url: string; engine: string; controls: ControlsReport }> {
   // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
   // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.
   const prompt = flattenMusicBrief(brief);
@@ -129,7 +141,8 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   const elMusicSec = secs === 0 ? 120 : secs; // ElevenLabs Music: ~2-min full song
   const musicgenSec = secs === 0 ? 90 : secs; // MusicGen fallback: bounded so it finishes in time
 
-  type Track = { url: string; engine: string };
+  type Track = { url: string; engine: string; controls: ControlsReport };
+  const report = (engine: MusicEngineId): ControlsReport => ({ engine, mode: controlModeFor(engine) });
 
   // Each provider's EXACT existing logic, now expressed as a failover attempt. Order is
   // unchanged: Udio (funded primary) → ElevenLabs Music → MusicGen. The chain is run
@@ -139,7 +152,11 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   // whole chain is exhausted we throw the same error the sequential version did.
   const udioRun = async (): Promise<Track> => {
     const udio = await generateUdioTrack(
-      { prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental },
+      {
+        prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental,
+        // Ignored by the client unless MUSIC_SUNO_PARAMS is on (unconfirmed wire fields — see lib/udio/client).
+        ...(controls ? { controls: udioParams(controls, { instrumental }) } : {}),
+      },
       { maxAttempts: 45, pollIntervalMs: 4000 }, // ~180s, bounded under the 300s ceiling
     );
     if (udio.status === 'succeeded' && udio.audioUrl) {
@@ -148,9 +165,9 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
       // song"). Fail-open: if the trim misses, keep the full track.
       if (secs > 0) {
         const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
-        return { url: trimmed ?? udio.audioUrl, engine: 'Udio' }; // re-hosted by caller
+        return { url: trimmed ?? udio.audioUrl, engine: 'Udio', controls: report('udio') }; // re-hosted by caller
       }
-      return { url: udio.audioUrl, engine: 'Udio' }; // full song — no trim
+      return { url: udio.audioUrl, engine: 'Udio', controls: report('udio') }; // full song — no trim
     }
     throw new Error(`Udio did not complete (${udio.status})`);
   };
@@ -162,12 +179,13 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     });
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604800);
-    if (url) return { url, engine: 'ElevenLabs Music' };
+    if (url) return { url, engine: 'ElevenLabs Music', controls: report('elevenlabs-music') };
     throw new Error('ElevenLabs Music host failed');
   };
   const musicgenRun = async (): Promise<Track> => {
-    const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, musicgenSec);
-    if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen' };
+    // The sliders as real sampling knobs (temperature / guidance); untouched sliders send neither.
+    const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, musicgenSec, controls ? musicgenParams(controls) : {});
+    if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen', controls: report('musicgen') };
     throw new Error('MusicGen did not complete in time');
   };
   // Google LYRIA 3 — opt-in PRIMARY music engine for BOTH instrumental tracks AND vocal songs (Lyria 3 sings
@@ -187,7 +205,7 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800);
-    if (url) return { url, engine: 'Lyria' };
+    if (url) return { url, engine: 'Lyria', controls: report('lyria') };
     throw new Error('Lyria host failed');
   };
 
@@ -270,6 +288,8 @@ export async function POST(req: NextRequest) {
   let durationSec = 30;
   let tempo = '';
   let voiceType: 'female' | 'male' | 'duet' | '' = '';
+  // The granular controls (lib/ai/musicControls): styles · vocalGender · Weirdness · Style influence. Neutral until parsed.
+  let controls: MusicControls = parseMusicControls(undefined);
   // DURABLE PROGRESS — the composer's tray jobId. When present the completed row is UPSERTED
   // under this id (converging with the client's placeholder) so a track produces ONE
   // generation_jobs row, not a client + server duplicate.
@@ -279,13 +299,17 @@ export async function POST(req: NextRequest) {
   // The template card's id, as sent (an ID, never text) — resolved against the request's own values below.
   let rawTemplateId: unknown;
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; jobId?: unknown; templateId?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; styles?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; vocalGender?: unknown; weirdness?: unknown; styleInfluence?: unknown; jobId?: unknown; templateId?: unknown };
     rawTemplateId = body.templateId;
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+    controls = parseMusicControls(body);
     // ⚠️ CLIENT TEXT INTO THE ENGINE BRIEF AND THE COVER-ART PROMPT — bounded and cleaned (lib/studio/style.ts).
-    const cleanStyle = sanitizeStyle(body.style);
+    // Up to three `styles` become ONE line ("georgian folk, jazz") that every engine, the cover art, the mutex and the
+    // template match read — so a card's genre selects it only while it is the sole style. A body without `styles` (a
+    // re-roll persisted by an earlier build) keeps its single `style`.
+    const cleanStyle = controls.styles.length ? sanitizeStyle(musicStyleLine(controls.styles)) : sanitizeStyle(body.style);
     if (cleanStyle) style = cleanStyle;
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
     // P6 — duration (15/30/60/90) + tempo (slow/medium/fast). Duration drives the track
@@ -309,8 +333,9 @@ export async function POST(req: NextRequest) {
     // Use the user's TRAINED RVC voice (faithful) instead of a one-shot reference.
     if (body.useMyVoice === true) useMyVoice = true;
     // Sung-vocal gender for a SONG → appended to the prompt as vocal descriptors
-    // (the music engine is prompt-steered for the singer; see vocalDescriptor below).
-    if (body.voiceType === 'female' || body.voiceType === 'male' || body.voiceType === 'duet') voiceType = body.voiceType;
+    // (the music engine is prompt-steered for the singer; see vocalDescriptor below). `vocalGender` (or an older
+    // body's `voiceType`); Auto adds no descriptor, so the brief's own words decide the singer.
+    if (controls.vocalGender !== 'auto') voiceType = controls.vocalGender;
   } catch {
     /* malformed body → guard below */
   }
@@ -409,7 +434,9 @@ export async function POST(req: NextRequest) {
 
   try {
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null })}`;
+    // `st` is the joined style line, so it covers the picked styles; `w` / `si` the sliders — a changed control is a
+    // new request, not a duplicate of the one in flight.
+    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null, w: controls.weirdness, si: controls.styleInfluence })}`;
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
     // lapses mid-render and a byte-identical resubmit past the window mints a FRESH reserveRef → a second
     // deductCredits → DOUBLE-CHARGE. The key hashes the full brief, so only an identical duplicate submit
@@ -450,6 +477,13 @@ export async function POST(req: NextRequest) {
     // translated substitute for the words. Latin briefs skip the call entirely; any failure falls back
     // to `capped`, which is exactly today's behaviour.
     const cappedEn = await promptToEnglish(capped, 'music');
+    // The sliders' sentences — fixed English text, so they join AFTER the translation rather than through it, and as
+    // the brief's lowest priority (buildMusicBrief drops them whole before it would cut the user's words). [] while
+    // both sliders sit in the neutral band: an untouched panel composes exactly the brief it always did.
+    const directives = promptDirectives(controls);
+    // How the controls reached the engine that composed the track — set on the composed paths only (a cover or a
+    // cloned voice keeps its own source and takes no controls).
+    let controlsReport: ControlsReport | null = null;
 
     // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
     // re-imagines it in the requested style (conditioned on the track's melody);
@@ -466,9 +500,10 @@ export async function POST(req: NextRequest) {
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
       const composed = await composeTrackUrl(
-        buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, lyrics, instrumental: false }),
-        style, false, durationSec,
+        buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, lyrics, instrumental: false, directives }),
+        style, false, durationSec, controls,
       );
+      controlsReport = composed.controls;
       try {
         providerAudioUrl = await convertSongWithRvc(composed.url, trainedModel.modelUrl);
         engine = 'Your Voice (RVC)';
@@ -523,18 +558,21 @@ export async function POST(req: NextRequest) {
       // vocal descriptor (female/male/duet) is appended for a sung track.
       // Structured, not concatenated: the brief, the style, the vocal descriptor and the LYRICS each
       // stay their own field, so the boilerplate can never push the user's words out of the budget.
-      const brief = buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, vocalDescriptor, lyrics, instrumental: makeInstrumental });
+      const brief = buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, vocalDescriptor, lyrics, instrumental: makeInstrumental, directives });
       // If anything STILL had to be cut, the user is told. Silently shortening the words someone chose
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.
       briefTruncated = brief.truncated;
-      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec);
+      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec, controls);
       providerAudioUrl = composed.url;
       engine = composed.engine;
+      controlsReport = composed.controls;
       // MusicGen (meta/musicgen) is INSTRUMENTAL-ONLY. If the vocal-capable engines (Udio, ElevenLabs
       // Music) both missed and a VOCAL song fell through to MusicGen, the lyrics + vocal gender were
       // silently dropped — so badge the engine honestly rather than implying a sung track was delivered.
-      if (engine === 'MusicGen' && !makeInstrumental && (lyrics || voiceType)) {
+      // ⚠️ ANY song, not only one with lyrics or a named singer: with the singer on Auto a sung request carries
+      // neither, and it is still a song that came back without a voice.
+      if (engine === 'MusicGen' && !makeInstrumental) {
         engine = 'MusicGen (instrumental — vocals unavailable)';
       }
     }
@@ -616,6 +654,9 @@ export async function POST(req: NextRequest) {
       ...(deliveredSec > 0 ? { durationSec: Math.round(deliveredSec) } : {}),
       ...(settledSec !== billSeconds ? { billedSec: settledSec, requestedSec: billSeconds, refunded: true } : {}),
       ...((briefTruncated.prompt || briefTruncated.lyrics) ? { truncated: briefTruncated } : {}),
+      // Whether the sliders were real engine parameters ('native') or sentences in the brief ('prompt' — Lyria,
+      // ElevenLabs, Udio without MUSIC_SUNO_PARAMS), so the result card can call them approximate when they were.
+      ...(controlsReport ? { controls: controlsReport } : {}),
       ...(coverUrl ? { coverUrl } : {}),
       // ⚠️ REPORTED SO "THE MUSIC IGNORED MY PROMPT" IS DIAGNOSABLE FROM THE OUTSIDE. The engines read
       // English; a Georgian brief is translated first and that step FAILS OPEN, so a missing or rejected

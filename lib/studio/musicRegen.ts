@@ -13,24 +13,36 @@
  * track gets the same server-resolved descriptor the original did (lib/studio/templateContext). It is kept only while
  * the spec's own values still select that card, because the route re-checks exactly that and would ignore it anyway.
  *
+ * And the GRANULAR CONTROLS (lib/ai/musicControls): `genre` is the style LINE the request sent ("georgian folk, jazz"
+ * — one label on a spec from before multi-select), resent as both `style` and the `styles` list; the singer is the
+ * 4-stop `vocalGender` (Auto included, so a re-roll of an Auto song stays Auto — a spec persisted earlier stored
+ * `voiceType`, which is still read); and the Weirdness / Style influence sliders. A field an older spec lacks is
+ * omitted, and the route applies its own default (Auto, 50, 50).
+ *
  * Pure and client-safe — imported by the studio component; the route clamps every field again server-side.
  */
 import { TEMPLATE_ID_RX, matchMusicTemplate } from '@/lib/studio/templates';
+import { clampSlider, isVocalGender, musicStyleLine, stylesFromLine, type VocalGender } from '@/lib/ai/musicControls';
 
 export type MusicTempo = 'slow' | 'medium' | 'fast';
+/** The singer as specs persisted before the 4-stop control stored it (`voiceType`). New specs store `vocalGender`. */
 export type MusicVoiceType = 'female' | 'male' | 'duet';
 
 export type MusicRegenSpec = {
   kind: 'music';
   prompt: string;
+  /** The style LINE the request sent (lib/ai/musicControls `musicStyleLine`): up to three labels joined by ", ". */
   genre: string;
   instrumental: boolean;
   lyrics?: string;
   /** 0 = "full song", otherwise 15–90. ABSENT on specs persisted before this field existed → the route's 30 s default. */
   durationSec?: number;
   tempo?: MusicTempo;
-  /** Sung-vocal gender — a SONG only; never stored on an instrumental. */
-  voiceType?: MusicVoiceType;
+  /** The singer — a SONG only; never stored on an instrumental. 'auto' is stored too, so the re-roll says it. */
+  vocalGender?: VocalGender;
+  /** 0–100 — ABSENT on specs persisted before the sliders existed → the route's neutral 50. */
+  weirdness?: number;
+  styleInfluence?: number;
   /** The template card the original request selected (lib/studio/templates) — absent when none applied. */
   templateId?: string;
 };
@@ -44,50 +56,79 @@ function normDuration(v: unknown): number | undefined {
   return v === 0 ? 0 : Math.max(15, Math.min(90, Math.round(v)));
 }
 
+/** The route's own reading of the singer (parseMusicControls): `vocalGender`, else an older body's `voiceType`. */
+function normVocal(vocalGender: unknown, voiceType: unknown): VocalGender | undefined {
+  if (isVocalGender(vocalGender)) return vocalGender;
+  return typeof voiceType === 'string' && VOICES.has(voiceType) ? (voiceType as MusicVoiceType) : undefined;
+}
+
+/** A slider as stored: a finite number, clamped 0–100. Anything else is ABSENT (the route then uses 50). */
+function normSlider(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? clampSlider(v) : undefined;
+}
+
+/** The style line the route will compose from: the cleaned labels, re-joined. A line with no usable label is kept as given. */
+function normGenre(genre: string): string {
+  const styles = stylesFromLine(genre);
+  return styles.length ? musicStyleLine(styles) : genre;
+}
+
 /**
  * The template card a music request's OWN values select — what the route will re-derive from the same body
- * (genre, tempo, length, instrumental, vocal; an absent length is the route's 30 s default). Pass what the request
- * SENDS, not the raw panel: a trained or cloned voice sends no voiceType, and that changes which card matches.
+ * (style line, tempo, length, instrumental, singer; an absent length is the route's 30 s default, and Auto names no
+ * singer). Pass what the request SENDS, not the raw panel: a trained or cloned voice sends no singer, and that changes
+ * which card matches.
  */
 export function musicRequestTemplateId(v: {
-  genre: string; instrumental: boolean; durationSec?: number; tempo?: string; voiceType?: string;
+  genre: string; instrumental: boolean; durationSec?: number; tempo?: string; vocalGender?: string;
+  /** An older spec's singer, read when `vocalGender` is absent. */
+  voiceType?: string;
 }): string | null {
+  const sung = normVocal(v.vocalGender, v.voiceType);
   return matchMusicTemplate({
-    genre: v.genre,
+    genre: normGenre(v.genre),
     tempo: v.tempo ?? '',
     duration: normDuration(v.durationSec) ?? 30,
     instrumental: v.instrumental,
-    voiceType: v.voiceType ?? '',
+    voiceType: sung && sung !== 'auto' ? sung : '',
   });
 }
 
 /**
  * Build a re-roll spec from the values the original request ACTUALLY SENT (not the live panel — the user may
- * have changed it since). Lyrics and voiceType are dropped on an instrumental, exactly as the request drops them.
+ * have changed it since). Lyrics and the singer are dropped on an instrumental, exactly as the request drops them.
  */
 export function makeMusicRegenSpec(m: {
   prompt: string; genre: string; instrumental: boolean; lyrics?: string;
-  durationSec?: number; tempo?: string; voiceType?: string; templateId?: string | null;
+  durationSec?: number; tempo?: string; vocalGender?: string;
+  /** An older spec's singer (female / male / duet), read when `vocalGender` is absent. */
+  voiceType?: string;
+  weirdness?: number; styleInfluence?: number; templateId?: string | null;
 }): MusicRegenSpec {
+  const genre = typeof m.genre === 'string' ? normGenre(m.genre) : '';
   const durationSec = normDuration(m.durationSec);
   const tempo = typeof m.tempo === 'string' && TEMPOS.has(m.tempo) ? (m.tempo as MusicTempo) : undefined;
-  const voiceType = !m.instrumental && typeof m.voiceType === 'string' && VOICES.has(m.voiceType) ? (m.voiceType as MusicVoiceType) : undefined;
+  const vocalGender = m.instrumental ? undefined : normVocal(m.vocalGender, m.voiceType);
   const lyrics = !m.instrumental && typeof m.lyrics === 'string' && m.lyrics.trim() ? m.lyrics : undefined;
+  const weirdness = normSlider(m.weirdness);
+  const styleInfluence = normSlider(m.styleInfluence);
   // A persisted spec (localStorage, any older build) is re-validated like every other field: a malformed id, or one
   // its own values no longer select, is dropped rather than re-sent.
   const templateId = typeof m.templateId === 'string' && TEMPLATE_ID_RX.test(m.templateId)
-    && musicRequestTemplateId({ genre: m.genre, instrumental: m.instrumental, durationSec, tempo, voiceType }) === m.templateId
+    && musicRequestTemplateId({ genre, instrumental: m.instrumental, durationSec, tempo, vocalGender }) === m.templateId
     ? m.templateId
     : undefined;
   return {
     kind: 'music',
     prompt: m.prompt,
-    genre: m.genre,
+    genre,
     instrumental: m.instrumental,
     ...(lyrics ? { lyrics } : {}),
     ...(durationSec !== undefined ? { durationSec } : {}),
     ...(tempo ? { tempo } : {}),
-    ...(voiceType ? { voiceType } : {}),
+    ...(vocalGender ? { vocalGender } : {}),
+    ...(weirdness !== undefined ? { weirdness } : {}),
+    ...(styleInfluence !== undefined ? { styleInfluence } : {}),
     ...(templateId ? { templateId } : {}),
   };
 }
@@ -95,13 +136,17 @@ export function makeMusicRegenSpec(m: {
 /** The /api/ai/music POST body for a re-roll. A field the spec lacks is OMITTED, so the route applies its own default. */
 export function musicRegenBody(spec: MusicRegenSpec): Record<string, unknown> {
   const s = makeMusicRegenSpec(spec);
+  const styles = stylesFromLine(s.genre);
   return {
     prompt: s.prompt,
     style: s.genre,
+    ...(styles.length ? { styles } : {}),
     instrumental: s.instrumental,
     ...(s.durationSec !== undefined ? { durationSec: s.durationSec } : {}),
     ...(s.tempo ? { tempo: s.tempo } : {}),
-    ...(s.voiceType ? { voiceType: s.voiceType } : {}),
+    ...(s.vocalGender ? { vocalGender: s.vocalGender } : {}),
+    ...(s.weirdness !== undefined ? { weirdness: s.weirdness } : {}),
+    ...(s.styleInfluence !== undefined ? { styleInfluence: s.styleInfluence } : {}),
     ...(s.lyrics ? { lyrics: s.lyrics } : {}),
     ...(s.templateId ? { templateId: s.templateId } : {}),
   };

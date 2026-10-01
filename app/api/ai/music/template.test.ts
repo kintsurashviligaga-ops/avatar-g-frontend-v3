@@ -68,7 +68,7 @@ const post = (body: unknown) =>
   });
 
 const PROMPT = 'a song for my grandmother\'s 90th birthday in Kakheti, warm and joyful';
-const FOLK = musicTemplateValues('georgian-folk')!; // folk · medium · 60 s · sung · female
+const FOLK = musicTemplateValues('georgian-folk')!; // georgian folk · medium · 60 s · sung · female
 const FOLK_BODY = { prompt: PROMPT, style: FOLK.genre, tempo: FOLK.tempo, durationSec: FOLK.duration, instrumental: FOLK.instrumental, voiceType: FOLK.voiceType };
 const DESCRIPTOR = resolveTemplateContext('music', 'georgian-folk', FOLK)!.descriptor;
 
@@ -93,7 +93,7 @@ test('the Georgian Folk card adds its descriptor to the engine brief, beside the
   const { brief, key } = await compose({ ...FOLK_BODY, templateId: 'georgian-folk' });
   expect(brief).toContain(DESCRIPTOR);
   expect(brief).toContain(PROMPT);
-  expect(brief).toContain('Style: folk.');
+  expect(brief).toContain('Style: georgian folk.'); // the value says Georgian, like the card
   expect(brief).toContain('female vocals');
   expect(key.t).toBe('georgian-folk'); // the mutex keys on the id it applied
 });
@@ -124,7 +124,7 @@ test('the client cannot send the descriptor: a sentence in templateId is just an
 });
 
 test('the studio\'s re-roll body (MusicRegenSpec) carries the id and gets the same brief', async () => {
-  const spec = makeMusicRegenSpec({ prompt: PROMPT, genre: FOLK.genre, instrumental: false, durationSec: FOLK.duration, tempo: FOLK.tempo, voiceType: FOLK.voiceType, templateId: 'georgian-folk' });
+  const spec = makeMusicRegenSpec({ prompt: PROMPT, genre: FOLK.genre, instrumental: false, durationSec: FOLK.duration, tempo: FOLK.tempo, vocalGender: FOLK.voiceType, templateId: 'georgian-folk' });
   const { brief, key } = await compose(musicRegenBody(spec));
   expect(brief).toContain(DESCRIPTOR);
   expect(key.t).toBe('georgian-folk');
