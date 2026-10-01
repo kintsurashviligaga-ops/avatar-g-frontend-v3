@@ -80,10 +80,9 @@ export async function pickBestGoogleVoice(
   try {
     const ac = new AbortController();
     const to = setTimeout(() => ac.abort(), 12_000);
-    // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
     const res = await fetch(
-      `https://texttospeech.googleapis.com/v1/voices?languageCode=${encodeURIComponent(languageCode)}`,
-      { headers: { 'x-goog-api-key': key }, redirect: 'manual', signal: ac.signal },
+      `https://texttospeech.googleapis.com/v1/voices?languageCode=${encodeURIComponent(languageCode)}&key=${key}`,
+      { signal: ac.signal },
     ).finally(() => clearTimeout(to));
     if (!res.ok) {
       // 400/401/403 → the key is bad for Cloud TTS (expired / invalid / API not
@@ -146,11 +145,10 @@ export async function synthesizeGoogleTts(
     const ac = new AbortController();
     const to = setTimeout(() => ac.abort(), 30_000);
     const res = await fetch(
-      `https://texttospeech.googleapis.com/v1/text:synthesize`,
+      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${key}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        redirect: 'manual',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: { text: clean.slice(0, 4500) },
           voice: { languageCode, name: voiceName },

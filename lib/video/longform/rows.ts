@@ -8,9 +8,13 @@
  * every tick without ever reaching settle() — so it could never hit its deadline and refund. Bad JSON degrades to a
  * safe default instead (an empty bible keeps only the look out of the prompt; the scene's subject was already locked
  * into its shot when the storyboard was written). Everything read from jsonb is coerced, never trusted.
+ *
+ * The WRITE side (jobInsertRow / sceneInsertRows / directedColumns) is what the create route inserts: the job
+ * `directing` first, its scenes after it, then the promotion to `planned` (stateMachine.ts, `directed`).
  */
 import type { OutputFormat, ShotSpec, VeoResolution, VeoTier } from '@/lib/veo/types';
-import { coerceBible, coerceCamera, type LongformBible } from './director';
+import { coerceBible, coerceCamera, type LongformBible, type LongformScene } from './director';
+import type { LongformPlan } from './plan';
 import { JOB_STATUSES, SCENE_STATUSES, type HoldReason, type JobStatus, type SceneStatus } from './stateMachine';
 import type { JobPatch, LongformJobOptions, LongformJobRecord, LongformSceneRecord, ScenePatch } from './tick';
 
@@ -115,6 +119,8 @@ export function jobFromRow(r: Row): LongformJobRecord {
     seed: intOrNull(r.seed),
     creditsPerScene: Math.max(0, int(r.credits_per_scene)),
     refundsPending: r.refunds_pending === true,
+    prompt: str(r.prompt, 4000),
+    trimToSeconds: intOrNull(r.trim_to_seconds),
   };
 }
 
@@ -138,6 +144,7 @@ export function sceneFromRow(r: Row): LongformSceneRecord {
     error: strOrNull(r.error_detail, 300),
     spec: { ...spec, shot: coerceShot(spec, ordinal) },
     outputBytes: intOrNull(r.output_bytes),
+    outputPath: strOrNull(r.output_path, 512),
   };
 }
 
@@ -192,4 +199,88 @@ export function jobPatchToColumns(p: JobPatch): Row {
   set('completedAt', 'completed_at', () => iso(p.completedAt));
   set('errorDetail', 'error_detail', () => (p.errorDetail ?? null));
   return c;
+}
+
+// ── Inserts (the create route) ───────────────────────────────────────────────────────────────────────────────
+
+const MIN = 60_000;
+/**
+ * How long a job may sit `directing`. The route writes the job, then its scenes, then promotes it — seconds of
+ * work. Past this the create died mid-write; claim_longform_jobs then hands the row to a tick, which fails it.
+ */
+export const LONGFORM_DIRECTING_GRACE_MS = 10 * MIN;
+/** The render deadline from promotion (the migration's default, restated so the route sets it explicitly). */
+export const LONGFORM_JOB_DEADLINE_MS = 24 * 60 * MIN;
+
+export interface JobInsertInput {
+  id: string;
+  userId: string;
+  /** The user's brief (validated 1…4000 chars by the route). */
+  prompt: string;
+  /** A validated, PRICED plan — credits are required: a job without them would render free. */
+  plan: LongformPlan & { credits: NonNullable<LongformPlan['credits']> };
+  bible: LongformBible;
+  format: OutputFormat;
+  options: LongformJobOptions;
+  seed: number | null;
+  now: number;
+}
+
+/** The longform_jobs row, inserted `directing` (not claimable) with the short directing deadline. */
+export function jobInsertRow(input: JobInsertInput): Row {
+  const { plan } = input;
+  const perScene = plan.credits?.perScene;
+  // ⚠️ Refuse rather than write credits_per_scene 0: every act reservation would then debit nothing.
+  if (typeof perScene !== 'number' || !Number.isInteger(perScene) || perScene <= 0) {
+    throw new Error('jobInsertRow: a long-form job needs a positive per-scene credit price');
+  }
+  return {
+    id: input.id,
+    user_id: input.userId,
+    status: 'directing' satisfies JobStatus,
+    prompt: str(input.prompt, 4000),
+    seconds: plan.seconds,
+    trim_to_seconds: null,
+    scene_count: plan.sceneCount,
+    act_count: plan.acts.length,
+    tier: plan.tier,
+    format: pick<OutputFormat>(input.format, FORMATS, '16:9'),
+    resolution: plan.resolution,
+    generate_audio: plan.generateAudio,
+    bible: input.bible,
+    options: coerceOptions(input.options),
+    seed: input.seed,
+    estimate_usd: plan.cost.totalUsd,
+    credits_per_scene: perScene,
+    deadline_at: iso(input.now + LONGFORM_DIRECTING_GRACE_MS),
+  };
+}
+
+export interface SceneInsertInput {
+  jobId: string;
+  userId: string;
+  scenes: readonly LongformScene[];
+  /**
+   * Act openers render from the previous act's LAST FRAME (depends_on = ordinal − 1). Off when the job uses
+   * reference images: Veo takes references OR a first frame, so a dependency would only serialise the acts.
+   */
+  chainActFrames: boolean;
+}
+
+/** One `queued` longform_scenes row per director scene; spec = the whole scene (the tick renders spec.shot). */
+export function sceneInsertRows(input: SceneInsertInput): Row[] {
+  return input.scenes.map((scene) => ({
+    job_id: input.jobId,
+    user_id: input.userId,
+    ordinal: scene.ordinal,
+    act: scene.act,
+    status: 'queued' satisfies SceneStatus,
+    spec: scene,
+    depends_on: input.chainActFrames && scene.continuity.seedFromPreviousActLastFrame && scene.ordinal > 0 ? scene.ordinal - 1 : null,
+  }));
+}
+
+/** directing → planned (stateMachine `directed`), with the full render deadline counted from now. */
+export function directedColumns(now: number): Row {
+  return jobPatchToColumns({ status: 'planned', deadlineAt: now + LONGFORM_JOB_DEADLINE_MS });
 }

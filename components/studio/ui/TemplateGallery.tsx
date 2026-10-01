@@ -10,6 +10,10 @@
  * never "un-picks" the panel's values, which would surprise someone who only meant to look). The panel's own
  * controls stay below to fine-tune.
  *
+ * ⚠️ A CARD THAT ADDS CONTEXT SAYS SO ON ITS FACE (owner decision 2026-10-01 A-a). A video, image or music card's
+ * request carries its id, and the server adds that card's context (lib/studio/templateContext). The card shows what
+ * that context does as an „Adds: …" line (`adds`), so nothing a template sends is invisible to the user.
+ *
  * Layout: TWO columns. The gallery lives in the settings panel (~320 px) and the phone's sheet — both narrow whatever
  * the viewport — and a viewport breakpoint gave the panel three ~100 px cards whose Georgian labels truncated to one
  * word ("კინო რ…"). Every card is 3:4 with its label on a scrim, so mixed thumbnails and no-image tiles
@@ -31,6 +35,13 @@ export interface TemplateCardItem {
   Icon?: LucideIcon;
   /** A short facts line on the card ("9:16 · 24წმ"). */
   meta?: string;
+  /**
+   * The one-line disclosure of what the card adds beyond the visible controls — „Adds: Georgian polyphonic choir"
+   * (lib/studio/templates `templateAddsLine`, already localised). Absent for a card that adds nothing (a presenter).
+   * Shown on the card under the facts line and read out with its description, so the context a template sends is
+   * never hidden.
+   */
+  adds?: string;
 }
 
 /** `#RRGGBB` → `rgba(r, g, b, a)`. (An 8-digit hex is valid CSS, but some parsers — jsdom among them — drop the whole
@@ -59,6 +70,7 @@ export function TemplateGallery({
         {items.map((t) => {
           const on = activeId === t.id;
           const Icon = t.Icon;
+          const description = t.adds ? `${t.hint}. ${t.adds}` : t.hint;
           return (
             <motion.button
               key={t.id}
@@ -66,8 +78,8 @@ export function TemplateGallery({
               role="radio"
               aria-checked={on}
               aria-label={t.label}
-              aria-description={t.hint}
-              title={t.hint}
+              aria-description={description}
+              title={description}
               data-template={t.id}
               onClick={() => { if (!on) onPick(t.id); }}
               whileHover={reduce ? undefined : { y: -2 }}
@@ -88,6 +100,8 @@ export function TemplateGallery({
               <span className="absolute inset-x-0 bottom-0 p-2.5">
                 <span className="block truncate text-[13px] font-semibold leading-tight text-white">{t.label}</span>
                 {t.meta && <span className="mt-0.5 block truncate text-[11px] leading-tight text-white/70">{t.meta}</span>}
+                {/* Two lines at most, not one: a Georgian disclosure truncated to "ამატებს: ქართ…" would disclose nothing. */}
+                {t.adds && <span data-template-adds="" className="mt-0.5 line-clamp-2 text-[10.5px] leading-tight text-white/80">{t.adds}</span>}
               </span>
               {on && (
                 <span className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-md" aria-hidden="true">

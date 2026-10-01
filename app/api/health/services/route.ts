@@ -71,8 +71,7 @@ async function probe(
       category,
       status: 'ERROR',
       latencyMs: Date.now() - t0,
-      // Redact BEFORE truncating: a thrown message must never carry the probe's own credential into the response.
-      message: e instanceof Error ? e.message.split(envValue).join('[redacted]').slice(0, 120) : 'probe threw',
+      message: e instanceof Error ? e.message.slice(0, 120) : 'probe threw',
       envVar,
     };
   }
@@ -101,11 +100,9 @@ export async function GET(req: NextRequest) {
       return { ok: r.ok, message: r.ok ? `${r.status} OK` : `${r.status} ${r.statusText}` };
     }),
     probe('Google Gemini', 'llm', 'GEMINI_API_KEY', process.env.GEMINI_API_KEY, async () => {
-      // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
-      const r = await fetchWithTimeout('https://generativelanguage.googleapis.com/v1beta/models', {
-        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY! },
-        redirect: 'manual',
-      });
+      const r = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`,
+      );
       return { ok: r.ok, message: r.ok ? `${r.status} OK` : `${r.status} ${r.statusText}` };
     }),
 

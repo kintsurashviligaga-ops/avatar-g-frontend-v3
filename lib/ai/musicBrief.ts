@@ -34,6 +34,12 @@ export interface MusicBriefInput {
   prompt: string;
   /** Genre/style chip, e.g. "Cinematic". */
   style?: string;
+  /**
+   * A template card's descriptor, resolved SERVER-SIDE from its id (lib/studio/templateContext, ≤160 chars — never
+   * client text), e.g. "Georgian polyphonic folk: three-part choral harmony…". Boilerplate like the style: it sits
+   * in the reserved suffix, so it can never push the user's own words out of the budget.
+   */
+  templateDescriptor?: string;
   /** "female vocals" / "male vocals" / "a duet" — appended only for a sung track. */
   vocalDescriptor?: string;
   /** The user's own words to be sung. */
@@ -55,6 +61,8 @@ const clean = (s: string | undefined): string => (typeof s === 'string' ? s.trim
 export function buildMusicBrief(input: MusicBriefInput): MusicBrief {
   const userPrompt = clean(input.prompt);
   const style = clean(input.style);
+  // One line, and no trailing full stop of its own (the suffix adds one) — whatever the caller passed.
+  const descriptor = clean(input.templateDescriptor).replace(/\s+/g, ' ').replace(/[.\s]+$/, '');
   const vocals = clean(input.vocalDescriptor);
   const lyrics = clean(input.lyrics);
 
@@ -63,6 +71,7 @@ export function buildMusicBrief(input: MusicBriefInput): MusicBrief {
   // therefore cut first.
   const suffixParts: string[] = [];
   if (style) suffixParts.push(`Style: ${style}.`);
+  if (descriptor) suffixParts.push(`${descriptor}.`);
   // A vocal descriptor on an instrumental track is a contradiction; the engine is told one thing only.
   if (vocals && !input.instrumental) suffixParts.push(`${vocals}.`);
   if (input.instrumental) suffixParts.push('Instrumental, no vocals.');

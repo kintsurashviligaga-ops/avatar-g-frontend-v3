@@ -136,7 +136,17 @@ export interface PromptAgentInput {
    *  beard…"). When present it becomes the LITERAL character-lock the agent must carry across every scene — this is
    *  the strongest anti-hallucination signal (the agent is otherwise text-only + blind to the photo). */
   characterVisualId?: string;
+  /**
+   * A template card's DIRECTOR NOTE, resolved server-side from its id (lib/studio/templateContext — never client
+   * text; capped at TEMPLATE_NOTE_MAX again here). Wired, but DARK until the director's model is funded: with no
+   * live Gemini the agent returns null and the render falls back to the deterministic plan, where only the template's
+   * LOOK (filmPipeline) applies.
+   */
+  templateNote?: string;
 }
+
+/** The director-note cap (matches lib/studio/templateContext DIRECTOR_NOTE_MAX). */
+export const TEMPLATE_NOTE_MAX = 400;
 
 export const SYSTEM_PROMPT = `You are a Master Film Director.
 
@@ -466,6 +476,11 @@ export function buildDirectorUserContent(input: PromptAgentInput, sceneCount: nu
     `Effect: ${input.effect}\n` +
     `Language: ${input.language}` +
     (input.dialogue && input.dialogue.trim() ? `\nDialogue: ${input.dialogue.trim()}` : '') +
+    // The chosen template card's direction (server-resolved, one line, bounded). It shapes pacing and composition;
+    // the brief, the scene count and the identity locks below still win.
+    (input.templateNote && input.templateNote.trim()
+      ? `\nTemplate direction: ${input.templateNote.replace(/\s+/g, ' ').trim().slice(0, TEMPLATE_NOTE_MAX)}`
+      : '') +
     // VISION LOCK (strongest): a description was extracted directly FROM the user's photo — use it verbatim as the
     // one true identity. This makes the text-only agent effectively vision-aware and kills the stock-persona drift.
     (input.characterVisualId && input.characterVisualId.trim()

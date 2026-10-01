@@ -5,10 +5,19 @@
 -- (lib/video/longform/stateMachine.ts) what to do, does it, and writes the result back. Nothing lives in memory
 -- between ticks, so a killed function loses only its own in-flight call.
 --
--- ⚠️ WRITTEN ONLY BY service_role. Both tables carry money (charge_ref / charge_credits / refunded), so — unlike
--- generation_jobs, which is owner-writable — a user may READ their own rows and never write them (see 20260929a for
--- how a row-trusted refund amount became a way to mint credits). Refunds are still capped by the ledger, never by a
--- row (lib/orchestrator/ledger.netDebitedForRef).
+-- ⚠️ WRITTEN ONLY BY service_role. Both tables carry money (charge_ref / charge_credits / refunded), so a user may
+-- READ their own rows and never write them (see 20260929a for how a row-trusted refund amount became a way to mint
+-- credits, and 20261001f, which took the same owner writes away from generation_jobs). Refunds are still capped by
+-- the ledger, never by a row (lib/orchestrator/ledger.netDebitedForRef).
+--
+-- ⚠️ `directing` IS THE DEFAULT, AND IT IS NOT CLAIMABLE. The create route (app/api/video/longform) can only write
+-- the job and its scenes in two statements, so the job is inserted `directing`, its scenes after it, and only then
+-- promoted to `planned`. A tick that leased a `planned` job with half its scenes would settle it as `no_scenes`. A
+-- create that dies between the writes leaves a `directing` row with nothing charged; its short deadline makes it
+-- claimable once more, and the tick fails it as `directing_abandoned`.
+--
+-- The 8 s grid stays the table's rule (seconds, scene_count). `trim_to_seconds` is the one off-grid escape, unused
+-- today: a later length that is not a multiple of 8 renders on the next 8 s step and is cut to it after the stitch.
 --
 -- ⚠️ The two claim functions are SECURITY DEFINER and executable by service_role ONLY (revoked from public, anon,
 -- authenticated): a claim moves a scene toward a paid Veo submit.
@@ -21,10 +30,12 @@ begin;
 create table if not exists public.longform_jobs (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid not null references auth.users(id) on delete cascade,
-  status                text not null default 'planned'
-                          check (status in ('planned', 'rendering', 'stitching', 'done', 'failed', 'canceled')),
+  status                text not null default 'directing'
+                          check (status in ('directing', 'planned', 'rendering', 'stitching', 'done', 'failed', 'canceled')),
   prompt                text not null check (char_length(prompt) between 1 and 4000),
   seconds               integer not null check (seconds between 8 and 240 and seconds % 8 = 0),
+  -- Off-grid lengths, later: the stitched film is cut to this. Null = the grid length (`seconds`), today always.
+  trim_to_seconds       integer,
   scene_count           integer not null check (scene_count between 1 and 30),
   act_count             integer not null check (act_count between 1 and 3),
   tier                  text not null check (tier in ('standard', 'fast', 'lite')),
@@ -55,12 +66,14 @@ create table if not exists public.longform_jobs (
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
   completed_at          timestamptz,
-  check (scene_count * 8 = seconds)
+  check (scene_count * 8 = seconds),
+  -- A trim only ever cuts INTO the last 8 s clip: it never adds length and never drops a whole scene.
+  check (trim_to_seconds is null or (trim_to_seconds >= 1 and trim_to_seconds < seconds and trim_to_seconds > seconds - 8))
 );
 
 create index if not exists longform_jobs_user_created_idx on public.longform_jobs (user_id, created_at desc);
 create index if not exists longform_jobs_claimable_idx on public.longform_jobs (updated_at)
-  where status in ('planned', 'rendering', 'stitching') or refunds_pending;
+  where status in ('directing', 'planned', 'rendering', 'stitching') or refunds_pending;
 
 drop trigger if exists longform_jobs_updated_at on public.longform_jobs;
 create trigger longform_jobs_updated_at
@@ -132,6 +145,7 @@ revoke insert, update, delete, truncate on public.longform_scenes from anon, aut
 
 -- Lease up to p_limit jobs for one tick. A job is claimable while active (or while a refund is still owed) and not
 -- leased by another tick; the least-recently-touched go first (the lease itself bumps updated_at → round robin).
+-- A `directing` job only once its deadline has passed — before that the create route may still be writing it.
 create or replace function public.claim_longform_jobs(p_limit integer, p_lease_seconds integer)
 returns setof public.longform_jobs
 language sql
@@ -144,7 +158,8 @@ as $$
    where j.id in (
      select c.id
        from public.longform_jobs c
-      where (c.status in ('planned', 'rendering', 'stitching') or c.refunds_pending)
+      where (c.status in ('planned', 'rendering', 'stitching') or c.refunds_pending
+             or (c.status = 'directing' and c.deadline_at < now()))
         and (c.lease_until is null or c.lease_until < now())
       order by c.updated_at asc
       limit greatest(1, least(coalesce(p_limit, 5), 50))

@@ -308,8 +308,18 @@ export function buildCharacterAnchor(prompt: string, opts: FilmPlanOptions = {})
  * composition change shot-to-shot, the world and protagonist do not. This is the
  * "rigid visual style guide" continuity contract the Master Agent enforces.
  */
+/**
+ * The film's aesthetic in the continuity guides: a template card's server-resolved LOOK when one applies
+ * (lib/studio/templateContext — a full descriptive phrase, so it REPLACES "<style> aesthetic" rather than
+ * stacking on it), else the style label, else the neutral default.
+ */
+function aestheticOf(shared: FilmShared): string {
+  if (shared.look) return shared.look;
+  return shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
+}
+
 export function buildStyleGuide(shared: FilmShared): string {
-  const aesthetic = shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
+  const aesthetic = aestheticOf(shared);
   const refCount = shared.referenceImages?.length ?? 0;
   const identity = refCount > 0
     ? `the exact subject from the user's ${refCount} uploaded reference image${refCount > 1 ? 's' : ''} (same face, hair, wardrobe)`
@@ -339,7 +349,7 @@ export function buildStyleGuide(shared: FilmShared): string {
  * this only keeps the world coherent.
  */
 export function buildWorldStyleGuide(shared: FilmShared): string {
-  const aesthetic = shared.style ? `${shared.style} aesthetic` : 'a single consistent cinematic aesthetic';
+  const aesthetic = aestheticOf(shared);
   return (
     // VEO-NATIVE: affirmative prose only. This clause used to end in "NO neon, glowing light-streaks,
     // lens flares, HUD overlays or sci-fi effects" — negations a video model cannot parse, which
@@ -605,6 +615,12 @@ export interface FilmPlanOptions {
   referenceImages?: unknown;
   /** Optional aesthetic/genre override (e.g. "cyberpunk", "noir"). */
   style?: string | null;
+  /**
+   * A template card's film LOOK, resolved server-side from its id (lib/studio/templateContext.resolveFilmTemplate,
+   * ≤160 chars, never client text). Replaces "<style> aesthetic" in both continuity guides and takes part in the
+   * negative's style-conflict filter, so a look is never contradicted by the drift negative it renders beside.
+   */
+  look?: string | null;
   /** PHASE 2 L1 — user camera controls. `cameraMove` overrides the per-beat camera
    *  move in the PROMPT (auto/undefined keeps the storyboard's per-scene variety);
    *  `motionIntensity` (1–10) adds a paced movement directive. Both purely additive. */
@@ -704,6 +720,8 @@ export interface FilmShared {
   /** PHASE 45 §2 — 0–3 reference images mapped into the LTX characterReference array. */
   referenceImages: string[];
   style: string | null;
+  /** The template card's film look (FilmPlanOptions.look) — absent/null = the style label drives the aesthetic. */
+  look?: string | null;
   sceneCount: number;
   totalSec: number;
   /** Frame orientation, identical across all clips so the cut never changes shape. */
@@ -854,9 +872,13 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
   // Style-aware: a film the user asked to be Anime / Neon / Vintage / Noir must not carry the drift negatives that
   // forbid exactly that look ("anime, cartoon", "neon glow", "sepia", "monochrome"). normalizeNegativePrompt also
   // strips negation words (Google: describe what to avoid, never "no …") and caps the list at 800 characters.
+  // ⚠️ A template LOOK takes part in that filter alongside the style label: the look is what the positive prompt
+  // actually asks for ("a black-and-white film noir look…"), so a Director negative of "black and white,
+  // desaturated" must not be allowed to cancel it on the provider's negative field.
+  const look = typeof opts.look === 'string' ? opts.look.replace(/\s+/g, ' ').trim() : '';
   const negativePrompt = normalizeNegativePrompt(
     briefNegative ? `${FILM_DRIFT_NEGATIVE}, ${briefNegative}` : FILM_DRIFT_NEGATIVE,
-    opts.style ?? undefined,
+    [opts.style, look].filter(Boolean).join(' ') || undefined,
   ) || FILM_DRIFT_NEGATIVE.slice(0, 800);
 
   const shared: FilmShared = {
@@ -865,6 +887,7 @@ export function planFilmScenes(prompt: string, opts: FilmPlanOptions = {}): Film
     avatarReference,
     referenceImages,
     style: opts.style ?? null,
+    ...(look ? { look } : {}),
     sceneCount: segments.length,
     totalSec,
     orientation: opts.orientation === 'vertical' ? 'vertical' : 'landscape',

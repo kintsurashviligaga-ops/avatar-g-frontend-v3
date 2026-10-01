@@ -21,6 +21,10 @@ import {
   FILM_DRIFT_NEGATIVE,
   type FilmShared,
 } from './filmPipeline';
+import { VIDEO_TEMPLATES } from '@/lib/studio/templates';
+import { resolveFilmTemplate } from '@/lib/studio/templateContext';
+
+jest.mock('server-only', () => ({}));
 
 describe('film constants', () => {
   it('derives 6 scenes from a 30-second runtime at the 5s film cadence', () => {
@@ -501,6 +505,73 @@ describe('buildStyleGuide — the rigid continuity contract', () => {
   });
   it('locks to the user avatar identity when supplied', () => {
     expect(buildStyleGuide({ ...base, avatarReference: 'avatar://me' })).toMatch(/custom avatar/i);
+  });
+  it('a template LOOK replaces "<style> aesthetic" (it is a full phrase, not stacked on the label)', () => {
+    const g = buildStyleGuide({ ...base, style: 'Noir', look: 'a black-and-white film noir look with hard shadows' });
+    expect(g).toContain('Consistent across every shot: a black-and-white film noir look with hard shadows, one color palette');
+    expect(g).not.toMatch(/Noir aesthetic/);
+  });
+});
+
+describe('planFilmScenes — a template card\'s server-resolved LOOK (lib/studio/templateContext)', () => {
+  const lookOf = (id: string) => {
+    const t = VIDEO_TEMPLATES.find((x) => x.id === id)!;
+    return { style: t.values.style, musicVideo: t.values.mode === 'musicvideo', ...resolveFilmTemplate({ templateId: id, style: t.values.style, musicVideoMode: t.values.mode === 'musicvideo' })! };
+  };
+
+  it('reaches every scene — through the protagonist guide AND the script-driven world guide', () => {
+    const noir = lookOf('noir');
+    const plain = planFilmScenes('a detective waits in the rain', { style: noir.style, look: noir.look, totalSec: 24 });
+    expect(plain.shared.look).toBe(noir.look);
+    for (const s of plain.scenes) expect(s.prompt).toContain(noir.look);
+    const scripted = planFilmScenes('a detective waits in the rain', {
+      style: noir.style, look: noir.look, totalSec: 24,
+      sceneScripts: ['a man under a streetlamp', 'a phone rings in an empty office', 'a car pulls away'],
+    });
+    for (const s of scripted.scenes) {
+      expect(s.prompt).toContain(`identical across every shot: ${noir.look};`);
+      expect(s.prompt).not.toContain('Noir aesthetic');
+    }
+  });
+
+  it('THE NOIR LOOK SURVIVES FILM_DRIFT_NEGATIVE: a Director negative that forbids black-and-white cannot cancel it', () => {
+    const noir = lookOf('noir');
+    const plan = planFilmScenes('a detective waits in the rain', {
+      style: noir.style, look: noir.look,
+      negativePrompt: 'black and white, monochrome, desaturated, greyscale, washed out',
+    });
+    const neg = plan.shared.negativePrompt.toLowerCase();
+    for (const term of ['black and white', 'monochrome', 'desaturated', 'greyscale']) expect(neg).not.toContain(term);
+    expect(neg).toContain('washed out');   // the rest of the Director's negative still lands
+    expect(neg).toContain('watermark');    // and so does the drift baseline
+    for (const s of plan.scenes) expect(s.prompt).toContain('black-and-white film noir');
+  });
+
+  it('the LOOK itself drives the conflict filter, not only the style label', () => {
+    // A label the filter does not know, with a look that IS monochrome: before, "black and white" stayed on the
+    // negative field and fought the positive prompt.
+    const plan = planFilmScenes('a portrait', { style: 'Dramatic', look: 'a stark black-and-white look', negativePrompt: 'black and white, blurry' });
+    expect(plan.shared.negativePrompt).not.toContain('black and white');
+    expect(plan.shared.negativePrompt).toContain('blurry');
+  });
+
+  it('no card\'s look names anything the negative it renders beside will suppress', () => {
+    for (const t of VIDEO_TEMPLATES) {
+      const c = lookOf(t.id);
+      const plan = planFilmScenes('a scene', { style: c.style, look: c.look, musicVideo: c.musicVideo });
+      const look = c.look.toLowerCase();
+      for (const term of plan.shared.negativePrompt.toLowerCase().split(', ')) {
+        expect(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(look)).toBe(false);
+      }
+    }
+  });
+
+  it('no look → byte-identical to before (the label drives the aesthetic)', () => {
+    const a = planFilmScenes('a lighthouse in a storm', { style: 'Noir' });
+    const b = planFilmScenes('a lighthouse in a storm', { style: 'Noir', look: '   ' });
+    expect(b).toEqual(a);
+    expect(a.shared).not.toHaveProperty('look');
+    expect(a.scenes[0]!.prompt).toContain('Noir aesthetic');
   });
 });
 

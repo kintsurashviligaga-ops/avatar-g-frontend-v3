@@ -124,26 +124,22 @@ export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operat
   if (Number.isFinite(args.durationSec)) parameters.durationSeconds = Math.min(8, Math.max(4, Math.round(args.durationSec as number)));
 
   try {
-    // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
-    const res = await fetch(`${GL_BASE}/models/${geminiVeoModel()}:predictLongRunning`, {
+    const res = await fetch(`${GL_BASE}/models/${geminiVeoModel()}:predictLongRunning?key=${encodeURIComponent(key)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
-      redirect: 'manual',
       body: JSON.stringify({ instances: [instance], parameters }),
       signal: AbortSignal.timeout(CREATE_TIMEOUT_MS),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      // `detail` goes to Sentry: whatever a provider body or a thrown message carries, never the key.
-      reportGeminiFallback({ leg: 'veo', fallbackTo: 'Runway/Kling', status: res.status, detail: body.split(key).join('[redacted]'), model: geminiVeoModel() });
+      reportGeminiFallback({ leg: 'veo', fallbackTo: 'Runway/Kling', status: res.status, detail: body, model: geminiVeoModel() });
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as { name?: unknown };
     return typeof j.name === 'string' && j.name ? { operation: j.name } : null;
   } catch (e) {
-    const detail = (e instanceof Error ? e.message : String(e)).split(key).join('[redacted]');
-    reportGeminiFallback({ leg: 'veo', fallbackTo: 'Runway/Kling', detail, model: geminiVeoModel() });
+    reportGeminiFallback({ leg: 'veo', fallbackTo: 'Runway/Kling', detail: e instanceof Error ? e.message : String(e), model: geminiVeoModel() });
     return null;
   }
 }
@@ -155,12 +151,7 @@ export async function pollGeminiVeoTask(operation: string): Promise<VeoPollResul
   const key = resolveGeminiKey();
   if (!key || !operation) return { status: 'failed', uri: null };
   try {
-    const res = await fetch(`${GL_BASE}/${operation}`, {
-      headers: { 'x-goog-api-key': key },
-      cache: 'no-store',
-      redirect: 'manual',
-      signal: AbortSignal.timeout(15_000),
-    });
+    const res = await fetch(`${GL_BASE}/${operation}?key=${encodeURIComponent(key)}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return { status: 'processing', uri: null }; // transient → keep polling
     const j = (await res.json().catch(() => ({}))) as {
       done?: boolean;

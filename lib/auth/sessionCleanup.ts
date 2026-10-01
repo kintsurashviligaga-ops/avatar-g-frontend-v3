@@ -134,6 +134,12 @@ export function clearLocalSessionState(): CleanupResult {
   };
 }
 
+/**
+ * Dispatched on `window` by signOutAndClear. In-memory surfaces that hold user data outside storage (React state,
+ * module stores such as the photo-culling session) listen for it and drop their copy.
+ */
+export const SESSION_CLEARED_EVENT = 'myavatar:session-cleared';
+
 /** Minimal shape we need — avoids importing the Supabase types into a module that is otherwise pure. */
 interface SignOutable {
   auth: { signOut: () => Promise<unknown> };
@@ -155,7 +161,7 @@ export async function signOutAndClear(client: SignOutable | null | undefined): P
     // Tell any mounted surface to drop its in-memory copy — several components hold conversations in
     // React state, which no amount of storage clearing would reset on its own.
     try {
-      window.dispatchEvent(new Event('myavatar:session-cleared'));
+      window.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
     } catch { /* ignore */ }
   }
   return clearLocalSessionState();

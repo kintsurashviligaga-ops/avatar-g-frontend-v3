@@ -110,6 +110,12 @@ const orchestrateSchema = z.object({
   // The Video-panel effect (Cinematic / Vintage / Neon …) → drives the clip prompt's
   // visual style guide. Previously only reached the storyboard frames, never the render.
   style: z.string().max(80).optional(),
+  // The video template card the user picked (lib/studio/templates; sent only while the panel still matches it) — an
+  // ID, never text. filmComposite resolves its look + director note SERVER-SIDE (lib/studio/templateContext) and
+  // ignores an id that does not match this render's style, mode and length, so a malformed or stale one degrades to
+  // "no template" rather than a 400.
+  // `.catch(undefined)`: an over-long or non-string id is dropped here instead of failing the whole render.
+  templateId: z.string().max(40).optional().catch(undefined),
   // Prompt-Agent character LOCK — one detailed appearance fragment injected verbatim
   // into every scene so the protagonist never drifts shot-to-shot.
   characterLock: z.string().max(2000).optional(),
@@ -264,7 +270,7 @@ export async function POST(req: NextRequest) {
       // PHASE 45 §2/§3 — forward reference images + frame orientation via metadata
       // so the film composite (handleFilmComposite) threads them into the identity
       // lock and the per-clip aspect ratio.
-      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.characterLock || data.veo || data.sceneMeta?.length)
+      metadata: (data.referenceImages?.length || data.orientation || data.sceneFrames?.length || data.sceneScripts?.length || data.sceneCount || data.clipSec || data.narrationScript || data.narratorGender || data.voiceLanguage || data.voicePersona || data.voiceTone || data.cameraMove || data.motionIntensity || data.videoModel || data.dialogueScript || data.masterScript || data.soundtrackUrl || data.musicVideoMode || data.style || data.templateId || data.characterLock || data.veo || data.sceneMeta?.length)
         ? {
             ...(data.metadata || {}),
             ...(data.referenceImages?.length ? { referenceImages: data.referenceImages } : {}),
@@ -292,6 +298,8 @@ export async function POST(req: NextRequest) {
             ...(data.musicVideoMode ? { musicVideoMode: true } : {}),
             // Prompt-Agent: the chosen effect + the locked character description.
             ...(data.style ? { style: data.style } : {}),
+            // The template card's id only — filmComposite resolves (and re-checks) what it adds.
+            ...(data.templateId ? { templateId: data.templateId } : {}),
             ...(data.characterLock ? { characterLock: data.characterLock } : {}),
             ...(data.veo ? { veo: data.veo } : {}),
             ...(data.sceneMeta?.length ? { sceneMeta: data.sceneMeta } : {}),

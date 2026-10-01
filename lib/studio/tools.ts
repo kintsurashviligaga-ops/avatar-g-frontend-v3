@@ -1,5 +1,5 @@
 import {
-  Box, Film, Image as ImageIcon, Languages, MessageSquare, Music2, Package, PersonStanding, Presentation, Repeat,
+  Aperture, Box, Film, Image as ImageIcon, Languages, MessageSquare, Music2, Package, PersonStanding, Presentation, Repeat,
   ScanFace, Scissors, Wand2, type LucideIcon,
 } from 'lucide-react';
 
@@ -15,14 +15,14 @@ import {
  */
 export type ToolId =
   | 'video' | 'image' | 'music' | 'avatar' | 'remix' | 'chat'
-  | 'product' | 'swap' | 'motion' | 'montage' | 'dubbing' | 'model3d' | 'presentation';
+  | 'product' | 'swap' | 'motion' | 'montage' | 'dubbing' | 'model3d' | 'presentation' | 'photo';
 
 type L10n = { ka: string; en: string; ru: string };
 export type ToolLang = 'ka' | 'en' | 'ru';
 
 export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'music', 'avatar', 'remix'];
-/** Tools that live one level down: video variants, motion, and the four full studios. */
-export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'motion', 'montage', 'dubbing', 'model3d', 'presentation'];
+/** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
+export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {
@@ -39,6 +39,9 @@ export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n
   dubbing: { Icon: Languages, name: { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' }, sub: { ka: 'ვიდეო სხვა ენაზე', en: 'A video in another language', ru: 'Видео на другом языке' } },
   model3d: { Icon: Box, name: { ka: '3D მოდელი', en: '3D model', ru: '3D-модель' }, sub: { ka: 'ტექსტიდან ან ფოტოდან', en: 'From text or a photo', ru: 'Из текста или фото' } },
   presentation: { Icon: Presentation, name: { ka: 'პრეზენტაცია', en: 'Presentation', ru: 'Презентация' }, sub: { ka: 'თემიდან მზა სლაიდები', en: 'Slides from a topic', ru: 'Слайды по теме' } },
+  // ⚠️ The line IS the promise: culling runs on the device (components/studio/photo — a same-origin worker, no
+  // upload, no credits). Anything that ever sends a photo off the device must change this line in the same commit.
+  photo: { Icon: Aperture, name: { ka: 'ფოტოების შერჩევა', en: 'Photo culling', ru: 'Отбор фото' }, sub: { ka: 'ფოტოები შენს მოწყობილობას არ ტოვებს', en: 'Photos never leave your device', ru: 'Фото не покидают ваше устройство' } },
 };
 
 export const toolLang = (locale: string): ToolLang => (locale === 'en' || locale === 'ru' ? locale : 'ka');

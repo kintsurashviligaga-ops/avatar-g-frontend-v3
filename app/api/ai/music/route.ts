@@ -27,6 +27,7 @@ import { buildMusicBrief, flattenMusicBrief, type MusicBrief } from '@/lib/ai/mu
 import { promptToEnglish, lastTranslateOutcome } from '@/lib/ai/promptToEnglish';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 import { sanitizeStyle } from '@/lib/studio/style';
+import { resolveTemplateContext } from '@/lib/studio/templateContext';
 
 /**
  * Assistant music generation.
@@ -275,8 +276,11 @@ export async function POST(req: NextRequest) {
   let clientJobId = '';
   // Captured where `body` is in scope; used far below to bind the billing ref to the actual request.
   let bodyFp = '';
+  // The template card's id, as sent (an ID, never text) — resolved against the request's own values below.
+  let rawTemplateId: unknown;
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; jobId?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; jobId?: unknown; templateId?: unknown };
+    rawTemplateId = body.templateId;
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -339,6 +343,12 @@ export async function POST(req: NextRequest) {
           : 'male and female duet, two voices'
       : '';
 
+  // ⚠️ THE TEMPLATE'S DESCRIPTOR IS RESOLVED HERE, FROM ITS ID — never accepted as text (lib/studio/templateContext).
+  // Only when the values THIS request carries (genre, tempo, length, instrumental, vocal) still select the card, so a
+  // stale or borrowed id adds nothing. It rides in the brief's reserved suffix (buildMusicBrief), never in place of
+  // the user's words, and only on the composed paths (a cover or a cloned voice keeps its own source).
+  const template = resolveTemplateContext('music', rawTemplateId, { genre: style, tempo, duration: durationSec, instrumental: makeInstrumental, voiceType });
+
   // ── RESERVE-BEFORE-RENDER + IN-FLIGHT MUTEX (V1 + V4) ────────────────────────
   // Replaces the old fail-open READ gate. (1) A short-TTL Redis mutex keyed on the request
   // SIGNATURE instantly blocks a double-click from spawning a SECOND paid Udio/EL render. (2) The
@@ -399,7 +409,7 @@ export async function POST(req: NextRequest) {
 
   try {
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0 })}`;
+    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null })}`;
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
     // lapses mid-render and a byte-identical resubmit past the window mints a FRESH reserveRef → a second
     // deductCredits → DOUBLE-CHARGE. The key hashes the full brief, so only an identical duplicate submit
@@ -456,7 +466,7 @@ export async function POST(req: NextRequest) {
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
       const composed = await composeTrackUrl(
-        buildMusicBrief({ prompt: cappedEn, style, lyrics, instrumental: false }),
+        buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, lyrics, instrumental: false }),
         style, false, durationSec,
       );
       try {
@@ -513,7 +523,7 @@ export async function POST(req: NextRequest) {
       // vocal descriptor (female/male/duet) is appended for a sung track.
       // Structured, not concatenated: the brief, the style, the vocal descriptor and the LYRICS each
       // stay their own field, so the boilerplate can never push the user's words out of the budget.
-      const brief = buildMusicBrief({ prompt: cappedEn, style, vocalDescriptor, lyrics, instrumental: makeInstrumental });
+      const brief = buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, vocalDescriptor, lyrics, instrumental: makeInstrumental });
       // If anything STILL had to be cut, the user is told. Silently shortening the words someone chose
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.
