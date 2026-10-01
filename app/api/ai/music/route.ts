@@ -29,8 +29,8 @@ import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
 import {
-  controlModeFor, musicStyleLine, musicgenParams, parseMusicControls, promptDirectives, udioParams,
-  type MusicControlMode, type MusicControls, type MusicEngineId,
+  musicControlsReport, musicStyleLine, musicgenParams, parseMusicControls, promptDirectives, udioParams,
+  type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
 
 /**
@@ -52,7 +52,8 @@ import {
  * Granular controls (lib/ai/musicControls): up to three `styles`, `vocalGender` (auto/female/male/duet), and the
  * Weirdness / Style influence sliders. On Lyria and ElevenLabs the sliders are sentences in the brief — approximate by
  * design; MusicGen takes them as sampling parameters, Udio only behind MUSIC_SUNO_PARAMS. The response's
- * `controls: { engine, mode }` says which happened, so the result card can be honest about it.
+ * `controls: { engine, mode, applied }` says which happened, and whether a slider reached the engine at all, so the
+ * result card can be honest about it.
  *
  * Synchronous start+poll, bounded WELL under the 300s function ceiling. Fail-closed
  * with a clean reason on a real miss; fail-open on the re-host (keeps the provider URL).
@@ -126,11 +127,12 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 // `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
 // others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
-type ControlsReport = { engine: MusicEngineId; mode: MusicControlMode };
-async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls): Promise<{ url: string; engine: string; controls: ControlsReport }> {
+async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
   // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
   // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.
   const prompt = flattenMusicBrief(brief);
+  // Udio and ElevenLabs Music take this one line, with the style restated at its end.
+  const oneLine = style ? `${prompt}. Style: ${style}.` : prompt;
   // FIX 2 — lengthSec === 0 means "full song": keep Udio's full ~2–4 min output (no
   // trim). Otherwise clamp to a 15–90s window. secs===0 is the skip-trim sentinel.
   const secs = lengthSec === 0 ? 0 : Math.max(15, Math.min(90, Math.round(lengthSec) || 30));
@@ -141,8 +143,10 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   const elMusicSec = secs === 0 ? 120 : secs; // ElevenLabs Music: ~2-min full song
   const musicgenSec = secs === 0 ? 90 : secs; // MusicGen fallback: bounded so it finishes in time
 
-  type Track = { url: string; engine: string; controls: ControlsReport };
-  const report = (engine: MusicEngineId): ControlsReport => ({ engine, mode: controlModeFor(engine) });
+  type Track = { url: string; engine: string; controls: MusicControlsReport };
+  // `sent` is the EXACT text that engine was handed: `applied` asks whether a slider made it into the request, so a
+  // slider moved only within the neutral band, or whose sentence the brief had no room for, reports false.
+  const report = (engine: MusicEngineId, sent: string): MusicControlsReport => musicControlsReport(engine, controls, sent);
 
   // Each provider's EXACT existing logic, now expressed as a failover attempt. Order is
   // unchanged: Udio (funded primary) → ElevenLabs Music → MusicGen. The chain is run
@@ -153,7 +157,7 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   const udioRun = async (): Promise<Track> => {
     const udio = await generateUdioTrack(
       {
-        prompt: style ? `${prompt}. Style: ${style}.` : prompt, style, makeInstrumental: instrumental,
+        prompt: oneLine, style, makeInstrumental: instrumental,
         // Ignored by the client unless MUSIC_SUNO_PARAMS is on (unconfirmed wire fields — see lib/udio/client).
         ...(controls ? { controls: udioParams(controls, { instrumental }) } : {}),
       },
@@ -165,27 +169,28 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
       // song"). Fail-open: if the trim misses, keep the full track.
       if (secs > 0) {
         const trimmed = await trimAudioToDuration(udio.audioUrl, secs);
-        return { url: trimmed ?? udio.audioUrl, engine: 'Udio', controls: report('udio') }; // re-hosted by caller
+        return { url: trimmed ?? udio.audioUrl, engine: 'Udio', controls: report('udio', oneLine) }; // re-hosted by caller
       }
-      return { url: udio.audioUrl, engine: 'Udio', controls: report('udio') }; // full song — no trim
+      return { url: udio.audioUrl, engine: 'Udio', controls: report('udio', oneLine) }; // full song — no trim
     }
     throw new Error(`Udio did not complete (${udio.status})`);
   };
   const elRun = async (): Promise<Track> => {
     const { audio, contentType } = await composeElevenLabsMusic({
-      prompt: style ? `${prompt}. Style: ${style}.` : prompt,
+      prompt: oneLine,
       lengthMs: elMusicSec * 1000,
       instrumental,
     });
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
     const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604800);
-    if (url) return { url, engine: 'ElevenLabs Music', controls: report('elevenlabs-music') };
+    if (url) return { url, engine: 'ElevenLabs Music', controls: report('elevenlabs-music', oneLine) };
     throw new Error('ElevenLabs Music host failed');
   };
   const musicgenRun = async (): Promise<Track> => {
     // The sliders as real sampling knobs (temperature / guidance); untouched sliders send neither.
-    const score = await generateMusic(style ? `${prompt}, ${style}` : prompt, musicgenSec, controls ? musicgenParams(controls) : {});
-    if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen', controls: report('musicgen') };
+    const text = style ? `${prompt}, ${style}` : prompt;
+    const score = await generateMusic(text, musicgenSec, controls ? musicgenParams(controls) : {});
+    if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen', controls: report('musicgen', text) };
     throw new Error('MusicGen did not complete in time');
   };
   // Google LYRIA 3 — opt-in PRIMARY music engine for BOTH instrumental tracks AND vocal songs (Lyria 3 sings
@@ -205,7 +210,7 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     const ext = /mpeg|mp3/i.test(t.mime) ? 'mp3' : /wav/i.test(t.mime) ? 'wav' : 'mp3';
     const path = `omni-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const url = await uploadAndSign('uploads', path, t.base64, t.mime, 604800);
-    if (url) return { url, engine: 'Lyria', controls: report('lyria') };
+    if (url) return { url, engine: 'Lyria', controls: report('lyria', brief.prompt) };
     throw new Error('Lyria host failed');
   };
 
@@ -483,7 +488,7 @@ export async function POST(req: NextRequest) {
     const directives = promptDirectives(controls);
     // How the controls reached the engine that composed the track — set on the composed paths only (a cover or a
     // cloned voice keeps its own source and takes no controls).
-    let controlsReport: ControlsReport | null = null;
+    let controlsReport: MusicControlsReport | null = null;
 
     // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
     // re-imagines it in the requested style (conditioned on the track's melody);
@@ -655,7 +660,8 @@ export async function POST(req: NextRequest) {
       ...(settledSec !== billSeconds ? { billedSec: settledSec, requestedSec: billSeconds, refunded: true } : {}),
       ...((briefTruncated.prompt || briefTruncated.lyrics) ? { truncated: briefTruncated } : {}),
       // Whether the sliders were real engine parameters ('native') or sentences in the brief ('prompt' — Lyria,
-      // ElevenLabs, Udio without MUSIC_SUNO_PARAMS), so the result card can call them approximate when they were.
+      // ElevenLabs, Udio without MUSIC_SUNO_PARAMS), so the result card can call them approximate when they were, and
+      // whether any slider reached the engine at all (`applied`), so it claims nothing when none did.
       ...(controlsReport ? { controls: controlsReport } : {}),
       ...(coverUrl ? { coverUrl } : {}),
       // ⚠️ REPORTED SO "THE MUSIC IGNORED MY PROMPT" IS DIAGNOSABLE FROM THE OUTSIDE. The engines read

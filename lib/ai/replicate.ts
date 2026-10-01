@@ -50,7 +50,7 @@ function extractAudioUrl(output: unknown): string {
 export interface MusicgenSampling {
   /** Sampling temperature; MusicGen's default is 1. Clamped to 0.1–2 here whatever the caller sends. */
   temperature?: number;
-  /** Classifier-free guidance; MusicGen's default is 3. Clamped to 0–10 here. */
+  /** Classifier-free guidance; MusicGen's default is 3. Clamped to 0–10 and ROUNDED here: the model takes an int. */
   classifierFreeGuidance?: number;
 }
 
@@ -60,7 +60,11 @@ const finiteIn = (v: unknown, lo: number, hi: number): number | undefined =>
 export async function generateMusic(prompt: string, duration: number = 30, sampling: MusicgenSampling = {}) {
   try {
     const temperature = finiteIn(sampling.temperature, 0.1, 2);
-    const guidance = finiteIn(sampling.classifierFreeGuidance, 0, 10);
+    // ⚠️ A WHOLE NUMBER ON THE WIRE. The pinned version types classifier_free_guidance as `int`, and Replicate checks
+    // the input against that schema when it creates the prediction, so 1.4 is a 422, not a 1. Each such miss also
+    // counts toward the shared `musicgen` breaker. Rounded here, whatever the caller computed.
+    const cfg = finiteIn(sampling.classifierFreeGuidance, 0, 10);
+    const guidance = cfg === undefined ? undefined : Math.round(cfg);
     const output = (await replicate.run(
       "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
       {

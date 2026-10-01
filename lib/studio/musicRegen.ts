@@ -14,7 +14,8 @@
  * the spec's own values still select that card, because the route re-checks exactly that and would ignore it anyway.
  *
  * And the GRANULAR CONTROLS (lib/ai/musicControls): `genre` is the style LINE the request sent ("georgian folk, jazz"
- * — one label on a spec from before multi-select), resent as both `style` and the `styles` list; the singer is the
+ * — one label on a spec from before multi-select, and a renamed one brought up to date: an older spec's 'folk' was the
+ * Georgian Folk chip and re-rolls as 'georgian folk'), resent as both `style` and the `styles` list; the singer is the
  * 4-stop `vocalGender` (Auto included, so a re-roll of an Auto song stays Auto — a spec persisted earlier stored
  * `voiceType`, which is still read); and the Weirdness / Style influence sliders. A field an older spec lacks is
  * omitted, and the route applies its own default (Auto, 50, 50).
@@ -22,7 +23,7 @@
  * Pure and client-safe — imported by the studio component; the route clamps every field again server-side.
  */
 import { TEMPLATE_ID_RX, matchMusicTemplate } from '@/lib/studio/templates';
-import { clampSlider, isVocalGender, musicStyleLine, stylesFromLine, type VocalGender } from '@/lib/ai/musicControls';
+import { clampSlider, cleanStyles, isVocalGender, musicStyleLine, stylesFromLine, type VocalGender } from '@/lib/ai/musicControls';
 
 export type MusicTempo = 'slow' | 'medium' | 'fast';
 /** The singer as specs persisted before the 4-stop control stored it (`voiceType`). New specs store `vocalGender`. */
@@ -67,9 +68,24 @@ function normSlider(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? clampSlider(v) : undefined;
 }
 
-/** The style line the route will compose from: the cleaned labels, re-joined. A line with no usable label is kept as given. */
+/**
+ * Style values an earlier build sent that the studio has since renamed, keyed lowercase. A Map, not an object literal,
+ * so a label like "constructor" cannot look up an Object.prototype member.
+ *
+ * ⚠️ 'folk' WAS THE GEORGIAN FOLK CHIP, and the Georgian Folk card's genre, until Round 3 changed the value to
+ * 'georgian folk'. Without this, a track saved before that re-rolls as generic folk. A Round-2 spec saved from the card
+ * also loses its `templateId`, because the card no longer matches 'folk', so the re-roll drops the Georgian descriptor
+ * as well. (From 2026-06-13 to 06-24 the panel's 'folk' chip meant generic folk, so a re-roll of a track from those
+ * eleven days now comes back Georgian. The chip has meant Georgian Folk ever since.)
+ */
+const LEGACY_STYLES: ReadonlyMap<string, string> = new Map([['folk', 'georgian folk']]);
+
+/**
+ * The style line the route will compose from: the cleaned labels, renamed ones brought up to date (LEGACY_STYLES), then
+ * re-joined. A line with no usable label is kept as given.
+ */
 function normGenre(genre: string): string {
-  const styles = stylesFromLine(genre);
+  const styles = cleanStyles(stylesFromLine(genre).map((s) => LEGACY_STYLES.get(s.toLowerCase()) ?? s));
   return styles.length ? musicStyleLine(styles) : genre;
 }
 

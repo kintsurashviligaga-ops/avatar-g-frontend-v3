@@ -1,8 +1,8 @@
 /** @jest-environment node */
 import {
-  MAX_STYLES, MUSICGEN_DEFAULT_GUIDANCE, MUSICGEN_DEFAULT_TEMPERATURE, NEUTRAL_HIGH, NEUTRAL_LOW, SLIDER_DEFAULT, STYLE_LABEL_MAX,
-  cleanStyles, controlModeFor, isSliderNeutral, musicSunoParamsEnabled, musicStyleLine, musicgenParams, parseMusicControls,
-  promptDirectives, stylesFromLine, toggleStyle, udioParams, type MusicControls,
+  MAX_STYLES, MUSICGEN_DEFAULT_TEMPERATURE, NEUTRAL_HIGH, NEUTRAL_LOW, SLIDER_DEFAULT, STRONG_HIGH, STRONG_LOW, STYLE_LABEL_MAX,
+  cleanStyles, controlModeFor, isSliderNeutral, musicControlsReport, musicSunoParamsEnabled, musicStyleLine, musicgenParams,
+  parseMusicControls, promptDirectives, stylesFromLine, toggleStyle, udioParams, type MusicControls,
 } from './musicControls';
 import { STYLE_MAX } from '@/lib/studio/style';
 
@@ -145,9 +145,78 @@ describe('musicgenParams — native on MusicGen, centred on the model\'s own def
     expect(musicgenParams({ weirdness: 0, styleInfluence: 0 })).toEqual({ temperature: 0.7, classifierFreeGuidance: 1 });
     expect(musicgenParams({ weirdness: 100, styleInfluence: 100 })).toEqual({ temperature: 1.3, classifierFreeGuidance: 5 });
     expect(musicgenParams({ weirdness: 75, styleInfluence: 50 })).toEqual({ temperature: 1.15 });
-    // A value one step off the default still moves the knob, and in the right direction.
-    expect(musicgenParams({ weirdness: 51, styleInfluence: 49 }).temperature).toBeGreaterThan(MUSICGEN_DEFAULT_TEMPERATURE);
-    expect(musicgenParams({ weirdness: 51, styleInfluence: 49 }).classifierFreeGuidance).toBeLessThan(MUSICGEN_DEFAULT_GUIDANCE);
+    // Temperature is a float on the wire, so one step off the default still moves it, and in the right direction.
+    expect(musicgenParams({ weirdness: 51, styleInfluence: 50 }).temperature).toBeGreaterThan(MUSICGEN_DEFAULT_TEMPERATURE);
+    expect(musicgenParams({ weirdness: 49, styleInfluence: 50 }).temperature).toBeLessThan(MUSICGEN_DEFAULT_TEMPERATURE);
+  });
+
+  test('guidance is ALWAYS a whole number 1–5: the model takes an int, and Replicate rejects 1.4 with a 422', () => {
+    let sent = 0;
+    for (let s = 0; s <= 100; s++) {
+      const g = musicgenParams({ weirdness: 50, styleInfluence: s }).classifierFreeGuidance;
+      if (g === undefined) continue;
+      sent += 1;
+      expect(Number.isInteger(g)).toBe(true);
+      expect(g).toBeGreaterThanOrEqual(1);
+      expect(g).toBeLessThanOrEqual(5);
+    }
+    expect(sent).toBeGreaterThan(0);
+  });
+
+  test('guidance follows the directive bands: one step per band, nothing in the middle band', () => {
+    const at = (s: number) => musicgenParams({ weirdness: 50, styleInfluence: s }).classifierFreeGuidance;
+    for (let s = NEUTRAL_LOW; s <= NEUTRAL_HIGH; s++) expect(at(s)).toBeUndefined();
+    expect([0, STRONG_LOW - 1, STRONG_LOW, NEUTRAL_LOW - 1, NEUTRAL_HIGH + 1, STRONG_HIGH, STRONG_HIGH + 1, 100].map(at))
+      .toEqual([1, 1, 2, 2, 4, 4, 5, 5]);
+    // …so MusicGen's guidance moves exactly where Lyria would get a Style influence sentence.
+    for (let s = 0; s <= 100; s++) {
+      expect(at(s) === undefined).toBe(promptDirectives({ weirdness: 50, styleInfluence: s }).length === 0);
+    }
+  });
+});
+
+describe('musicControlsReport — `applied` says whether a slider REACHED the engine, not whether one moved', () => {
+  const off = {} as NodeJS.ProcessEnv;
+  const on = { MUSIC_SUNO_PARAMS: '1' } as NodeJS.ProcessEnv;
+  const BRIEF = 'a summer night by the sea. Style: jazz.';
+  const sentWith = (c: MusicControls) => [BRIEF, ...promptDirectives(c)].join(' ');
+
+  test('Lyria: a slider sentence in the text it was sent → applied, approximately', () => {
+    const c = ctl({ weirdness: 92 });
+    expect(musicControlsReport('lyria', c, sentWith(c), off)).toEqual({ engine: 'lyria', mode: 'prompt', applied: true });
+  });
+
+  test('a slider moved only within the neutral band writes nothing, so nothing was applied', () => {
+    const c = ctl({ weirdness: 60, styleInfluence: 40 });
+    expect(promptDirectives(c)).toEqual([]);
+    for (const engine of ['lyria', 'elevenlabs-music', 'udio'] as const) {
+      expect(musicControlsReport(engine, c, sentWith(c), off).applied).toBe(false);
+    }
+  });
+
+  test('a sentence the brief had no room for was not applied: the text sent is what counts', () => {
+    const c = ctl({ weirdness: 92, styleInfluence: 10 });
+    expect(musicControlsReport('lyria', c, BRIEF, off).applied).toBe(false);
+    const [weird] = promptDirectives(c);
+    expect(musicControlsReport('lyria', c, `${BRIEF} ${weird}`, off).applied).toBe(true); // one of the two is enough
+  });
+
+  test('MusicGen: a native parameter counts (temperature moves inside the band too); in-band guidance sends nothing', () => {
+    expect(musicControlsReport('musicgen', ctl({ weirdness: 60 }), BRIEF, off)).toEqual({ engine: 'musicgen', mode: 'native', applied: true });
+    expect(musicControlsReport('musicgen', ctl({ styleInfluence: 40 }), BRIEF, off).applied).toBe(false);
+    expect(musicControlsReport('musicgen', ctl(), BRIEF, off).applied).toBe(false);
+  });
+
+  test('Udio: its native fields count only with MUSIC_SUNO_PARAMS on, and the singer is not a slider', () => {
+    const c = ctl({ weirdness: 55 });
+    expect(musicControlsReport('udio', c, BRIEF, off)).toEqual({ engine: 'udio', mode: 'prompt', applied: false });
+    expect(musicControlsReport('udio', c, BRIEF, on)).toEqual({ engine: 'udio', mode: 'native', applied: true });
+    expect(musicControlsReport('udio', ctl({ vocalGender: 'female' }), BRIEF, on).applied).toBe(false);
+  });
+
+  test('no controls → nothing applied', () => {
+    expect(musicControlsReport('lyria', undefined, sentWith(ctl({ weirdness: 100 })), off))
+      .toEqual({ engine: 'lyria', mode: 'prompt', applied: false });
   });
 });
 

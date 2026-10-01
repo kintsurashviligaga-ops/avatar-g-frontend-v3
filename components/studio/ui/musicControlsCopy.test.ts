@@ -2,9 +2,11 @@
 /**
  * The music controls' copy: complete in ka / en / ru, the sliders labelled approximate (owner decision — on Lyria and
  * ElevenLabs they only steer the prompt), the singer's four stops, and the badge / result-card helpers saying nothing
- * about sliders nobody moved.
+ * about sliders nobody moved, or that never reached the engine. Plus the OmniStudio wiring that feeds the result card.
  */
-import { MUSIC_CONTROLS_COPY, musicControlsCopy, musicControlsNote, sliderBadgeParts, type MusicControlsCopy } from './musicControlsCopy';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { MUSIC_CONTROLS_COPY, musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts, type MusicControlsCopy } from './musicControlsCopy';
 import { VOCAL_GENDERS } from '@/lib/ai/musicControls';
 
 const LANGS = ['ka', 'en', 'ru'] as const;
@@ -48,4 +50,38 @@ test('the result card speaks only when the route reported a mode AND a slider wa
   expect(musicControlsNote('prompt', {}, 'en')).toBeNull(); // a spec from before the sliders existed
   expect(musicControlsNote('prompt', { weirdness: 90 }, 'en')).toBe('≈ sliders approximate');
   expect(musicControlsNote('native', { styleInfluence: 10 }, 'ru')).toBe(MUSIC_CONTROLS_COPY.ru.note.native);
+});
+
+test('a bubble keeps the mode only when the route says a slider REACHED the engine (`controls.applied`)', () => {
+  expect(musicControlsModeOf({ engine: 'lyria', mode: 'prompt', applied: true })).toBe('prompt');
+  expect(musicControlsModeOf({ engine: 'musicgen', mode: 'native', applied: true })).toBe('native');
+  // Weirdness 60 on Lyria: moved, but inside the neutral band, so the brief was byte-identical to an untouched panel's.
+  const nudged = musicControlsModeOf({ engine: 'lyria', mode: 'prompt', applied: false });
+  expect(nudged).toBeUndefined();
+  expect(musicControlsNote(nudged, { weirdness: 60 }, 'en')).toBeNull(); // so the card no longer says "≈ sliders approximate"
+  expect(musicControlsModeOf({ engine: 'lyria', mode: 'prompt' })).toBeUndefined(); // no verdict, no claim
+  for (const junk of [undefined, null, 'prompt', 7, [], { mode: 'exact', applied: true }, { mode: 'prompt', applied: 'yes' }]) {
+    expect(musicControlsModeOf(junk)).toBeUndefined();
+  }
+});
+
+describe('OmniStudio gives a track\'s card the same provenance on the first render and on a re-roll', () => {
+  // The component is 9k lines behind a dynamic import, so, like the other studio suites, this reads its source.
+  // ⚠️ The re-roll built its bubble inline and dropped `engine`, so the card showed the slider note alone.
+  const omni = readFileSync(join(__dirname, '..', 'OmniStudio.tsx'), 'utf8');
+  const callbackBody = (start: string): string => {
+    const from = omni.indexOf(start);
+    expect(from).toBeGreaterThan(-1);
+    return omni.slice(from, omni.indexOf('\n  }, [', from));
+  };
+
+  test.each([
+    ['the first render (runMusicJob)', 'const runMusicJob = useCallback('],
+    ['a re-roll (regenerate)', 'const regenerate = useCallback('],
+  ])('%s keeps the engine, and the slider mode only when a slider reached the engine', (_where, start) => {
+    const body = callbackBody(start);
+    expect(body).toContain('...(j.engine ? { engine: j.engine } : {})');
+    expect(body).toContain('musicControlsModeOf(j.controls)');
+    expect(body).not.toContain('j.controls?.mode'); // a mode without the route's `applied` verdict is a claim it may not make
+  });
 });

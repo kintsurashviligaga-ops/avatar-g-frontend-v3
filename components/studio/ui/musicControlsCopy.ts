@@ -103,8 +103,23 @@ export function sliderBadgeParts(s: { weirdness: number; styleInfluence: number 
 }
 
 /**
+ * The mode a track's bubble may keep from the music route's `controls` report: ONLY when the route says a slider reached
+ * the engine (`applied: true`), otherwise undefined, and the result card says nothing.
+ *
+ * ⚠️ A MOVED SLIDER IS NOT AN APPLIED ONE. Weirdness at 60 on Lyria writes no sentence (the neutral band), and a long
+ * brief can leave no room for the sentences at all. The card used to say "≈ sliders approximate" over a brief
+ * byte-identical to an untouched panel's, because it only checked whether a slider had moved off 50.
+ */
+export function musicControlsModeOf(report: unknown): MusicControlMode | undefined {
+  if (!report || typeof report !== 'object') return undefined;
+  const { mode, applied } = report as { mode?: unknown; applied?: unknown };
+  return applied === true && (mode === 'prompt' || mode === 'native') ? mode : undefined;
+}
+
+/**
  * The result card's note: how this track's sliders reached its engine — or null when there is nothing to say (no
- * report from the route, or both sliders left at 50, so nothing was steered either way).
+ * mode kept, because no report came back or no slider reached the engine — see musicControlsModeOf — or both sliders
+ * left at 50, so nothing was steered either way).
  */
 export function musicControlsNote(
   mode: MusicControlMode | undefined,

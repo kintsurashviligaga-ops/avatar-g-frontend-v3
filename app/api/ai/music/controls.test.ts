@@ -5,9 +5,10 @@
  *
  * Pinned at what each engine receives and at the response: the styles become one line, the sliders become sentences in
  * the brief AFTER the translation (approximate on Lyria — `controls.mode` 'prompt'), real sampling parameters on
- * MusicGen ('native'), and Udio's native fields only behind MUSIC_SUNO_PARAMS; an untouched panel composes exactly the
- * brief it always did; the in-flight mutex keys on the controls. Every provider, the ledger, storage and the
- * idempotency store are mocked, and the failover mock runs the chain in order — no network, no spend.
+ * MusicGen ('native'), and Udio's native fields only behind MUSIC_SUNO_PARAMS; `controls.applied` is true only when a
+ * slider actually reached the engine; an untouched panel composes exactly the brief it always did; the in-flight mutex
+ * keys on the controls. Every provider, the ledger, storage and the idempotency store are mocked, and the failover mock
+ * runs the chain in order — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -101,7 +102,7 @@ describe('Lyria (primary): the controls are sentences in the brief — approxima
     const res = await POST(post(PANEL));
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toMatchObject({ success: true, engine: 'Lyria', controls: { engine: 'lyria', mode: 'prompt' } });
+    expect(json).toMatchObject({ success: true, engine: 'Lyria', controls: { engine: 'lyria', mode: 'prompt', applied: true } });
 
     const brief = lyriaBrief();
     expect(brief).toContain(PROMPT);
@@ -149,6 +150,25 @@ describe('Lyria (primary): the controls are sentences in the brief — approxima
   });
 });
 
+describe('`controls.applied` — whether a slider reached the engine, so the card claims nothing when none did', () => {
+  test('sliders moved only within the neutral band (60 / 40) leave the brief untouched and report applied: false', async () => {
+    const json = await (await POST(post({ ...PANEL, weirdness: 60, styleInfluence: 40 }))).json();
+    expect(json.controls).toEqual({ engine: 'lyria', mode: 'prompt', applied: false });
+    expect(lyriaBrief()).not.toMatch(/experimental|conventional|stated style/i);
+  });
+
+  test('sentences the brief had no room for were not applied either', async () => {
+    // A long Georgian brief whose English fills the budget: the user's words keep the room, and the sentences, the
+    // lowest priority, are dropped whole. Twice: the cover art translates the brief first, then the engine brief does.
+    const LONG = 'x'.repeat(1450);
+    (promptToEnglish as jest.Mock).mockImplementationOnce(async () => LONG).mockImplementationOnce(async () => LONG);
+    const json = await (await POST(post(PANEL))).json();
+    expect(lyriaBrief()).not.toContain(WEIRD);
+    expect(lyriaBrief()).not.toContain(LOOSE);
+    expect(json.controls).toEqual({ engine: 'lyria', mode: 'prompt', applied: false });
+  });
+});
+
 describe('the in-flight mutex keys on the controls — a changed slider is a new request', () => {
   test('the key carries the style line and both sliders', async () => {
     await POST(post(PANEL));
@@ -190,8 +210,12 @@ describe('native engines', () => {
     (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
     const res = await POST(post({ ...PANEL, instrumental: true }));
     const json = await res.json();
-    expect(json).toMatchObject({ success: true, engine: 'MusicGen', controls: { engine: 'musicgen', mode: 'native' } });
-    expect((generateMusic as jest.Mock).mock.calls[0][2]).toEqual({ temperature: 1.25, classifierFreeGuidance: 1.4 });
+    expect(json).toMatchObject({ success: true, engine: 'MusicGen', controls: { engine: 'musicgen', mode: 'native', applied: true } });
+    // Style influence 10 is the strong-low band → guidance 1. A WHOLE number: the model's input is an int, and the
+    // first build's 1.4 was a 422 from Replicate (lib/ai/replicate rounds as well).
+    const sampling = (generateMusic as jest.Mock).mock.calls[0][2];
+    expect(sampling).toEqual({ temperature: 1.25, classifierFreeGuidance: 1 });
+    expect(Number.isInteger(sampling.classifierFreeGuidance)).toBe(true);
   });
 
   test('a SONG that falls through to MusicGen is badged as voiceless even with the singer on Auto and no lyrics', async () => {
@@ -207,7 +231,7 @@ describe('native engines', () => {
     (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
     const body = { ...PANEL, vocalGender: 'female' };
     const json = await (await POST(post(body))).json();
-    expect(json.controls).toEqual({ engine: 'udio', mode: 'prompt' });
+    expect(json.controls).toEqual({ engine: 'udio', mode: 'prompt', applied: true });
     const input = (generateUdioTrack as jest.Mock).mock.calls[0][0];
     expect(input.controls).toEqual(udioParams({ styles: [], vocalGender: 'female', weirdness: 92, styleInfluence: 10 }, { instrumental: false }));
     expect(input.style).toBe('georgian folk, jazz');
@@ -220,7 +244,7 @@ describe('native engines', () => {
     (hasUdioApiKey as jest.Mock).mockReturnValue(true);
     (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
     const json = await (await POST(post(PANEL))).json();
-    expect(json.controls).toEqual({ engine: 'udio', mode: 'native' });
+    expect(json.controls).toEqual({ engine: 'udio', mode: 'native', applied: true });
   });
 });
 

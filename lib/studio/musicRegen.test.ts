@@ -135,3 +135,31 @@ describe('the template card rides with the request and its re-roll (lib/studio/t
     expect(musicRegenBody(makeMusicRegenSpec(FOLK))).not.toHaveProperty('templateId');
   });
 });
+
+describe('a style an earlier build sent under an older name re-rolls under the current one', () => {
+  // Until Round 3 the Georgian Folk chip and card sent 'folk'; the card's genre is now 'georgian folk'.
+  test('a Georgian Folk track saved by the Round-2 build keeps BOTH the Georgian style and its card', () => {
+    const round2 = {
+      kind: 'music', prompt: 'a wedding toast', genre: 'folk', instrumental: false, durationSec: 60, tempo: 'medium',
+      voiceType: 'female', templateId: 'georgian-folk',
+    } as unknown as MusicRegenSpec;
+    expect(musicRegenBody(round2)).toEqual({
+      prompt: 'a wedding toast', style: 'georgian folk', styles: ['georgian folk'], instrumental: false, durationSec: 60, tempo: 'medium',
+      vocalGender: 'female', templateId: 'georgian-folk',
+    });
+  });
+
+  test('one saved before the cards existed (only the chip\'s "folk") re-rolls as Georgian folk', () => {
+    const older: MusicRegenSpec = { kind: 'music', prompt: 'old track', genre: 'folk', instrumental: false, lyrics: 'words' };
+    expect(musicRegenBody(older)).toEqual({ prompt: 'old track', style: 'georgian folk', styles: ['georgian folk'], instrumental: false, lyrics: 'words' });
+  });
+
+  test('only a whole label is renamed; other labels pass untouched, and a duplicate collapses', () => {
+    const genreOf = (genre: string) => makeMusicRegenSpec({ prompt: 'p', genre, instrumental: true }).genre;
+    expect(genreOf('folk, jazz')).toBe('georgian folk, jazz');
+    expect(genreOf('Folk')).toBe('georgian folk');
+    expect(genreOf('folk, georgian folk')).toBe('georgian folk');
+    expect(genreOf('folk rock')).toBe('folk rock');
+    expect(genreOf('constructor, jazz')).toBe('constructor, jazz'); // a lookup table, not an object's prototype
+  });
+});

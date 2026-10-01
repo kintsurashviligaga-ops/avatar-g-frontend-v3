@@ -46,3 +46,26 @@ test('whatever a caller sends is clamped to a range MusicGen accepts; junk is dr
   expect(inputOf()).not.toHaveProperty('temperature');
   expect(inputOf()).not.toHaveProperty('classifier_free_guidance');
 });
+
+// ⚠️ The pinned version types classifier_free_guidance as `int`, and Replicate validates the input when it creates the
+// prediction, so a fraction fails the MusicGen leg with a 422. The SDK mock above checks no schema; these pin the type.
+test('classifier_free_guidance is a whole number at EVERY Style influence position, 0–100', async () => {
+  let sent = 0;
+  for (let s = 0; s <= 100; s++) {
+    run.mockClear();
+    await generateMusic('lo-fi beat', 30, musicgenParams({ weirdness: 50, styleInfluence: s }));
+    const g = inputOf().classifier_free_guidance;
+    if (g === undefined) continue;
+    sent += 1;
+    expect(Number.isInteger(g)).toBe(true);
+  }
+  expect(sent).toBeGreaterThan(0);
+});
+
+test('a fractional guidance from any caller is rounded before it is sent', async () => {
+  await generateMusic('x', 30, { classifierFreeGuidance: 1.4 });
+  expect(inputOf().classifier_free_guidance).toBe(1);
+  run.mockClear();
+  await generateMusic('x', 30, { classifierFreeGuidance: 2.6, temperature: 1.25 });
+  expect(inputOf()).toMatchObject({ classifier_free_guidance: 3, temperature: 1.25 }); // temperature is a float: kept
+});

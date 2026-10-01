@@ -104,7 +104,7 @@ import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicReque
 import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { Slider } from './ui/controls';
 import { StyleChips } from './ui/StyleChips';
-import { musicControlsCopy, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
+import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
 import { describeServiceError } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -924,7 +924,8 @@ interface FilmSnap {
 }
 
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
-  /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate). */
+  /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
+   *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
   /** Legacy: a preformatted engine label (a raw model id, or "⚠ … (fallback)" for a non-Gemini provider). Still read. */
   chatModel?: string;
@@ -4103,8 +4104,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         credentials: 'include',
         signal: ac.signal,
       });
-      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; controls?: { mode?: MusicControlMode } };
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; controls?: unknown };
       const ok = !!(j.success && j.url);
+      // A re-rolled track keeps the same provenance row as the original: the engine, and the slider note only when a
+      // slider actually reached that engine.
+      const controlsMode = musicControlsModeOf(j.controls);
       setMessages((prev) => {
         if (!mine()) return prev;
         const next = [...prev];
@@ -4113,7 +4117,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           next[next.length - 1] = ok
             ? (spec.kind === 'image'
                 ? { role: 'assistant', text: '', imageUrl: j.url, regen: spec }
-                : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.controls?.mode ? { musicControlsMode: j.controls.mode } : {}), regen: spec })
+                : { role: 'assistant', text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), ...(controlsMode ? { musicControlsMode: controlsMode } : {}), regen: spec })
             // ⚠️ `j.error` is a MACHINE CODE. A 409 put the literal bubble "⚠️ duplicate_request" into a
             // Georgian conversation — the user's own chat, speaking to them in snake_case English. The
             // helper that turns a route body into a sentence already existed (lib/ui/opFailure) and was
@@ -4446,7 +4450,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: { mode?: MusicControlMode } };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: unknown };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           // A COVER (audioReference: an uploaded track, not a trained/cloned voice) is billed a FLAT 30s
@@ -4457,7 +4461,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // ⚠️ The re-roll spec records what this request SENT, not the raw panel: a trained / cloned voice forced a
           // song and sent no vocalGender, and a cover rendered (and billed) 30 s — so its re-roll asks for the same.
           const sungByUser = m.useTrained || isVoiceClone;
-          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), ...(j.controls?.mode ? { musicControlsMode: j.controls.mode } : {}), regen: makeMusicRegenSpec({
+          // The slider note's mode, only when a slider reached the engine (the route's `controls.applied`).
+          const controlsMode = musicControlsModeOf(j.controls);
+          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), ...(controlsMode ? { musicControlsMode: controlsMode } : {}), regen: makeMusicRegenSpec({
             prompt: m.prompt, genre: m.genre, instrumental: sungByUser ? false : m.instrumental, lyrics: m.lyrics,
             durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { vocalGender: m.voiceType }),
             weirdness: sliders.weirdness, styleInfluence: sliders.styleInfluence,

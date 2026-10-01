@@ -58,7 +58,7 @@ import { generateMusicCover } from '../../../../lib/ai/replicate';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { resolveTemplateContext } from '../../../../lib/studio/templateContext';
 import { musicTemplateValues } from '../../../../lib/studio/templates';
-import { makeMusicRegenSpec, musicRegenBody } from '../../../../lib/studio/musicRegen';
+import { makeMusicRegenSpec, musicRegenBody, type MusicRegenSpec } from '../../../../lib/studio/musicRegen';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/ai/music', {
@@ -127,6 +127,18 @@ test('the studio\'s re-roll body (MusicRegenSpec) carries the id and gets the sa
   const spec = makeMusicRegenSpec({ prompt: PROMPT, genre: FOLK.genre, instrumental: false, durationSec: FOLK.duration, tempo: FOLK.tempo, vocalGender: FOLK.voiceType, templateId: 'georgian-folk' });
   const { brief, key } = await compose(musicRegenBody(spec));
   expect(brief).toContain(DESCRIPTOR);
+  expect(key.t).toBe('georgian-folk');
+});
+
+test('a Georgian Folk track saved by the Round-2 build (genre "folk") re-rolls with its card AND the Georgian style', async () => {
+  // As persisted then: the card's old genre value and the singer under `voiceType`.
+  const round2 = {
+    kind: 'music', prompt: PROMPT, genre: 'folk', instrumental: false, durationSec: FOLK.duration, tempo: FOLK.tempo,
+    voiceType: FOLK.voiceType, templateId: 'georgian-folk',
+  } as unknown as MusicRegenSpec;
+  const { brief, key } = await compose(musicRegenBody(round2));
+  expect(brief).toContain(DESCRIPTOR);
+  expect(brief).toContain('Style: georgian folk.');
   expect(key.t).toBe('georgian-folk');
 });
 

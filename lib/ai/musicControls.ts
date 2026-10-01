@@ -8,13 +8,15 @@
  * ⚠️ ON LYRIA AND ELEVENLABS THE SLIDERS ARE APPROXIMATE, BY DESIGN. Neither engine has a knob for either quantity —
  * each takes one text brief — so a slider can only add a sentence to that brief (`promptDirectives`). The panel labels
  * them „approximate" in ka/en/ru, and the route returns `controls.mode` ('prompt' | 'native') so the result card can
- * say which it was. Two engines take them natively: MusicGen (sampling temperature + classifier-free guidance,
- * `musicgenParams`) and the Udio gateway's Suno-style fields (`udioParams`) — the latter ONLY with MUSIC_SUNO_PARAMS
- * on, which is off by default until one live probe confirms the gateway's field names and scales.
+ * say which it was, and `controls.applied` so it says nothing when no slider reached the engine (`musicControlsReport`).
+ * Two engines take them natively: MusicGen (sampling temperature + classifier-free guidance, `musicgenParams`) and the
+ * Udio gateway's Suno-style fields (`udioParams`) — the latter ONLY with MUSIC_SUNO_PARAMS on, which is off by default
+ * until one live probe confirms the gateway's field names and scales.
  *
  * ⚠️ THE MIDDLE BAND ADDS NOTHING. A slider nobody touched (50), or one nudged a little, must leave the brief exactly as
  * it was — otherwise every track would carry steering text nobody asked for, and every "neutral" track would change the
- * day this shipped. Only a deliberate move out of NEUTRAL_LOW…NEUTRAL_HIGH writes a sentence.
+ * day this shipped. Only a deliberate move out of NEUTRAL_LOW…NEUTRAL_HIGH writes a sentence (or moves MusicGen's
+ * guidance, which follows the same bands).
  *
  * ⚠️ NO CLIENT TEXT REACHES A PROMPT THROUGH HERE except the style labels, and those pass sanitizeStyle (one visible
  * line, no bidi or zero-width characters), comma stripping (one label = one tag, so a label cannot smuggle extra tags
@@ -211,21 +213,41 @@ export const MUSICGEN_DEFAULT_TEMPERATURE = 1;
 export const MUSICGEN_DEFAULT_GUIDANCE = 3;
 
 /**
- * MusicGen's native controls: Weirdness → sampling temperature 0.7…1.3 (more diverse, less predictable output),
- * Style influence → classifier-free guidance 1…5 (how closely the output follows the text). Both centred on the model's
- * own defaults, so 50 sends nothing and the ranges stay where MusicGen still makes music rather than noise.
+ * Style influence → classifier-free guidance: ONE WHOLE NUMBER PER BAND, the same five bands promptDirectives reads. The
+ * slider moves MusicGen's guidance exactly where it would add a sentence on Lyria, and the middle band changes neither.
+ *
+ * ⚠️ AN INTEGER, BECAUSE THE MODEL SAYS SO. The pinned meta/musicgen version types `classifier_free_guidance` as `int`
+ * (cog-musicgen: `classifier_free_guidance: int = Input(default=3)`), and Replicate checks the input against that schema
+ * when it creates the prediction. The first build mapped the slider linearly (20 → 1.8), so almost every position was a
+ * 422. The MusicGen leg failed, and three such misses inside 30 s opened the `musicgen` breaker for EVERY user. MusicGen
+ * is the last fallback in the chain and the only engine where the sliders are native.
+ */
+const GUIDANCE: Readonly<Record<Band, number>> = {
+  'strong-low': 1,
+  low: 2,
+  neutral: MUSICGEN_DEFAULT_GUIDANCE,
+  high: 4,
+  'strong-high': 5,
+};
+
+/**
+ * MusicGen's native controls: Weirdness → sampling temperature 0.7…1.3 (more diverse, less predictable output; the
+ * model takes a float), Style influence → classifier-free guidance 1…5 (how closely the output follows the text; an
+ * integer, see GUIDANCE). Both are centred on the model's own defaults: 50 sends nothing, the middle band sends no
+ * guidance, and the ranges stay where MusicGen still makes music rather than noise.
  */
 export interface MusicgenControlParams {
   temperature?: number;
+  /** Always a whole number, 1–5: the model's input is an `int`. */
   classifierFreeGuidance?: number;
 }
 
 export function musicgenParams(c: Pick<MusicControls, 'weirdness' | 'styleInfluence'>): MusicgenControlParams {
   const out: MusicgenControlParams = {};
   const w = clampSlider(c.weirdness);
-  const s = clampSlider(c.styleInfluence);
   if (w !== SLIDER_DEFAULT) out.temperature = round2(MUSICGEN_DEFAULT_TEMPERATURE + ((w - SLIDER_DEFAULT) / 50) * 0.3);
-  if (s !== SLIDER_DEFAULT) out.classifierFreeGuidance = round2(MUSICGEN_DEFAULT_GUIDANCE + ((s - SLIDER_DEFAULT) / 50) * 2);
+  const guidance = GUIDANCE[band(c.styleInfluence)];
+  if (guidance !== MUSICGEN_DEFAULT_GUIDANCE) out.classifierFreeGuidance = guidance;
   return out;
 }
 
@@ -244,4 +266,39 @@ export function controlModeFor(engine: MusicEngineId, env: NodeJS.ProcessEnv = p
   if (engine === 'musicgen') return 'native';
   if (engine === 'udio') return musicSunoParamsEnabled(env) ? 'native' : 'prompt';
   return 'prompt';
+}
+
+/** The music response's `controls`: which engine composed the track, how sliders reach it, and whether they did. */
+export interface MusicControlsReport {
+  engine: MusicEngineId;
+  mode: MusicControlMode;
+  /** True only when a slider reached the engine: a native parameter, or a whole directive sentence in its text. */
+  applied: boolean;
+}
+
+/**
+ * The report for the track `engine` composed. `sent` is the EXACT text that engine was given, so `applied` asks
+ * whether a slider survived into the request rather than whether one was moved.
+ *
+ * ⚠️ A MOVED SLIDER OFTEN CHANGES NOTHING. A slider inside the neutral band writes no sentence, which on Lyria and
+ * ElevenLabs is the whole of the control, and buildMusicBrief drops the sentences whole when the user's own words leave
+ * no room. The result card used to say "≈ sliders approximate" over a brief byte-identical to an untouched panel's. It
+ * claims nothing now unless `applied` is true.
+ */
+export function musicControlsReport(
+  engine: MusicEngineId,
+  c: MusicControls | undefined,
+  sent: string,
+  env: NodeJS.ProcessEnv = process.env,
+): MusicControlsReport {
+  const mode = controlModeFor(engine, env);
+  if (!c) return { engine, mode, applied: false };
+  let native = false;
+  if (engine === 'musicgen') native = Object.keys(musicgenParams(c)).length > 0;
+  if (engine === 'udio' && mode === 'native') {
+    // Only the sliders count here: `instrumental: true` leaves the singer out of the native fields.
+    const p = udioParams(c, { instrumental: true });
+    native = p.styleWeight !== undefined || p.weirdnessConstraint !== undefined;
+  }
+  return { engine, mode, applied: native || promptDirectives(c).some((d) => sent.includes(d)) };
 }
