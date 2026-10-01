@@ -19,18 +19,33 @@
  * ⚠️ A pack's manifest and raw takes live in its `work` dir, never under public/: everything in public/ is deployed,
  * and the manifest carries prompts, prices, request ids and provider URLs. Only the selected, resized finals go public.
  *
+ * Providers (`--provider`, default hf; scripts/art-providers.ts): hf = Higgsfield, priced by its free /estimate;
+ * replicate = FLUX schnell, imagen = Imagen 4 — both priced from the static PRICES_USD table, so their --dry needs no
+ * key and makes no network call. A pack has ONE budget whichever provider spends it. Only a plain Soul text-to-image
+ * shot can go to replicate/imagen; anything else is refused and stays on hf.
+ *
  * Usage (from the repo root; `npm run art:templates --` is `npx jiti scripts/hf-art-pack.ts --pack templates`):
  *   npm run art:templates -- --dry                            # price every pending shot (free) against the stop line
+ *   npm run art:templates -- --provider replicate --dry       # the same on FLUX schnell: offline, ≈ $0.24 for all 20
  *   npm run art:templates -- --yes-spend                      # run the pending shots
  *   npm run art:templates -- --shot video/teaser --yes-spend  # one shot (add --retry for another take)
  *   npm run art:templates -- --status                         # spend so far, takes per shot
  *   npm run art:templates -- --select video/teaser:1 --output 2
+ *   node scripts/templates/build-thumbs.mjs                   # selected takes → public/templates/*.jpg (600×800)
  *   npx jiti scripts/hf-art-pack.ts --status                  # the brand-v1 pack
  */
 import { loadEnvConfig } from '@next/env';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ProviderEstimate, ProviderResult, ProviderSubmission } from '@/lib/providers/types';
+import type { ProviderEstimate } from '@/lib/providers/types';
+import { resolveGeminiKey } from '../lib/orchestrator/gemini-guard';
+import {
+  createImagenArtClient, createReplicateArtClient, isTerminal, offlineFetch, providerFromArgv,
+  type ArtClient, type ArtProviderId, type ArtRequest, type ArtResult, type InlineOutput,
+} from './art-providers';
+
+export type { ArtClient, ArtProviderId } from './art-providers';
+export { PRICES_USD, providerFromArgv } from './art-providers';
 
 const ROOT = process.cwd();
 
@@ -75,6 +90,8 @@ export interface Shot {
 export interface Attempt {
   shot: string;
   attempt: number;
+  /** Who was paid; absent = hf (attempts logged before the provider seam). */
+  provider?: ArtProviderId;
   endpoint: string;
   input: Record<string, unknown>;
   requestId: string | null;
@@ -92,7 +109,7 @@ export interface Manifest {
   stopAtUsd: number;
   spentUsd: number;
   attempts: Attempt[];
-  /** shot id → chosen output (provider URL + local raw file), set after review. */
+  /** shot id → chosen output (provider URL — or `inline:<type>` for bytes — + local raw file), set after review. */
   selected: Record<string, { url: string; file: string; attempt: number }>;
 }
 
@@ -117,6 +134,8 @@ export function substitute(value: unknown, selected: Manifest['selected']): unkn
     return value.replace(/\{\{([A-Z][0-9]+)\}\}/g, (_, id: string) => {
       const pick = selected[id];
       if (!pick) throw new Error(`shot ${id} has no selected output yet`);
+      // An Imagen take came back as bytes: there is no URL another provider could fetch it from.
+      if (!/^https:\/\//i.test(pick.url)) throw new Error(`shot ${id}'s selected take has no provider URL to reference`);
       return pick.url;
     });
   }
@@ -179,7 +198,8 @@ export async function saveOutputs(
       writeFileSync(join(work, name), buf);
       file = name;
     } catch (e) {
-      // The provider URL stays in the manifest (kept ≥ 7 days), so the file can be fetched again — but say so.
+      // The provider URL stays in the manifest, so the file can be fetched again — Higgsfield keeps it ≥ 7 days,
+      // Replicate only about an hour — but say so.
       log(`${shot} #${attempt}: output ${i} not saved — ${e instanceof Error ? e.message : String(e)}`);
     }
     outputs.push({ url, file });
@@ -187,17 +207,35 @@ export async function saveOutputs(
   return outputs;
 }
 
-/** The provider calls the runner makes (lib/providers/higgsfield/client), as an interface a test can stand in for. */
-export interface ArtClient {
-  estimate(endpoint: string, input: Record<string, unknown>): Promise<ProviderEstimate>;
-  submit(endpoint: string, input: Record<string, unknown>): Promise<ProviderSubmission>;
-  status(requestId: string): Promise<ProviderResult>;
+/**
+ * Writes outputs that came back as bytes (Imagen) straight to <work>/raw/<shot>-<attempt>-<i>.<ext> — nothing is
+ * fetched. The manifest records `inline:<type>` in place of a URL: the bytes themselves never go into it.
+ */
+export function saveInline(
+  images: readonly InlineOutput[], shot: string, attempt: number, work: string,
+  log: (line: string) => void = console.log, first = 0,
+): Attempt['outputs'] {
+  return images.map((img, k) => {
+    const i = first + k;
+    let file: string | null = null;
+    try {
+      const name = `raw/${shot}-${attempt}-${i}.${extOf(img.mimeType, '')}`;
+      mkdirSync(dirname(join(work, name)), { recursive: true });
+      writeFileSync(join(work, name), img.bytes);
+      file = name;
+    } catch (e) {
+      // Bytes have no second source: a failed write loses a paid take.
+      log(`${shot} #${attempt}: output ${i} not saved (inline — no copy to fetch again) — ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return { url: `inline:${img.mimeType}`, file };
+  });
 }
 
 export interface RunOptions { dry: boolean; only?: string; retry?: boolean; stopUsd: number }
 
 export interface RunDeps {
-  hf: ArtClient;
+  /** The provider (scripts/art-providers.ts) — Higgsfield unless --provider says otherwise. */
+  client: ArtClient;
   /** The pack's work dir (absolute); raw takes land in <work>/raw/. */
   work: string;
   save: (m: Manifest) => void;
@@ -211,7 +249,8 @@ export interface RunDeps {
 /** Prices — and unless `dry`, submits, polls and downloads — every pending shot, in spec order, under the stop line. */
 export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOptions, d: RunDeps): Promise<{ projectedUsd: number; stopped: boolean }> {
   const log = d.log ?? console.log;
-  const { hf } = d;
+  const { client } = d;
+  const provider = client.provider ?? 'hf';
   const { queue, held } = pendingShots(shots, m, o);
   for (const s of held) log(`${s.id}: a take is waiting for review — --select it, or pass --retry to pay for another`);
   if (!queue.length) { log('nothing to run'); return { projectedUsd: spent(m), stopped: false }; }
@@ -225,10 +264,18 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
     const unmet = (s.needs ?? []).filter((need) => !m.selected[need]);
     if (unmet.length) { log(`${s.id}: waits for ${unmet.join(', ')} to be selected — skipped for now`); continue; }
 
-    const input = substitute(s.input, m.selected) as Record<string, unknown>;
+    const spec = substitute(s.input, m.selected) as Record<string, unknown>;
+    let req: ArtRequest;
+    try {
+      req = client.prepare ? client.prepare(s.endpoint, spec) : { endpoint: s.endpoint, input: spec };
+    } catch (e) {
+      log(`${s.id}: not run on ${provider} — ${(e as { detail?: string }).detail || (e as Error).message}`);
+      continue;
+    }
+    const { endpoint, input } = req;
     let est: ProviderEstimate;
     try {
-      est = await hf.estimate(s.endpoint, input);
+      est = await client.estimate(endpoint, input);
     } catch (e) {
       // The provider's own words (ProviderError keeps them off the enumerable fields) — local tool, so print them.
       const detail = (e as { detail?: unknown }).detail;
@@ -242,17 +289,20 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
     if (before + usd > o.stopUsd) { log(`STOP: $${before.toFixed(4)} + $${usd.toFixed(4)} would pass the $${o.stopUsd} stop line`); stopped = true; break; }
     if (o.dry) { projected = round4(before + usd); continue; }
 
+    // The manifest gets what is SENT (the provider's endpoint and body), not the Soul draft it was made from.
     const attempt: Attempt = {
-      shot: s.id, attempt: tries + 1, endpoint: s.endpoint, input, requestId: null, usd, listUsd: est.listUsd,
+      shot: s.id, attempt: tries + 1, provider, endpoint, input, requestId: null, usd, listUsd: est.listUsd,
       status: 'submitting', outputs: [], at: new Date().toISOString(),
     };
     m.attempts.push(attempt);
     d.save(m);
 
+    let answered: ArtResult | undefined;
     try {
-      const sub = await hf.submit(s.endpoint, input);
+      const sub = await client.submit(endpoint, input);
       attempt.requestId = sub.requestId;
       attempt.status = sub.status;
+      answered = sub.result && isTerminal(sub.result.status) ? sub.result : undefined;
       d.save(m);
       log(`${s.id} #${attempt.attempt}: request ${sub.requestId}`);
     } catch (e) {
@@ -262,18 +312,27 @@ export async function runQueue(shots: readonly Shot[], m: Manifest, o: RunOption
       // An ambiguous submit may have been charged: count it (requestId stays null → mark it explicitly).
       if (ambiguous) attempt.requestId = 'unknown';
       d.save(m);
-      log(`${s.id} #${attempt.attempt}: ${attempt.status} — ${attempt.note}`);
+      const detail = (e as { detail?: unknown }).detail;
+      log(`${s.id} #${attempt.attempt}: ${attempt.status} — ${attempt.note}${detail ? ` · ${String(detail).slice(0, 400)}` : ''}`);
       continue;
     }
 
-    const deadline = Date.now() + (d.waitMs ?? WAIT_MS);
-    let result = await hf.status(attempt.requestId!);
-    while (!['completed', 'failed', 'nsfw', 'canceled'].includes(result.status) && Date.now() < deadline) {
-      await (d.sleep ?? sleep)(d.pollMs ?? POLL_MS);
-      result = await hf.status(attempt.requestId!).catch(() => result);
+    // A provider that answered the submit with the finished take (Imagen; Replicate under Prefer: wait) is not polled:
+    // its files are written or fetched right now — Replicate's are gone within the hour.
+    let result: ArtResult;
+    if (answered) {
+      result = answered;
+    } else {
+      const deadline = Date.now() + (d.waitMs ?? WAIT_MS);
+      result = await client.status(attempt.requestId!);
+      while (!isTerminal(result.status) && Date.now() < deadline) {
+        await (d.sleep ?? sleep)(d.pollMs ?? POLL_MS);
+        result = await client.status(attempt.requestId!).catch(() => result);
+      }
     }
     attempt.status = result.status;
     attempt.outputs.push(...await saveOutputs(result.outputUrls, s.id, attempt.attempt, d.work, d.fetchImpl, log));
+    if (result.inline?.length) attempt.outputs.push(...saveInline(result.inline, s.id, attempt.attempt, d.work, log, attempt.outputs.length));
     d.save(m);
     log(`${s.id} #${attempt.attempt}: ${result.status} · ${attempt.outputs.map((x) => x.file ?? x.url).join(', ') || 'no output'} · spent $${spent(m).toFixed(4)}`);
   }
@@ -292,6 +351,30 @@ function loadHfClient(): HfClientModule {
   const createJiti = require('jiti') as (from: string, o: { alias: Record<string, string> }) => (id: string) => unknown;
   const load = createJiti(__filename, { alias: { '@/': `${ROOT}/`, 'server-only': join(ROOT, 'scripts/shims/server-only.ts') } });
   return load('@/lib/providers/higgsfield/client') as HfClientModule;
+}
+
+/**
+ * The client for `--provider`.
+ * ⚠️ A --dry run on a statically priced provider (replicate, imagen) gets NO credential and a fetch that throws: it
+ * cannot call out, let alone spend. Higgsfield prices through its own (free) /estimate, so its dry run needs the key.
+ */
+export function artClientFor(provider: ArtProviderId, o: { dry: boolean }, loadHf: () => HfClientModule = loadHfClient): ArtClient {
+  if (provider === 'replicate') {
+    if (o.dry) return createReplicateArtClient({ token: '', fetchImpl: offlineFetch });
+    const token = (process.env.REPLICATE_API_TOKEN ?? '').trim();
+    if (!token) throw new Error('REPLICATE_API_TOKEN is not configured');
+    return createReplicateArtClient({ token });
+  }
+  if (provider === 'imagen') {
+    if (o.dry) return createImagenArtClient({ apiKey: '', fetchImpl: offlineFetch });
+    const apiKey = resolveGeminiKey(); // the key the app's own Imagen leg uses (lib/ai/geminiImagen.ts)
+    if (!apiKey) throw new Error('no Gemini API key is configured (GEMINI_API_KEY)');
+    return createImagenArtClient({ apiKey });
+  }
+  const { createHfClient, hfAuthHeaderFromEnv } = loadHf();
+  const auth = hfAuthHeaderFromEnv();
+  if (!auth) throw new Error('HF credentials are not configured');
+  return { provider: 'hf', ...createHfClient({ authHeader: auth }) };
 }
 
 async function main() {
@@ -319,7 +402,8 @@ async function main() {
     for (const s of shots) {
       const tries = m.attempts.filter((a) => a.shot === s.id);
       const mark = m.selected[s.id] ? `  ✓ selected #${m.selected[s.id]!.attempt}` : awaitingReview(m, s.id) ? '  … awaiting review' : '';
-      console.log(`  ${s.id.padEnd(w)} ${s.title.padEnd(34)} attempts ${tries.length}/${MAX_ATTEMPTS}${mark}`);
+      const via = [...new Set(tries.map((a) => a.provider ?? 'hf'))].join('+');
+      console.log(`  ${s.id.padEnd(w)} ${s.title.padEnd(34)} attempts ${tries.length}/${MAX_ATTEMPTS}${via ? ` (${via})` : ''}${mark}`);
     }
     return;
   }
@@ -339,14 +423,12 @@ async function main() {
   const dry = flag('--dry');
   if (!dry && !flag('--yes-spend')) throw new Error('refusing to spend without --yes-spend (use --dry to price only)');
 
-  const { createHfClient, hfAuthHeaderFromEnv } = loadHfClient();
-  const auth = hfAuthHeaderFromEnv();
-  if (!auth) throw new Error('HF credentials are not configured');
-  const hf = createHfClient({ authHeader: auth });
+  const provider = providerFromArgv(argv);
+  const client = artClientFor(provider, { dry });
 
-  const r = await runQueue(shots, m, { dry, only: arg('--shot'), retry: flag('--retry'), stopUsd: pack.stop }, { hf, work, save });
+  const r = await runQueue(shots, m, { dry, only: arg('--shot'), retry: flag('--retry'), stopUsd: pack.stop }, { client, work, save });
   console.log(dry
-    ? `projected total $${r.projectedUsd.toFixed(4)} of the $${pack.stop.toFixed(2)} stop line${r.stopped ? ' — a real run would STOP at the shot above' : ''} (dry run: nothing submitted)`
+    ? `projected total $${r.projectedUsd.toFixed(4)} of the $${pack.stop.toFixed(2)} stop line on ${provider}${r.stopped ? ' — a real run would STOP at the shot above' : ''} (dry run: nothing submitted)`
     : `total spent $${r.projectedUsd.toFixed(4)} of the $${pack.stop.toFixed(2)} stop line`);
 }
 

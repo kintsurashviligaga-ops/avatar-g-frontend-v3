@@ -1,19 +1,28 @@
 # Template gallery thumbnails — the shot list (BILLABLE, hard-capped)
 
 The prompts committed before the first call are exactly the prompts that run (scripts/hf-art-pack.ts reads these
-```json shot``` blocks). One Soul v2 call per template returns four 3:4 variants, downloaded to
+```json shot``` blocks). One call per template returns four 3:4 variants, downloaded to
 `scripts/templates/raw/<tool>/` (gitignored); the best one is selected after review
-(`--select <id>:<attempt> --output <n>`), resized to 600×800 and written to `public/templates/<tool>/<id>.jpg`, and
-the template's `thumb` in lib/studio/templates.ts is pointed at it. Every request — prompt, price, request id — is
-logged in `scripts/templates/manifest.json`, never under `public/` (which deploys).
+(`--select <id>:<attempt> --output <n>`), resized to 600×800 and written to `public/templates/<tool>/<id>.jpg` by
+`node scripts/templates/build-thumbs.mjs`, which also prints the `thumb:` lines of lib/studio/templates.ts to change.
+Every request — provider, prompt, price, request id — is logged in `scripts/templates/manifest.json`, never under
+`public/` (which deploys).
 
-Money: the `templates` pack is capped at $5.00 (the owner's 2026-10-01 budget) with a stop line at $4.50; every
-request is priced first by the provider's free /estimate, and a dry run adds its quotes up against the stop line.
-Run (from the repo root, after `npm run hf:credentials`):
+Providers (`--provider`, scripts/art-providers.ts): `hf` (default) runs the shots as written on Soul v2; `replicate`
+(FLUX schnell, $0.003 an image → about $0.24 for all 20) and `imagen` (Imagen 4, $0.04 an image → about $3.20) take
+the same prompt, aspect ratio and image count, without the Soul-only fields.
 
-    npm run art:templates -- --dry         # price everything (free): the projected total, and where it would STOP
-    npm run art:templates -- --yes-spend   # run the pending shots
-    npm run art:templates -- --status      # spend so far, takes per shot
+Money: the `templates` pack is capped at $5.00 (the owner's 2026-10-01 budget) with a stop line at $4.50, whichever
+provider spends it; every request is priced before it is sent — by Higgsfield's free /estimate, or from the static
+`PRICES_USD` table for replicate/imagen (offline: their dry run needs no key) — and a dry run adds its quotes up against
+the stop line. Run (from the repo root, after `npm run hf:credentials` — or with `REPLICATE_API_TOKEN` /
+`GEMINI_API_KEY` set for the other providers):
+
+    npm run art:templates -- --dry                         # price everything (free): the projected total, and where it would STOP
+    npm run art:templates -- --provider replicate --dry    # the same on FLUX schnell — offline
+    npm run art:templates -- --yes-spend                   # run the pending shots (add --provider … to match the dry run)
+    npm run art:templates -- --status                      # spend so far, takes per shot (and who was paid)
+    node scripts/templates/build-thumbs.mjs                # the selected takes → public/templates/*.jpg, + the thumb: edits
 
 A second `--yes-spend` skips every shot whose take is still waiting for review; add `--retry` to pay for another.
 
