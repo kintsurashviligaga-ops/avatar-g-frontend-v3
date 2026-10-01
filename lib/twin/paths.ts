@@ -53,9 +53,11 @@ export function twinUserPrefix(uid: string): string {
   return `twins/${requireUid(uid)}/`;
 }
 
+export const MANIFEST_NAME = 'twin.json';
+
 /** The manifest object — one per user, overwritten on every commit. */
 export function twinManifestPath(uid: string): string {
-  return `${twinUserPrefix(uid)}twin.json`;
+  return `${twinUserPrefix(uid)}${MANIFEST_NAME}`;
 }
 
 function slotExts(slot: TwinSlot): string[] {

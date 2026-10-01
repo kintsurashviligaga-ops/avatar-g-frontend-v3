@@ -135,7 +135,9 @@ export class FakeStorage {
               const err = fake.failure('download', bucket, path);
               if (err) return Promise.resolve({ data: null, error: err });
               const obj = fake.bucket(bucket).get(path);
-              if (!obj) return Promise.resolve({ data: null, error: { message: 'Object not found', statusCode: '404' } });
+              // ⚠️ As supabase-js really answers: download() skips JSON error parsing (noResolveJson), so a MISSING object
+              // is a StorageUnknownError whose message is just the stringified Response — "{}" — with no status on it.
+              if (!obj) return Promise.resolve({ data: null, error: { message: '{}' } });
               return Promise.resolve({ data: new Blob([obj.bytes as BlobPart], { type: obj.contentType }), error: null });
             },
             async list(dir: string, opts: { limit?: number; offset?: number; search?: string } = {}) {

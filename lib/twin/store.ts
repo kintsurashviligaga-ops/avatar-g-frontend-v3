@@ -23,6 +23,7 @@ import type { HandoffJtiStore } from '@/lib/avatar/handoff';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import {
   LEGACY_LIVE_AVATAR_BUCKET,
+  MANIFEST_NAME,
   TWIN_PRIVATE_BUCKET,
   assertOwnTwinPath,
   handoffJtiPath,
@@ -95,7 +96,6 @@ export function twinStorageClient(): TwinStorageClient {
 }
 
 const errText = (e: StorageError): string => `${e?.message ?? ''} ${e?.statusCode ?? ''} ${e?.status ?? ''}`;
-const isNotFound = (e: StorageError): boolean => /not.?found|does not exist|\b404\b/i.test(errText(e));
 const isDuplicate = (e: StorageError): boolean => /already exists|duplicate|\b409\b/i.test(errText(e));
 const isFolder = (e: StorageEntry): boolean => !e.id && !e.metadata;
 const maxBytes = (slot: TwinSlot): number => (isPhotoSlot(slot) ? TWIN_LIMITS.photoMaxBytes : TWIN_LIMITS.voiceMaxBytes);
@@ -135,14 +135,23 @@ export function __resetTwinBucketCheck(): void {
   bucketChecked = false;
 }
 
-/** The caller's manifest: null when there is none (or it fails validation); throws when storage cannot answer. */
+/**
+ * The caller's manifest: null when there is none (or it fails validation); throws when storage cannot answer.
+ *
+ * ⚠️ EXISTENCE COMES FROM list(), NOT FROM A FAILED download(). supabase-js downloads with `noResolveJson`, so a
+ * missing object comes back as a StorageUnknownError whose message is the stringified Response — "{}", no status —
+ * indistinguishable from an outage. Reading that as "an outage" made every first-time user a 503; reading it as
+ * "absent" would make an outage look like "no twin". So: list the folder (an exact-name match, like
+ * storageObjectExists), and only download what is there — a failed download of a listed manifest IS an outage.
+ */
 export async function readTwinManifest(sb: TwinStorageClient, uid: string): Promise<TwinManifest | null> {
-  const { data, error } = await twins(sb).download(twinManifestPath(uid));
-  if (error) {
-    if (isNotFound(error)) return null;
-    throw new TwinStorageError('manifest_read');
-  }
-  if (!data || data.size > MANIFEST_MAX_BYTES) return null;
+  const api = twins(sb);
+  const listed = await api.list(twinUserPrefix(uid).slice(0, -1), { limit: PAGE, search: MANIFEST_NAME });
+  if (listed.error || !Array.isArray(listed.data)) throw new TwinStorageError('manifest_list');
+  if (!listed.data.some((e) => e?.name === MANIFEST_NAME && !isFolder(e))) return null;
+  const { data, error } = await api.download(twinManifestPath(uid));
+  if (error || !data) throw new TwinStorageError('manifest_read');
+  if (data.size > MANIFEST_MAX_BYTES) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(await data.text());

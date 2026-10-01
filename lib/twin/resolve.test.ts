@@ -77,6 +77,9 @@ describe('getTwinStatus', () => {
   });
 
   test('storage down is an error (→ 503), never "none"', async () => {
+    fake.failNext('list', 'network down');
+    await expect(getTwinStatus(UID, fake.client())).rejects.toBeInstanceOf(TwinStorageError);
+    await seedTwin();
     fake.failNext('download', 'network down');
     await expect(getTwinStatus(UID, fake.client())).rejects.toBeInstanceOf(TwinStorageError);
   });

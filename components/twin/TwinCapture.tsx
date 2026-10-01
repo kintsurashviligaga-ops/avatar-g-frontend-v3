@@ -66,7 +66,10 @@ function isPermissionError(e: unknown): boolean {
   return name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError';
 }
 
-/** Centre-crop to the 3:4 frame and downscale to ≤1024 px, as a JPEG — what is uploaded is never the raw sensor frame. */
+/**
+ * Centre-crop to the 3:4 frame and downscale to ≤1024 px, as a JPEG — what is uploaded is never the raw sensor frame.
+ * The live view is mirrored (it is a selfie); the saved photo is NOT — a twin is the face as other people see it.
+ */
 async function encodePhoto(src: CanvasImageSource, w: number, h: number): Promise<Blob | null> {
   const { sx, sy, sw, sh } = centerCrop(w, h);
   const { width, height } = fitWithin(sw, sh);

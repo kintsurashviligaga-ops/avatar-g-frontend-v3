@@ -125,7 +125,10 @@ describe('GET', () => {
     expect(mockFake.callsTo('createSignedUrl')).toEqual([]);
   });
 
-  test('storage down → 503, not "none"', async () => {
+  test('storage down → 503, not "none" (whether the manifest could not be looked up or not be read)', async () => {
+    mockFake.failNext('list', 'network down');
+    expect((await get()).status).toBe(503);
+    await seedTwin();
     mockFake.failNext('download', 'network down');
     expect((await get()).status).toBe(503);
   });

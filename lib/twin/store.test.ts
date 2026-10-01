@@ -193,8 +193,16 @@ describe('the manifest', () => {
     await expect(readTwinManifest(sb(), UID)).resolves.toEqual(m);
   });
 
-  test('absent → null; corrupt or tampered → null (treated as no twin); unreadable storage → throws', async () => {
+  test('absent → null WITHOUT a download: supabase-js reports a missing download as an opaque "{}" error, no status', async () => {
     await expect(readTwinManifest(sb(), UID)).resolves.toBeNull();
+    expect(fake.callsTo('download')).toEqual([]);
+    // The client's real answer for a missing object — nothing in it says "not found":
+    await expect(sb().storage.from('twins').download(twinManifestPath(UID))).resolves.toEqual({ data: null, error: { message: '{}' } });
+    fake.failNext('list', 'network down');
+    await expect(readTwinManifest(sb(), UID)).rejects.toBeInstanceOf(TwinStorageError);
+  });
+
+  test('corrupt or tampered → null (treated as no twin); a listed manifest that cannot be read → throws', async () => {
     fake.put('twins', twinManifestPath(UID), '{not json', 'application/json');
     await expect(readTwinManifest(sb(), UID)).resolves.toBeNull();
     const tampered = manifest('0123456789abcdef');
