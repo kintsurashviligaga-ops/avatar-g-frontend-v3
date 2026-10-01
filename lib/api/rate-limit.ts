@@ -171,6 +171,13 @@ export const RATE_LIMITS = {
   // accounts. Neither number alone can do both jobs.
   AUTH:      { maxRequests: 5,   windowMs: 15 * 60_000,  keyPrefix: 'rl:auth'  } as const,
   AUTH_IP:   { maxRequests: 40,  windowMs: 15 * 60_000,  keyPrefix: 'rl:authip'} as const,
+  // ⚠️ PER ADDRESS, NOT PER IP. AUTH is keyed ip+email, so a script on rotating IPs could flood one inbox with sign-in
+  // codes — and every new code invalidates the one the person is typing (security review, 2026-10-01). This bucket is
+  // keyed by the ADDRESS alone (hashed — no plain emails in Redis): at most 5 codes per 15 minutes, i.e. ≤ 20 an hour.
+  // ⚠️ NO DAILY CAP: anyone can spend an address's budget, so a 24-h bucket let one IP lock a person out of code
+  // sign-in for a day (review, 2026-10-01). A short window bounds the flood and expires on its own; the real fix for
+  // a determined attacker is a CAPTCHA (owner action — Turnstile keys).
+  OTP_ADDRESS:     { maxRequests: 5,  windowMs: 15 * 60_000,      keyPrefix: 'rl:otp:addr' } as const,
   PUBLIC:    { maxRequests: 200, windowMs: 60_000,       keyPrefix: 'rl:pub'   } as const,
   AI:        { maxRequests: 10,  windowMs: 60_000,       keyPrefix: 'rl:ai'    } as const,
   // 3D reconstruction STATUS polling — its OWN namespace, and that is the point.

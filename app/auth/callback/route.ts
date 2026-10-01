@@ -29,17 +29,26 @@ async function ensureProfile(user: User) {
 
     const avatarUrl = metadata.avatar_url || metadata.picture || null;
 
-    await admin
+    // ⚠️ FILL GAPS, NEVER OVERWRITE. This used to UPSERT name + avatar from the provider on every pass through the
+    // callback — and since 2026-10-01 every password reset passes through here too — so a photo the person uploaded
+    // was replaced by NULL (email accounts) or by the Google picture (OAuth), and a phone account's NULL email broke the
+    // NOT NULL column (review, 2026-10-01). The sign-up triggers create the row; this only completes it.
+    const { data: existing } = await admin
       .from('profiles')
-      .upsert(
-        {
-          id: user.id,
-          email: user.email ?? null,
-          full_name: fullName,
-          avatar_url: avatarUrl,
-        },
-        { onConflict: 'id' }
+      .select('id, full_name, avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (!existing) {
+      await admin.from('profiles').upsert(
+        { id: user.id, email: user.email ?? `${user.id}@placeholder.local`, full_name: fullName, avatar_url: avatarUrl },
+        { onConflict: 'id', ignoreDuplicates: true },
       );
+    } else {
+      const patch: { full_name?: string; avatar_url?: string } = {};
+      if (!existing.full_name && fullName) patch.full_name = fullName;
+      if (!existing.avatar_url && avatarUrl) patch.avatar_url = avatarUrl;
+      if (Object.keys(patch).length) await admin.from('profiles').update(patch).eq('id', user.id);
+    }
   } catch {
     // Profile bootstrap failures should not block login.
   }
@@ -53,8 +62,17 @@ export async function GET(request: Request) {
   const callbackError =
     requestUrl.searchParams.get('error_description') || requestUrl.searchParams.get('error');
 
+  // A failure goes back to the sign-in sheet IN THE LANGUAGE the person was in: `next` (/en/dashboard…) says which;
+  // bare /auth falls back to their NEXT_LOCALE cookie (next.config.js). It used to be /auth → always Georgian.
+  // Only an EXPLICIT next counts: without one, `next` is the /ka default and would pin Georgian again.
+  const lang = nextParam ? /^\/(ka|en|ru)(\/|\?|$)/.exec(next || '')?.[1] : undefined;
+  // A password-reset link that failed (used, expired, opened first by a mail scanner) goes back to its own landing:
+  // with no session, the studio says the link expired and offers sign-in again (lib/routing/signIn.ts `recover`).
+  const isRecover = !!nextParam && /[?&]auth=recover(&|$)/.test(next || '');
+  const signInAgain = isRecover ? (next as string) : lang ? `/${lang}/auth` : '/auth';
+
   if (callbackError) {
-    const redirectUrl = new URL('/auth', requestUrl.origin);
+    const redirectUrl = new URL(signInAgain, requestUrl.origin);
     redirectUrl.searchParams.set('error', callbackError);
     return NextResponse.redirect(redirectUrl);
   }
@@ -64,7 +82,7 @@ export async function GET(request: Request) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      const redirectUrl = new URL('/auth', requestUrl.origin);
+      const redirectUrl = new URL(signInAgain, requestUrl.origin);
       redirectUrl.searchParams.set('error', error.message);
       return NextResponse.redirect(redirectUrl);
     }

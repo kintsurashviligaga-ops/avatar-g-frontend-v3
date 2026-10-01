@@ -335,18 +335,27 @@ const nextConfig = {
     if (!/^(1|true|on)$/i.test(String(process.env.STUDIO_V2 ?? '').trim())) {
       legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
     }
-    // THERE IS NO SIGN-IN PAGE (deleted 2026-10-01 at the owner's request): /login, /signup and the /auth alias — with
-    // or without a locale — open the studio's own sign-in sheet (lib/routing/signIn.ts). The request's query rides
-    // along (Next merges it into the destination's), so ?redirect= / ?error= / ?plan= / ?ref= still work. The bare
-    // /auth is where /auth/callback bounces an OAuth failure; /auth/callback itself is NOT matched (exact sources).
-    legacyRedirects.push(
-      { source: `${L}/login`, destination: '/:locale/dashboard?auth=login', permanent: false },
-      { source: `${L}/auth`, destination: '/:locale/dashboard?auth=login', permanent: false },
-      { source: `${L}/signup`, destination: '/:locale/dashboard?auth=signup', permanent: false },
-      { source: '/login', destination: '/ka/dashboard?auth=login', permanent: false },
-      { source: '/auth', destination: '/ka/dashboard?auth=login', permanent: false },
-      { source: '/signup', destination: '/ka/dashboard?auth=signup', permanent: false },
-    );
+    // THERE IS NO SIGN-IN PAGE (deleted 2026-10-01 at the owner's request): /login, /signup and the /auth alias open
+    // the studio's own sign-in sheet (lib/routing/signIn.ts). The request's query rides along (Next merges it into the
+    // destination's), so ?redirect= / ?error= / ?plan= / ?ref= still work. /auth/callback is NOT matched (exact sources).
+    //
+    // ⚠️ THE LOCALE-LESS ADDRESSES MUST KEEP THE VISITOR'S LANGUAGE. They used to go straight to /ka — and these rules
+    // run BEFORE middleware, so an English or Russian visitor was switched to Georgian (bare /auth is where
+    // /auth/callback bounces an OAuth failure, so this hit people mid-sign-in). With a NEXT_LOCALE cookie the rule
+    // below goes to that language in one hop; without one, middleware prefixes its own locale and the localized rule
+    // fires — the same choice every other locale-less address gets.
+    const SIGN_IN = [['login', 'login'], ['auth', 'login'], ['signup', 'signup']];
+    for (const [from, mode] of SIGN_IN) {
+      legacyRedirects.push({ source: `${L}/${from}`, destination: `/:locale/dashboard?auth=${mode}`, permanent: false });
+      for (const lang of ['ka', 'en', 'ru']) {
+        legacyRedirects.push({
+          source: `/${from}`,
+          has: [{ type: 'cookie', key: 'NEXT_LOCALE', value: lang }],
+          destination: `/${lang}/dashboard?auth=${mode}`,
+          permanent: false,
+        });
+      }
+    }
 
     return [
       ...legacyRedirects,

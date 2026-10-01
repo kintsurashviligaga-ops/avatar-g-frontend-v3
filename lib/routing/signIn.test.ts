@@ -18,6 +18,10 @@ describe('readSignInDeepLink', () => {
     expect(readSignInDeepLink('?tool=image')).toBeNull();
     expect(readSignInDeepLink('?auth=admin')).toBeNull();
   });
+  it('reads the password-reset landing', () => {
+    expect(readSignInDeepLink('?auth=recover')).toMatchObject({ mode: 'recover', redirect: null });
+    expect(signInPath('en', { mode: 'recover', redirect: '/en/pricing' })).toBe('/en/dashboard?auth=recover&redirect=%2Fen%2Fpricing');
+  });
   it('reads what the old /login and /signup pages understood (as next.config.js forwards it)', () => {
     expect(readSignInDeepLink('?redirect=%2Fen%2Fmemory&auth=login')).toEqual({
       mode: 'login', redirect: '/en/memory', error: null, plan: null, ref: null,
