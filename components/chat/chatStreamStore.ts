@@ -29,17 +29,18 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import type { ChatErrorCode } from '@/lib/chat/sse';
+import type { ChatErrorCode, ChatMeta } from '@/lib/chat/sse';
 
 export type ChatLocale = 'ka' | 'en' | 'ru';
 
 export type ChatStreamStatus = 'idle' | 'waiting' | 'streaming' | 'done' | 'error' | 'aborted';
 
-export interface ChatStreamMeta {
-  provider: string;
-  model: string;
-  partial?: boolean;
-}
+/**
+ * The latest `{meta}` frame, as decoded (and validated) by lib/chat/sse: who is answering, in which chat mode, whether
+ * it is a fallback, and — on a server-side downgrade — the mode the user asked for, why, and when that clears. An
+ * alias rather than a copy, so the wire type and the store can never drift apart.
+ */
+export type ChatStreamMeta = ChatMeta;
 
 export interface ChatSource {
   url: string;

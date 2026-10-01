@@ -3,9 +3,18 @@
  * getUserMedia, AudioContext, AudioWorkletNode, WebSocket — all faked, nothing reaches a network):
  *   • a 503 from the token mint calls onUnavailable (runtime fallback to VoiceConversation) and releases the mic;
  *   • End call releases the mic + socket and calls onClose;
- *   • a closed turn is delivered to onTurn when the host passes one.
+ *   • a closed turn is delivered to onTurn when the host passes one;
+ *   • a mic failure reaches the screen as a MICROPHONE error with the browser's error name, opens no socket, and
+ *     leaves one telemetry beacon at /api/log-error;
+ *   • the Live button's gesture prime (lib/voice/livePrime) is adopted: its context and its mic, no second request.
  */
+const mockReportError = jest.fn();
+jest.mock('../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReportError(...a) }));
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+import { __resetLiveTelemetryBudget } from '@/lib/voice/liveTelemetry';
+import { primeLive } from '@/lib/voice/livePrime';
 
 import GeminiLiveConversation from './GeminiLiveConversation';
 import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
@@ -51,6 +60,8 @@ let track: { stop: jest.Mock; enabled: boolean };
 let liveStatus = 200;
 
 beforeEach(() => {
+  mockReportError.mockReset();
+  __resetLiveTelemetryBudget();
   for (const k of ['WebSocket', 'AudioContext', 'AudioWorkletNode', 'fetch']) saved[k] = g[k];
   FakeSocket.all = [];
   Ctx.all = [];
@@ -111,4 +122,57 @@ test('End call releases the mic, the audio contexts and the socket, then calls o
   expect(track.stop).toHaveBeenCalled();
   expect(ws.readyState).toBe(FakeSocket.CLOSED);
   expect(Ctx.all.every((c) => c.closed)).toBe(true);
+});
+
+test('a denied mic shows the MICROPHONE screen with the browser error name, opens no socket, and reports once', async () => {
+  (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async () => {
+    throw Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
+  });
+  const s = LIVE_OVERLAY_STRINGS.en;
+  render(<GeminiLiveConversation userId="u1" locale="en" onClose={jest.fn()} />);
+  expect(await screen.findByRole('heading', { name: s.micHeadline })).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toBe(s.errors.mic_denied);
+  expect(screen.getByTestId('live-error-name').textContent).toBe('NotAllowedError');
+  expect(screen.queryByText(s.status.error)).toBeNull();
+  expect(FakeSocket.all).toHaveLength(0);
+  expect(mockReportError).toHaveBeenCalledTimes(1);
+  const beacon = (g.fetch as jest.Mock).mock.calls.find((c) => c[0] === '/api/log-error');
+  expect(beacon).toBeTruthy();
+  const body = JSON.parse(String((beacon![1] as RequestInit).body));
+  expect(body.context).toMatchObject({ kind: 'live_failure', code: 'mic_denied', name: 'NotAllowedError', primed: false });
+  expect(body.url).not.toContain('?');
+});
+
+test('a mic HELD by another app (NotReadableError on every rung) ends on the busy screen with the browser error name — never "connection dropped"', async () => {
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+  try {
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockImplementation(async () => {
+      throw Object.assign(new Error('Could not start audio source'), { name: 'NotReadableError' });
+    });
+    const s = LIVE_OVERLAY_STRINGS.ka;
+    render(<GeminiLiveConversation userId="u1" locale="ka" onClose={jest.fn()} />);
+    // The ladder waits between rungs (release → 400 ms → 1 s → a named device); run its timers out.
+    for (let i = 0; i < 10 && !screen.queryByTestId('live-error-name'); i++) {
+      await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    }
+    expect(screen.getByRole('heading', { name: s.micHeadline })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toBe(s.errors.mic_busy);
+    expect(screen.getByTestId('live-error-name').textContent).toBe('NotReadableError');
+    expect(screen.queryByText(s.status.error)).toBeNull(); // „კავშირი შეწყდა“ is for connection failures only
+    expect(FakeSocket.all).toHaveLength(0); // no socket was opened for a call that could never hear the user
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('the Live button\'s gesture prime is adopted: one getUserMedia, the primed context plays the call', async () => {
+  act(() => primeLive()); // what the Live chip does synchronously in its click
+  const gum = navigator.mediaDevices.getUserMedia as jest.Mock;
+  expect(gum).toHaveBeenCalledTimes(1);
+  const primedCtx = Ctx.all[0]!;
+  render(<GeminiLiveConversation userId="u1" locale="en" onClose={jest.fn()} />);
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(1));
+  expect(gum).toHaveBeenCalledTimes(1);
+  // Only the 16 kHz capture context was added; playback is the primed one.
+  expect(Ctx.all.filter((c) => c !== primedCtx).every((c) => c.sampleRate === 16000)).toBe(true);
 });

@@ -63,6 +63,15 @@ describe('<SourcesChips>', () => {
     expect(links[0]!.textContent).toContain('One');
   });
 
+  it('draws Gemini-style chips: filled pills, no outline or index, 44 px tall on touch', () => {
+    const { container } = render(<SourcesChips locale="en" sources={[{ url: 'https://www.bbc.com/news/1', title: 'Storm hits Tbilisi' }]} />);
+    const chip = container.querySelector('a')!;
+    expect(chip.textContent).toBe('bbc.comStorm hits Tbilisi'); // domain, then title; no "1"
+    const cls = chip.className.split(' ');
+    expect(cls).toEqual(expect.arrayContaining(['rounded-full', 'bg-app-elevated', 'text-[13px]', 'h-11', '[@media(pointer:fine)]:h-8']));
+    expect(cls.some((c) => c === 'border' || c.startsWith('border-'))).toBe(false);
+  });
+
   it('collapses past `max` behind a +N toggle', () => {
     const { container, getByRole } = render(<SourcesChips sources={many} locale="en" max={3} />);
     expect(container.querySelectorAll('a')).toHaveLength(3);

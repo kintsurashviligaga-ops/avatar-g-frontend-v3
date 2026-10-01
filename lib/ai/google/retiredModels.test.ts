@@ -57,11 +57,16 @@ describe('the chat rotation never contains a retired model', () => {
     for (const id of chain) expect(id).not.toMatch(RETIRED);
   });
 
-  it.each(TIERS)('a mixed %s env override keeps only the live ids, in order', (tier) => {
-    const mixed = 'gemini-2.0-flash, gemini-3.5-flash-lite, gemini-1.5-pro-latest, gemini-3.8-flash, gemini-2.0-flash-lite';
+  // Each chain keeps only live ids OF ITS OWN CLASS (chatModelClass: a Flash-Lite id is not a Flash-chain member, a
+  // Flash id is not a Pro-chain member) — so the mixed lists are per class.
+  it.each([
+    ['standard', 'gemini-2.0-flash, gemini-3.6-flash, gemini-1.5-pro-latest, gemini-3.8-flash, gemini-2.0-flash-lite', ['gemini-3.6-flash', 'gemini-3.8-flash']],
+    ['pro', 'gemini-1.5-pro-latest, gemini-2.5-pro, gemini-2.0-pro-exp, gemini-3.1-pro-preview', ['gemini-2.5-pro', 'gemini-3.1-pro-preview']],
+  ] as const)('a mixed %s env override keeps only the live ids, in order', (tier, mixed, expected) => {
     if (tier === 'pro') process.env.GEMINI_CHAT_PRO_MODELS = mixed;
     else process.env.GEMINI_CHAT_MODELS = mixed;
-    expect(chatModelChain(tier)).toEqual(['gemini-3.5-flash-lite', 'gemini-3.8-flash']);
+    expect(chatModelChain(tier)).toEqual([...expected]);
+    for (const id of chatModelChain(tier)) expect(id).not.toMatch(RETIRED);
   });
 });
 

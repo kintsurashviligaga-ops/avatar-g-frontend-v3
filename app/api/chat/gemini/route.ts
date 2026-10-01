@@ -6,18 +6,27 @@
  *   2. a verified session (`mustSignInToChat` → 401 in the generationGate body shape);
  *   3. the history re-validated server-side through lib/chat/historySerializer (400 when nothing usable is left);
  *   4. the per-user daily cap (CHAT_USER, keyed on the user id) — refused IN-STREAM;
- *   5. the platform budget pre-check (BillingGuard, fails open) — refused IN-STREAM;
- *   6. platform prompt (lib/chat/platformPrompt) + the user's profile facts + vector memory, then the agent profile
- *      (lib/agents/profile) turns persona + prompt into the Gemini config;
- *   7. lib/ai/google/chatStream streams the turn across chatModelChain(tier) with typed errors;
- *   8. the Anthropic fallback ONLY when AI_GOOGLE_ONLY is off (default: Google only);
- *   9. real token usage booked with the user id, before the stream closes.
+ *   5. the chat MODE (the header's Fast · Thinking · Pro · Lite picker, lib/chat/chatModes): a Pro turn also draws on
+ *      the per-user Pro allowance (CHAT_PRO_USER) and is DOWNGRADED to Fast — not refused — once that is spent;
+ *   6. the platform budget pre-check at the mode's primary model's rate (BillingGuard, fails open) — refused IN-STREAM;
+ *   7. platform prompt (lib/chat/platformPrompt) + the user's profile facts + vector memory, then the agent profile
+ *      (lib/agents/profile) turns persona + prompt into the Gemini config, and the mode lays its generation settings
+ *      over it (`applyChatMode`);
+ *   8. lib/ai/google/chatStream streams the turn across chatModelChain(mode) with typed errors;
+ *   9. the Anthropic fallback ONLY when AI_GOOGLE_ONLY is off (default: Google only);
+ *  10. real token usage booked with the user id, before the stream closes.
  *
  * WIRE (lib/chat/sse.ts — one encoder here, one parser in the browser):
  *   success:              {meta} {text}… [{sources}] [{usage}] [DONE]
  *   failure, no text:     [{usage}] {text: notice} {error} [DONE]
  *   failure after text:   {meta} {text}… {meta partial:true} [{sources}] [{usage}] {error} [DONE]
  *   budget refusal:       {meta provider:'budget'} {text: BUDGET_EXHAUSTED_MESSAGE} {error budget} [DONE]
+ *
+ * Every answer's `{meta}` also carries `mode` (the mode that answered) and `fallback` (not that mode's primary model),
+ * plus `requestedMode` / `reason: 'pro_cap'` / `resetAt` when a Pro turn was answered by Fast.
+ *
+ * ⚠️ THE CLIENT PICKS A MODE, NEVER A MODEL. A model id in the body is ignored; the chain is chosen here, so a request
+ * cannot point a turn at an arbitrary (or costlier) model.
  *
  * ⚠️ THE `{text: notice}` FRAME IS FOR THE CLIENT THAT PREDATES `{error}` FRAMES. Today's OmniStudio parser reads
  * only `{text}` and `{meta}`; an error delivered as `{error}` alone would leave it an EMPTY bubble — the exact
@@ -36,15 +45,16 @@ import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
-import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { detectReplyLocale } from '@/lib/chat/replyLocale';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { chatModelChain, type ChatTier } from '@/lib/ai/google/models';
+import { chatModelChain } from '@/lib/ai/google/models';
+import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig } from '@/lib/ai/google/chatStream';
-import { encodeFrame, type ChatErrorCode, type ChatFrame } from '@/lib/chat/sse';
+import { encodeFrame, SSE_KEEPALIVE, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
 import {
   estimateWireChars,
   serializeHistory,
@@ -63,7 +73,12 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 // Vision (multimodal) requests can take significantly longer for large photos. 120 s gives Gemini room to analyse
 // and start streaming before any function timeout interrupts the connection.
-export const maxDuration = 120;
+/**
+ * 300 s, mirrored in vercel.json (which used to pin this route to 60 s while this file said 120 — the docs do not
+ * say which wins, so they now agree). A Pro or Thinking turn can reason for a minute before its first token and then
+ * stream a long answer; 60 s cut those off mid-sentence. TURN_DEADLINE_MS ends a stuck turn cleanly before this.
+ */
+export const maxDuration = 300;
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -75,6 +90,22 @@ const MAX_BODY_BYTES = 16_000_000;
 
 /** How long the stream may stay open after [DONE] waiting for the usage booking (see the finally block). */
 const BOOKING_WAIT_MS = 1_500;
+
+/**
+ * SSE keep-alive cadence. The browser's watchdog gives the first token 20 s and a stalled answer 45 s, re-arming on
+ * any bytes (hooks/chat/useChatStream); 8 s leaves two heartbeats inside the tighter window even with jitter.
+ */
+export const HEARTBEAT_MS = 8_000;
+
+/**
+ * The server's own ceiling on one turn. With heartbeats flowing, the browser watchdog no longer catches a hung
+ * upstream, so the route must: past this the model call is aborted and the user gets a retryable notice instead of a
+ * connection the platform kills at maxDuration with no explanation. 20 s of headroom covers the notice + booking.
+ */
+export const TURN_DEADLINE_MS = (maxDuration - 20) * 1000;
+
+/** Output floor for the reasoning modes (Thinking, Pro) — see `applyChatMode`. The persona upper bound. */
+const REASONING_MIN_OUTPUT_TOKENS = 8192;
 
 /** The Anthropic model the legacy fallback uses when AI_GOOGLE_ONLY is off — unchanged from the old route. */
 const FALLBACK_MODEL_ID = 'claude-haiku-4-5-20251001';
@@ -154,6 +185,9 @@ const RETRYABLE_BY_DEFAULT: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>(
 interface ChatRequestBody {
   messages?: unknown;
   language?: unknown;
+  /** The chat mode (lib/chat/chatModes ChatModeId). Anything else → Fast. Never a model id. */
+  mode?: unknown;
+  /** LEGACY (clients before modes): `'pro'` → the Pro mode when `mode` is absent. */
   tier?: unknown;
   personaId?: unknown;
   customPersona?: unknown;
@@ -225,6 +259,44 @@ function toModelMessages(wire: readonly WireMessage[]): ModelMessage[] {
 
 function hasTokens(u: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined): boolean {
   return !!u && ((u.inputTokens ?? 0) > 0 || (u.outputTokens ?? 0) > 0 || (u.totalTokens ?? 0) > 0);
+}
+
+/**
+ * The chat MODE's generation settings, laid over the persona's config. The persona keeps what it is about — system
+ * prompt, safety, search, topP / topK — and the mode sets how hard the model thinks, because the dropdown is the
+ * user's explicit, per-turn choice of exactly that:
+ *   · thinking — the mode's level REPLACES the persona's (Fast / Lite 'low', Thinking / Pro 'high').
+ *   · maxOutputTokens ≥ 8192 for the reasoning modes. Thinking tokens count against it: at 4096 a long reasoning pass
+ *     ends MAX_TOKENS with EMPTY text, which chatStream (rightly) treats as a failed attempt and rotates — Google has
+ *     billed the whole thought budget, and the next model bills it again.
+ *   · temperature omitted for the reasoning modes. Google's Gemini 3 guidance is to keep the default 1.0: lower values
+ *     risk looping or weaker reasoning. Fast / Lite keep the persona's temperature (0.7 by default).
+ */
+function applyChatMode(config: GeminiChatConfig, mode: ChatModeId): GeminiChatConfig {
+  const { thinking } = chatModeOption(mode);
+  if (thinking !== 'high') return { ...config, thinking: { level: thinking } };
+  const { temperature: _personaTemperature, ...rest } = config;
+  return {
+    ...rest,
+    thinking: { level: thinking },
+    maxOutputTokens: Math.max(config.maxOutputTokens, REASONING_MIN_OUTPUT_TOKENS),
+  };
+}
+
+/**
+ * When a spent allowance comes back, as an ISO instant, from the limiter's 429: `X-RateLimit-Reset` (epoch seconds)
+ * or else `Retry-After` (seconds from now). Undefined when neither is usable — the notice then leaves the time out.
+ */
+function resetAtOf(limited: Response): string | undefined {
+  const resetSec = Number(limited.headers.get('x-ratelimit-reset') ?? NaN);
+  const retrySec = Number(limited.headers.get('retry-after') ?? NaN);
+  const ms =
+    Number.isFinite(resetSec) && resetSec > 0 ? resetSec * 1000
+      : Number.isFinite(retrySec) && retrySec >= 0 ? Date.now() + retrySec * 1000
+        : NaN;
+  if (!Number.isFinite(ms)) return undefined;
+  const at = new Date(ms);
+  return Number.isNaN(at.getTime()) ? undefined : at.toISOString();
 }
 
 /** Wait for `p` at most `ms`; never rejects. */
@@ -332,7 +404,8 @@ async function streamAnthropicFallback(input: {
       model: anthropic(FALLBACK_MODEL_ID),
       system: input.config.system,
       messages,
-      temperature: Math.min(1, input.config.temperature),
+      // Thinking / Pro omit temperature (the model default); Anthropic's own default is also 1.
+      ...(typeof input.config.temperature === 'number' ? { temperature: Math.min(1, input.config.temperature) } : {}),
       maxOutputTokens: input.config.maxOutputTokens,
       maxRetries: 1,
       abortSignal: input.signal,
@@ -426,9 +499,27 @@ export async function POST(req: NextRequest) {
     ]);
   }
 
-  const tier: ChatTier = body.tier === 'pro' ? 'pro' : 'standard';
-  // Built-ins and "no persona" resolve to exactly the old settings (0.7 / 0.95 / 40 / 4096 / google_search); a
-  // custom persona is re-sanitized and clamped here on every turn — it arrives from localStorage via the body.
+  // ── MODE. Resolved against the catalogue (unknown → Fast, legacy tier:'pro' → Pro) — the body names a mode, the
+  //    chain is chosen here. A guest only reaches this line when FILM_ALLOW_ANONYMOUS re-opened chat, and always gets
+  //    Fast: the Pro allowance is per ACCOUNT, and a guest has none to draw on.
+  const requestedMode: ChatModeId = userId ? resolveChatMode(body.mode, body.tier) : 'fast';
+  let mode: ChatModeId = requestedMode;
+  let downgrade: Pick<ChatMeta, 'requestedMode' | 'reason' | 'resetAt'> | null = null;
+  if (requestedMode === 'pro' && userId) {
+    // AFTER CHAT_USER, so a Pro turn draws on both buckets. A spent Pro allowance does not refuse the turn — like the
+    // Gemini app, it is answered by Fast and the `{meta}` says so (the stored choice stays Pro; it resumes at reset).
+    const proSpent = await checkRateLimitByKey(userId, chatProUserLimit());
+    if (proSpent) {
+      mode = 'fast';
+      const resetAt = resetAtOf(proSpent);
+      downgrade = { requestedMode: 'pro', reason: 'pro_cap', ...(resetAt ? { resetAt } : {}) };
+      console.warn('[/api/chat/gemini] daily Pro allowance spent — answering with Fast');
+    }
+  }
+  const chain = chatModelChain(mode);
+  // Built-ins and "no persona" resolve to exactly the old settings (0.7 / 0.95 / 40 / 4096 / google_search), then the
+  // mode sets thinking (applyChatMode); a custom persona is re-sanitized and clamped here on every turn — it arrives
+  // from localStorage via the body.
   const profile = resolveAgentProfile({
     personaId: typeof body.personaId === 'string' ? body.personaId : null,
     customPersona: body.customPersona,
@@ -439,8 +530,9 @@ export async function POST(req: NextRequest) {
   const historyChars = wire.reduce((n, m) => n + estimateWireChars(m), 0);
 
   // Started now, awaited inside the stream: their latencies overlap each other and the Response is returned at once.
-  // The budget estimate covers the platform prompt and the history text, not just the latest message.
-  const budgetPromise = chatBudgetAllows(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`).catch(() => true);
+  // The budget estimate covers the platform prompt and the history text, not just the latest message, and is priced
+  // at the mode's PRIMARY model — a Pro turn pre-checked at the flat Flash rate looked cheaper than it is.
+  const budgetPromise = chatBudgetAllows(`${platformPrompt}\n${wire.map(textOfWire).join('\n')}`, chain[0]).catch(() => true);
   const preamblesPromise: Promise<[string | null, string | null]> =
     auth.supabase && userId
       ? Promise.all([
@@ -454,9 +546,35 @@ export async function POST(req: NextRequest) {
   req.signal?.addEventListener?.('abort', onClientGone, { once: true });
   let open = true;
   const encoder = new TextEncoder();
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  /** True once TURN_DEADLINE_MS aborted the model call — distinguishes "too slow" from "the user left". */
+  let deadlineHit = false;
+  const stopTimers = () => {
+    if (heartbeat !== undefined) clearInterval(heartbeat);
+    if (deadline !== undefined) clearTimeout(deadline);
+    heartbeat = deadline = undefined;
+  };
 
   const readable = new ReadableStream<Uint8Array>({
     async start(controller) {
+      /** A comment line between frames; a failed enqueue means the consumer is gone, which the frame writes handle. */
+      const keepAlive = (): void => {
+        if (!open) return stopTimers();
+        try {
+          controller.enqueue(encoder.encode(SSE_KEEPALIVE));
+        } catch {
+          stopTimers();
+        }
+      };
+      // The first bytes go out NOW (budget, memory and the model's thinking all come before the first frame), then
+      // every HEARTBEAT_MS until the finally block — see SSE_KEEPALIVE.
+      keepAlive();
+      heartbeat = setInterval(keepAlive, HEARTBEAT_MS);
+      deadline = setTimeout(() => {
+        deadlineHit = true;
+        abort.abort();
+      }, TURN_DEADLINE_MS);
       /** Throws when the consumer is gone — chatStream reads that as "stop, nobody is listening". */
       const write = (frame: ChatFrame | 'DONE'): void => {
         if (!open) throw new Error('chat stream closed');
@@ -482,6 +600,17 @@ export async function POST(req: NextRequest) {
         tryWrite({ error: { code, retryable: opts.retryable ?? RETRYABLE_BY_DEFAULT.has(code), message } });
       };
       const bookings: Array<Promise<void>> = [];
+      /**
+       * Every answer's `{meta}`: which mode answered, whether that was the mode's primary model, and — on a Pro-cap
+       * downgrade — what was asked for, why, and when it resets. `fallback` is chatStream's per-attempt flag (a
+       * rotation past the chain's first model; set by attempt, not by comparing ids, so an alias id is not a false
+       * positive) made explicit, and always true for the non-Google fallback.
+       */
+      const decorate = (frame: ChatFrame): ChatFrame => {
+        if (!('meta' in frame)) return frame;
+        const fallback = frame.meta.fallback === true || frame.meta.provider !== 'gemini';
+        return { meta: { ...frame.meta, mode, ...downgrade, fallback } };
+      };
 
       try {
         // ── BUDGET GATE (Master Task §2.1.1) — in-stream, so a refusal is a normal assistant message, not a dead
@@ -496,12 +625,12 @@ export async function POST(req: NextRequest) {
         const platformSystem = [platformPrompt, profilePreamble, memoryPreamble].filter(Boolean).join('\n\n');
         // The persona block is APPENDED by the profile, so the platform rules keep precedence over what is, for a
         // custom persona, untrusted user text.
-        const config = toGeminiChatConfig(profile, platformSystem);
+        const config = applyChatMode(toGeminiChatConfig(profile, platformSystem), mode);
         const inputChars = platformSystem.length + historyChars;
 
         const result = await streamGeminiChat({
           apiKey: resolveGeminiKey(),
-          models: chatModelChain(tier),
+          models: chain,
           messages: modelMessages,
           config,
           abortSignal: abort.signal,
@@ -509,7 +638,7 @@ export async function POST(req: NextRequest) {
           // below, localized — or not at all when the fallback answers instead.
           onFrame: (frame) => {
             if ('error' in frame) return;
-            write(frame);
+            write(decorate(frame));
           },
         });
 
@@ -534,6 +663,18 @@ export async function POST(req: NextRequest) {
           bookings.push(bookChatUsage({ model: a.model, ...a.usage, inputChars, userId, groundingQueries: a.groundingQueries ?? 0 }));
         }
 
+        if (deadlineHit && !result.ok) {
+          // Too slow, not gone: the browser is still listening, so say so (retryable) instead of closing in silence.
+          reportError(new Error('Gemini chat turn hit the server deadline'), {
+            route: 'chat.gemini',
+            stage: 'turn-deadline',
+            mode,
+            partial: result.text.length > 0,
+            attempts: result.attempts.map((a) => `${a.model}:${a.code ?? 'ok'}`).join(','),
+          });
+          notice('unavailable', { afterText: result.text.length > 0, retryable: true });
+          return;
+        }
         if (abort.signal.aborted || result.ok) return;
 
         const failure = result.error ?? { code: 'unavailable' as const, retryable: true, message: 'no result', status: undefined };
@@ -548,13 +689,14 @@ export async function POST(req: NextRequest) {
             diagnostic: failure.message,
             attempts: result.attempts.map((a) => `${a.model}:${a.code ?? 'ok'}`).join(','),
             partial: streamed,
+            mode,
           });
         }
 
         // ⚠️ A SAFETY STOP IS NEVER RE-ASKED ELSEWHERE. Another vendor answering a prompt Google blocked is a filter
         // bypass, not resilience. And once text has streamed, a second answer would be appended to the first.
         if (!streamed && failure.code !== 'safety' && !isAiGoogleOnly()) {
-          const fb = await streamAnthropicFallback({ config, wire, signal: abort.signal, write });
+          const fb = await streamAnthropicFallback({ config, wire, signal: abort.signal, write: (f) => write(decorate(f)) });
           if (fb.text || fb.usage) {
             bookings.push(
               bookChatUsage({
@@ -574,6 +716,7 @@ export async function POST(req: NextRequest) {
         reportError(err, { route: '/api/chat/gemini', stage: 'stream' });
         if (!abort.signal.aborted) notice('unavailable', { afterText: false });
       } finally {
+        stopTimers();
         tryWrite('DONE');
         // ⚠️ THE BOOKING IS AWAITED BEFORE THE STREAM CLOSES. Once the response ends, a serverless function can be
         // frozen with the insert still in flight, and a lost booking is spend the budget guard never sees. [DONE] is
@@ -591,6 +734,7 @@ export async function POST(req: NextRequest) {
     },
     cancel() {
       open = false;
+      stopTimers();
       abort.abort();
     },
   });

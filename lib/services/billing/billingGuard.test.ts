@@ -81,9 +81,9 @@ describe('BillingGuard', () => {
   });
 
   it('correctly estimates cost for each service', () => {
-    // Chat is token-metered (§1.6.1): 1k in @ $1.50/1M + 500 out @ $9.00/1M.
+    // Chat is token-metered (§1.6.1): 1k in @ $1.50/1M + 500 out @ $7.50/1M (3.6 Flash, 2027 list price).
     expect(estimateCost({ service: 'chat', model: 'gemini-3.6-flash', inputTokens: 1000, outputTokens: 500 }).estimatedCost)
-      .toBeCloseTo(0.006, 6);
+      .toBeCloseTo(0.00525, 6);
     // Cached input is 10× cheaper.
     expect(estimateCost({ service: 'chat', model: 'gemini-3.6-flash', inputTokens: 1000, cachedInput: true }).estimatedCost)
       .toBeCloseTo(0.00015, 6);
@@ -132,10 +132,12 @@ describe('per-model Gemini token pricing', () => {
   it('places every model id verified on the funded key (2026-09-30) in a family', () => {
     const expected: Record<string, GeminiPriceFamily> = {
       // chat
-      'gemini-3.8-flash': 'flash-3.5',
-      'gemini-3.7-flash': 'flash-3.5',
-      'gemini-3.6-flash': 'flash-3.5',
+      'gemini-3.8-flash': 'flash-3.6',
+      'gemini-3.7-flash': 'flash-3.6',
+      'gemini-3.6-flash': 'flash-3.6',
       'gemini-3.5-flash': 'flash-3.5',
+      'gemini-3.1-flash-lite': 'flash-lite-3',
+      'gemini-3.5-flash-lite': 'flash-lite-3.5',
       'gemini-3.1-pro-preview': 'pro-3',
       'gemini-pro-latest': 'pro-3',
       'gemini-flash-latest': 'flash-3.5',
@@ -161,6 +163,10 @@ describe('per-model Gemini token pricing', () => {
       'gemini-3-flash-preview': 'flash-3',
       'gemini-3-pro-preview': 'pro-3',
       'gemini-3.1-flash-lite-preview': 'flash-lite-3',
+      'gemini-3.5-flash-lite-preview-07-2026': 'flash-lite-3.5',
+      // a Flash newer than any published price → the dearest known Flash row, never a cheaper one
+      'gemini-3.9-flash': 'flash-3.5',
+      'gemini-4.0-flash-preview': 'flash-3.5',
     };
     for (const [id, family] of Object.entries(expected)) expect([id, geminiPriceFamily(id)]).toEqual([id, family]);
   });
@@ -168,7 +174,7 @@ describe('per-model Gemini token pricing', () => {
   it('leaves unknown, retired and non-Gemini ids unplaced (→ flat fallback)', () => {
     for (const id of [
       'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', // retired (404) — never booked
-      'gemini-3.5-flash-lite', // no published Flash-Lite ≥3.5 price
+      'gemini-3.6-flash-lite', 'gemini-4.0-flash-lite', // no published Flash-Lite price above 3.5
       'gemini-2.5-flash-image', // image-output tokens are not a chat rate
       'gemini', 'gemini-exp-1206', 'gpt', 'claude-haiku-4-5', 'deepseek', 'chat', '', 'x'.repeat(300),
     ]) {
@@ -184,7 +190,10 @@ describe('per-model Gemini token pricing', () => {
     expect(cost('gemini-2.5-flash-lite')).toBeCloseTo((1000 * 0.1 + 500 * 0.4) / 1e6, 6);
     expect(cost('gemini-2.5-flash')).toBeCloseTo((1000 * 0.3 + 500 * 2.5) / 1e6, 6);
     expect(cost('gemini-3-flash-preview')).toBeCloseTo((1000 * 0.5 + 500 * 3) / 1e6, 6);
-    expect(cost('gemini-3.8-flash')).toBeCloseTo((1000 * 1.5 + 500 * 9) / 1e6, 6);
+    expect(cost('gemini-3.8-flash')).toBeCloseTo((1000 * 1.5 + 500 * 7.5) / 1e6, 6);
+    expect(cost('gemini-3.5-flash')).toBeCloseTo((1000 * 1.5 + 500 * 9) / 1e6, 6);
+    expect(cost('gemini-3.5-flash-lite')).toBeCloseTo((1000 * 0.3 + 500 * 2.5) / 1e6, 6);
+    expect(cost('gemini-3.1-flash-lite')).toBeCloseTo((1000 * 0.25 + 500 * 1.5) / 1e6, 6);
     expect(cost('gemini-2.5-pro')).toBeCloseTo((1000 * 1.25 + 500 * 10) / 1e6, 6);
     expect(cost('gemini-3.1-pro-preview')).toBeCloseTo((1000 * 2 + 500 * 12) / 1e6, 6);
     expect(cost('gemini-2.5-flash-native-audio-latest')).toBeCloseTo((1000 * 3 + 500 * 12) / 1e6, 6);
@@ -205,7 +214,7 @@ describe('per-model Gemini token pricing', () => {
       expect([family, row.grounding.usd >= 0]).toEqual([family, true]);
     }
     // An id we cannot price must never look cheaper than the known Flash tiers — "unknown" errs toward the budget.
-    for (const f of ['flash-2.5', 'flash-3', 'flash-lite-2.5', 'flash-lite-3'] as const) {
+    for (const f of ['flash-2.5', 'flash-3', 'flash-3.5', 'flash-3.6', 'flash-lite-2.5', 'flash-lite-3', 'flash-lite-3.5'] as const) {
       expect(GEMINI_PRICE_TABLE[f].inputPerMillion).toBeLessThanOrEqual(GEMINI_TOKEN_PRICING.inputPerMillion);
       expect(GEMINI_PRICE_TABLE[f].outputPerMillion).toBeLessThanOrEqual(GEMINI_TOKEN_PRICING.outputPerMillion);
     }
@@ -236,6 +245,9 @@ describe('per-model Gemini token pricing', () => {
     expect(g('gemini-3.8-flash', 1)).toBeCloseTo(0.014, 6);
     expect(g('gemini-3.8-flash', 4)).toBeCloseTo(0.056, 6);
     expect(g('gemini-3.1-pro-preview', 2)).toBeCloseTo(0.028, 6);
+    // 3.5 Flash-Lite used to fall to the flat fallback, whose grounding is $0 — its searches were booked as free.
+    expect(g('gemini-3.5-flash-lite', 2)).toBeCloseTo(0.028, 6);
+    expect(g('gemini-3.1-flash-lite', 1)).toBeCloseTo(0.014, 6);
     expect(g('gemini-2.5-flash', 1)).toBeCloseTo(0.035, 6);
     expect(g('gemini-2.5-flash', 4)).toBeCloseTo(0.035, 6); // one grounded PROMPT
     expect(g('gemini-2.5-flash', 0)).toBe(0);

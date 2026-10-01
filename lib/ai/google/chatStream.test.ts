@@ -39,6 +39,7 @@ import {
   unbookedAttempts,
   thinkingConfigFor,
   sanitizeSafetySettings,
+  servedModelOf,
   type GeminiChatConfig,
   type StreamGeminiChatInput,
 } from './chatStream';
@@ -221,6 +222,17 @@ describe('streamGeminiChat — happy path', () => {
     expect(prompt[0]).toEqual({ role: 'system', content: 'You are a helpful assistant.' });
   });
 
+  it('omits temperature when the config leaves it out (Thinking / Pro keep the Gemini 3 default of 1.0)', async () => {
+    const model = streamModel([...textParts(['ok']), finishPart()]);
+    mockModels.set('gemini-3.1-pro-preview', model);
+    const { temperature: _t, ...noTemperature } = BASE_CONFIG;
+    await run(['gemini-3.1-pro-preview'], { config: { ...noTemperature, thinking: { level: 'high' }, maxOutputTokens: 8192 } }).promise;
+    const call = model.doStreamCalls[0]!;
+    expect(call.temperature).toBeUndefined();
+    expect(call.maxOutputTokens).toBe(8192);
+    expect(call.providerOptions).toEqual({ google: { thinkingConfig: { thinkingLevel: 'high' } } });
+  });
+
   it('sends no tools and no providerOptions when search is off and nothing is configured', async () => {
     const model = streamModel([...textParts(['ok']), finishPart()]);
     mockModels.set('gemini-3.8-flash', model);
@@ -242,7 +254,8 @@ describe('streamGeminiChat — rotation', () => {
     expect(res.ok).toBe(true);
     expect(res.model).toBe('gemini-3.6-flash');
     expect(shape(res.attempts)).toEqual([{ model: 'gemini-3.8-flash', code: 'model_missing' }, { model: 'gemini-3.6-flash' }]);
-    expect(frames[0]).toEqual({ meta: { provider: 'gemini', model: 'gemini-3.6-flash' } });
+    // The badge must not pretend the primary answered: a rotated attempt's meta says fallback.
+    expect(frames[0]).toEqual({ meta: { provider: 'gemini', model: 'gemini-3.6-flash', fallback: true } });
     expect(textOf(frames)).toBe('from second');
     expect(frames.some((f) => 'error' in f)).toBe(false);
   });
@@ -324,6 +337,82 @@ describe('streamGeminiChat — rotation', () => {
     expect(res.model).toBe('gemini-3.6-flash');
     expect(res.error).toMatchObject({ code: 'unavailable', retryable: true, status: 503 });
     expect(kinds(frames)).toEqual(['error']);
+  });
+});
+
+describe('streamGeminiChat — the model that actually answered', () => {
+  const raw = (rawValue: Record<string, unknown>) => ({ type: 'raw', rawValue }) as LanguageModelV3StreamPart;
+
+  it('an alias names its real model in the FIRST meta frame (the version rides the first chunk)', async () => {
+    mockModels.set(
+      'gemini-pro-latest',
+      streamModel([raw({ modelVersion: 'gemini-3.1-pro-preview' }), ...textParts(['ans', 'wer']), finishPart()]),
+    );
+    const { frames, promise } = run(['gemini-pro-latest']);
+    const res = await promise;
+    expect(frames.filter((f) => 'meta' in f)).toEqual([{ meta: { provider: 'gemini', model: 'gemini-3.1-pro-preview' } }]);
+    // The chain member stays the result's model (rotation and booking key on it); the served one is reported beside it.
+    expect(res.model).toBe('gemini-pro-latest');
+    expect(res.servedModel).toBe('gemini-3.1-pro-preview');
+    expect(frames[frames.length - 1]).toEqual({ usage: { model: 'gemini-pro-latest', inputTokens: 12, outputTokens: 7, totalTokens: 19 } });
+  });
+
+  it('the same model, or a pinned build of it, keeps the requested name', async () => {
+    for (const version of ['gemini-3.8-flash', 'models/gemini-3.8-flash', 'gemini-3.8-flash-001', 'GEMINI-3.8-FLASH']) {
+      mockModels.set('gemini-3.8-flash', streamModel([raw({ modelVersion: version }), ...textParts(['ok']), finishPart()]));
+      const { frames, promise } = run(['gemini-3.8-flash']);
+      const res = await promise;
+      expect([version, frames[0]]).toEqual([version, { meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }]);
+      expect(res.servedModel).toBeUndefined();
+    }
+  });
+
+  it('a version that only shows up after text started corrects the badge exactly once', async () => {
+    mockModels.set(
+      'gemini-flash-latest',
+      streamModel([
+        { type: 'text-start', id: 't0' },
+        { type: 'text-delta', id: 't0', delta: 'one ' },
+        raw({ modelVersion: 'gemini-3.8-flash' }),
+        { type: 'text-delta', id: 't0', delta: 'two' },
+        raw({ modelVersion: 'gemini-3.6-flash' }), // a second, different value is ignored — one correction at most
+        { type: 'text-end', id: 't0' },
+        finishPart(),
+      ]),
+    );
+    const { frames, promise } = run(['gemini-flash-latest']);
+    const res = await promise;
+    expect(kinds(frames)).toEqual(['meta', 'text', 'meta', 'text', 'usage']);
+    expect(frames[0]).toEqual({ meta: { provider: 'gemini', model: 'gemini-flash-latest' } });
+    expect(frames[2]).toEqual({ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } });
+    expect(res.servedModel).toBe('gemini-3.8-flash');
+    expect(textOf(frames)).toBe('one two');
+  });
+
+  it('a rotated alias keeps the fallback flag on its served-model meta and on the partial marker', async () => {
+    mockModels.set('gemini-3.8-flash', failingModel(apiError(503, 'overloaded', 'UNAVAILABLE')));
+    mockModels.set(
+      'gemini-flash-latest',
+      streamModel([raw({ modelVersion: 'gemini-3.6-flash' }), ...textParts(['half']), { type: 'error', error: apiError(500, 'boom') }]),
+    );
+    const { frames, promise } = run(['gemini-3.8-flash', 'gemini-flash-latest']);
+    const res = await promise;
+    expect(res.ok).toBe(false);
+    expect(frames.filter((f) => 'meta' in f)).toEqual([
+      { meta: { provider: 'gemini', model: 'gemini-3.6-flash', fallback: true } },
+      { meta: { provider: 'gemini', model: 'gemini-3.6-flash', partial: true, fallback: true } },
+    ]);
+  });
+
+  it('servedModelOf accepts only a plain gemini-* id that differs from the request', () => {
+    expect(servedModelOf({ modelVersion: 'gemini-3.1-pro-preview' }, 'gemini-pro-latest')).toBe('gemini-3.1-pro-preview');
+    expect(servedModelOf({ modelVersion: ' models/gemini-3.1-pro-preview ' }, 'gemini-pro-latest')).toBe('gemini-3.1-pro-preview');
+    for (const bad of [undefined, null, 42, '', 'gpt-5', 'gemini 3', 'gemini-3.8-flash/../../x', `gemini-${'x'.repeat(200)}`, '<b>gemini</b>']) {
+      expect([bad, servedModelOf({ modelVersion: bad }, 'gemini-pro-latest')]).toEqual([bad, null]);
+    }
+    expect(servedModelOf(null, 'gemini-pro-latest')).toBeNull();
+    expect(servedModelOf({ modelVersion: 'gemini-2.5-pro' }, 'gemini-2.5-pro')).toBeNull();
+    expect(servedModelOf({ modelVersion: 'gemini-2.5-pro-preview-06-2026' }, 'gemini-2.5-pro')).toBeNull();
   });
 });
 
@@ -530,10 +619,32 @@ describe('classifyChatError', () => {
 
 describe('thinkingConfigFor', () => {
   it('uses thinkingLevel for Gemini 3 (Pro cannot go below low)', () => {
-    expect(thinkingConfigFor('gemini-3.8-flash', 'off')).toEqual({ thinkingLevel: 'minimal' });
     expect(thinkingConfigFor('gemini-3.8-flash', 'low')).toEqual({ thinkingLevel: 'low' });
     expect(thinkingConfigFor('gemini-3.8-flash', 'high')).toEqual({ thinkingLevel: 'high' });
     expect(thinkingConfigFor('gemini-3.1-pro-preview', 'off')).toEqual({ thinkingLevel: 'low' });
+    expect(thinkingConfigFor('gemini-3.1-pro-preview', 'high')).toEqual({ thinkingLevel: 'high' });
+  });
+
+  it("never sends 'minimal' to a model that rejects it (3.7 / 3.8 Flash, 3.1 Pro — Google's thinking page, 2026-09-25)", () => {
+    // 'minimal' is an API error there, and a 400 does not rotate: the whole turn used to fail on the PRIMARY model.
+    for (const id of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-3-pro-preview']) {
+      expect([id, thinkingConfigFor(id, 'off')]).toEqual([id, { thinkingLevel: 'low' }]);
+    }
+    // An unchecked newer Flash gets 'low' too (allowlist, not denylist).
+    expect(thinkingConfigFor('gemini-3.9-flash', 'off')).toEqual({ thinkingLevel: 'low' });
+  });
+
+  it("keeps 'minimal' where it is documented: 3.0 – 3.6 Flash and every 3.x Flash-Lite", () => {
+    for (const id of [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-3-flash-preview',
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite-preview',
+    ]) {
+      expect([id, thinkingConfigFor(id, 'off')]).toEqual([id, { thinkingLevel: 'minimal' }]);
+    }
   });
 
   it('uses thinkingBudget for Gemini 2.5 (Pro floor 128, -1 = dynamic)', () => {

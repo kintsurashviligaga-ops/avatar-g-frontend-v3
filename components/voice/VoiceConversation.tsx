@@ -37,6 +37,7 @@ import {
   extForMime,
   type VadState,
 } from '@/lib/voice/vad';
+import { useMicRelease } from '@/lib/voice/micBus';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Status = 'connecting' | 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
@@ -561,22 +562,35 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   //    back to a single "tap to start". Runs once. ──
   useEffect(() => { void bootSessionRef.current?.(false); }, []);
 
+  // ── Pause the session and release the mic; a tap resumes (re-grants a fresh stream under that gesture) ──
+  const pauseAndRelease = useCallback(() => {
+    turnGenRef.current += 1;
+    try { turnAbortRef.current?.abort(); } catch { /* noop */ } // cancel in-flight transcribe/chat
+    try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
+    // Full graph stop INCLUDING the mic tracks — never leave the mic hot in the background.
+    // Nulling streamRef makes resumeSession re-boot (re-grant) a fresh live stream under a gesture.
+    stopGraph();
+    runningRef.current = false;
+    go('resume');
+  }, [go, stopGraph]);
+
   // ── Pause VAD + release the mic when the tab is hidden; require a tap to resume ──
   useEffect(() => {
     const onHidden = () => {
       if (typeof document === 'undefined' || !document.hidden || !runningRef.current) return;
-      turnGenRef.current += 1;
-      try { turnAbortRef.current?.abort(); } catch { /* noop */ } // cancel in-flight transcribe/chat
-      try { ttsAbortRef.current?.abort(); } catch { /* noop */ }
-      // Full graph stop INCLUDING the mic tracks — never leave the mic hot in the background.
-      // Nulling streamRef makes resumeSession re-boot (re-grant) a fresh live stream under a gesture.
-      stopGraph();
-      runningRef.current = false;
-      go('resume');
+      pauseAndRelease();
     };
     document.addEventListener('visibilitychange', onHidden);
     return () => document.removeEventListener('visibilitychange', onHidden);
-  }, [go, stopGraph]);
+  }, [pauseAndRelease]);
+
+  // ── Another feature needs the microphone now (lib/voice/micBus — Live voice opening). ⚠️ During an auth flicker
+  //    ChatChrome can swap Live for this component and back; this one auto-boots on mount, and its hot capture made
+  //    the returning Live call's getUserMedia fail with NotReadableError on Android. Release synchronously. ──
+  useMicRelease(() => {
+    if (!runningRef.current && !streamRef.current) return;
+    pauseAndRelease();
+  }, 'voice-conversation');
 
   const resumeSession = useCallback(async () => {
     setError('');

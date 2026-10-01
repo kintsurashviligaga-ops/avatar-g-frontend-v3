@@ -102,6 +102,29 @@ describe('createChatStreamStore — frame batching', () => {
     expect(s.usage).toEqual({ model: 'gemini-3.8-flash', outputTokens: 3 });
   });
 
+  it('keeps every meta field the wire carries: mode, fallback and a Pro-cap downgrade', () => {
+    const frames = manualFrames();
+    const store = createChatStreamStore({ schedule: frames.schedule, cancel: frames.cancel });
+    const w = store.begin();
+    const meta = {
+      provider: 'gemini',
+      model: 'gemini-3.8-flash',
+      mode: 'fast',
+      fallback: false,
+      requestedMode: 'pro',
+      reason: 'pro_cap',
+      resetAt: '2026-10-01T08:15:00.000Z',
+    } as const;
+    w.setMeta(meta);
+    w.appendText('hi');
+    frames.run();
+    expect(store.getSnapshot().meta).toEqual(meta);
+    // A later meta frame (a rotation, the partial marker) replaces it whole — no stale downgrade notice survives.
+    w.setMeta({ provider: 'gemini', model: 'gemini-3.6-flash', mode: 'thinking', fallback: true });
+    frames.run();
+    expect(store.getSnapshot().meta).toEqual({ provider: 'gemini', model: 'gemini-3.6-flash', mode: 'thinking', fallback: true });
+  });
+
   it('keeps the snapshot identity when nothing changed (useSyncExternalStore requires it)', () => {
     const frames = manualFrames();
     const store = createChatStreamStore({ schedule: frames.schedule, cancel: frames.cancel });

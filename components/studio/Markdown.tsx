@@ -14,7 +14,7 @@ import { MarkdownView } from '@/components/chat/MarkdownView';
 
 export interface MarkdownProps {
   children: string;
-  /** True while the reply is still streaming: shows the inline caret. */
+  /** True while the reply is still streaming: the newest block fades in (no caret — Gemini style). */
   streaming?: boolean;
   /** Labels the code copy button (defaults to English). */
   locale?: 'ka' | 'en' | 'ru';

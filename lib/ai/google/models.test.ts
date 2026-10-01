@@ -10,6 +10,7 @@ import {
   TRANSCRIBE_LIVE_MODEL,
   TTS_MODELS,
   chatModelChain,
+  chatModelClass,
   defaultLiveModel,
   isRetiredModel,
   normalizeModelId,
@@ -18,12 +19,14 @@ import {
   sttModel,
   toModelResource,
   ttsModel,
+  type ChatChainKey,
   type ChatTier,
 } from './models';
 
 const ENV_KEYS = [
   'GEMINI_CHAT_MODELS',
   'GEMINI_CHAT_PRO_MODELS',
+  'GEMINI_CHAT_LITE_MODELS',
   'GEMINI_LIVE_MODEL',
   'GEMINI_TTS_MODEL',
   'GEMINI_STT_MODEL',
@@ -51,6 +54,7 @@ describe('catalogue self-check', () => {
     const all = [
       ...DEFAULT_CHAT_MODELS.standard,
       ...DEFAULT_CHAT_MODELS.pro,
+      ...DEFAULT_CHAT_MODELS.lite,
       ...LIVE_MODELS,
       ...TTS_MODELS,
       ...STT_MODELS,
@@ -180,41 +184,104 @@ describe('parseModelList', () => {
 });
 
 describe('chatModelChain', () => {
-  it('returns the standard default chain', () => {
-    expect(chatModelChain('standard')).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']);
+  const FAST = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
+  const PRO = ['gemini-3.1-pro-preview', 'gemini-2.5-pro'];
+  const LITE = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'];
+
+  it('fast and thinking share the Flash chain (Thinking is the same model, thought through harder)', () => {
+    expect(chatModelChain('fast')).toEqual(FAST);
+    expect(chatModelChain('thinking')).toEqual(FAST);
   });
 
-  it('returns the pro default chain', () => {
-    expect(chatModelChain('pro')).toEqual(['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-3.8-flash']);
+  it("the legacy 'standard' tier still means the Flash chain (the other chat routes and the agent's search tool)", () => {
+    expect(chatModelChain('standard')).toEqual(FAST);
   });
 
-  it('treats an unknown tier as standard', () => {
-    expect(chatModelChain('ultra' as unknown as ChatTier)).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+  it('pro is Pro models only — it never silently downgrades to Flash inside the chain', () => {
+    expect(chatModelChain('pro')).toEqual(PRO);
+    expect(chatModelChain('pro').every((id) => chatModelClass(id) === 'pro')).toBe(true);
+    // gemini-pro-latest aliases gemini-3.1-pro-preview today: listing it would retry the same model.
+    expect(chatModelChain('pro')).not.toContain('gemini-pro-latest');
+  });
+
+  it('lite is the Flash-Lite chain (2.5 Flash-Lite is gone for new users — a 404 on this key)', () => {
+    expect(chatModelChain('lite')).toEqual(LITE);
+    expect(chatModelChain('lite')).not.toContain('gemini-2.5-flash-lite');
+    expect(chatModelChain('lite').every((id) => chatModelClass(id) === 'lite')).toBe(true);
+  });
+
+  it('treats an unknown key as the Flash chain', () => {
+    expect(chatModelChain('ultra' as unknown as ChatTier)).toEqual(FAST);
+    expect(chatModelChain('gemini-3.1-pro-preview' as unknown as ChatChainKey)).toEqual(FAST);
+    expect(chatModelChain(undefined as unknown as ChatChainKey)).toEqual(FAST);
   });
 
   it('returns a fresh array each call (callers may mutate it)', () => {
     const a = chatModelChain('standard');
     a.push('mutated');
     a.shift();
-    expect(chatModelChain('standard')).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']);
-    expect(DEFAULT_CHAT_MODELS.standard).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']);
+    expect(chatModelChain('standard')).toEqual(FAST);
+    expect(DEFAULT_CHAT_MODELS.standard).toEqual(FAST);
+    const p = chatModelChain('pro');
+    p.length = 0;
+    expect(chatModelChain('pro')).toEqual(PRO);
   });
 
-  it('GEMINI_CHAT_MODELS overrides the standard chain only', () => {
-    process.env.GEMINI_CHAT_MODELS = 'gemini-3.7-flash, gemini-2.5-flash-lite';
-    expect(chatModelChain('standard')).toEqual(['gemini-3.7-flash', 'gemini-2.5-flash-lite']);
-    expect(chatModelChain('pro')).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+  it('GEMINI_CHAT_MODELS overrides the Flash chain (fast, thinking, standard) only', () => {
+    process.env.GEMINI_CHAT_MODELS = 'gemini-3.7-flash, gemini-3.5-flash';
+    for (const key of ['fast', 'thinking', 'standard'] as const) {
+      expect(chatModelChain(key)).toEqual(['gemini-3.7-flash', 'gemini-3.5-flash']);
+    }
+    expect(chatModelChain('pro')).toEqual(PRO);
+    expect(chatModelChain('lite')).toEqual(LITE);
   });
 
-  it('GEMINI_CHAT_PRO_MODELS overrides the pro chain only', () => {
+  it('GEMINI_CHAT_PRO_MODELS overrides the Pro chain only', () => {
     process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-pro-latest,models/gemini-2.5-pro';
     expect(chatModelChain('pro')).toEqual(['gemini-pro-latest', 'gemini-2.5-pro']);
-    expect(chatModelChain('standard')).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(chatModelChain('standard')).toEqual(FAST);
+    expect(chatModelChain('lite')).toEqual(LITE);
   });
 
-  it('accepts a new, un-catalogued but well-formed id (operator list, not an allowlist)', () => {
+  it('GEMINI_CHAT_LITE_MODELS overrides the Lite chain only', () => {
+    process.env.GEMINI_CHAT_LITE_MODELS = 'gemini-3.5-flash-lite; gemini-2.5-flash-lite';
+    expect(chatModelChain('lite')).toEqual(['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite']);
+    expect(chatModelChain('fast')).toEqual(FAST);
+    expect(chatModelChain('pro')).toEqual(PRO);
+  });
+
+  it('an override keeps only ids of its own class — a Flash id cannot sneak into the Pro chain', () => {
+    process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-3.1-pro-preview, gemini-3.8-flash, gemini-3.1-flash-lite, gemini-2.5-pro';
+    expect(chatModelChain('pro')).toEqual(['gemini-3.1-pro-preview', 'gemini-2.5-pro']);
+    // …nor a Lite or a Pro id into the Flash chain, nor a Flash id into Lite.
+    process.env.GEMINI_CHAT_MODELS = 'gemini-2.5-flash-lite, gemini-3.1-pro-preview, gemini-3.6-flash';
+    expect(chatModelChain('fast')).toEqual(['gemini-3.6-flash']);
+    process.env.GEMINI_CHAT_LITE_MODELS = 'gemini-3.8-flash, gemini-3.1-flash-lite';
+    expect(chatModelChain('lite')).toEqual(['gemini-3.1-flash-lite']);
+  });
+
+  it('an override made only of another class falls back to the defaults (never an empty or wrong-class chain)', () => {
+    process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-3.8-flash, gemini-3.6-flash';
+    expect(chatModelChain('pro')).toEqual(PRO);
+  });
+
+  it('voice, TTS, image and unplaceable ids never enter a text chat chain', () => {
+    process.env.GEMINI_CHAT_MODELS = [
+      'gemini-3.1-flash-live-preview',
+      'gemini-2.5-flash-preview-tts',
+      'gemini-2.5-flash-image',
+      'gemini-exp-1206',
+      'gemma-4-27b-it',
+      'gemini-3.8-flash',
+    ].join(',');
+    expect(chatModelChain('fast')).toEqual(['gemini-3.8-flash']);
+  });
+
+  it('accepts a new, un-catalogued but well-formed id of the right class (operator list, not an allowlist)', () => {
     process.env.GEMINI_CHAT_MODELS = 'gemini-4.0-flash-preview';
     expect(chatModelChain('standard')).toEqual(['gemini-4.0-flash-preview']);
+    process.env.GEMINI_CHAT_PRO_MODELS = 'gemini-4.0-pro-preview';
+    expect(chatModelChain('pro')).toEqual(['gemini-4.0-pro-preview']);
   });
 
   it('drops retired ids from an override', () => {
@@ -230,19 +297,53 @@ describe('chatModelChain', () => {
   it.each(['', '   ', ',,', ' ; \n '])('an empty override %p falls back to the defaults', (v) => {
     process.env.GEMINI_CHAT_MODELS = v;
     process.env.GEMINI_CHAT_PRO_MODELS = v;
-    expect(chatModelChain('standard')).toEqual([...DEFAULT_CHAT_MODELS.standard]);
-    expect(chatModelChain('pro')).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+    process.env.GEMINI_CHAT_LITE_MODELS = v;
+    expect(chatModelChain('standard')).toEqual(FAST);
+    expect(chatModelChain('pro')).toEqual(PRO);
+    expect(chatModelChain('lite')).toEqual(LITE);
   });
 
   it('an override made only of retired / malformed ids falls back to the defaults', () => {
     process.env.GEMINI_CHAT_MODELS = 'gemini-2.0-flash, bad id, gemini-1.5-flash';
-    expect(chatModelChain('standard')).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(chatModelChain('standard')).toEqual(FAST);
   });
 
   it('never contains a retired id', () => {
-    for (const tier of ['standard', 'pro'] as const) {
-      expect(chatModelChain(tier).some(isRetiredModel)).toBe(false);
+    for (const key of ['standard', 'pro', 'fast', 'thinking', 'lite'] as const) {
+      expect(chatModelChain(key).some(isRetiredModel)).toBe(false);
     }
+  });
+});
+
+describe('chatModelClass', () => {
+  it.each([
+    ['gemini-3.8-flash', 'flash'],
+    ['gemini-3.6-flash', 'flash'],
+    ['gemini-3.5-flash', 'flash'],
+    ['gemini-2.5-flash', 'flash'],
+    ['gemini-flash-latest', 'flash'],
+    ['gemini-3.1-pro-preview', 'pro'],
+    ['gemini-2.5-pro', 'pro'],
+    ['gemini-pro-latest', 'pro'],
+    ['gemini-3.1-flash-lite', 'lite'],
+    ['gemini-3.5-flash-lite', 'lite'],
+    ['gemini-2.5-flash-lite', 'lite'],
+    ['models/gemini-2.5-flash-lite', 'lite'],
+  ] as const)('%p is %p', (id, cls) => {
+    expect(chatModelClass(id)).toBe(cls);
+  });
+
+  it.each([
+    'gemini-2.5-flash-native-audio-latest',
+    'gemini-3.8-live',
+    'gemini-3.8-flash-tts',
+    'gemini-2.5-flash-image',
+    'gemini-2.0-flash',
+    'gemini-flash-lite-latest',
+    'gemma-4-27b-it',
+    '',
+  ])('%p is not a text chat model we can place', (id) => {
+    expect(chatModelClass(id)).toBeNull();
   });
 });
 

@@ -21,10 +21,13 @@ import { isRetiredModel } from '@/lib/ai/google/models';
  * error part itself, so the failure is classified here and reaches the user as a typed `{error}` frame.
  *
  * Frame order for one call:
- *   success:            {meta} {text}… [{sources}] [{usage}]
- *   failure after text: {meta} {text}… {meta partial:true} [{sources}] [{usage}] {error}
+ *   success:            {meta} [{meta}] {text}… [{sources}] [{usage}]
+ *   failure after text: {meta} [{meta}] {text}… {meta partial:true} [{sources}] [{usage}] {error}
  *   failure, no text:   [{usage}] {error}
  *   caller abort:       whatever was already sent; nothing after the abort
+ * The optional second `{meta}` is the served-model correction (see `servedModelOf`): at most one per attempt, and in
+ * practice never, because the model version rides the first chunk. Every `{meta}` of an attempt that is not the
+ * chain's first carries `fallback: true`.
  * The `[DONE]` terminator is the route's job, not this module's.
  */
 
@@ -32,7 +35,11 @@ import { isRetiredModel } from '@/lib/ai/google/models';
 
 export interface GeminiChatConfig {
   system: string;
-  temperature: number;
+  /**
+   * Omitted = the model's own default. The route omits it for the Thinking and Pro modes: Google's Gemini 3 guidance
+   * is to keep temperature at its default 1.0 — lower values risk looping or weaker reasoning.
+   */
+  temperature?: number;
   topP: number;
   topK?: number;
   maxOutputTokens: number;
@@ -55,6 +62,11 @@ export interface StreamGeminiChatResult {
   ok: boolean;
   /** The model whose outcome this result reports: the one that answered, or the last one tried. Null when none ran. */
   model: string | null;
+  /**
+   * Additive: the model Google says actually served `model` when that is a DIFFERENT model (we asked for an alias).
+   * Absent when it is the same model — the usual case. `model` stays the chain member (rotation, attempts, booking).
+   */
+  servedModel?: string;
   /** Every character sent as a `{text}` frame. Non-empty on failure only when the model failed mid-answer. */
   text: string;
   usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
@@ -126,16 +138,26 @@ function usableModels(models: readonly unknown[]): string[] {
 const GEMINI_3_RE = /^gemini-3(?:\.\d+)?-/i;
 const GEMINI_25_RE = /^gemini-2\.5-/i;
 const PRO_RE = /(?:^|-)pro(?:-|$)/i;
+/**
+ * Gemini 3 models documented to ACCEPT `thinkingLevel: 'minimal'` (Google's thinking page, updated 2026-09-25):
+ * 3.0 – 3.6 Flash and every 3.x Flash-Lite. 3.7 / 3.8 Flash and 3.1 Pro list it as "Not supported (error)".
+ * An ALLOWLIST on purpose: a model we have not checked gets 'low' (it thinks a little more) instead of a 400.
+ */
+const MINIMAL_OK_RE = /^gemini-3(?:\.[0-6])?-flash(?:-|$)|^gemini-3(?:\.\d+)?-flash-lite(?:-|$)/i;
 
 /**
  * Maps a profile's thinking level onto the one knob each model family accepts, or undefined to send nothing.
  *
  * ⚠️ THE TWO FAMILIES TAKE DIFFERENT FIELDS, AND SENDING BOTH IS A 400. Gemini 3 uses `thinkingLevel`
- * (minimal | low | medium | high; `high` is its default and Pro cannot go below `low`). Gemini 2.5 uses
- * `thinkingBudget` in tokens (-1 = dynamic, the default; Flash / Flash-Lite accept 0 = off; Pro's floor is
- * 128 and it cannot be turned off). A 400 here is `bad_request`, which does NOT rotate, so a wrong mapping
- * would fail the whole turn — hence `undefined` (the model's own default) for anything outside these two
- * families, including the `-latest` aliases whose family can change under us.
+ * (minimal | low | medium | high; the default is `medium` on Flash, `high` on Pro, `minimal` on Flash-Lite, and Pro
+ * cannot go below `low`). Gemini 2.5 uses `thinkingBudget` in tokens (-1 = dynamic, the default; Flash / Flash-Lite
+ * accept 0 = off; Pro's floor is 128 and it cannot be turned off). A 400 here is `bad_request`, which does NOT
+ * rotate, so a wrong mapping fails the whole turn — hence `undefined` (the model's own default) for anything outside
+ * these two families, including the `-latest` aliases whose family can change under us.
+ *
+ * ⚠️ 'off' IS 'minimal' ONLY WHERE THE MODEL TAKES IT. It used to be 'minimal' for every Gemini 3 Flash — an API
+ * error on 3.7 / 3.8 Flash, i.e. on the chat's PRIMARY model, so any persona with thinking 'off' failed every turn
+ * with no rotation. Where 'minimal' is not accepted, 'off' is 'low'.
  */
 export function thinkingConfigFor(modelId: string, level: ThinkingLevel | undefined): GoogleThinkingConfig | undefined {
   if (!level) return undefined;
@@ -144,7 +166,7 @@ export function thinkingConfigFor(modelId: string, level: ThinkingLevel | undefi
   if (GEMINI_3_RE.test(id)) {
     if (level === 'high') return { thinkingLevel: 'high' };
     if (level === 'low') return { thinkingLevel: 'low' };
-    return { thinkingLevel: isPro ? 'low' : 'minimal' };
+    return { thinkingLevel: !isPro && MINIMAL_OK_RE.test(id) ? 'minimal' : 'low' };
   }
   if (GEMINI_25_RE.test(id)) {
     if (level === 'high') return { thinkingBudget: -1 };
@@ -375,6 +397,24 @@ function promptBlockReason(rawValue: unknown): string | null {
   return typeof reason === 'string' && reason && reason !== 'BLOCK_REASON_UNSPECIFIED' ? reason : null;
 }
 
+/**
+ * The model that ACTUALLY served a response — the raw generateContent chunk's `modelVersion` — when it names a
+ * DIFFERENT model than the one we asked for, i.e. we asked for an alias (`gemini-pro-latest` answers as
+ * `gemini-3.1-pro-preview`, verified live 2026-09-30). Otherwise null:
+ *   · the same id, or a pinned build of it (`<id>-001`, `<id>-preview-09-2026`) — the same model, keep its name;
+ *   · anything that is not a plain `gemini-*` model id — it becomes UI text (the badge), so nothing else passes.
+ * @ai-sdk/google 3.0.70 does not parse modelVersion at all; the raw chunk is the only place it exists.
+ */
+export function servedModelOf(rawValue: unknown, requested: string): string | null {
+  const v = (asErrorLike(rawValue) as { modelVersion?: unknown }).modelVersion;
+  if (typeof v !== 'string') return null;
+  const id = v.trim().replace(/^models\//i, '');
+  if (!MODEL_ID_RE.test(id) || !/^gemini-/i.test(id)) return null;
+  const want = String(requested || '').trim().toLowerCase();
+  const got = id.toLowerCase();
+  return got === want || got.startsWith(`${want}-`) ? null : id;
+}
+
 function webSearchQueryCount(providerMetadata: unknown): number {
   const google = (asErrorLike(providerMetadata) as { google?: unknown }).google;
   const grounding = (asErrorLike(google) as { groundingMetadata?: unknown }).groundingMetadata;
@@ -394,6 +434,8 @@ const MAX_SOURCES = 20;
 
 interface AttemptOutcome {
   text: string;
+  /** `servedModelOf` for this attempt, when Google named a different model. */
+  served?: string;
   error?: ChatError;
   /** The caller aborted, or `onFrame` threw (the consumer is gone). Terminal, and nothing more is sent. */
   aborted: boolean;
@@ -438,13 +480,22 @@ function buildProviderOptions(modelId: string, config: GeminiChatConfig): Google
   return Object.keys(opts).length > 0 ? opts : undefined;
 }
 
+/** The `{meta}` frame for one attempt. `fallback` only when true, so a primary-model answer keeps the original shape. */
+function metaFrame(model: string, fallback: boolean, partial = false): ChatFrame {
+  return { meta: { provider: 'gemini', model, ...(partial ? { partial: true } : {}), ...(fallback ? { fallback: true } : {}) } };
+}
+
 async function runAttempt(
   modelId: string,
+  /** True when this is not the chain's first model: every `{meta}` it sends says so. */
+  fallback: boolean,
   input: StreamGeminiChatInput,
   emitter: Emitter,
   linkAbort: (ctrl: AbortController) => () => void,
 ): Promise<AttemptOutcome> {
   const out: AttemptOutcome = { text: '', aborted: false, sources: [], groundingQueries: 0 };
+  /** The model the last `{meta}` sent for this attempt named; null until the first text. */
+  let metaModel: string | null = null;
   const ctrl = new AbortController();
   const unlink = linkAbort(ctrl);
   const seenUrls = new Set<string>();
@@ -469,7 +520,7 @@ async function runAttempt(
       system: config.system,
       messages: input.messages as ModelMessage[],
       ...(tools ? { tools } : {}),
-      temperature: config.temperature,
+      ...(typeof config.temperature === 'number' ? { temperature: config.temperature } : {}),
       topP: config.topP,
       ...(typeof config.topK === 'number' ? { topK: config.topK } : {}),
       maxOutputTokens: config.maxOutputTokens,
@@ -493,7 +544,10 @@ async function runAttempt(
         case 'text-delta': {
           const delta = part.text;
           if (!delta) break;
-          if (out.text.length === 0) await emitter.emit({ meta: { provider: 'gemini', model: modelId } });
+          if (out.text.length === 0) {
+            metaModel = out.served ?? modelId;
+            await emitter.emit(metaFrame(metaModel, fallback));
+          }
           if (await emitter.emit({ text: delta })) out.text += delta;
           break;
         }
@@ -508,6 +562,18 @@ async function runAttempt(
         }
         case 'raw': {
           blockReason = blockReason ?? promptBlockReason(part.rawValue);
+          if (!out.served) {
+            const served = servedModelOf(part.rawValue, modelId);
+            if (served) {
+              out.served = served;
+              // The raw part precedes the parsed parts of its chunk, so the version normally rides the FIRST meta
+              // frame. If it only appears after text went out, correct the badge — once (`served` is set once).
+              if (metaModel !== null && metaModel !== served) {
+                metaModel = served;
+                await emitter.emit(metaFrame(served, fallback));
+              }
+            }
+          }
           break;
         }
         case 'finish-step': {
@@ -639,11 +705,11 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
     };
     const attemptInput: StreamGeminiChatInput = { ...input, apiKey };
 
-    let last: { model: string; outcome: AttemptOutcome } | null = null;
+    let last: { model: string; index: number; outcome: AttemptOutcome } | null = null;
     for (const [i, model] of models.entries()) {
       if (input.abortSignal?.aborted || emitter.gone) break;
-      const outcome = await runAttempt(model, attemptInput, emitter, linkAbort);
-      last = { model, outcome };
+      const outcome = await runAttempt(model, i > 0, attemptInput, emitter, linkAbort);
+      last = { model, index: i, outcome };
 
       const billed = {
         ...(outcome.usage ? { usage: outcome.usage } : {}),
@@ -670,6 +736,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
       return {
         ok: false,
         model: last?.model ?? null,
+        ...(last?.outcome.served ? { servedModel: last.outcome.served } : {}),
         text: last?.outcome.text ?? '',
         ...(last?.outcome.usage ? { usage: last.outcome.usage } : {}),
         sources: last?.outcome.sources ?? [],
@@ -679,10 +746,11 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
       };
     }
 
-    const { model, outcome } = last;
+    const { model, index, outcome } = last;
     const res: StreamGeminiChatResult = {
       ok: !outcome.error,
       model,
+      ...(outcome.served ? { servedModel: outcome.served } : {}),
       text: outcome.text,
       ...(outcome.usage ? { usage: outcome.usage } : {}),
       sources: outcome.sources,
@@ -693,7 +761,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
 
     const tail: ChatFrame[] = [];
     // The meta frame already on the wire says this model answered; correct it before the error lands.
-    if (outcome.error && outcome.text.length > 0) tail.push({ meta: { provider: 'gemini', model, partial: true } });
+    if (outcome.error && outcome.text.length > 0) tail.push(metaFrame(outcome.served ?? model, index > 0, true));
     if (outcome.sources.length > 0) tail.push({ sources: outcome.sources });
     if (outcome.usage) tail.push({ usage: { model, ...outcome.usage } });
     if (outcome.error) tail.push(errorFrame(outcome.error));

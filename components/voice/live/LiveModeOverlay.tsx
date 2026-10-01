@@ -1,40 +1,79 @@
 'use client';
 
 /**
- * LiveModeOverlay — the full-screen Live call: orb, status line, rolling captions and the control bar
- * (mute · camera · flip · host extras · end). Pure presentation: every action is a prop, all state comes from
- * useGeminiLiveSession / useLiveCamera in the host (components/voice/GeminiLiveConversation.tsx).
+ * LiveModeOverlay — the full-screen Live call in the Gemini Live frame: a dark screen with "Live" and a captions
+ * toggle on top, the orb and one quiet status line in the middle, captions under it, and a floating pill of controls
+ * at the bottom (camera · flip · waveform · mute · host extras · End). Pure presentation: every action is a prop, all
+ * state comes from useGeminiLiveSession / useLiveCamera in the host (components/voice/GeminiLiveConversation.tsx),
+ * except the captions toggle and the copy-link feedback, which are view state.
  *
- * Controls are ≥ 44 px touch targets with ka/en/ru accessible names; toggles expose aria-pressed. The dialog takes
- * focus on open, traps Tab and ends the call on Escape (hooks/useDialogA11y).
+ * ⚠️ RENDERED THROUGH A PORTAL ON <body>, ALWAYS DARK. It used to render inside ChatChrome's shell at z-[60] — the
+ * body-level JobTray (z-60), the toasts (z-110/111) and the lightbox (z-100) all painted over the call. It now sits
+ * at z-[130] directly on <body>, and `data-theme="dark"` pins the dark tokens on this subtree (they are declared on
+ * [data-theme='dark'] in app/globals.css), so Live stays dark in the light theme, as Gemini Live does.
+ *
+ * ⚠️ A MIC FAILURE WAS HEADLINED „კავშირი შეწყდა“ ("connection dropped") — which is how a device problem got reported
+ * as a network one. Mic codes now get a microphone screen (MicOff, "Microphone unavailable", the specific reason, a
+ * hint, the browser's error name in small mono type for support screenshots, Retry, and for in-app browsers a way
+ * out to a real browser). „კავშირი შეწყდა“ is kept only for connection_lost / setup_failed.
+ *
+ * Controls are ≥ 44 px touch targets with ka/en/ru accessible names; toggles expose aria-pressed and invert when on
+ * (bg-app-text / text-app-bg — the product's toggle grammar). The dialog takes focus on open, traps Tab and ends the
+ * call on Escape (hooks/useDialogA11y). Georgian copy never goes below 16 px / 1.6.
  */
-import type { ReactNode, Ref } from 'react';
-import { Camera, CameraOff, Mic, MicOff, PhoneOff, RotateCcw, SwitchCamera } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  AlertCircle, Check, Copy, ExternalLink, Mic, MicOff, RotateCcw, Subtitles, SwitchCamera, Video, VideoOff, Volume2,
+  WifiOff, X,
+} from 'lucide-react';
 
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 import LiveCaptions from './LiveCaptions';
-import LiveOrb, { orbStateFor } from './LiveOrb';
-import type { LiveCaption, LiveErrorCode, LiveLevels, LiveStatus } from './useGeminiLiveSession';
+import LiveOrb, { LiveWaveform, orbStateFor } from './LiveOrb';
+import {
+  isMicErrorCode,
+  type LiveCaption,
+  type LiveErrorCode,
+  type LiveErrorDetail,
+  type LiveLevels,
+  type LiveStatus,
+} from './useGeminiLiveSession';
 
 type Locale = 'ka' | 'en' | 'ru';
 
 interface Strings {
   title: string;
+  /** The top-bar label (Gemini's "Live"). */
+  live: string;
   status: Record<LiveStatus, string>;
   errors: Record<LiveErrorCode, string>;
+  /** Extra "what to do" lines where the reason alone does not say it. */
+  hints: Partial<Record<LiveErrorCode, string>>;
+  micHeadline: string;
+  /** Headline for failures that are neither the mic nor the connection (sign-in, limits, unsupported…). */
+  startFailed: string;
   mute: string;
   camera: string;
   flip: string;
   frontCamera: string;
   backCamera: string;
+  /** Accessible name of End (contains the visible `endShort`, WCAG 2.5.3). */
   end: string;
+  endShort: string;
   retry: string;
+  captions: string;
+  copyLink: string;
+  copied: string;
+  openInBrowser: string;
+  tapToStart: string;
 }
 
 export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
   ka: {
     title: 'ცოცხალი საუბარი',
+    live: 'Live',
     status: {
       idle: 'მზად არის',
       connecting: 'დაკავშირება…',
@@ -46,7 +85,13 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
       closed: 'ზარი დასრულდა',
     },
     errors: {
-      mic_denied: 'მიკროფონზე წვდომა დაბლოკილია — დაუშვი ბრაუზერის პარამეტრებში.',
+      mic_denied: 'მიკროფონზე წვდომა არ არის დაშვებული.',
+      mic_system_denied: 'მიკროფონი სისტემის პარამეტრებშია დაბლოკილი — ჩართე ამ ბრაუზერისთვის (Settings → Privacy → Microphone).',
+      mic_not_found: 'მიკროფონი ვერ მოიძებნა — შეაერთე მიკროფონი ან ყურსასმენი და სცადე თავიდან.',
+      mic_busy: 'მიკროფონს სხვა პროგრამა იყენებს — დახურე ზარი ან ჩამწერი (Zoom, Teams, Discord) და სცადე თავიდან.',
+      mic_in_app: 'ამ აპის ბრაუზერში მიკროფონი არ მუშაობს — გახსენი myavatar.ge Safari-ში ან Chrome-ში.',
+      mic_insecure: 'მიკროფონი მხოლოდ დაცულ (https) კავშირზე მუშაობს.',
+      mic_lost: 'მიკროფონი გაითიშა საუბრის დროს.',
       mic_unavailable: 'მიკროფონი ვერ ჩაირთო.',
       auth: 'ცოცხალი საუბრისთვის შედი ანგარიშზე.',
       rate_limited: 'ძალიან ბევრი მცდელობა — სცადე ცოტა ხანში.',
@@ -56,16 +101,30 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
       connection_lost: 'კავშირი გაწყდა.',
       unsupported: 'ეს ბრაუზერი ცოცხალ ხმას ვერ უჭერს მხარს.',
     },
+    hints: {
+      mic_denied: 'მისამართის ზოლში დააჭირე ბოქლომის ხატულას → მიკროფონი → დაშვება და სცადე თავიდან.',
+      mic_unavailable: 'მიკროფონი სხვა აპს ან ჩანართს ხომ არ უკავია? დახურე და სცადე თავიდან.',
+      mic_lost: 'შეამოწმე ყურსასმენის ან Bluetooth-ის კავშირი და სცადე თავიდან.',
+    },
+    micHeadline: 'მიკროფონი მიუწვდომელია',
+    startFailed: 'Live ვერ დაიწყო',
     mute: 'მიკროფონის დადუმება',
     camera: 'კამერა',
     flip: 'კამერის შებრუნება',
     frontCamera: 'წინა კამერა',
     backCamera: 'უკანა კამერა',
     end: 'ზარის დასრულება',
+    endShort: 'დასრულება',
     retry: 'თავიდან ცდა',
+    captions: 'სუბტიტრები',
+    copyLink: 'ბმულის კოპირება',
+    copied: 'დაკოპირდა',
+    openInBrowser: 'ბრაუზერში გახსნა',
+    tapToStart: 'შეეხე ხმის ჩასართავად',
   },
   en: {
     title: 'Live Conversation',
+    live: 'Live',
     status: {
       idle: 'Ready',
       connecting: 'Connecting…',
@@ -77,7 +136,13 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
       closed: 'Call ended',
     },
     errors: {
-      mic_denied: 'Microphone access is blocked — allow it in your browser settings.',
+      mic_denied: "Microphone access isn't allowed.",
+      mic_system_denied: 'The microphone is blocked in your system settings — allow it for this browser (Settings → Privacy → Microphone).',
+      mic_not_found: 'No microphone found — connect a microphone or headset and try again.',
+      mic_busy: 'Another app is using the microphone — close calls or recorders (Zoom, Teams, Discord) and try again.',
+      mic_in_app: "The microphone doesn't work in this in-app browser — open myavatar.ge in Safari or Chrome.",
+      mic_insecure: 'The microphone only works over a secure (https) connection.',
+      mic_lost: 'The microphone disconnected during the call.',
       mic_unavailable: 'The microphone could not be started.',
       auth: 'Sign in to start a live conversation.',
       rate_limited: 'Too many attempts — try again in a moment.',
@@ -87,16 +152,30 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
       connection_lost: 'The connection was lost.',
       unsupported: 'This browser does not support live voice.',
     },
+    hints: {
+      mic_denied: 'Tap the lock icon in the address bar → Microphone → Allow, then try again.',
+      mic_unavailable: 'Is another app or tab using the microphone? Close it and try again.',
+      mic_lost: 'Check your headset or Bluetooth connection and try again.',
+    },
+    micHeadline: 'Microphone unavailable',
+    startFailed: "Live couldn't start",
     mute: 'Mute microphone',
     camera: 'Camera',
     flip: 'Flip camera',
     frontCamera: 'Front camera',
     backCamera: 'Back camera',
     end: 'End call',
+    endShort: 'End',
     retry: 'Try again',
+    captions: 'Captions',
+    copyLink: 'Copy link',
+    copied: 'Copied',
+    openInBrowser: 'Open in browser',
+    tapToStart: 'Tap to turn on sound',
   },
   ru: {
     title: 'Живой разговор',
+    live: 'Live',
     status: {
       idle: 'Готово',
       connecting: 'Подключение…',
@@ -108,7 +187,13 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
       closed: 'Звонок завершён',
     },
     errors: {
-      mic_denied: 'Доступ к микрофону заблокирован — разрешите его в настройках браузера.',
+      mic_denied: 'Доступ к микрофону не разрешён.',
+      mic_system_denied: 'Микрофон заблокирован в настройках системы — разрешите его для браузера (Настройки → Конфиденциальность → Микрофон).',
+      mic_not_found: 'Микрофон не найден — подключите микрофон или гарнитуру и повторите.',
+      mic_busy: 'Микрофон занят другим приложением — закройте звонок или запись (Zoom, Teams, Discord) и повторите.',
+      mic_in_app: 'Во встроенном браузере микрофон не работает — откройте myavatar.ge в Safari или Chrome.',
+      mic_insecure: 'Микрофон работает только по защищённому (https) соединению.',
+      mic_lost: 'Микрофон отключился во время звонка.',
       mic_unavailable: 'Не удалось включить микрофон.',
       auth: 'Войдите в аккаунт, чтобы начать живой разговор.',
       rate_limited: 'Слишком много попыток — попробуйте чуть позже.',
@@ -118,20 +203,89 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
       connection_lost: 'Соединение потеряно.',
       unsupported: 'Этот браузер не поддерживает живой голос.',
     },
+    hints: {
+      mic_denied: 'Нажмите на значок замка в адресной строке → Микрофон → Разрешить и повторите.',
+      mic_unavailable: 'Микрофон не занят другим приложением или вкладкой? Закройте его и повторите.',
+      mic_lost: 'Проверьте подключение гарнитуры или Bluetooth и повторите.',
+    },
+    micHeadline: 'Микрофон недоступен',
+    startFailed: 'Не удалось запустить Live',
     mute: 'Выключить микрофон',
     camera: 'Камера',
     flip: 'Перевернуть камеру',
     frontCamera: 'Фронтальная камера',
     backCamera: 'Основная камера',
     end: 'Завершить звонок',
+    endShort: 'Завершить',
     retry: 'Повторить',
+    captions: 'Субтитры',
+    copyLink: 'Скопировать ссылку',
+    copied: 'Скопировано',
+    openInBrowser: 'Открыть в браузере',
+    tapToStart: 'Нажмите, чтобы включить звук',
   },
 };
+
+/** The screen's headline for an error: the MICROPHONE for mic codes, the connection only for connection codes. */
+export function liveErrorHeadline(error: LiveErrorCode, locale: Locale = 'ka'): string {
+  const t = LIVE_OVERLAY_STRINGS[locale] ?? LIVE_OVERLAY_STRINGS.ka;
+  if (isMicErrorCode(error)) return t.micHeadline;
+  if (error === 'connection_lost' || error === 'setup_failed') return t.status.error;
+  return t.startFailed;
+}
+
+/** This page as a link that re-opens Live (ChatChrome's `?voice=1`), for leaving an in-app browser. */
+function liveLink(): string {
+  try {
+    const u = new URL(window.location.href);
+    u.hash = '';
+    u.searchParams.set('voice', '1');
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+/** Android can hand a URL to Chrome from inside a WebView; iOS in-app browsers have no such door (copy link only). */
+function androidIntentFor(link: string): string | null {
+  if (typeof navigator === 'undefined' || !/Android/i.test(navigator.userAgent || '') || !link) return null;
+  try {
+    const u = new URL(link);
+    return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=com.android.chrome;end`;
+  } catch {
+    return null;
+  }
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* in-app WebViews often refuse the async clipboard — fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 export interface LiveModeOverlayProps {
   locale?: Locale;
   status: LiveStatus;
   error?: LiveErrorCode | null;
+  /** The browser's error (name shown small on the error screen). */
+  errorDetail?: LiveErrorDetail | null;
   captions: readonly LiveCaption[];
   muted: boolean;
   cameraOn: boolean;
@@ -145,20 +299,32 @@ export interface LiveModeOverlayProps {
   onToggleCamera: () => void;
   onFlipCamera?: () => void;
   onEnd: () => void;
-  /** Shown on the error screen. */
+  /** Shown on the error screen. Runs inside the tap (the session creates its audio context there). */
   onRetry?: () => void;
+  /** The call's audio could not start without a gesture: show "tap to turn on sound". */
+  audioBlocked?: boolean;
+  onResumeAudio?: () => void;
   /** Host controls placed before the End button (e.g. the voice switch). */
   extraControls?: ReactNode;
+  /** Captions exist for this call (false on the degraded legacy wire). The on/off toggle is view state. */
   showCaptions?: boolean;
 }
 
-const ROUND_BTN = 'flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full transition';
-const NEUTRAL = 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]';
+const ROUND_BTN =
+  'flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full transition-colors duration-200 '
+  + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60';
+const IDLE = 'text-app-text hover:bg-white/10';
+const ON = 'bg-app-text text-app-bg';
+const SECONDARY_BTN =
+  'inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-5 font-semibold text-app-text '
+  + 'ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 '
+  + 'focus-visible:ring-app-accent/60';
 
 export default function LiveModeOverlay({
   locale = 'ka',
   status,
   error,
+  errorDetail,
   captions,
   muted,
   cameraOn,
@@ -171,34 +337,102 @@ export default function LiveModeOverlay({
   onFlipCamera,
   onEnd,
   onRetry,
+  audioBlocked = false,
+  onResumeAudio,
   extraControls,
   showCaptions = true,
 }: LiveModeOverlayProps) {
   const t = LIVE_OVERLAY_STRINGS[locale] ?? LIVE_OVERLAY_STRINGS.ka;
   const dialogRef = useDialogA11y<HTMLDivElement>(true, onEnd);
-  const statusLabel = t.status[status];
-  const errorText = status === 'error' && error ? t.errors[error] : null;
-  const showBackdrop = !!avatarUrl && !cameraOn;
+  const [captionsOn, setCaptionsOn] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
 
-  return (
-    // ⚠️ CONTENT WAS CENTRED IN THE FULL VIEWPORT WHILE THE CONTROL BAR IS `fixed bottom-0`. The bar is roughly
-    // 90px tall with its safe-area padding, and nothing reserved that space — so on a short screen (a landscape
-    // phone, a small device with the browser chrome showing) the status line and the error were laid out under
-    // it. Reserving the bar's height makes the centring honest.
+  const isError = status === 'error' && !!error;
+  const orbState = orbStateFor(status);
+  const statusLabel = t.status[status];
+  const showBackdrop = !!avatarUrl && !cameraOn;
+  // Georgian's tall script needs the 16 px floor; Latin/Cyrillic secondary copy stays a step quieter.
+  const quiet = locale === 'ka' ? 'text-[16px]' : 'text-[15px]';
+
+  const onCopyLink = useCallback(() => {
+    void copyText(liveLink()).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(false), 2000);
+    });
+  }, []);
+
+  let errorPanel: ReactNode = null;
+  if (isError && error) {
+    const mic = isMicErrorCode(error);
+    const Icon = mic ? MicOff : error === 'connection_lost' || error === 'setup_failed' ? WifiOff : AlertCircle;
+    const hint = t.hints[error];
+    const intent = error === 'mic_in_app' && typeof window !== 'undefined' ? androidIntentFor(liveLink()) : null;
+    errorPanel = (
+      <div className="relative z-10 flex w-full max-w-sm flex-col items-center px-6 text-center">
+        <span aria-hidden className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-white/[0.08] text-app-text">
+          <Icon size={26} />
+        </span>
+        <h2 className="text-[20px] font-semibold leading-[1.4] text-app-text">{liveErrorHeadline(error, locale)}</h2>
+        <p role="alert" className="mt-2 text-[16px] leading-[1.6] text-app-text/90">{t.errors[error]}</p>
+        {hint && <p className={`mt-2 ${quiet} leading-[1.6] text-app-muted`}>{hint}</p>}
+        {/* The browser's own name for the failure: meaningless to most users, decisive in a support screenshot. */}
+        {errorDetail?.name && (
+          <p data-testid="live-error-name" className="mt-3 font-mono text-[12px] leading-5 text-app-muted/80">{errorDetail.name}</p>
+        )}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className={`inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-app-text px-5 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
+            >
+              <RotateCcw size={16} aria-hidden />
+              {t.retry}
+            </button>
+          )}
+          {intent && (
+            <a href={intent} className={`${SECONDARY_BTN} ${quiet}`}>
+              <ExternalLink size={16} aria-hidden />
+              {t.openInBrowser}
+            </a>
+          )}
+          {error === 'mic_in_app' && (
+            <button type="button" onClick={onCopyLink} className={`${SECONDARY_BTN} ${quiet}`}>
+              {copied ? <Check size={16} aria-hidden className="text-app-accent" /> : <Copy size={16} aria-hidden />}
+              <span aria-live="polite">{copied ? t.copied : t.copyLink}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const overlay = (
+    // Content is centred between the top bar (64 px) and the control pill (~64 px + 24 px + the safe area): the
+    // padding reserves both, so on a short landscape phone the status line is never laid out under the pill.
     <div
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={t.title}
       tabIndex={-1}
-      className="ag-no-drag fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md outline-none"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)' }}
+      data-theme="dark"
+      data-live-status={status}
+      className="ag-no-drag fixed inset-0 z-[130] flex flex-col items-center justify-center overflow-hidden bg-app-bg text-app-text outline-none"
+      style={{
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 112px)',
+      }}
     >
       {/* Full-screen camera (as in the Gemini app), with a scrim so the text stays readable. */}
-      <video ref={videoRef} playsInline muted className={cameraOn ? 'absolute inset-0 z-0 h-full w-full object-cover' : 'hidden'} />
-      {cameraOn && <div aria-hidden className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
+      <video ref={videoRef} playsInline muted className={cameraOn && !isError ? 'absolute inset-0 z-0 h-full w-full object-cover' : 'hidden'} />
+      {cameraOn && !isError && <div aria-hidden className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
 
-      {showBackdrop && (
+      {showBackdrop && !isError && (
         <div aria-hidden className="absolute inset-0 z-0 overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={avatarUrl!} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl" />
@@ -206,88 +440,119 @@ export default function LiveModeOverlay({
         </div>
       )}
 
-      {/* Eyebrow: quiet on purpose — it names the screen, which the user already knows. */}
-      <span className="relative z-10 mb-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-app-muted/70">{t.title}</span>
-
-      <LiveOrb
-        state={orbStateFor(status)}
-        getLevels={getLevels}
-        size={cameraOn ? 88 : 184}
-        imageUrl={avatarUrl}
-        label={statusLabel}
-        className="relative z-10 mb-6"
-      />
-
-      {/* The hero line: the only thing on this screen that changes, so it reads as the primary signal. */}
-      <span aria-live="polite" className="relative z-10 mb-1.5 text-[17px] font-semibold tracking-tight text-app-text">
-        {statusLabel}
-      </span>
-
-      {errorText && (
-        <span role="alert" className="relative z-10 mb-2 max-w-xs px-6 text-center text-[12.5px] leading-snug text-app-danger">
-          {errorText}
-        </span>
-      )}
-      {status === 'error' && onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="relative z-10 mt-1 flex h-11 min-w-[44px] touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[13px] font-semibold text-app-text transition hover:bg-white/[0.14]"
-        >
-          <RotateCcw size={16} aria-hidden />
-          {t.retry}
-        </button>
-      )}
-
-      {showCaptions && status !== 'error' && (
-        <LiveCaptions captions={captions} locale={locale} className="relative z-10 mt-5 min-h-[4.5rem]" />
-      )}
-
-      {/* Control bar. Wraps with a tight gap: five controls appear at once with the camera on, and a longer label in
-          another language must never push one off the edge. */}
+      {/* Top bar: names the mode (quietly — the user knows where they are) and holds the captions toggle. */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-10 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-2 border-t border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+        className="absolute inset-x-0 z-20 flex h-16 items-center justify-between px-3"
+        style={{ top: 'env(safe-area-inset-top, 0px)' }}
       >
-        <button
-          type="button"
-          onClick={onToggleMute}
-          aria-label={t.mute}
-          aria-pressed={muted}
-          className={`${ROUND_BTN} ${muted ? 'bg-app-danger/20 text-app-danger' : NEUTRAL}`}
-        >
-          {muted ? <MicOff size={20} aria-hidden /> : <Mic size={20} aria-hidden />}
-        </button>
-        <button
-          type="button"
-          onClick={onToggleCamera}
-          aria-label={t.camera}
-          aria-pressed={cameraOn}
-          className={`${ROUND_BTN} ${cameraOn ? 'bg-app-accent/20 text-app-accent' : NEUTRAL}`}
-        >
-          {cameraOn ? <Camera size={20} aria-hidden /> : <CameraOff size={20} aria-hidden />}
-        </button>
-        {cameraOn && onFlipCamera && (
+        <span className="inline-flex items-center gap-2 pl-2 text-[16px] font-medium text-app-text">
+          <span aria-hidden className="h-2 w-2 rounded-full bg-app-accent" />
+          {t.live}
+        </span>
+        {showCaptions && !isError && (
           <button
             type="button"
-            onClick={onFlipCamera}
-            aria-label={t.flip}
-            title={cameraFacing === 'user' ? t.frontCamera : t.backCamera}
-            className={`${ROUND_BTN} ${NEUTRAL}`}
+            onClick={() => setCaptionsOn((v) => !v)}
+            aria-label={t.captions}
+            aria-pressed={captionsOn}
+            className={`flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${captionsOn ? ON : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}
           >
-            <SwitchCamera size={20} aria-hidden />
+            <Subtitles size={20} aria-hidden />
           </button>
         )}
-        {extraControls}
-        <button
-          type="button"
-          onClick={onEnd}
-          aria-label={t.end}
-          className="flex h-14 w-14 shrink-0 touch-manipulation items-center justify-center rounded-full bg-app-danger text-white shadow-lg transition hover:brightness-110"
-        >
-          <PhoneOff size={22} aria-hidden />
-        </button>
+      </div>
+
+      {isError ? errorPanel : (
+        <>
+          <LiveOrb
+            state={orbState}
+            getLevels={getLevels}
+            size={cameraOn ? 88 : 208}
+            imageUrl={avatarUrl}
+            label={statusLabel}
+            className="relative z-10 mb-6"
+          />
+
+          {/* Quiet on purpose: the orb carries the state; the line only names it. */}
+          <span aria-live="polite" className={`relative z-10 ${quiet} font-medium leading-[1.6] text-app-muted`}>
+            {statusLabel}
+          </span>
+
+          {audioBlocked && onResumeAudio && (
+            <button
+              type="button"
+              onClick={onResumeAudio}
+              className={`relative z-10 mt-4 inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-app-text px-5 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90`}
+            >
+              <Volume2 size={18} aria-hidden />
+              {t.tapToStart}
+            </button>
+          )}
+
+          {showCaptions && captionsOn && (
+            <LiveCaptions captions={captions} locale={locale} className="relative z-10 mt-6 min-h-[5.5rem]" />
+          )}
+        </>
+      )}
+
+      {/* Controls: one floating pill (Gemini Live, 2026). Only End stays on the error screen — the rest would act on
+          a call that no longer exists. Labels collapse to icons below `sm` so five controls fit a 320 px phone. */}
+      <div
+        className="absolute inset-x-0 bottom-0 z-20 flex justify-center px-4"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+      >
+        <div className="flex max-w-full items-center gap-1.5 rounded-full bg-white/[0.08] p-2 ring-1 ring-white/10 backdrop-blur-md sm:gap-2">
+          {!isError && (
+            <>
+              <button
+                type="button"
+                onClick={onToggleCamera}
+                aria-label={t.camera}
+                aria-pressed={cameraOn}
+                className={`${ROUND_BTN} ${cameraOn ? ON : IDLE}`}
+              >
+                {cameraOn ? <Video size={20} aria-hidden /> : <VideoOff size={20} aria-hidden />}
+              </button>
+              {cameraOn && onFlipCamera && (
+                <button
+                  type="button"
+                  onClick={onFlipCamera}
+                  aria-label={t.flip}
+                  title={cameraFacing === 'user' ? t.frontCamera : t.backCamera}
+                  className={`${ROUND_BTN} ${IDLE}`}
+                >
+                  <SwitchCamera size={20} aria-hidden />
+                </button>
+              )}
+              <div data-testid="live-waveform" className="hidden h-12 w-10 items-center justify-center min-[360px]:flex sm:w-16">
+                <LiveWaveform state={muted ? 'idle' : orbState} getLevels={getLevels} />
+              </div>
+              <button
+                type="button"
+                onClick={onToggleMute}
+                aria-label={t.mute}
+                aria-pressed={muted}
+                className={`${ROUND_BTN} ${muted ? ON : IDLE}`}
+              >
+                {muted ? <MicOff size={20} aria-hidden /> : <Mic size={20} aria-hidden />}
+              </button>
+              {extraControls}
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onEnd}
+            aria-label={t.end}
+            className={`inline-flex h-12 min-w-[48px] shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-app-danger px-3 ${quiet} font-semibold text-white transition-colors duration-200 hover:bg-app-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:px-5`}
+          >
+            <X size={18} aria-hidden />
+            <span className="hidden sm:inline">{t.endShort}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
+
+  // ChatChrome loads this screen with ssr:false, so document exists; the guard keeps a server render harmless.
+  return typeof document === 'undefined' ? overlay : createPortal(overlay, document.body);
 }

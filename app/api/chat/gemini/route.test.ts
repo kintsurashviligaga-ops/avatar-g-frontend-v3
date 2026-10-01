@@ -9,7 +9,9 @@
  *   · a safety stop is a localized notice, never a fallback;
  *   · the budget refusal and the per-user daily cap are delivered in-stream;
  *   · real usage is booked with the user id before the stream closes;
- *   · the history is re-validated server-side (no empty turns reach the model).
+ *   · the history is re-validated server-side (no empty turns reach the model);
+ *   · the chat MODE picks the chain and the generation settings server-side — never a client model id — and a spent
+ *     Pro allowance downgrades the turn to Fast with the reason in `{meta}`.
  *
  * No network: streamGeminiChat, the Anthropic SDK, Supabase, the embedder, the limiter and the budget guard are mocks.
  */
@@ -62,10 +64,10 @@ jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: jest.fn(() => mockAnthr
 jest.mock('ai', () => ({ streamText: jest.fn() }));
 
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { POST, HEARTBEAT_MS, TURN_DEADLINE_MS, maxDuration } from './route';
 import { streamGeminiChat, type StreamGeminiChatInput, type StreamGeminiChatResult } from '../../../../lib/ai/google/chatStream';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '../../../../lib/services/billing/chatBudget';
-import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { embed } from '../../../../lib/memory/embed';
 import { buildProfilePreamble } from '../../../../lib/chat/userMemory';
 import { reportError } from '../../../../lib/observability/report-error';
@@ -140,6 +142,8 @@ beforeEach(() => {
   delete process.env.AI_GOOGLE_ONLY;
   delete process.env.GEMINI_CHAT_MODELS;
   delete process.env.GEMINI_CHAT_PRO_MODELS;
+  delete process.env.GEMINI_CHAT_LITE_MODELS;
+  delete process.env.CHAT_PRO_DAILY_LIMIT;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   delete process.env.GEMINI_API_KEYS;
   process.env.GEMINI_API_KEY = 'test-gemini-key';
@@ -217,7 +221,12 @@ describe('frames', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/event-stream');
     expect(res.headers.get('x-accel-buffering')).toBe('no');
-    expect(await framesOf(res)).toEqual([...frames, 'DONE']);
+    // The {meta} frame additionally says which mode answered and that it was the mode's primary model.
+    expect(await framesOf(res)).toEqual([
+      { meta: { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false } },
+      ...frames.slice(1),
+      'DONE',
+    ]);
   });
 
   test('a mid-answer failure keeps the partial answer: no notice text, one localized {error}, no rotation to Anthropic', async () => {
@@ -235,9 +244,9 @@ describe('frames', () => {
     );
     const frames = await framesOf(await POST(post(userTurn('მითხარი ამბავი'))));
     expect(frames).toEqual([
-      { meta: { provider: 'gemini', model: 'gemini-3.8-flash' } },
+      { meta: { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false } },
       { text: 'ნახევარი' },
-      { meta: { provider: 'gemini', model: 'gemini-3.8-flash', partial: true } },
+      { meta: { provider: 'gemini', model: 'gemini-3.8-flash', partial: true, mode: 'fast', fallback: false } },
       { error: { code: 'network', retryable: true, message: '⚠️ კავშირი AI სერვისთან შეწყდა. სცადე თავიდან.' } },
       'DONE',
     ]);
@@ -296,7 +305,7 @@ describe('provider failures', () => {
     );
     const frames = await framesOf(await POST(post(userTurn('hello there'))));
     expect(frames).toEqual([
-      { meta: { provider: 'anthropic', model: 'claude-haiku-4-5' } },
+      { meta: { provider: 'anthropic', model: 'claude-haiku-4-5', mode: 'fast', fallback: true } },
       { text: 'Hello ' },
       { text: 'from Haiku' },
       { usage: { model: 'claude-haiku-4-5', inputTokens: 900, outputTokens: 12, totalTokens: 912 } },
@@ -452,7 +461,7 @@ describe('usage booking', () => {
 describe('the Gemini call', () => {
   const lastCall = (): StreamGeminiChatInput => mockStream.mock.calls[mockStream.mock.calls.length - 1]![0];
 
-  test('no persona reproduces the old settings exactly; the chain and the key come from the foundation', async () => {
+  test('no persona, no mode: the old settings + Fast (thinking low); the chain and the key come from the foundation', async () => {
     delete process.env.GEMINI_API_KEY;
     process.env.GEMINI_API_KEYS = 'pool-key-1, pool-key-2';
     await (await POST(post(userTurn('გამარჯობა')))).text();
@@ -466,6 +475,7 @@ describe('the Gemini call', () => {
       topP: 0.95,
       topK: 40,
       maxOutputTokens: 4096,
+      thinking: { level: 'low' },
       googleSearch: true,
       safetySettings: [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
@@ -481,7 +491,7 @@ describe('the Gemini call', () => {
     expect(input.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
-  test('the Pro tier uses the Pro chain', async () => {
+  test('the legacy Pro tier (clients before modes) still uses the Pro chain', async () => {
     await (await POST(post({ ...userTurn('hi'), tier: 'pro' }))).text();
     expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.pro]);
   });
@@ -493,7 +503,9 @@ describe('the Gemini call', () => {
     else process.env.GEMINI_CHAT_MODELS = env;
     await (await POST(post({ ...userTurn('hi'), tier }))).text();
     const { models } = lastCall();
-    expect(models).toEqual(['gemini-3.8-flash']);
+    // The Flash chain keeps its one live Flash id; the Pro chain keeps only Pro-class ids, finds none, and falls back
+    // to its defaults (a Flash id in the Pro list never turns Pro into Flash).
+    expect(models).toEqual(tier === 'pro' ? [...DEFAULT_CHAT_MODELS.pro] : ['gemini-3.8-flash']);
     for (const m of models) expect(m).not.toMatch(/gemini-(1\.5|2\.0)-/);
   });
 
@@ -582,5 +594,270 @@ describe('history re-validation', () => {
     expect(lastMessages()).toEqual([
       { role: 'user', content: [{ type: 'text', text: 'რა არის ეს?' }, { type: 'image', image: png, mediaType: 'image/png' }] },
     ]);
+  });
+});
+
+// ─── Chat modes (the header's model picker) ──────────────────────────────────
+
+describe('chat modes', () => {
+  const lastCall = (): StreamGeminiChatInput => mockStream.mock.calls[mockStream.mock.calls.length - 1]![0];
+  const metaFrames = (frames: Array<ChatFrame | 'DONE'>) => frames.filter((f): f is Extract<ChatFrame, { meta: unknown }> => f !== 'DONE' && 'meta' in f);
+  const PRO_CALL = [USER_ID, RATE_LIMITS.CHAT_PRO_USER] as const;
+  const proChecked = () => (checkRateLimitByKey as jest.Mock).mock.calls.some(([, cfg]) => cfg.keyPrefix === RATE_LIMITS.CHAT_PRO_USER.keyPrefix);
+
+  test("mode 'pro' uses the Pro chain, thinks high, keeps the default temperature and raises the output floor", async () => {
+    const frames = await framesOf(await POST(post({ ...userTurn('prove it'), mode: 'pro' })));
+    const input = lastCall();
+    expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+    expect(input.models.some((m) => /flash/.test(m))).toBe(false);
+    expect(input.config.thinking).toEqual({ level: 'high' });
+    expect('temperature' in input.config).toBe(false);
+    expect(input.config.maxOutputTokens).toBe(8192);
+    // A Pro turn draws on BOTH daily buckets, CHAT_USER first.
+    expect((checkRateLimitByKey as jest.Mock).mock.calls).toEqual([[USER_ID, RATE_LIMITS.CHAT_USER], [...PRO_CALL]]);
+    // Pre-checked at the Pro rate, not the flat Flash one.
+    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-pro-preview');
+    expect(metaFrames(frames)[0]!.meta).toMatchObject({ mode: 'pro', fallback: false });
+    expect(metaFrames(frames)[0]!.meta).not.toHaveProperty('requestedMode');
+  });
+
+  test("mode 'thinking' is the Flash chain thinking high, with the reasoning output floor and no temperature", async () => {
+    await (await POST(post({ ...userTurn('why?'), mode: 'thinking' }))).text();
+    const { models, config } = lastCall();
+    expect(models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(config.thinking).toEqual({ level: 'high' });
+    expect(config.maxOutputTokens).toBe(8192);
+    expect(config.temperature).toBeUndefined();
+    expect(proChecked()).toBe(false); // not a Pro turn — no Pro allowance spent
+    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
+  });
+
+  test("mode 'lite' is the Flash-Lite chain, thinking low, persona temperature kept", async () => {
+    await (await POST(post({ ...userTurn('hi'), mode: 'lite' }))).text();
+    const { models, config } = lastCall();
+    expect(models).toEqual([...DEFAULT_CHAT_MODELS.lite]);
+    expect(config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 4096 });
+    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-flash-lite');
+  });
+
+  test("the mode's thinking replaces the persona's; Fast keeps the persona's temperature, Pro drops it", async () => {
+    // strict-coder is temperature 0.2, thinking 'high'.
+    await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'fast' }))).text();
+    expect(lastCall().config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.2, maxOutputTokens: 4096 });
+    await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'pro' }))).text();
+    const pro = lastCall().config;
+    expect(pro).toMatchObject({ thinking: { level: 'high' }, maxOutputTokens: 8192, googleSearch: false });
+    expect(pro.temperature).toBeUndefined();
+    expect(pro.system).toMatch(/PERSONA — /); // the persona still shapes the answer
+  });
+
+  test('a custom persona asking for thinking off cannot reach the API as off — the mode sets it', async () => {
+    const customPersona = { name: 'Quiet', directive: 'Answer in one short paragraph.', thinking: 'off', temperature: 0.4 };
+    await (await POST(post({ ...userTurn('hi'), personaId: 'custom:quiet', customPersona }))).text();
+    // The persona did resolve (its temperature is in force)…
+    expect(lastCall().config.temperature).toBe(0.4);
+    // …but 'off' is not what reaches chatStream: Fast sets 'low' (and 'off' would be a 400 on 3.8 Flash).
+    expect(lastCall().config.thinking).toEqual({ level: 'low' });
+  });
+
+  test('the route never forwards a client model id — a mode is resolved against the catalogue, anything else is Fast', async () => {
+    const hostile = {
+      ...userTurn('hi'),
+      mode: 'gemini-3.1-pro-preview',
+      model: 'gemini-9-ultra',
+      models: ['gemini-9-ultra', '../../v1/files'],
+      modelId: 'gemini-9-ultra',
+      tier: 'ultra',
+    };
+    await (await POST(post(hostile))).text();
+    expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(proChecked()).toBe(false);
+    // …and a valid mode with a model id beside it still gets exactly that mode's own chain.
+    await (await POST(post({ ...userTurn('hi'), mode: 'pro', model: 'gemini-9-ultra' }))).text();
+    expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+    expect(JSON.stringify(mockStream.mock.calls.map(([i]) => ({ models: i.models, config: i.config })))).not.toContain('gemini-9-ultra');
+  });
+
+  test('a spent Pro allowance DOWNGRADES to Fast (not a refusal) and says so in every {meta}', async () => {
+    const resetSec = Math.ceil(Date.parse('2026-10-01T08:15:00.000Z') / 1000);
+    (checkRateLimitByKey as jest.Mock)
+      .mockResolvedValueOnce(null) // CHAT_USER
+      .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '3600', 'X-RateLimit-Reset': String(resetSec) } }));
+    mockStream.mockImplementation(
+      gemini(
+        [
+          { meta: { provider: 'gemini', model: 'gemini-3.8-flash' } },
+          { text: 'half' },
+          { meta: { provider: 'gemini', model: 'gemini-3.8-flash', partial: true } },
+        ],
+        { ok: false, text: 'half', error: { code: 'network', retryable: true, message: 'terminated' } },
+      ),
+    );
+    const frames = await framesOf(await POST(post({ ...userTurn('prove it'), mode: 'pro' })));
+    const input = lastCall();
+    expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(input.config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 4096 });
+    expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
+    const downgrade = { mode: 'fast', fallback: false, requestedMode: 'pro', reason: 'pro_cap', resetAt: '2026-10-01T08:15:00.000Z' };
+    expect(metaFrames(frames).map((f) => f.meta)).toEqual([
+      { provider: 'gemini', model: 'gemini-3.8-flash', ...downgrade },
+      { provider: 'gemini', model: 'gemini-3.8-flash', partial: true, ...downgrade },
+    ]);
+    expect(frames).toContainEqual({ text: 'half' });
+  });
+
+  test('the downgrade reset time falls back to Retry-After, and is left out when the 429 carries neither header', async () => {
+    const before = Date.now();
+    (checkRateLimitByKey as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '120' } }));
+    const withRetry = metaFrames(await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro' }))))[0]!.meta;
+    expect(withRetry).toMatchObject({ mode: 'fast', requestedMode: 'pro', reason: 'pro_cap' });
+    const at = Date.parse(withRetry.resetAt!);
+    expect(at).toBeGreaterThanOrEqual(before + 120_000 - 1000);
+    expect(at).toBeLessThanOrEqual(Date.now() + 120_000 + 1000);
+
+    (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce(new Response('{}', { status: 429 }));
+    const bare = metaFrames(await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro' }))))[0]!.meta;
+    expect(bare).toEqual({ provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false, requestedMode: 'pro', reason: 'pro_cap' });
+  });
+
+  test('a spent CHAT_USER cap still refuses first — the Pro allowance is never consulted', async () => {
+    (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{}', { status: 429 }));
+    const frames = await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro', protocol: 2 })));
+    expect(frames).toEqual([{ error: expect.objectContaining({ code: 'rate_limited', retryable: false }) }, 'DONE']);
+    expect(checkRateLimitByKey).toHaveBeenCalledTimes(1);
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  test('a guest (FILM_ALLOW_ANONYMOUS) is always Fast: no Pro chain, no Pro allowance lookup', async () => {
+    mockUser = null;
+    process.env.FILM_ALLOW_ANONYMOUS = '1';
+    for (const body of [{ mode: 'pro' }, { mode: 'thinking' }, { tier: 'pro' }, { mode: 'lite' }]) {
+      const frames = await framesOf(await POST(post({ ...userTurn('hi'), ...body })));
+      expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+      expect(lastCall().config.thinking).toEqual({ level: 'low' });
+      expect(metaFrames(frames)[0]!.meta).toEqual({ provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false });
+    }
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
+  });
+
+  test('a rotated answer is badged as a fallback of the mode that answered', async () => {
+    mockStream.mockImplementation(
+      gemini([{ meta: { provider: 'gemini', model: 'gemini-2.5-pro', fallback: true } }, { text: 'ok' }], {
+        model: 'gemini-2.5-pro',
+        text: 'ok',
+        attempts: [{ model: 'gemini-3.1-pro-preview', code: 'unavailable' }, { model: 'gemini-2.5-pro' }],
+      }),
+    );
+    const frames = await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro' })));
+    expect(metaFrames(frames)[0]!.meta).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro', mode: 'pro', fallback: true });
+  });
+
+  test('the budget refusal frame is not dressed up as an answer', async () => {
+    (chatBudgetAllows as jest.Mock).mockResolvedValueOnce(false);
+    const frames = await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro' })));
+    expect(metaFrames(frames)).toEqual([{ meta: { provider: 'budget', model: 'none' } }]);
+  });
+});
+
+describe('the Pro allowance (CHAT_PRO_USER)', () => {
+  test('is a per-user daily bucket of 20 in its own namespace', () => {
+    expect(RATE_LIMITS.CHAT_PRO_USER).toEqual({ maxRequests: 20, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:chat:pro:user' });
+    expect(chatProUserLimit()).toEqual(RATE_LIMITS.CHAT_PRO_USER);
+  });
+
+  test('CHAT_PRO_DAILY_LIMIT overrides the count (0 = Pro off), never the namespace; junk keeps the default', () => {
+    for (const [raw, want] of [['50', 50], [' 5 ', 5], ['0', 0], ['10000', 10_000]] as const) {
+      process.env.CHAT_PRO_DAILY_LIMIT = raw;
+      expect([raw, chatProUserLimit()]).toEqual([raw, { ...RATE_LIMITS.CHAT_PRO_USER, maxRequests: want }]);
+    }
+    for (const raw of ['', 'abc', '-5', '2.5', '20/day', '10001', '999999', '1e3']) {
+      process.env.CHAT_PRO_DAILY_LIMIT = raw;
+      expect([raw, chatProUserLimit().maxRequests]).toEqual([raw, 20]);
+    }
+  });
+
+  test('the route checks the env-adjusted allowance', async () => {
+    process.env.CHAT_PRO_DAILY_LIMIT = '3';
+    await (await POST(post({ ...userTurn('hi'), mode: 'pro' }))).text();
+    expect(checkRateLimitByKey).toHaveBeenLastCalledWith(USER_ID, { ...RATE_LIMITS.CHAT_PRO_USER, maxRequests: 3 });
+  });
+});
+
+// ─── Keep-alive and the turn deadline ────────────────────────────────────────
+
+describe('a turn that thinks before it answers', () => {
+  /** Reads the whole body while fake timers advance; returns the raw SSE text. */
+  async function drain(res: Response, advance: () => Promise<void>): Promise<string> {
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let raw = '';
+    const reading = (async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        raw += dec.decode(value, { stream: true });
+      }
+    })();
+    await advance();
+    await reading;
+    return raw;
+  }
+
+  beforeEach(() => {
+    // Promise and stream plumbing must keep running; only the route's interval / timeout are driven by hand.
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('the stream opens with a keep-alive and sends one every HEARTBEAT_MS while the model is silent', async () => {
+    const thinkMs = 3 * HEARTBEAT_MS + 1_000; // longer than the browser's 20 s first-token window
+    mockStream.mockImplementation(async (input) => {
+      await new Promise((r) => setTimeout(r, thinkMs));
+      await input.onFrame({ meta: { provider: 'gemini', model: 'gemini-3.1-pro-preview' } });
+      await input.onFrame({ text: 'ფიქრის შემდეგ' });
+      return { ok: true, model: 'gemini-3.1-pro-preview', text: 'ფიქრის შემდეგ', sources: [], attempts: [{ model: 'gemini-3.1-pro-preview' }] };
+    });
+    const res = await POST(post({ ...userTurn('რთული ამოცანა'), mode: 'pro', protocol: 2 }));
+    const raw = await drain(res, () => jest.advanceTimersByTimeAsync(thinkMs + 10));
+
+    expect(raw.startsWith(': keep-alive\n\n')).toBe(true); // bytes before budget, memory or thinking
+    expect(raw.match(/^: keep-alive$/gm)!.length).toBeGreaterThanOrEqual(4); // the opener + one per 8 s of thinking
+    // No gap the browser's 20 s first-token watchdog could see: every heartbeat lands before the next window closes.
+    expect(HEARTBEAT_MS).toBeLessThan(20_000 / 2);
+    const frames = decodeFrames(raw); // the comments are invisible to the frame parser
+    expect(frames).toContainEqual({ text: 'ფიქრის შემდეგ' });
+    expect(frames.some((f) => typeof f === 'object' && 'error' in f)).toBe(false);
+    expect(frames[frames.length - 1]).toBe('DONE');
+  });
+
+  test('no heartbeat outlives the turn (the interval is cleared when the stream closes)', async () => {
+    mockStream.mockImplementation(gemini([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'ok' }], { text: 'ok' }));
+    const res = await POST(post(userTurn('hi')));
+    await drain(res, () => jest.advanceTimersByTimeAsync(0));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('a hung model is cut at TURN_DEADLINE_MS with a retryable notice, before the platform kills the function', async () => {
+    expect(TURN_DEADLINE_MS).toBeLessThan(maxDuration * 1000);
+    mockStream.mockImplementation(
+      (input) =>
+        new Promise<StreamGeminiChatResult>((resolve) => {
+          input.abortSignal!.addEventListener('abort', () =>
+            resolve({ ok: false, model: 'gemini-3.1-pro-preview', text: '', sources: [], attempts: [{ model: 'gemini-3.1-pro-preview' }] }),
+          );
+        }),
+    );
+    const res = await POST(post({ ...userTurn('hi'), mode: 'pro', protocol: 2 }));
+    const raw = await drain(res, () => jest.advanceTimersByTimeAsync(TURN_DEADLINE_MS + 10));
+    const frames = decodeFrames(raw);
+    const err = frames.find((f): f is Extract<ChatFrame, { error: unknown }> => typeof f === 'object' && 'error' in f);
+    expect(err?.error).toMatchObject({ code: 'unavailable', retryable: true });
+    expect(frames[frames.length - 1]).toBe('DONE');
+    expect(reportError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ stage: 'turn-deadline', mode: 'pro' }));
+    expect(jest.getTimerCount()).toBe(0);
   });
 });

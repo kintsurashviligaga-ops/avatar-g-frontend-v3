@@ -23,6 +23,18 @@
  * links or footnotes, whose definitions live in a different block from their uses. So the rendered DOM is
  * the same as one whole-document parse, and the finished bubble looks exactly like the streaming one.
  *
+ * ⚠️ NO CARET WHILE STREAMING; THE NEWEST BLOCK FADES IN (Gemini parity). While `streaming` is true the root
+ * carries `mya-fade-children` (app/globals.css): every top-level element fades in, opacity only, over 180 ms.
+ * A CSS animation runs once, when its element is inserted, and React keeps a block's elements while its text
+ * grows, so only a block that has just appeared fades; the paragraph being typed doesn't blink on every frame,
+ * and the blocks above it never replay. Dropping the class when the stream ends changes nothing on screen,
+ * which keeps the handoff to the committed bubble pixel-identical. The flag is deliberately NOT a prop of the
+ * memoized block, so finishing a stream re-parses nothing.
+ *
+ * ⚠️ SPACING IS ONE RULE ON THE ROOT, NOT MARGINS ON THE ELEMENTS. Blocks sit 16 px apart (Gemini) with a
+ * little more above h1/h2, set by `[&>*+*]` rules on the root. Tailwind's `space-y-*` can't do this: its
+ * selector outranks any margin class on a child, so heading margins set on the heading never applied.
+ *
  * ⚠️ LINKS ARE SANITIZED HERE, NOT TRUSTED FROM THE MODEL. A reply is untrusted text: prompt-injected
  * grounding results can carry `javascript:` links. `safeUrlTransform` keeps http(s), mailto, tel and
  * relative links only (control characters are stripped before the check, the way a browser would strip
@@ -392,64 +404,6 @@ export function safeUrlTransform(url: string, key?: string): string {
   return SAFE_LINK_SCHEMES.has(scheme) ? value : '';
 }
 
-// ─── Streaming caret (a rehype plugin) ───────────────────────────────────────
-
-interface HNode {
-  type: string;
-  tagName?: string;
-  value?: string;
-  properties?: Record<string, unknown>;
-  children?: HNode[];
-}
-
-/**
- * Block containers the caret descends into, so it lands after the last character and not on a line of its
- * own. Inline formatting (strong, em, links, highlight tokens) is not entered: the caret goes after it,
- * which is the same spot on screen.
- */
-const CARET_DESCEND = new Set([
-  'p', 'li', 'ul', 'ol', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'table', 'thead', 'tbody', 'tr', 'td', 'th', 'pre', 'code',
-]);
-
-export const CARET_TAG = 'mya-caret';
-
-function isMathElement(node: HNode): boolean {
-  const cls = node.properties?.className;
-  const list = Array.isArray(cls) ? cls : typeof cls === 'string' ? cls.split(/\s+/) : [];
-  return list.some((c) => typeof c === 'string' && (c.startsWith('katex') || c.startsWith('math')));
-}
-
-/**
- * rehype plugin: appends a caret element after the last visible character of the tree. It walks down the
- * last child while that child is a text container (paragraph, list item, table cell, code…), so the caret
- * sits inline at the end of the text. It never enters KaTeX output, where it would land inside a formula.
- */
-export function rehypeStreamCaret() {
-  return (tree: HNode) => {
-    let parent: HNode = tree;
-    for (let depth = 0; depth < 64; depth++) {
-      const kids = parent.children ?? [];
-      let i = kids.length - 1;
-      while (i >= 0 && kids[i]!.type === 'text' && !(kids[i]!.value ?? '').trim()) i -= 1;
-      const last = kids[i];
-      if (!last || last.type !== 'element' || !last.tagName || !CARET_DESCEND.has(last.tagName) || isMathElement(last)) break;
-      parent = last;
-    }
-    const caret: HNode = { type: 'element', tagName: CARET_TAG, properties: {}, children: [] };
-    const kids = (parent.children ??= []);
-    const tail = kids[kids.length - 1];
-    // Code text ends with the newline mdast adds after the last line; the caret goes before it, on the
-    // line being typed, not on an empty line under it.
-    if (tail && tail.type === 'text' && typeof tail.value === 'string' && tail.value.endsWith('\n')) {
-      const head = tail.value.slice(0, -1);
-      kids.splice(kids.length - 1, 1, ...(head ? [{ type: 'text', value: head }] : []), caret, { type: 'text', value: '\n' });
-    } else {
-      kids.push(caret);
-    }
-  };
-}
-
 // ─── Lazy extensions (highlight, math) ───────────────────────────────────────
 
 interface MathPlugins {
@@ -625,10 +579,11 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
     timer.current = setTimeout(() => setCopied(false), 1600);
   }, []);
 
+  // Gemini's code surface: one elevated panel, the language and Copy on its first row with no divider.
   return (
-    <div className="my-2 overflow-hidden rounded-xl bg-app-bg/70 ring-1 ring-app-border/10" data-md-code="">
-      <div className="flex items-center justify-between gap-2 border-b border-app-border/10 bg-app-elevated/60 px-3 py-1">
-        <span className="truncate text-[11px] font-medium lowercase tracking-wide text-app-muted" style={{ fontFamily: MONO_STACK }}>
+    <div className="my-2 overflow-hidden rounded-2xl bg-app-elevated ring-1 ring-app-border/10" data-md-code="">
+      <div className="flex items-center justify-between gap-2 pl-4 pr-1.5 pt-1">
+        <span className="truncate text-[12px] font-medium lowercase tracking-wide text-app-muted" style={{ fontFamily: MONO_STACK }}>
           {lang || 'code'}
         </span>
         {/* ⚠️ Always visible. The old button was opacity-0 until hover, so on a phone it did not exist. */}
@@ -637,30 +592,18 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
           onClick={copy}
           aria-label={copied ? labels.copied : labels.copy}
           title={labels.copy}
-          className="flex min-h-[28px] shrink-0 items-center gap-1 rounded-md px-1.5 text-[11.5px] text-app-muted transition-colors hover:text-app-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-app-accent/60"
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-app-muted transition-colors hover:bg-app-border/10 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-8"
         >
-          {copied ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+          {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
           <span>{copied ? labels.copied : labels.copy}</span>
         </button>
       </div>
-      <pre className={`overflow-x-auto p-3 text-[12.5px] leading-[1.55] text-app-text ${HLJS_THEME}`}>
+      <pre className={`overflow-x-auto px-4 pb-4 pt-1 text-[14px] leading-[1.6] text-app-text ${HLJS_THEME}`}>
         <code className={className} style={{ fontFamily: MONO_STACK }}>
           {children}
         </code>
       </pre>
     </div>
-  );
-}
-
-/** The inline caret shown at the end of a reply while it streams. Uses the global `mya-caret` keyframes. */
-export function StreamCaret() {
-  return (
-    <span
-      aria-hidden
-      data-stream-caret=""
-      className="mya-caret ml-0.5 inline-block h-[1em] w-[3px] rounded-full bg-app-accent align-[-0.15em]"
-      style={{ animation: 'mya-caret 1.05s ease-in-out infinite' }}
-    />
   );
 }
 
@@ -691,27 +634,34 @@ const COMPONENTS: Components = {
     return <img {...props} src={src} alt={alt ?? ''} loading="lazy" referrerPolicy="no-referrer" className="my-2 max-h-[60vh] max-w-full rounded-xl bg-black/20 object-contain ring-1 ring-app-border/10" />;
   },
   p: ({ node: _n, ...props }) => <p {...props} className="whitespace-pre-wrap break-words" />,
-  ul: ({ node: _n, ...props }) => <ul {...props} className="list-disc space-y-1 pl-5 marker:text-app-muted" />,
-  ol: ({ node: _n, ...props }) => <ol {...props} className="list-decimal space-y-1 pl-5 marker:text-app-muted" />,
-  li: ({ node: _n, ...props }) => <li {...props} className="break-words" />,
+  // Gemini's lists: 8 px between items, a deeper indent, muted markers.
+  ul: ({ node: _n, ...props }) => <ul {...props} className="list-disc space-y-2 pl-6 marker:text-app-muted" />,
+  ol: ({ node: _n, ...props }) => <ol {...props} className="list-decimal space-y-2 pl-6 marker:text-app-muted" />,
+  // A nested list or a loose item's second paragraph sits 8 px under the text before it.
+  li: ({ node: _n, ...props }) => <li {...props} className="break-words [&>*+*]:mt-2" />,
   strong: ({ node: _n, ...props }) => <strong {...props} className="font-semibold text-app-text" />,
   em: ({ node: _n, ...props }) => <em {...props} className="italic" />,
-  h1: ({ node: _n, ...props }) => <h1 {...props} className="mb-1 mt-3 text-[18px] font-semibold" />,
-  h2: ({ node: _n, ...props }) => <h2 {...props} className="mb-1 mt-3 text-[16px] font-semibold" />,
-  h3: ({ node: _n, ...props }) => <h3 {...props} className="mb-1 mt-2 text-[15px] font-semibold" />,
-  h4: ({ node: _n, ...props }) => <h4 {...props} className="mb-1 mt-2 text-[15px] font-medium" />,
-  h5: ({ node: _n, ...props }) => <h5 {...props} className="mb-1 mt-2 text-[14px] font-medium" />,
-  h6: ({ node: _n, ...props }) => <h6 {...props} className="mb-1 mt-2 text-[14px] font-medium text-app-muted" />,
-  blockquote: ({ node: _n, ...props }) => <blockquote {...props} className="border-l-2 border-app-accent/40 pl-3 italic text-app-muted" />,
+  // Headings: Gemini's scale. The line-heights stay above the 1.1 Georgian floor for display text (DESIGN §3),
+  // and nothing drops below the 16 px body size. At the top level the root sets the space above them.
+  h1: ({ node: _n, ...props }) => <h1 {...props} className="mb-2 mt-6 text-[22px] font-semibold leading-[1.35]" />,
+  h2: ({ node: _n, ...props }) => <h2 {...props} className="mb-2 mt-5 text-[19px] font-semibold leading-[1.4]" />,
+  h3: ({ node: _n, ...props }) => <h3 {...props} className="mb-1.5 mt-4 text-[17px] font-semibold leading-[1.45]" />,
+  h4: ({ node: _n, ...props }) => <h4 {...props} className="mb-1 mt-4 text-[16px] font-semibold leading-[1.5]" />,
+  h5: ({ node: _n, ...props }) => <h5 {...props} className="mb-1 mt-3 text-[16px] font-medium leading-[1.5]" />,
+  h6: ({ node: _n, ...props }) => <h6 {...props} className="mb-1 mt-3 text-[16px] font-medium leading-[1.5] text-app-muted" />,
+  // A neutral rule, not the accent (one accent, DESIGN §2), and upright: Noto Sans Georgian has no italic, so
+  // an italic quote was a synthetic slant.
+  blockquote: ({ node: _n, ...props }) => <blockquote {...props} className="border-l-2 border-app-border/20 pl-4 text-app-muted [&>*+*]:mt-2" />,
   hr: () => <hr className="my-3 border-app-border/10" />,
+  // Table text is reading text, so it keeps the 16 px body size (Georgian minimum) and scrolls sideways.
   table: ({ node: _n, ...props }) => (
-    <div className="my-2 overflow-x-auto rounded-xl border border-app-border/15">
-      <table {...props} className="w-full border-collapse text-[13.5px]" />
+    <div className="my-2 overflow-x-auto rounded-2xl ring-1 ring-app-border/10">
+      <table {...props} className="w-full border-collapse text-[16px] leading-[1.6]" />
     </div>
   ),
   thead: ({ node: _n, ...props }) => <thead {...props} className="bg-app-elevated" />,
-  th: ({ node: _n, ...props }) => <th {...props} className="px-3 py-1.5 text-left font-semibold text-app-text" />,
-  td: ({ node: _n, ...props }) => <td {...props} className="border-t border-app-border/10 px-3 py-1.5 align-top" />,
+  th: ({ node: _n, ...props }) => <th {...props} className="px-4 py-2 text-left font-semibold text-app-text" />,
+  td: ({ node: _n, ...props }) => <td {...props} className="border-t border-app-border/10 px-4 py-2 align-top" />,
   // A fenced block arrives as <pre><code class="language-x">. The <pre> is replaced by CodeBlock, which
   // draws its own <pre>, so block code never nests <pre><div><pre>.
   pre: ({ node: _n, children }: WithNode<{ children?: ReactNode }>) => {
@@ -719,16 +669,14 @@ const COMPONENTS: Components = {
     if (!child) return <pre className="overflow-x-auto">{children}</pre>;
     return <CodeBlock className={child.props.className}>{child.props.children}</CodeBlock>;
   },
-  // Only inline code reaches here as rendered output; block code is rendered by `pre` above.
+  // Only inline code reaches here as rendered output; block code is rendered by `pre` above. Neutral text, as
+  // in Gemini: the accent on every code span overspent the one accent.
   code: ({ node: _n, className, children }: WithNode<{ className?: string; children?: ReactNode }>) => (
-    <code className={`rounded bg-app-elevated px-1.5 py-0.5 text-[0.85em] text-app-accent ${className ?? ''}`} style={{ fontFamily: MONO_STACK }}>
+    <code className={`rounded-md bg-app-elevated px-1.5 py-0.5 text-[0.875em] text-app-text ${className ?? ''}`} style={{ fontFamily: MONO_STACK }}>
       {children}
     </code>
   ),
 };
-
-// The caret is a custom tag; `Components` only types intrinsic elements, so it is added outside the literal.
-(COMPONENTS as Record<string, unknown>)[CARET_TAG] = StreamCaret;
 
 const REMARK_BASE: Pluggable[] = [remarkGfm];
 
@@ -736,16 +684,14 @@ interface MarkdownBlockProps {
   source: string;
   highlight: Pluggable | null;
   math: MathPlugins | null;
-  caret: boolean;
 }
 
 // One top-level block. Memoized on its own text and plugin set, so a finished block never re-parses.
-const MarkdownBlock = memo(function MarkdownBlock({ source, highlight, math, caret }: MarkdownBlockProps) {
+const MarkdownBlock = memo(function MarkdownBlock({ source, highlight, math }: MarkdownBlockProps) {
   const remarkPlugins = math ? [...REMARK_BASE, math.remark] : REMARK_BASE;
   const rehypePlugins: Pluggable[] = [];
   if (math) rehypePlugins.push(math.rehype);
   if (highlight) rehypePlugins.push(highlight);
-  if (caret) rehypePlugins.push(rehypeStreamCaret);
   return (
     <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={COMPONENTS} urlTransform={safeUrlTransform}>
       {source}
@@ -756,7 +702,7 @@ const MarkdownBlock = memo(function MarkdownBlock({ source, highlight, math, car
 export interface MarkdownViewProps {
   /** The markdown source (an assistant reply). */
   source: string;
-  /** True while the reply is still arriving: shows the inline caret at the end of the text. */
+  /** True while the reply is still arriving: each block fades in as it appears (see the header). */
   streaming?: boolean;
   /** Labels the code copy button. Defaults to English. */
   locale?: MdLocale;
@@ -764,7 +710,20 @@ export interface MarkdownViewProps {
   className?: string;
 }
 
-const ROOT_CLASS = 'min-w-0 space-y-2 break-words text-[16px] leading-[1.7] [&>:first-child]:mt-0 [&>:last-child]:mb-0';
+/**
+ * 16 px / 1.7 body (Georgian needs the height; Gemini's 17/24 is too tight for it), 16 px between blocks and
+ * 24 / 20 px above a top-level h1 / h2. The flow rules are arbitrary variants, which Tailwind emits after the
+ * plain utilities, so they also win over a child's own `my-*` (a code block, a table) at the top level, where
+ * the root owns the rhythm. The first and last child sit flush with the bubble.
+ */
+const ROOT_CLASS = [
+  'min-w-0 break-words text-[16px] leading-[1.7]',
+  '[&>*+*]:mt-4 [&>*+h1]:mt-6 [&>*+h2]:mt-5',
+  '[&>:first-child]:mt-0 [&>:last-child]:mb-0',
+].join(' ');
+
+/** app/globals.css: the root's children fade in once, as they are inserted. Only while streaming. */
+const STREAMING_CLASS = 'mya-fade-children';
 
 function MarkdownViewImpl({ source, streaming = false, locale, className }: MarkdownViewProps) {
   const ext = useSyncExternalStore(subscribeExtensions, getExtensions, getExtensions);
@@ -779,10 +738,10 @@ function MarkdownViewImpl({ source, streaming = false, locale, className }: Mark
     if (needsMath) void loadMathExtension();
   }, [needsMath]);
 
-  const lastIndex = blocks.length - 1;
+  const rootClass = [ROOT_CLASS, streaming ? STREAMING_CLASS : '', className ?? ''].filter(Boolean).join(' ');
   return (
     <MarkdownLocaleContext.Provider value={locale}>
-      <div className={className ? `${ROOT_CLASS} ${className}` : ROOT_CLASS} data-md-root="">
+      <div className={rootClass} data-md-root="">
         {blocks.map((b, i) => (
           <MarkdownBlock
             key={i}
@@ -790,10 +749,8 @@ function MarkdownViewImpl({ source, streaming = false, locale, className }: Mark
             // Only the blocks that need an extension get it, so a chunk loading doesn't re-parse the others.
             highlight={b.code ? ext.highlight : null}
             math={b.math ? ext.math : null}
-            caret={streaming && i === lastIndex}
           />
         ))}
-        {streaming && blocks.length === 0 && <StreamCaret />}
       </div>
     </MarkdownLocaleContext.Provider>
   );

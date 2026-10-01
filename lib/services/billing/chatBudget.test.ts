@@ -104,7 +104,8 @@ describe('bookChatUsage — the real-usage (object) shape', () => {
     expect(await cost('gemini-2.5-flash-lite')).toBeCloseTo(0.1 + 0.4, 6);
     expect(await cost('gemini-2.5-flash')).toBeCloseTo(0.3 + 2.5, 6);
     expect(await cost('gemini-2.5-pro')).toBeCloseTo(2.5 + 15, 6); // 1M prompt tokens > 200k → long-context rates
-    expect(await cost('gemini-3.8-flash')).toBeCloseTo(1.5 + 9, 6);
+    expect(await cost('gemini-3.8-flash')).toBeCloseTo(1.5 + 7.5, 6); // 3.6–3.8 Flash: the 2027 list price
+    expect(await cost('gemini-3.5-flash')).toBeCloseTo(1.5 + 9, 6);
     expect(await cost('gemini-2.5-flash-native-audio-latest')).toBeCloseTo(3 + 12, 6);
     expect(await cost('mystery-model')).toBeCloseTo(1.5 + 9, 6); // unknown id → the old flat rate
   });

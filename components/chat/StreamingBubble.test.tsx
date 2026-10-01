@@ -6,8 +6,9 @@
  * ⚠️ WHAT THESE PIN.
  *  - A burst of chunks re-renders the bubble once per frame and does NOT re-render the host or its other
  *    children. That is the whole point of moving the text out of OmniStudio's state.
- *  - The model-badge row exists before the first token, as the same DOM node, so nothing shifts when the
- *    answer starts.
+ *  - There is no model-badge row above a reply, streaming or finished (Gemini parity: the model name lives in
+ *    the host's action row). Before the first token the bubble shows the quiet thinking mark, never bouncing
+ *    dots, and the first text replaces it.
  *  - A failure renders the localized message (never an empty bubble), with Retry only when retrying can help.
  *
  * MarkdownView is replaced by a recorder here; its own rendering is covered in MarkdownView.test.tsx.
@@ -110,8 +111,8 @@ describe('StreamingBubble — render isolation', () => {
   });
 });
 
-describe('StreamingBubble — no layout jump', () => {
-  it('reserves the model-badge row before the first token, as the same node', () => {
+describe('StreamingBubble — no badge row, a quiet thinking mark', () => {
+  it('shows no model badge above the reply, before or after the first token', () => {
     const frames = manualFrames();
     const store = createChatStreamStore({ schedule: frames.schedule, cancel: frames.cancel });
     const { container } = render(<StreamingBubble store={store} locale="en" />);
@@ -121,23 +122,68 @@ describe('StreamingBubble — no layout jump', () => {
     act(() => {
       w = store.begin();
     });
-    const slot = container.querySelector('[data-model-badge]')!;
-    expect(slot).toBeTruthy();
-    expect(slot.textContent).toBe(' '); // holds the line height
-    expect(slot.getAttribute('aria-hidden')).toBe('true');
-    expect(container.querySelector('[role="status"]')).toBeTruthy(); // typing dots while waiting
+    expect(container.querySelector('[data-model-badge]')).toBeNull();
 
     act(() => {
       w.setMeta({ provider: 'gemini', model: 'gemini-3.8-flash' });
       w.appendText('Hi');
       frames.run();
     });
-    expect(container.querySelector('[data-model-badge]')).toBe(slot); // same node, filled in place
-    expect(slot.textContent).toBe('gemini-3.8-flash');
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('[data-model-badge]')).toBeNull();
+    // The bubble holds the reply and nothing above it: its first child is the markdown itself.
+    const bubble = container.querySelector('[data-streaming-bubble]')!;
+    expect(bubble.firstElementChild?.getAttribute('data-testid')).toBe('md');
+    expect(bubble.textContent).toBe('Hi');
+    expect(bubble.textContent).not.toMatch(/gemini/i);
   });
 
-  it('stops the caret when the stream ends', () => {
+  it('shows the localized thinking mark until the first text, then replaces it', () => {
+    const frames = manualFrames();
+    const store = createChatStreamStore({ schedule: frames.schedule, cancel: frames.cancel });
+    const { container } = render(<StreamingBubble store={store} locale="ka" />);
+    let w!: ReturnType<ChatStreamStore['begin']>;
+    act(() => {
+      w = store.begin();
+    });
+    const status = container.querySelector('[role="status"]')!;
+    expect(status).toBeTruthy();
+    expect(status.textContent).toBe('ფიქრობს…');
+    expect(container.querySelector('[data-testid="md"]')).toBeNull();
+
+    // Meta alone (no words yet) is still "thinking".
+    act(() => {
+      w.setMeta({ provider: 'gemini', model: 'gemini-3.8-flash' });
+      frames.run();
+    });
+    expect(container.querySelector('[role="status"]')).toBeTruthy();
+
+    act(() => {
+      w.appendText('გამარჯობა');
+      frames.run();
+    });
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('[data-testid="md"]')?.textContent).toBe('გამარჯობა');
+  });
+
+  it('localizes the thinking mark, pulses one icon in opacity only, and never bounces', () => {
+    for (const [locale, label] of [['en', 'Thinking…'], ['ru', 'Думает…']] as const) {
+      const store = createChatStreamStore({ schedule: () => null, cancel: () => undefined });
+      const { container, unmount } = render(<StreamingBubble store={store} locale={locale} />);
+      act(() => {
+        store.begin();
+      });
+      const status = container.querySelector('[role="status"]')!;
+      expect(status.textContent).toBe(label);
+      // One animated element, the spark, and only when the viewer allows motion.
+      const animated = Array.from(status.querySelectorAll('[class*="animate-"]'));
+      expect(animated).toHaveLength(1);
+      expect(animated[0]!.getAttribute('class')).toContain('motion-safe:animate-pulse');
+      expect(container.innerHTML).not.toContain('animate-bounce');
+      unmount();
+    }
+  });
+
+  it('passes streaming=false to the markdown once the stream ends', () => {
     const store = createChatStreamStore({ schedule: () => null, cancel: () => undefined });
     const { getByTestId } = render(<StreamingBubble store={store} />);
     act(() => {
@@ -225,10 +271,16 @@ describe('StreamingBubble — stop', () => {
 });
 
 describe('formatModelBadge', () => {
-  it('labels Gemini by model, marks a fallback, and hides the budget notice', () => {
-    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-3.8-flash' })).toBe('gemini-3.8-flash');
+  it('names a Gemini model the way people read it, marks a fallback, and hides the budget notice', () => {
+    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-3.8-flash' })).toBe('Gemini 3.8 Flash');
+    expect(formatModelBadge({ provider: 'gemini', model: 'models/gemini-3.1-pro-preview' })).toBe('Gemini 3.1 Pro');
+    // A model the catalogue doesn't list yet is still prettified, never shown as a raw id.
+    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-4.0-flash' })).toBe('Gemini 4.0 Flash');
+    // A rotation inside the Gemini chain names the model that really answered, without a warning.
+    expect(formatModelBadge({ provider: 'gemini', model: 'gemini-2.5-flash', mode: 'fast', fallback: true })).toBe('Gemini 2.5 Flash');
     expect(formatModelBadge({ provider: 'anthropic', model: 'claude-haiku-4-5' })).toBe('⚠ claude-haiku-4-5 (fallback)');
     expect(formatModelBadge({ provider: 'budget', model: 'none' })).toBeNull();
+    expect(formatModelBadge({ provider: 'gemini', model: '   ' })).toBeNull();
     expect(formatModelBadge(null)).toBeNull();
   });
 });

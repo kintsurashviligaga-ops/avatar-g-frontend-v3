@@ -8,18 +8,20 @@
  * commits the final text into its message list and renders the ordinary bubble in its place. Both go
  * through `MarkdownView`, so the handoff doesn't change a pixel.
  *
- * ⚠️ NOTHING MAY MOVE WHEN THE FIRST TOKEN ARRIVES. The model badge used to appear together with the first
- * text, which added a line above the reply and shifted everything under it at the moment the user started
- * reading. The badge row is reserved from the start (a non-breaking space until the model is known), so the
- * row exists before the text does.
+ * ⚠️ NO MODEL BADGE ABOVE A REPLY (Gemini parity). The label that says which model answered now lives in the
+ * host's action row under the committed reply, so neither the streaming bubble nor the committed one has a
+ * line above the text — the two stay identical at the handoff. `formatModelBadge` stays exported because
+ * the host stamps its result on the message for that row.
  *
- * ⚠️ THE CARET IS INLINE. The old caret was a sibling of the markdown's block <div>, so it sat on a line of
- * its own under the text. `MarkdownView` now places it inside the last text node's element, right after
- * the last character.
+ * ⚠️ NOTHING MAY MOVE WHEN THE FIRST TOKEN ARRIVES. Until then the bubble shows Gemini's quiet thinking mark,
+ * a single row set in the reply's own type (16 px, line-height 1.7), so the first line of text takes exactly
+ * its place. It is an opacity pulse on one icon, never bouncing dots (DESIGN §6: no bounce).
+ *
+ * There is no caret: `MarkdownView` fades each new block in while `streaming` is true.
  */
 
 import { memo, useEffect, useLayoutEffect, useRef } from 'react';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { AlertTriangle, RotateCcw, Sparkle } from 'lucide-react';
 import { MarkdownView } from '@/components/chat/MarkdownView';
 import { SourcesChips } from '@/components/chat/SourcesChips';
 import {
@@ -29,21 +31,27 @@ import {
   type ChatStreamSnapshot,
   type ChatStreamStore,
 } from '@/components/chat/chatStreamStore';
+import { displayNameFor } from '@/lib/chat/chatModes';
 
 // useLayoutEffect warns during server rendering; the commit callback only matters in the browser.
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
- * The engine label shown above a reply. A Gemini answer shows its model id. Any other provider is marked
- * as a fallback, so a silently degraded answer is never mistaken for Gemini. Returns null when there is
- * nothing to label (no meta yet, or the budget notice, which is not a model's answer).
+ * The name of the model that answered, for the reply's action row ("Gemini 3.8 Flash"). It names the model
+ * the stream's meta frame reports, so a rotation to the next Gemini model in the chain (`meta.fallback`) is
+ * already told honestly by the name itself and needs no warning. Any other provider is marked as a fallback,
+ * so a silently degraded answer is never mistaken for Gemini. Returns null when there is nothing to label (no
+ * meta yet, or the budget notice, which is not a model's answer).
  */
 export function formatModelBadge(meta: ChatStreamMeta | null | undefined): string | null {
   if (!meta || !meta.model || meta.provider === 'budget' || meta.model === 'none') return null;
-  return meta.provider === 'gemini' ? meta.model : `⚠ ${meta.model} (fallback)`;
+  const name = displayNameFor(meta.model);
+  if (!name) return null;
+  return meta.provider === 'gemini' ? name : `⚠ ${name} (fallback)`;
 }
 
 const RETRY_LABEL: Record<ChatLocale, string> = { ka: 'თავიდან ცდა', en: 'Retry', ru: 'Повторить' };
+const THINKING_LABEL: Record<ChatLocale, string> = { ka: 'ფიქრობს…', en: 'Thinking…', ru: 'Думает…' };
 
 export interface StreamingBubbleProps {
   store: ChatStreamStore;
@@ -62,22 +70,18 @@ export interface StreamingBubbleProps {
   className?: string;
 }
 
-function TypingDots({ label }: { label: string }) {
+/**
+ * Gemini's "thinking" mark: the spark in the accent, pulsing in opacity only (static under reduced motion),
+ * next to the localized word. The row's line box matches one line of reply text; see the header.
+ */
+function ThinkingMark({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 py-1" role="status" aria-label={label}>
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          aria-hidden
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-app-muted"
-          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }}
-        />
-      ))}
+    <span role="status" className="inline-flex items-center gap-2 text-[16px] leading-[1.7] text-app-muted" data-thinking="">
+      <Sparkle size={18} aria-hidden className="shrink-0 text-app-accent motion-safe:animate-pulse" />
+      <span>{label}</span>
     </span>
   );
 }
-
-const WAITING_LABEL: Record<ChatLocale, string> = { ka: 'პასუხი იწერება…', en: 'Writing a reply…', ru: 'Пишу ответ…' };
 
 function StreamingBubbleImpl({ store, locale = 'ka', transform, onCommit, onRetry, showSources = true, className }: StreamingBubbleProps) {
   const snap = useChatStreamSnapshot(store);
@@ -92,9 +96,8 @@ function StreamingBubbleImpl({ store, locale = 'ka', transform, onCommit, onRetr
 
   const live = snap.status === 'waiting' || snap.status === 'streaming';
   const text = transform ? transform(snap.text) : snap.text;
-  // Stopped before a word arrived: there is nothing to show, not even the reserved badge row.
+  // Stopped before a word arrived: there is nothing to show, not even the thinking mark.
   if (snap.status === 'aborted' && !text) return null;
-  const badge = formatModelBadge(snap.meta);
   const error = snap.status === 'error' ? snap.error : null;
 
   return (
@@ -104,26 +107,22 @@ function StreamingBubbleImpl({ store, locale = 'ka', transform, onCommit, onRetr
       data-status={snap.status}
       aria-busy={live}
     >
-      {/* Reserved from the first frame; see the header. */}
-      <div className="mb-1 text-[10px] font-medium text-app-muted/55" title="answering engine" data-model-badge="" aria-hidden={badge ? undefined : true}>
-        {badge ?? ' '}
-      </div>
       {text ? (
         <MarkdownView source={text} streaming={live} locale={locale} />
       ) : live ? (
-        <TypingDots label={WAITING_LABEL[locale] ?? WAITING_LABEL.ka} />
+        <ThinkingMark label={THINKING_LABEL[locale] ?? THINKING_LABEL.ka} />
       ) : null}
       {error && (
-        <div role="alert" className="mt-2 flex items-start gap-2 rounded-xl border border-app-danger/25 bg-app-danger/10 px-3 py-2 text-[13.5px] leading-[1.5] text-app-text">
-          <AlertTriangle size={15} aria-hidden className="mt-[2px] shrink-0 text-app-danger" />
-          <span className="min-w-0 flex-1 break-words">{error.message}</span>
+        <div role="alert" className="mt-3 flex items-center gap-2 rounded-[16px] bg-app-danger/10 py-1 pl-3 pr-1 text-[16px] leading-[1.6] text-app-text">
+          <AlertTriangle size={16} aria-hidden className="shrink-0 text-app-danger" />
+          <span className="min-w-0 flex-1 break-words py-1.5">{error.message}</span>
           {onRetry && error.retryable && (
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium text-app-accent transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-app-accent/60"
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[14px] font-medium text-app-accent transition-colors hover:bg-app-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:h-9"
             >
-              <RotateCcw size={12} aria-hidden />
+              <RotateCcw size={14} aria-hidden />
               {RETRY_LABEL[locale] ?? RETRY_LABEL.ka}
             </button>
           )}

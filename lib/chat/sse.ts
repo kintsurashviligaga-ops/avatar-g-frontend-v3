@@ -29,6 +29,8 @@
  * `stream: true` turns that into two U+FFFD characters, and no parser can repair them afterwards.
  */
 
+import { isChatModeId, type ChatModeId } from './chatModes';
+
 export type ChatErrorCode =
   | 'auth'
   | 'quota'
@@ -41,9 +43,34 @@ export type ChatErrorCode =
   | 'bad_request'
   | 'auth_required';
 
+/** Why a turn was answered in another mode than the one the user picked. Only one reason exists today. */
+export type ChatModeChangeReason = 'pro_cap';
+
+/**
+ * The `{meta}` frame — who is answering this turn. `provider` + `model` are the original shape (the badge); the rest
+ * is what the Gemini-style model picker needs to be honest about the answer:
+ *   · `mode`      the mode that ANSWERED (lib/chat/chatModes), after any server-side downgrade;
+ *   · `fallback`  true when the answer did not come from that mode's primary model (a rotation to the next model in
+ *                 the chain, or the non-Google fallback) — the badge says so instead of pretending;
+ *   · `requestedMode` + `reason` + `resetAt` — set together when the server answered in another mode than asked:
+ *                 today only 'pro_cap' (the daily Pro allowance is spent, so the turn was answered by Fast) and the
+ *                 ISO time the allowance resets.
+ * Everything but `provider` / `model` is optional, so an older route and an older client each read the other.
+ */
+export interface ChatMeta {
+  provider: string;
+  model: string;
+  partial?: boolean;
+  mode?: ChatModeId;
+  fallback?: boolean;
+  requestedMode?: ChatModeId;
+  reason?: ChatModeChangeReason;
+  resetAt?: string;
+}
+
 export type ChatFrame =
   | { text: string }
-  | { meta: { provider: string; model: string; partial?: boolean } }
+  | { meta: ChatMeta }
   | { sources: Array<{ url: string; title?: string }> }
   | { usage: { model: string; inputTokens?: number; outputTokens?: number; totalTokens?: number } }
   | { error: { code: ChatErrorCode; retryable: boolean; message: string } };
@@ -84,6 +111,17 @@ const DONE_PAYLOAD = '[DONE]';
  */
 export const MAX_SSE_LINE_CHARS = 1_000_000;
 
+/**
+ * An SSE comment: real bytes on the wire that every SSE parser ignores (ours drops `:` lines in `dataValue`).
+ *
+ * ⚠️ A THINKING OR PRO MODEL CAN REASON LONGER THAN THE BROWSER WAITS. The client watchdog
+ * (hooks/chat/useChatStream) aborts a turn that receives no bytes for 20 s before the first token, and Gemini sends
+ * nothing at all while it thinks — so a hard question on Pro died as "timeout" while Google was still working on it.
+ * The route sends this once when the stream opens and again every heartbeat while the turn is in flight; the
+ * watchdog re-arms on any received bytes, so only a genuinely dead connection trips it.
+ */
+export const SSE_KEEPALIVE = ': keep-alive\n\n';
+
 /** Encodes one frame as an SSE event: `data: <json>\n\n`, or `data: [DONE]\n\n` for the terminator. */
 export function encodeFrame(frame: ChatFrame | 'DONE'): string {
   if (frame === 'DONE') return `data: ${DONE_PAYLOAD}\n\n`;
@@ -119,10 +157,33 @@ function decodeSources(v: unknown): ChatFrame | null {
   return sources.length > 0 ? { sources } : null;
 }
 
+/**
+ * An ISO-8601 instant as `Date.prototype.toISOString` writes it (or with an offset), bounded. The notice prints it as
+ * a local time; anything else (a free-form string, a number, a 10 KB value) is dropped rather than shown.
+ */
+const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const MAX_RESET_AT_CHARS = 40;
+
+function isoInstant(v: unknown): string | undefined {
+  if (typeof v !== 'string' || v.length > MAX_RESET_AT_CHARS || !ISO_INSTANT_RE.test(v)) return undefined;
+  return Number.isNaN(Date.parse(v)) ? undefined : v;
+}
+
+/**
+ * ⚠️ THE MODE FIELDS ARE VALIDATED, NOT PASSED THROUGH. They drive UI copy ("answered with Fast — Pro resets at …"),
+ * so an unknown mode, a reason other than the one we know, or a malformed time is dropped field by field — the
+ * frame itself (the badge) still decodes.
+ */
 function decodeMeta(v: unknown): ChatFrame | null {
   if (!isRecord(v) || typeof v.provider !== 'string' || typeof v.model !== 'string') return null;
-  const meta: { provider: string; model: string; partial?: boolean } = { provider: v.provider, model: v.model };
+  const meta: ChatMeta = { provider: v.provider, model: v.model };
   if (typeof v.partial === 'boolean') meta.partial = v.partial;
+  if (isChatModeId(v.mode)) meta.mode = v.mode;
+  if (typeof v.fallback === 'boolean') meta.fallback = v.fallback;
+  if (isChatModeId(v.requestedMode)) meta.requestedMode = v.requestedMode;
+  if (v.reason === 'pro_cap') meta.reason = v.reason;
+  const resetAt = isoInstant(v.resetAt);
+  if (resetAt !== undefined) meta.resetAt = resetAt;
   return { meta };
 }
 
