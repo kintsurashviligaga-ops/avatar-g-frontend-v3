@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
+import { Slider } from './ui/controls';
 import { easedPct } from './ui/GenerationProgress';
 import { describeOpFailure } from '@/lib/ui/opFailure';
 import { photoActions, audioAction } from '@/lib/ai/agentG';
@@ -1825,15 +1826,5 @@ function MiniBtn({ icon, label, onClick, active, disabled, danger }: { icon: Rea
       className={`inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition-colors disabled:opacity-30 ${active ? 'bg-app-accent text-app-bg' : danger ? 'bg-app-elevated text-red-400 ring-1 ring-app-border/15 hover:bg-red-500/15' : 'bg-app-elevated text-app-text ring-1 ring-app-border/15 hover:bg-app-surface'}`}>
       {icon}<span className="hidden sm:inline">{label}</span>
     </button>
-  );
-}
-
-function Slider({ icon, label, min, max, value, step = 1, suffix = '%', onChange }: { icon?: React.ReactNode; label: string; min: number; max: number; value: number; step?: number; suffix?: string; onChange: (v: number) => void }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="flex w-20 shrink-0 items-center gap-1.5 text-[11.5px] leading-tight text-app-text/80 sm:w-24">{icon}<span className="min-w-0 break-words">{label}</span></span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-app-elevated accent-app-accent" />
-      <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-app-muted">{step < 1 ? value.toFixed(1) : Math.round(value)}{suffix}</span>
-    </div>
   );
 }

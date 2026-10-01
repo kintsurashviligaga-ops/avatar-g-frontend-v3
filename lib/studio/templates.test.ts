@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { IMAGE_PRESETS } from '@/lib/image/imagePresets';
 import { VIDEO_PRESETS } from '@/lib/video/videoPresets';
@@ -14,7 +14,7 @@ import {
 const VIDEO_STYLES = ['Cinematic', 'Documentary', 'Anime', 'Vintage', 'Neon', 'Nature', 'Cyberpunk', 'Noir', 'Fantasy', 'Aerial', 'Realistic', 'Georgian', 'Dramatic', 'Romantic', 'Action', 'Horror', 'Comedy'];
 const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'];
 const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'];
-const MUSIC_GENRES = ['folk', 'r&b', 'hip-hop', 'pop', 'electronic', 'jazz', 'rock', 'classical', 'trap', 'reggae', 'blues', 'metal', 'country', 'ambient', 'lo-fi', 'soul', 'funk', 'latin', 'k-pop'];
+const MUSIC_GENRES = ['georgian folk', 'r&b', 'hip-hop', 'pop', 'electronic', 'jazz', 'rock', 'classical', 'trap', 'reggae', 'blues', 'metal', 'country', 'ambient', 'lo-fi', 'soul', 'funk', 'latin', 'k-pop'];
 
 describe('every gallery', () => {
   test.each(Object.entries(TEMPLATES_BY_TOOL))('%s: unique ids, three languages, a real thumbnail or none', (_tool, list) => {
@@ -132,6 +132,19 @@ describe('music', () => {
   test('an instrumental card stays selected whatever the (hidden) vocal says', () => {
     const bed = MUSIC_TEMPLATES.find((t) => t.values.instrumental)!;
     expect(matchMusicTemplate({ ...bed.values, voiceType: 'duet' })).toBe(bed.id);
+    expect(matchMusicTemplate({ ...bed.values, voiceType: 'auto' })).toBe(bed.id);
+  });
+  test('Georgian Folk asks the engine for GEORGIAN folk — the card and the panel chip send the same value', () => {
+    expect(musicTemplateValues('georgian-folk')!.genre).toBe('georgian folk');
+    const studio = readFileSync(join(process.cwd(), 'components', 'studio', 'OmniStudio.tsx'), 'utf8');
+    expect(studio.includes("['georgian folk', { ka: 'ქართული ფოლკი', en: 'Georgian Folk'")).toBe(true);
+    expect(/\['folk', \{/.test(studio)).toBe(false); // the chip that said "Georgian Folk" and sent "folk"
+  });
+  test('the panel starts with the singer on Auto, and Auto lights no sung card — a card names its singer', () => {
+    expect(MUSIC_PANEL_DEFAULTS.voiceType).toBe('auto');
+    for (const t of MUSIC_TEMPLATES.filter((x) => !x.values.instrumental)) {
+      expect(matchMusicTemplate({ ...t.values, voiceType: 'auto' })).toBeNull();
+    }
   });
 });
 

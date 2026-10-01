@@ -12,9 +12,11 @@ import { Play, Pause, Music2 } from 'lucide-react';
 
 const fmt = (s: number) => (!isFinite(s) || s < 0 ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
-// memo (Iteration 5): primitive-prop leaf (url/label/coverUrl/engine strings). Playback state is
+// memo (Iteration 5): primitive-prop leaf (url/label/coverUrl/engine/note strings). Playback state is
 // component-owned, so memo only skips re-renders driven by unrelated parent updates — never a needed one.
-export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, engine }: { url: string; coverUrl?: string; label: string; engine?: string }) {
+// `note`: how the music panel's sliders reached the engine (components/studio/ui/musicControlsCopy
+// `musicControlsNote`) — e.g. "≈ sliders approximate" on Lyria, where they only steer the prompt.
+export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, engine, note }: { url: string; coverUrl?: string; label: string; engine?: string; note?: string | null }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
@@ -176,10 +178,11 @@ export const TrackPlayer = memo(function TrackPlayer({ url, coverUrl, label, eng
         </div>
         {/* Honest provenance badge — the engine that actually produced the track
             (Udio / ElevenLabs Music / MusicGen / cloned voice), reported by the API. */}
-        {engine && (
-          <div className="flex items-center gap-1.5 pt-0.5 text-[10.5px] font-medium text-app-muted/70">
+        {(engine || note) && (
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 pt-0.5 text-[10.5px] font-medium text-app-muted/70">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-400/80" />
-            <span>Generated with {engine}</span>
+            {engine && <span>Generated with {engine}</span>}
+            {note && <span data-track-note>{engine ? '· ' : ''}{note}</span>}
           </div>
         )}
       </div>

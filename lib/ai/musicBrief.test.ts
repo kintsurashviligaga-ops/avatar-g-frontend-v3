@@ -90,6 +90,54 @@ describe('a template descriptor is boilerplate, not the user (lib/studio/templat
   });
 });
 
+describe('control directives are the lowest priority — trimmed before the user\'s own words (lib/ai/musicControls)', () => {
+  const WEIRD = 'Make it experimental and unpredictable: an unconventional structure, unusual sounds and bold, inventive arrangement choices throughout.';
+  const STRICT = 'Adhere strictly to the stated style: its signature instruments, rhythm and production from start to finish.';
+
+  test('they ride after the style, the card\'s descriptor and the singer, in the order given', () => {
+    const b = buildMusicBrief({ prompt: 'a toast in Telavi', style: 'georgian folk', templateDescriptor: 'Georgian polyphonic folk', vocalDescriptor: 'female vocals', directives: [WEIRD, STRICT] });
+    expect(b.prompt).toBe(`a toast in Telavi Style: georgian folk. Georgian polyphonic folk. female vocals. ${WEIRD} ${STRICT}`);
+    expect(b).not.toHaveProperty('directivesDropped');
+  });
+
+  test('an instrumental track keeps its one instruction, then the directives', () => {
+    expect(buildMusicBrief({ prompt: 'rain', style: 'ambient', instrumental: true, directives: [WEIRD] }).prompt)
+      .toBe(`rain Style: ambient. Instrumental, no vocals. ${WEIRD}`);
+  });
+
+  test('a brief that fills the budget keeps EVERY character of the user\'s words; the directives give way, whole', () => {
+    const suffix = 'Style: jazz.';
+    const prompt = 'u'.repeat(PROMPT_BUDGET - suffix.length - 1); // exactly what fits beside the suffix
+    const b = buildMusicBrief({ prompt, style: 'jazz', directives: [WEIRD, STRICT] });
+    expect(b.prompt).toBe(`${prompt} ${suffix}`);
+    expect(b.truncated.prompt).toBe(false); // the user lost nothing
+    expect(b.directivesDropped).toBe(2);
+  });
+
+  test('only what fits: a sentence is never cut in half — the long one is dropped, a shorter one still lands', () => {
+    const short = 'Lean conventional.';
+    const prompt = 'u'.repeat(PROMPT_BUDGET - 'Style: jazz.'.length - 1 - (short.length + 1) - 5);
+    const b = buildMusicBrief({ prompt, style: 'jazz', directives: [WEIRD, short] });
+    expect(b.prompt.endsWith(`Style: jazz. ${short}`)).toBe(true);
+    expect(b.prompt).not.toContain('experimental');
+    expect(b.prompt.length).toBeLessThanOrEqual(PROMPT_BUDGET);
+    expect(b.directivesDropped).toBe(1);
+  });
+
+  test('blank directives are ignored; none at all is the brief exactly as before', () => {
+    const base = buildMusicBrief({ prompt: 'jazz trio', style: 'jazz' });
+    expect(buildMusicBrief({ prompt: 'jazz trio', style: 'jazz', directives: ['', '   '] })).toEqual(base);
+    expect(buildMusicBrief({ prompt: 'jazz trio', style: 'jazz', directives: [] })).toEqual(base);
+  });
+
+  test('they are prompt text only — the lyrics keep their own field and budget', () => {
+    const b = buildMusicBrief({ prompt: 'p', lyrics: 'L'.repeat(1400), directives: [WEIRD] });
+    expect(b.lyrics).toHaveLength(1400);
+    expect(b.lyrics).not.toContain('experimental');
+    expect(b.prompt).toBe(`p ${WEIRD}`);
+  });
+});
+
 describe('flatten — for engines that take a single string', () => {
   it('keeps the lyrics whole and trims the DESCRIPTION when space runs out', () => {
     const brief = buildMusicBrief({ prompt: 'p'.repeat(1400), lyrics: 'L'.repeat(200) });

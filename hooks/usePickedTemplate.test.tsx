@@ -118,8 +118,10 @@ describe('the studio reads every request\'s templateId from the PICKED id, never
       'useState<8 | 24 | 48>(VIDEO_PANEL_DEFAULTS.duration)',
       "useState<'musicvideo' | 'documentary'>(VIDEO_PANEL_DEFAULTS.mode)",
       "useState<'landscape' | 'vertical' | 'square' | 'portrait'>(VIDEO_PANEL_DEFAULTS.orientation)",
-      'useState<string>(MUSIC_PANEL_DEFAULTS.genre)',
+      // Music styles are a list now (up to three, lib/ai/musicControls); the default panel holds the one default genre.
+      'useState<string[]>([MUSIC_PANEL_DEFAULTS.genre])',
       'useState<boolean>(MUSIC_PANEL_DEFAULTS.instrumental)',
+      'useState<VocalGender>(MUSIC_PANEL_DEFAULTS.voiceType)',
     ])).toEqual([]);
   });
 });
