@@ -38,6 +38,7 @@ import { generateGeminiImage } from '@/lib/ai/geminiImage';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
+import { sanitizeStyle } from '@/lib/studio/style';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -329,7 +330,8 @@ export async function POST(req: NextRequest) {
   // A 4:5 film is rendered on Veo's 9:16 and cropped (docs/VEO_ENGINE.md §2), so its frames — the clips' first
   // frames — are vertical too. (Square stays on 16:9, like the render.)
   const orientation: 'landscape' | 'vertical' = body.orientation === 'vertical' || body.orientation === 'portrait' ? 'vertical' : 'landscape';
-  const style = typeof body.style === 'string' && body.style.trim() ? body.style.trim() : null;
+  // ⚠️ CLIENT TEXT INTO EVERY SCENE'S FRAME PROMPT AND THE DIRECTOR'S BRIEF — bounded and cleaned (lib/studio/style.ts).
+  const style = sanitizeStyle(body.style) || null;
   const locale = typeof body.locale === 'string' ? body.locale : 'ka';
   // Scene count = film length on the 8s Veo grid: the user picks 8s (1 scene) · 24s (3) · 48s (6). The scene
   // count is driven by totalSec (count × FILM_CLIP_SEC=8) — planFilmScenes splits the runtime into 8s beats.

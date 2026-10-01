@@ -26,6 +26,7 @@ import { settleMusicCharge } from '@/lib/credits/musicSettlement';
 import { buildMusicBrief, flattenMusicBrief, type MusicBrief } from '@/lib/ai/musicBrief';
 import { promptToEnglish, lastTranslateOutcome } from '@/lib/ai/promptToEnglish';
 import { probeTrackDurationSec } from '@/lib/audio/trackDuration';
+import { sanitizeStyle } from '@/lib/studio/style';
 
 /**
  * Assistant music generation.
@@ -279,7 +280,9 @@ export async function POST(req: NextRequest) {
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-    if (typeof body.style === 'string' && body.style.trim()) style = body.style.trim();
+    // ⚠️ CLIENT TEXT INTO THE ENGINE BRIEF AND THE COVER-ART PROMPT — bounded and cleaned (lib/studio/style.ts).
+    const cleanStyle = sanitizeStyle(body.style);
+    if (cleanStyle) style = cleanStyle;
     if (typeof body.instrumental === 'boolean') makeInstrumental = body.instrumental;
     // P6 — duration (15/30/60/90) + tempo (slow/medium/fast). Duration drives the track
     // length; tempo is folded into the prompt as a BPM/feel hint the model honours.
