@@ -2,13 +2,14 @@
  * Voice Clone API
  *
  * GET    /api/voice/clone           — list user's cloned voice samples (newest first)
- * POST   /api/voice/clone           — multipart upload of audio sample + name → ElevenLabs clone
- * DELETE /api/voice/clone?id=xxx    — delete a cloned voice sample row (RLS-enforced)
+ * POST   /api/voice/clone           — multipart upload of audio sample (audio/*, ≤ 10 MB) + name → ElevenLabs clone
+ * DELETE /api/voice/clone?id=xxx    — delete the voice at ElevenLabs (when it is provably this user's), then the row
  * PATCH  /api/voice/clone           — set a sample as default; clears default on the user's other rows
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,82 @@ export const maxDuration = 60;
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1';
 const PREVIEW_TEXT = 'გამარჯობა, ეს თქვენი კლონირებული ხმაა.';
 const PREVIEW_MODEL = 'eleven_multilingual_v2';
+const MAX_SAMPLE_BYTES = 10 * 1024 * 1024;
+/** Room for the multipart framing + the name field around the sample in the Content-Length pre-check. */
+const MULTIPART_SLACK_BYTES = 64 * 1024;
+const MAX_NAME_CHARS = 100;
+const PROVIDER_TIMEOUT_MS = 15_000;
+/** ElevenLabs voice ids are short alphanumerics; anything else never reaches a provider URL path. */
+const VOICE_ID_RE = /^[A-Za-z0-9]{1,64}$/;
+const OWNER_TAG_RE = /myavatar-owner:([0-9a-f-]{36})/i;
+
+/**
+ * The description every clone is created with. It is the ONLY proof DELETE accepts that a provider voice belongs to
+ * the caller — see `removeProviderVoice`.
+ */
+function ownerDescription(userId: string): string {
+  return `MyAvatar voice clone · myavatar-owner:${userId}`;
+}
+
+type ProviderDelete = 'deleted' | 'gone' | 'error';
+
+/** ElevenLabs answers an unknown voice with 404, or 400 `voice_not_found` on some endpoints — both mean "gone". */
+async function isVoiceGone(res: Response): Promise<boolean> {
+  if (res.status === 404) return true;
+  if (res.status !== 400) return false;
+  const body = await res.text().catch(() => '');
+  return /voice_not_found/i.test(body);
+}
+
+/** DELETE /v1/voices/{id}. 'gone' = the provider no longer has it (already deleted) — as good as deleted. */
+async function deleteVoiceAtProvider(apiKey: string, voiceId: string): Promise<ProviderDelete> {
+  if (!VOICE_ID_RE.test(voiceId)) return 'error';
+  try {
+    const res = await fetch(`${ELEVENLABS_BASE}/voices/${voiceId}`, {
+      method: 'DELETE',
+      headers: { 'xi-api-key': apiKey },
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (res.ok) return 'deleted';
+    return (await isVoiceGone(res)) ? 'gone' : 'error';
+  } catch {
+    return 'error';
+  }
+}
+
+/**
+ * Delete the provider voice behind a row — but ONLY when ElevenLabs itself says the voice was cloned for `userId`.
+ *
+ * ⚠️ THE ROW'S external_id IS USER-WRITABLE. voice_samples RLS lets an owner INSERT/UPDATE their own rows straight
+ * through PostgREST with the public anon key, so `external_id` can name ANY voice in our ElevenLabs account — the
+ * native Georgian voices every ka synthesis uses (lib/audio/georgian-voice.ts), the narrators, another user's clone.
+ * Deleting whatever the row names would hand every signed-in user a "delete the platform's voices" button. So the
+ * proof lives provider-side, where only our key can write: the owner tag POST puts in the voice's description.
+ * A voice without this caller's tag (a legacy clone from before the tag, or anything that isn't theirs) is left
+ * alone — 'skipped' — and only the row goes.
+ */
+async function removeProviderVoice(
+  apiKey: string,
+  voiceId: string,
+  userId: string,
+): Promise<ProviderDelete | 'skipped'> {
+  if (!VOICE_ID_RE.test(voiceId)) return 'skipped';
+  let description = '';
+  try {
+    const res = await fetch(`${ELEVENLABS_BASE}/voices/${voiceId}`, {
+      headers: { 'xi-api-key': apiKey },
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (!res.ok) return (await isVoiceGone(res)) ? 'gone' : 'error';
+    const voice = (await res.json().catch(() => null)) as { description?: unknown } | null;
+    description = typeof voice?.description === 'string' ? voice.description : '';
+  } catch {
+    return 'error';
+  }
+  const owner = description.match(OWNER_TAG_RE)?.[1]?.toLowerCase();
+  if (owner !== userId.toLowerCase()) return 'skipped';
+  return deleteVoiceAtProvider(apiKey, voiceId);
+}
 
 interface VoiceSampleRow {
   id: string;
@@ -60,6 +137,9 @@ export async function GET(): Promise<NextResponse> {
 
 // ── POST: upload audio → clone via ElevenLabs ────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Every POST is a paid ElevenLabs clone + a preview synthesis on the platform's key.
+  const rl = await checkRateLimit(request, RATE_LIMITS.EXPENSIVE);
+  if (rl) return rl;
   try {
     const supabase = createSupabaseServerClient();
     const {
@@ -74,12 +154,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Voice provider not configured' }, { status: 500 });
     }
 
+    // An honest Content-Length over the cap is refused before the multipart body is buffered; the parsed size
+    // check below catches the rest (chunked / lying headers).
+    const declared = Number(request.headers.get('content-length') ?? '');
+    if (Number.isFinite(declared) && declared > MAX_SAMPLE_BYTES + MULTIPART_SLACK_BYTES) {
+      return NextResponse.json({ error: 'Audio sample is too large (max 10 MB)' }, { status: 413 });
+    }
+
     const form = await request.formData();
     const audio = form.get('audio');
-    const name = String(form.get('name') ?? '').trim();
+    const name = String(form.get('name') ?? '').trim().slice(0, MAX_NAME_CHARS);
 
     if (!(audio instanceof Blob) || audio.size === 0) {
       return NextResponse.json({ error: 'audio is required' }, { status: 400 });
+    }
+    if (audio.size > MAX_SAMPLE_BYTES) {
+      return NextResponse.json({ error: 'Audio sample is too large (max 10 MB)' }, { status: 413 });
+    }
+    if (!audio.type.toLowerCase().startsWith('audio/')) {
+      return NextResponse.json({ error: 'Only audio files can be cloned' }, { status: 415 });
     }
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -88,6 +181,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // 1. Submit to ElevenLabs to create the voice clone
     const cloneForm = new FormData();
     cloneForm.append('name', name);
+    cloneForm.append('description', ownerDescription(user.id));
     cloneForm.append(
       'files',
       audio,
@@ -108,10 +202,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         body: errBody.slice(0, 200),
         userId: user.id,
       });
-      return NextResponse.json(
-        { error: 'Voice clone provider rejected the sample', detail: errBody.slice(0, 200) },
-        { status: 502 },
-      );
+      // The provider's body stays in the server log — it never reaches the user (lib/api/providerError.ts).
+      return NextResponse.json({ error: 'Voice clone provider rejected the sample' }, { status: 502 });
     }
 
     const cloneJson = (await cloneRes.json()) as { voice_id?: string };
@@ -199,6 +291,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userId: user.id,
         voiceId,
       });
+      // No row → nothing could ever delete this voice later. We created it a moment ago, so it is ours to remove.
+      await deleteVoiceAtProvider(apiKey, voiceId);
       return NextResponse.json({ error: 'Failed to save voice sample' }, { status: 500 });
     }
 
@@ -216,7 +310,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// ── DELETE: remove a sample row (RLS-enforced) ───────────────────────────────
+// ── DELETE: remove the provider voice, then the row (RLS-enforced) ───────────
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
     const id = request.nextUrl.searchParams.get('id');
@@ -232,6 +326,52 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
 
+    const { data: row, error: lookupErr } = await supabase
+      .from('voice_samples')
+      .select('id, provider, external_id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (lookupErr) {
+      reportError(lookupErr, { route: '/api/voice/clone', op: 'DELETE-lookup', userId: user.id, id });
+      return NextResponse.json({ error: 'Failed to delete sample' }, { status: 500 });
+    }
+    if (!row) {
+      return NextResponse.json({ error: 'Sample not found' }, { status: 404 });
+    }
+
+    // ⚠️ PROVIDER FIRST, ROW SECOND. The row is our only pointer to the cloned voice: dropping it first left the
+    // voice — the user's own biometric sample — on ElevenLabs for good, holding one of the account's voice slots.
+    // If the provider delete fails, the row stays so the user can simply press delete again.
+    let providerDeleted = false;
+    const sample = row as Pick<VoiceSampleRow, 'id' | 'provider' | 'external_id'>;
+    if (sample.provider === 'elevenlabs') {
+      const apiKey = process.env.ELEVENLABS_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json({ error: 'Voice provider not configured' }, { status: 503 });
+      }
+      const outcome = await removeProviderVoice(apiKey, sample.external_id, user.id);
+      if (outcome === 'error') {
+        reportError(new Error('ElevenLabs voice delete failed'), {
+          route: '/api/voice/clone',
+          op: 'DELETE-provider',
+          userId: user.id,
+          id,
+          voiceId: sample.external_id,
+        });
+        return NextResponse.json({ error: 'Could not delete the voice — please try again' }, { status: 502 });
+      }
+      if (outcome === 'skipped') {
+        // Not provably this user's (a legacy clone from before the owner tag, or a row naming someone else's
+        // voice): left at the provider on purpose. Logged so the owner can purge legacy orphans by hand.
+        console.warn('[voice/clone] DELETE left the provider voice untouched (no owner tag)', {
+          userId: user.id,
+          voiceId: sample.external_id,
+        });
+      }
+      providerDeleted = outcome === 'deleted' || outcome === 'gone';
+    }
+
     const { error } = await supabase
       .from('voice_samples')
       .delete()
@@ -243,7 +383,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ deleted: id });
+    return NextResponse.json({ deleted: id, providerDeleted });
   } catch (error) {
     reportError(error, { route: '/api/voice/clone', op: 'DELETE' });
     return NextResponse.json({ error: 'Failed to delete sample' }, { status: 500 });
