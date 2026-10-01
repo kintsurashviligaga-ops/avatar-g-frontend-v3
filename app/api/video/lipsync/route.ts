@@ -23,8 +23,11 @@ import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
-import { deductCredits, hasSufficientBalance } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
+import { randomUUID } from 'crypto';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { reportError } from '@/lib/observability/report-error';
 
@@ -75,8 +78,16 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get('health') === 'heygen') {
     return NextResponse.json(await heygenHealthCheck());
   }
-  const id = req.nextUrl.searchParams.get('id');
-  if (!id) return NextResponse.json(lipsyncStatus());
+  const polledId = req.nextUrl.searchParams.get('id');
+  if (!polledId) return NextResponse.json(lipsyncStatus());
+  // A job started by the current POST carries its charge token inside the id (lib/billing/avatarCharge). `id` is
+  // the bare provider job; `charge` is non-null only for an authentic token bound to exactly this job.
+  const { jobId: id, charge } = chargeForPolledId(polledId, 'lipsync');
+  // Terminal failure of a RESERVED job → give the reservation back. Net-capped by the ledger and idempotent
+  // (`${ref}:refund`), so the client's repeated polls of a dead job refund once.
+  const refundReserved = async (): Promise<void> => {
+    if (charge) await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
+  };
 
   const { status, url, error } = await lipsyncFetch(id);
   if (status === 'succeeded' && url) {
@@ -107,11 +118,16 @@ export async function GET(req: NextRequest) {
     // BILLING FIX — avatar/lip-sync billing was DEFERRED to "its own pipeline" and never wired, so
     // avatar generation was FREE. Charge once on poll-SUCCESS, idempotent per jobId (repeated polls
     // reuse the same ref → deduct_credits dedupes → one charge). Authed only; best-effort.
+    // ⚠️ A RESERVED job (token present) was paid at POST — deducting here too would bill it twice. The legacy
+    // deduct below only covers ids with no token: jobs started before the reservation shipped.
     try {
-      const { user } = await authedClientFromRequest(req);
-      if (user?.id) {
-        await deductCredits(user.id, creditCostFor('avatar'), `avatar:lipsync:${id}:${user.id}`)
-          .catch(() => { /* best-effort — the asset is already delivered */ });
+      const { user: sessionUser } = charge ? { user: null } : await authedClientFromRequest(req);
+      const payerId = charge?.u ?? sessionUser?.id ?? null;
+      if (payerId) {
+        if (!charge) {
+          await deductCredits(payerId, creditCostFor('avatar'), `avatar:lipsync:${id}:${payerId}`)
+            .catch(() => { /* best-effort — the asset is already delivered */ });
+        }
         // AND FILE IT IN THE LIBRARY. Nothing in the lip-sync path ever wrote a generation_jobs row, so
         // a user was CHARGED for the render, watched it, and lost it permanently on refresh — the
         // Lip-Sync Studio has no save control at all, and only the browser Download link (which they had
@@ -120,7 +136,7 @@ export async function GET(req: NextRequest) {
         // The id is deterministic per provider job, so repeated polls upsert ONE row.
         await recordCompletedFilm({
           id: `lipsync:${id}`,
-          userId: user.id,
+          userId: payerId,
           url: hosted,
           orientation: 'vertical',
           subtype: 'lipsync',
@@ -129,7 +145,10 @@ export async function GET(req: NextRequest) {
     } catch { /* fail-open */ }
     return NextResponse.json({ done: true, url: hosted });
   }
-  if (status === 'failed' || status === 'canceled') return NextResponse.json({ done: true, url: null, error });
+  if (status === 'failed' || status === 'canceled') {
+    await refundReserved();
+    return NextResponse.json({ done: true, url: null, error });
+  }
   // ⚠️ A TERMINAL STATUS WITH NO URL USED TO FALL THROUGH TO `{done:false}` FOREVER. `lipsyncFetch`
   // populates `url` only when the provider both SUCCEEDED and yielded a resolvable output — Replicate
   // via extractUrl(pred.output), HeyGen via `d.video_url ?? null`. So a job that genuinely completed but
@@ -142,6 +161,7 @@ export async function GET(req: NextRequest) {
   // completed and was paid for. This is the identical dead end that /api/v2/model3d/status documents and
   // fixed ("TERMINAL WITHOUT A MESH IS A FAILURE, NOT 'STILL WORKING'"); it was never applied here.
   if (status === 'succeeded') {
+    await refundReserved();
     return NextResponse.json({
       done: true, url: null,
       error: error || 'the provider finished without a usable video file',
@@ -154,9 +174,21 @@ export async function GET(req: NextRequest) {
  * POST — START a lip-sync job (async). Speaks the typed text (ElevenLabs, optionally
  * the user's trained RVC voice), dispatches SadTalker, and returns { jobId } fast. The
  * client polls GET ?id=jobId. Synchronous rendering was dropping on mobile (~150s).
+ *
+ * PAID UP FRONT: signed-in only, and the avatar price is RESERVED (deduct_credits under a server UUID ref) before
+ * any TTS or provider work. The returned jobId carries a signed charge token (lib/billing/avatarCharge) so the GET
+ * poll knows the job is paid and can refund the reservation if the provider reports a terminal failure.
  */
 export async function POST(req: NextRequest) {
   const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
+  // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate), before anything that costs money. This route spends ElevenLabs
+  // (TTS) and HeyGen/Replicate (render) on the platform's keys, and its balance gate only ever applied to a
+  // signed-in caller — a direct anonymous POST rendered for free. FILM_ALLOW_ANONYMOUS=1 re-opens it for a demo.
+  const { user } = await authedClientFromRequest(req);
+  if (mustSignInToGenerate(user?.id)) {
+    return NextResponse.json({ jobId: null, code: 'auth_required', ...signInToGenerateBody() }, { status: 401 });
+  }
+  const userId = user?.id ?? null; // null only on a FILM_ALLOW_ANONYMOUS demo deployment — unbilled, as before
   // SAY WHY. This returned a bare { jobId: null }, and the client prints `startJson.error || t.failed`
   // — so an operator problem (no HEYGEN_API_KEY, no REPLICATE_API_TOKEN) surfaced to the user as
   // "Lip-sync failed. Try different files.", sending them to hunt for a fault in their own uploads and
@@ -165,17 +197,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ jobId: null, error: 'provider_not_configured', code: 'provider_not_configured' }, { status: 503 });
   }
 
-  // PRE-RENDER balance gate — don't start a paid avatar render (TTS + provider) for a user who
-  // can't afford it. The charge lands on the GET poll-success; without this a 0-balance user could
-  // start unlimited free avatar jobs. Authed only; fail-open (deduct on poll stays the backstop).
-  try {
-    const { user: gateUser } = await authedClientFromRequest(req);
-    if (gateUser?.id && !(await hasSufficientBalance(gateUser.id, creditCostFor('avatar')))) {
-      return NextResponse.json({ jobId: null, error: 'insufficient_credits', code: 'insufficient_credits', topUpNeeded: true }, { status: 402 });
-    }
-  } catch { /* fail-open */ }
-
-  let body: { videoUrl?: unknown; audioUrl?: unknown; characterRef?: unknown; sceneIndex?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown };
+  let body: { videoUrl?: unknown; audioUrl?: unknown; characterRef?: unknown; sceneIndex?: unknown; text?: unknown; useMyVoice?: unknown; forceSadTalker?: unknown; gender?: unknown; kind?: unknown; orientation?: unknown; chargeToken?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -193,41 +215,91 @@ export async function POST(req: NextRequest) {
   if (!videoUrl) return NextResponse.json({ jobId: null, error: 'media_unresolved', code: 'media_unresolved' }, { status: 400 });
   let audioUrl: string = (await resolveMedia(body.audioUrl)) ?? videoUrl;
 
-  // "Speak this text": type a script → ElevenLabs → optionally the user's TRAINED voice.
-  const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
-  if (text) {
-    // Honour an explicit Female/Male choice via the cloned-voice map; otherwise let
-    // textToHostedSpeech auto-pick by persona.
-    const g = body.gender === 'male' ? 'male' : body.gender === 'female' ? 'female' : null;
-    const ttsUrl = await textToHostedSpeech(text, g ? georgianVoiceId(g) : undefined);
-    // If TTS failed, FAIL CLEANLY instead of falling through with audioUrl===videoUrl
-    // (the face image) — that would lip-sync the photo to itself and waste a provider
-    // job before surfacing a generic failure minutes later.
-    if (!ttsUrl) return NextResponse.json({ jobId: null, error: 'tts-failed' });
-    audioUrl = ttsUrl;
-    if (body.useMyVoice === true) {
-      try {
-        const { user } = await authedClientFromRequest(req);
-        const model = await getUserVoiceModel(user?.id ?? DEMO_VOICE_USER_ID);
-        if (model) {
-          const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
-          if (converted) audioUrl = converted;
-        }
-      } catch {
-        /* keep the TTS voice */
+  // ── RESERVE before any paid work. This replaces the read-only hasSufficientBalance gate, which failed OPEN on a
+  // ledger error (its own try/catch AND the helper's internal `return true`) — a DB blip meant a free render — and
+  // let parallel POSTs all pass one stale balance. The atomic deduct refuses an overdraw; anything but a clean
+  // debit refuses the render: 402 for a short balance, 503 for a ledger we cannot use.
+  const cost = creditCostFor('avatar');
+  let chargeRef: string | null = null;
+  if (userId) {
+    if (!avatarChargeSigningReady()) {
+      return NextResponse.json({ jobId: null, error: 'ledger_unavailable', code: 'ledger_unavailable' }, { status: 503 });
+    }
+    // PRESENTER FALLBACK — the presenter's Phase A already holds the price (it paid for the TTS whose audio we are
+    // about to animate). Release that hold; the reservation below is this render's charge. Release-then-reserve,
+    // never "adopt": a hold token replayed N times releases once (net-capped by the ledger) while every render
+    // still reserves its own price, so one token can never fund more than one render.
+    const hold = verifyAvatarCharge(body.chargeToken, 'presenter-hold');
+    if (hold && hold.u === userId) await refundDebitByRef(hold.u, hold.r, cost).catch(() => null);
+    chargeRef = avatarChargeRef('lipsync', userId, randomUUID());
+    const debit = await deductCredits(userId, cost, chargeRef);
+    if (!debit.ok) {
+      if (debit.reason === 'insufficient') {
+        return NextResponse.json({ jobId: null, error: 'insufficient_credits', code: 'insufficient_credits', topUpNeeded: true }, { status: 402 });
       }
+      return NextResponse.json({ jobId: null, error: 'ledger_unavailable', code: 'ledger_unavailable' }, { status: 503 });
     }
   }
+  let released = false;
+  const releaseCharge = async (): Promise<void> => {
+    if (released || !userId || !chargeRef) return;
+    released = true;
+    await refundDebitByRef(userId, chargeRef, cost).catch(() => null);
+  };
 
-  // kind:'film' → multi-shot video master needs the VIDEO-INPUT engine (sync/lipsync-2),
-  // not the talking-photo engines. Falls back to null → caller keeps the un-synced master.
-  if (body.kind === 'film') {
-    const jobId = await filmLipsyncCreate(videoUrl, audioUrl);
-    return NextResponse.json({ jobId });
+  try {
+    // "Speak this text": type a script → ElevenLabs → optionally the user's TRAINED voice.
+    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1200) : '';
+    if (text) {
+      // Honour an explicit Female/Male choice via the cloned-voice map; otherwise let
+      // textToHostedSpeech auto-pick by persona.
+      const g = body.gender === 'male' ? 'male' : body.gender === 'female' ? 'female' : null;
+      const ttsUrl = await textToHostedSpeech(text, g ? georgianVoiceId(g) : undefined);
+      // If TTS failed, FAIL CLEANLY instead of falling through with audioUrl===videoUrl
+      // (the face image) — that would lip-sync the photo to itself and waste a provider
+      // job before surfacing a generic failure minutes later.
+      if (!ttsUrl) {
+        await releaseCharge();
+        return NextResponse.json({ jobId: null, error: 'tts-failed' });
+      }
+      audioUrl = ttsUrl;
+      if (body.useMyVoice === true) {
+        try {
+          const model = await getUserVoiceModel(userId ?? DEMO_VOICE_USER_ID);
+          if (model) {
+            const converted = await convertSongWithRvc(ttsUrl, model.modelUrl);
+            if (converted) audioUrl = converted;
+          }
+        } catch {
+          /* keep the TTS voice */
+        }
+      }
+    }
+
+    // kind:'film' → multi-shot video master needs the VIDEO-INPUT engine (sync/lipsync-2),
+    // not the talking-photo engines. Falls back to null → caller keeps the un-synced master.
+    // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
+    // orientation → HeyGen output dimension (the avatar panel's Format selector).
+    const orientation = body.orientation === 'landscape' ? 'landscape' : body.orientation === 'square' ? 'square' : body.orientation === 'vertical' ? 'vertical' : undefined;
+    const jobId = body.kind === 'film'
+      ? await filmLipsyncCreate(videoUrl, audioUrl)
+      : await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true, ...(orientation ? { orientation } : {}) });
+    if (!jobId) {
+      await releaseCharge(); // no job was created — nothing was rendered for the reservation
+      return NextResponse.json({ jobId: null, error: 'provider_failed', code: 'provider_failed' });
+    }
+    if (!userId || !chargeRef) return NextResponse.json({ jobId }); // anonymous demo: unbilled, bare id as before
+    const chargeToken = signAvatarCharge({ k: 'lipsync', u: userId, r: chargeRef, j: jobId });
+    // Signing readiness was checked before the reserve, so this cannot normally miss. If it ever does, the job goes
+    // out under a bare id that the GET's legacy deduct-on-success charges — keeping the reserve too would bill twice.
+    if (!chargeToken) {
+      await releaseCharge();
+      return NextResponse.json({ jobId });
+    }
+    return NextResponse.json({ jobId: withChargeToken(jobId, chargeToken), chargeToken });
+  } catch (e) {
+    await releaseCharge();
+    reportError(e, { route: 'video.lipsync', step: 'start' });
+    return NextResponse.json({ jobId: null, error: 'start_failed', code: 'start_failed' }, { status: 500 });
   }
-  // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
-  // orientation → HeyGen output dimension (the avatar panel's Format selector).
-  const orientation = body.orientation === 'landscape' ? 'landscape' : body.orientation === 'square' ? 'square' : body.orientation === 'vertical' ? 'vertical' : undefined;
-  const jobId = await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true, ...(orientation ? { orientation } : {}) });
-  return NextResponse.json({ jobId });
 }

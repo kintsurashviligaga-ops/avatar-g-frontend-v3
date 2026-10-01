@@ -5269,14 +5269,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Honour the panel's Voice (Female/Male) + Format selections.
             body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean };
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string };
           let sj: { success?: boolean; videoId?: string } = {};
           // No HeyGen key → don't burn a round-trip on a submit that must 503; the SadTalker
           // fallback below runs on the SAME cloned-voice audio. (undefined = older server → try.)
           if (syn.success && syn.audioUrl && syn.heygenReady !== false) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation }),
+              // chargeToken = Phase A's price hold; the server releases it as it reserves this render (one presenter, one charge).
+              body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation, chargeToken: syn.chargeToken }),
             });
             sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
           }
@@ -5298,7 +5299,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             try {
               const fbRes = await fetch('/api/video/lipsync', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation }),
+                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation, chargeToken: syn.chargeToken }),
               });
               const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
               // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
