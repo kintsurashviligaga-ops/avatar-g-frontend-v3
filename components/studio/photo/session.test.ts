@@ -11,7 +11,8 @@ import { MAX_PHOTOS } from '@/lib/photo/exportPlan';
 import type { PhotoMetrics } from '@/lib/photo/cullMetrics';
 import type { CullClient } from './cullClient';
 import type { AnalyzeResult } from './pipeline';
-import { createPhotoSession, cullKeyAction, deriveCull, filterItems } from './session';
+import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
+import { bindSessionToPage, createPhotoSession, cullKeyAction, deriveCull, filterItems, type PhotoSession } from './session';
 
 const file = (name: string, type = 'image/jpeg', size = 1000, lastModified = 1) => {
   const f = new File([new Uint8Array(4)], name, { type, lastModified });
@@ -98,6 +99,27 @@ describe('photo session', () => {
     expect(client.cancelled).toBe(1);
   });
 
+  it('a grade is unsaved work too — changing one marks the session dirty, re-applying the same one does not', () => {
+    const { client } = fakeClient();
+    const s = createPhotoSession(() => client);
+    s.addFiles([file('a.jpg'), file('b.jpg')]);
+    const [a, b] = s.get().items;
+    const warm = { saturation: 118, contrast: 105, brightness: 104, temperature: 55 };
+    let calls = 0;
+    s.subscribe(() => calls++);
+    s.setGrade(a!.id, { ...NEUTRAL_GRADE });
+    expect(calls).toBe(0);
+    expect(s.get().dirty).toBe(false);
+    s.setGrade(a!.id, warm);
+    expect(s.get().dirty).toBe(true);
+    s.markExported();
+    s.setGradeFor([a!.id], warm); // already that grade: nothing changed
+    expect(s.get().dirty).toBe(false);
+    s.setGradeFor([a!.id, b!.id], warm);
+    expect(s.get().dirty).toBe(true);
+    expect(s.get().items[1]!.grade).toEqual(warm);
+  });
+
   it('notifies subscribers, and a result for a photo that was cleared meanwhile is dropped', async () => {
     const { client, finish } = fakeClient();
     const s = createPhotoSession(() => client);
@@ -151,5 +173,80 @@ describe('cullKeyAction', () => {
     expect(cullKeyAction({ key: 'p', metaKey: true })).toBeNull();
     expect(cullKeyAction({ key: 'p', ctrlKey: true })).toBeNull();
     expect(cullKeyAction({ key: 'x', altKey: true })).toBeNull();
+  });
+
+  it.each([
+    ['Georgian', { KeyP: 'პ', KeyX: 'ხ', KeyU: 'უ', KeyJ: 'ჯ', KeyK: 'კ' }],
+    ['Russian', { KeyP: 'з', KeyX: 'ч', KeyU: 'г', KeyJ: 'о', KeyK: 'л' }],
+  ])('the same physical keys work on the %s layout', (_layout, keys) => {
+    expect(cullKeyAction({ key: keys.KeyP, code: 'KeyP' })).toEqual({ type: 'status', status: 'pick' });
+    expect(cullKeyAction({ key: keys.KeyX, code: 'KeyX' })).toEqual({ type: 'status', status: 'reject' });
+    expect(cullKeyAction({ key: keys.KeyU, code: 'KeyU' })).toEqual({ type: 'status', status: 'unrated' });
+    expect(cullKeyAction({ key: keys.KeyJ, code: 'KeyJ' })).toEqual({ type: 'move', by: 1 });
+    expect(cullKeyAction({ key: keys.KeyK, code: 'KeyK' })).toEqual({ type: 'move', by: -1 });
+    expect(cullKeyAction({ key: keys.KeyP.toUpperCase(), code: 'KeyP' })).toEqual({ type: 'status', status: 'pick' });
+    // ⌘P is still the browser's, whatever the layout.
+    expect(cullKeyAction({ key: keys.KeyP, code: 'KeyP', metaKey: true })).toBeNull();
+    expect(cullKeyAction({ key: keys.KeyP, code: 'KeyP', ctrlKey: true })).toBeNull();
+  });
+
+  it('a Latin letter means what it says (Dvorak: the P key types „l"); other keys stay unbound', () => {
+    expect(cullKeyAction({ key: 'l', code: 'KeyP' })).toBeNull();
+    expect(cullKeyAction({ key: 'ქ', code: 'KeyQ' })).toBeNull();
+    expect(cullKeyAction({ key: 'პ' })).toBeNull(); // no code reported: nothing to fall back to
+  });
+});
+
+describe('the session and the page', () => {
+  const unload = () => {
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+
+  it('a reload asks first only while there is unsaved work — whether or not the workspace is open', () => {
+    const { client } = fakeClient();
+    const s = createPhotoSession(() => client);
+    const unbind = bindSessionToPage(s, window);
+    expect(unload()).toBe(false);
+    s.addFiles([file('a.jpg')]);
+    expect(unload()).toBe(false); // photos, but nothing rated or graded yet
+    const id = s.get().items[0]!.id;
+    s.setStatus(id, 'pick');
+    expect(unload()).toBe(true);
+    s.markExported();
+    expect(unload()).toBe(false);
+    s.setGrade(id, { saturation: 118, contrast: 105, brightness: 104, temperature: 55 });
+    expect(unload()).toBe(true);
+    unbind();
+    expect(unload()).toBe(false);
+  });
+
+  it('a sign-out empties the session, so the next person in this tab never sees these photos', () => {
+    const { client } = fakeClient();
+    const s = createPhotoSession(() => client);
+    const unbind = bindSessionToPage(s, window);
+    s.addFiles([file('a.jpg'), file('b.jpg')]);
+    s.setStatus(s.get().items[0]!.id, 'pick');
+    window.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
+    expect(s.get()).toEqual({ items: [], selectedId: null, dirty: false });
+    expect(client.cancelled).toBe(1);
+    expect(unload()).toBe(false); // nothing left to lose
+    unbind();
+  });
+
+  it('the page’s own session is bound once, when it is first asked for', () => {
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./session') as { photoSession: () => PhotoSession };
+      const s = mod.photoSession();
+      expect(mod.photoSession()).toBe(s);
+      s.addFiles([file('a.jpg')]);
+      s.setStatus(s.get().items[0]!.id, 'reject');
+      expect(unload()).toBe(true);
+      window.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
+      expect(s.get().items).toEqual([]);
+      expect(unload()).toBe(false);
+    });
   });
 });

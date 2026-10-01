@@ -64,10 +64,13 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
   const fileRef = useRef<HTMLInputElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLUListElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const stickyRef = useRef<HTMLElement | null>(null);
   const basePixels = useRef<ImageData | null>(null);
   const [pixelsReady, setPixelsReady] = useState(false);
 
   const { items, selectedId } = st;
+  const empty = items.length === 0;
   // Bursts and verdicts only change when a measurement lands — not on every rating or slider tick.
   const analysisSig = useMemo(() => items.map((it) => (it.metrics ? it.id : `${it.id}?`)).join(','), [items]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,13 +145,21 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
     return () => window.removeEventListener('keydown', onKey);
   }, [rate, move]);
 
-  // A reload would drop ratings that were never exported (nothing is stored — the photos never leave the device).
+  // The reload warning is not here: it belongs to the session, which outlives this component (bindSessionToPage).
+
+  // ⚠️ THE STICKY PREVIEW COVERS THE TOP OF THE GRID ON A PHONE. scrollIntoView({ block: 'nearest' }) counts the
+  // area under a sticky block as visible, so K / ← onto a frame scrolled under the preview left it hidden there.
+  // The preview's height goes into --photo-sticky, and every grid cell keeps that much scroll margin above it.
   useEffect(() => {
-    if (!st.dirty || !items.length) return;
-    const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', onUnload);
-    return () => window.removeEventListener('beforeunload', onUnload);
-  }, [st.dirty, items.length]);
+    const scroller = scrollerRef.current;
+    const sticky = stickyRef.current;
+    if (!scroller || !sticky || typeof ResizeObserver === 'undefined') return;
+    const write = () => scroller.style.setProperty('--photo-sticky', `${Math.ceil(sticky.getBoundingClientRect().height)}px`);
+    const ro = new ResizeObserver(write);
+    ro.observe(sticky);
+    write();
+    return () => ro.disconnect();
+  }, [empty]);
 
   // ── Drop anywhere on the workspace. ───────────────────────────────────────────────────────────────────────
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
@@ -220,7 +231,6 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
     return id ? items.filter((it) => cull.get(it.id)?.burst?.burstId === id) : [];
   }, [selectedInfo, items, cull]);
 
-  const empty = items.length === 0;
   const selectedVisible = !!selectedId && visible.some((it) => it.id === selectedId);
   const anyGraded = picks.some((p) => !isNeutralGrade(p.grade));
 
@@ -285,9 +295,9 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
       ) : (
         // ⚠️ A <div>, not a <main>: the studio already renders inside AppShell's <main id="main-content">, and a
         // second, nested main landmark is an a11y error (one main per page, never inside another).
-        <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
+        <div ref={scrollerRef} data-testid="photo-scroller" className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
           {/* ── The selected frame: preview, rating, what the assistant noticed (sticky on a phone). ── */}
-          <section aria-label={t.preview}
+          <section ref={stickyRef} aria-label={t.preview}
             className="sticky top-0 z-10 border-b border-app-border/10 bg-app-bg px-3 pb-2 pt-2 sm:px-4 lg:static lg:col-start-2 lg:row-start-1 lg:border-b-0 lg:border-l lg:pt-3">
             {selected ? (
               <>
@@ -436,7 +446,7 @@ const GridCell = memo(function GridCell({ item, selected, tabbable, flags, burst
     <li>
       <button type="button" data-photo-id={item.id} tabIndex={tabbable ? 0 : -1} aria-current={selected || undefined} aria-label={label}
         onClick={() => onSelect(item.id)}
-        className={`relative block aspect-square w-full overflow-hidden rounded-lg bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent ${selected ? 'ring-2 ring-app-accent' : ''}`}>
+        className={`relative block aspect-square w-full scroll-mt-[calc(var(--photo-sticky,0px)+8px)] lg:scroll-mt-0 overflow-hidden rounded-lg bg-app-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent ${selected ? 'ring-2 ring-app-accent' : ''}`}>
         {item.thumbUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- a blob: thumbnail made on the device (see above)
           <img src={item.thumbUrl} alt="" draggable={false} loading="lazy" decoding="async"

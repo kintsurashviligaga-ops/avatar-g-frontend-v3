@@ -83,6 +83,46 @@ describe('PhotoWorkspace', () => {
     expect(status()).toEqual(['pick', 'unrated', 'unrated']);
   });
 
+  it.each([
+    ['ka', 'პ', 'ხ'],
+    ['ru', 'з', 'ч'],
+  ])('P and X still cull with the %s keyboard layout on (the keys type „%s" / „%s")', (locale, p, x) => {
+    const { add, session } = setup(locale);
+    add([file('1.jpg'), file('2.jpg'), file('3.jpg')]);
+    fireEvent.keyDown(document.body, { key: p, code: 'KeyP' });
+    fireEvent.keyDown(document.body, { key: x, code: 'KeyX' });
+    expect(session.get().items.map((i) => i.status)).toEqual(['pick', 'reject', 'unrated']);
+  });
+
+  it('on a phone the selected frame is never left under the sticky preview: cells keep its height as scroll margin', () => {
+    const observers: { cb: () => void; el: Element | null; disconnected: boolean }[] = [];
+    const g = globalThis as unknown as { ResizeObserver?: unknown };
+    const had = g.ResizeObserver;
+    g.ResizeObserver = class {
+      rec: { cb: () => void; el: Element | null; disconnected: boolean };
+      constructor(cb: () => void) { this.rec = { cb, el: null, disconnected: false }; observers.push(this.rec); }
+      observe(el: Element) { this.rec.el = el; }
+      unobserve() {}
+      disconnect() { this.rec.disconnected = true; }
+    };
+    try {
+      const { add, unmount } = setup();
+      add([file('1.jpg'), file('2.jpg')]);
+      const ro = observers.find((o) => o.el?.getAttribute('aria-label') === 'Preview');
+      expect(ro).toBeTruthy();
+      (ro!.el as HTMLElement).getBoundingClientRect = () => ({ height: 311.4 } as DOMRect);
+      act(() => ro!.cb());
+      expect(screen.getByTestId('photo-scroller').style.getPropertyValue('--photo-sticky')).toBe('312px');
+      const cell = within(screen.getByTestId('photo-grid')).getAllByRole('button')[0]!;
+      expect(cell.className).toContain('scroll-mt-[calc(var(--photo-sticky,0px)+8px)]');
+      expect(cell.className).toContain('lg:scroll-mt-0'); // the preview is not sticky on a desktop
+      unmount();
+      expect(ro!.disconnected).toBe(true);
+    } finally {
+      g.ResizeObserver = had;
+    }
+  });
+
   it('the rating buttons do the same as the keys (a phone has no keyboard)', () => {
     const { add, session } = setup();
     add([file('1.jpg'), file('2.jpg')]);

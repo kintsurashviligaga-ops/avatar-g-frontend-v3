@@ -7,7 +7,7 @@
  * These are same-origin blob: links, so `<a download>` really downloads (the cross-origin trap ResultActions exists
  * for does not apply here).
  */
-import { gradedFileName, gradedMime, planExport, uniqueNames, zipFileName } from '@/lib/photo/exportPlan';
+import { claimName, gradedFileName, gradedMime, planExport, uniqueNames, zipFileName } from '@/lib/photo/exportPlan';
 import { isNeutralGrade } from '@/lib/photo/grade';
 import type { CullClient } from './cullClient';
 import type { PhotoItem } from './session';
@@ -57,6 +57,8 @@ export async function exportPicks(
   const outcome: ExportOutcome = { zips: 0, files: 0, ungraded: [], downscaled: 0, zipFailed: false };
   const names = uniqueNames(picks.map((p) => (isNeutralGrade(p.grade) ? p.name : gradedFileName(p.name, p.type))));
   const entries = picks.map((item, i) => ({ item, name: names[i]!, size: item.size }));
+  /** Every name this export hands out, lower-cased — a name decided late (the as-shot fallback) must not reuse one. */
+  const taken = new Set(names.map((n) => n.toLowerCase()));
   const plan = planExport(entries);
   const total = entries.length;
   let done = 0;
@@ -80,8 +82,12 @@ export async function exportPicks(
       } catch {
         outcome.ungraded.push(e.item.name);
         // The pick still goes out — as shot, so its name takes the original's extension back.
+        // ⚠️ That name was never planned: graded „X.webp" → „X.jpg" falls back to „X.webp", which an ungraded „X.webp"
+        // from another folder may already hold — and a ZIP entry with a taken name silently replaces the first.
+        // (A JPEG falls back to its own planned name, which is already its own.)
         const dot = e.item.name.lastIndexOf('.');
-        out = { blob: e.item.file, name: e.name.replace(/\.(jpg|png)$/i, '') + (dot > 0 ? e.item.name.slice(dot) : '') };
+        const asShot = e.name.replace(/\.(jpg|png)$/i, '') + (dot > 0 ? e.item.name.slice(dot) : '');
+        out = { blob: e.item.file, name: asShot.toLowerCase() === e.name.toLowerCase() ? asShot : claimName(asShot, taken) };
       }
     }
     ready.set(e, out);

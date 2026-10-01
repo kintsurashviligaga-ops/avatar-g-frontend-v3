@@ -5,11 +5,16 @@
  * ⚠️ IT OUTLIVES THE WORKSPACE ON PURPOSE. OmniStudio unmounts the workspace whenever another tool is picked (the
  * sidebar, the „+" sheet, a deep link). Component state would throw away an hour of culling on one stray tap; a
  * module store keeps the session for the life of the page, and analysis that finishes while the workspace is closed
- * still lands. Nothing is persisted: a reload starts empty (the workspace warns before one while there are ratings
- * that were never exported), because the photos are the user's files and never leave the device.
+ * still lands. Nothing is persisted: a reload starts empty (the page warns before one while there are ratings or
+ * grades that were never exported), because the photos are the user's files and never leave the device.
+ *
+ * ⚠️ BECAUSE IT OUTLIVES THE WORKSPACE, SO MUST ITS GUARDS (bindSessionToPage). The reload warning cannot live in a
+ * PhotoWorkspace effect — back in the chat, with the workspace unmounted, a reload would silently drop the session
+ * — and a sign-out must empty it, or the next person in the tab (a guest included) opens the previous user's shoot.
  */
 import { groupBursts, verdict, type BurstInfo, type CullVerdict, type PhotoMetrics } from '@/lib/photo/cullMetrics';
-import { NEUTRAL_GRADE, clampGrade, type Grade } from '@/lib/photo/grade';
+import { NEUTRAL_GRADE, clampGrade, sameGrade, type Grade } from '@/lib/photo/grade';
+import { SESSION_CLEARED_EVENT } from '@/lib/auth/sessionCleanup';
 import { MAX_PHOTOS, MAX_PHOTO_BYTES, isAcceptedPhoto } from '@/lib/photo/exportPlan';
 import { createCullClient, type CullClient } from './cullClient';
 
@@ -35,7 +40,7 @@ export interface PhotoItem {
 export interface SessionState {
   items: readonly PhotoItem[];
   selectedId: string | null;
-  /** Ratings changed since the last export — the reload warning reads it. */
+  /** Ratings or grades changed since the last export — the reload warning reads it. */
   dirty: boolean;
 }
 
@@ -132,12 +137,17 @@ export function createPhotoSession(makeClient: () => CullClient): PhotoSession {
       set({ ...state, dirty: true, items: state.items.map((x) => (x.id === id ? { ...x, status } : x)) });
     },
     setGrade(id, grade) {
-      patch(id, { grade: clampGrade(grade) });
+      const g = clampGrade(grade);
+      const it = state.items.find((x) => x.id === id);
+      if (!it || sameGrade(it.grade, g)) return;
+      // A grade is work too: an hour spent grading with no rating changed must still be warned about on a reload.
+      set({ ...state, dirty: true, items: state.items.map((x) => (x.id === id ? { ...x, grade: g } : x)) });
     },
     setGradeFor(ids, grade) {
       const g = clampGrade(grade);
       const want = new Set(ids);
-      set({ ...state, items: state.items.map((it) => (want.has(it.id) ? { ...it, grade: { ...g } } : it)) });
+      if (!state.items.some((it) => want.has(it.id) && !sameGrade(it.grade, g))) return;
+      set({ ...state, dirty: true, items: state.items.map((it) => (want.has(it.id) ? { ...it, grade: { ...g } } : it)) });
     },
     select(id) {
       if (id !== null && !state.items.some((it) => it.id === id)) return;
@@ -155,10 +165,46 @@ export function createPhotoSession(makeClient: () => CullClient): PhotoSession {
   };
 }
 
+/** True while a reload would lose something: photos with ratings or grades that were never exported. */
+export const hasUnsavedWork = (st: SessionState) => st.dirty && st.items.length > 0;
+
+/**
+ * Ties a session to the page it lives in, for as long as the page lives — not to the workspace, which comes and goes:
+ *  · a reload or tab close asks first while there is unsaved work, whichever tool is on screen;
+ *  · a sign-out (`signOutAndClear` → SESSION_CLEARED_EVENT) empties it, so the next person in this tab never sees
+ *    the previous user's photos, ratings or grades.
+ * Returns the undo (tests; the page's own session is bound once and never unbound).
+ */
+export function bindSessionToPage(session: PhotoSession, win: Window = window): () => void {
+  const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+  let guarding = false;
+  const sync = () => {
+    const want = hasUnsavedWork(session.get());
+    if (want === guarding) return;
+    guarding = want;
+    if (want) win.addEventListener('beforeunload', onUnload);
+    else win.removeEventListener('beforeunload', onUnload);
+  };
+  const onCleared = () => session.clear();
+  const off = session.subscribe(sync);
+  win.addEventListener(SESSION_CLEARED_EVENT, onCleared);
+  sync();
+  return () => {
+    off();
+    win.removeEventListener(SESSION_CLEARED_EVENT, onCleared);
+    if (guarding) win.removeEventListener('beforeunload', onUnload);
+    guarding = false;
+  };
+}
+
 let singleton: PhotoSession | null = null;
 /** The page's one culling session. Its workers start with the first photo, not on import or on opening the tool. */
 export function photoSession(): PhotoSession {
-  return (singleton ??= createPhotoSession(() => createCullClient()));
+  if (!singleton) {
+    singleton = createPhotoSession(() => createCullClient());
+    if (typeof window !== 'undefined') bindSessionToPage(singleton, window);
+  }
+  return singleton;
 }
 
 // ── Derived views (pure) ───────────────────────────────────────────────────────────────────────────────────────
@@ -190,11 +236,25 @@ export function filterItems(items: readonly PhotoItem[], filter: CullFilter, cul
 
 export type CullKeyAction = { type: 'status'; status: CullStatus } | { type: 'move'; by: 1 | -1 };
 
+/** The culling keys by physical position — for layouts whose letters are not Latin (see cullKeyAction). */
+const BY_CODE: Readonly<Record<string, CullKeyAction>> = {
+  KeyP: { type: 'status', status: 'pick' },
+  KeyX: { type: 'status', status: 'reject' },
+  KeyU: { type: 'status', status: 'unrated' },
+  KeyJ: { type: 'move', by: 1 },
+  KeyK: { type: 'move', by: -1 },
+};
+
 /**
  * The culling keys: P pick · X reject · U unrated, ← → (and J / K) to move. Anything with Ctrl, ⌘ or Alt held is
  * left to the browser — ⌘P prints, and a culling app that ate it would be a bug.
+ *
+ * ⚠️ GEORGIAN AND RUSSIAN LAYOUTS. `key` is the character the active layout types: the P key gives „პ" on the
+ * Georgian layout and „з" on the Russian one, so matching `key` alone left two of the studio's three languages with
+ * dead culling keys. A non-Latin character therefore falls back to the physical key (`code`: KeyP → pick). A Latin
+ * one does not — on Dvorak or AZERTY the letter the user typed is the one they meant.
  */
-export function cullKeyAction(e: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): CullKeyAction | null {
+export function cullKeyAction(e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): CullKeyAction | null {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   switch (e.key) {
     case 'p': case 'P': return { type: 'status', status: 'pick' };
@@ -202,6 +262,9 @@ export function cullKeyAction(e: { key: string; ctrlKey?: boolean; metaKey?: boo
     case 'u': case 'U': return { type: 'status', status: 'unrated' };
     case 'ArrowRight': case 'j': case 'J': return { type: 'move', by: 1 };
     case 'ArrowLeft': case 'k': case 'K': return { type: 'move', by: -1 };
-    default: return null;
+    default: {
+      const nonLatinChar = e.key.length === 1 && e.key.charCodeAt(0) > 0x7f;
+      return nonLatinChar && e.code ? BY_CODE[e.code] ?? null : null;
+    }
   }
 }

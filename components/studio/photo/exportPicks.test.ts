@@ -105,6 +105,24 @@ describe('exportPicks', () => {
     expect(saved).toEqual(['myavatar-picks-20260102-0304.zip', 'giant.png']);
   });
 
+  it('a graded pick that falls back to as-shot never takes the name of another pick (the ZIP would drop one)', async () => {
+    // Two X.webp from two folders: A as shot, B graded (planned as X.jpg). B's grade fails → it goes out as shot,
+    // and „X.webp" is A's — B must become „X (2).webp", not a second „X.webp" that replaces A in the archive.
+    const a = item('X.webp', { type: 'image/webp' });
+    const b = { ...item('X.webp', { grade: warm, type: 'image/webp' }), id: 'b' };
+    const { c } = client({ fail: new Set(['X.webp']) });
+    const o = await exportPicks([a, b], c, { save: () => {}, gapMs: 0 });
+    expect(o.ungraded).toEqual(['X.webp']);
+    expect(zipState.files[0]!.map((e) => e.name)).toEqual(['X.webp', 'X (2).webp']);
+    expect(zipState.files[0]!.map((e) => e.data)).toEqual([a.file, b.file]);
+  });
+
+  it('a graded JPEG that falls back to as-shot keeps its own name', async () => {
+    const { c } = client({ fail: new Set(['IMG_3.JPG']) });
+    await exportPicks([item('IMG_3.JPG', { grade: warm })], c, { save: () => {}, gapMs: 0 });
+    expect(zipState.files[0]!.map((e) => e.name)).toEqual(['IMG_3.JPG']);
+  });
+
   it('two IMG_0001.JPG from two cards do not overwrite each other in the ZIP', async () => {
     const { c } = client();
     await exportPicks([item('IMG_0001.JPG'), { ...item('IMG_0001.JPG'), id: 'other' }], c, { save: () => {}, gapMs: 0 });

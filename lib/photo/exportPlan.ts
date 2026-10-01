@@ -57,19 +57,25 @@ export function safeFileName(name: string): string {
   return (base || 'photo').slice(0, 180);
 }
 
+/**
+ * `raw`, made safe and free in `taken` (lower-cased names), which it is then added to: „IMG_0001.JPG" is
+ * „IMG_0001 (2).JPG" when the first is already there. For a name decided late — see exportPicks' as-shot fallback.
+ */
+export function claimName(raw: string, taken: Set<string>): string {
+  const name = safeFileName(raw);
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  let candidate = name;
+  for (let k = 2; taken.has(candidate.toLowerCase()); k++) candidate = `${stem} (${k})${ext}`;
+  taken.add(candidate.toLowerCase());
+  return candidate;
+}
+
 /** Two cards both have an IMG_0001.JPG: the second becomes „IMG_0001 (2).JPG" (case-insensitive, like most disks). */
 export function uniqueNames(names: readonly string[]): string[] {
   const taken = new Set<string>();
-  return names.map((raw) => {
-    const name = safeFileName(raw);
-    const dot = name.lastIndexOf('.');
-    const stem = dot > 0 ? name.slice(0, dot) : name;
-    const ext = dot > 0 ? name.slice(dot) : '';
-    let candidate = name;
-    for (let k = 2; taken.has(candidate.toLowerCase()); k++) candidate = `${stem} (${k})${ext}`;
-    taken.add(candidate.toLowerCase());
-    return candidate;
-  });
+  return names.map((raw) => claimName(raw, taken));
 }
 
 /** The output type of a graded copy: a PNG stays a PNG (it may carry transparency), everything else is a JPEG. */

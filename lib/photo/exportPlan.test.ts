@@ -4,7 +4,7 @@
  * big for any part is saved on its own, and two cards' IMG_0001.JPG do not overwrite each other.
  */
 import {
-  MAX_PHOTO_BYTES, ZIP_PART_CAP_BYTES, gradedFileName, gradedMime, isAcceptedPhoto, planExport, safeFileName,
+  MAX_PHOTO_BYTES, ZIP_PART_CAP_BYTES, claimName, gradedFileName, gradedMime, isAcceptedPhoto, planExport, safeFileName,
   uniqueNames, zipFileName,
 } from './exportPlan';
 
@@ -37,6 +37,14 @@ describe('names', () => {
   it('two cards’ IMG_0001.JPG do not collide (case-insensitively, like the disk they land on)', () => {
     expect(uniqueNames(['IMG_0001.JPG', 'img_0001.jpg', 'IMG_0001.JPG', 'IMG_0002.JPG']))
       .toEqual(['IMG_0001.JPG', 'img_0001 (2).jpg', 'IMG_0001 (3).JPG', 'IMG_0002.JPG']);
+  });
+
+  it('a name decided late is claimed against the names already handed out', () => {
+    const taken = new Set(uniqueNames(['X.webp', 'X.jpg']).map((n) => n.toLowerCase()));
+    expect(claimName('X.webp', taken)).toBe('X (2).webp');
+    expect(claimName('x.WEBP', taken)).toBe('x (3).WEBP');
+    expect(claimName('../Y.png', taken)).toBe('Y.png');
+    expect(taken.has('x (2).webp') && taken.has('y.png')).toBe(true);
   });
 
   it('strips folders, control characters and leading dots; never empty', () => {
