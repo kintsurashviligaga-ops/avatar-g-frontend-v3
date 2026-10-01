@@ -34,8 +34,15 @@ export async function fetchRehostSource(src: string, expectedMime: string, fetch
   const res = await fetchImpl(src);
   if (!res.ok) throw new RehostSourceError('status', res.status);
   const blob = await res.blob();
+  // ⚠️ LOCAL BYTES ARE NEVER A STORAGE ERROR BODY. A data:/blob: source is a file the user just picked, and
+  // FileReader writes `data:application/octet-stream;…` for a file whose browser type is '' — which four pickers accept
+  // by extension (soundtrack, character-swap video, remix, music voice sample) and type themselves. Judging those by
+  // their MIME refused every untyped file silently (review, 2026-10-02). Only a NETWORK answer can be an error page.
+  if (/^(data|blob):/i.test(src)) return blob;
   const want = majorType(expectedMime);
-  const got = majorType(blob.type || res.headers?.get?.('content-type'));
+  const raw = (blob.type || res.headers?.get?.('content-type') || '').toLowerCase();
+  // An untyped / generic-binary answer has nothing to judge it by — let it through (the render's own checks apply).
+  const got = /octet-stream|^binary\//.test(raw) ? '' : majorType(raw);
   if (got && ['image', 'audio', 'video'].includes(want) && got !== want) throw new RehostSourceError('type');
   return blob;
 }

@@ -42,3 +42,23 @@ test('only signed URLs into the private twins bucket count as the twin face', ()
   expect(isTwinSignedUrl('https://proj.supabase.co/storage/v1/object/sign/uploads/x.jpg?token=T')).toBe(false);
   expect(isTwinSignedUrl(null)).toBe(false);
 });
+
+
+describe('local files are never judged by their MIME (the pickers accept untyped files by extension)', () => {
+  const blobOf = (type: string) => new Blob([new Uint8Array([1, 2, 3])], { type });
+  const fakeFetch = (type: string, status = 200) =>
+    (async () => ({ ok: status >= 200 && status < 300, status, blob: async () => blobOf(type), headers: { get: () => type } })) as unknown as typeof fetch;
+
+  it.each(['audio/mpeg', 'video/mp4', 'image/png'])('an untyped data: URL resolves for %s', async (want) => {
+    await expect(fetchRehostSource('data:application/octet-stream;base64,AQID', want, fakeFetch('application/octet-stream'))).resolves.toBeInstanceOf(Blob);
+  });
+  it('a blob: URL resolves whatever its type', async () => {
+    await expect(fetchRehostSource('blob:https://myavatar.ge/1234', 'video/mp4', fakeFetch('application/octet-stream'))).resolves.toBeInstanceOf(Blob);
+  });
+  it('a network octet-stream answer is let through (nothing to judge it by)', async () => {
+    await expect(fetchRehostSource('https://x.supabase.co/storage/v1/object/sign/renders/a.mp3', 'audio/mpeg', fakeFetch('application/octet-stream'))).resolves.toBeInstanceOf(Blob);
+  });
+  it('a network JSON error body where an image was expected is still refused', async () => {
+    await expect(fetchRehostSource('https://x.supabase.co/storage/v1/object/sign/twins/u/f.jpg', 'image/jpeg', fakeFetch('application/json'))).rejects.toMatchObject({ reason: 'type' });
+  });
+});
