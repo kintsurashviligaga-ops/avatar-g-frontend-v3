@@ -103,7 +103,7 @@ function priceBlock(topUp: string): string {
   return [
     `PRICES (cr = credits; 1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾; ${chat}): image ${cr(C.image_generate)} each;`,
     `video ${cr(C.video_30s)} under 60 s, ${cr(C.video_60s)} for 60 s or more; music ${cr(C.music_30s)} under 60 s,`,
-    `${cr(C.music_60s)} for 60–89 s, ${cr(C.music_90s)} for 90 s or more; talking avatar ${cr(C.avatar_30s)}; remix ${cr(C.remix_video)}.`,
+    `${cr(C.music_60s)} for 60–89 s, ${cr(C.music_90s)} for 90 s or more; talking avatar ${cr(C.avatar_30s)}; remix ${cr(C.remix_video)}; 3D model ${cr(C.model3d)}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote prices only in credits and lari and only these numbers; for anything not listed, do not guess.`,
   ].join(' ');
 }

@@ -179,6 +179,27 @@ describe('client — poll', () => {
       res({ body: { status: 'failed', error: 'input image unreadable' } }));
     expect(r).toMatchObject({ status: 'failed', error: 'input image unreadable' });
   });
+
+  // The status route bills on these: data_removed separates "output deleted (maybe after delivery)" from
+  // "finished without a model", and completed_at bounds how long a failing re-host is retried.
+  it('surfaces data_removed and completed_at', async () => {
+    process.env.REPLICATE_API_TOKEN = 'k';
+    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
+      res({ body: { status: 'succeeded', output: null, data_removed: true, completed_at: '2026-10-01T10:00:00.000Z' } }));
+    expect(r).toMatchObject({ status: 'succeeded', glbUrl: null, dataRemoved: true, completedAtMs: Date.parse('2026-10-01T10:00:00.000Z') });
+    const kept = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
+      res({ body: { status: 'succeeded', output: { mesh: 'https://replicate.delivery/x/m.ply' }, data_removed: false } }));
+    expect(kept).toMatchObject({ glbUrl: null, dataRemoved: false });
+  });
+
+  it('an absent or non-boolean data_removed is UNKNOWN, never "not removed"', async () => {
+    process.env.REPLICATE_API_TOKEN = 'k';
+    for (const body of [{ status: 'succeeded', output: null }, { status: 'succeeded', output: null, data_removed: 'false', completed_at: 'soon' }]) {
+      const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => res({ body }));
+      expect(r.dataRemoved).toBeUndefined();
+      expect(r.completedAtMs).toBeUndefined();
+    }
+  });
 });
 
 describe('client — download', () => {

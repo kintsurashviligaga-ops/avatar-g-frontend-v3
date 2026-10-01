@@ -60,6 +60,10 @@ export const CREDIT_COSTS = {
   avatar_30s: 20, // 2.00 GEL
   chat_message: 0, // free
   remix_video: 15, // 1.50 GEL
+  // 0.50 GEL — the price docs/COMPETITIVE_ADVANTAGE.md and lib/billing/gel.ts (geometry_3d) already
+  // advertise. Wholesale is ~$0.10 per TRELLIS mesh (costModel) plus ~$0.04 for the Imagen reference on
+  // the text path. Owner-tunable: change this one number.
+  model3d: 5,
 } as const;
 
 export type CreditAction = keyof typeof CREDIT_COSTS;
@@ -149,7 +153,7 @@ export function creditsToUsd(credits: number): number {
  * image jobs (×2/×4 grids). Unknown kinds → 0 (never over-charge on a guess).
  */
 export function creditCostFor(
-  kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'chat',
+  kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'model3d' | 'chat',
   opts: { seconds?: number; count?: number } = {},
 ): number {
   const C = CREDIT_COSTS;
@@ -168,6 +172,8 @@ export function creditCostFor(
       return C.avatar_30s;
     case 'remix':
       return C.remix_video;
+    case 'model3d':
+      return C.model3d;
     case 'chat':
     default:
       return C.chat_message;

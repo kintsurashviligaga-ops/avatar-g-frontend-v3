@@ -94,6 +94,9 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     expect(creditCostFor('image', { count: 1 })).toBe(C.image_generate);
     expect(creditCostFor('avatar')).toBe(C.avatar_30s);
     expect(creditCostFor('remix')).toBe(C.remix_video);
+    // 3D shares its number with music_30s today, so the loop above cannot tell whether 3D is quoted at all.
+    expect(p).toContain(`3D model ${cr(C.model3d)}`);
+    expect(creditCostFor('model3d')).toBe(C.model3d);
   });
 });
 

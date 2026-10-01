@@ -206,6 +206,28 @@ export async function jobOwnerId(id: string): Promise<string | null> {
   }
 }
 
+/**
+ * Owner, status and stored result of a job row in ONE read, or null when it does not exist / cannot be read.
+ *
+ * For poll routes that must both authorise a write (the owner, as jobOwnerId) and short-circuit work that is
+ * already done (the result). ⚠️ The row is OWNER-WRITABLE: `status` and `result` are whatever the owner last
+ * wrote, so they may decide what the owner is shown — never what anyone is paid.
+ */
+export async function jobSnapshot(id: string): Promise<{ userId: string; status: string; result: Record<string, unknown> | null } | null> {
+  const sb = client();
+  if (!sb || !id) return null;
+  try {
+    const { data, error } = await sb.from(TABLE).select('user_id,status,result').eq('id', id).maybeSingle();
+    if (error || !data) return null;
+    const row = data as { user_id?: unknown; status?: unknown; result?: unknown };
+    if (typeof row.user_id !== 'string' || !row.user_id) return null;
+    const result = row.result && typeof row.result === 'object' && !Array.isArray(row.result) ? (row.result as Record<string, unknown>) : null;
+    return { userId: row.user_id, status: typeof row.status === 'string' ? row.status : '', result };
+  } catch {
+    return null;
+  }
+}
+
 export async function failJob(id: string, error: string): Promise<void> {
   await patch(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) });
 }

@@ -88,3 +88,47 @@ describe('ensureBucket — the result is read, not thrown away', () => {
     warn.mockRestore();
   });
 });
+
+describe('storageObjectExists — true/false only when storage answered', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { storageObjectExists } = require('./storage-adapter') as typeof import('./storage-adapter');
+  const fake = (answer: { data?: Array<{ name?: string | null }> | null; error?: { message: string } | null } | Error) => {
+    const calls: Array<{ bucket: string; dir: string; opts: { limit: number; search: string } }> = [];
+    return {
+      calls,
+      sb: {
+        storage: {
+          from: (bucket: string) => ({
+            list: async (dir: string, opts: { limit: number; search: string }) => {
+              calls.push({ bucket, dir, opts });
+              if (answer instanceof Error) throw answer;
+              return { data: answer.data ?? null, error: answer.error ?? null };
+            },
+          }),
+        },
+      },
+    };
+  };
+
+  test('lists the folder, searching for the file name', async () => {
+    const f = fake({ data: [{ name: 'pred1.glb' }] });
+    await expect(storageObjectExists('renders', 'models3d/pred1.glb', f.sb)).resolves.toBe(true);
+    expect(f.calls).toEqual([{ bucket: 'renders', dir: 'models3d', opts: { limit: 100, search: 'pred1.glb' } }]);
+  });
+
+  test('a pattern near-miss is not the object (search is a match, `_` a wildcard)', async () => {
+    const f = fake({ data: [{ name: 'pred1.glb.bak' }, { name: 'predX1.glb' }, { name: 'PRED1.GLB' }] });
+    await expect(storageObjectExists('renders', 'models3d/pred_1.glb', f.sb)).resolves.toBe(false);
+  });
+
+  test('an empty listing is a confirmed absence', async () => {
+    await expect(storageObjectExists('renders', 'models3d/pred1.glb', fake({ data: [] }).sb)).resolves.toBe(false);
+  });
+
+  test('an error, a throw, or no storage client is "cannot tell" (null), never "absent"', async () => {
+    await expect(storageObjectExists('renders', 'models3d/pred1.glb', fake({ error: { message: 'Bucket not found' } }).sb)).resolves.toBeNull();
+    await expect(storageObjectExists('renders', 'models3d/pred1.glb', fake(new Error('ECONNRESET')).sb)).resolves.toBeNull();
+    // The module-level mock makes createServiceRoleClient throw → no client.
+    await expect(storageObjectExists('renders', 'models3d/pred1.glb')).resolves.toBeNull();
+  });
+});
