@@ -168,7 +168,7 @@ describe('the Georgian Folk brief', () => {
     const ctx = resolveTemplateContext('music', 'georgian-folk', mus('georgian-folk'))!;
     const userPrompt = 'a song for my grandmother\'s 90th birthday in Kakheti, warm and joyful';
     const brief = buildMusicBrief({
-      prompt: userPrompt, style: 'folk', templateDescriptor: ctx.descriptor,
+      prompt: userPrompt, style: 'georgian folk', templateDescriptor: ctx.descriptor,
       vocalDescriptor: 'female vocals, female singer', lyrics: 'ბებია, ბებია, ჩვენი მზე', instrumental: false,
     });
     expect(brief.prompt).toContain(userPrompt);

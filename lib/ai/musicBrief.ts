@@ -45,6 +45,13 @@ export interface MusicBriefInput {
   /** The user's own words to be sung. */
   lyrics?: string;
   instrumental?: boolean;
+  /**
+   * Steering sentences from the granular controls (lib/ai/musicControls `promptDirectives`): fixed server-side text,
+   * already English. ⚠️ THE LOWEST-PRIORITY TEXT IN THE BRIEF — they are trimmed before the user's own words ever are:
+   * they get only the room the user's prompt and the suffix leave over, and one that does not fit is dropped WHOLE
+   * (never cut mid-sentence, never at the cost of a single character of the user's text).
+   */
+  directives?: readonly string[];
 }
 
 export interface MusicBrief {
@@ -54,6 +61,8 @@ export interface MusicBrief {
   lyrics?: string;
   /** True when something had to be cut — the caller should say so rather than hide it. */
   truncated: { prompt: boolean; lyrics: boolean };
+  /** How many control directives did not fit and were left out — absent when every one fit (or none were given). */
+  directivesDropped?: number;
 }
 
 const clean = (s: string | undefined): string => (typeof s === 'string' ? s.trim() : '');
@@ -82,7 +91,18 @@ export function buildMusicBrief(input: MusicBriefInput): MusicBrief {
   const keptPrompt = userPrompt.slice(0, room);
   const promptTruncated = keptPrompt.length < userPrompt.length;
 
-  const composed = suffix ? (keptPrompt ? `${keptPrompt} ${suffix}` : suffix) : keptPrompt;
+  let composed = suffix ? (keptPrompt ? `${keptPrompt} ${suffix}` : suffix) : keptPrompt;
+
+  // The control directives go LAST, into room that is genuinely spare: the user's words and the suffix above were
+  // sized without them, so a slider can never cost the user a character. Whole sentences or nothing.
+  let directivesDropped = 0;
+  for (const raw of input.directives ?? []) {
+    const d = clean(raw).replace(/\s+/g, ' ');
+    if (!d) continue;
+    const next = composed ? `${composed} ${d}` : d;
+    if (next.length <= PROMPT_BUDGET) composed = next;
+    else directivesDropped += 1;
+  }
 
   // Lyrics are NOT folded in. They travel as their own field with their own budget, which is what makes
   // a long brief and long lyrics able to coexist instead of one eating the other.
@@ -93,6 +113,7 @@ export function buildMusicBrief(input: MusicBriefInput): MusicBrief {
     prompt: composed,
     ...(keptLyrics ? { lyrics: keptLyrics } : {}),
     truncated: { prompt: promptTruncated, lyrics: lyricsTruncated },
+    ...(directivesDropped ? { directivesDropped } : {}),
   };
 }
 

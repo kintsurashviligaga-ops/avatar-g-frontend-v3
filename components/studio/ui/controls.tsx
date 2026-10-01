@@ -593,6 +593,89 @@ export function CardSelect<T extends string>({
   );
 }
 
+// ── SLIDER ──────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A labelled range slider: label · track · value. Lifted from the Surgical Editor, which drew it locally, so the
+ * music panel's Weirdness / Style influence and the editor's grade and audio controls are one control.
+ *
+ * `appearance-none` is load-bearing, not decoration: globals.css gives exactly that set a 44px grab strip around a 6px
+ * painted track and a 20px thumb (the visible 6px track alone measured 6px tall on a phone — unusable). `min-w-0` lets
+ * the track shrink below a range input's ~130px intrinsic width, so a long Georgian label cannot push the row wider
+ * than a 375px panel. The label is the input's accessible name.
+ *
+ * `ends` captions the two ends of the scale ("Familiar … Experimental"); `hint` is one line under it. Without either,
+ * the markup is exactly the editor's row.
+ *
+ * `stacked` puts the label and value ABOVE a full-width track. ⚠️ The inline row spends 152px on its label and value
+ * columns, which in the 300px desktop settings column leaves a track about 70px long — too short to set a 0–100
+ * value by hand. A panel that narrow stacks; the editor, with room to spare, keeps its row.
+ */
+export function Slider({
+  icon, label, min, max, value, step = 1, suffix = '%', onChange, hint, ends, disabled, stacked = false,
+}: {
+  icon?: ReactNode;
+  label: string;
+  min: number;
+  max: number;
+  value: number;
+  step?: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+  hint?: ReactNode;
+  ends?: readonly [ReactNode, ReactNode];
+  disabled?: boolean;
+  stacked?: boolean;
+}) {
+  const shown = `${step < 1 ? value.toFixed(1) : Math.round(value)}${suffix}`;
+  const input = (
+    <input
+      type="range" min={min} max={max} step={step} value={value} disabled={disabled} aria-label={label}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      className={cx(
+        'h-1.5 min-w-0 cursor-pointer appearance-none rounded-full bg-app-elevated accent-app-accent disabled:cursor-not-allowed disabled:opacity-40',
+        stacked ? 'block w-full' : 'flex-1',
+      )}
+    />
+  );
+  const endsRow = ends && (
+    // Under the track: the full width when stacked; past the label column (w-20 / sm:w-24 + gap-3) and short of the
+    // value column (w-12 + gap-3) inline.
+    <div aria-hidden className={cx('-mt-2 flex justify-between gap-2 text-[10.5px] leading-tight text-app-muted/80', !stacked && 'pl-[5.75rem] pr-[3.75rem] sm:pl-[6.75rem]')}>
+      <span className="min-w-0 truncate">{ends[0]}</span>
+      <span className="min-w-0 truncate text-right">{ends[1]}</span>
+    </div>
+  );
+  if (stacked) {
+    return (
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-app-text">{icon}<span className="min-w-0 break-words">{label}</span></span>
+          <span className="shrink-0 text-[11px] tabular-nums text-app-muted">{shown}</span>
+        </div>
+        {input}
+        {endsRow}
+        {hint != null && <p className={cx(HINT, 'mt-1')}>{hint}</p>}
+      </div>
+    );
+  }
+  const row = (
+    <div className="flex items-center gap-3">
+      <span className="flex w-20 shrink-0 items-center gap-1.5 text-[11.5px] leading-tight text-app-text/80 sm:w-24">{icon}<span className="min-w-0 break-words">{label}</span></span>
+      {input}
+      <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-app-muted">{shown}</span>
+    </div>
+  );
+  if (hint == null && !ends) return row;
+  return (
+    <div className="min-w-0">
+      {row}
+      {endsRow}
+      {hint != null && <p className={cx(HINT, 'mt-1')}>{hint}</p>}
+    </div>
+  );
+}
+
 // ── STEPPER ─────────────────────────────────────────────────────────────────────────────────────────
 
 /**

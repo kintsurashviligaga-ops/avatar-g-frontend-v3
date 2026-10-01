@@ -42,11 +42,38 @@ function extractAudioUrl(output: unknown): string {
   return fromOne(output);
 }
 
-export async function generateMusic(prompt: string, duration: number = 30) {
+/**
+ * MusicGen's sampling knobs — the music panel's Weirdness / Style influence sliders arrive here as REAL parameters
+ * (lib/ai/musicControls `musicgenParams`), not as prompt text. Absent → the model's own defaults, so every caller that
+ * passes nothing (film scores, remix, motion control, the Georgian song bed) renders exactly as before.
+ */
+export interface MusicgenSampling {
+  /** Sampling temperature; MusicGen's default is 1. Clamped to 0.1–2 here whatever the caller sends. */
+  temperature?: number;
+  /** Classifier-free guidance; MusicGen's default is 3. Clamped to 0–10 and ROUNDED here: the model takes an int. */
+  classifierFreeGuidance?: number;
+}
+
+const finiteIn = (v: unknown, lo: number, hi: number): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : undefined;
+
+export async function generateMusic(prompt: string, duration: number = 30, sampling: MusicgenSampling = {}) {
   try {
+    const temperature = finiteIn(sampling.temperature, 0.1, 2);
+    // ⚠️ A WHOLE NUMBER ON THE WIRE. The pinned version types classifier_free_guidance as `int`, and Replicate checks
+    // the input against that schema when it creates the prediction, so 1.4 is a 422, not a 1. Each such miss also
+    // counts toward the shared `musicgen` breaker. Rounded here, whatever the caller computed.
+    const cfg = finiteIn(sampling.classifierFreeGuidance, 0, 10);
+    const guidance = cfg === undefined ? undefined : Math.round(cfg);
     const output = (await replicate.run(
       "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
-      { input: { prompt: `${prompt}, high quality`, duration, model_version: "large", output_format: "mp3" } }
+      {
+        input: {
+          prompt: `${prompt}, high quality`, duration, model_version: "large", output_format: "mp3",
+          ...(temperature !== undefined ? { temperature } : {}),
+          ...(guidance !== undefined ? { classifier_free_guidance: guidance } : {}),
+        },
+      }
     )) as unknown;
     const audioUrl = extractAudioUrl(output);
     if (!audioUrl || !/^https?:\/\//i.test(audioUrl)) {

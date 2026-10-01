@@ -260,7 +260,9 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     hint: T('ქალის ვოკალი, საშუალო ტემპი, 60 წმ', 'Female vocal, mid-tempo, 60s', 'Женский вокал, средний темп, 60 с'),
     adds: T('ქართული მრავალხმიანი გუნდი, ფანდური', 'Georgian polyphonic choir and panduri', 'Грузинский многоголосный хор и пандури'),
     thumb: null, palette: ['#160A06', '#D46A3A'],
-    values: { genre: 'folk', tempo: 'medium', duration: 60, instrumental: false, voiceType: 'female' },
+    // ⚠️ 'georgian folk', not 'folk': the chip and the card both SAY Georgian Folk, but the engines read the value, and
+    // "Style: folk." says nothing about Georgia. The value is what reaches the brief (OmniStudio MUSIC_STYLES too).
+    values: { genre: 'georgian folk', tempo: 'medium', duration: 60, instrumental: false, voiceType: 'female' },
   },
   {
     tool: 'music', id: 'lofi-chill',
@@ -372,7 +374,9 @@ export function templateAddsLine(t: StudioTemplate, lang: TemplateLang): string 
 
 export const IMAGE_PANEL_DEFAULTS = { aspect: '1:1', quality: 'high', style: 'Auto' } as const;
 export const VIDEO_PANEL_DEFAULTS = { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Cinematic' } as const;
-export const MUSIC_PANEL_DEFAULTS = { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'female' } as const;
+// The singer starts on Auto (owner decision A-e's first stop): a default song names no singer, so a brief that asks for
+// "a man singing" is no longer contradicted by a "female vocals" the user never chose. Cards still name theirs.
+export const MUSIC_PANEL_DEFAULTS = { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'auto' } as const;
 
 /**
  * The `templateId` a studio request may carry: the card the user PICKED, and only while the live values still

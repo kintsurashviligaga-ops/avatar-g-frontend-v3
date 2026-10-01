@@ -35,6 +35,9 @@ import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckThe
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 import { describeServiceError } from './ui/serviceError';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { Boxes } from 'lucide-react';
+import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } from '@/lib/studio/scene3d';
+import { useSceneStore } from './scene/sceneStore';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -78,6 +81,8 @@ const COPY = {
     describeHint: 'ერთი საგანი ყველაზე კარგად მუშაობს — არა სცენა.',
     removeBgHint: 'ფონი მოცილდება რეკონსტრუქციამდე.',
     viewerFailed: '3D გადახედვა ვერ ჩაიტვირთა — მოდელის გადმოწერა მაინც შეგიძლია.',
+    addToScene: 'სცენაზე დამატება', inScene: 'სცენაზეა ✓', openScene: 'სცენის გახსნა',
+    sceneRefused: 'სცენაზე ვერ დაემატა — სცენაში მაქსიმუმ {n} ობიექტი ეტევა.',
   },
   en: {
     close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
@@ -103,6 +108,8 @@ const COPY = {
     describeHint: 'A single object reconstructs best — not a scene.',
     removeBgHint: 'Cuts the background out before reconstruction.',
     viewerFailed: 'The 3D preview could not load — you can still download the model.',
+    addToScene: 'Add to scene', inScene: 'In the scene ✓', openScene: 'Open scene',
+    sceneRefused: 'Could not add it to the scene — it holds up to {n} objects.',
   },
   ru: {
     close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
@@ -128,6 +135,8 @@ const COPY = {
     describeHint: 'Один объект реконструируется лучше всего — не сцена.',
     removeBgHint: 'Удаляет фон перед реконструкцией.',
     viewerFailed: 'Не удалось загрузить 3D-просмотр — модель всё равно можно скачать.',
+    addToScene: 'Добавить в сцену', inScene: 'В сцене ✓', openScene: 'Открыть сцену',
+    sceneRefused: 'Не удалось добавить в сцену — в ней помещается до {n} объектов.',
   },
 } satisfies Record<Lang, Record<string, string>>;
 
@@ -298,6 +307,12 @@ export function ServiceParamsPanel({
   const [elapsed, setElapsed] = useState(0);
   /** Short confirmation from a result action ("Saved", "Link copied"), cleared on the next run. */
   const [note, setNote] = useState<string | null>(null);
+  // THE 3D SCENE (components/studio/scene). "Add to scene" is offered only while a scene is mounted to take it — the
+  // same rule as a code block's "Open in canvas" — and only for a model the scene will accept (our Storage, .glb).
+  const sceneHost = useSceneStore((s) => s.hosts > 0);
+  const sceneCount = useSceneStore((s) => s.objects.length);
+  const sceneOpen = useSceneStore((s) => s.open);
+  const [sceneMsg, setSceneMsg] = useState<{ tone: 'success' | 'warn'; text: string } | null>(null);
   // Held in a ref so the 3D poller — a useCallback that must not re-create mid-poll — can reach the
   // current handler without taking it as a dependency.
   const onDeliveredRef = useRef(onDelivered);
@@ -454,6 +469,7 @@ export function ServiceParamsPanel({
     setSlideIndex(null);
     setStage(null);
     setNote(null);
+    setSceneMsg(null);
     // Name the job so the poller below can follow it while the synchronous request is still open.
     const clientJobId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '';
     const stop = { done: false };
@@ -531,6 +547,20 @@ export function ServiceParamsPanel({
       // somehow still active (e.g. a 502 the server has not yet marked failed) reappears in the tray.
       releaseClaims();
     }
+  }
+
+  /**
+   * Puts the finished model in the 3D scene through the scene's own event (lib/studio/scene3d) — the path a Live tool
+   * will use too, so there is one validated door. The id is derived from the Storage object, so pressing it again
+   * shows the model already there instead of stacking a copy. Free: the model was paid for when it was made.
+   */
+  function addToScene(glbUrl: string) {
+    const id = sceneIdForUrl(glbUrl);
+    const label = mode3d === 'text' ? prompt3d.trim() : '';
+    const took = dispatchSceneAction({ type: 'place_object', url: glbUrl, ...(id ? { id } : {}), ...(label ? { label } : {}) });
+    setSceneMsg(took
+      ? { tone: 'success', text: t.inScene }
+      : { tone: 'warn', text: t.sceneRefused.replace('{n}', String(SCENE_MAX_OBJECTS)) });
   }
 
   const canRun = !busy && (
@@ -768,6 +798,13 @@ export function ServiceParamsPanel({
               </Disclosure>
             )}
           </Group>
+          {/* A closed scene keeps its objects; this is the way back to them from the 3D tool. */}
+          {sceneHost && sceneCount > 0 && !sceneOpen && (
+            <GhostButton onClick={() => dispatchSceneAction({ type: 'open_scene' })}>
+              <Boxes size={16} aria-hidden className="mr-1.5 inline-block align-[-3px]" />
+              {`${t.openScene} · ${sceneCount}`}
+            </GhostButton>
+          )}
         </div>
       )}
 
@@ -885,6 +922,15 @@ export function ServiceParamsPanel({
               {/* Actions ABOVE the canvas: OrbitControls owns every touch inside the viewer, so anything
                   placed below it can be hard to reach on a phone. Belt and braces with the height fix. */}
               <ResultActions url={result.glbUrl} kind="model3d" locale={lang} onNote={setNote} />
+              {sceneHost && isSceneGlbUrl(result.glbUrl) && (
+                <Row>
+                  <SecondaryButton onClick={() => addToScene(result.glbUrl!)}>
+                    <Boxes size={16} aria-hidden className="mr-1.5 inline-block align-[-3px]" />
+                    {t.addToScene}
+                  </SecondaryButton>
+                </Row>
+              )}
+              {sceneMsg && <Note tone={sceneMsg.tone}>{sceneMsg.text}</Note>}
               {/* ⚠️ A GLB THAT FAILS TO LOAD (an expired signed URL, a truncated file) THROWS OUT OF THE R3F
                   CANVAS, and the nearest boundary above was ServiceHub's — so one dead preview replaced the
                   whole studio with "Something went wrong". Contained here; keyed on the url so a new model
