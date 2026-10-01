@@ -39,6 +39,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { sanitizeStyle } from '@/lib/studio/style';
+import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 
 /** FAST storyboard frames: flux-schnell renders in ~3–4s vs NanoBanana ~30s+ (benchmarked).
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
@@ -312,6 +313,9 @@ export async function POST(req: NextRequest) {
     /** DAY-6 — a full TIMECODED Master Production Script. When supplied, its parsed SCENE sheets DRIVE the
      *  storyboard plan (each scene's action becomes that scene's prompt) instead of the single-line brief. */
     masterScript?: string;
+    /** The video template card the user picked (sent only while the panel still matches it) — an ID; its look +
+     *  director note are resolved here. */
+    templateId?: unknown;
   };
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -370,6 +374,17 @@ export async function POST(req: NextRequest) {
   const selfie = hostedRefs.find((r) => /^https?:\/\//i.test(r)) ?? null;
 
   const musicVideo = body.musicVideoMode === true;
+  // ⚠️ THE TEMPLATE'S LOOK AND DIRECTOR NOTE ARE RESOLVED HERE, FROM ITS ID — never accepted as text. The same
+  // resolver runs at render time (filmComposite), so the board the user approves and the film they pay for are
+  // planned with one look. Null unless this request's style and music-video mode still select the card, and its
+  // length too when the request states one (the package's sceneCount × 8 s: what tells the Reel from the Teaser).
+  // A frame call sends no sceneCount, so it is matched on style and mode alone.
+  const template = resolveFilmTemplate({
+    templateId: body.templateId, style, musicVideoMode: musicVideo,
+    runtimeSec: typeof body.sceneCount === 'number' ? requestedCount * FILM_CLIP_SEC : null,
+  });
+  const templatePlan = template ? { look: template.look } : {};
+  const templateDirection = template ? { templateNote: template.directorNote } : {};
   // DAY-6 — a pasted TIMECODED Master Production Script DRIVES the storyboard: its parsed SCENE sheets become
   // the per-scene prompts (so the frames + clips follow the screenplay, not the one-line brief). Additive +
   // fail-open: a non-string / unparseable / <2-scene script leaves the brief-driven plan untouched.
@@ -380,7 +395,7 @@ export async function POST(req: NextRequest) {
     const scenes = pm.scenes.map((s) => s.action.trim()).filter(Boolean).map((a) => a.slice(0, 2000)).slice(0, sceneCount);
     return scenes.length >= 2 ? scenes : null;
   })();
-  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, clipSec, totalSec: sceneTotalSec, musicVideo, ...(masterSceneScripts ? { sceneScripts: masterSceneScripts } : {}) });
+  const plan = planFilmScenes(prompt, { referenceImages: hostedRefs, style, ...templatePlan, orientation, clipSec, totalSec: sceneTotalSec, musicVideo, ...(masterSceneScripts ? { sceneScripts: masterSceneScripts } : {}) });
   const aspect = orientation === 'vertical' ? '9:16' : '16:9';
   const sessionId = `storyboard_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -390,7 +405,11 @@ export async function POST(req: NextRequest) {
   // Diagnostic — which provider produced each frame (returned in the response so a
   // benchmark can confirm flux-schnell is actually firing; the re-host hides the source URL).
   const frameSourceTally = { fluxSchnell: 0, nanobanana: 0, replicateFlux: 0, gemini: 0 };
-  const genFrame = async (scenePrompt: string): Promise<string | null> => {
+  // `look`: the template's film look, put at the HEAD of the frame prompt. Only for a scene prompt that came back
+  // from the client: the board hands each scene's full prompt to the browser (`framePrompt`) and the frame call
+  // returns it as `scenePrompt`, which is cut to 600 characters below, and the look sits in the style guide around
+  // character 450-510, so the cut dropped it from the frames while the clips kept it.
+  const genFrame = async (scenePrompt: string, look?: string): Promise<string | null> => {
     try {
       // Master Contract V4 — a positive SINGLE-SHOT clause is the only anti-collage lever that reaches ALL
       // three frame providers (flux-schnell takes no negative_prompt), fixing the reported split-screen /
@@ -406,9 +425,10 @@ export async function POST(req: NextRequest) {
       // their own language and can still edit it there.
       // FAIL-OPEN, and free for a Latin-script brief (promptToEnglish returns immediately, no network call).
       const sceneEn = await promptToEnglish(scenePrompt, 'image');
+      const head = look ? `Cinematic film still, ${aspect} composition, ${look}.` : `Cinematic film still, ${aspect} composition.`;
       const framePrompt = selfie
-        ? `Cinematic film still, ${aspect} composition. ${sceneEn} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
-        : `Cinematic film still, ${aspect} composition. ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
+        ? `${head} ${sceneEn} Featuring the EXACT same person as the reference image — identical face, hair, skin tone, facial features and wardrobe as the reference. ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`
+        : `${head} ${sceneEn} ${SINGLE_SHOT_CLAUSE} Photorealistic, professional cinematic colour grade, sharp focus.`;
       // GOOGLE-ONLY (docs/VEO_ENGINE.md §3): the frame comes straight from Gemini's image model, the selfie passed as
       // an inline reference so the same person is in every frame. No Replicate, no FLUX: a miss is an empty tile
       // (the render then animates the scene from text), never a non-Google image.
@@ -484,7 +504,10 @@ export async function POST(req: NextRequest) {
     // Honor a user-EDITED shot description (Storyboard scene editing) when present,
     // so re-rolling the frame reflects the user's own wording; else the planned shot.
     const customPrompt = typeof body.scenePrompt === 'string' && body.scenePrompt.trim() ? body.scenePrompt.trim().slice(0, 600) : null;
-    const frameUrl = await genFrame(customPrompt ?? scene.prompt);
+    // The planned `scene.prompt` already carries the look in full. A client prompt (the board's own, cut to 600, or a
+    // user edit) may not, so the resolved look leads it, unless the text already holds it whole.
+    const frameLook = customPrompt && template && !customPrompt.includes(template.look) ? template.look : undefined;
+    const frameUrl = await genFrame(customPrompt ?? scene.prompt, frameLook);
     return NextResponse.json({ success: true, ordinal: sceneOrdinal, frameUrl });
   }
 
@@ -520,6 +543,7 @@ export async function POST(req: NextRequest) {
       length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
       model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
       ...(characterVisualId ? { characterVisualId } : {}),
+      ...templateDirection,
     });
     const promptAgentMs = Date.now() - tPA;
     // eslint-disable-next-line no-console
@@ -595,6 +619,7 @@ export async function POST(req: NextRequest) {
     length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
     model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
     ...(characterVisualIdFull ? { characterVisualId: characterVisualIdFull } : {}),
+    ...templateDirection,
   });
   const promptAgentMs = Date.now() - tPromptAgent;
   const sceneScripts = masterBrief
@@ -602,7 +627,7 @@ export async function POST(req: NextRequest) {
     : ((await generateSceneScripts(prompt, sceneCount)) ?? null);
   const characterLock = masterBrief?.character.imagePromptFragment ?? null;
   const storyPlan = sceneScripts
-    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, orientation, clipSec, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
+    ? planFilmScenes(prompt, { referenceImages: hostedRefs, style, ...templatePlan, orientation, clipSec, sceneScripts, totalSec: sceneTotalSec, musicVideo, ...(characterLock ? { characterLock } : {}) })
     : plan;
 
   // Frame dispatch concurrency = 3. NOTE (benchmarked): on a Replicate token with the

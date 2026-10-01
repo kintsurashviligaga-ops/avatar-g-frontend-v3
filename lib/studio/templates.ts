@@ -4,16 +4,29 @@
  * clickable Template Cards… Clicking a card must inject the specific style context and aspect ratios directly into
  * the generation pipeline").
  *
- * ⚠️ A CARD WRITES THE PANEL'S REAL PARAMETERS — NOTHING ELSE. It sets the same state the panel's own controls set
- * (style, format, length, genre, tempo, the presenter's face…), and that state is what each route already turns into
- * its generation context: the image route expands `style` into its server-side style directive (STYLE_SUFFIXES),
- * the film director takes `style` + orientation + scene count, the score engine takes genre + tempo + vocal, the
- * presenter route takes the face + voice + format. So a template can never send something the controls could not —
- * no hidden prompt, no client-supplied system instruction — and every individual control stays visible to fine-tune.
+ * ⚠️ A CARD WRITES THE PANEL'S REAL PARAMETERS, AND MAY ADD ONE SERVER-RESOLVED CONTEXT (owner decision 2026-10-01 A-a).
+ * It sets the same state the panel's own controls set (style, format, length, quality, genre, tempo, vocal, the
+ * presenter's face…), and every individual control stays visible to fine-tune. On top of that, a video, image or
+ * music request made after the user PICKED a card carries that card's `templateId`: an ID, never text. The route
+ * resolves it SERVER-SIDE (lib/studio/templateContext.ts, `server-only`) into a short, capped context: an image
+ * prompt suffix, a music descriptor, or a film look plus a director note. It adds that context ONLY when the request's
+ * own values still select the card, so a stale, forged or mismatched id adds nothing. The server never accepts context
+ * text from the client: the tables live in server-only code and a request can only name a card. (The text is not a
+ * secret: a film look is part of the storyboard's frame prompts, which the board returns for display and re-rolls.)
+ * What a card adds is DISCLOSED on the card as one „Adds: …" line in ka/en/ru (`adds` below, via `templateAddsLine`):
+ * client copy that describes the effect. Presenter (avatar) cards add no context (decision A-f): the face, voice and
+ * format are the whole of what they do.
  *
- * ⚠️ THE ACTIVE CARD IS DERIVED, NEVER STORED (the contract of lib/video/videoPresets and lib/image/imagePresets,
- * whose presets these cards absorb): `match*Template` recomputes it from the live values, so a card stops being lit
- * the moment the user edits a field it set. Value tuples are unique per tool (a test enforces it).
+ * ⚠️ THE LIT CARD IS DERIVED, NEVER STORED (the contract of lib/video/videoPresets and lib/image/imagePresets, whose
+ * presets these cards absorb): `match*Template` recomputes it from the live values, so a card stops being lit the
+ * moment the user edits a field it set. Value tuples are unique per tool (a test enforces it).
+ *
+ * ⚠️ BUT A LIT CARD IS NOT A PICKED CARD. Some panels' starting values ARE a card (the video panel's defaults are the
+ * Reel; the image panel plus the Photorealistic chip is the Product shot), so a card can light up without the user
+ * ever touching it. Its context is sent only for a card the user explicitly PICKED, and only while the live values
+ * still select it (`requestTemplateId`). The first edit away forgets the pick, so editing back re-lights the card
+ * without re-sending its context until it is picked again (hooks/usePickedTemplate). The panel defaults live here
+ * (`*_PANEL_DEFAULTS`) so a test can pin exactly that.
  *
  * Thumbnails: `thumb` is set ONLY when the file exists under public/ (a test enforces it), so a missing image is never
  * shipped as a broken <img> or a 404. A card without one renders its palette as a gradient tile. The generated set is
@@ -28,6 +41,9 @@ export type TemplateTool = 'video' | 'image' | 'music' | 'avatar';
 export type TemplateLang = 'ka' | 'en' | 'ru';
 type L10n = Record<TemplateLang, string>;
 
+/** A template id on the wire: lowercase, digits and hyphens, at most 40 characters (every id below fits). */
+export const TEMPLATE_ID_RX = /^[a-z0-9-]{1,40}$/;
+
 interface TemplateBase {
   id: string;
   label: L10n;
@@ -39,8 +55,15 @@ interface TemplateBase {
   palette: readonly [string, string];
 }
 
-export interface VideoTemplate extends TemplateBase { tool: 'video'; values: VideoPresetValues }
-export interface ImageTemplate extends TemplateBase { tool: 'image'; values: ImagePresetValues }
+/**
+ * What the card's server-resolved context ADDS, in plain words, for the „Adds: …" line. Copy that describes the
+ * effect, not the context text itself, whose tables live only in server code (lib/studio/templateContext.ts).
+ * Required on every video, image and music card: each one resolves a context, and a test pins the two sets together.
+ */
+interface ContextCard { adds: L10n }
+
+export interface VideoTemplate extends TemplateBase, ContextCard { tool: 'video'; values: VideoPresetValues }
+export interface ImageTemplate extends TemplateBase, ContextCard { tool: 'image'; values: ImagePresetValues }
 
 export interface MusicTemplateValues {
   genre: string;
@@ -49,7 +72,7 @@ export interface MusicTemplateValues {
   instrumental: boolean;
   voiceType: 'female' | 'male' | 'duet';
 }
-export interface MusicTemplate extends TemplateBase { tool: 'music'; values: MusicTemplateValues }
+export interface MusicTemplate extends TemplateBase, ContextCard { tool: 'music'; values: MusicTemplateValues }
 
 export interface AvatarTemplateValues {
   /** The preset face (public path) — it IS the presenter, so it is also the card's image. */
@@ -70,6 +93,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'reel',
     label: T('კინო რილსი', 'Cinematic Reel', 'Кино-рилс'),
     hint: T('24 წმ, 9:16 — Instagram/TikTok-ისთვის', '24s vertical 9:16 for Instagram and TikTok', '24 с, 9:16 — для Instagram и TikTok'),
+    adds: T('ვერტიკალური რილსის ლუქი და სწრაფი დასაწყისი', 'A vertical reel look with a fast opening hook', 'Вертикальный рилс-лук и цепляющее начало'),
     thumb: '/templates/video/reel.jpg', palette: ['#0B1A2C', '#338FE8'],
     values: { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Cinematic' },
   },
@@ -77,6 +101,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'trailer',
     label: T('ფილმის ტრეილერი', 'Movie Trailer', 'Трейлер фильма'),
     hint: T('48 წმ, ფართო 16:9, დრამატული', '48s widescreen 16:9, dramatic', '48 с, широкий 16:9, драматично'),
+    adds: T('ტრეილერის ლუქი და მზარდი დაძაბულობა', 'A trailer look with rising tension', 'Трейлерный лук и нарастающее напряжение'),
     thumb: '/templates/video/trailer.jpg', palette: ['#1A1206', '#D9A441'],
     values: { mode: 'documentary', duration: 48, orientation: 'landscape', style: 'Dramatic' },
   },
@@ -84,6 +109,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'teaser',
     label: T('თიზერი · 8 წმ', 'Teaser · 8s', 'Тизер · 8 с'),
     hint: T('ერთი სცენა — იდეის სწრაფი და იაფი ტესტი', 'One scene — the fastest, cheapest test of an idea', 'Одна сцена — быстро и дёшево проверить идею'),
+    adds: T('ერთი ძლიერი კადრი, ერთი იდეა', 'One striking shot built around a single idea', 'Один яркий кадр вокруг одной идеи'),
     thumb: null, palette: ['#06121F', '#4DB6FF'],
     values: { mode: 'documentary', duration: 8, orientation: 'vertical', style: 'Cinematic' },
   },
@@ -91,6 +117,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'anime',
     label: T('ანიმე', 'Anime', 'Аниме'),
     hint: T('ანიმაციური სტილი, 9:16, 24 წმ', 'Hand-drawn anime look, 9:16, 24s', 'Аниме-стиль, 9:16, 24 с'),
+    adds: T('ხელით დახატული ანიმეს ლუქი', 'A hand-drawn anime look', 'Рисованный аниме-лук'),
     thumb: null, palette: ['#1B0F2E', '#FF7AB6'],
     values: { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Anime' },
   },
@@ -98,6 +125,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'neon-nights',
     label: T('ნეონის ღამე', 'Neon Nights', 'Неоновая ночь'),
     hint: T('ღამის ქალაქი, ნეონის შუქი, 9:16', 'A city at night in neon light, 9:16', 'Ночной город в неоне, 9:16'),
+    adds: T('ნეონით განათებული ღამის ქალაქი', 'A neon-lit city at night', 'Ночной город в неоновом свете'),
     thumb: null, palette: ['#120624', '#B44CFF'],
     values: { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Neon' },
   },
@@ -105,6 +133,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'nature-doc',
     label: T('ბუნების დოკუმენტური', 'Nature Documentary', 'Природа, документалка'),
     hint: T('48 წმ, 16:9 — მთები, ტყე, ცოცხალი სამყარო', '48s 16:9 — mountains, forests, wildlife', '48 с, 16:9 — горы, леса, дикая природа'),
+    adds: T('ბუნების დოკუმენტურის ლუქი და ბუნებრივი შუქი', 'A wildlife-documentary look in natural light', 'Лук документалки о природе, естественный свет'),
     thumb: null, palette: ['#07170D', '#4CC27A'],
     values: { mode: 'documentary', duration: 48, orientation: 'landscape', style: 'Nature' },
   },
@@ -112,6 +141,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'noir',
     label: T('ნუარი', 'Film Noir', 'Нуар'),
     hint: T('შავ-თეთრი, მკვეთრი ჩრდილები, 16:9', 'Black and white, hard shadows, 16:9', 'Чёрно-белое, резкие тени, 16:9'),
+    adds: T('შავ-თეთრი ნუარის ლუქი, მკვეთრი ჩრდილები', 'A black-and-white noir look with hard shadows', 'Чёрно-белый нуар с резкими тенями'),
     thumb: null, palette: ['#0A0A0A', '#BDBDBD'],
     values: { mode: 'documentary', duration: 24, orientation: 'landscape', style: 'Noir' },
   },
@@ -119,6 +149,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     tool: 'video', id: 'music-video',
     label: T('მუსიკალური კლიპი', 'Music Video', 'Клип'),
     hint: T('სიმღერის კლიპი, 9:16, ნეონი', 'A clip cut to your song, 9:16, neon', 'Клип под вашу песню, 9:16, неон'),
+    adds: T('სცენის ნეონის შუქი და რიტმული მონტაჟი', 'Neon stage light and cuts on the beat', 'Неоновый сценический свет и монтаж в ритм'),
     thumb: null, palette: ['#14061C', '#338FE8'],
     values: { mode: 'musicvideo', duration: 24, orientation: 'vertical', style: 'Neon' },
   },
@@ -126,39 +157,47 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
 
 // ─── Image ─────────────────────────────────────────────────────────────────────────────────────────────
 
+// ⚠️ NO CARD DEFAULTS TO 4K (owner decision 2026-10-01 c). Product, Poster and Wallpaper were 'ultra' (the 4K Pro
+// endpoint, the slowest tier and the one most likely to time out); they now start at 'high' (2K). Ultra stays one tap
+// away in the Quality control for anyone who wants it, and the card simply stops being lit, as the contract above says.
 export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
   {
     tool: 'image', id: 'product',
     label: T('პროდუქტის ფოტო', 'Product Shot', 'Фото товара'),
-    hint: T('1:1, 4K — კატალოგის ხარისხი', '1:1 at 4K — catalogue quality', '1:1, 4K — каталожное качество'),
+    hint: T('1:1, 2K — კატალოგის ხარისხი', '1:1 at 2K — catalogue quality', '1:1, 2K — каталожное качество'),
+    adds: T('სტუდიური ფონი და რბილი შუქი', 'A clean studio backdrop and soft light', 'Чистый студийный фон и мягкий свет'),
     thumb: '/templates/image/product.jpg', palette: ['#160E06', '#E0A458'],
-    values: { aspect: '1:1', quality: 'ultra', style: 'Photorealistic' },
+    values: { aspect: '1:1', quality: 'high', style: 'Photorealistic' },
   },
   {
     tool: 'image', id: 'social',
     label: T('სოციალური პოსტი', 'Social Post', 'Пост для соцсетей'),
     hint: T('4:5 — Instagram-ის ლენტა, 2K', '4:5 for the Instagram feed, 2K', '4:5 — лента Instagram, 2K'),
+    adds: T('ცოცხალი ლაიფსთაილ კადრი ლენტისთვის', 'A bright lifestyle look made for the feed', 'Яркий лайфстайл-кадр для ленты'),
     thumb: null, palette: ['#0C1424', '#5BA6F0'],
     values: { aspect: '4:5', quality: 'high', style: 'Photorealistic' },
   },
   {
     tool: 'image', id: 'poster',
     label: T('კინოპოსტერი', 'Cinematic Poster', 'Киноафиша'),
-    hint: T('3:4, 4K — ბეჭდვისთვის', '3:4 at 4K — sized for print', '3:4, 4K — для печати'),
+    hint: T('3:4, 2K — დიდი ბეჭდვისთვის აირჩიე 4K', '3:4 at 2K — pick 4K for large prints', '3:4, 2K — для крупной печати выберите 4K'),
+    adds: T('პოსტერის კომპოზიცია, ადგილი სათაურისთვის', 'Poster composition with room for a title', 'Композиция афиши с местом для названия'),
     thumb: null, palette: ['#1A0C08', '#FF8A4C'],
-    values: { aspect: '3:4', quality: 'ultra', style: 'Cinematic' },
+    values: { aspect: '3:4', quality: 'high', style: 'Cinematic' },
   },
   {
     tool: 'image', id: 'wallpaper',
     label: T('ფონი', 'Wallpaper', 'Обои'),
-    hint: T('16:9, 4K', '16:9 widescreen at 4K', '16:9, 4K'),
+    hint: T('16:9, 2K', '16:9 widescreen at 2K', '16:9, 2K'),
+    adds: T('ფართო ხედი, თავისუფალი ცენტრით', 'A wide vista with an uncluttered centre', 'Широкий вид со свободным центром'),
     thumb: null, palette: ['#06101C', '#3FA9F5'],
-    values: { aspect: '16:9', quality: 'ultra', style: 'Cinematic' },
+    values: { aspect: '16:9', quality: 'high', style: 'Cinematic' },
   },
   {
     tool: 'image', id: 'concept',
     label: T('კონცეპტ-არტი', 'Concept Art', 'Концепт-арт'),
     hint: T('16:9 — სამყაროები და პერსონაჟები', '16:9 — worlds and characters', '16:9 — миры и персонажи'),
+    adds: T('მასშტაბური სამყაროს კონცეპტ-არტი', 'World-building concept art at epic scale', 'Концепт-арт мира с эпическим размахом'),
     thumb: null, palette: ['#0E1A1A', '#3FD0C9'],
     values: { aspect: '16:9', quality: 'high', style: 'Digital Art' },
   },
@@ -166,6 +205,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     tool: 'image', id: 'anime',
     label: T('ანიმე', 'Anime', 'Аниме'),
     hint: T('9:16 — ანიმე-ილუსტრაცია', '9:16 anime illustration', '9:16 — аниме-иллюстрация'),
+    adds: T('ანიმეს პოსტერის კომპოზიცია', 'An anime key-visual composition', 'Композиция аниме-постера'),
     thumb: null, palette: ['#1B0F2E', '#FF7AB6'],
     values: { aspect: '9:16', quality: 'high', style: 'Anime' },
   },
@@ -173,6 +213,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     tool: 'image', id: 'oil-painting',
     label: T('ზეთის ფერწერა', 'Oil Painting', 'Масло'),
     hint: T('3:4 — ტილო და ფუნჯის მონასმი', '3:4 — canvas and brushwork', '3:4 — холст и мазок'),
+    adds: T('მუზეუმის ფერწერის სქელი მონასმი', 'Museum-style impasto brushwork', 'Густой мазок музейной живописи'),
     thumb: null, palette: ['#1C1208', '#C98A3A'],
     values: { aspect: '3:4', quality: 'high', style: 'Oil Painting' },
   },
@@ -180,6 +221,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     tool: 'image', id: '3d-render',
     label: T('3D რენდერი', '3D Render', '3D-рендер'),
     hint: T('1:1 — სუფთა სტუდიური 3D', '1:1 clean studio 3D', '1:1 — чистый студийный 3D'),
+    adds: T('რბილი სტუდიური განათება და პასტელური ფონი', 'Soft studio lighting on a pastel backdrop', 'Мягкий студийный свет и пастельный фон'),
     thumb: null, palette: ['#0A1220', '#7FB8FF'],
     values: { aspect: '1:1', quality: 'high', style: '3D Render' },
   },
@@ -192,6 +234,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'hollywood-cinematic',
     label: T('ჰოლივუდური კინო', 'Cinematic Score', 'Кино-саундтрек'),
     hint: T('ინსტრუმენტული, ნელი, 90 წმ', 'Instrumental, slow, 90s', 'Инструментал, медленно, 90 с'),
+    adds: T('ორკესტრი: სიმები, სპილენძი, ტიმპანი', 'An orchestra: strings, brass and timpani', 'Оркестр: струнные, медные, литавры'),
     thumb: null, palette: ['#140D05', '#E3B04B'],
     values: { genre: 'classical', tempo: 'slow', duration: 90, instrumental: true, voiceType: 'female' },
   },
@@ -199,6 +242,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'rnb-beat',
     label: T('R&B ბითი', 'R&B Beat', 'R&B-бит'),
     hint: T('ინსტრუმენტული ბითი, საშუალო ტემპი, 30 წმ', 'Instrumental beat, mid-tempo, 30s', 'Инструментальный бит, средний темп, 30 с'),
+    adds: T('თბილი Rhodes და ღრმა 808 ბასი', 'Warm Rhodes keys and a deep 808 bass', 'Тёплые Rhodes и глубокий бас 808'),
     thumb: null, palette: ['#1A0A16', '#E0569B'],
     values: { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: true, voiceType: 'female' },
   },
@@ -206,6 +250,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'rnb-hiphop-core',
     label: T('R&B / ჰიპ-ჰოპი', 'R&B / Hip-Hop', 'R&B / Хип-хоп'),
     hint: T('კაცის ვოკალი, საშუალო ტემპი, 30 წმ', 'Male vocal, mid-tempo, 30s', 'Мужской вокал, средний темп, 30 с'),
+    adds: T('მკვრივი დრამები და მელოდიური მისამღერი', 'Punchy drums and a melodic hook', 'Плотные барабаны и мелодичный хук'),
     thumb: null, palette: ['#120A1E', '#8E6CFF'],
     values: { genre: 'hip-hop', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'male' },
   },
@@ -213,6 +258,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'georgian-folk',
     label: T('ქართული ფოლკი', 'Georgian Folk', 'Грузинский фолк'),
     hint: T('ქალის ვოკალი, საშუალო ტემპი, 60 წმ', 'Female vocal, mid-tempo, 60s', 'Женский вокал, средний темп, 60 с'),
+    adds: T('ქართული მრავალხმიანი გუნდი, ფანდური', 'Georgian polyphonic choir and panduri', 'Грузинский многоголосный хор и пандури'),
     thumb: null, palette: ['#160A06', '#D46A3A'],
     values: { genre: 'folk', tempo: 'medium', duration: 60, instrumental: false, voiceType: 'female' },
   },
@@ -220,6 +266,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'lofi-chill',
     label: T('ლო-ფაი ღამე', 'Lo-fi Night', 'Лоу-фай ночь'),
     hint: T('ინსტრუმენტული, ნელი, 60 წმ', 'Instrumental, slow, 60s', 'Инструментал, медленно, 60 с'),
+    adds: T('ვინილის ხრაშუნი და რბილი ჯაზური აკორდები', 'Vinyl crackle and mellow jazz chords', 'Треск винила и мягкие джазовые аккорды'),
     thumb: '/templates/music/lofi-chill.jpg', palette: ['#06141A', '#3FB6C9'],
     values: { genre: 'lo-fi', tempo: 'slow', duration: 60, instrumental: true, voiceType: 'female' },
   },
@@ -227,6 +274,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'electronic-cyber',
     label: T('ელექტრონული კიბერ', 'Electronic Cyber', 'Электронный кибер'),
     hint: T('ინსტრუმენტული, სწრაფი, 60 წმ', 'Instrumental, fast, 60s', 'Инструментал, быстро, 60 с'),
+    adds: T('სინთების არპეჯიო და მაჯისცემის ბასი', 'Arpeggiated synths and a pulsing bass', 'Арпеджио синтов и пульсирующий бас'),
     thumb: null, palette: ['#05101E', '#338FE8'],
     values: { genre: 'electronic', tempo: 'fast', duration: 60, instrumental: true, voiceType: 'female' },
   },
@@ -234,6 +282,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'retro-jazz-lounge',
     label: T('ჯაზ-ლაუნჯი', 'Jazz Lounge', 'Джаз-лаунж'),
     hint: T('ქალის ვოკალი, ნელი, 60 წმ', 'Female vocal, slow, 60s', 'Женский вокал, медленно, 60 с'),
+    adds: T('კონტრაბასი, ჯაგრისის დრამი, ჩახშობილი საყვირი', 'Upright bass, brushed drums, muted trumpet', 'Контрабас, щётки, труба с сурдиной'),
     thumb: null, palette: ['#160E04', '#C8913A'],
     values: { genre: 'jazz', tempo: 'slow', duration: 60, instrumental: false, voiceType: 'female' },
   },
@@ -241,12 +290,14 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     tool: 'music', id: 'documentary-ambient',
     label: T('დოკუმენტური ემბიენტი', 'Documentary Ambient', 'Эмбиент для документалки'),
     hint: T('ინსტრუმენტული ფონი, ნელი, სრული სიგრძე', 'Instrumental bed, slow, full length', 'Инструментальный фон, медленно, полная длина'),
+    adds: T('ნელა ცვალებადი ფონი და იშვიათი ფორტეპიანო', 'Slowly evolving pads and sparse piano', 'Медленные пэды и редкое фортепиано'),
     thumb: null, palette: ['#081216', '#6FA8B8'],
     values: { genre: 'ambient', tempo: 'slow', duration: 0, instrumental: true, voiceType: 'female' },
   },
 ];
 
 // ─── Avatar (the face IS the presenter, so the card's image is the face itself) ─────────────────────────
+// No `adds`: presenter cards resolve no context (decision A-f).
 
 export const AVATAR_TEMPLATES: readonly AvatarTemplate[] = [
   {
@@ -302,7 +353,39 @@ export const TEMPLATES_BY_TOOL = {
 
 export const templateLang = (locale: string): TemplateLang => (locale === 'en' || locale === 'ru' ? locale : 'ka');
 
+const ADDS_PREFIX: L10n = T('ამატებს', 'Adds', 'Добавляет');
+
+/**
+ * The card's one-line disclosure — „Adds: Georgian polyphonic choir and panduri" — or null for a card that adds
+ * nothing (a presenter). Shown on the card itself, so what a template sends beyond the visible controls is never a
+ * surprise.
+ */
+export function templateAddsLine(t: StudioTemplate, lang: TemplateLang): string | null {
+  if (t.tool === 'avatar') return null;
+  const what = t.adds[lang]?.trim();
+  return what ? `${ADDS_PREFIX[lang]}: ${what}` : null;
+}
+
+// ─── The studio panels' starting values ────────────────────────────────────────────────────────────────
+// What OmniStudio's image, video and music panels hold before the user touches anything (it initialises its state
+// from these). The video defaults ARE the Reel card, which is why a lit card never sends its context by itself.
+
+export const IMAGE_PANEL_DEFAULTS = { aspect: '1:1', quality: 'high', style: 'Auto' } as const;
+export const VIDEO_PANEL_DEFAULTS = { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Cinematic' } as const;
+export const MUSIC_PANEL_DEFAULTS = { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'female' } as const;
+
+/**
+ * The `templateId` a studio request may carry: the card the user PICKED, and only while the live values still
+ * select it (`liveId` is the panel's `match*Template` result). A card that is merely lit, because the panel's values
+ * happen to equal it, sends nothing; neither does a picked card the user has since edited away from.
+ */
+export function requestTemplateId(pickedId: string | null | undefined, liveId: string | null | undefined): string | null {
+  return pickedId && TEMPLATE_ID_RX.test(pickedId) && liveId === pickedId ? pickedId : null;
+}
+
 // ─── Derived selection (never stored) ──────────────────────────────────────────────────────────────────
+// The match functions take the WIDE types a request carries (a route reads `quality` and `tempo` as plain strings);
+// equality does the narrowing, and the panel's own narrower values are assignable unchanged.
 
 export function matchVideoTemplate(v: VideoPresetValues | null | undefined): string | null {
   if (!v) return null;
@@ -310,13 +393,17 @@ export function matchVideoTemplate(v: VideoPresetValues | null | undefined): str
     && t.values.orientation === v.orientation && t.values.style === v.style)?.id ?? null;
 }
 
-export function matchImageTemplate(v: ImagePresetValues | null | undefined): string | null {
+export interface ImageMatchInput { aspect: string; quality: string; style: string }
+
+export function matchImageTemplate(v: ImageMatchInput | null | undefined): string | null {
   if (!v) return null;
   return IMAGE_TEMPLATES.find((t) => t.values.aspect === v.aspect && t.values.quality === v.quality && t.values.style === v.style)?.id ?? null;
 }
 
+export interface MusicMatchInput { genre: string; tempo: string; duration: number; instrumental: boolean; voiceType: string }
+
 /** Instrumental templates ignore the vocal (it is hidden and moot for a bed), so their highlight stays stable. */
-export function matchMusicTemplate(v: MusicTemplateValues | null | undefined): string | null {
+export function matchMusicTemplate(v: MusicMatchInput | null | undefined): string | null {
   if (!v) return null;
   return MUSIC_TEMPLATES.find((t) => t.values.genre === v.genre && t.values.tempo === v.tempo && t.values.duration === v.duration
     && t.values.instrumental === v.instrumental && (t.values.instrumental || t.values.voiceType === v.voiceType))?.id ?? null;
