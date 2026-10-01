@@ -10,7 +10,7 @@
  * not a gated action.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authedClientFromRequest } from '@/lib/supabase/server';
+import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { JOB_COLUMNS, type GenerationJobRow } from '@/lib/orchestrator/jobs';
 import { serviceTypeForKind } from '@/lib/jobs/durableJobs';
 
@@ -41,13 +41,31 @@ interface TrackBody {
  * tray jobId, so the hydration poll dedupes it via mergeTrayJobs), then syncs stage/pct/
  * result as the render progresses — so a mid-flight reload recovers the correct baseline.
  *
- * Writes go through the USER'S OWN session client, so RLS (owner insert/update) guarantees
- * a caller can only touch their own rows. Fully fail-open + additive: any miss returns 200
- * and NEVER blocks the render (the client fires these best-effort). Unauth → 200 no-op.
+ * ⚠️ A PROGRESS NOTE, NEVER A BILLING RECORD (security, 2026-10-01). The stale-render drainer
+ * (/api/cron/drain-renders) refunds a `processing` row older than 30 min that carries `params._reserve`.
+ * This route used to write through the USER'S session client (RLS owner insert/update), so a user could
+ * (a) create a row whose params carried any `_reserve` ref of their own, or (b) flip a server-written,
+ * DELIVERED, charged row back to `processing` by id — and 30 minutes later be refunded for a render
+ * they had received. Now: writes go through the service role, scoped to the caller's user_id by hand;
+ * client params lose every `_`-prefixed key (server bookkeeping); status changes touch only
+ * still-running rows that carry NO server reservation, so a finished or billed row can never be
+ * resurrected. The owner insert/update RLS policies are dropped (20261001f) — this route is the only
+ * user-facing writer. Fully fail-open + additive: any miss returns 200 and NEVER blocks the render.
+ * Unauth → 200 no-op.
  */
+/** Client params minus server bookkeeping: every `_`-prefixed key (`_reserve`, …) is the server's alone. */
+function clientParams(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter(([k]) => !k.startsWith('_')));
+}
+
 export async function POST(req: NextRequest) {
-  const { supabase, user } = await authedClientFromRequest(req);
+  const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ ok: false, skipped: 'unauth' });
+  let supabase: ReturnType<typeof createServiceRoleClient>;
+  try { supabase = createServiceRoleClient(); } catch { return NextResponse.json({ ok: false, skipped: 'unconfigured' }); }
+  // Every status write is confined to the caller's OWN, still-running, client-tracked rows.
+  const ownLive = () => supabase.from('generation_jobs');
 
   let body: TrackBody;
   try {
@@ -69,7 +87,7 @@ export async function POST(req: NextRequest) {
         status: 'pending',
         current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : 'queued',
         pct: clampPct(body.pct),
-        params: body.params && typeof body.params === 'object' ? body.params : {},
+        params: clientParams(body.params),
       };
       const pos = typeof body.position === 'number' && body.position > 0 ? Math.floor(body.position) : null;
       // Try WITH the position column; if the migration hasn't landed yet the column is unknown, so
@@ -83,33 +101,31 @@ export async function POST(req: NextRequest) {
       // write wins regardless of which of the two arrives first.
       let { error } = await supabase.from('generation_jobs').upsert({ ...base, position_in_queue: pos }, { onConflict: 'id', ignoreDuplicates: true });
       if (error && /position_in_queue/i.test(error.message)) {
-        ({ error } = await supabase.from('generation_jobs').upsert(base, { onConflict: 'id' }));
+        // ignoreDuplicates here too: through the service role an overwrite would reach ANY user's row with that id.
+        ({ error } = await supabase.from('generation_jobs').upsert(base, { onConflict: 'id', ignoreDuplicates: true }));
       }
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'position') {
       // ISOLATED position write (Task 6): mirror the live queue position WITHOUT touching status,
       // so a still-queued job stays pending. Best-effort — a pre-migration column-miss just no-ops.
       const pos = typeof body.position === 'number' && body.position > 0 ? Math.floor(body.position) : null;
-      const { error } = await supabase.from('generation_jobs').update({ position_in_queue: pos }).eq('id', id);
+      const { error } = await ownLive().update({ position_in_queue: pos }).eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'update') {
-      // RLS scopes the update to the owner; we match by id only.
-      const { error } = await supabase
-        .from('generation_jobs')
+      // Never resurrects a finished row, never touches one the server billed (it carries `_reserve`).
+      const { error } = await ownLive()
         .update({ status: 'processing', current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : null, pct: clampPct(body.pct) })
-        .eq('id', id);
+        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'complete') {
-      const { error } = await supabase
-        .from('generation_jobs')
+      const { error } = await ownLive()
         .update({ status: 'completed', pct: 100, signed_url: typeof body.url === 'string' ? body.url.slice(0, 2000) : null })
-        .eq('id', id);
+        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'fail') {
-      const { error } = await supabase
-        .from('generation_jobs')
+      const { error } = await ownLive()
         .update({ status: 'failed', error: typeof body.error === 'string' ? body.error.slice(0, 500) : 'failed' })
-        .eq('id', id);
+        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else {
       return NextResponse.json({ ok: false, error: 'unknown op' }, { status: 400 });
