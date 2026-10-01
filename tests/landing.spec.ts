@@ -257,7 +257,8 @@ for (const vp of VIEWPORTS) {
       await page.getByTestId('plus').click();
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
-      for (const tile of ['ფოტოები', 'კამერა', 'ფაილები']) await expect(sheet.getByRole('button', { name: tile })).toBeVisible();
+      // exact: the photo-culling TOOL („ფოტოების შერჩევა …") also contains „ფოტოები" — the attach tile is the exact name.
+      for (const tile of ['ფოტოები', 'კამერა', 'ფაილები']) await expect(sheet.getByRole('button', { name: tile, exact: true })).toBeVisible();
       const tools = sheet.getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button');
       await expect(tools.nth(0)).toContainText('ჩატი'); // the hub leads the one tool list
       await expect(tools.nth(1)).toContainText('ვიდეო');

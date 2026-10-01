@@ -85,6 +85,12 @@ The plan for Phases 2–4 is `docs/SUPER_APP_PLAN.md`. Wave 1 closed what the ma
 - **The stale-render refund exploit** (live): the drainer refunds `processing` job rows carrying a reservation, and users could write those rows. Owner insert/update RLS on `generation_jobs` is dropped and the progress route can no longer forge or revive billing state (`20261001f`).
 - **Also:** music re-rolls keep their length, tempo and singer; the thumbnail runner writes nested takes, projects dry-run totals and no longer deploys its manifest publicly (`/brand/v1/manifest.json` now 404s); Live's „show code" says „saved in the canvas" only when the canvas confirms.
 
+### 3.9 Super-App plan, Round 2 (2026-10-01)
+- **Template cards shape the result** (owner decision). Each video, image and music card adds a short style context that the SERVER resolves from the card's id — never text from the browser — and the card says what it adds („Adds: A clean studio backdrop and soft light"). Only a card the user actually PICKED counts, and only while the panel still matches it; a panel that merely happens to equal a card adds nothing. Product / Poster / Wallpaper default to 2K, not 4K.
+- **Photo culling** (new „ფოტოების შერჩევა" tool): drop JPEG/PNG/WebP photos; blur, blown highlights/shadows and burst duplicates are flagged in a worker on the device (nothing is uploaded), P/X/U keys work on Georgian and Russian layouts too, one-click grading, and picks export as a ZIP. Client galleries and server storage are not built (they need the storage decision).
+- **Long-form video API** (dark): create / status / cancel routes, the director's 240 s deadline, Library filing — all 404 until `LONGFORM_VIDEO_ENABLED` and the migration `20261001b` is applied.
+- **Template thumbnails**: the runner now drives Replicate (FLUX schnell, ~$0.24 for all 20) or Imagen 4 (~$3.04) as well as Higgsfield, under the $5 cap. A real run on 2026-10-01 bought nothing: Replicate and the Gemini prepay both answered 402 (no credit). Fund one, then `npm run art:templates -- --provider replicate --yes-spend` and `node scripts/templates/build-thumbs.mjs`.
+
 ## 4. Phase 3: omni-modal (`feat/chat-first-guest`)
 
 | Capability | State | Notes |
