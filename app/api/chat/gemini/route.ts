@@ -66,6 +66,7 @@ import { chatModelChain } from '@/lib/ai/google/models';
 import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig } from '@/lib/ai/google/chatStream';
+import { wantsUrlContext } from '@/lib/chat/urlContext';
 import { encodeFrame, SSE_KEEPALIVE, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
 import {
   estimateWireChars,
@@ -673,6 +674,10 @@ export async function POST(req: NextRequest) {
               maxOutputTokens: Math.min(modeConfig.maxOutputTokens, GUEST_MAX_OUTPUT_TOKENS),
             }
           : modeConfig;
+        // URL reading only for a turn that carries a link, and only behind GEMINI_CHAT_URL_CONTEXT=1
+        // (lib/chat/urlContext.ts) — and never for a guest: a fetched page multiplies the input tokens, the same reason
+        // grounding is off for them (lib/chat/guestChat).
+        if (!guest && wantsUrlContext(latestUserText)) config.urlContext = true;
         const inputChars = platformSystem.length + historyChars;
 
         const result = await streamGeminiChat({

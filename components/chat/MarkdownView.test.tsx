@@ -65,15 +65,19 @@ jest.mock('remark-math', () => {
 });
 
 import {
+  HighlightedCode,
   MarkdownView,
   analyzeMarkdown,
   escapeNonMathDollars,
+  fenceCode,
   loadHighlightExtension,
   loadMathExtension,
   normalizeMathDelimiters,
   safeUrlTransform,
   splitMarkdownBlocks,
 } from './MarkdownView';
+import { resetArtifactStore, useArtifactStore } from './artifacts/artifactStore';
+import { MAX_ARTIFACT_CODE_BYTES } from './artifacts/artifactSpec';
 
 /** Lets pending dynamic imports and the resulting store update settle. */
 async function settle() {
@@ -388,5 +392,133 @@ describe('dollars and math delimiters', () => {
     const blocks = analyzeMarkdown('prose $5\n\n```js\nx\n```\n\n$a$');
     expect(blocks.map((b) => [b.code, b.math])).toEqual([[false, false], [true, false], [false, true]]);
     expect(blocks[0]!.source).toBe('prose \\$5\n');
+  });
+});
+
+describe('"Open in canvas" on a code block', () => {
+  // ⚠️ WHAT THESE PIN. The button exists only (1) once the reply has finished streaming, (2) while a canvas is
+  // mounted somewhere (`registerHost`), (3) for a language on the artifact allowlist, (4) within 200 KB. html / svg
+  // say "Preview" and land on the Preview tab; everything else says "Open in canvas". Flipping `streaming` must not
+  // re-parse a block: the flag reaches CodeBlock through context.
+  let unregister: (() => void) | null = null;
+  const mountHost = () => {
+    unregister = useArtifactStore.getState().registerHost();
+  };
+  beforeEach(() => resetArtifactStore());
+  // Runs before RTL's own cleanup (a nested afterEach), so the blocks are still mounted: the store update needs act.
+  afterEach(() =>
+    act(() => {
+      unregister?.();
+      unregister = null;
+    }),
+  );
+  const canvasButton = (container: HTMLElement) => container.querySelector('[data-md-open-canvas]');
+
+  it('is absent when no canvas is mounted, even on a finished reply', () => {
+    const { container, getByRole } = render(<MarkdownView source={'```python\nprint(1)\n```'} locale="en" />);
+    expect(canvasButton(container)).toBeNull();
+    expect(getByRole('button', { name: 'Copy' })).toBeTruthy(); // Copy is unaffected
+  });
+
+  it('is absent while the reply streams and appears when it finishes, without re-parsing the block', () => {
+    mountHost();
+    const src = 'Here:\n\n```python\nprint(1)\n```';
+    const { container, rerender, queryByRole, getByRole } = render(<MarkdownView source={src} streaming locale="en" />);
+    expect(canvasButton(container)).toBeNull();
+    expect(queryByRole('button', { name: 'Open in canvas' })).toBeNull();
+    mockLoads().parses.length = 0;
+    rerender(<MarkdownView source={src} locale="en" />);
+    expect(getByRole('button', { name: 'Open in canvas' })).toBeTruthy();
+    expect(mockLoads().parses).toEqual([]);
+  });
+
+  it('appears once a canvas mounts, and goes when it unmounts', () => {
+    const { container } = render(<MarkdownView source={'```js\nx()\n```'} locale="en" />);
+    expect(canvasButton(container)).toBeNull();
+    act(() => mountHost());
+    expect(canvasButton(container)).toBeTruthy();
+    act(() => {
+      unregister?.();
+      unregister = null;
+    });
+    expect(canvasButton(container)).toBeNull();
+  });
+
+  it('html and svg say "Preview"; other languages and unlabelled fences say "Open in canvas"', () => {
+    mountHost();
+    const { container } = render(
+      <MarkdownView source={'```html\n<p>a</p>\n```\n\n```svg\n<svg/>\n```\n\n```ts\nlet a = 1;\n```\n\n```\nplain\n```'} locale="en" />,
+    );
+    const buttons = Array.from(container.querySelectorAll('[data-md-open-canvas]'));
+    expect(buttons.map((b) => [b.getAttribute('data-md-open-canvas'), b.getAttribute('aria-label')])).toEqual([
+      ['html', 'Preview'],
+      ['svg', 'Preview'],
+      ['typescript', 'Open in canvas'],
+      ['text', 'Open in canvas'],
+    ]);
+  });
+
+  it('is absent for a language off the allowlist and for code over 200 KB', () => {
+    mountHost();
+    const big = 'x'.repeat(MAX_ARTIFACT_CODE_BYTES + 10);
+    const { container } = render(<MarkdownView source={`\`\`\`mermaid\ngraph TD\n\`\`\`\n\n\`\`\`text\n${big}\n\`\`\``} locale="en" />);
+    expect(container.querySelectorAll('[data-md-code]')).toHaveLength(2);
+    expect(canvasButton(container)).toBeNull();
+  });
+
+  it('localizes the label (Georgian)', () => {
+    mountHost();
+    const { getByRole } = render(<MarkdownView source={'```html\n<p>a</p>\n```\n\n```py\nx\n```'} locale="ka" />);
+    expect(getByRole('button', { name: 'გადახედვა' })).toBeTruthy();
+    expect(getByRole('button', { name: 'კანვასში გახსნა' })).toBeTruthy();
+  });
+
+  it('opens the raw code in the canvas store, html on the Preview tab', async () => {
+    mountHost();
+    await act(async () => {
+      await loadHighlightExtension(); // the click must read the code back out of the highlighted token spans
+    });
+    const html = '<!doctype html>\n<title>Clock</title>\n<p>12:00</p>';
+    const { getByRole } = render(<MarkdownView source={`\`\`\`html\n${html}\n\`\`\`\n\n\`\`\`python\nprint("გამარჯობა")\n\`\`\``} locale="en" />);
+    await settle();
+    fireEvent.click(getByRole('button', { name: 'Preview' }));
+    expect(useArtifactStore.getState()).toMatchObject({
+      open: true,
+      tab: 'preview',
+      current: { id: 'html:clock', title: 'Clock', language: 'html', code: html },
+    });
+    fireEvent.click(getByRole('button', { name: 'Open in canvas' }));
+    expect(useArtifactStore.getState()).toMatchObject({ tab: 'code', current: { language: 'python', code: 'print("გამარჯობა")' } });
+  });
+});
+
+describe('HighlightedCode (the canvas Code tab)', () => {
+  it('renders the code exactly, highlighted with the chat theme, with no header or buttons', async () => {
+    await act(async () => {
+      await loadHighlightExtension();
+    });
+    const code = 'const a = 1;\n// ქართული\n';
+    const { container } = render(<HighlightedCode code={code} language="ts" />);
+    await settle();
+    const pre = container.querySelector('[data-artifact-code]')!;
+    expect(pre.textContent).toBe(`${code}\n`);
+    expect(container.querySelector('.hljs-keyword')?.textContent).toBe('const');
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.querySelector('[data-md-code]')).toBeNull();
+  });
+
+  it('code containing a fence cannot close its own block', () => {
+    const code = 'before\n```\nnot the end\n````\nafter';
+    expect(fenceCode(code, 'markdown').startsWith('`````markdown\n')).toBe(true);
+    const { container } = render(<HighlightedCode code={code} language="markdown" />);
+    expect(container.querySelectorAll('pre')).toHaveLength(1);
+    expect(container.querySelector('pre')!.textContent).toBe(`${code}\n`);
+  });
+
+  it('never renders markup in the code as HTML', () => {
+    const { container } = render(<HighlightedCode code={'<img src=x onerror="alert(1)"><script>alert(2)</script>'} language="html" />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.textContent).toContain('<script>alert(2)</script>');
   });
 });

@@ -47,6 +47,7 @@ import type { Transition, VeoTier } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
+import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
 import { ModelSwitcher, OPEN_PERSONA_EVENT, selectPersona, useActivePersona } from '@/components/chat/ModelSwitcher';
 import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@/lib/chat/chatModes';
 import { getChatMode } from '@/lib/chat/chatModeStore';
@@ -9016,6 +9017,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       </Portal>
     </div>
     </div>
+    <ArtifactCanvas locale={locale} />
 
     {/* „პარამეტრები" — ONE element at ONE position in the tree for every width: the right column of AI Studio on a
         desktop (open by default), Gemini's bottom sheet below `lg`. Only its classes change with the width.
