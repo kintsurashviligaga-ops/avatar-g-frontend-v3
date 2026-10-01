@@ -173,6 +173,12 @@ export interface DirectorCallOptions {
   act?: number;
   /** 1 on the first try, 2 on the retry. */
   attempt: number;
+  /**
+   * Set only by a caller's deadline wrapper (api.runDirectorWithDeadline), never by the Director: the most this one
+   * call may take, and the signal that aborts it when the whole storyboard runs out of time.
+   */
+  timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 /** The injected LLM call. A thrown error, null or '' all read as "no usable reply". */

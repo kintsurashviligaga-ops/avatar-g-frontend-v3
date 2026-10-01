@@ -81,3 +81,25 @@ test('both SECURITY DEFINER functions pin search_path and are executable by serv
     expect(SQL).not.toMatch(new RegExp(`grant execute on function public\\.${name}[^;]*to (public|anon|authenticated)`));
   }
 });
+
+test('a job is inserted `directing` by default, and a directing job is claimable only once its deadline passed', () => {
+  expect(SQL).toContain("status text not null default 'directing'");
+  const jobs = between('create or replace function public.claim_longform_jobs', '$$;');
+  // Active statuses stay claimable as before; `directing` is NOT among them (its scenes may still be being written)…
+  expect(jobs).toContain("(c.status in ('planned', 'rendering', 'stitching') or c.refunds_pending");
+  expect(jobs).not.toMatch(/c\.status in \([^)]*'directing'/);
+  // …only a directing job whose (short) deadline has passed — a create that died mid-write — is handed to a tick.
+  expect(jobs).toContain("or (c.status = 'directing' and c.deadline_at < now())");
+  // The partial index still covers every row the claim can pick.
+  expect(SQL).toContain("where status in ('directing', 'planned', 'rendering', 'stitching') or refunds_pending;");
+});
+
+test('the 8 s grid stays the rule; the nullable trim only ever cuts into the last clip', () => {
+  const table = between('create table if not exists public.longform_jobs', 'create index');
+  expect(table).toContain('trim_to_seconds integer,');
+  expect(table).not.toContain('trim_to_seconds integer not null');
+  expect(table).toContain('check (trim_to_seconds is null or (trim_to_seconds >= 1 and trim_to_seconds < seconds and trim_to_seconds > seconds - 8))');
+  // The grid checks are untouched.
+  expect(table).toContain('check (seconds between 8 and 240 and seconds % 8 = 0)');
+  expect(table).toContain('check (scene_count * 8 = seconds)');
+});

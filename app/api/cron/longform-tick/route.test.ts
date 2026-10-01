@@ -141,6 +141,19 @@ describe('running the tick', () => {
     expect(mockOpsMarker).toHaveBeenCalledWith('warn', 'longform_tick', expect.objectContaining({ refundMisses: 1 }));
   });
 
+  test('…including a film the Library did not get, or scene media storage would not delete', async () => {
+    for (const trouble of [{ fileMisses: 1 }, { cleanupMisses: 2 }]) {
+      mockOpsMarker.mockReset();
+      mockRunTick.mockResolvedValue({ ...emptyReport(), stitched: 1, ...trouble });
+      await ok();
+      expect(mockOpsMarker).toHaveBeenCalledWith('warn', 'longform_tick', expect.objectContaining(trouble));
+    }
+    mockOpsMarker.mockReset();
+    mockRunTick.mockResolvedValue({ ...emptyReport(), stitched: 1, filed: 1 });
+    await ok();
+    expect(mockOpsMarker).not.toHaveBeenCalled();
+  });
+
   test('wired to the REAL tick with fake deps: an empty queue is a clean no-op', async () => {
     const calls: string[] = [];
     const deps: LongformTickDeps = {

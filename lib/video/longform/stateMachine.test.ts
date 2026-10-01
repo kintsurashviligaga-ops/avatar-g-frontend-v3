@@ -220,6 +220,7 @@ describe('backoff and the failure budget', () => {
 // ── Job events ───────────────────────────────────────────────────────────────────────────────────────────────
 
 const JOB_EVENTS: JobEvent[] = [
+  { type: 'directed' },
   { type: 'start' },
   { type: 'all_rendered' },
   { type: 'stitch_ok', url: 'https://cdn/film.mp4' },
@@ -230,12 +231,13 @@ const JOB_EVENTS: JobEvent[] = [
   { type: 'release_hold' },
 ];
 const JOB_LEGAL_FROM: Record<JobEvent['type'], JobStatus[]> = {
+  directed: ['directing'],
   start: ['planned'],
   all_rendered: ['rendering'],
   stitch_ok: ['stitching'],
   stitch_failed: ['stitching'],
-  fail: ['planned', 'rendering', 'stitching'],
-  cancel: ['planned', 'rendering', 'stitching'],
+  fail: ['directing', 'planned', 'rendering', 'stitching'],
+  cancel: ['directing', 'planned', 'rendering', 'stitching'],
   hold: ['planned', 'rendering'],
   release_hold: JOB_STATUSES.slice(), // legal whenever a hold exists (see below)
 };
@@ -299,6 +301,25 @@ describe('refundableScenes — "you pay for the clips you receive"', () => {
 // ── settle ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('settle — job-level decisions', () => {
+  test('directing is never started by a tick: it waits for the route\'s `directed`, then for nothing', () => {
+    const queued = film(3, 12, () => ({ chargeRef: null, chargeCredits: 0 }));
+    const s = settle(job({ status: 'directing' }), queued, T0);
+    expect(s).toMatchObject({ job: { status: 'directing' }, changed: [], refund: [], stitch: false });
+    // Even with NO scene rows yet (the route is between its inserts) — never `no_scenes`.
+    expect(settle(job({ status: 'directing' }), [], T0).job.status).toBe('directing');
+    const t = applyJobEvent(job({ status: 'directing' }), { type: 'directed' });
+    expect(t.ok && t.job.status).toBe('planned');
+  });
+
+  test('directing past its deadline: the create died mid-write → failed, nothing charged so nothing refunded', () => {
+    const queued = film(2, 12, () => ({ chargeRef: null, chargeCredits: 0 }));
+    const s = settle(job({ status: 'directing', deadlineAt: T0 }), queued, T0);
+    expect(s.job).toMatchObject({ status: 'failed', errorCode: 'directing_abandoned' });
+    expect(s.scenes.every((x) => x.status === 'failed')).toBe(true);
+    expect(s.refund).toEqual([]);
+    expect(settle(job({ status: 'directing', cancelRequested: true }), queued, T0).job).toMatchObject({ status: 'canceled', errorCode: 'canceled_by_user' });
+  });
+
   test('planned → rendering on the first tick', () => {
     const s = settle(job({ status: 'planned' }), film(3), T0);
     expect(s.job.status).toBe('rendering');

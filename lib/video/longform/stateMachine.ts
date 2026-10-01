@@ -1,9 +1,13 @@
 /**
  * lib/video/longform/stateMachine.ts — the long-form render queue's rules, as PURE functions.
  *
- *   job:   planned → rendering → stitching → done
- *                  ↘ failed     ↘ failed
+ *   job:   directing → planned → rendering → stitching → done
+ *                ↘ failed (abandoned)  ↘ failed     ↘ failed
  *          (any non-terminal) → canceled
+ *
+ *   `directing` = the create route is still writing the job's rows (job first, then its scenes). Only the route
+ *   promotes it (event `directed`); the tick never starts one, and fails it as `directing_abandoned` at its short
+ *   deadline — a create that died between its inserts. Nothing is charged before `planned`.
  *   scene: queued → submitted → rendering → delivered
  *                 ↘ (provable rejection: back to queued, with backoff)   ↘ failed
  *
@@ -32,11 +36,11 @@
  */
 import type { VeoCreateOutcome } from '@/lib/veo/types';
 
-export type JobStatus = 'planned' | 'rendering' | 'stitching' | 'done' | 'failed' | 'canceled';
+export type JobStatus = 'directing' | 'planned' | 'rendering' | 'stitching' | 'done' | 'failed' | 'canceled';
 export type SceneStatus = 'queued' | 'submitted' | 'rendering' | 'delivered' | 'failed';
 export type HoldReason = 'insufficient_credits' | 'billing_unavailable' | 'platform_budget' | 'provider_unavailable';
 
-export const JOB_STATUSES: readonly JobStatus[] = ['planned', 'rendering', 'stitching', 'done', 'failed', 'canceled'];
+export const JOB_STATUSES: readonly JobStatus[] = ['directing', 'planned', 'rendering', 'stitching', 'done', 'failed', 'canceled'];
 export const SCENE_STATUSES: readonly SceneStatus[] = ['queued', 'submitted', 'rendering', 'delivered', 'failed'];
 
 export const isTerminalJob = (s: JobStatus): boolean => s === 'done' || s === 'failed' || s === 'canceled';
@@ -248,6 +252,8 @@ export function applySceneEvent(scene: SceneState, event: SceneEvent, cfg: Machi
 // ── Job transitions ──────────────────────────────────────────────────────────────────────────────────────────
 
 export type JobEvent =
+  /** The create route wrote every scene row: the job may now be claimed and started. */
+  | { type: 'directed' }
   | { type: 'start' }
   | { type: 'all_rendered' }
   | { type: 'stitch_ok'; url: string }
@@ -263,6 +269,8 @@ export function applyJobEvent(job: JobState, event: JobEvent): JobTransition {
   const ok = (next: JobState): JobTransition => ({ ok: true, job: next });
   const bad = (): JobTransition => ({ ok: false, reason: `illegal_transition: ${event.type} on a ${job.status} job` });
   switch (event.type) {
+    case 'directed':
+      return job.status === 'directing' ? ok({ ...job, status: 'planned' }) : bad();
     case 'start':
       return job.status === 'planned' ? ok({ ...job, status: 'rendering' }) : bad();
     case 'all_rendered':
@@ -349,6 +357,13 @@ export function settle(job: JobState, scenes: readonly SceneState[], now: number
     if (j.cancelRequested) {
       j = mustJob(j, { type: 'cancel' });
       abandonAll('canceled');
+    } else if (j.status === 'directing') {
+      // ⚠️ NEVER STARTED FROM HERE: a directing job may not have all its scene rows yet (the route writes the job
+      // first). Only the route's `directed` promotes it; past its deadline its create died mid-write → fail it.
+      if (now >= j.deadlineAt) {
+        j = mustJob(j, { type: 'fail', code: 'directing_abandoned' });
+        abandonAll('directing_abandoned');
+      }
     } else if ((j.status === 'planned' || j.status === 'rendering') && now >= j.deadlineAt) {
       const code = j.holdReason === 'insufficient_credits' ? 'deadline_insufficient_credits' : 'deadline';
       j = mustJob(j, { type: 'fail', code });
