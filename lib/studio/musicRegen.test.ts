@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, type MusicRegenSpec } from './musicRegen';
+import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from './musicRegen';
 
 /**
  * The music RE-ROLL must re-run the request that produced the track. It used to POST only prompt / style /
@@ -61,5 +61,39 @@ describe('music re-roll spec → /api/ai/music body', () => {
     const notANumber = { ...junk, durationSec: '90' } as unknown as MusicRegenSpec;
     expect(musicRegenBody(notANumber)).not.toHaveProperty('durationSec');
     expect(musicRegenBilledSeconds(notANumber)).toBe(30);
+  });
+});
+
+describe('the template card rides with the request and its re-roll (lib/studio/templateContext adds its descriptor)', () => {
+  const FOLK = { prompt: 'a wedding toast', genre: 'folk', instrumental: false, durationSec: 60, tempo: 'medium', voiceType: 'female' } as const;
+
+  test('the id the request\'s own values select is the one the route will re-derive', () => {
+    expect(musicRequestTemplateId(FOLK)).toBe('georgian-folk');
+    expect(musicRequestTemplateId({ ...FOLK, voiceType: 'male' })).toBeNull();
+    // An absent length is the route's 30 s default, so it cannot select a 60 s card.
+    expect(musicRequestTemplateId({ genre: 'folk', instrumental: false, tempo: 'medium', voiceType: 'female' })).toBeNull();
+    // An instrumental card matches whatever (absent) vocal was sent.
+    expect(musicRequestTemplateId({ genre: 'lo-fi', instrumental: true, durationSec: 60, tempo: 'slow' })).toBe('lofi-chill');
+  });
+
+  test('a Georgian Folk track re-rolls WITH its template id', () => {
+    const spec = makeMusicRegenSpec({ ...FOLK, templateId: 'georgian-folk' });
+    expect(spec.templateId).toBe('georgian-folk');
+    expect(musicRegenBody(spec)).toEqual({
+      prompt: 'a wedding toast', style: 'folk', instrumental: false, durationSec: 60, tempo: 'medium', voiceType: 'female', templateId: 'georgian-folk',
+    });
+  });
+
+  test('a stored id its own values no longer select — or a malformed one — is dropped, not re-sent', () => {
+    expect(makeMusicRegenSpec({ ...FOLK, durationSec: 30, templateId: 'georgian-folk' })).not.toHaveProperty('templateId');
+    expect(makeMusicRegenSpec({ ...FOLK, templateId: 'lofi-chill' })).not.toHaveProperty('templateId');
+    expect(makeMusicRegenSpec({ ...FOLK, templateId: '../georgian-folk' })).not.toHaveProperty('templateId');
+    expect(makeMusicRegenSpec({ ...FOLK, templateId: null })).not.toHaveProperty('templateId');
+    const junk = { kind: 'music', ...FOLK, templateId: { evil: true } } as unknown as MusicRegenSpec;
+    expect(musicRegenBody(junk)).not.toHaveProperty('templateId');
+  });
+
+  test('a spec without one (any older build, or no card lit) sends none', () => {
+    expect(musicRegenBody(makeMusicRegenSpec(FOLK))).not.toHaveProperty('templateId');
   });
 });

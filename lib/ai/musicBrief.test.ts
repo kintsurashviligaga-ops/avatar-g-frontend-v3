@@ -61,6 +61,35 @@ describe('instrumental is stated once and never contradicted', () => {
   });
 });
 
+describe('a template descriptor is boilerplate, not the user (lib/studio/templateContext)', () => {
+  const FOLK = 'Georgian polyphonic folk: three-part choral harmony behind the lead voice, panduri and chonguri strings';
+
+  it('the Georgian Folk brief carries the descriptor and keeps the user prompt and lyrics', () => {
+    const b = buildMusicBrief({ prompt: 'a toast for a wedding in Telavi', style: 'folk', templateDescriptor: FOLK, vocalDescriptor: 'female vocals', lyrics: 'გაუმარჯოს!' });
+    expect(b.prompt).toBe(`a toast for a wedding in Telavi Style: folk. ${FOLK}. female vocals.`);
+    expect(b.lyrics).toBe('გაუმარჯოს!');
+  });
+
+  it('sits in the reserved suffix: a full-length brief is trimmed to make room, and the descriptor survives whole', () => {
+    const b = buildMusicBrief({ prompt: 'x'.repeat(PROMPT_BUDGET), style: 'folk', templateDescriptor: FOLK });
+    expect(b.prompt.length).toBeLessThanOrEqual(PROMPT_BUDGET);
+    expect(b.prompt).toContain(`${FOLK}.`);
+    expect(b.truncated.prompt).toBe(true);
+  });
+
+  it('is one line with one full stop, whatever whitespace or punctuation it arrived with', () => {
+    const b = buildMusicBrief({ prompt: 'p', templateDescriptor: `  ${FOLK.replace(': ', ':\n')}. \n` });
+    expect(b.prompt).toBe(`p ${FOLK}.`);
+  });
+
+  it('absent or blank → the brief is exactly what it was', () => {
+    for (const templateDescriptor of [undefined, '', '   ']) {
+      expect(buildMusicBrief({ prompt: 'ambient bed', style: 'ambient', templateDescriptor, instrumental: true }).prompt)
+        .toBe('ambient bed Style: ambient. Instrumental, no vocals.');
+    }
+  });
+});
+
 describe('flatten — for engines that take a single string', () => {
   it('keeps the lyrics whole and trims the DESCRIPTION when space runs out', () => {
     const brief = buildMusicBrief({ prompt: 'p'.repeat(1400), lyrics: 'L'.repeat(200) });

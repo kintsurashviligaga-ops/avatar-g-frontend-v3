@@ -30,8 +30,8 @@ import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import {
   AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues,
-  matchAvatarTemplate, matchImageTemplate, matchMusicTemplate, matchVideoTemplate, musicTemplateValues, templateLang,
-  videoTemplateValues,
+  matchAvatarTemplate, matchImageTemplate, matchMusicTemplate, matchVideoTemplate, musicTemplateValues, templateAddsLine,
+  templateLang, videoTemplateValues,
 } from '@/lib/studio/templates';
 import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
@@ -97,7 +97,7 @@ import type { PanelService } from './ServiceParamsPanel';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
-import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, type MusicRegenSpec } from '@/lib/studio/musicRegen';
+import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { describeServiceError } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -853,7 +853,14 @@ interface Media { dataUrl: string; mimeType: string; /** The original file name 
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
-type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string };
+// `templateId`: the template card these values selected when the request was made (lib/studio/templates) — sent with
+// the request AND its re-roll, so both get the card's server-resolved context (the route re-checks the match).
+type ImageRegenSpec = { kind: 'image'; prompt: string; quality: ImgQuality; aspect: ImgAspect; style: string; referenceImage?: string; negativePrompt?: string; templateId?: string };
+/** The spec's `templateId` field: the card these values select right now (derived, never stored on the panel). */
+function imageTemplateField(v: { aspect: string; quality: string; style: string }): { templateId?: string } {
+  const id = matchImageTemplate(v);
+  return id ? { templateId: id } : {};
+}
 // MusicRegenSpec (+ duration / tempo / voice, and the body built from it) lives in lib/studio/musicRegen — tested there.
 type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // A grid of N image variations generated together (the ×2 / ×4 batch). Each tile
@@ -906,6 +913,9 @@ interface FilmSnap {
   /** Per-scene length (4-8s) the storyboard derived from the script's own timecodes; undefined = the
    *  default 8s grid. Rides in the snapshot so a QUEUED film keeps the grid it was planned on. */
   clipSec?: number;
+  /** The video template card the panel selected at submit (matchVideoTemplate) — sent as `templateId` so the render
+   *  gets the card's server-resolved look, like the storyboard did. Absent when no card is lit. */
+  videoTemplateId?: string;
 }
 
 interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
@@ -2948,6 +2958,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript, motionIntensity,
+      videoTemplateId,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -3048,6 +3059,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         musicVideoMode: isMusicVideo,
         // FIX B — the chosen effect reaches the CLIP prompts (not just the frames).
         style: videoStyle,
+        // …and the lit template card's id, so the clips get the same server-resolved look the storyboard frames did.
+        ...(videoTemplateId ? { templateId: videoTemplateId } : {}),
         // FIX A — the Prompt-Agent locked character → identical protagonist every clip.
         ...(characterLock?.trim() ? { characterLock: characterLock.trim() } : {}),
         ...(isMusicVideo ? { vocalGender: videoVocalGender } : {}),
@@ -3203,7 +3216,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (mine()) {
           try {
             const sc = sceneCountForDuration(videoDuration);
-            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, locale, sceneCount: sc, characterAnchor: true }) });
+            const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true }) });
             const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
             if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
           } catch { /* fall through */ }
@@ -3390,6 +3403,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       motionIntensity: veoPlan.cameraDefault.intensity,
       ...(clipSec ? { clipSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
+      ...(activeVideoPreset ? { videoTemplateId: activeVideoPreset } : {}),
     };
     if (!ENABLE_PARALLEL_CINEMA) {
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
@@ -3414,7 +3428,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, activeVideoPreset]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -3725,6 +3739,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
     const sceneCount = sceneCountForDuration(videoDuration);
+    // The lit template card's id on every storyboard call, so the board is planned with the look the render will use.
+    const templateRef = activeVideoPreset ? { templateId: activeVideoPreset } : {};
     try {
       // STEP 1 — fast PLAN-ONLY call: deterministic scene beats, no LLM, no frames.
       // Returns in ~1s so the board opens immediately (no long "frozen" wait).
@@ -3738,7 +3754,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // returns null → brief-driven plan untouched), so a music video with a written treatment gets its
         // scenes honoured while a freeform brief is unaffected. (Spoken multi-voice casting stays doc-only
         // at the RENDER path above — a music video's audio is the song, not TTS dialogue.)
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, ...templateRef, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; clipSec?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null; hostedRefs?: string[] | null };
       // The plan call above already hosted every attached photo to a signed Supabase URL. Reuse THOSE
@@ -3808,7 +3824,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // INVENTS a persona (the "30-year-old man in a skydiver suit" drift). With refs it locks the real subject
             // and the route vision-extracts the actual character from the photo.
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, ...templateRef, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
           });
           const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null; masterBrief?: { scenes?: unknown } | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
@@ -3854,7 +3870,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         try {
           const ar = await fetch('/api/film/storyboard', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, style: videoStyle, locale, sceneCount, characterAnchor: true }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, style: videoStyle, ...templateRef, locale, sceneCount, characterAnchor: true }),
           });
           const aj = (await ar.json().catch(() => ({}))) as { success?: boolean; anchorUrl?: string | null };
           if (aj.success && typeof aj.anchorUrl === 'string' && aj.anchorUrl) {
@@ -3883,7 +3899,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal: ac.signal,
-              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
+              body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: anchorRefs, style: videoStyle, ...templateRef, locale, sceneOrdinal: ordinal, scenePrompt: framePrompts[ordinal] }),
             });
             const jf = (await r.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
             const url = jf.success && typeof jf.frameUrl === 'string' ? jf.frameUrl : null;
@@ -3919,7 +3935,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts]);
+  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts, activeVideoPreset]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
   // a hot-reload of just this one scene's agent thread, never the master loop. An
@@ -3945,7 +3961,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
+        body: JSON.stringify({ prompt: storyboard.filmPrompt, orientation: storyboard.orientation, referenceImages: refsForScene, style: videoStyle, ...(activeVideoPreset ? { templateId: activeVideoPreset } : {}), locale, sceneOrdinal: ordinal, ...((scene?.edited && scene.prompt.trim()) ? { scenePrompt: scene.prompt.trim() } : (storyboard.framePrompts?.[ordinal] ? { scenePrompt: storyboard.framePrompts[ordinal] } : {})) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; frameUrl?: string | null };
       if (j.success && typeof j.frameUrl === 'string') {
@@ -3961,7 +3977,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setRegenningOrdinal(null);
     }
-  }, [storyboard, regenningOrdinal, videoStyle, locale]);
+  }, [storyboard, regenningOrdinal, videoStyle, locale, activeVideoPreset]);
 
   // Edit a storyboard scene's shot description in place (Storyboard scene editing).
   // The edit is used when re-rolling that scene's frame AND threaded into the final
@@ -4049,7 +4065,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
             : musicRegenBody(spec),
         ),
         credentials: 'include',
@@ -4152,7 +4168,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.any([signal, deadline]),
-          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
         }).catch((e: unknown) => {
           // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
           // rejection escapes, because the floating tray is hidden while only one job is active
@@ -4239,7 +4255,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal,
-              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}) }),
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
             });
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
             onProgress({ pct: 100 });
@@ -4368,6 +4384,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Cover / voice: host the attached track first so the request body stays tiny.
         const uploadedAudioUrl = m.audioRef ? await uploadBigFile(m.audioRef, m.audioMime || 'audio/mpeg') : undefined;
         const isVoiceClone = !!uploadedAudioUrl && m.audioMode === 'voice' && !m.useTrained;
+        // The template card THIS body selects (the route re-derives it from the same fields). Only a composed track
+        // carries it: a cover or a cloned/trained voice keeps its own source, and the route adds no descriptor there.
+        const templateId = uploadedAudioUrl || m.useTrained ? null : musicRequestTemplateId({
+          genre: m.genre, tempo: m.tempo, durationSec: m.duration, instrumental: m.instrumental,
+          ...(!m.instrumental ? { voiceType: m.voiceType } : {}),
+        });
         const res = await fetch('/api/ai/music', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4375,6 +4397,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           signal,
           body: JSON.stringify({
             prompt: m.prompt, style: m.genre, durationSec: m.duration, tempo: m.tempo, jobId,
+            ...(templateId ? { templateId } : {}),
             ...(m.useTrained ? { useMyVoice: true } : {}),
             instrumental: (m.useTrained || isVoiceClone) ? false : m.instrumental,
             ...(!m.instrumental && !m.useTrained && !isVoiceClone ? { voiceType: m.voiceType } : {}),
@@ -4396,6 +4419,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), regen: makeMusicRegenSpec({
             prompt: m.prompt, genre: m.genre, instrumental: sungByUser ? false : m.instrumental, lyrics: m.lyrics,
             durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { voiceType: m.voiceType }),
+            templateId,
           }) });
           notifyCredit('music', { seconds: coverBilledFlat30 ? 30 : (m.duration === 0 ? 90 : m.duration) });
           return j.url;
@@ -4613,7 +4637,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!p) return;
     if (service === 'image') {
       const neg = imgNegative.trim();
-      const spec: ImageRegenSpec = { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(neg ? { negativePrompt: neg } : {}) };
+      const spec: ImageRegenSpec = { kind: 'image', prompt: p, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(neg ? { negativePrompt: neg } : {}), ...imageTemplateField({ aspect: imgAspect, quality: imgQuality, style: imgStyle }) };
       runImageJob(p, undefined, spec);
     } else if (service === 'music') {
       runMusicJob({
@@ -4905,7 +4929,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
       const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
       const neg = imgNegative.trim();
-      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}) };
+      const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...imageTemplateField({ aspect: imgAspect, quality: imgQuality, style: imgStyle }) };
       if (imgCount > 1) runImageBatch(spec, imgCount);
       else runImageJob(text, ref, spec);
       setInput('');
@@ -5029,7 +5053,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const rawRef = attachments.find((a) => isImage(a.mimeType))?.dataUrl;
         const ref = rawRef ? await downscaleDataUrl(rawRef) : undefined;
         const neg = imgNegative.trim();
-        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}) };
+        const spec: ImageRegenSpec = { kind: 'image', prompt: text, quality: imgQuality, aspect: imgAspect, style: imgStyle, ...(ref ? { referenceImage: ref } : {}), ...(neg ? { negativePrompt: neg } : {}), ...imageTemplateField({ aspect: imgAspect, quality: imgQuality, style: imgStyle }) };
         if (imgCount > 1) runImageBatch(spec, imgCount); else runImageJob(text, ref, spec);
         setInput(''); setAttachments([]); stopDictationEcho();
         return;
@@ -6976,6 +7000,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 items={IMAGE_TEMPLATES.map((tp) => ({
                   id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
                   thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
+                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
                 }))}
                 activeId={activeImagePreset}
                 onPick={applyImagePreset}
@@ -7246,6 +7271,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
                   thumb: tp.thumb, palette: tp.palette, Icon: Film,
                   meta: `${ORIENT_ASPECT[tp.values.orientation]} · ${tp.values.duration}${locale === 'en' ? 's' : locale === 'ru' ? ' с' : 'წმ'}`,
+                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
                 }))}
                 activeId={activeVideoPreset}
                 onPick={applyVideoPreset}
@@ -7904,6 +7930,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
                 thumb: tp.thumb, palette: tp.palette, Icon: Music2,
                 meta: tp.hint[templateLang(locale)],
+                adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
               }))}
               activeId={activePresetId}
               onPick={applyMusicPreset}

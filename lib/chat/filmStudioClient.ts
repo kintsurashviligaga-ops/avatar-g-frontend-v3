@@ -248,6 +248,9 @@ export interface DriveFilmOptions {
   /** The Video-panel effect (Cinematic / Vintage / Neon …). Threaded to the render so
    *  the CLIP prompts' style guide matches the chosen look (was only on the frames). */
   style?: string;
+  /** The video template card the panel's values selected at submit (lib/studio/templates) — an ID only. The server
+   *  resolves its look + director note (lib/studio/templateContext), the same way the storyboard route did. */
+  templateId?: string;
   /** Prompt-Agent locked character fragment (from /api/film/storyboard) — injected
    *  verbatim into every clip prompt so the protagonist never drifts shot-to-shot. */
   characterLock?: string;
@@ -779,6 +782,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           ...(opts.musicVideoMode ? { musicVideoMode: true } : {}),
           // The chosen effect → the clip prompts' style guide (was only on the frames).
           ...(opts.style ? { style: opts.style } : {}),
+          // The template card's id → the server adds its look (only while the style + mode still select it).
+          ...(opts.templateId ? { templateId: opts.templateId } : {}),
           // Prompt-Agent locked character → injected verbatim into every clip prompt.
           ...(opts.characterLock?.trim() ? { characterLock: opts.characterLock.trim() } : {}),
           ...(opts.masterScript?.trim() ? { masterScript: opts.masterScript.trim().slice(0, 20_000) } : {}),

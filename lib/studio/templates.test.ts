@@ -4,9 +4,9 @@ import { join } from 'path';
 import { IMAGE_PRESETS } from '@/lib/image/imagePresets';
 import { VIDEO_PRESETS } from '@/lib/video/videoPresets';
 import {
-  AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, TEMPLATES_BY_TOOL, VIDEO_TEMPLATES,
+  AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, TEMPLATES_BY_TOOL, TEMPLATE_ID_RX, VIDEO_TEMPLATES,
   avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
-  matchVideoTemplate, musicTemplateValues, templateLang, videoTemplateValues,
+  matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
 } from './templates';
 
 // The panels' own option lists (components/studio/OmniStudio.tsx). A template may only set values a control can show.
@@ -35,6 +35,38 @@ describe('every gallery', () => {
   test('templateLang falls back to Georgian', () => {
     expect(templateLang('en')).toBe('en');
     expect(templateLang('de')).toBe('ka');
+  });
+
+  test.each(Object.entries(TEMPLATES_BY_TOOL))('%s: every id is a valid wire id (the server rejects anything else)', (_tool, list) => {
+    for (const t of list) expect(t.id).toMatch(TEMPLATE_ID_RX);
+  });
+});
+
+describe('the „Adds: …" disclosure (owner decision 2026-10-01 a)', () => {
+  test('every video, image and music card says what it adds, in all three languages, on one short line', () => {
+    for (const t of [...VIDEO_TEMPLATES, ...IMAGE_TEMPLATES, ...MUSIC_TEMPLATES]) {
+      for (const l of ['ka', 'en', 'ru'] as const) {
+        const line = templateAddsLine(t, l);
+        expect(line).not.toBeNull();
+        expect(line!).not.toMatch(/\n/);
+        expect(line!.length).toBeLessThanOrEqual(64); // it rides on a 3:4 card's meta row
+      }
+      expect(templateAddsLine(t, 'en')).toMatch(/^Adds: \S/);
+      expect(templateAddsLine(t, 'ka')).toMatch(/^ამატებს: \S/);
+      expect(templateAddsLine(t, 'ru')).toMatch(/^Добавляет: \S/);
+    }
+  });
+
+  test('a presenter card adds nothing (decision A-f)', () => {
+    for (const t of AVATAR_TEMPLATES) {
+      expect(templateAddsLine(t, 'en')).toBeNull();
+      expect(t).not.toHaveProperty('adds');
+    }
+  });
+
+  test('the Georgian Folk card names the choir it adds', () => {
+    const folk = MUSIC_TEMPLATES.find((t) => t.id === 'georgian-folk')!;
+    expect(templateAddsLine(folk, 'en')).toBe('Adds: Georgian polyphonic choir and panduri');
   });
 });
 
@@ -69,12 +101,22 @@ describe('image', () => {
       expect(IMG_ASPECTS).toContain(t.values.aspect);
     }
   });
-  test('every image preset is absorbed with its exact values', () => {
+  test('every image preset is absorbed — same aspect and style; a 4K preset became a 2K card (decision c)', () => {
     for (const p of IMAGE_PRESETS) {
       const t = IMAGE_TEMPLATES.find((x) => x.id === p.id)!;
       expect(t).toBeDefined();
-      expect(t.values).toEqual({ aspect: p.aspect, quality: p.quality, style: p.style });
+      expect(t.values).toEqual({ aspect: p.aspect, quality: p.quality === 'ultra' ? 'high' : p.quality, style: p.style });
     }
+  });
+  test('no card defaults to 4K (owner decision 2026-10-01 c): Product, Poster and Wallpaper start at 2K', () => {
+    for (const t of IMAGE_TEMPLATES) expect(t.values.quality).not.toBe('ultra');
+    for (const id of ['product', 'poster', 'wallpaper']) expect(imageTemplateValues(id)!.quality).toBe('high');
+    // …and no hint still promises 4K by default (a 2K card that says "at 4K" would describe a render it does not make).
+    for (const t of IMAGE_TEMPLATES) expect(t.hint.en).not.toMatch(/\bat 4K\b/);
+  });
+  test('choosing Ultra by hand is still possible — the card just stops being lit', () => {
+    const v = imageTemplateValues('product')!;
+    expect(matchImageTemplate({ ...v, quality: 'ultra' })).toBeNull();
   });
 });
 

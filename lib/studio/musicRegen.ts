@@ -9,8 +9,13 @@
  * body builder re-validates them, because the spec is persisted with the message (localStorage, any older build)
  * and a reloaded bubble re-rolls from whatever was stored.
  *
+ * The spec also records the TEMPLATE CARD the request selected (`templateId`, an id only), so a re-roll of a card's
+ * track gets the same server-resolved descriptor the original did (lib/studio/templateContext). It is kept only while
+ * the spec's own values still select that card, because the route re-checks exactly that and would ignore it anyway.
+ *
  * Pure and client-safe — imported by the studio component; the route clamps every field again server-side.
  */
+import { TEMPLATE_ID_RX, matchMusicTemplate } from '@/lib/studio/templates';
 
 export type MusicTempo = 'slow' | 'medium' | 'fast';
 export type MusicVoiceType = 'female' | 'male' | 'duet';
@@ -26,6 +31,8 @@ export type MusicRegenSpec = {
   tempo?: MusicTempo;
   /** Sung-vocal gender — a SONG only; never stored on an instrumental. */
   voiceType?: MusicVoiceType;
+  /** The template card the original request selected (lib/studio/templates) — absent when none applied. */
+  templateId?: string;
 };
 
 const TEMPOS: ReadonlySet<string> = new Set<MusicTempo>(['slow', 'medium', 'fast']);
@@ -38,17 +45,40 @@ function normDuration(v: unknown): number | undefined {
 }
 
 /**
+ * The template card a music request's OWN values select — what the route will re-derive from the same body
+ * (genre, tempo, length, instrumental, vocal; an absent length is the route's 30 s default). Pass what the request
+ * SENDS, not the raw panel: a trained or cloned voice sends no voiceType, and that changes which card matches.
+ */
+export function musicRequestTemplateId(v: {
+  genre: string; instrumental: boolean; durationSec?: number; tempo?: string; voiceType?: string;
+}): string | null {
+  return matchMusicTemplate({
+    genre: v.genre,
+    tempo: v.tempo ?? '',
+    duration: normDuration(v.durationSec) ?? 30,
+    instrumental: v.instrumental,
+    voiceType: v.voiceType ?? '',
+  });
+}
+
+/**
  * Build a re-roll spec from the values the original request ACTUALLY SENT (not the live panel — the user may
  * have changed it since). Lyrics and voiceType are dropped on an instrumental, exactly as the request drops them.
  */
 export function makeMusicRegenSpec(m: {
   prompt: string; genre: string; instrumental: boolean; lyrics?: string;
-  durationSec?: number; tempo?: string; voiceType?: string;
+  durationSec?: number; tempo?: string; voiceType?: string; templateId?: string | null;
 }): MusicRegenSpec {
   const durationSec = normDuration(m.durationSec);
   const tempo = typeof m.tempo === 'string' && TEMPOS.has(m.tempo) ? (m.tempo as MusicTempo) : undefined;
   const voiceType = !m.instrumental && typeof m.voiceType === 'string' && VOICES.has(m.voiceType) ? (m.voiceType as MusicVoiceType) : undefined;
   const lyrics = !m.instrumental && typeof m.lyrics === 'string' && m.lyrics.trim() ? m.lyrics : undefined;
+  // A persisted spec (localStorage, any older build) is re-validated like every other field: a malformed id, or one
+  // its own values no longer select, is dropped rather than re-sent.
+  const templateId = typeof m.templateId === 'string' && TEMPLATE_ID_RX.test(m.templateId)
+    && musicRequestTemplateId({ genre: m.genre, instrumental: m.instrumental, durationSec, tempo, voiceType }) === m.templateId
+    ? m.templateId
+    : undefined;
   return {
     kind: 'music',
     prompt: m.prompt,
@@ -58,6 +88,7 @@ export function makeMusicRegenSpec(m: {
     ...(durationSec !== undefined ? { durationSec } : {}),
     ...(tempo ? { tempo } : {}),
     ...(voiceType ? { voiceType } : {}),
+    ...(templateId ? { templateId } : {}),
   };
 }
 
@@ -72,6 +103,7 @@ export function musicRegenBody(spec: MusicRegenSpec): Record<string, unknown> {
     ...(s.tempo ? { tempo: s.tempo } : {}),
     ...(s.voiceType ? { voiceType: s.voiceType } : {}),
     ...(s.lyrics ? { lyrics: s.lyrics } : {}),
+    ...(s.templateId ? { templateId: s.templateId } : {}),
   };
 }
 

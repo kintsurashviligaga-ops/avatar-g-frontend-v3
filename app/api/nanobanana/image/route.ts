@@ -17,7 +17,9 @@ import { generateFluxProImage } from '@/lib/ai/fluxImage';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
-import { isKnownStyle, sanitizeStyle } from '@/lib/studio/style';
+import { sanitizeStyle } from '@/lib/studio/style';
+import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
+import { resolveTemplateContext } from '@/lib/studio/templateContext';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -32,22 +34,7 @@ const QUALITY_ENDPOINT: Record<string, NanoBananaEndpoint> = {
   ultra:    'pro-4k', //  4K Pro, 24 credits
 };
 
-// Style suffix enrichment — same as replicate schemas
-const STYLE_SUFFIXES: Record<string, string> = {
-  'Photorealistic': 'photorealistic, 8k uhd, sharp focus, dslr photography',
-  'Digital Art':    'digital art, vibrant colors, artstation, concept art, trending',
-  'Oil Painting':   'oil painting, brushstrokes, classical fine art, canvas texture',
-  'Watercolor':     'watercolor illustration, soft flowing colors, paper texture, delicate washes',
-  'Anime':          'anime style, manga, cel shaded, studio ghibli quality, clean line art',
-  'Sketch':         'detailed pencil sketch, graphite drawing, fine line art, cross-hatching',
-  '3D Render':      '3D render, octane render, cinema4d, photorealistic CGI, studio lighting',
-  'Cinematic':      'cinematic photography, film grain, dramatic lighting, anamorphic, color graded',
-  'Cyberpunk':      'cyberpunk, neon-lit futuristic dystopia, blade runner aesthetic, holographic signage, rain-soaked streets',
-  'Fantasy':        'epic fantasy art, magical ethereal lighting, detailed concept art, mythical atmosphere, painterly',
-  'Minimalist':     'minimalist, clean composition, generous negative space, simple flat design, muted palette',
-  'Line Art':       'clean line art, bold confident outlines, monochrome ink illustration, vector style',
-  'Pixel Art':      '16-bit pixel art, retro game sprite, dithering, limited palette, crisp pixels',
-};
+// The style directives (STYLE_SUFFIXES) and the prompt's assembly order live in lib/studio/composeImagePrompt.
 
 // Host a data: reference image to a signed https URL — NanoBanana's img2img only
 // accepts an https reference (extractImageUrls drops data: URLs), so a freshly
@@ -130,6 +117,8 @@ export async function POST(req: NextRequest) {
        *  duplicate double-clicks and 409s them. Folding the index into the key makes each tile of
        *  a batch its own claim, while a genuine double-click (same index) still dedupes. */
       batchTile?: number;
+      /** The template card the request's values select (lib/studio/templates) — an ID; its context is resolved here. */
+      templateId?: unknown;
     };
     const clientJobId = typeof body.jobId === 'string' ? body.jobId.slice(0, 120) : '';
 
@@ -142,6 +131,11 @@ export async function POST(req: NextRequest) {
     // ⚠️ `style` IS CLIENT TEXT THAT LANDS IN THE PAID PROMPT (lib/studio/style.ts): one line, ≤80 chars, no
     // control/bidi characters. Cleaned here, before the mutex key, so every use below sees the same value.
     const styleLabel = sanitizeStyle(body.style);
+    const quality = body.quality ?? 'high';
+    // ⚠️ THE TEMPLATE'S CONTEXT IS RESOLVED HERE, FROM ITS ID — never accepted as text (lib/studio/templateContext).
+    // Only when THIS request's aspect, quality and style still select the card; anything else resolves to null and
+    // the render is exactly what the controls say. Resolved before the mutex key, which hashes the id it applied.
+    const template = resolveTemplateContext('image', body.templateId, { aspect: body.aspectRatio ?? '1:1', quality, style: styleLabel });
 
     // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
     // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
@@ -167,7 +161,7 @@ export async function POST(req: NextRequest) {
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
@@ -188,14 +182,7 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* fail-open — a ledger hiccup never blocks a paid render */ }
 
-    const quality     = body.quality ?? 'high';
     const endpoint    = (body.endpoint ?? QUALITY_ENDPOINT[quality] ?? 'v2-2k') as NanoBananaEndpoint;
-    // ⚠️ ONLY A KNOWN LABEL IS FORWARDED AS THE PROVIDER'S `style` FIELD — free text still shapes the prompt (capped
-    // above) but never becomes a provider parameter. Own keys only: a bare STYLE_SUFFIXES[k] also "knew" 'constructor'.
-    const knownStyle  = isKnownStyle(STYLE_SUFFIXES, styleLabel) ? styleLabel : '';
-    const styleSuffix = knownStyle ? STYLE_SUFFIXES[knownStyle] : styleLabel;
-    // A style brings its own quality descriptors; an un-styled ("Auto") prompt gets a
-    // light universal boost so every image is crisp + detailed, not flat.
     // ⚠️ EVERY ENGINE THIS ROUTE CAN REACH READS ENGLISH ONLY — NanoBanana, Grok and FLUX 1.1 Pro are
     // all trained overwhelmingly on English text. Nothing here translated anything, so a Georgian brief
     // arrived as noise, each engine fell back to its priors, and the user was handed a competent image
@@ -206,17 +193,23 @@ export async function POST(req: NextRequest) {
     // translation outage can never turn a working render into a failed one.
     const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
     const promptEn    = await promptToEnglish(prompt, 'image');
-    const base        = styleSuffix ? `${promptEn}, ${styleSuffix}` : `${promptEn}, ultra detailed, sharp focus, professional quality`;
     // P7 — negative prompt: NanoBanana has no dedicated negative field, so the things to
     // avoid are appended as an explicit exclusion clause the model honours.
     const negativeRaw = typeof body.negativePrompt === 'string' ? body.negativePrompt.trim().slice(0, 400) : '';
     const negative    = negativeRaw ? await promptToEnglish(negativeRaw, 'image') : '';
-    const enriched    = negative ? `${base}. Do NOT include: ${negative}.` : base;
     // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'image' config, apply its learned
     // prompt directive as a suffix so the loop's improvement actually reaches generation. Fail-soft
     // — no active config (or table not migrated) → generation is exactly as before.
     const activeImageCfg = await getActiveConfig('image').catch(() => null);
-    const finalPrompt = activeImageCfg?.prompt ? `${enriched} ${activeImageCfg.prompt}` : enriched;
+    // The assembly (style directive or quality boost → template suffix → exclusion clause → learned directive) is the
+    // pure lib/studio/composeImagePrompt. `knownStyle` is the ONLY value forwarded as the provider's `style` field.
+    const { finalPrompt, knownStyle } = composeImagePrompt({
+      promptEn,
+      styleLabel,
+      templateSuffix: template?.suffix ?? null,
+      negativeEn: negative,
+      learnedDirective: activeImageCfg?.prompt ?? null,
+    });
 
     // Img2img / edit — resolve the reference image to an https URL the provider
     // accepts: data: uploads are hosted to Supabase; https URLs (e.g. editing a

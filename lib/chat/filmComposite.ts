@@ -77,6 +77,7 @@ import { parseSceneMeta, parseVeoRenderOptions } from '@/lib/veo/renderOptions';
 import { nativeAspectFor } from '@/lib/veo/capabilities';
 import { veoTransport } from '@/lib/veo/engine';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
+import { resolveFilmTemplate } from '@/lib/studio/templateContext';
 
 const serviceManager = new ServiceManager();
 
@@ -505,6 +506,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     opts.style ||
     (typeof input.metadata?.style === 'string' ? input.metadata.style : null) ||
     null;
+  // ⚠️ THE TEMPLATE CARD'S LOOK + DIRECTOR NOTE ARE RESOLVED HERE, FROM ITS ID (metadata.templateId) — never accepted
+  // as text, and only when THIS render's style and music-video mode still select the card. The storyboard route runs
+  // the same resolver, so the approved board and the paid film are planned with one look.
+  const filmTemplate = resolveFilmTemplate({ templateId: input.metadata?.templateId, style, musicVideoMode: !!input.metadata?.musicVideoMode });
   // PHASE 2 L1 — user camera controls (video panel). Whitelisted; absent → the
   // storyboard's per-beat camera variety is unchanged (fully additive).
   const cameraMove = (() => {
@@ -609,6 +614,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         effect: style ?? 'Cinematic',
         language: input.locale,
         hasReferenceImage: hasRefImg,
+        ...(filmTemplate ? { templateNote: filmTemplate.directorNote } : {}),
       }).catch(() => null);
       if (brief) {
         characterLock = brief.character.imagePromptFragment;
@@ -818,7 +824,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const sceneScriptsEn: string[] | undefined = sceneScripts?.length
     ? await Promise.all(sceneScripts.map((s) => promptToEnglish(s, 'video')))
     : undefined;
-  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
+  const plan = planFilmScenes(messageEn, { avatarReference, referenceImages: hostedRefs, style, ...(filmTemplate ? { look: filmTemplate.look } : {}), orientation, musicVideo: !!input.metadata?.musicVideoMode, clipSec: grid.clipSec, ...(characterLockEn ? { characterLock: characterLockEn } : {}), ...(sceneScriptsEn?.length ? { sceneScripts: sceneScriptsEn, totalSec: sceneScriptsEn.length * grid.clipSec } : { totalSec: grid.totalSec }), ...(sceneMeta?.length ? { sceneMeta } : {}), ...(cameraMove ? { cameraMove } : {}), ...(motionIntensity ? { motionIntensity } : {}), ...(filmNegativeEn ? { negativePrompt: filmNegativeEn } : {}), ...(delegateSpeech ? { nativeSpeech: true, sceneDialogue } : {}), ...(veoPlan ? { veo: veoPlan.film, veoScenes: veoPlan.scenes, outputFormat: veoPlan.film.format } : {}) });
   // `grid.totalSec` (not a bare pinnedSceneCount × clipSec) is what the plan splits, so plan.sceneCount
   // and grid.sceneCount can never disagree — a mismatch would slide every dialogue line one scene off.
   const sceneCount = plan.shared.sceneCount || FILM_SCENE_COUNT;
