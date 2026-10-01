@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import { ChatChrome } from '@/components/studio/ChatChrome';
-import LegacyStudioHub from '@/components/studio/legacy/LegacyStudioHub';
+import { redirect } from 'next/navigation';
 import { StudioV2 } from '@/components/studio/v2/StudioV2';
 import { studioV2Enabled } from '@/lib/studio/flags';
 
 /**
- * /[locale]/studio — the new studio (brief §6) where STUDIO_V2 is on (Preview first, then Production),
- * the legacy agent hub everywhere else. Decided per request on the server: the flag decides whether the
+ * /[locale]/studio — the new studio (brief §6) where STUDIO_V2 is on (Preview first, then Production); everywhere
+ * else it goes home (the chat, /{lang}) — the legacy agent hub it used to show was deleted with the old shell
+ * (docs/DESIGN.md §13). Decided per request on the server: the flag decides whether the
  * studio EXISTS, not merely whether a button shows (lib/studio/flags.ts).
  */
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function StudioPage({ params }: Props) {
   const { locale } = await params;
-  if (!studioV2Enabled()) return <LegacyStudioHub />;
+  if (!studioV2Enabled()) redirect(`/${locale}`);
   return (
     <ChatChrome locale={locale}>
       <StudioV2 locale={locale} />

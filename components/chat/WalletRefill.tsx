@@ -75,18 +75,18 @@ export function WalletRefillModal({
       ? 'w-full max-w-sm rounded-t-3xl sm:rounded-3xl border border-white/10 bg-black p-5 shadow-[0_-12px_60px_-12px_rgba(0,0,0,0.95)] sm:shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]'
       : 'w-full max-w-sm rounded-t-3xl sm:rounded-3xl border border-app-border/15 bg-app-bg p-5 shadow-[0_-12px_60px_-12px_rgba(0,0,0,0.95)] sm:shadow-[0_24px_80px_-24px_rgba(0,0,0,0.9)]',
     title: obsidian ? 'text-white' : 'text-app-text',
-    icon: obsidian ? 'text-[#00D2FF]' : 'text-app-muted',
+    icon: obsidian ? 'text-[#338FE8]' : 'text-app-muted',
     close: obsidian
       ? 'text-neutral-400 hover:text-white hover:bg-white/10'
       : 'text-app-muted hover:text-app-text hover:bg-app-elevated/60',
     tierPower: obsidian
-      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-white bg-[#00D2FF]/10 border border-[#00D2FF]/40 hover:border-[#00D2FF]/60 hover:bg-[#00D2FF]/20 disabled:opacity-60 transition-all duration-200 active:scale-[0.98] shadow-[0_0_22px_-8px_rgba(0,210,255,0.55)] tabular-nums col-span-2'
+      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-white bg-[#338FE8]/10 border border-[#338FE8]/40 hover:border-[#338FE8]/60 hover:bg-[#338FE8]/20 disabled:opacity-60 transition-all duration-200 active:scale-[0.98] shadow-[0_0_22px_-8px_rgba(51,143,232,0.55)] tabular-nums col-span-2'
       : 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-app-text bg-app-elevated border border-cyan-400/30 hover:border-cyan-300/50 hover:bg-app-surface disabled:opacity-60 transition-all duration-200 active:scale-[0.98] shadow-[0_0_22px_-8px_rgba(56,189,248,0.55)] tabular-nums col-span-2',
     tier: obsidian
-      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-white bg-black border border-white/10 hover:border-[#00D2FF]/40 hover:bg-white/5 disabled:opacity-60 transition-all duration-200 active:scale-[0.98] tabular-nums'
+      ? 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-white bg-black border border-white/10 hover:border-[#338FE8]/40 hover:bg-white/5 disabled:opacity-60 transition-all duration-200 active:scale-[0.98] tabular-nums'
       : 'relative inline-flex items-center justify-center gap-1.5 h-14 rounded-2xl font-semibold text-[17px] text-app-text bg-app-elevated border border-app-border/15 hover:border-app-border/30 hover:bg-app-surface disabled:opacity-60 transition-all duration-200 active:scale-[0.98] tabular-nums',
     minBadge: obsidian ? 'bg-white text-black' : 'bg-app-text text-app-bg',
-    premiumBadge: obsidian ? 'bg-[#00D2FF] text-black' : 'bg-cyan-400 text-zinc-950',
+    premiumBadge: obsidian ? 'bg-[#338FE8] text-black' : 'bg-cyan-400 text-zinc-950',
     note: obsidian ? 'text-neutral-500' : 'text-app-muted',
     error: obsidian ? 'text-red-300' : 'text-rose-600 dark:text-rose-300',
   };

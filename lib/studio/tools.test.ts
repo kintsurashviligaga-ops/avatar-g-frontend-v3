@@ -5,9 +5,9 @@
 import { ALL_TOOLS, MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub } from './tools';
 
 describe('studio tools', () => {
-  it('video first, chat last, and every service the studio had is still here', () => {
-    expect(PRIMARY_TOOLS[0]).toBe('video');
-    expect(PRIMARY_TOOLS[PRIMARY_TOOLS.length - 1]).toBe('chat');
+  it('chat first (the hub), video leading the generators, and every service the studio had is still here', () => {
+    expect(PRIMARY_TOOLS[0]).toBe('chat');
+    expect(PRIMARY_TOOLS[1]).toBe('video');
     expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'model3d', 'montage', 'motion', 'music', 'presentation', 'product', 'remix', 'swap', 'video'].sort());
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });

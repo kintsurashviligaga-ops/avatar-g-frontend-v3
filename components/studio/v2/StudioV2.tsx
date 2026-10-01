@@ -493,7 +493,7 @@ export function StudioV2({ locale }: StudioV2Props) {
             </section>
           ) : jobs.length === 0 && models ? (
             <section className="relative overflow-hidden rounded-3xl px-2 py-8 text-center sm:py-12">
-              <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_60%)]" aria-hidden="true" />
+              <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(51,143,232,0.12),transparent_60%)]" aria-hidden="true" />
               <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight text-app-text sm:text-[38px]">
                 {tx(hero.title, lang)} <span className="text-app-accent">{tx(hero.accent, lang)}</span>
               </h1>

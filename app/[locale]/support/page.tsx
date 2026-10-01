@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { faqSchema } from '@/lib/seo/schema';
 import { localeAlternates } from '@/lib/seo/hreflang';
+import { SupportChat } from '@/components/support/SupportChat';
 
 // Iteration 2 — was inheriting the homepage title + homepage-level hreflang (locale root). Give it a
 // distinct localized title + a self-canonical /support hreflang cluster.
@@ -239,6 +240,7 @@ export default async function SupportPage({ params }: { params: Promise<{ locale
         {/* Contact */}
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">{t.contact.title}</h2>
+          <SupportChat locale={locale} />
           <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm">
               <span className="text-white/55">{t.contact.emailLabel}:</span>

@@ -13,6 +13,7 @@ import { Wordmark } from '@/components/brand/Wordmark';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { LANDING_COPY, landingLang, type LandingLang, type ServiceKey } from './copy';
 import { ReelLoop } from './ReelLoop';
+import { signInPath } from '@/lib/routing/signIn';
 
 const SERVICES: ServiceKey[] = ['video', 'image', 'music', 'avatar'];
 /** Dashboard deep links (OmniStudio reads ?mode= once, then drops it). */
@@ -83,7 +84,7 @@ function LangMenu({ lang, path, label }: { lang: LandingLang; path: (l: LandingL
             href={path(l.code)}
             hrefLang={l.code}
             aria-current={l.code === lang ? 'true' : undefined}
-            className={`flex min-h-[44px] items-center justify-between rounded-xl px-3 text-[14px] transition-colors ${l.code === lang ? 'text-[#00E5FF]' : 'text-white hover:bg-white/5'}`}
+            className={`flex min-h-[44px] items-center justify-between rounded-xl px-3 text-[14px] transition-colors ${l.code === lang ? 'text-[#338FE8]' : 'text-white hover:bg-white/5'}`}
           >
             {LANG_NAMES[l.code]}
             {l.code === lang && <Check size={14} aria-hidden="true" />}
@@ -98,7 +99,7 @@ export function Landing({ locale }: { locale: string }) {
   const lang = landingLang(locale);
   const t = LANDING_COPY[lang];
   const studio = `/${lang}/dashboard`;
-  const signIn = `/${lang}/login`;
+  const signIn = signInPath(lang);
 
   return (
     <div className="landing min-h-[100svh] bg-[#0A0A0A] text-[#F2F2F3] antialiased">
@@ -129,14 +130,14 @@ export function Landing({ locale }: { locale: string }) {
           {/* ONE mark — the name. The rocket tile beside it read as a second logo (and the PNG has no alpha, so it is
               an opaque square); the rocket stays the app icon, favicon and social card, where it stands alone. */}
           <Link href={`/${lang}`} className="flex min-h-[44px] shrink-0 items-center" aria-label="MyAvatar.ge">
-            <Wordmark size="sm" tone="onDark" />
+            <Wordmark size="sm" tone="onDark" mark />
           </Link>
           <div className="flex items-center gap-1 sm:gap-3">
             <Link href={`/${lang}/pricing`} className="hidden min-h-[44px] items-center px-2 text-[14px] text-white/80 transition-colors hover:text-white sm:flex">
               {t.nav.pricing}
             </Link>
-            <LangMenu lang={lang} path={(l) => `/${l}`} label={t.footer.language} />
-            <LangSwitch lang={lang} path={(l) => `/${l}`} label={t.footer.language} className="hidden sm:flex" />
+            <LangMenu lang={lang} path={(l) => `/${l}/landing`} label={t.footer.language} />
+            <LangSwitch lang={lang} path={(l) => `/${l}/landing`} label={t.footer.language} className="hidden sm:flex" />
             <Link href={signIn} className="flex min-h-[44px] items-center rounded-full px-2.5 text-[14px] font-medium text-white transition-colors hover:bg-white/10 sm:px-3">
               {t.nav.signIn}
             </Link>
@@ -150,7 +151,7 @@ export function Landing({ locale }: { locale: string }) {
           </h1>
           <p className="landing-rise mt-5 max-w-[38ch] text-[17px] leading-relaxed text-white/80 sm:text-[19px]">{t.hero.sub}</p>
           <div className="landing-rise mt-8 flex flex-wrap items-center gap-3">
-            <Link href={studio} className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#00E5FF] px-6 text-[16px] font-semibold text-[#0A0A0A] transition-transform duration-200 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]">
+            <Link href={studio} className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#338FE8] px-6 text-[16px] font-semibold text-[#0A0A0A] transition-transform duration-200 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#338FE8]">
               {t.hero.cta} <ArrowRight size={18} aria-hidden="true" />
             </Link>
             <Link href={signIn} className="inline-flex min-h-[52px] items-center rounded-full border border-white/25 px-6 text-[16px] font-medium text-white transition-colors hover:border-white/50 hover:bg-white/5">
@@ -166,7 +167,7 @@ export function Landing({ locale }: { locale: string }) {
             scripts/hf-art-pack.md R1–R3), each a photo that moves. Played only while on screen, never under reduced
             motion; the copy says exactly what they are — three photos, three five-second shots. ──────────────── */}
         <section aria-labelledby="reels-title" className="mx-auto max-w-6xl px-4 pt-20 sm:px-6 md:pt-28">
-          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#00E5FF]">{t.reels.kicker}</p>
+          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#338FE8]">{t.reels.kicker}</p>
           <h2 id="reels-title" className="mt-3 max-w-[20ch] font-display text-[32px] font-bold leading-[1.12] sm:text-[44px]">{t.reels.title}</h2>
           <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed text-white/70 sm:text-[17px]">{t.reels.sub}</p>
           {/* Phones: a swipe strip of large tiles (three 110 px phones read as thumbnails, not reels); the one out of
@@ -185,7 +186,7 @@ export function Landing({ locale }: { locale: string }) {
 
         {/* ── Services ───────────────────────────────────────────────────────────────────── */}
         <section aria-labelledby="services-title" className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
-          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#00E5FF]">{t.services.kicker}</p>
+          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#338FE8]">{t.services.kicker}</p>
           <h2 id="services-title" className="mt-3 max-w-[20ch] font-display text-[32px] font-bold leading-[1.12] sm:text-[44px]">{t.services.title}</h2>
           <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {SERVICES.map((key, i) => {
@@ -195,7 +196,7 @@ export function Landing({ locale }: { locale: string }) {
                 <li key={key}>
                   <Link
                     href={`${studio}?mode=${MODE[key]}`}
-                    className="group relative block aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-[#111214] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]"
+                    className="group relative block aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-[#111214] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#338FE8]"
                   >
                     <Image
                       src={img.src}
@@ -207,7 +208,7 @@ export function Landing({ locale }: { locale: string }) {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/30 to-transparent" aria-hidden="true" />
                     {i === 0 ? (
-                      <span className="absolute left-4 top-4 rounded-full bg-[#00E5FF] px-2.5 py-1 text-[12px] font-semibold text-[#0A0A0A]">{t.services.main}</span>
+                      <span className="absolute left-4 top-4 rounded-full bg-[#338FE8] px-2.5 py-1 text-[12px] font-semibold text-[#0A0A0A]">{t.services.main}</span>
                     ) : null}
                     <div className="absolute inset-x-0 bottom-0 p-5">
                       <h3 className="font-display text-[22px] font-bold text-white">{item.name}</h3>
@@ -226,12 +227,12 @@ export function Landing({ locale }: { locale: string }) {
         {/* ── Three steps ────────────────────────────────────────────────────────────────── */}
         <section aria-labelledby="steps-title" className="border-y border-white/10 bg-[#0D0E10]">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
-            <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#00E5FF]">{t.steps.kicker}</p>
+            <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#338FE8]">{t.steps.kicker}</p>
             <h2 id="steps-title" className="mt-3 font-display text-[32px] font-bold sm:text-[44px]">{t.steps.title}</h2>
             <ol className="mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
               {t.steps.items.map((s, i) => (
                 <li key={s.name} className="border-t border-white/15 pt-6">
-                  <span className="font-display text-[14px] font-semibold tabular-nums text-[#00E5FF]">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="font-display text-[14px] font-semibold tabular-nums text-[#338FE8]">{String(i + 1).padStart(2, '0')}</span>
                   <h3 className="mt-3 font-display text-[24px] font-bold">{s.name}</h3>
                   <p className="mt-2 max-w-[34ch] text-[16px] leading-relaxed text-[#A1A1AA]">{s.line}</p>
                 </li>
@@ -244,7 +245,7 @@ export function Landing({ locale }: { locale: string }) {
         <section aria-labelledby="pricing-title" className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
           <div className="flex flex-col gap-8 rounded-3xl border border-white/10 bg-[#111214] p-8 md:flex-row md:items-end md:justify-between md:p-12">
             <div>
-              <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#00E5FF]">{t.pricing.kicker}</p>
+              <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-[#338FE8]">{t.pricing.kicker}</p>
               <h2 id="pricing-title" className="mt-3 max-w-[22ch] font-display text-[28px] font-bold leading-[1.15] sm:text-[36px]">{t.pricing.title}</h2>
               <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed text-[#A1A1AA]">{t.pricing.line}</p>
             </div>
@@ -262,7 +263,7 @@ export function Landing({ locale }: { locale: string }) {
           <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#0A0A0A]/80 via-[#0A0A0A]/30 to-transparent" aria-hidden="true" />
           <div className="mx-auto flex max-w-6xl flex-col items-start gap-8 px-4 py-28 sm:px-6 md:py-40">
             <h2 className="max-w-[16ch] font-display text-[36px] font-bold leading-[1.1] sm:text-[56px]">{t.closing.title}</h2>
-            <Link href={studio} className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#00E5FF] px-6 text-[16px] font-semibold text-[#0A0A0A] transition-transform duration-200 ease-out hover:-translate-y-0.5">
+            <Link href={studio} className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#338FE8] px-6 text-[16px] font-semibold text-[#0A0A0A] transition-transform duration-200 ease-out hover:-translate-y-0.5">
               {t.closing.cta} <ArrowRight size={18} aria-hidden="true" />
             </Link>
           </div>
@@ -274,7 +275,7 @@ export function Landing({ locale }: { locale: string }) {
         <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 pb-[max(32px,env(safe-area-inset-bottom))] pt-12 sm:px-6 md:flex-row md:items-start md:justify-between">
           <div>
             <Link href={`/${lang}`} className="inline-flex min-h-[44px] items-center" aria-label="MyAvatar.ge">
-              <Wordmark size="sm" tone="onDark" />
+              <Wordmark size="sm" tone="onDark" mark />
             </Link>
             <p className="mt-3 max-w-[32ch] text-[14px] text-[#A1A1AA]">{t.footer.tagline}</p>
           </div>
@@ -284,7 +285,7 @@ export function Landing({ locale }: { locale: string }) {
               <Link href={`/${lang}/privacy`} className="min-h-[44px] content-center hover:text-white">{t.footer.privacy}</Link>
               <Link href={`/${lang}/refund`} className="min-h-[44px] content-center hover:text-white">{t.footer.refund}</Link>
             </nav>
-            <LangSwitch lang={lang} path={(l) => `/${l}`} label={t.footer.language} />
+            <LangSwitch lang={lang} path={(l) => `/${l}/landing`} label={t.footer.language} />
             <p className="text-[13px] text-white/45">© 2026 MyAvatar.ge · {t.footer.rights}</p>
           </div>
         </div>

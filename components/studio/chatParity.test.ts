@@ -121,9 +121,10 @@ describe('ChatChrome and ServiceHub', () => {
     expect(chrome).toContain('delete root.dataset.firstName;');
   });
 
-  it('„New session“ in the chat restarts on the chat', () => {
-    expect(hub).toContain("document.documentElement.dataset.tool === 'chat' ? 'chat' : undefined");
+  it('the studio opens on the chat, and „New session“ keeps whatever tool you were on', () => {
+    expect(hub).toContain("setRestartTool(isToolId(active) && active !== 'chat' ? active : undefined)");
     expect(hub).toContain('<OmniStudio key={chatResetKey} locale={lang} initialTool={restartTool} />');
-    expect(omni).toContain("useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>(() => (initialTool === 'chat' ? 'chat' : 'video'))");
+    expect(omni).toContain("useState<'chat' | 'image' | 'music' | 'video' | 'lipsync' | 'remix' | 'surgical'>('chat')");
+    expect(omni).toContain("if (initialTool && initialTool !== 'chat') { selectTool(initialTool); return; }");
   });
 });

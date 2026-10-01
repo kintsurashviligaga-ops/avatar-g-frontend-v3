@@ -38,16 +38,23 @@ test.describe('swarm recon', () => {
     }
   });
 
-  test('unauthenticated direct chat generator is refused before the model is called', async ({ request, baseURL }) => {
-    // Every chat turn spends the platform's Gemini key (plus Search grounding) — a guest is refused with a 401
-    // + authRequired body (lib/auth/generationGate.ts · mustSignInToChat). FILM_ALLOW_ANONYMOUS=1 re-opens it on a
-    // demo deployment; that is never production, so a deployed host must answer 401.
-    const res = await request.post(`${baseURL}/api/chat/gemini`, { data: { messages: [{ role: 'user', content: 'ping' }] } });
-    if (!isLocal(baseURL)) {
-      expect(res.status()).toBe(401);
+  test('a guest\'s paid capability (a photo) is refused before the model is called', async ({ request }) => {
+    // Since 2026-10-01 a guest may CHAT (lib/chat/guestChat: Fast, text only, capped) — so a plain turn would be
+    // answered, and spend. What must never reach the model is a guest turn carrying a file: it is answered IN-STREAM
+    // with auth_required (the sign-in sheet), before any model, budget or cap is touched. With guest chat switched off
+    // (CHAT_GUEST_ENABLED=0) the route answers 401 instead. Either way: no model call, nothing spent.
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const res = await request.post('/api/chat/gemini', {
+      data: { messages: [{ role: 'user', content: [{ type: 'text', text: 'what is this?' }, { type: 'image', image: png }] }], protocol: 2 },
+    });
+    if (res.status() === 401) {
       expect(((await res.json()) as { authRequired?: boolean }).authRequired).toBe(true);
-    } else {
-      expect([200, 401, 429, 503]).toContain(res.status());
+      return;
     }
+    expect(res.status()).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('"code":"auth_required"');
+    expect(body).toContain('data: [DONE]');
+    expect(body).not.toContain('"meta"'); // no model answered
   });
 });

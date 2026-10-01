@@ -13,8 +13,12 @@
  *   - every attempt — its prompt, model, input, request id and cost — is appended to
  *     public/brand/v1/manifest.json before and after it runs.
  *
+ * Packs (`--pack`, default brand-v1): brand-v1 = the brand/v1 art pack ($7 cap); templates = the studio's template
+ * gallery thumbnails (scripts/templates/thumbs.md → public/templates, $5 cap — the owner's 2026-10-01 budget).
+ *
  * Usage (from the repo root):
  *   npx tsx --tsconfig scripts/tsconfig.scripts.json scripts/hf-art-pack.ts --dry            # price all pending shots
+ *   … scripts/hf-art-pack.ts --pack templates --dry                                           # the template thumbnails
  *   npx tsx --tsconfig scripts/tsconfig.scripts.json scripts/hf-art-pack.ts --shot A1 --yes-spend
  *   npx tsx --tsconfig scripts/tsconfig.scripts.json scripts/hf-art-pack.ts --status         # spend so far
  */
@@ -23,13 +27,31 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
-const SPEC = join(ROOT, 'scripts/hf-art-pack.md');
-const OUT = join(ROOT, 'public/brand/v1');
-const RAW = join(OUT, 'raw');
-const MANIFEST = join(OUT, 'manifest.json');
 
 export const JOB_CAP_USD = 7.0;
 export const STOP_AT_USD = 6.5;
+
+/** Each pack: its spec, where its manifest + raw takes live (raw is gitignored), and its hard money lines. */
+export const PACKS = {
+  'brand-v1': { spec: 'scripts/hf-art-pack.md', out: 'public/brand/v1', job: 'brand/v1 art pack', cap: JOB_CAP_USD, stop: STOP_AT_USD },
+  templates: { spec: 'scripts/templates/thumbs.md', out: 'public/templates', job: 'template gallery thumbnails', cap: 5.0, stop: 4.5 },
+} as const;
+export type PackId = keyof typeof PACKS;
+
+export function packFromArgv(argv: readonly string[]): PackId {
+  const i = argv.indexOf('--pack');
+  const id = i >= 0 ? argv[i + 1] : 'brand-v1';
+  if (id !== 'brand-v1' && id !== 'templates') throw new Error(`unknown --pack ${id} (brand-v1 | templates)`);
+  return id;
+}
+
+const pack = PACKS[packFromArgv(process.argv.slice(2))];
+const SPEC = join(ROOT, pack.spec);
+const OUT = join(ROOT, pack.out);
+const RAW = join(OUT, 'raw');
+const MANIFEST = join(OUT, 'manifest.json');
+const PACK_CAP_USD = pack.cap;
+const PACK_STOP_USD = pack.stop;
 const MAX_ATTEMPTS = 3;
 const POLL_MS = 4_000;
 const WAIT_MS = 12 * 60_000;
@@ -106,7 +128,7 @@ export function spent(m: Manifest): number {
 
 function loadManifest(): Manifest {
   if (existsSync(MANIFEST)) return JSON.parse(readFileSync(MANIFEST, 'utf8')) as Manifest;
-  return { job: 'brand/v1 art pack', capUsd: JOB_CAP_USD, stopAtUsd: STOP_AT_USD, spentUsd: 0, attempts: [], selected: {} };
+  return { job: pack.job, capUsd: PACK_CAP_USD, stopAtUsd: PACK_STOP_USD, spentUsd: 0, attempts: [], selected: {} };
 }
 
 function saveManifest(m: Manifest) {
@@ -129,7 +151,7 @@ async function main() {
   const m = loadManifest();
 
   if (flag('--status')) {
-    console.log(`spent $${spent(m).toFixed(4)} of $${STOP_AT_USD.toFixed(2)} (cap $${JOB_CAP_USD.toFixed(2)})`);
+    console.log(`spent $${spent(m).toFixed(4)} of $${PACK_STOP_USD.toFixed(2)} (cap $${PACK_CAP_USD.toFixed(2)})`);
     for (const s of shots) {
       const tries = m.attempts.filter((a) => a.shot === s.id);
       console.log(`  ${s.id.padEnd(3)} ${s.title.padEnd(34)} attempts ${tries.length}/${MAX_ATTEMPTS}${m.selected[s.id] ? `  ✓ selected #${m.selected[s.id]!.attempt}` : ''}`);
@@ -181,7 +203,7 @@ async function main() {
     const before = spent(m);
     console.log(`${s.id} ${s.title}: quote ${usd === null ? `(described) ${est.pricingDescription?.slice(0, 80)}` : `$${usd.toFixed(4)}`}${est.listUsd && usd !== null && est.listUsd > usd ? ` (list $${est.listUsd.toFixed(4)})` : ''} · spent so far $${before.toFixed(4)}`);
     if (usd === null) { console.log(`${s.id}: no numeric price — not run (priced models only)`); continue; }
-    if (before + usd > STOP_AT_USD) { console.log(`STOP: $${before.toFixed(4)} + $${usd.toFixed(4)} would pass the $${STOP_AT_USD} stop line`); break; }
+    if (before + usd > PACK_STOP_USD) { console.log(`STOP: $${before.toFixed(4)} + $${usd.toFixed(4)} would pass the $${PACK_STOP_USD} stop line`); break; }
     if (dry) continue;
 
     const attempt: Attempt = {
@@ -230,7 +252,7 @@ async function main() {
     saveManifest(m);
     console.log(`${s.id} #${attempt.attempt}: ${result.status} · ${attempt.outputs.map((o) => o.file ?? o.url).join(', ') || 'no output'} · spent $${spent(m).toFixed(4)}`);
   }
-  console.log(`total spent $${spent(m).toFixed(4)} of $${STOP_AT_USD.toFixed(2)} stop line`);
+  console.log(`total spent $${spent(m).toFixed(4)} of $${PACK_STOP_USD.toFixed(2)} stop line`);
 }
 
 if (require.main === module || process.argv[1]?.endsWith('hf-art-pack.ts')) {

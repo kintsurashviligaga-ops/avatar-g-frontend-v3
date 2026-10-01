@@ -43,6 +43,11 @@
  *    before the call fails as `mic_lost` — it no longer sits on "listening" hearing nothing.
  *  • The capture worklet had no outputs and was never connected; WebKit may never pull such a node, so the user
  *    was never heard. It now runs worklet → zero gain → destination (the dictation recorder's pattern).
+ *  • VOICE-TO-ACTION (lib/voice/liveTools.ts): `actions: true` asks the mint to lock the UI-action declarations. They
+ *    are the least-verified part of the handshake, so a refused first handshake that carried them retries the parity
+ *    wire WITHOUT them before the legacy one; the legacy retry mints with `tools: false` so the token's lock matches
+ *    the tool-less frame. The hook only transports calls — the host executes them (onToolCall) and drops their UI on
+ *    toolCallCancellation (onToolCallCancellation).
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 
@@ -196,6 +201,13 @@ export interface UseGeminiLiveSessionOptions {
   onUnavailable?: () => void;
   /** Answer function calls. Unanswered calls get `{error:'not_supported'}` so the model never waits forever. */
   onToolCall?: (calls: Array<{ id: string; name: string; args: unknown }>) => Promise<LiveFunctionResponse[] | void> | LiveFunctionResponse[] | void;
+  /**
+   * Voice-to-action (lib/voice/liveTools.ts): ask the mint to lock the UI-action declarations into the token. Only a
+   * host that EXECUTES them (onToolCall) should set it. Parity wire only — the degraded legacy retry never carries tools.
+   */
+  actions?: boolean;
+  /** The server cancelled these call ids (the user barged in): drop whatever UI they produced. */
+  onToolCallCancellation?: (ids: string[]) => void;
   deps?: Partial<LiveSessionDeps>;
 }
 
@@ -463,8 +475,11 @@ function micDepsOf(d: LiveSessionDeps): MicDeps {
   };
 }
 
-/** One step of a connect plan: which token, which resumption handle, and whether to fall back to the legacy wire. */
-interface PlanStep { freshToken: boolean; handle: string | null | undefined; degrade?: boolean }
+/**
+ * One step of a connect plan: which token, which resumption handle, whether to fall back to the legacy wire, and
+ * whether to give up the UI-action declarations (the parity wire stays).
+ */
+interface PlanStep { freshToken: boolean; handle: string | null | undefined; degrade?: boolean; dropActions?: boolean }
 type MintResult = { ok: true } | { ok: false; code: LiveErrorCode };
 
 // ─── The hook ─────────────────────────────────────────────────────────────────
@@ -525,6 +540,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const serverSetupRef = useRef<Obj | null>(null);
   const handleRef = useRef<string | null>(null);
   const degradedRef = useRef(false);
+  const actionsOffRef = useRef(false); // this call gave up the UI-action declarations after a failed handshake
   const planRef = useRef<PlanStep[]>([]);
   const stepRef = useRef(0);
   const phaseRef = useRef<'initial' | 'resume'>('initial');
@@ -789,12 +805,16 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           transcribe: parity,
           ...(parity ? { compression: true } : {}),
           ...(parity && handle !== undefined ? { resumptionHandle: handle } : {}),
+          ...(parity && o.actions === true && !actionsOffRef.current ? { actions: true } : {}),
+          // ⚠️ The legacy wire strips `tools` from the FRAME (PARITY_FIELDS); the LOCK must lose them too, or the token
+          // is minted for a setup the browser never sends.
+          ...(!parity ? { tools: false } : {}),
         }),
       });
     } catch {
       return { ok: false, code: 'mint_failed' };
     }
-    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown };
+    const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
     if (!res.ok || !token) {
       if (res.status === 401) return { ok: false, code: 'auth' };
@@ -809,6 +829,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     modelRef.current = typeof j.model === 'string' ? j.model : null;
     // /api/voice/live answers `setupMessage` (the frame it locked into the token); `setup` is accepted for older routes.
     serverSetupRef.current = extractServerSetup(j.setupMessage ?? j.setup);
+    // The server locked no declarations (GEMINI_LIVE_ACTIONS off, or it dropped them after a 400): nothing left to drop,
+    // so a refused handshake goes straight to the legacy retry instead of repeating this same setup.
+    if (j.actions === false) actionsOffRef.current = true;
     return { ok: true };
   }, [deps]);
 
@@ -829,6 +852,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       return { setup: s };
     }
     const locale = o.locale === 'en' || o.locale === 'ru' ? o.locale : 'ka';
+    const tools: LiveTool[] = [
+      ...(o.tools ?? []),
+      ...(o.actions === true && !actionsOffRef.current ? ['live_actions' as const] : []),
+    ];
     return buildLiveSetup({
       model: modelRef.current ?? '',
       systemInstruction: o.systemInstruction?.trim() ? o.systemInstruction : liveVoicePersona(locale),
@@ -840,7 +867,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           resumptionHandle: handle ?? null,
           transcribe: true,
           compression: true,
-          ...(o.tools?.length ? { tools: o.tools } : {}),
+          ...(tools.length ? { tools } : {}),
         }
         : {}),
     });
@@ -961,6 +988,9 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       case 'toolCall':
         void answerToolCall(ev.calls, session);
         return;
+      case 'toolCallCancellation':
+        try { optsRef.current.onToolCallCancellation?.(ev.ids); } catch { /* a host bug never breaks the call */ }
+        return;
       default:
         return; // setupComplete arrives via onSetupComplete; 'error' frames are followed by a close
     }
@@ -1023,6 +1053,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const step = planRef.current[stepRef.current];
     if (!step) { fail(phaseRef.current === 'initial' ? 'setup_failed' : 'connection_lost'); return; }
     if (step.degrade && !degradedRef.current) { degradedRef.current = true; setDegraded(true); }
+    if (step.dropActions) {
+      // Nothing to drop (the token already carries none): that retry would repeat the refused setup — skip it.
+      if (actionsOffRef.current) { stepRef.current += 1; await runStepRef.current(); return; }
+      actionsOffRef.current = true;
+    }
     if (step.freshToken || !tokenUsable()) {
       const minted = await mint(step.handle);
       if (gen !== genRef.current) return;
@@ -1268,6 +1303,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
     degradedRef.current = false;
     setDegraded(false);
+    actionsOffRef.current = false;
     tokenRef.current = null;
     modelRef.current = null;
     serverSetupRef.current = null;
@@ -1379,7 +1415,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     // 5) Socket.
     planRef.current = [
       { freshToken: false, handle: firstHandle },
-      // One retry: fresh token, legacy wire (the parity fields are the unverified part of the handshake).
+      // ⚠️ The UI-action declarations are the newest, least-verified part of the handshake (the mint may accept them
+      // and the SESSION still refuse them). A refused first handshake that carried them retries the SAME parity wire
+      // without them first, so a rejected declaration costs the actions — never the captions.
+      ...(parity && optsRef.current.actions === true ? [{ freshToken: true, handle: firstHandle, dropActions: true }] : []),
+      // Last retry: fresh token, legacy wire (the parity fields are the unverified part of the handshake).
       { freshToken: true, handle: undefined, degrade: true },
     ];
     stepRef.current = 0;

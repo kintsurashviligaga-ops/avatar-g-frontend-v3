@@ -131,6 +131,9 @@ const nextConfig = {
       // ffmpeg-static — without this the binary is absent in the lambda, the mix
       // exec ENOENTs, and the route silently fail-opens to the English path.
       '/api/audio/georgian-song': ['./node_modules/ffmpeg-static/**'],
+      // Long-form tick (dark unless LONGFORM_VIDEO_ENABLED): probes delivered clips, extracts each act's last
+      // frame and stream-copies the film with ffmpeg-static (lib/video/longform/runtime.ts).
+      '/api/cron/longform-tick': ['./node_modules/ffmpeg-static/**'],
       // The runtime migration gate reads raw .sql by path at request time. Next
       // only bundles files it can statically trace, so without this the lambda's
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace
@@ -299,7 +302,54 @@ const nextConfig = {
       permanent: false,
     }));
 
+    // The OLD SHELL's pages, deleted 2026-10-01 with the owner's approval (docs/DESIGN.md §13): each old URL lands on the
+    // nearest surface that exists now, instead of a 404 — bookmarks, old share links and search results keep working.
+    // 307 (not permanent) on purpose: a browser caches a 308 forever, and these targets may still move.
+    // ⚠️ /avatar/:id is deliberately NOT here: it would also catch the live /avatar/enroll flow. online-shop redirects
+    // only its SUB-paths (:path+) — its bare URL is a live service slug (308 → /services/shop). Marketplace had no slug
+    // page, so its bare URL goes too (:path* matches zero segments).
+    const L = '/:locale(ka|en|ru)';
+    const home = '/:locale';
+    const tool = (t) => `/:locale/dashboard?tool=${t}`;
+    const legacyRedirects = [
+      ['chat', home], ['agent', home], ['app-preview', home], ['business', home], ['executive', home],
+      ['voice-smoke', home], ['analytics', '/:locale/dashboard'],
+      ['about', '/:locale/landing'], ['blog', '/:locale/landing'], ['careers', '/:locale/landing'],
+      ['contact', '/:locale/support'],
+      ['config', '/:locale/settings'], ['config/:path*', '/:locale/settings'],
+      ['3d', tool('model3d')], ['dubbing', tool('dubbing')], ['montage', tool('montage')], ['slides', tool('presentation')],
+      ['dashboard/:legacy(agent-g|business-agent|executive-agent|copy|fulfillment|workflows|analytics)', '/:locale/dashboard'],
+      ['dashboard/avatar', tool('avatar')], ['dashboard/image', tool('image')], ['dashboard/music', tool('music')],
+      ['dashboard/video', tool('video')],
+      ['studio/avatar', tool('avatar')], ['studio/image', tool('image')], ['studio/music', tool('music')],
+      ['studio/video', tool('video')], ['studio/film', tool('video')], ['studio/copy', home],
+      ['studio/history', '/:locale/library'], ['studio/pricing', '/:locale/pricing'],
+      ['sell/:path*', home], ['tracking/:path*', home], ['tools/:path*', home],
+      ['services/marketplace/:path*', home], ['services/online-shop/:path+', home],
+      ['services/agent-g/calls', home], ['services/agent-g/settings', home],
+      ['account/business', '/:locale/account/billing'], ['account/returns', '/:locale/account/billing'],
+    ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
+    // /{lang}/studio is the new studio only where STUDIO_V2 is on (lib/studio/flags). Elsewhere it goes home with a
+    // real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale] loading.tsx starts the response
+    // first), which a crawler reads as a 200 page.
+    if (!/^(1|true|on)$/i.test(String(process.env.STUDIO_V2 ?? '').trim())) {
+      legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
+    }
+    // THERE IS NO SIGN-IN PAGE (deleted 2026-10-01 at the owner's request): /login, /signup and the /auth alias — with
+    // or without a locale — open the studio's own sign-in sheet (lib/routing/signIn.ts). The request's query rides
+    // along (Next merges it into the destination's), so ?redirect= / ?error= / ?plan= / ?ref= still work. The bare
+    // /auth is where /auth/callback bounces an OAuth failure; /auth/callback itself is NOT matched (exact sources).
+    legacyRedirects.push(
+      { source: `${L}/login`, destination: '/:locale/dashboard?auth=login', permanent: false },
+      { source: `${L}/auth`, destination: '/:locale/dashboard?auth=login', permanent: false },
+      { source: `${L}/signup`, destination: '/:locale/dashboard?auth=signup', permanent: false },
+      { source: '/login', destination: '/ka/dashboard?auth=login', permanent: false },
+      { source: '/auth', destination: '/ka/dashboard?auth=login', permanent: false },
+      { source: '/signup', destination: '/ka/dashboard?auth=signup', permanent: false },
+    );
+
     return [
+      ...legacyRedirects,
       ...serviceRedirects.flatMap(({ from, to }) => [
         {
           source: `/services/${from}`,

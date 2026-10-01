@@ -47,7 +47,7 @@ export default function CursorGlow() {
         // shoved all page content down 400px (the "half-screen blank, scroll to
         // fix" bug on legal/flow pages). Inline style wins the cascade → out of flow.
         position: 'fixed',
-        background: 'radial-gradient(circle at center, rgba(14,165,233,0.07) 0%, rgba(0,212,255,0.04) 40%, transparent 70%)',
+        background: 'radial-gradient(circle at center, rgba(14,165,233,0.07) 0%, rgba(51,143,232,0.04) 40%, transparent 70%)',
         transition: 'opacity 0.3s',
         willChange: 'transform',
       }}

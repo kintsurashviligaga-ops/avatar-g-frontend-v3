@@ -6,6 +6,7 @@ import {
   GeminiLiveSession, type LiveServerEvent, type LiveSetup,
 } from './geminiLive';
 import { DEFAULT_LIVE_MODEL as BARE_DEFAULT_LIVE_MODEL } from '../ai/google/models';
+import { LIVE_FUNCTION_DECLARATIONS } from './liveTools';
 
 describe('geminiLive — pure wire-format builders/parser', () => {
   it('buildSetupMessage defaults model + AUDIO modality, omits empty systemInstruction', () => {
@@ -200,6 +201,18 @@ describe('geminiLive — buildLiveSetup', () => {
     expect(setupOf(buildLiveSetup({ ...base, tools: ['code_execution' as never] })).tools).toBeUndefined();
   });
 
+  it('tools: live_actions → the functionDeclarations block, FIRST, once; search follows it', () => {
+    expect(setupOf(buildLiveSetup({ ...base, tools: ['live_actions'] })).tools).toEqual([{ functionDeclarations: LIVE_FUNCTION_DECLARATIONS }]);
+    // Listed in either order, emitted declarations-then-search (the order the route tests pin).
+    expect(setupOf(buildLiveSetup({ ...base, tools: ['google_search', 'live_actions', 'live_actions'] })).tools).toEqual([
+      { functionDeclarations: LIVE_FUNCTION_DECLARATIONS },
+      { googleSearch: {} },
+    ]);
+    // Survives the JSON hop to the mint and the browser unchanged.
+    const msg = buildLiveSetup({ ...base, tools: ['live_actions'] });
+    expect(JSON.parse(JSON.stringify(msg))).toEqual(msg);
+  });
+
   it('every option at once is JSON-round-trip safe and carries all documented field names', () => {
     const msg = buildLiveSetup({ ...base, model: 'gemini-3.8-live', temperature: 0.7, languageCode: 'ka', resumptionHandle: 'h1', transcribe: true, compression: true, tools: ['google_search'] });
     const round = JSON.parse(JSON.stringify(msg)) as { setup: Record<string, unknown> };
@@ -328,8 +341,18 @@ describe('geminiLive — parseLiveServerMessage', () => {
     expect(parseLiveServerMessage('{"setupComplete":{}}')).toEqual([{ kind: 'setupComplete' }]);
   });
 
+  it('toolCallCancellation.ids → toolCallCancellation; junk ids dropped, empty → nothing, bounded', () => {
+    expect(parseLiveServerMessage({ toolCallCancellation: { ids: ['c1', 'c2'] } })).toEqual([{ kind: 'toolCallCancellation', ids: ['c1', 'c2'] }]);
+    expect(parseLiveServerMessage({ toolCallCancellation: { ids: ['c1', 7, '', null, 'x'.repeat(300)] } })).toEqual([{ kind: 'toolCallCancellation', ids: ['c1'] }]);
+    expect(parseLiveServerMessage({ toolCallCancellation: { ids: [] } })).toEqual([]);
+    expect(parseLiveServerMessage({ toolCallCancellation: { ids: 'c1' } })).toEqual([]);
+    expect(parseLiveServerMessage({ toolCallCancellation: {} })).toEqual([]);
+    const many = Array.from({ length: 500 }, (_, i) => `id${i}`);
+    const ev = parseLiveServerMessage({ toolCallCancellation: { ids: many } })[0] as { ids: string[] };
+    expect(ev.ids).toHaveLength(64);
+  });
+
   it('unknown / not-surfaced messages → []', () => {
-    expect(parseLiveServerMessage({ toolCallCancellation: { ids: ['c1'] } })).toEqual([]);
     expect(parseLiveServerMessage({ serverContent: { generationComplete: true, waitingForInput: true } })).toEqual([]);
     expect(parseLiveServerMessage({ somethingNew: { x: 1 } })).toEqual([]);
     expect(parseLiveServerMessage({})).toEqual([]);

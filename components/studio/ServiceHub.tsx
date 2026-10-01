@@ -13,7 +13,7 @@
  *   C · Lip-Sync Studio   → LipsyncStudio (Wav2Lip on Replicate)
  *
  * Each launched studio shows a back control to return to the grid. Strict skin —
- * black · white · electric cyan (#00D2FF).
+ * black · white · electric cyan (#338FE8).
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -22,6 +22,7 @@ import { Film, Sparkles, ChevronRight, Loader2 } from 'lucide-react';
 import { ChatChrome } from './ChatChrome';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { Wordmark } from '@/components/brand/Wordmark';
+import { isToolId, type ToolId } from '@/lib/studio/tools';
 
 // PERF: lazy-load each studio so the dashboard's initial JS ships only the shell +
 // the studio actually on screen — not all ~8.2k lines of the three studios at once
@@ -96,13 +97,14 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   // "New Chat" remounts the assistant by bumping this key — a clean reset of the
   // whole conversation (messages, attachment, mode) without page reload.
   const [chatResetKey, setChatResetKey] = useState(0);
-  // …except the tool when that tool is the CHAT: Gemini's „New chat“ keeps you in a chat, and the remount used to
-  // drop a chat user onto the video studio. Read from <html data-tool> (OmniStudio publishes the active tool there)
-  // at the moment of the press, and handed to the fresh OmniStudio as its initial tool.
-  const [restartTool, setRestartTool] = useState<'chat' | undefined>(undefined);
+  // …except the TOOL: Gemini's „New chat“ keeps you where you were. Read from <html data-tool> (OmniStudio publishes
+  // the active tool there) at the moment of the press, and handed to the fresh OmniStudio as its initial tool. The
+  // studio opens on the chat by default, so only another tool needs carrying over.
+  const [restartTool, setRestartTool] = useState<ToolId | undefined>(undefined);
   const newChat = useCallback(() => {
     try { window.localStorage.removeItem(OMNI_CURRENT_ID_KEY); } catch { /* noop */ }
-    setRestartTool(document.documentElement.dataset.tool === 'chat' ? 'chat' : undefined);
+    const active = document.documentElement.dataset.tool;
+    setRestartTool(isToolId(active) && active !== 'chat' ? active : undefined);
     setChatResetKey((k) => k + 1);
   }, []);
 
@@ -110,7 +112,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
     const read = () => {
       const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
       setService(h === 'film' || h === 'omni' || h === 'lipsync' || h === 'hub' || h === 'agent' ? (h as Service) : 'omni');
-      // A restart's tool is one-shot: coming back to the studio from another surface opens it fresh (on video).
+      // A restart's tool is one-shot: coming back to the studio from another surface opens it fresh (on the chat).
       setRestartTool(undefined);
     };
     read();
@@ -191,7 +193,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-8 sm:py-12">
         {/* One mark: the name (docs/DESIGN.md §6). */}
         <div className="mb-8 flex items-center">
-          <Wordmark size="sm" />
+          <Wordmark size="sm" mark />
         </div>
 
         <header className="mb-7">

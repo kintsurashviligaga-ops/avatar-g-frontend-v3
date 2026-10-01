@@ -6,7 +6,7 @@ export const SERVICE_REGISTRY = [
     name: { ka: 'AvATAR', en: 'Avatar', ru: 'Аватар' },
     description: { ka: 'პერსონა და ვიზუალური იდენტობა', en: 'Persona & Visual Identity', ru: 'Персона и визуальная идентичность' },
     icon: '◉',
-    color: '#00d4ff',
+    color: '#338FE8',
     credits: 15,
     category: 'visual',
     avgSeconds: 25,
@@ -26,7 +26,7 @@ export const SERVICE_REGISTRY = [
     name: { ka: 'სურათი', en: 'Image', ru: 'Изображение' },
     description: { ka: 'ვიზუალები და გრაფიკული აქტივები', en: 'Visuals & Graphic Assets', ru: 'Визуалы и графические активы' },
     icon: '✦',
-    color: '#00d4ff',
+    color: '#338FE8',
     credits: 5,
     category: 'visual',
     avgSeconds: 20,
@@ -66,7 +66,7 @@ export const SERVICE_REGISTRY = [
     name: { ka: 'პრომპტ ბილდერი', en: 'Prompt Builder', ru: 'Конструктор промптов' },
     description: { ka: 'სტრუქტურირებული prompt-ების მშენებლობა', en: 'Structured Prompt Engineering', ru: 'Построение структурированных промптов' },
     icon: '⌥',
-    color: '#00d4ff',
+    color: '#338FE8',
     credits: 2,
     category: 'tools',
     avgSeconds: 5,
@@ -86,7 +86,7 @@ export const SERVICE_REGISTRY = [
     name: { ka: 'ხმის კლონი', en: 'Voice Clone', ru: 'Клон голоса' },
     description: { ka: 'ხმის კლონირება და AI სინთეზი', en: 'Voice Cloning & AI Synthesis', ru: 'Клонирование голоса и AI-синтез' },
     icon: '🎙',
-    color: '#00d4ff',
+    color: '#338FE8',
     credits: 12,
     category: 'audio',
     avgSeconds: 20,
@@ -161,7 +161,7 @@ export function getServiceById(id: ServiceId) {
 }
 
 export function resolveServiceColor(id: ServiceId): string {
-  return getServiceById(id)?.color ?? '#00d4ff'
+  return getServiceById(id)?.color ?? '#338FE8'
 }
 
 export const SERVICE_OUTPUT_KINDS: Record<ServiceId, 'image' | 'video' | 'audio' | 'text' | 'code'> = {

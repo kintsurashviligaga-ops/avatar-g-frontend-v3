@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * The landing and the guest dashboard at a phone and a desktop width (docs/DESIGN.md, the brief's §5):
- * video is first, "შესვლა" works, every brand image answers 200, nothing overlaps or scrolls sideways.
+ * The landing (/{lang}/landing) and the guest studio at a phone and a desktop width (docs/DESIGN.md, the brief's §5):
+ * the home page opens on the chat, a guest can talk to it, "შესვლა" works, every brand image answers 200, nothing
+ * overlaps or scrolls sideways.
  */
 const VIEWPORTS = [
   { name: 'phone', width: 390, height: 844 },
@@ -24,19 +25,19 @@ for (const vp of VIEWPORTS) {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
     test('says video first, and its doors go to the studio and to sign-in', async ({ page }) => {
-      await page.goto('/ka');
+      await page.goto('/ka/landing');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('ვიდეო ერთი იდეიდან.');
       const cta = page.getByRole('link', { name: /შექმენი ვიდეო/ }).first();
       await expect(cta).toBeVisible();
       await expect(cta).toHaveAttribute('href', '/ka/dashboard');
       const signIn = page.getByRole('link', { name: 'შესვლა' }).first();
       await expect(signIn).toBeVisible();
-      await expect(signIn).toHaveAttribute('href', '/ka/login');
+      await expect(signIn).toHaveAttribute('href', '/ka/dashboard?auth=login'); // the studio's sign-in sheet (lib/routing/signIn.ts)
       await noHorizontalScroll(page);
     });
 
     test('the first service card is Video, marked "მთავარი"; image, music and avatar follow', async ({ page }) => {
-      await page.goto('/ka');
+      await page.goto('/ka/landing');
       const cards = page.locator('#services-title ~ ul > li a');
       await expect(cards).toHaveCount(4);
       await expect(cards.nth(0)).toContainText('ვიდეო');
@@ -48,7 +49,7 @@ for (const vp of VIEWPORTS) {
     });
 
     test('every brand image on the page answers 200', async ({ page, request }) => {
-      await page.goto('/ka');
+      await page.goto('/ka/landing');
       await page.evaluate(async () => {
         // Walk the page so lazy images request their source.
         for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
@@ -65,7 +66,7 @@ for (const vp of VIEWPORTS) {
     });
 
     test('the hero copy clears the header, and the header items do not collide', async ({ page }) => {
-      await page.goto('/ka');
+      await page.goto('/ka/landing');
       const header = await page.locator('header').first().boundingBox();
       const h1 = await page.getByRole('heading', { level: 1 }).boundingBox();
       expect(header && h1).toBeTruthy();
@@ -76,7 +77,7 @@ for (const vp of VIEWPORTS) {
     });
 
     test('three reels follow the hero: each a 9:16 loop with its poster, sources answering 200', async ({ page, request }) => {
-      await page.goto('/ka');
+      await page.goto('/ka/landing');
       const reels = page.locator('section[aria-labelledby="reels-title"] video');
       await expect(reels).toHaveCount(3);
       for (const v of await reels.all()) {
@@ -89,25 +90,38 @@ for (const vp of VIEWPORTS) {
       }
     });
 
-    test('one mark: the name, with no rocket tile beside it in the header or the footer', async ({ page }) => {
-      await page.goto('/ka');
-      await expect(page.locator('header').getByRole('img', { name: /MyAvatar/ })).toBeVisible();
+    test('one lockup: the transparent rocket inside the name, never the opaque tile', async ({ page }) => {
+      await page.goto('/ka/landing');
+      const lockup = page.locator('header').getByRole('img', { name: /MyAvatar/ });
+      await expect(lockup).toBeVisible();
+      await expect(lockup.getByTestId('rocket-mark')).toBeVisible();
       await expect(page.locator('img[src*="gemini-rocket"]')).toHaveCount(0);
     });
 
     test('en and ru are video-first too', async ({ page }) => {
-      await page.goto('/en');
+      await page.goto('/en/landing');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video from a single idea.');
-      await page.goto('/ru');
+      await page.goto('/ru/landing');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Видео из одной идеи.');
     });
   });
 }
 
-test('the landing is in the server HTML: `curl /ka` returns the headline', async ({ request }) => {
-  const res = await request.get('/ka', { headers: { accept: 'text/html' } });
+test('the landing is in the server HTML: `curl /ka/landing` returns the headline', async ({ request }) => {
+  const res = await request.get('/ka/landing', { headers: { accept: 'text/html' } });
   expect(res.status()).toBe(200);
   expect(await res.text()).toContain('ვიდეო ერთი იდეიდან');
+});
+
+test('the home page is the chat: `/` → `/ka`, which serves the studio with the home metadata, not the landing', async ({ request }) => {
+  const root = await request.get('/', { maxRedirects: 0 });
+  expect(root.status()).toBe(307);
+  expect(root.headers()['location']).toMatch(/\/ka$/);
+  const res = await request.get('/ka', { headers: { accept: 'text/html' } });
+  expect(res.status()).toBe(200);
+  const html = await res.text();
+  expect(html).toContain('<link rel="canonical" href="https://myavatar.ge/ka"');
+  expect(html).not.toContain('reels-title'); // the landing's sections are not on the home page any more
 });
 
 test('the studio server HTML carries the video-first copy, and never the old line', async ({ request }) => {
@@ -121,7 +135,7 @@ test('the studio server HTML carries the video-first copy, and never the old lin
 test.describe('landing · reduced motion', () => {
   test.use({ reducedMotion: 'reduce' });
   test('the reels stay on their posters', async ({ page }) => {
-    await page.goto('/ka');
+    await page.goto('/ka/landing');
     await page.locator('#reels-title').scrollIntoViewIfNeeded();
     await page.waitForTimeout(800);
     const playing = await page.locator('section[aria-labelledby="reels-title"] video').evaluateAll((vs) => vs.filter((v) => !(v as HTMLVideoElement).paused).length);
@@ -134,7 +148,7 @@ test.describe('landing · 320 px', () => {
 
   // The segmented language pill pushed „შესვლა“ 35 px off a 320 px screen; phones now get a compact menu.
   test('the header fits: the wordmark whole, „შესვლა“ on screen, and the language menu switches the page', async ({ page }) => {
-    await page.goto('/ka');
+    await page.goto('/ka/landing');
     const wordmark = (await page.locator('header [role="img"]').boundingBox())!;
     const menu = page.locator('header summary');
     const menuBox = (await menu.boundingBox())!;
@@ -146,7 +160,7 @@ test.describe('landing · 320 px', () => {
     await noHorizontalScroll(page);
     await menu.click();
     await page.getByRole('link', { name: 'English' }).click();
-    await expect(page).toHaveURL(/\/en$/);
+    await expect(page).toHaveURL(/\/en\/landing$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Video from a single idea.');
   });
 });
@@ -157,7 +171,8 @@ test.describe('landing · 320 px', () => {
  */
 const VIDEO_PLACEHOLDER = 'აღწერე კადრი, ჩაწერე ხმა, ან მიამაგრე ფაილი…';
 
-async function openDashboard(page: Page, path = '/ka/dashboard') {
+/** The studio on the VIDEO tool — most tests below exercise the video studio, which is one tap from the chat. */
+async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.addInitScript(() => { try { localStorage.setItem('myavatar-cookie-consent', 'necessary'); } catch { /* private mode */ } });
   await page.goto(path);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
@@ -180,7 +195,44 @@ for (const vp of VIEWPORTS) {
   test.describe(`guest dashboard · ${vp.name}`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    test('opens on video: the reel chip is first and pressed, the composer asks for a shot', async ({ page }) => {
+    test('the home page opens on the chat for a guest: Chat is the first sidebar row and the active tool', async ({ page }) => {
+      await openDashboard(page, '/ka');
+      await expect(page).toHaveURL(/\/ka$/);
+      await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible();
+      if (vp.name === 'phone') await page.locator('header').getByRole('button', { name: 'მენიუ' }).click();
+      const nav = page.locator('aside[aria-label="მენიუ"]');
+      const rows = nav.getByRole('button');
+      await expect(nav.getByTestId('sidebar-chat')).toHaveAttribute('aria-current', 'true');
+      // The hub row comes before every other row in the menu (after the collapse control), and is named once.
+      const names = await rows.allTextContents();
+      const firstRow = names.findIndex((n) => n.trim().length > 0);
+      expect(names[firstRow]!.trim()).toBe('ჩატი');
+      expect(names.filter((n) => n.trim() === 'ჩატი')).toHaveLength(1);
+    });
+
+    test('a guest\'s plain chat turn is sent to the chat; a generation request opens sign-in and sends nothing', async ({ page }) => {
+      const posts: string[] = [];
+      page.on('request', (r) => {
+        const path = new URL(r.url()).pathname;
+        if (r.method() === 'POST' && path.startsWith('/api/') && !/^\/api\/(presence|log-error)\b/.test(path)) posts.push(path);
+      });
+      // The chat answer is stubbed: nothing reaches Google.
+      await page.route('**/api/chat/gemini', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': keep-alive\n\ndata: {"meta":{"provider":"gemini","model":"gemini-3.8-flash","mode":"fast"}}\n\ndata: {"text":"გამარჯობა!"}\n\ndata: [DONE]\n\n' }));
+      await openDashboard(page, '/ka');
+      const box = page.getByPlaceholder('ჰკითხე MyAvatar-ს');
+      await box.fill('გამიკეთე ვიდეო ზღვაზე');
+      await box.press('Enter');
+      await expect(page.locator('input[type="email"]')).toBeVisible(); // the sign-in sheet
+      expect(posts).toEqual([]);
+      await page.keyboard.press('Escape');
+      await box.fill('რა არის თბილისი?');
+      await box.press('Enter');
+      await expect(page.getByText('გამარჯობა!')).toBeVisible();
+      expect(posts).toEqual(['/api/chat/gemini']);
+    });
+
+    test('the video tool: the reel chip is first and pressed, the composer asks for a shot', async ({ page }) => {
       await openDashboard(page);
       const sub = page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.');
       await expect(sub).toBeVisible();
@@ -200,18 +252,19 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
-    test('„+“ opens photos, camera, files and the tools — Video first, image, music and avatar one tap away', async ({ page }) => {
+    test('„+“ opens photos, camera, files and the tools — Chat, then Video, image, music and avatar one tap away', async ({ page }) => {
       await openDashboard(page);
       await page.getByTestId('plus').click();
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
       for (const tile of ['ფოტოები', 'კამერა', 'ფაილები']) await expect(sheet.getByRole('button', { name: tile })).toBeVisible();
       const tools = sheet.getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button');
-      await expect(tools.nth(0)).toContainText('ვიდეო');
-      await expect(tools.nth(0)).toHaveAttribute('aria-pressed', 'true');
-      await expect(tools.nth(1)).toContainText('სურათი');
-      await expect(tools.nth(2)).toContainText('მუსიკა');
-      await expect(tools.nth(3)).toContainText('ავატარი');
+      await expect(tools.nth(0)).toContainText('ჩატი'); // the hub leads the one tool list
+      await expect(tools.nth(1)).toContainText('ვიდეო');
+      await expect(tools.nth(1)).toHaveAttribute('aria-pressed', 'true');
+      await expect(tools.nth(2)).toContainText('სურათი');
+      await expect(tools.nth(3)).toContainText('მუსიკა');
+      await expect(tools.nth(4)).toContainText('ავატარი');
       // Nothing is lost one level down: the product ad, the swap, motion and the four studios.
       await expect(sheet.getByRole('list', { name: 'მეტი' }).getByRole('button').first()).toContainText('პროდუქტის რეკლამა');
     });
@@ -252,7 +305,7 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible(); // still the empty state: nothing was sent
     });
 
-    // docs/DESIGN.md §11 LIVE_GAP: both of these used to drop a guest into „ჩატი“, as if chat were home.
+    // docs/DESIGN.md §11 LIVE_GAP: both of these used to drop a guest out of the tool they were on.
     test('closing the settings with ✕ keeps the service', async ({ page }) => {
       await openDashboard(page);
       const toggle = page.getByTestId('options-toggle');
@@ -266,7 +319,7 @@ for (const vp of VIEWPORTS) {
     test('picking the tool that is already on keeps it', async ({ page }) => {
       await openDashboard(page);
       await page.getByTestId('plus').click();
-      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button').first();
+      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button').filter({ hasText: 'ვიდეო' }).first();
       await expect(video).toHaveAttribute('aria-pressed', 'true');
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed
@@ -381,12 +434,16 @@ for (const vp of VIEWPORTS) {
       await expect(page.locator('input[type="email"]')).toBeVisible();
     });
 
-    test('one mark: the name — no rocket tile and no "M" badge beside it', async ({ page }) => {
+    test('one lockup: the transparent rocket inside the name — no opaque tile and no "M" badge beside it', async ({ page, request }) => {
       // „ორი ლოგო არ უნდა ჩანდეს" — the rocket raster beside the wordmark (an opaque tile: the PNG has no alpha) and
-      // an "M" circle styled like the account initial read as a second logo.
+      // an "M" circle styled like the account initial read as a second logo. The cut-out lives INSIDE the lockup.
       await openDashboard(page);
       await expect(page.locator('img[src*="gemini-rocket"]')).toHaveCount(0);
       await expect(page.getByText('M', { exact: true })).toHaveCount(0);
+      const marks = page.locator('[role="img"][aria-label="MyAvatar.ge"] [data-testid="rocket-mark"]').filter({ visible: true });
+      await expect(marks.first()).toBeVisible();
+      const png = await (await request.get('/brand/rocket-mark.png')).body();
+      expect(png[25]).toBe(6); // PNG colour type 6: it has an alpha channel
     });
 
     test('the brand plate loads, and nothing overlaps or leaves the screen', async ({ page, request }) => {

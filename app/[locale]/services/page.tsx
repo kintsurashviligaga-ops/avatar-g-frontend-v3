@@ -1,4 +1,6 @@
 ﻿import Link from 'next/link';
+import { StudioPageShell } from '@/components/studio/StudioPageShell';
+import { signInPath } from '@/lib/routing/signIn';
 import Image from 'next/image';
 import type { Metadata } from 'next';
 import type { ComponentType } from 'react';
@@ -501,6 +503,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
   const itemListSchema = serviceItemListSchema({ locale, name: 'MyAvatar AI Services', services: catalogServices });
 
   return (
+    <StudioPageShell locale={locale}>
     <section className='relative overflow-hidden px-4 py-16 sm:px-6 md:py-20 lg:px-10 lg:py-24 bg-transparent' style={{ color: 'var(--color-text)' }}>
       <JsonLd data={itemListSchema} />
       <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
@@ -508,7 +511,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
           <div className='mx-auto mb-5 relative w-[83px] h-[83px] sm:w-[104px] sm:h-[104px]'>
             <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
             <Image
-              src="/brand/gemini-rocket-clean.png"
+              src="/brand/rocket-mark.png"
               alt="MyAvatar"
               fill
               sizes="104px"
@@ -627,7 +630,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             {/* Brand mark */}
             <div className='relative w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] mb-8'>
               <div className='absolute inset-[-20%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)', filter: 'blur(16px)' }} />
-              <Image src="/brand/gemini-rocket-clean.png" alt="MyAvatar" fill sizes="96px" className='object-contain drop-shadow-[0_4px_24px_rgba(34,211,238,0.3)]' />
+              <Image src="/brand/rocket-mark.png" alt="MyAvatar" fill sizes="96px" className='object-contain drop-shadow-[0_4px_24px_rgba(34,211,238,0.3)]' />
             </div>
 
             {/* Eyebrow */}
@@ -664,7 +667,7 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
             {/* CTA row */}
             <div className='mt-10 flex flex-wrap items-center justify-center gap-3'>
               <Link
-                href={`/${locale}/signup`}
+                href={signInPath(locale, { mode: 'signup' })}
                 className='inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-bold transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20'
                 style={{ background: 'linear-gradient(135deg, #22d3ee, #06b6d4)', color: '#fff' }}
               >
@@ -688,5 +691,6 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
         </section>
       </div>
     </section>
+    </StudioPageShell>
   );
 }

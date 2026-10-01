@@ -83,8 +83,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   // gate everywhere would put every surface through SSR for the first time. The marketing landing goes first:
   // its tree is server components plus effect-only client code, and its job — first paint, the hero image,
   // crawlers — is exactly what an empty body breaks. Same element either way, so nothing remounts on load.
+  // The landing lives at /{lang}/landing; /{lang} is now the studio and renders in the browser like /dashboard.
   const pathname = usePathname();
-  const serverRendered = !!pathname && /^\/(ka|en|ru)\/?$/.test(pathname);
+  const serverRendered = !!pathname && /^\/(ka|en|ru)\/landing\/?$/.test(pathname);
   if (!isLoaded && !serverRendered) {
     return null;
   }

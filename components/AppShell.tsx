@@ -2,15 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { TopNavbar, SidebarMenu, BottomNavigation } from './shell/ModernShell';
 import { ClientErrorBoundary } from './ClientErrorBoundary';
 import { PageEnvironment } from './ui/PageEnvironment';
 import CookieConsent from './CookieConsent';
-import SupportWidgetMount from './support/SupportWidgetMount';
 import PresenceHeartbeat from './presence/PresenceHeartbeat';
 
 export function AppShell({ children, studioV2 = false }: { children: React.ReactNode; /** STUDIO_V2 on this deployment (root layout). */ studioV2?: boolean }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   // Embedded mode: when a page is opened inside the studio's in-window slide-over
   // (an iframe with ?embed=1), strip ALL app-shell chrome — navbar, sidebar,
@@ -119,45 +116,40 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
     };
   }, []);
 
-  // Routes that own their full layout — no app shell chrome. `library` is in here
-  // because it wraps itself in the ChatChrome studio shell (dark sidebar + header), so
-  // the marketing TopNavbar/SidebarMenu/BottomNav would double up on top of it.
+  // ⚠️ THERE IS NO MARKETING SHELL ANY MORE (2026-10-01, the owner's call — docs/DESIGN.md §13). The old top bar
+  // (☰ · the opaque rocket tile · „დაწყება"), the bottom navigation (ჩატი · ბიბლიოთეკა · პარამეტრები · მხარდაჭერა) and
+  // the floating support bubble were the frame of pages nobody used; those pages were deleted (next.config.js redirects
+  // their URLs) and the ones that matter — pricing, settings, support, the services hub, the account pages — render in
+  // the studio's own shell (ChatChrome), like /library. What remains here is only WHICH kind of <main> a route gets.
+  //
+  // Studio surfaces — the studio itself and every page wrapped in ChatChrome: full-height, no page scroll (the shell
+  // scrolls its own body).
   const isImmersiveWorkspace = !!pathname && (
-    /\/services\/[a-z0-9-]+\/?$/.test(pathname) ||
-    /\/(dashboard|hub|workspace|library|calendar-lab)\/?$/.test(pathname)
+    /^\/(ka|en|ru)\/?$/.test(pathname) ||          // the home page IS the studio (opens on the chat)
+    /\/services(\/[a-z0-9-]+)?\/?$/.test(pathname) || // the services hub and each service page
+    /\/(dashboard|hub|workspace|library|calendar-lab|pricing|settings|support|memory|voice-lab)\/?$/.test(pathname) ||
+    /\/account\/(billing|invoices|payments|delete)\/?$/.test(pathname)
   );
 
-  // Landing & auth pages manage their own navbar — strip the app shell
-  const isLandingOrAuth = !!pathname && (
-    /^\/(ka|en|ru)\/?$/.test(pathname) ||          // /ka  /en  /ru
-    /^\/$/.test(pathname) ||                        // bare /
-    /\/(login|signup|auth|register)(\/|$)/.test(pathname)
-  );
+  // Landing, auth, legal, admin and the share page own their own header; they get the plain <main> below.
 
-  // Admin console owns its FULL layout (its own MyAvatar header) — strip ALL marketing shell chrome
-  // (navbar, sidebar, bottom nav, floating chat, cookie banner). Consumer chrome has no place here.
+  // Admin console owns its FULL layout (its own MyAvatar header).
   const isAdmin = !!pathname && /\/admin(\/|$)/.test(pathname);
 
-  // The phone-handoff avatar enrollment (/{locale}/avatar/enroll) is a focused full-screen capture flow —
-  // the marketing nav (fixed z-200 top + bottom) would sit over its own overlay and hide the Save bar.
+  // The phone-handoff avatar enrollment (/{locale}/avatar/enroll) is a focused full-screen capture flow.
   const isAvatarEnroll = !!pathname && /\/avatar\/enroll\/?$/.test(pathname);
 
-  // ⚠️ A LEGAL DOCUMENT IS SOMETHING YOU OPEN, READ AND CLOSE — NOT A PLACE IN THE NAVIGATION. These
-  // pages are reached from inside the billing sheet and the footers, and they used to render with the
-  // full marketing shell on top: the fixed bottom nav covered the last paragraph, the top bar offered
-  // "დაწყება" to someone already mid-payment, and the only way back was a link buried under a long
-  // document. Reported as "it opens wrong, the bars collide with the content".
-  // Stripping the chrome here is what lets LegalDocChrome's ✕ be the single, obvious way out.
+  // ⚠️ A LEGAL DOCUMENT IS SOMETHING YOU OPEN, READ AND CLOSE — NOT A PLACE IN THE NAVIGATION. LegalDocChrome's ✕ is
+  // the single, obvious way out (the old marketing bars used to collide with the last paragraph).
   const isLegalDoc = !!pathname && /\/(terms|privacy|refund|refund-policy|cookies|licenses)\/?$/.test(pathname);
 
-  // /{locale}/studio is the new studio — wrapped in the ChatChrome shell like /library — where STUDIO_V2 is on.
-  // Elsewhere the same URL is the legacy agent hub, which is a marketing page and keeps this chrome.
+  // /{locale}/studio is the new studio — wrapped in the ChatChrome shell like /library — where STUDIO_V2 is on
+  // (elsewhere the route sends you home).
   const isStudioV2 = studioV2 && !!pathname && /^(\/(ka|en|ru))?\/studio\/?$/.test(pathname);
 
-  const hideShellChrome = isImmersiveWorkspace || isStudioV2 || isLandingOrAuth || isAdmin || isAvatarEnroll || isEmbed || isLegalDoc;
-  // The marketing landing (/{lang}) paints its own opaque, cinematic page — the animated environment behind it
-  // would cost frames nobody sees (docs/DESIGN.md: low motion).
-  const isMarketingLanding = !!pathname && /^\/(ka|en|ru)\/?$/.test(pathname);
+  // The marketing landing (/{lang}/landing) paints its own opaque, cinematic page — the animated environment behind
+  // it would cost frames nobody sees (docs/DESIGN.md: low motion).
+  const isMarketingLanding = !!pathname && /^\/(ka|en|ru)\/landing\/?$/.test(pathname);
 
   return (
     <div
@@ -174,32 +166,21 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
       >
         Skip to content
       </a>
-      {!hideShellChrome && <TopNavbar onMenuToggle={() => setSidebarOpen(v => !v)} menuOpen={sidebarOpen} />}
-      {!hideShellChrome && <SidebarMenu open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
       <main
         id="main-content"
         className="relative flex-1 w-full"
         style={
           isImmersiveWorkspace || isStudioV2
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
-            // ⚠️ isLegalDoc BELONGS HERE TOO. The else-branch below reserves 4rem at the top for the
-            // TopNavbar and 60px at the bottom for the BottomNavigation — neither of which renders on a
-            // legal route any more. Leaving it reserved put a band of empty black above the sticky ✕ and
-            // made the header look detached from the top of the screen.
-            : (isLandingOrAuth || isEmbed || isAdmin || isLegalDoc)
-            ? { zIndex: 2 }
-            : {
-                paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))',
-                paddingBottom: 'calc(60px + env(safe-area-inset-bottom, 0px))',
-                zIndex: 2,
-              }
+            // Everything else (landing, auth, legal, admin, the share page, not-found) owns its own header and scrolls
+            // normally — nothing is reserved for bars that no longer exist.
+            : { zIndex: 2 }
         }
       >
         <ClientErrorBoundary>
           {children}
         </ClientErrorBoundary>
       </main>
-      {!hideShellChrome && <BottomNavigation />}
       {/* PHASE 37.1 — removed the global floating Agent-G buttons (a RED phone/call button bottom-left + a
           cyan chat button bottom-right). They floated at z-[9999] over the production dashboard; the red one
           was the reported "red phone button". No external redirect existed (it opened an in-app CallScreen);
@@ -209,10 +190,6 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
           it only pings while the tab is visible. */}
       {!isEmbed && <PresenceHeartbeat />}
       {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <CookieConsent />}
-      {/* Support chat. It decides for itself whether this route should show it — notably NOT the studio,
-          whose composer dock owns the bottom-right corner (see the PHASE 37.1 note above: a floating
-          button in that corner has been reported before). */}
-      {!isEmbed && !isAdmin && !isAvatarEnroll && !isLegalDoc && <SupportWidgetMount hidden={isStudioV2} />}
     </div>
   );
 }

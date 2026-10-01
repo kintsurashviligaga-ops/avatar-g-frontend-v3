@@ -19,10 +19,9 @@ const dir = join(__dirname, '..');
 const src = (f: string) => readFileSync(join(dir, f), 'utf8');
 
 /** Studios migrated to the shared progress card. Grow this list; never shrink it. */
-const WITH_PROGRESS = [
-  'MontageStudio.tsx', 'DubbingStudio.tsx', 'SlidesStudio.tsx',
-  'Model3dStudio.tsx', 'LipsyncStudio.tsx', 'MusicStudio.tsx',
-];
+const WITH_PROGRESS = ['LipsyncStudio.tsx'];
+// The standalone Montage / Dubbing / Slides / 3D / Music studio PAGES were deleted with the old shell (2026-10-01,
+// docs/DESIGN.md §13); their work happens in the studio's ServiceParamsPanel, which is held to the same bar below.
 
 describe('progress parity', () => {
   it.each(WITH_PROGRESS)('%s uses the shared GenerationProgress card', (f) => {
@@ -42,64 +41,16 @@ describe('progress parity', () => {
   });
 });
 
-describe('retry parity', () => {
-  const WITH_RETRY = ['MontageStudio.tsx', 'DubbingStudio.tsx', 'SlidesStudio.tsx', 'Model3dStudio.tsx'];
+describe('the in-studio service panels (successor of the deleted standalone studios)', () => {
+  const panel = () => src('ServiceParamsPanel.tsx');
 
-  it.each(WITH_RETRY)('%s offers a retry beside the error', (f) => {
-    const s = src(f);
-    const at = s.indexOf('{error && (');
-    expect(at).toBeGreaterThan(-1);
-    // In the same block as the error, not somewhere else on the page.
-    expect(s.slice(at, at + 700)).toContain('<SecondaryButton onClick={submit}');
+  it('show the shared progress card', () => {
+    expect(panel()).toContain('<GenerationProgress');
   });
 
-  it.each(WITH_RETRY)('%s disables the retry while a run is in flight', (f) => {
-    const s = src(f);
-    const at = s.indexOf('<SecondaryButton onClick={submit}');
-    expect(s.slice(at, at + 120)).toContain('disabled={busy}');
-  });
-});
-
-describe('mobile parity — a file picker, not a typed URL', () => {
-  /**
-   * ⚠️ THESE STUDIOS ASKED THE USER TO TYPE A PUBLIC https URL. The video someone wants dubbed is in
-   * their camera roll, not on a web server they control — so on a phone the page was not awkward, it was
-   * unusable, while the in-chat panel drove the very same route with a real picker. The URL field stays
-   * for the case it was actually good at: a link to something already online.
-   */
-  const WITH_PICKER = ['DubbingStudio.tsx', 'MontageStudio.tsx', 'Model3dStudio.tsx'];
-
-  it.each(WITH_PICKER)('%s offers a Dropzone', (f) => {
-    expect(src(f)).toContain('<Dropzone');
-  });
-
-  it.each(WITH_PICKER)('%s uploads through the shared hook', (f) => {
-    // Not a bespoke fetch: useUpload already localizes its own failures.
-    expect(src(f)).toContain('useUpload(');
-  });
-
-  it.each(WITH_PICKER)('%s keeps the URL field as well', (f) => {
-    // Removing it would break the workflow the field was genuinely good for.
-    expect(src(f)).toMatch(/type="url"/);
-  });
-
-  it.each(WITH_PICKER)('%s surfaces an upload failure', (f) => {
-    expect(src(f)).toContain('uploadError');
-  });
-
-  it('every studio that takes a media URL now offers a picker', () => {
-    // The ledger is empty: Dubbing, Montage and 3D were the three that demanded a typed URL, and all
-    // three are migrated. Kept as an assertion rather than deleted, so a new URL-only studio is caught.
-    const urlOnly = ['DubbingStudio.tsx', 'MontageStudio.tsx', 'Model3dStudio.tsx']
-      .filter((f) => src(f).includes('type="url"') && !src(f).includes('<Dropzone'));
-    expect(urlOnly).toEqual([]);
-  });
-
-  it('Montage offers a picker per row AND for the music bed', () => {
-    // A montage is several files; one picker at the top would not have been the fix.
-    const s = src('MontageStudio.tsx');
-    expect(s).toContain('id={`mtg-${row.key}`}');
-    expect(s).toContain('id="mtg-music"');
+  it('take files through a picker and the shared upload hook — never a typed URL on a phone', () => {
+    expect(panel()).toContain('<Dropzone');
+    expect(panel()).toContain('useUpload(');
   });
 });
 

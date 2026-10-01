@@ -4,7 +4,7 @@ Written before any pixel or any Higgsfield request. The landing page, the dashbo
 
 ## 1. What the product is
 
-**A Tbilisi video production studio for Reels.** You describe a shot in Georgian and get a finished vertical video: footage, Georgian voice, music, subtitles and edit. Image, music, voice and avatar are part of the same studio, always one click away. Video leads.
+**A Tbilisi video production studio for Reels, entered through the chat.** You describe a shot in Georgian and get a finished vertical video: footage, Georgian voice, music, subtitles and edit. Image, music, voice and avatar are part of the same studio, always one click away. **Since 2026-10-01 the chat is the hub and the home page (§13); video leads the generators.**
 
 A guest must understand "video studio" within three seconds of landing. The picture says it, the headline says it, and the first card says it.
 
@@ -14,16 +14,16 @@ A guest must understand "video studio" within three seconds of landing. The pict
 
 | Token | Value | Use |
 |---|---|---|
-| ink | `#0A0A0A` (`--app-bg`) | page background |
-| surface | `#16161A` / `#202026` (`--app-surface` / `--app-elevated`) | panels, the composer, cards |
+| ink | **`#000000`** (`--app-bg`) — true black since 2026-10-01 (§13) | page background |
+| surface | `#111114` / `#1C1C21` (`--app-surface` / `--app-elevated`) | panels, the composer, cards |
 | hairline | white 8–12 % | borders; never a coloured border |
 | text | `#F0F0F5` (`--app-text`) | headings and body |
 | muted | `#A0A0AF` (`--app-muted`) | secondary text: 7.7:1 on ink, 7.0:1 on surface. Never below AA (4.5:1) |
-| **accent** | **`#00E5FF`** (`--app-accent`) | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges |
+| **accent** | **`#338FE8`** (`--app-accent`) — the rocket's blue (§13; was `#00E5FF`) | **the only accent**: the primary CTA, focus rings, `.ge`, active states, small badges. 6.2:1 on black as text; ink text on it reads 6.2:1. `--app-accent-deep` `#1873CA` (the rocket's body) is for glows and large fills only |
 
-**One accent only.** The brand sheet's lime (`#C5FF00`) and gold (`#D4AF37`) are brand-sheet colours, not UI colours. The product UI uses cyan and neutrals only. If a second colour seems necessary, the hierarchy is wrong. (`--app-gold` still exists as a token for older surfaces. New UI does not use it.)
+**One accent only.** The brand sheet's lime (`#C5FF00`) and gold (`#D4AF37`) are brand-sheet colours, not UI colours. The product UI uses the rocket blue and neutrals only (cyan survives as the flame's colour in status/success tones). If a second colour seems necessary, the hierarchy is wrong. (`--app-gold` still exists as a token for older surfaces. New UI does not use it.)
 
-The primary CTA is a solid cyan pill with ink text, used once per view. Secondary actions are outline or text.
+The primary CTA is a solid rocket-blue pill with ink text, used once per view. Secondary actions are outline or text.
 
 **The chat's user bubble is the one accent-tinted surface** (`app-accent/10`, no border) — approved by the owner's Gemini-parity brief of 2026-09-30 (§12). Everywhere else the accent stays on controls, states and small badges, and coloured borders stay banned.
 
@@ -112,16 +112,16 @@ The price teaser states only what is true for every visitor: the price is on the
 - **Composer:** ONE block at the bottom, safe-area aware — nothing stacked above it. (The chat's variant is in §12: no tool chip, the disclaimer instead of the price.) Left: **+** (a sheet: photos · camera · files, then the tools — each tile routed to where the ACTIVE tool reads it) and the **tool chip** — what you make and its shape, „ვიდეო · 9:16 · 24წმ“ — which opens the settings. Right: mic, then the live-voice waveform, which **Run** replaces once there is something to run. ONE Run for every tool: product ad, swap and remix run from the composer too (they used to be reachable only through a button at the foot of their panel); motion opens its settings. The **price** („25 კრედიტი · ~5 წთ“) sits once, under the composer. Textarea 16 px.
 - **Settings:** the service card (icon · name · one line · „შეცვლა“), then the essentials — a video's format (9:16 · 1:1 · 16:9 · 4:5) and length (8 · 24 · 48 s, the pipeline's real lengths) as radio groups — then the tool's panel with its long tail folded („სცენარი, აუდიო და ხმები“ opens by itself when it matters). No Generate buttons inside: the composer runs. Section labels are words, not emoji.
 - **ResultCard:** one tile for a generation from queued to ready — `components/studio/ui/ResultCard.tsx`. It has the result's shape from the first second (a 9:16 video is a 9:16 tile), a shimmer plate instead of a spinner, a 3 px accent bar and one caption („ვიდეო · 9:16 · 12%“), a 44 px cancel that stops THAT job, and a polite live region that announces state changes (not percent ticks). Progress is the pipeline's real percent when it reports one, otherwise elapsed ÷ cap held at 92 % until the media is here. Ready: the real image or video, with open · download · use as reference. Error: one line, retry, dismiss. The film crew console stays one tap away under the tile („დეტალები“).
-- **One mark: the name.** The wordmark, set as text, is the brand everywhere in the chrome — the landing's header and footer, the studio, the hub. The rocket is the app icon, the favicon and the social card, where it stands alone; beside the name it read as a second logo (and its PNG has no alpha, so it is an opaque tile). A reply carries no avatar badge — the „M“ circle looked exactly like the account initial.
+- **One lockup: the rocket + the name** (since 2026-10-01, §13; it was "the name alone"). The transparent rocket cut-out (`public/brand/rocket-mark.*`, made by `design/brand/rocket/extract.py` from the supplied raster — never redrawn) sits in front of the typeset name inside ONE `role="img"` (`<Wordmark mark />`) in the chrome — the landing's header and footer, the studio sidebar and title bar, the hub. The old problem was the OPAQUE tile (the raster has no alpha) read as a second logo; the cut-out has no box. A reply carries no avatar badge — the „M“ circle looked exactly like the account initial.
 - **Header:** the name, language and „შესვლა“ on the landing; on the studio see above. On the landing, „შესვლა“ opens sign-in, and a signed-in visitor goes straight to the studio.
 
 ## 9. Routes (invariants)
 
-- `/{lang}/dashboard`, `/chat`, `/agent`, `/pricing` and `/services/*` are untouched.
+- `/{lang}/dashboard`, `/pricing` and `/services/*` are untouched. (`/chat`, `/agent` and the other old-shell pages were deleted on 2026-10-01 — §13; next.config.js redirects their URLs.)
 - Auth, the credit ledger and the generation contracts are untouched.
-- `/{lang}` is the marketing landing for **guests** (anyone without a session cookie, crawlers included). `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard`, as today (`lib/routing/landing.ts`).
-- The sitemap lists `/ka`, `/en` and `/ru` and never the bare `/`, which only redirects.
-- `/{lang}/landing`, the retired route, redirects to `/{lang}`.
+- `/{lang}` is **the studio, opening on the chat**, for guests (anyone without a session cookie, crawlers included), with the site's home metadata. `/` redirects to the visitor's `/{lang}`. A signed-in visitor keeps going straight to `/{lang}/dashboard` — the same studio with their session (`lib/routing/landing.ts`, §13).
+- `/{lang}/landing` is the marketing landing (server-rendered, self-canonical). Its language switch stays on `/{lang}/landing`.
+- The sitemap lists `/ka`, `/en`, `/ru` and their `/landing` pages, and never the bare `/`, which only redirects.
 - The PWA `start_url` stays `/ka/dashboard`.
 
 ## 10. Audit — the burger, the service menu, the rest (2026-09-29)
@@ -183,7 +183,7 @@ The full studios, Montage, Dubbing, 3D and Presentation, stay below a divider in
 - The options panel's ✕ switched the service to chat. A guest who opened „პარამეტრები“ and closed it was left in a chat box. ✕ now only collapses the panel. It still falls back to chat in one case: on desktop, with a conversation under way, where the panel is pinned open and chat is the only mode without one.
 - Picking the already-checked service in the menu toggled it off, to chat. A radio item no longer un-checks itself.
 
-Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f96506`, the production build before this fix. Chat stays in the menu, last among the modes, and is never the default.
+Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f96506`, the production build before this fix. ~~Chat stays in the menu, last among the modes, and is never the default.~~ Superseded 2026-10-01 (§13): chat is the default and the first row. The two fixes stand — closing a panel or re-picking a tool still keeps the tool you are on.
 
 ## 12. The chat — Gemini parity (2026-09-30)
 
@@ -200,3 +200,15 @@ Both are covered in `tests/landing.spec.ts`, and both tests fail against `7f9650
 - **Streaming.** A quiet spark with „ფიქრობს…“ before the first token — no bouncing dots, no caret.
 - **Live.** A full-screen dark frame, the orb with its one cyan halo (§6), a fluid waveform, and plain mute and end controls. A microphone failure names the microphone, never "connection dropped".
 - **Georgian reading text** in all of the above stays at 16 px on a 1.6 line (§3); Latin and Cyrillic captions keep Gemini's 13 px.
+
+## 13. Super Chatbox — the chat is home (2026-10-01)
+
+**Sign-off.** The owner's Master Directive of 2026-10-01: "The homepage (`/`) must instantly render the Chat interface. Implement a limited Guest Mode. The minimalist Auth modal triggers only for premium tools. 'Chat' must be the absolute primary hub at the top of the sidebar." It overrides §1's "video first" for the studio's entry point and §11's "chat is never the default".
+
+- **Home.** `/{lang}` renders the studio and it opens on the chat (§9). The marketing landing lives at `/{lang}/landing`.
+- **Sidebar.** „ჩატი" is the first row, above „ახალი სესია"; „სერვისები" below lists the generators (video first) and never repeats the chat. The one tool list (`lib/studio/tools.ts`) leads with chat, so the „+" sheet and the collapsed rail agree.
+- **Guest mode** (`lib/chat/guestChat.ts`, server-enforced). A visitor without an account can chat: Fast only, text only, no Google Search grounding (unless `CHAT_GUEST_SEARCH=1`), answers capped at 2,048 tokens, 10 turns a day per IP and 250 a day for all guests together. A spent allowance, a file or an over-long message is answered in-stream with `auth_required`, which opens the sign-in sheet. `CHAT_GUEST_ENABLED=0` closes it.
+- **Premium tools ask first.** In the browser, send() lets only a plain chat turn through for a guest; a non-chat tool, files, a generate command („გამიკეთე ვიდეო…") or a studio request opens the sign-in sheet before anything is sent, and the composer keeps the text. Dictation, read-aloud and Live do the same.
+- **Look.** True black (`#000`) under every surface, the rocket's blue (`#338FE8`) as the one accent (§2), and the rocket — cut out, no box — in front of the name in every navbar (§8).
+- **No marketing shell.** The old top bar (☰ · the opaque rocket tile · „დაწყება"), the bottom navigation and the floating support bubble were deleted with the pages only they framed (2026-10-01, the owner's approval): the old `/chat`, Agent G / business / executive dashboards, marketplace, online-shop, sell, the standalone 3D / dubbing / montage / slides pages, the `/studio/*` and `/dashboard/*` sub-pages, and placeholders. `next.config.js` redirects every old URL to its nearest surface. Pricing, settings, support, the services hub and the account pages render in the studio's own shell (`components/studio/StudioPageShell.tsx`). The rocket is the transparent mark everywhere — the opaque tile is gone from sign-in, share and the hub too.
+- **No sign-in page.** `/{lang}/login`, `/signup` and `/auth` were deleted too (2026-10-01, the owner's request); they redirect to `/{lang}/dashboard?auth=login|signup` (query kept) and the studio opens its own sign-in sheet (`lib/routing/signIn.ts`). The sheet is ONE field — an email, or an email or phone number once Supabase's Phone provider is on — and a 6-digit code that signs an existing account in or creates a new one. No „sign in vs register" choice, no password to invent; password sign-in and reset are one small link away.

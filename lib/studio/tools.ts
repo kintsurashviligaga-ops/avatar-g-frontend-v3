@@ -6,7 +6,8 @@ import {
 /**
  * The studio's tools — ONE list for every surface that names them: the sidebar's „სერვისები", the composer's
  * „+" sheet (phones), the „ხელსაწყოები" picker (desktop) and the settings panel's service card
- * (docs/DESIGN.md §8). Order is the product's order: video first, chat last.
+ * (docs/DESIGN.md §8). Order is the product's order: CHAT FIRST — it is the home page and the hub every other tool
+ * is reached from (the owner's 2026-10-01 directive) — then the generators, video leading them.
  *
  * A tool is not new state. OmniStudio derives it from what it already has — `mode`, the video tab, the avatar
  * tab and the studio panel — and `selectTool` sets those (components/studio/OmniStudio.tsx). The ids travel in
@@ -19,7 +20,7 @@ export type ToolId =
 type L10n = { ka: string; en: string; ru: string };
 export type ToolLang = 'ka' | 'en' | 'ru';
 
-export const PRIMARY_TOOLS: readonly ToolId[] = ['video', 'image', 'music', 'avatar', 'remix', 'chat'];
+export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'music', 'avatar', 'remix'];
 /** Tools that live one level down: video variants, motion, and the four full studios. */
 export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'motion', 'montage', 'dubbing', 'model3d', 'presentation'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];

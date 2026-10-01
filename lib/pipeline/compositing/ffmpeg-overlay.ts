@@ -60,7 +60,7 @@ export interface MarketingOverlay {
   lang?: 'ka' | 'en' | 'ru';
 }
 
-const ACCENT = '#00D2FF';
+const ACCENT = '#338FE8';
 
 /** Georgian Unicode ranges: Mkhedruli + Asomtavruli + Mtavruli + Nuskhuri. */
 const GEORGIAN_RE = /[Ⴀ-ჿᲐ-Ჿⴀ-⴯]/;
@@ -130,7 +130,7 @@ export function buildOverlaySvg(m: MarketingOverlay, w: number, h: number): stri
   els.push(
     `<defs>` +
       `<linearGradient id="ltAccent" x1="0" y1="0" x2="0" y2="1">` +
-        `<stop offset="0" stop-color="${ACCENT}"/><stop offset="1" stop-color="#0077B6"/>` +
+        `<stop offset="0" stop-color="${ACCENT}"/><stop offset="1" stop-color="#1873CA"/>` +
       `</linearGradient>` +
       `<linearGradient id="ltScrim" x1="0" y1="0" x2="1" y2="0">` +
         `<stop offset="0" stop-color="#05070D" stop-opacity="0.72"/>` +

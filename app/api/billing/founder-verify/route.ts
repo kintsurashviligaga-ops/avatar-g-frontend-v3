@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     try {
       const url = await createWalletTopupSession({
         customerId,
+        userId: user.id,
         amountGel: FOUNDER_VERIFICATION_GEL,
         successUrl: `${origin}/dashboard?founder_verify=success`,
         cancelUrl: `${origin}/dashboard?founder_verify=canceled`,

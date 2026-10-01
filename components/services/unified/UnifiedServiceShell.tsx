@@ -165,12 +165,12 @@ function MobileServiceRail({
       style={{
         background: 'rgba(6,8,18,0.95)',
         backdropFilter: 'blur(20px)',
-        borderTop: '1px solid rgba(0,212,255,0.08)',
+        borderTop: '1px solid rgba(51,143,232,0.08)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
       {/* Glow line */}
-      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,212,255,0.3), transparent)' }} />
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(51,143,232,0.3), transparent)' }} />
 
       <div
         ref={railRef}
@@ -186,15 +186,15 @@ function MobileServiceRail({
               onClick={() => onServiceSelect(s.slug)}
               className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl shrink-0 transition-all duration-200"
               style={{
-                background: isActive ? 'rgba(0,212,255,0.12)' : 'transparent',
-                border: isActive ? '1px solid rgba(0,212,255,0.25)' : '1px solid transparent',
+                background: isActive ? 'rgba(51,143,232,0.12)' : 'transparent',
+                border: isActive ? '1px solid rgba(51,143,232,0.25)' : '1px solid transparent',
                 minWidth: 56,
               }}
             >
               <span className="text-base leading-none">{s.icon}</span>
               <span
                 className="text-[10px] leading-tight truncate max-w-[52px]"
-                style={{ color: isActive ? '#00d4ff' : 'rgba(148,163,184,0.7)' }}
+                style={{ color: isActive ? '#338FE8' : 'rgba(148,163,184,0.7)' }}
               >
                 {s.title}
               </span>

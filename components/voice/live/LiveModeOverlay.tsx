@@ -20,6 +20,10 @@
  * Controls are ≥ 44 px touch targets with ka/en/ru accessible names; toggles expose aria-pressed and invert when on
  * (bg-app-text / text-app-bg — the product's toggle grammar). The dialog takes focus on open, traps Tab and ends the
  * call on Escape (hooks/useDialogA11y). Georgian copy never goes below 16 px / 1.6.
+ *
+ * VOICE-TO-ACTION: with `onOpenAction`, a strip of LiveActionCards sits above the pill — what the agent just did
+ * (prepared a prompt, opened a studio, put code on screen), newest first, at most three. While it holds cards the
+ * centred content is lifted (and the orb shrinks a step) so the strip never covers the captions.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
@@ -30,8 +34,10 @@ import {
 
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
+import LiveActionCards from './LiveActionCards';
 import LiveCaptions from './LiveCaptions';
 import LiveOrb, { LiveWaveform, orbStateFor } from './LiveOrb';
+import type { LiveActionCard } from './liveActions';
 import {
   isMicErrorCode,
   type LiveCaption,
@@ -308,6 +314,10 @@ export interface LiveModeOverlayProps {
   extraControls?: ReactNode;
   /** Captions exist for this call (false on the degraded legacy wire). The on/off toggle is view state. */
   showCaptions?: boolean;
+  /** What the agent just did (components/voice/live/liveActions.ts), newest first. Shown only with onOpenAction. */
+  actions?: readonly LiveActionCard[];
+  /** A card's Open: the host ends the call and brings the prepared studio / the code canvas to the front. */
+  onOpenAction?: (card: LiveActionCard) => void;
 }
 
 const ROUND_BTN =
@@ -319,6 +329,9 @@ const SECONDARY_BTN =
   'inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-5 font-semibold text-app-text '
   + 'ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 '
   + 'focus-visible:ring-app-accent/60';
+const NO_ACTIONS: readonly LiveActionCard[] = [];
+/** The pill: 24 px off the bottom + 64 px tall; the action strip floats 12 px above it. */
+const STRIP_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 100px)';
 
 export default function LiveModeOverlay({
   locale = 'ka',
@@ -341,6 +354,8 @@ export default function LiveModeOverlay({
   onResumeAudio,
   extraControls,
   showCaptions = true,
+  actions = NO_ACTIONS,
+  onOpenAction,
 }: LiveModeOverlayProps) {
   const t = LIVE_OVERLAY_STRINGS[locale] ?? LIVE_OVERLAY_STRINGS.ka;
   const dialogRef = useDialogA11y<HTMLDivElement>(true, onEnd);
@@ -355,6 +370,10 @@ export default function LiveModeOverlay({
   const showBackdrop = !!avatarUrl && !cameraOn;
   // Georgian's tall script needs the 16 px floor; Latin/Cyrillic secondary copy stays a step quieter.
   const quiet = locale === 'ka' ? 'text-[16px]' : 'text-[15px]';
+  // The strip is mounted for the whole call (its live region must exist before the first card); it takes room only
+  // once it holds a card — then the centred content moves up by the strip's height (~84 px).
+  const showActions = !isError && !!onOpenAction;
+  const actionsShown = showActions && actions.length > 0;
 
   const onCopyLink = useCallback(() => {
     void copyText(liveLink()).then((ok) => {
@@ -425,7 +444,7 @@ export default function LiveModeOverlay({
       className="ag-no-drag fixed inset-0 z-[130] flex flex-col items-center justify-center overflow-hidden bg-app-bg text-app-text outline-none"
       style={{
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 112px)',
+        paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${actionsShown ? 196 : 112}px)`,
       }}
     >
       {/* Full-screen camera (as in the Gemini app), with a scrim so the text stays readable. */}
@@ -467,7 +486,7 @@ export default function LiveModeOverlay({
           <LiveOrb
             state={orbState}
             getLevels={getLevels}
-            size={cameraOn ? 88 : 208}
+            size={cameraOn ? 88 : actionsShown ? 168 : 208}
             imageUrl={avatarUrl}
             label={statusLabel}
             className="relative z-10 mb-6"
@@ -493,6 +512,12 @@ export default function LiveModeOverlay({
             <LiveCaptions captions={captions} locale={locale} className="relative z-10 mt-6 min-h-[5.5rem]" />
           )}
         </>
+      )}
+
+      {showActions && onOpenAction && (
+        <div className="absolute inset-x-0 z-20" style={{ bottom: STRIP_BOTTOM }}>
+          <LiveActionCards cards={actions} locale={locale} onOpen={onOpenAction} />
+        </div>
       )}
 
       {/* Controls: one floating pill (Gemini Live, 2026). Only End stays on the error screen — the rest would act on

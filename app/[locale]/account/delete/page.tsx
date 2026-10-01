@@ -107,8 +107,8 @@ export default function DeleteAccountPage() {
       const res = await fetch('/api/account/delete', { method: 'POST', credentials: 'include' });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (res.ok && j.success) {
-        // The account (and session) are gone — bounce to the sign-in screen.
-        window.location.href = `/${lang}/login`;
+        // The account (and session) are gone — back to the studio, signed out.
+        window.location.href = `/${lang}`;
         return;
       }
       setError(j.error || t.failed);

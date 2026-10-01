@@ -174,13 +174,13 @@ export function ServiceCommandBar({
             className="fixed z-[10001] top-[15vh] left-1/2 -translate-x-1/2 w-[90vw] max-w-[520px] rounded-2xl overflow-hidden"
             style={{
               background: 'rgba(10,14,28,0.97)',
-              border: '1px solid rgba(0,212,255,0.12)',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 40px rgba(0,212,255,0.08)',
+              border: '1px solid rgba(51,143,232,0.12)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 40px rgba(51,143,232,0.08)',
             }}
           >
             {/* Search input */}
             <div className="flex items-center gap-3 px-4 h-14" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(0,212,255,0.6)', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(51,143,232,0.6)', flexShrink: 0 }}>
                 <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
               </svg>
               <input
@@ -233,7 +233,7 @@ export function ServiceCommandBar({
                           }}
                           className="w-full flex items-center gap-3 px-4 py-2.5 transition-colors duration-100"
                           style={{
-                            background: idx === selectedIdx ? 'rgba(0,212,255,0.08)' : 'transparent',
+                            background: idx === selectedIdx ? 'rgba(51,143,232,0.08)' : 'transparent',
                           }}
                           onMouseEnter={() => setSelectedIdx(idx)}
                         >
@@ -241,14 +241,14 @@ export function ServiceCommandBar({
                             className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
                             style={{
                               fontSize: 18,
-                              background: item.slug === activeServiceId ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.03)',
-                              border: item.slug === activeServiceId ? '1px solid rgba(0,212,255,0.2)' : '1px solid rgba(255,255,255,0.04)',
+                              background: item.slug === activeServiceId ? 'rgba(51,143,232,0.1)' : 'rgba(255,255,255,0.03)',
+                              border: item.slug === activeServiceId ? '1px solid rgba(51,143,232,0.2)' : '1px solid rgba(255,255,255,0.04)',
                             }}
                           >
                             {item.icon}
                           </div>
                           <div className="flex-1 min-w-0 text-left">
-                            <div className="text-sm font-medium truncate" style={{ color: item.slug === activeServiceId ? '#00d4ff' : '#f8fafc' }}>
+                            <div className="text-sm font-medium truncate" style={{ color: item.slug === activeServiceId ? '#338FE8' : '#f8fafc' }}>
                               {item.title}
                             </div>
                             <div className="text-xs truncate" style={{ color: 'rgba(148,163,184,0.5)' }}>
@@ -256,7 +256,7 @@ export function ServiceCommandBar({
                             </div>
                           </div>
                           {item.slug === activeServiceId && (
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#00d4ff', boxShadow: '0 0 6px rgba(0,212,255,0.5)' }} />
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#338FE8', boxShadow: '0 0 6px rgba(51,143,232,0.5)' }} />
                           )}
                         </button>
                       </div>

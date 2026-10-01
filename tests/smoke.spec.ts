@@ -62,22 +62,29 @@ async function openDashboardReady(page: Page, path = '/en/dashboard'): Promise<v
   if (await accept.isVisible().catch(() => false)) await accept.click();
 }
 
-// The front door (lib/routing/landing.ts, docs/DESIGN.md §9): a GUEST at `/` or `/{lang}` gets the marketing
-// landing; a visitor with a session cookie keeps going straight to the dashboard, as before.
-test('bare root sends a guest to the Georgian landing, whose CTA opens the studio', async ({ page }) => {
+// The front door (lib/routing/landing.ts, docs/DESIGN.md §9 / §13): a GUEST at `/` or `/{lang}` gets the studio,
+// opening on the CHAT; the marketing landing lives at `/{lang}/landing`; a visitor with a session cookie keeps going
+// straight to the dashboard.
+test('bare root sends a guest to the Georgian chat, ready to type', async ({ page }) => {
   await page.goto('/');
   await page.waitForURL(/\/ka$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?', { timeout: 20_000 });
+  // Assert the thing the page is FOR: the composer. A route that loads and renders no input has still failed.
+  await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible({ timeout: 20_000 });
+});
+
+test('the landing lives at /{lang}/landing, and its CTA opens the studio', async ({ page }) => {
+  await page.goto('/ka/landing');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('ვიდეო ერთი იდეიდან.');
   await page.getByRole('link', { name: /შექმენი ვიდეო/ }).first().click();
   await page.waitForURL(/\/ka\/dashboard$/);
-  // Assert the thing the dashboard is FOR: the composer. A route that loads and renders no input has still failed.
   await expect(page.getByRole('textbox').first()).toBeVisible({ timeout: 20_000 });
 });
 
-test('locale root shows a guest the landing, and sends a signed-in visitor to the dashboard', async ({ page, context, baseURL }) => {
+test('locale root is the chat for a guest, and sends a signed-in visitor to the dashboard', async ({ page, context, baseURL }) => {
   await page.goto('/ka');
   await expect(page).toHaveURL(/\/ka$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ვიდეო ერთი იდეიდან.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?', { timeout: 20_000 });
   // Only the cookie's PRESENCE is read by the front door (the dashboard itself validates the session).
   await context.addCookies([{ name: 'sb-smoketest-auth-token', value: 'x', url: baseURL ?? 'http://localhost:3000' }]);
   await page.goto('/ka');
@@ -166,21 +173,17 @@ test.fixme('choosing a mode updates the composer and stays on the dashboard', as
   await expect(page).toHaveURL(/\/en\/dashboard\/?$/);
 });
 
-test('agent g panel renders as a dedicated dashboard route', async ({ page }) => {
-  await page.goto('/en/dashboard/agent-g');
-
-  await expect(page.getByRole('heading', { name: /^Agent G$/ }).first()).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('textarea').last()).toBeVisible();
-});
-
 // ─── Auth pages ────────────────────────────────────────────────────
 
-test('login page renders an auth input', async ({ page }) => {
-  await page.goto('/en/login');
-  await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible();
+// There is no sign-in PAGE any more (deleted 2026-10-01): the old addresses open the studio's own sign-in sheet.
+test('the old /login address opens the studio with its sign-in sheet', async ({ page }) => {
+  await page.goto('/en/login?redirect=/en/pricing');
+  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page).toHaveURL(/\/en\/dashboard$/); // the sign-in params are read, then cleared from the address bar
 });
 
-test('signup page renders an auth input', async ({ page }) => {
+test('the old /signup address opens the sheet on account creation', async ({ page }) => {
   await page.goto('/en/signup');
-  await expect(page.locator('input[type="email"], input[type="text"]').first()).toBeVisible();
+  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page).toHaveURL(/\/en\/dashboard$/);
 });

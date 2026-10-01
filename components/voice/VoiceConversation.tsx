@@ -656,7 +656,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
           showViz
             ? (status === 'listening' ? 'ring-1 ring-cyan-400/25' : status === 'speaking' ? 'ring-1 ring-rose-500/25' : 'ring-1 ring-white/15')
             : status === 'resume' ? 'bg-app-elevated text-app-accent ring-1 ring-app-border/15 hover:scale-[1.03]'
-              : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(0,210,255,0.55)] hover:scale-[1.03]'
+              : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(51,143,232,0.55)] hover:scale-[1.03]'
         }`}
       >
         {showViz ? (

@@ -24,8 +24,12 @@ const codeOf = (f: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
 
-/** Panels wired to the shared actions. Add to this list as more are migrated — never shrink it. */
-const WIRED = ['DubbingStudio.tsx', 'Model3dStudio.tsx', 'MontageStudio.tsx'];
+/**
+ * Panels wired to the shared actions. Add to this list as more are migrated — never shrink it.
+ * (The standalone Dubbing / 3D / Montage studio pages were deleted with the old shell on 2026-10-01; their panels live
+ * on in ServiceParamsPanel inside the studio, which is asserted below.)
+ */
+const WIRED = ['LipsyncStudio.tsx'];
 
 describe('ResultActions adoption', () => {
   it.each(WIRED)('%s renders the shared result actions', (f) => {
@@ -36,6 +40,10 @@ describe('ResultActions adoption', () => {
     // The exact shape that silently fails. A same-origin download is fine, but none of these are.
     // Comment lines are stripped first — the fix's own explanation quotes the broken pattern verbatim.
     expect(codeOf(f)).not.toMatch(/<a\s+href=\{[^}]+\}\s+download\b/);
+  });
+
+  it('the in-studio panels (dubbing, montage, 3D, slides) render the shared result actions', () => {
+    expect(readFileSync(join(dir, 'ServiceParamsPanel.tsx'), 'utf8')).toContain('<ResultActions');
   });
 
   it('lists studios still to migrate, so the gap stays visible', () => {

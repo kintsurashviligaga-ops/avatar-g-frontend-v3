@@ -80,7 +80,7 @@ export const viewport: Viewport = {
 	// innerHeight === visualViewport.height, so keyboardOffset computes 0 and --kb-inset publishes 0. The
 	// JS becomes inert exactly where the platform takes over.
 	interactiveWidget: 'resizes-content',
-	themeColor: '#0A0A0A', // brand ink
+	themeColor: '#000000', // true black (docs/DESIGN.md §13)
 };
 
 export const metadata: Metadata = {

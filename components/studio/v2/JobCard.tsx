@@ -70,7 +70,7 @@ export function JobCard({ job, modelLabel, lang, locale, cancelling, onCancel, o
         ) : failed || canceled ? (
           <div className="flex h-full w-full items-center justify-center p-6 text-center text-[13px] text-app-muted">{status}</div>
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_center,rgba(0,229,255,0.10),transparent_65%)]">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_center,rgba(51,143,232,0.10),transparent_65%)]">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-app-accent/25 border-t-app-accent motion-reduce:animate-none" aria-hidden="true" />
             <span className="text-[13px] font-medium text-app-text/80">{status}…</span>
             <span className="absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-app-accent/10" aria-hidden="true">

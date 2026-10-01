@@ -1392,7 +1392,7 @@ export function ConversationalFilmStudio({
               className={[
                 'shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] transition-colors touch-manipulation',
                 active
-                  ? 'border-[#00D2FF]/50 bg-[#00D2FF]/10 text-[#00D2FF]'
+                  ? 'border-[#338FE8]/50 bg-[#338FE8]/10 text-[#338FE8]'
                   : 'border-white/15 text-white/55 hover:border-white/30 hover:text-white/80',
               ].join(' ')}
             >
@@ -1406,7 +1406,7 @@ export function ConversationalFilmStudio({
 
   return (
     // STRICT three-tone matrix — pure black canvas (#000000, infinite depth on
-    // OLED iPhones), white type, electric-cyan (#00D2FF) for every active accent.
+    // OLED iPhones), white type, electric-cyan (#338FE8) for every active accent.
     // A true full-screen chatbot shell: header pinned top, the conversation feed
     // owns the height, and the composer is locked to the bottom so it rides above
     // the iOS keyboard. overflow-hidden on the shell + a single inner scroller
@@ -1435,7 +1435,7 @@ export function ConversationalFilmStudio({
               type="button"
               onClick={onExitToHub}
               aria-label="Services"
-              className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#00D2FF]"
+              className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-[#338FE8]"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -1458,7 +1458,7 @@ export function ConversationalFilmStudio({
                   flex layout below. */}
               <span className="flex items-baseline gap-1 px-2.5 py-1.5 text-xs font-bold tabular-nums text-white">
                 {(balanceGel ?? 0).toFixed(2)}
-                <span className="text-[#00D2FF]">₾</span>
+                <span className="text-[#338FE8]">₾</span>
               </span>
               <button
                 type="button"
@@ -1466,7 +1466,7 @@ export function ConversationalFilmStudio({
                 aria-label={t.topUp}
                 // Apple IAP compliance: hidden inside the native iOS shell (top-up is a web/Stripe purchase).
                 data-iap-external
-                className="flex items-center gap-1 border-l border-white/10 bg-[#00D2FF]/10 px-2 py-1.5 text-xs font-bold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20 touch-manipulation"
+                className="flex items-center gap-1 border-l border-white/10 bg-[#338FE8]/10 px-2 py-1.5 text-xs font-bold text-[#338FE8] transition-colors hover:bg-[#338FE8]/20 touch-manipulation"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{t.topUp}</span>
@@ -1477,7 +1477,7 @@ export function ConversationalFilmStudio({
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label={t.menu}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white touch-manipulation"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black text-neutral-300 transition-colors hover:border-[#338FE8]/40 hover:text-white touch-manipulation"
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -1505,7 +1505,7 @@ export function ConversationalFilmStudio({
               aria-pressed={mvMode}
               className={[
                 'flex w-full items-center justify-between gap-2 rounded-xl px-1.5 py-1 text-[14px] transition-colors',
-                mvMode ? 'text-[#00D2FF]' : 'text-white/70 hover:text-white',
+                mvMode ? 'text-[#338FE8]' : 'text-white/70 hover:text-white',
               ].join(' ')}
             >
               <span className="inline-flex items-center gap-2 font-medium">
@@ -1515,7 +1515,7 @@ export function ConversationalFilmStudio({
               <span
                 className={[
                   'rounded-full border px-2 py-0.5 text-[12px]',
-                  mvMode ? 'border-[#00D2FF]/40 bg-[#00D2FF]/10 text-[#00D2FF]' : 'border-white/15 text-white/40',
+                  mvMode ? 'border-[#338FE8]/40 bg-[#338FE8]/10 text-[#338FE8]' : 'border-white/15 text-white/40',
                 ].join(' ')}
               >
                 {mvMode ? mvText('On', 'ჩართ.', 'Вкл') : mvText('Off', 'გამორთ.', 'Выкл')}
@@ -1539,7 +1539,7 @@ export function ConversationalFilmStudio({
                     onChange={(e) => onPickSoundtrack(e.target.files?.[0])}
                   />
                   {mvAudioName ? (
-                    <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 px-2.5 py-1 text-[12px] text-[#00D2FF]">
+                    <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#338FE8]/30 bg-[#338FE8]/5 px-2.5 py-1 text-[12px] text-[#338FE8]">
                       <Music2 className="h-3.5 w-3.5 shrink-0" />
                       <span className="max-w-[150px] truncate">{mvAudioName}</span>
                       <button
@@ -1559,7 +1559,7 @@ export function ConversationalFilmStudio({
                     <button
                       type="button"
                       onClick={() => mvAudioInputRef.current?.click()}
-                      className="rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/60 transition-colors hover:border-[#00D2FF]/40 hover:text-white"
+                      className="rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/60 transition-colors hover:border-[#338FE8]/40 hover:text-white"
                     >
                       {mvText('Upload track', 'ატვირთე ტრეკი', 'Загрузить трек')}
                     </button>
@@ -1576,13 +1576,13 @@ export function ConversationalFilmStudio({
                     aria-pressed={mvLipsync}
                     className={[
                       'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] transition-colors',
-                      mvLipsync ? 'border-[#00D2FF]/40 bg-[#00D2FF]/10 text-[#00D2FF]' : 'border-white/15 text-white/50 hover:text-white',
+                      mvLipsync ? 'border-[#338FE8]/40 bg-[#338FE8]/10 text-[#338FE8]' : 'border-white/15 text-white/50 hover:text-white',
                     ].join(' ')}
                   >
                     {mvLipsync ? mvText('On', 'ჩართ.', 'Вкл') : mvText('Off', 'გამორთ.', 'Выкл')}
                     <span className="text-[10px] uppercase tracking-wide opacity-60">{mvText('beta', 'ბეტა', 'бета')}</span>
                   </button>
-                  {lipsyncing && <span className="text-[11px] text-[#00D2FF]/80">{mvText('syncing…', 'სინქრონი…', 'синхр…')}</span>}
+                  {lipsyncing && <span className="text-[11px] text-[#338FE8]/80">{mvText('syncing…', 'სინქრონი…', 'синхр…')}</span>}
                 </div>
 
                 <p className="text-[12px] leading-snug text-white/35">
@@ -1617,7 +1617,7 @@ export function ConversationalFilmStudio({
                   return (
                     <div
                       key={idx}
-                      className="relative h-11 w-11 sm:h-14 sm:w-14 rounded-lg border border-white/10 bg-black overflow-hidden group transition-colors hover:border-[#00D2FF]/40"
+                      className="relative h-11 w-11 sm:h-14 sm:w-14 rounded-lg border border-white/10 bg-black overflow-hidden group transition-colors hover:border-[#338FE8]/40"
                     >
                       {slot ? (
                         <>
@@ -1638,7 +1638,7 @@ export function ConversationalFilmStudio({
                           aria-label={role}
                           className="flex h-full w-full cursor-pointer items-center justify-center"
                         >
-                          <ImagePlus className="h-4 w-4 text-neutral-600 transition-colors group-hover:text-[#00D2FF]" />
+                          <ImagePlus className="h-4 w-4 text-neutral-600 transition-colors group-hover:text-[#338FE8]" />
                           {/* accept="image/*" natively offers Take Photo / Library on iOS & Android. */}
                           <input
                             type="file"
@@ -1679,7 +1679,7 @@ export function ConversationalFilmStudio({
                 </div>
                 {docs.map((d, idx) =>
                   d ? (
-                    <span key={idx} className="inline-flex items-center gap-1.5 rounded-lg border border-[#00D2FF]/30 bg-[#00D2FF]/5 px-2 py-1 text-[11px] text-[#00D2FF]">
+                    <span key={idx} className="inline-flex items-center gap-1.5 rounded-lg border border-[#338FE8]/30 bg-[#338FE8]/5 px-2 py-1 text-[11px] text-[#338FE8]">
                       <FileText className="h-3 w-3 shrink-0" />
                       <span className="max-w-[120px] truncate">{d.name}</span>
                       <button
@@ -1695,7 +1695,7 @@ export function ConversationalFilmStudio({
                   ) : null,
                 )}
                 {docs.some((d) => !d) && (
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1 text-[11px] text-neutral-400 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1 text-[11px] text-neutral-400 transition-colors hover:border-[#338FE8]/40 hover:text-[#338FE8]">
                     <FileText className="h-3 w-3" /> {mvText('Add document', 'დოკუმენტის დამატება', 'Добавить документ')}
                     <input
                       type="file"
@@ -1743,9 +1743,9 @@ export function ConversationalFilmStudio({
                     key={i}
                     type="button"
                     onClick={() => fillFromStarter(prompt)}
-                    className="group flex items-center gap-2.5 rounded-2xl border border-white/10 bg-black px-3.5 py-3 text-left text-[14px] leading-snug text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100 touch-manipulation"
+                    className="group flex items-center gap-2.5 rounded-2xl border border-white/10 bg-black px-3.5 py-3 text-left text-[14px] leading-snug text-neutral-300 transition-colors hover:border-[#338FE8]/40 hover:text-white active:scale-[0.99] motion-reduce:active:scale-100 touch-manipulation"
                   >
-                    <Clapperboard className="h-4 w-4 shrink-0 text-[#00D2FF]/70 transition-colors group-hover:text-[#00D2FF]" />
+                    <Clapperboard className="h-4 w-4 shrink-0 text-[#338FE8]/70 transition-colors group-hover:text-[#338FE8]" />
                     <span>{prompt}</span>
                   </button>
                 ))}
@@ -1766,9 +1766,9 @@ export function ConversationalFilmStudio({
                 {halted ? (
                   <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
                 ) : finished ? (
-                  <CheckCircle2 className="w-5 h-5 text-[#00D2FF] shrink-0" />
+                  <CheckCircle2 className="w-5 h-5 text-[#338FE8] shrink-0" />
                 ) : (
-                  <Loader2 className="w-5 h-5 text-[#00D2FF] animate-spin shrink-0 motion-reduce:animate-none" />
+                  <Loader2 className="w-5 h-5 text-[#338FE8] animate-spin shrink-0 motion-reduce:animate-none" />
                 )}
                 <div className="min-w-0">
                   <span
@@ -1797,12 +1797,12 @@ export function ConversationalFilmStudio({
                   user that work is happening during the longest silent gap. */}
               {progress?.phase === 'dispatching' && (
                 <div className="space-y-2">
-                  <p className="text-[12px] font-medium text-[#00D2FF]/80">{t.writingStoryboard}</p>
+                  <p className="text-[12px] font-medium text-[#338FE8]/80">{t.writingStoryboard}</p>
                   <div className="space-y-2">
                     {[0, 1, 2].map((i) => (
                       <div
                         key={i}
-                        className="h-3 overflow-hidden rounded-full bg-[linear-gradient(110deg,rgba(255,255,255,0.04)_30%,rgba(0,210,255,0.14)_50%,rgba(255,255,255,0.04)_70%)] bg-[length:200%_100%] animate-shimmer"
+                        className="h-3 overflow-hidden rounded-full bg-[linear-gradient(110deg,rgba(255,255,255,0.04)_30%,rgba(51,143,232,0.14)_50%,rgba(255,255,255,0.04)_70%)] bg-[length:200%_100%] animate-shimmer"
                         style={{ width: `${[92, 78, 60][i]}%` }}
                       />
                     ))}
@@ -1823,19 +1823,19 @@ export function ConversationalFilmStudio({
                       {pipeline.scenesRendered} / {pipeline.totalScenes} {t.statReady}
                     </span>
                     {pipeline.scenesRendering > 0 && (
-                      <span className="text-[#00D2FF]">· {pipeline.scenesRendering} {t.statRendering}</span>
+                      <span className="text-[#338FE8]">· {pipeline.scenesRendering} {t.statRendering}</span>
                     )}
                     {pipeline.scenesFailed > 0 && (
                       <span className="text-red-300">· {pipeline.scenesFailed} {t.statFailed}</span>
                     )}
                   </span>
-                  <span className={halted ? 'text-red-300' : 'text-[#00D2FF]'}>{pipeline.percent}%</span>
+                  <span className={halted ? 'text-red-300' : 'text-[#338FE8]'}>{pipeline.percent}%</span>
                 </div>
                 <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
                   <div
                     className={[
                       'h-full rounded-full transition-[width] duration-500 ease-out',
-                      halted ? 'bg-red-400/80' : 'bg-[#00D2FF] shadow-[0_0_10px_rgba(0,210,255,0.5)]',
+                      halted ? 'bg-red-400/80' : 'bg-[#338FE8] shadow-[0_0_10px_rgba(51,143,232,0.5)]',
                     ].join(' ')}
                     style={{ width: `${pipeline.percent}%` }}
                   />
@@ -1918,7 +1918,7 @@ export function ConversationalFilmStudio({
                 <button
                   type="button"
                   onClick={handleRetry}
-                  className="inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-white/15 bg-black px-4 py-2 text-xs font-semibold text-white transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+                  className="inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-white/15 bg-black px-4 py-2 text-xs font-semibold text-white transition-colors hover:border-[#338FE8]/50 hover:text-[#338FE8]"
                 >
                   <RefreshCw className="h-4 w-4" />
                   {t.tryAgain}
@@ -1951,7 +1951,7 @@ export function ConversationalFilmStudio({
             <div
               className={`mt-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] ${
                 filmQa.pass
-                  ? 'border-[#00D2FF]/30 bg-[#00D2FF]/5 text-[#00D2FF]'
+                  ? 'border-[#338FE8]/30 bg-[#338FE8]/5 text-[#338FE8]'
                   : 'border-red-500/40 bg-red-500/10 text-red-400'
               }`}
               role={filmQa.pass ? undefined : 'alert'}
@@ -1981,7 +1981,7 @@ export function ConversationalFilmStudio({
             <button
               type="button"
               onClick={handleNewFilm}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-bold uppercase tracking-widest text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-bold uppercase tracking-widest text-neutral-200 transition-colors hover:border-[#338FE8]/50 hover:text-[#338FE8]"
             >
               <Plus className="h-4 w-4" />
               {t.newFilm}
@@ -2013,7 +2013,7 @@ export function ConversationalFilmStudio({
               The bar lights cyan on focus; the CTA turns full electric-cyan when the
               server confirms a free founder slot, otherwise it stays clean white and
               the existing /api/video/assemble billing gate charges normally. */}
-          <div className="flex items-end gap-2 rounded-2xl border border-[#3f3f46] bg-black p-2 transition-all focus-within:border-[#00D2FF] focus-within:shadow-[0_0_15px_rgba(0,210,255,0.15)]">
+          <div className="flex items-end gap-2 rounded-2xl border border-[#3f3f46] bg-black p-2 transition-all focus-within:border-[#338FE8] focus-within:shadow-[0_0_15px_rgba(51,143,232,0.15)]">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -2045,7 +2045,7 @@ export function ConversationalFilmStudio({
                     : isRecording
                       ? 'text-red-500 bg-red-500/10 animate-pulse motion-reduce:animate-none'
                       : transcribing
-                        ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
+                        ? 'text-[#338FE8] animate-pulse motion-reduce:animate-none'
                         : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
                 ].join(' ')}
               >
@@ -2065,7 +2065,7 @@ export function ConversationalFilmStudio({
                 driving || input.trim().length === 0
                   ? 'text-neutral-700 cursor-not-allowed'
                   : enhancing
-                    ? 'text-[#00D2FF] animate-pulse motion-reduce:animate-none'
+                    ? 'text-[#338FE8] animate-pulse motion-reduce:animate-none'
                     : 'text-white/40 hover:text-white/70 active:scale-90 motion-reduce:active:scale-100',
               ].join(' ')}
             >
@@ -2087,7 +2087,7 @@ export function ConversationalFilmStudio({
                 !canSend
                   ? 'bg-white/10 text-neutral-600 cursor-not-allowed'
                   : sendValidated
-                    ? 'bg-[#00D2FF] text-black shadow-[0_0_18px_rgba(0,210,255,0.45)] hover:brightness-110 active:scale-90 motion-reduce:active:scale-100'
+                    ? 'bg-[#338FE8] text-black shadow-[0_0_18px_rgba(51,143,232,0.45)] hover:brightness-110 active:scale-90 motion-reduce:active:scale-100'
                     : 'bg-white text-black hover:bg-neutral-200 active:scale-90 motion-reduce:active:scale-100',
               ].join(' ')}
             >
@@ -2101,7 +2101,7 @@ export function ConversationalFilmStudio({
           {(isFreeFilm || input.trim().length > 0) && (
             <p className="mt-2 text-center text-[12px] font-semibold">
               {isFreeFilm ? (
-                <span className="inline-flex items-center gap-1.5 text-[#00D2FF]">
+                <span className="inline-flex items-center gap-1.5 text-[#338FE8]">
                   <CheckCircle2 className="h-3 w-3" />
                   {t.promoLimit}
                 </span>
@@ -2112,7 +2112,7 @@ export function ConversationalFilmStudio({
                     : locale === 'ru'
                       ? 'Стоимость видео'
                       : 'Video cost'}{' '}
-                  ≈ <span className="text-[#00D2FF]">{formatGEL(estCost)}</span>
+                  ≈ <span className="text-[#338FE8]">{formatGEL(estCost)}</span>
                 </span>
               )}
             </p>
@@ -2191,7 +2191,7 @@ export function ConversationalFilmStudio({
               <button
                 type="button"
                 onClick={() => { setMenuOpen(false); setSheet('library'); }}
-                className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+                className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#338FE8]/50 hover:text-[#338FE8]"
               >
                 <History className="h-4 w-4" />
                 {t.library}
@@ -2199,14 +2199,14 @@ export function ConversationalFilmStudio({
 
               {/* Auth — Sign in + Sign up open the in-window AuthModal (no page
                   navigation). On success the onAuthStateChange listener flips the
-                  studio to the signed-in state instantly. The /{locale}/login and
-                  /{locale}/signup pages still exist as deep links. */}
+                  studio to the signed-in state instantly. (The standalone /login and
+                  /signup pages are gone — lib/routing/signIn.ts.) */}
               {!authed && (
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => { setMenuOpen(false); setAuthModalMode('login'); setAuthModalOpen(true); }}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#00D2FF]/40 bg-[#00D2FF]/10 px-3 py-2.5 text-xs font-semibold text-[#00D2FF] transition-colors hover:bg-[#00D2FF]/20"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#338FE8]/40 bg-[#338FE8]/10 px-3 py-2.5 text-xs font-semibold text-[#338FE8] transition-colors hover:bg-[#338FE8]/20"
                   >
                     <LogIn className="h-4 w-4" />
                     {t.login}
@@ -2214,7 +2214,7 @@ export function ConversationalFilmStudio({
                   <button
                     type="button"
                     onClick={() => { setMenuOpen(false); setAuthModalMode('register'); setAuthModalOpen(true); }}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-semibold text-neutral-200 transition-colors hover:border-[#338FE8]/50 hover:text-[#338FE8]"
                   >
                     <UserPlus className="h-4 w-4" />
                     {t.signup}
@@ -2256,21 +2256,21 @@ export function ConversationalFilmStudio({
                 <button
                   type="button"
                   onClick={() => { setMenuOpen(false); setSheet('privacy'); }}
-                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#338FE8]/40 hover:text-[#338FE8]"
                 >
                   <Shield className="h-4 w-4" /> {t.privacy}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setMenuOpen(false); setSheet('terms'); }}
-                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#338FE8]/40 hover:text-[#338FE8]"
                 >
                   <FileText className="h-4 w-4" /> {t.terms}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setMenuOpen(false); setSheet('support'); }}
-                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#00D2FF]/40 hover:text-[#00D2FF]"
+                  className="inline-flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-black px-3 py-2.5 text-xs font-medium text-neutral-300 transition-colors hover:border-[#338FE8]/40 hover:text-[#338FE8]"
                 >
                   <LifeBuoy className="h-4 w-4" /> {t.support}
                 </button>
@@ -2342,8 +2342,8 @@ export function ConversationalFilmStudio({
 // ─── Small presentational atoms ──────────────────────────────────────────────
 
 function StatusDot({ state }: { state: StageState }) {
-  if (state === 'done') return <CheckCircle2 className="w-3.5 h-3.5 text-[#00D2FF] shrink-0" />;
-  if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-[#00D2FF] animate-spin shrink-0" />;
+  if (state === 'done') return <CheckCircle2 className="w-3.5 h-3.5 text-[#338FE8] shrink-0" />;
+  if (state === 'active') return <Loader2 className="w-3.5 h-3.5 text-[#338FE8] animate-spin shrink-0" />;
   if (state === 'failed') return <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />;
   return <span className="w-3.5 h-3.5 rounded-full border border-white/15 shrink-0" />;
 }
@@ -2402,11 +2402,11 @@ function FilmSceneCard({
         isFailed
           ? 'border-red-500/30 bg-red-500/5'
           : isActive
-            ? 'border-[#00D2FF]/40 bg-[#00D2FF]/[0.04] shadow-[0_0_18px_rgba(0,210,255,0.10)]'
+            ? 'border-[#338FE8]/40 bg-[#338FE8]/[0.04] shadow-[0_0_18px_rgba(51,143,232,0.10)]'
             : isDone
               ? selected
-                ? 'border-[#00D2FF] shadow-[0_0_18px_rgba(0,210,255,0.30)]'
-                : 'border-white/10 bg-black hover:border-[#00D2FF]/60'
+                ? 'border-[#338FE8] shadow-[0_0_18px_rgba(51,143,232,0.30)]'
+                : 'border-white/10 bg-black hover:border-[#338FE8]/60'
               : 'border-white/10 bg-white/[0.02]',
       ].join(' ')}
     >
@@ -2423,7 +2423,7 @@ function FilmSceneCard({
           className="absolute inset-0 h-full w-full object-cover opacity-90 transition-opacity duration-300 group-hover:opacity-100"
         />
       ) : isActive ? (
-        <span className="absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,transparent_20%,rgba(0,210,255,0.10)_45%,rgba(0,210,255,0.18)_50%,rgba(0,210,255,0.10)_55%,transparent_80%)] bg-[length:200%_100%]" />
+        <span className="absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,transparent_20%,rgba(51,143,232,0.10)_45%,rgba(51,143,232,0.18)_50%,rgba(51,143,232,0.10)_55%,transparent_80%)] bg-[length:200%_100%]" />
       ) : null}
 
       {/* Legibility floor for the overlaid labels. */}
@@ -2437,9 +2437,9 @@ function FilmSceneCard({
       {/* Status corner glyph. */}
       <span className="absolute right-2 top-2">
         {isDone ? (
-          <CheckCircle2 className="h-4 w-4 text-[#00D2FF] drop-shadow-[0_0_4px_rgba(0,210,255,0.6)]" />
+          <CheckCircle2 className="h-4 w-4 text-[#338FE8] drop-shadow-[0_0_4px_rgba(51,143,232,0.6)]" />
         ) : isActive ? (
-          <Loader2 className="h-4 w-4 animate-spin text-[#00D2FF]" />
+          <Loader2 className="h-4 w-4 animate-spin text-[#338FE8]" />
         ) : isFailed ? (
           <AlertTriangle className="h-4 w-4 text-red-400" />
         ) : (
@@ -2460,7 +2460,7 @@ function FilmSceneCard({
       <span
         className={[
           'absolute inset-x-2 bottom-1.5 text-[11px] font-semibold tracking-wide',
-          isFailed ? 'text-red-300' : isActive ? 'text-[#00D2FF]' : isDone ? 'text-white/80' : 'text-white/35',
+          isFailed ? 'text-red-300' : isActive ? 'text-[#338FE8]' : isDone ? 'text-white/80' : 'text-white/35',
         ].join(' ')}
       >
         {statusLabel}
@@ -2522,14 +2522,14 @@ function FilmPreviewPlayer({
     <div
       className={[
         'space-y-2.5 rounded-2xl border bg-black p-3 transition-all',
-        isMaster ? 'border-[#00D2FF]/40 shadow-[0_0_30px_rgba(0,210,255,0.12)]' : 'border-white/10',
+        isMaster ? 'border-[#338FE8]/40 shadow-[0_0_30px_rgba(51,143,232,0.12)]' : 'border-white/10',
       ].join(' ')}
     >
       <div className="flex items-center justify-between gap-2">
         <div
           className={[
             'flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest',
-            isMaster ? 'text-[#00D2FF]' : 'text-neutral-400',
+            isMaster ? 'text-[#338FE8]' : 'text-neutral-400',
           ].join(' ')}
         >
           {isMaster ? (
@@ -2550,8 +2550,8 @@ function FilmPreviewPlayer({
               className={[
                 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors',
                 copied
-                  ? 'border-[#00D2FF]/60 text-[#00D2FF]'
-                  : 'border-white/10 text-neutral-300 hover:border-[#00D2FF]/50 hover:text-[#00D2FF]',
+                  ? 'border-[#338FE8]/60 text-[#338FE8]'
+                  : 'border-white/10 text-neutral-300 hover:border-[#338FE8]/50 hover:text-[#338FE8]',
               ].join(' ')}
             >
               {copied ? <Check className="h-3 w-3" /> : <Share2 className="h-3 w-3" />}
@@ -2563,7 +2563,7 @@ function FilmPreviewPlayer({
             target="_blank"
             rel="noopener noreferrer"
             download
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[12px] font-semibold text-neutral-300 transition-colors hover:border-[#00D2FF]/50 hover:text-[#00D2FF]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[12px] font-semibold text-neutral-300 transition-colors hover:border-[#338FE8]/50 hover:text-[#338FE8]"
           >
             <Download className="h-3 w-3" /> {openLabel}
           </a>
@@ -2578,7 +2578,7 @@ function FilmPreviewPlayer({
         style={{ aspectRatio: videoAspect }}
         className={[
           'relative mx-auto max-h-[70vh] w-full overflow-hidden rounded-xl bg-black ring-1',
-          isMaster ? 'ring-[#00D2FF]/30' : 'ring-white/10',
+          isMaster ? 'ring-[#338FE8]/30' : 'ring-white/10',
         ].join(' ')}
       >
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { StudioPageShell } from '@/components/studio/StudioPageShell';
 
 /**
- * Server-component layout that exists ONLY to attach localized SEO metadata to
- * the pricing route. The page itself is a Client Component (`'use client'`) and
- * therefore cannot export `generateMetadata`; a sibling layout can, and simply
- * passes children through unchanged. pricing/ has no sub-routes, so this scopes
- * cleanly to the pricing page alone.
+ * Server-component layout that attaches localized SEO metadata to the pricing
+ * route (the page is a Client Component and cannot export `generateMetadata`)
+ * and puts the page inside the studio's own shell. pricing/ has no sub-routes,
+ * so this scopes cleanly to the pricing page alone.
  *
  * Before this, /pricing inherited the generic locale-layout title — identical
  * across ka/en/ru and always Georgian even on /en and /ru. Pricing is a primary
@@ -43,6 +43,8 @@ export async function generateMetadata(
   };
 }
 
-export default function PricingLayout({ children }: { children: ReactNode }) {
-  return children;
+/** The page renders inside the studio's own shell (components/studio/StudioPageShell — the old marketing shell is gone). */
+export default async function PricingLayout({ children, params }: { children: ReactNode; params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  return <StudioPageShell locale={locale}>{children}</StudioPageShell>;
 }

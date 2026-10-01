@@ -376,7 +376,7 @@ export function AiHubShell({ locale, initialService = '__dashboard' }: AiHubShel
             </button>
             {/* History */}
             <Link
-              href={`/${locale}/studio/history`}
+              href={`/${locale}/library`}
               className="p-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/[0.05] transition-colors"
             >
               <History size={16} />

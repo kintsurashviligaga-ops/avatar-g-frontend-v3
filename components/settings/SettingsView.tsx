@@ -549,7 +549,6 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const router = useRouter();
 
   const confirmDelete = useCallback(async () => {
     setBusy(true); setErr(null);
@@ -558,12 +557,12 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!j.success) { setErr(j.error || t.failed); setBusy(false); return; }
       setDone(true);
-      // Brief delay so the user sees the success state, then bounce to /[locale]/login.
-      setTimeout(() => router.push(`/${loc}/login`), 1200);
+      // Brief delay so the user sees the success state, then back to the studio, signed out.
+      setTimeout(() => { window.location.href = `/${loc}`; }, 1200);
     } catch {
       setErr(t.failed); setBusy(false);
     }
-  }, [loc, router, t.failed]);
+  }, [loc, t.failed]);
 
   return (
     <Card className="border-red-500/20 !ring-red-500/20">

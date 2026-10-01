@@ -196,22 +196,22 @@ export default function PromptChips({ activeService, onSelect }: PromptChipsProp
           align-items: center;
         }
         .pc-chip:hover {
-          background: rgba(0, 212, 255, 0.08);
-          border-color: rgba(0, 212, 255, 0.3);
+          background: rgba(51,143,232, 0.08);
+          border-color: rgba(51,143,232, 0.3);
           color: #e0f9ff;
-          box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
+          box-shadow: 0 0 12px rgba(51,143,232, 0.15);
         }
         .pc-chip:active {
           transform: scale(0.95);
-          background: rgba(0, 212, 255, 0.12);
-          border-color: rgba(0, 212, 255, 0.4);
+          background: rgba(51,143,232, 0.12);
+          border-color: rgba(51,143,232, 0.4);
           color: #e0f9ff;
         }
         .pc-chip--flash {
-          background: rgba(0, 212, 255, 0.15) !important;
-          border-color: rgba(0, 212, 255, 0.5) !important;
+          background: rgba(51,143,232, 0.15) !important;
+          border-color: rgba(51,143,232, 0.5) !important;
           color: #e0f9ff !important;
-          box-shadow: 0 0 16px rgba(0, 212, 255, 0.25) !important;
+          box-shadow: 0 0 16px rgba(51,143,232, 0.25) !important;
         }
       `}</style>
     </div>

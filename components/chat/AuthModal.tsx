@@ -16,13 +16,22 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft } from 'lucide-react';
+import { X, Mail, Lock, Loader2, Sparkles, ArrowLeft, Phone } from 'lucide-react';
 import { createBrowserClient, isSupabaseConfigured } from '@/lib/supabase/browser';
 import { track } from '@/lib/analytics/track';
 import { SUPPORT_EMAIL, buildSupportMailto } from '@/lib/support';
+import { formatPhone, looksLikePhone, parseIdentifier } from '@/lib/auth/identifier';
 
 type Lang = 'ka' | 'en' | 'ru';
-type Mode = 'login' | 'register' | 'reset' | 'magic';
+/**
+ * `continue` is THE way in (owner, 2026-10-01: „რეგისტრაცია ერთ ხაზში … რომ მომხმარებლები არ დაიბნენ"): ONE field — an
+ * email or a phone number — then a 6-digit code. The same code signs an existing account in or creates a new one, so
+ * there is no „sign in vs register" choice to get wrong and no password to invent. `login` (email + password) and
+ * `reset` stay one tap away for people who already have a password. `register` / `magic` are no longer offered;
+ * a caller asking for them lands on `continue`.
+ */
+type Mode = 'continue' | 'login' | 'register' | 'reset' | 'magic';
+const entryMode = (m: Mode): Mode => (m === 'reset' ? 'reset' : 'continue');
 
 interface AuthModalProps {
   open: boolean;
@@ -32,6 +41,12 @@ interface AuthModalProps {
   /** Which tab to open on. Defaults to 'login'; the studio passes 'register'
    *  for the "Sign up" entry so the modal lands on account creation directly. */
   initialMode?: Mode;
+  /** An error to show the moment the sheet opens — e.g. an OAuth failure that /auth/callback bounced back as
+   *  ?error=… (it used to land on the deleted /login page). Humanised like every other auth error. */
+  initialError?: string | null;
+  /** Where the user returns after signing in through a ROUND-TRIP (Google OAuth, the password-reset mail). Must
+   *  already be a safe internal path (safeInternalPath). Defaults to the studio. */
+  returnTo?: string | null;
 }
 
 type Strings = {
@@ -49,6 +64,9 @@ type Strings = {
   otpTitle: string; otpSubtitle: string; otpPlaceholder: string; otpVerifyCta: string;
   otpResend: string; otpResent: string; otpChangeEmail: string;
   errOtpInvalid: string; errOtpExpired: string; errOtpRequired: string;
+  // The one-field flow.
+  cont: string; contCta: string; idPlaceholder: string; codeHint: string; useCode: string;
+  errInvalidId: string; otpTitleAny: string; otpChangeId: string;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,6 +101,8 @@ function humanizeAuthError(err: unknown, t: Strings): string {
   if (/token has expired|otp.*expired|expired.*otp|code.*expired/.test(m)) return t.errOtpExpired;
   if (/invalid.*(otp|token|code)|(otp|token|code).*invalid|incorrect.*code/.test(m)) return t.errOtpInvalid;
   if (/network|failed to fetch|fetch failed|timeout|offline/.test(m)) return t.errNetwork;
+  // A bare machine code (OAuth's `access_denied`, `server_error`, … bounced back by /auth/callback) is not a sentence.
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(m)) return t.errGeneric;
   // Short, human-readable provider messages are safe to pass through.
   return raw.length <= 120 ? raw : t.errGeneric;
 }
@@ -116,6 +136,12 @@ const COPY: Record<Lang, Strings> = {
     errOtpInvalid: 'კოდი არასწორია. შეამოწმე და სცადე ხელახლა.',
     errOtpExpired: 'კოდს ვადა გაუვიდა. გამოითხოვე ახალი.',
     errOtpRequired: 'შეიყვანე 6-ნიშნა კოდი.',
+    cont: 'შესვლა ან რეგისტრაცია', contCta: 'გაგრძელება',
+    idPlaceholder: 'ელ.ფოსტა ან ტელეფონის ნომერი',
+    codeHint: 'გამოგიგზავნით 6-ნიშნა კოდს — პაროლი არ გჭირდება. ახალს ანგარიში თავისით შეექმნება.',
+    useCode: 'კოდით შესვლა ან რეგისტრაცია',
+    errInvalidId: 'შეიყვანე ელ.ფოსტა ან ტელეფონის ნომერი (მაგ. 599 12 34 56).',
+    otpTitleAny: 'შეიყვანე კოდი', otpChangeId: 'შეცვლა',
   },
   en: {
     login: 'Sign in', register: 'Create account', reset: 'Reset password', magic: 'Magic link',
@@ -145,6 +171,12 @@ const COPY: Record<Lang, Strings> = {
     errOtpInvalid: 'That code is not correct. Check it and try again.',
     errOtpExpired: 'That code has expired. Request a new one.',
     errOtpRequired: 'Enter the 6-digit code.',
+    cont: 'Sign in or sign up', contCta: 'Continue',
+    idPlaceholder: 'Email or phone number',
+    codeHint: "We'll send you a 6-digit code — no password needed. New here? Your account is created automatically.",
+    useCode: 'Sign in or sign up with a code',
+    errInvalidId: 'Enter an email or a phone number (with the country code, e.g. +995 599 12 34 56).',
+    otpTitleAny: 'Enter the code', otpChangeId: 'Change',
   },
   ru: {
     login: 'Вход', register: 'Регистрация', reset: 'Сброс пароля', magic: 'Магическая ссылка',
@@ -174,13 +206,26 @@ const COPY: Record<Lang, Strings> = {
     errOtpInvalid: 'Неверный код. Проверьте и попробуйте снова.',
     errOtpExpired: 'Срок действия кода истёк. Запросите новый.',
     errOtpRequired: 'Введите 6-значный код.',
+    cont: 'Вход или регистрация', contCta: 'Продолжить',
+    idPlaceholder: 'E-mail или номер телефона',
+    codeHint: 'Мы пришлём 6-значный код — пароль не нужен. Новый аккаунт создастся автоматически.',
+    useCode: 'Вход или регистрация по коду',
+    errInvalidId: 'Введите e-mail или номер телефона (с кодом страны, напр. +995 599 12 34 56).',
+    otpTitleAny: 'Введите код', otpChangeId: 'Изменить',
   },
 };
 
-export default function AuthModal({ open, locale, onClose, onAuthed, initialMode = 'login' }: AuthModalProps) {
+export default function AuthModal({ open, locale, onClose, onAuthed, initialMode = 'login', initialError = null, returnTo = null }: AuthModalProps) {
   const t = COPY[locale] ?? COPY.ka;
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [mode, setMode] = useState<Mode>(entryMode(initialMode));
+  // The one field (`continue`): whatever the person typed — an email or a phone number.
+  const [identifier, setIdentifier] = useState('');
+  // Phone sign-in is offered only once the Supabase project has the Phone provider (an SMS sender) switched on —
+  // asked from GoTrue's public /settings, like Google below. Until then the field asks for an email only.
+  const [phoneEnabled, setPhoneEnabled] = useState(false);
+  // The number a code was texted to (E.164), or null when the code went to an email.
+  const [otpPhone, setOtpPhone] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -228,8 +273,14 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   // caller's requested tab — 'login' for "Sign in", 'register' for "Sign up" —
   // and clear any stale error/notice from a previous session.
   useEffect(() => {
-    if (open) { setMode(initialMode); setError(null); setNotice(null); }
-  }, [open, initialMode]);
+    // ⚠️ initialError comes from the URL (?error=), so anyone can write it: show only what humanizeAuthError RECOGNISES —
+    // free text it would pass through verbatim becomes the generic line (no spoofed messages in our own sheet).
+    if (open) {
+      const known = initialError ? humanizeAuthError(initialError, t) : null;
+      setMode(entryMode(initialMode)); setError(known && known === (initialError ?? "").trim() ? t.errGeneric : known); setNotice(null);
+    }
+  }, [open, initialMode, initialError, t]);
+  const backTo = returnTo || `/${locale}/dashboard`;
 
   const reset = useCallback(() => { setError(null); setNotice(null); }, []);
 
@@ -241,7 +292,9 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   // Which flow produced the code on screen. 'signup' = account confirmation, 'email' = sign-in OTP.
   // verifyOtp() and the resend button BOTH need this: Supabase rejects a sign-in code verified as a
   // signup and vice versa, and resend() does not even support the sign-in case.
-  const [otpKind, setOtpKind] = useState<'signup' | 'email'>('signup');
+  const [otpKind, setOtpKind] = useState<'signup' | 'email' | 'sms'>('signup');
+  // Which request produced an EMAIL code — the resend button must ask for the same kind again.
+  const [otpPurpose, setOtpPurpose] = useState<'signup' | 'signin' | 'continue'>('signup');
 
   /**
    * Ask our own route to issue and MAIL the 6-digit code.
@@ -259,11 +312,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   };
   const otpErr = OTP_ERR[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'];
 
-  const requestEmailCode = useCallback(async (purpose: 'signup' | 'signin', pwd?: string): Promise<string | null> => {
+  const requestEmailCode = useCallback(async (purpose: 'signup' | 'signin' | 'continue', pwd?: string, to?: string): Promise<string | null> => {
     const res = await fetch('/api/auth/email-otp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), purpose, locale, ...(pwd ? { password: pwd } : {}) }),
+      body: JSON.stringify({ email: (to ?? email).trim(), purpose, locale, ...(pwd ? { password: pwd } : {}) }),
     });
     if (res.ok) return null;
     const j = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
@@ -290,10 +343,12 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
     setOtpBusy(true);
     try {
-      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: otpKind });
+      const { data, error } = otpKind === 'sms' && otpPhone
+        ? await supabase.auth.verifyOtp({ phone: otpPhone, token: code, type: 'sms' })
+        : await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: otpKind === 'sms' ? 'email' : otpKind });
       if (error) throw error;
       if (!data.session) { setError(t.errOtpInvalid); return; }
-      track('user_signup', { method: 'email', verified: true });
+      track('user_signup', { method: otpKind === 'sms' ? 'phone' : 'email', verified: true });
       await redeemRef(); // apply an inbound referral now that there is a session
       onAuthed?.(); onClose();
       // Mirror the sign-in path: let the session cookie land before the server tree re-renders.
@@ -304,7 +359,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setOtpBusy(false);
     }
-  }, [otpCode, email, t, onAuthed, onClose, router, otpKind]);
+  }, [otpCode, email, t, onAuthed, onClose, router, otpKind, otpPhone]);
 
   /** Re-send the sign-up confirmation code (Supabase rate-limits this server-side). */
   const resendOtp = useCallback(async () => {
@@ -320,10 +375,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
       // purpose:'signup' when `password.length < 6` BEFORE it ever reaches Supabase, and this call
       // passed no password at all — so the button failed 100% of the time with the generic
       // "try again" line, at the exact moment a registration dies (the first code never arrived).
-      const failure = await requestEmailCode(
-        otpKind === 'signup' ? 'signup' : 'signin',
-        otpKind === 'signup' ? password : undefined,
-      );
+      if (otpKind === 'sms' && otpPhone) {
+        const { error } = await supabase.auth.signInWithOtp({ phone: otpPhone });
+        if (error) throw error;
+        setNotice(t.otpResent);
+        return;
+      }
+      const failure = await requestEmailCode(otpPurpose, otpPurpose === 'signup' ? password : undefined);
       if (failure) { setError(failure); return; }
       setNotice(t.otpResent);
     } catch (err) {
@@ -331,7 +389,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setOtpBusy(false);
     }
-  }, [email, password, t, otpKind, requestEmailCode]);
+  }, [password, t, otpKind, otpPhone, otpPurpose, requestEmailCode]);
 
   // OAuth (Google): only render the button when the Supabase project ACTUALLY has the
   // provider enabled (asked from GoTrue's public /settings), so we never show a dead
@@ -346,7 +404,10 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     const ctrl = new AbortController();
     fetch(`${url}/auth/v1/settings`, { headers: { apikey: anon }, signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { external?: Record<string, boolean> } | null) => setGoogleEnabled(Boolean(j?.external?.google)))
+      .then((j: { external?: Record<string, boolean> } | null) => {
+        setGoogleEnabled(Boolean(j?.external?.google));
+        setPhoneEnabled(Boolean(j?.external?.phone));
+      })
       .catch(() => { /* fail-soft → keep the button hidden */ });
     return () => ctrl.abort();
   }, [open]);
@@ -363,18 +424,47 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         // Preserve the user's CURRENT locale through the OAuth round-trip: pass it as
         // `next` so /auth/callback lands them back on /{locale}/dashboard instead of the
         // default locale (a ka user stayed on ka, but en/ru users were dumped on /ka).
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/${locale}/dashboard`)}` },
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(backTo)}` },
       });
       if (error) throw error;
     } catch (err) {
       setBusy(false);
       setError(humanizeAuthError(err, t));
     }
-  }, [t]);
+  }, [t, backTo]);
 
   const submit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     reset();
+    if (mode === 'continue') {
+      // ONE FIELD → ONE CODE. An email gets a code from our own route (purpose 'continue': an existing account gets a
+      // sign-in code, a new address gets its account created — the answer never says which). A phone number gets an
+      // SMS from Supabase (signInWithOtp creates the account on first use). Either way verifyOtp() is the only way in.
+      const id = parseIdentifier(identifier, { phone: phoneEnabled });
+      if (id.kind === 'invalid') { setError(phoneEnabled ? t.errInvalidId : t.errInvalidEmail); return; }
+      const supabase = createBrowserClient();
+      if (!supabase || !isSupabaseConfigured()) { setError(t.notConfigured); return; }
+      setBusy(true);
+      try {
+        if (id.kind === 'email') {
+          const failure = await requestEmailCode('continue', undefined, id.email);
+          if (failure) { setError(failure); return; }
+          setEmail(id.email); setOtpPhone(null); setOtpKind('email'); setOtpPurpose('continue');
+        } else {
+          const { error } = await supabase.auth.signInWithOtp({ phone: id.phone });
+          if (error) throw error;
+          setOtpPhone(id.phone); setOtpKind('sms');
+        }
+        track('auth_code_requested', { method: id.kind });
+        setOtpCode('');
+        setOtpStage(true);
+      } catch (err) {
+        setError(humanizeAuthError(err, t));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     // Client-side email validation → elegant inline error before any round-trip.
     if (!EMAIL_RE.test(email.trim())) { setError(t.errInvalidEmail); return; }
     const supabase = createBrowserClient();
@@ -408,7 +498,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         const failure = await requestEmailCode('signup', password);
         if (failure) { setError(failure); return; }
         track('user_signup', { method: 'email', pending_confirm: true });
-        setOtpKind('signup');
+        setOtpKind('signup'); setOtpPurpose('signup'); setOtpPhone(null);
         setOtpStage(true);
       } else if (mode === 'magic') {
         // Same route, sign-in purpose: it uses a magiclink-type generateLink, which does NOT create an
@@ -416,10 +506,12 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         // which emails are registered.
         const failure = await requestEmailCode('signin');
         if (failure) { setError(failure); return; }
-        setOtpKind('email');
+        setOtpKind('email'); setOtpPurpose('signin'); setOtpPhone(null);
         setOtpStage(true);
       } else if (mode === 'reset') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/${locale}/login` });
+        // Through /auth/callback, which exchanges the mailed code for a session server-side. (It pointed at the
+        // standalone /login page, deleted on 2026-10-01 — the sign-in sheet is the only sign-in surface now.)
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(backTo)}` });
         if (error) throw error;
         setNotice(t.checkEmail);
       }
@@ -428,11 +520,11 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setBusy(false);
     }
-  }, [mode, email, password, name, locale, t, onAuthed, onClose, reset, requestEmailCode, router]);
+  }, [mode, email, password, name, locale, t, onAuthed, onClose, reset, requestEmailCode, router, backTo, identifier, phoneEnabled]);
 
   const inputCls = 'w-full bg-app-elevated border border-app-border/15 rounded-xl pl-10 pr-3 py-3 text-[14px] text-app-text placeholder:text-app-muted outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all';
-  const title = mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
-  const cta = mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
+  const title = mode === 'continue' ? t.cont : mode === 'login' ? t.login : mode === 'register' ? t.register : mode === 'reset' ? t.reset : t.magic;
+  const cta = mode === 'continue' ? t.contCta : mode === 'login' ? t.loginCta : mode === 'register' ? t.registerCta : mode === 'reset' ? t.resetCta : t.magicCta;
 
   if (!mounted || typeof document === 'undefined') return null;
   return createPortal(
@@ -457,8 +549,8 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
           >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
-                {mode === 'reset' || mode === 'magic' ? (
-                  <button type="button" onClick={() => { setMode('login'); reset(); }} aria-label={t.back}
+                {!otpStage && mode !== 'continue' ? (
+                  <button type="button" onClick={() => { setMode(mode === 'reset' ? 'login' : 'continue'); reset(); }} aria-label={t.back}
                     className="h-8 w-8 rounded-full hover:bg-app-border/10 flex items-center justify-center text-app-muted">
                     <ArrowLeft size={16} />
                   </button>
@@ -467,7 +559,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                     <Sparkles size={15} className="text-white" />
                   </span>
                 )}
-                <h2 className="text-[17px] font-bold text-app-text tracking-tight">{otpStage ? t.otpTitle : title}</h2>
+                <h2 className="text-[17px] font-bold text-app-text tracking-tight">{otpStage ? (otpPurpose === 'continue' || otpKind === 'sms' ? t.otpTitleAny : t.otpTitle) : title}</h2>
               </div>
               <button type="button" onClick={onClose} aria-label="Close"
                 className="h-8 w-8 rounded-full hover:bg-app-border/10 flex items-center justify-center text-app-muted">
@@ -495,7 +587,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                  grants access except a correct code: verifyOtp() is the only path to a session. */
               <div className="space-y-3">
                 <p className="text-[13px] text-app-muted px-1">
-                  {t.otpSubtitle} <span className="text-app-text font-medium break-all">{email.trim()}</span>
+                  {t.otpSubtitle} <span className="text-app-text font-medium break-all">{otpKind === 'sms' && otpPhone ? formatPhone(otpPhone) : email.trim()}</span>
                 </p>
                 <input
                   value={otpCode}
@@ -532,22 +624,42 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
                   </button>
                   <button type="button" onClick={() => { setOtpStage(false); setOtpCode(''); reset(); }}
                     className="text-[12px] text-app-muted hover:text-app-text transition-colors min-h-[44px] px-1">
-                    {t.otpChangeEmail}
+                    {otpPurpose === 'continue' || otpKind === 'sms' ? t.otpChangeId : t.otpChangeEmail}
                   </button>
                 </div>
               </div>
             ) : (
             <form onSubmit={submit} className="space-y-3">
+              {mode === 'continue' && (
+                <>
+                  <div className="relative">
+                    {looksLikePhone(identifier)
+                      ? <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
+                      : <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />}
+                    {/* type=email while only email works: the phone keyboard gets @ and the browser offers saved
+                        addresses. Once phone is on, plain text — both a number and an address must be typeable. */}
+                    <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
+                      type={phoneEnabled ? 'text' : 'email'} inputMode={phoneEnabled ? 'text' : 'email'}
+                      autoComplete={phoneEnabled ? 'username' : 'email'} autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                      required autoFocus data-testid="auth-identifier"
+                      placeholder={phoneEnabled ? t.idPlaceholder : t.email} aria-label={phoneEnabled ? t.idPlaceholder : t.email}
+                      className={inputCls} />
+                  </div>
+                  <p className="px-1 text-[12px] leading-snug text-app-muted">{t.codeHint}</p>
+                </>
+              )}
               {mode === 'register' && (
                 <div className="relative">
                   <Sparkles size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.name} className={inputCls} autoComplete="name" />
                 </div>
               )}
-              <div className="relative">
-                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder={t.email} className={inputCls} autoComplete="email" />
-              </div>
+              {mode !== 'continue' && (
+                <div className="relative">
+                  <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder={t.email} className={inputCls} autoComplete="email" />
+                </div>
+              )}
               {(mode === 'login' || mode === 'register') && (
                 <div className="relative">
                   <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted" />
@@ -571,45 +683,38 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             </form>
             )}
 
-            {/* ── ან ── divider + full-width secondary toggle (register ⇄ login).
-                Replaces the old OAuth + text-link cluster: one clean alternate action. */}
-            {!otpStage && (mode === 'login' || mode === 'register') && (
+            {/* ── ან ── Google, then ONE small link to the other way in. No „register" button: the code flow above IS
+                registration (owner, 2026-10-01 — one line, nobody gets lost choosing between two forms). */}
+            {!otpStage && (mode === 'continue' || mode === 'login') && (
               <>
-                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-app-muted">
-                  <span className="h-px flex-1 bg-app-border/15" />
-                  {t.orContinue}
-                  <span className="h-px flex-1 bg-app-border/15" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); reset(); }}
-                  className="w-full h-11 rounded-xl border border-app-border/15 bg-app-elevated text-[14px] font-semibold text-app-text transition-colors hover:bg-app-border/10"
-                >
-                  {mode === 'login' ? t.register : t.login}
-                </button>
-                {mode === 'login' && (
-                  <button type="button" onClick={() => { setMode('reset'); reset(); }} className="mt-2 block w-full text-center text-[12px] text-app-muted hover:text-app-text transition">{t.forgot}</button>
+                {googleEnabled && (
+                  <>
+                    <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-app-muted">
+                      <span className="h-px flex-1 bg-app-border/15" />
+                      {t.orContinue}
+                      <span className="h-px flex-1 bg-app-border/15" />
+                    </div>
+                    {/* Only rendered once the provider is enabled on Supabase (GoTrue /settings) — never a dead button. */}
+                    <button
+                      type="button"
+                      onClick={() => void handleGoogle()}
+                      disabled={busy}
+                      className="flex w-full items-center justify-center gap-3 rounded-xl border border-app-border/15 bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-900 transition-colors hover:bg-slate-100 disabled:opacity-60"
+                    >
+                      <GoogleIcon />
+                      {locale === 'en' ? 'Continue with Google' : locale === 'ru' ? 'Войти через Google' : 'Google-ით შესვლა'}
+                    </button>
+                  </>
                 )}
-                {/* Google OAuth — only rendered once the provider is enabled on Supabase
-                    (auto-detected via GoTrue /settings), so it is never a dead button.
-                    Until then, a "coming soon" note sets expectations. */}
-                {googleEnabled ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleGoogle()}
-                    disabled={busy}
-                    className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl border border-app-border/15 bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-900 transition-colors hover:bg-slate-100 disabled:opacity-60"
-                  >
-                    <GoogleIcon />
-                    {locale === 'en' ? 'Continue with Google' : locale === 'ru' ? 'Войти через Google' : 'Google-ით შესვლა'}
-                  </button>
+                {mode === 'continue' ? (
+                  <button type="button" onClick={() => { setMode('login'); reset(); }} className="mt-3 block w-full text-center text-[12px] text-app-muted hover:text-app-text transition min-h-[44px]">{t.usePassword}</button>
                 ) : (
-                  <p className="mt-3 text-center text-[11px] text-app-muted">{locale === 'en' ? 'Google sign-in coming soon' : locale === 'ru' ? 'Вход через Google скоро' : 'Google-ით შესვლა მალე'}</p>
+                  <div className="mt-2 flex flex-col items-center">
+                    <button type="button" onClick={() => { setMode('reset'); reset(); }} className="text-[12px] text-app-muted hover:text-app-text transition min-h-[40px]">{t.forgot}</button>
+                    <button type="button" onClick={() => { setMode('continue'); reset(); }} className="text-[12px] text-app-muted hover:text-app-text transition min-h-[40px]">{t.useCode}</button>
+                  </div>
                 )}
               </>
-            )}
-            {mode === 'magic' && (
-              <button type="button" onClick={() => { setMode('login'); reset(); }} className="mt-4 block w-full text-center text-[12px] text-app-muted hover:text-app-text transition">{t.usePassword}</button>
             )}
 
             {/* Official support node */}

@@ -108,6 +108,12 @@ export async function createCheckoutSession(params: {
  */
 export async function createWalletTopupSession(params: {
   customerId: string;
+  /**
+   * The AUTHENTICATED user paying (from the session, never the body). It rides on the Checkout Session as
+   * `client_reference_id` + `metadata.user_id`, which is how the webhook credits the right wallet
+   * (lib/billing/topupPayer) — without it a paid top-up could not be matched to anyone.
+   */
+  userId: string;
   amountGel: number;
   successUrl: string;
   cancelUrl: string;
@@ -130,7 +136,9 @@ export async function createWalletTopupSession(params: {
         },
       },
     ],
-    metadata: { kind: 'wallet_topup', currency: 'gel', amount_gel: String(params.amountGel), ...(params.metadata ?? {}) },
+    client_reference_id: params.userId,
+    // `user_id` last, so caller metadata can never overwrite who is credited.
+    metadata: { kind: 'wallet_topup', currency: 'gel', amount_gel: String(params.amountGel), ...(params.metadata ?? {}), user_id: params.userId },
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
     billing_address_collection: 'auto',

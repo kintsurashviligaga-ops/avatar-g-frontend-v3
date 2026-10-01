@@ -22,6 +22,10 @@ import {
   Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
 } from 'lucide-react';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
+import { isStudioPath } from '@/lib/routing/landing';
+
+/** The chat's own icon, from the tool list — the hub row and the tool rows can never draw different marks. */
+const ChatIcon = TOOL_META.chat.Icon;
 import dynamic from 'next/dynamic';
 
 // DAY-5 — the real-time voice node. Lazy-loaded so it (and its media plumbing) never enters the initial
@@ -69,6 +73,7 @@ import { Wordmark } from '@/components/brand/Wordmark';
 import { ModelSwitcher, OPEN_PERSONA_EVENT, PERSONA_CHANGED_EVENT, announcePersona } from '@/components/chat/ModelSwitcher';
 import { requestMicRelease } from '@/lib/voice/micBus';
 import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
+import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -230,6 +235,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  // A sign-in deep link (/{lang}/dashboard?auth=login&redirect=…&error=… — lib/routing/signIn.ts) carries where to go
+  // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
+  const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   // Library opens IN-WINDOW in this slide-over. Legal (Privacy/Terms) no longer use
   // it — they're INSTANT client-side modals (LegalModal) with zero network/iframe, so
   // they paint in one frame instead of flashing an iframe-loaded page.
@@ -331,6 +340,26 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       // is an authed feature. Decided only once auth is known; the param is removed so a reload does not re-open.
       try {
         const url = new URL(window.location.href);
+        // Deep link: ?auth=login|signup — THE sign-in address now that the standalone /login and /signup pages are
+        // gone (lib/routing/signIn.ts; next.config.js redirects the old ones here, query and all). A member is sent
+        // straight on to `redirect` (what the old page's server-side short-circuit did); a guest gets the sheet.
+        const link = readSignInDeepLink(url.searchParams);
+        if (link) {
+          for (const k of SIGN_IN_PARAMS) url.searchParams.delete(k);
+          window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+          try {
+            if (link.plan) sessionStorage.setItem('myavatar:intended-plan', link.plan);
+            if (link.ref) localStorage.setItem('myavatar:ref', link.ref.toUpperCase()); // AuthModal redeems it after sign-up
+          } catch { /* private mode */ }
+          if (data.user) {
+            if (link.redirect && link.redirect !== `${url.pathname}${url.search}`) window.location.replace(link.redirect);
+          } else {
+            setAuthReturnTo(link.redirect);
+            setAuthError(link.error);
+            setAuthMode(link.mode === 'signup' ? 'register' : 'login');
+            setAuthOpen(true);
+          }
+        }
         if (url.searchParams.get('voice') === '1') {
           url.searchParams.delete('voice');
           window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
@@ -445,8 +474,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   /**
    * Pick up a purchase the user started on the pricing page.
    *
-   * ⚠️ THEY CLICKED A PLAN AND WE FORGOT. PricingSection sends people to /signup?plan=pro; the signup
-   * page now stashes that choice, and this is the other half — once they are actually signed in, the
+   * ⚠️ THEY CLICKED A PLAN AND WE FORGOT. PricingSection sends people to the sign-in link with ?plan=pro; the
+   * deep-link reader above stashes that choice, and this is the other half — once they are actually signed in, the
    * checkout they were heading for opens by itself. Without this the stash is just a value nobody reads,
    * and the highest-intent click in the funnel still ends in a dashboard with no mention of the plan.
    * Consumed on read, so it fires exactly once and a later visit is not ambushed by a payment dialog.
@@ -683,21 +712,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [searchOpen, setSearchOpen] = useState(false);
   // Picking a service from the sidebar: in the studio it switches the tool in place; anywhere else it opens the
   // studio on that tool (`?tool=`, read once by OmniStudio).
-  const onStudioHome = (pathname ?? '').includes('/dashboard') && !onBack;
+  const onStudioHome = isStudioPath(pathname) && !onBack;
   const selectTool = useCallback((id: ToolId) => {
     setSidebarOpen(false);
     if (onStudioHome) { window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: id })); return; }
     const url = `/${locale}/dashboard?tool=${id}`;
     // ⚠️ On the dashboard's own #lipsync / #agent surfaces a client push is a no-op: Next keys the page without the
     // query and pushState fires no hashchange, so ServiceHub stayed where it was. A document load lands on the studio.
-    if ((pathname ?? '').includes('/dashboard')) window.location.assign(url);
+    if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
   }, [onStudioHome, router, locale, pathname]);
   const handleSelectConversation = useCallback((id: string) => {
     // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
     // active conversation and navigate; OmniStudio restores it from localStorage on mount.
-    if ((pathname ?? '').includes('/dashboard')) {
+    if (isStudioPath(pathname)) {
       window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
     } else {
       // One-shot handoff: OmniStudio consumes this on mount. Writing OMNI_CURRENT_ID_KEY instead would
@@ -715,7 +744,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // so mutating storage here would be resurrected on its next render — let OmniStudio do
   // the delete (it also resets the open chat if that's the one deleted). On a secondary
   // surface (e.g. /library) OmniStudio isn't mounted, so mutate localStorage directly.
-  const onDashboard = (pathname ?? '').includes('/dashboard');
+  const onDashboard = isStudioPath(pathname);
   const handleDeleteConversation = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setConversations((prev) => prev.filter((c) => c.id !== id)); // optimistic
@@ -986,12 +1015,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         className={`fixed inset-y-0 left-0 z-[70] flex h-full w-[288px] max-w-[84vw] shrink-0 flex-col border-r border-app-border/10 bg-app-surface transition-transform duration-200 ease-out md:static md:z-0 md:max-w-none md:shadow-none ${sidebarOpen ? 'translate-x-0 shadow-[0_0_60px_rgba(0,0,0,0.45)]' : '-translate-x-full md:translate-x-0'} ${sidebarCollapsed ? 'md:hidden' : ''}`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        {/* ONE mark: the name, set as text. ⚠️ „ორი ლოგო“ — the rocket raster sat here AND in the header, and the
-            owner's own profile photo (the same rocket) sat beside it: three rockets on one screen. The brand is
-            the name; the rocket stays the app icon and the social card, where it is the only mark. */}
+        {/* ONE lockup: the transparent rocket + the name (docs/DESIGN.md §13). ⚠️ „ორი ლოგო“ — the OPAQUE rocket tile
+            used to sit beside the name (and in the header), reading as a second logo; the cut-out has no box and
+            lives inside the wordmark's single role="img". */}
         <div className="flex items-center justify-between py-2.5 pl-4 pr-2">
           {/* Not a link: from the studio a document load to /{lang} (and back) would drop the jobs in flight and the draft. */}
-          <span className="flex h-11 min-w-0 items-center"><Wordmark size="sm" /></span>
+          <span className="flex h-11 min-w-0 items-center"><Wordmark size="sm" mark /></span>
           {/* Collapse (desktop/iPad) + close-drawer (mobile) — one control. */}
           <button type="button" onClick={() => { setSidebarOpen(false); setSidebarCollapsedPersist(true); }}
             aria-label={tCollapse} title={tCollapse}
@@ -999,6 +1028,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </div>
 
         <div className="space-y-0.5 px-2">
+          {/* CHAT IS THE HUB, so it is the first row (the owner's 2026-10-01 directive) — above „New session“, and
+              out of the „სერვისები“ list below so it is never named twice. */}
+          <button type="button" onClick={() => selectTool('chat')} aria-current={onStudioHome && activeTool === 'chat' ? 'true' : undefined}
+            data-testid="sidebar-chat"
+            className={`${sideRow} font-medium ${onStudioHome && activeTool === 'chat' ? 'bg-app-elevated' : ''}`}>
+            <ChatIcon className={`h-[17px] w-[17px] ${onStudioHome && activeTool === 'chat' ? 'text-app-accent' : 'text-app-text'}`} aria-hidden="true" />
+            {TOOL_META.chat.name[lang]}
+          </button>
           <button type="button" onClick={handleNewChat} className={sideRow}>
             <PenSquare className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tNewSession}
           </button>
@@ -1023,7 +1060,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               reads the same list, so a service can never be reachable from one door and missing from the other. */}
           <p className={sideHdr}>{t.services}</p>
           <div className="space-y-0.5">
-            {PRIMARY_TOOLS.map((id) => {
+            {PRIMARY_TOOLS.filter((id) => id !== 'chat').map((id) => {
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (
@@ -1223,7 +1260,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   // All-or-nothing (brief §8, "MyAvata"): a 44 px-tall wrapping row, so when the name does not fit
                   // WHOLE it wraps to the clipped second line — shown entire or not at all, never cut.
                   <span className="flex h-11 min-w-0 flex-wrap items-center overflow-hidden">
-                    <span className="flex h-11 items-center"><Wordmark size="sm" /></span>
+                    <span className="flex h-11 items-center"><Wordmark size="sm" mark /></span>
                   </span>
                 )}
               </span>
@@ -1327,12 +1364,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               </div>
 
               <div className={settingsDivider} />
-              {/* SECTION 3 — ABOUT (instant legal modals · mailto support) */}
+              {/* SECTION 3 — ABOUT (instant legal modals · the support page: FAQ, the support chat, the email) */}
               <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
               <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v{process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0'}</p>
               <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
               <button type="button" onClick={() => setLegalOpen('terms')} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
-              <a href="mailto:support@myavatar.ge" className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
+              <a href={`/${lang}/support`} onClick={() => setMenuOpen(false)} className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
               {authed && (
                 <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
               )}
@@ -1389,7 +1426,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           </div>
         </div>
       )}
-      <AuthModal open={authOpen} locale={lang} initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); void refreshBalance(); }} />
+      <AuthModal open={authOpen} locale={lang} initialMode={authMode} initialError={authError} returnTo={authReturnTo}
+        onClose={() => { setAuthOpen(false); setAuthError(null); setAuthReturnTo(null); }}
+        onAuthed={() => {
+          setAuthOpen(false); setAuthError(null);
+          // Signed in from a deep link that named a destination (e.g. /memory sent them here): go there.
+          if (authReturnTo) { const to = authReturnTo; setAuthReturnTo(null); window.location.assign(to); return; }
+          void refreshBalance();
+        }} />
 
       {/* PHASE 3 Task 2 — first-login welcome (signed-in users who haven't seen it). */}
       {authed && !welcomed && (

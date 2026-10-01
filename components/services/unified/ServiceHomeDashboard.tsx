@@ -58,7 +58,7 @@ export default function ServiceHomeDashboard({ locale }: ServiceHomeDashboardPro
   const serviceMap = new Map(services.map(s => [s.slug, s]))
 
   const stats = [
-    { label: T.credits[lang], value: '1000', icon: '⚡', color: '#00d4ff' },
+    { label: T.credits[lang], value: '1000', icon: '⚡', color: '#338FE8' },
     { label: T.generated[lang], value: '0', icon: '✨', color: '#38bdf8' },
     { label: T.workflows[lang], value: '0', icon: '🔄', color: '#34d399' },
     { label: T.thisMonth[lang], value: '0', icon: '📊', color: '#f59e0b' },
@@ -118,9 +118,9 @@ export default function ServiceHomeDashboard({ locale }: ServiceHomeDashboardPro
                   href={`/${locale}/services/${slug}`}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:scale-[1.02]"
                   style={{
-                    background: 'rgba(0,212,255,0.06)',
-                    border: '1px solid rgba(0,212,255,0.12)',
-                    color: '#00d4ff',
+                    background: 'rgba(51,143,232,0.06)',
+                    border: '1px solid rgba(51,143,232,0.12)',
+                    color: '#338FE8',
                   }}
                 >
                   <span>{svc.icon}</span>
@@ -159,13 +159,13 @@ export default function ServiceHomeDashboard({ locale }: ServiceHomeDashboardPro
                     {/* Hover glow */}
                     <div
                       className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                      style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,212,255,0.04) 0%, transparent 70%)' }}
+                      style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(51,143,232,0.04) 0%, transparent 70%)' }}
                     />
                     <div className="relative z-10">
                       <div className="flex items-center gap-3 mb-2">
                         <div
                           className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 transition-transform duration-200 group-hover:scale-110"
-                          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.12)' }}
+                          style={{ background: 'rgba(51,143,232,0.08)', border: '1px solid rgba(51,143,232,0.12)' }}
                         >
                           {svc.icon}
                         </div>
@@ -182,7 +182,7 @@ export default function ServiceHomeDashboard({ locale }: ServiceHomeDashboardPro
                         </span>
                         <span
                           className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
-                          style={{ color: '#00d4ff' }}
+                          style={{ color: '#338FE8' }}
                         >
                           {T.openService[lang]}
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>

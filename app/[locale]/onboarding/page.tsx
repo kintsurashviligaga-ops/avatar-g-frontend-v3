@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { createServerClient } from '@/lib/supabase/server';
+import { signInPath } from '@/lib/routing/signIn';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export default async function OnboardingPage({ params }: Props) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/${locale}/login?redirect=/${locale}/onboarding`);
+    redirect(signInPath(locale, { redirect: `/${locale}/onboarding` }));
   }
 
   // If the user has already completed onboarding (persona row present),

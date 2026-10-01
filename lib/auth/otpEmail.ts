@@ -16,7 +16,14 @@
  * PURE + TOTAL: no imports, no I/O, never throws.
  */
 
-export type OtpPurpose = 'signup' | 'signin';
+/**
+ * - `signup`   — the old two-field registration (email + chosen password); refuses a known address.
+ * - `signin`   — a code for an EXISTING account only; an unknown address gets no mail (and an OK answer).
+ * - `continue` — THE ONE-FIELD FLOW (2026-10-01): a code for anyone. An existing account gets a sign-in code; an
+ *                unknown address gets an account created and a confirmation code — and the caller cannot tell which
+ *                (no enumeration). Either code verifies with `type: 'email'`.
+ */
+export type OtpPurpose = 'signup' | 'signin' | 'continue';
 export type OtpLocale = 'ka' | 'en' | 'ru';
 
 /** Supabase's admin link types, mapped from our product-level purpose. */
@@ -30,7 +37,7 @@ export function verifyTypeFor(purpose: OtpPurpose): 'signup' | 'email' {
 }
 
 export function isOtpPurpose(v: unknown): v is OtpPurpose {
-  return v === 'signup' || v === 'signin';
+  return v === 'signup' || v === 'signin' || v === 'continue';
 }
 
 /** Exactly six digits. Anything else means the provider response changed and must not be mailed. */
@@ -115,6 +122,13 @@ const COPY: Record<OtpLocale, Record<OtpPurpose, Copy>> = {
       expires: 'კოდი მოქმედებს 1 საათი და მხოლოდ ერთხელ გამოიყენება.',
       ignore: 'თუ შესვლას არ ცდილობდით, იგნორირება გაუკეთეთ ამ წერილს — ანგარიში დაცულია.',
     },
+    continue: {
+      subject: (c) => `${c} — თქვენი MyAvatar კოდი`,
+      heading: 'თქვენი კოდი',
+      lead: 'შეიყვანეთ ეს კოდი MyAvatar-ში — ახალ ანგარიშს შექმნის ან არსებულში შეგიყვანთ:',
+      expires: 'კოდი მოქმედებს 1 საათი და მხოლოდ ერთხელ გამოიყენება.',
+      ignore: 'თუ ეს თქვენ არ ყოფილხართ, უბრალოდ იგნორირება გაუკეთეთ ამ წერილს.',
+    },
   },
   en: {
     signup: {
@@ -131,6 +145,13 @@ const COPY: Record<OtpLocale, Record<OtpPurpose, Copy>> = {
       expires: 'The code is valid for 1 hour and can be used once.',
       ignore: "If you weren't signing in, ignore this email — your account is safe.",
     },
+    continue: {
+      subject: (c) => `${c} — your MyAvatar code`,
+      heading: 'Your code',
+      lead: 'Enter this code in MyAvatar — it signs you in, or creates your account if you are new:',
+      expires: 'The code is valid for 1 hour and can be used once.',
+      ignore: "If this wasn't you, just ignore this email.",
+    },
   },
   ru: {
     signup: {
@@ -146,6 +167,13 @@ const COPY: Record<OtpLocale, Record<OtpPurpose, Copy>> = {
       lead: 'Введите этот код, чтобы войти:',
       expires: 'Код действует 1 час и используется один раз.',
       ignore: 'Если вы не входили, проигнорируйте письмо — аккаунт в безопасности.',
+    },
+    continue: {
+      subject: (c) => `${c} — ваш код MyAvatar`,
+      heading: 'Ваш код',
+      lead: 'Введите этот код в MyAvatar — он выполнит вход или создаст аккаунт, если вы новый пользователь:',
+      expires: 'Код действует 1 час и используется один раз.',
+      ignore: 'Если это были не вы, просто проигнорируйте письмо.',
     },
   },
 };

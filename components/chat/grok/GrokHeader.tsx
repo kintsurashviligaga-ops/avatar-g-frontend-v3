@@ -69,7 +69,7 @@ export function GrokHeader({ activeTab, onTabChange, onMenuToggle, serviceIcon: 
         )}
         <button className="grok-header-avatar" type="button" aria-label="Profile" onClick={onMenuToggle}>
           <Image
-            src="/brand/gemini-rocket-clean.png"
+            src="/brand/rocket-mark.png"
             alt="MyAvatar"
             width={22}
             height={22}

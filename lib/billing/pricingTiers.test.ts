@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { PRICING_TIERS, tierCreditPool, TIER_STRIPE_PRICE_ENV, stripePriceIdForTier, tierByStripePriceId } from './pricingConfig';
-import { USD_TIER_PRICES } from './pricingConfig';
+import { USD_TIER_PRICES, PRICING_TIER_TO_TIER } from './pricingConfig';
+import { TIERS, monthlyAllowanceCredits } from './tiers';
 
 describe('PRICING_TIERS — the 4-tier ladder', () => {
   it('defines Free / Basic / Pro / Business in USD with a GEL settlement kept in lockstep (× 2.7)', () => {
@@ -64,13 +65,16 @@ describe('Stripe Price ID env resolution (safe: no env → not purchasable, neve
   beforeEach(() => { for (const k of ENVS) { SAVE[k] = process.env[k]; delete process.env[k]; } });
   afterEach(() => { for (const k of ENVS) { if (SAVE[k] === undefined) delete process.env[k]; else process.env[k] = SAVE[k]; } });
 
-  it('maps each PAID tier to its documented env var; free has none', () => {
+  it('maps each PAID tier to the catalogue env var; free has none', () => {
+    // ⚠️ NOT STRIPE_PRICE_PRO ANY MORE. That name is the legacy PlanTier 'PRO' price (lib/billing/stripe-prices.ts),
+    // so pro → STRIPE_PRICE_PRO would have resolved the old system's subscription into this ladder's $39.99 rung.
     expect(TIER_STRIPE_PRICE_ENV).toEqual({
       free: '',
-      basic: 'STRIPE_PRICE_BASIC',
-      pro: 'STRIPE_PRICE_PRO',
+      basic: 'STRIPE_PRICE_STARTER',
+      pro: 'STRIPE_PRICE_CREATOR',
       business: 'STRIPE_PRICE_BUSINESS',
     });
+    expect(Object.values(TIER_STRIPE_PRICE_ENV)).not.toContain('STRIPE_PRICE_PRO');
   });
 
   it('returns null when the env is unset (tier not yet purchasable)', () => {
@@ -79,14 +83,14 @@ describe('Stripe Price ID env resolution (safe: no env → not purchasable, neve
   });
 
   it('never resolves a price for the FREE tier — it is granted, never checked out', () => {
-    process.env.STRIPE_PRICE_BASIC = 'price_live_basic_123';
+    process.env.STRIPE_PRICE_STARTER = 'price_live_starter_123';
     expect(stripePriceIdForTier('free')).toBeNull();
   });
 
   it('resolves and reverse-resolves once the env holds a price ID', () => {
-    process.env.STRIPE_PRICE_PRO = 'price_live_pro_123';
-    expect(stripePriceIdForTier('pro')).toBe('price_live_pro_123');
-    expect(tierByStripePriceId('price_live_pro_123')?.id).toBe('pro');
+    process.env.STRIPE_PRICE_CREATOR = 'price_live_creator_123';
+    expect(stripePriceIdForTier('pro')).toBe('price_live_creator_123');
+    expect(tierByStripePriceId('price_live_creator_123')?.id).toBe('pro');
     expect(tierByStripePriceId('price_unknown')).toBeNull();
   });
 
@@ -95,5 +99,32 @@ describe('Stripe Price ID env resolution (safe: no env → not purchasable, neve
     // checkout session for a PAID tier validate successfully.
     expect(USD_TIER_PRICES).toEqual([19.99, 39.99, 79.99]);
     expect(USD_TIER_PRICES).not.toContain(0);
+  });
+});
+
+describe('PRICING_TIERS is derived from the subscription catalogue (lib/billing/tiers.ts)', () => {
+  // ⚠️ SIX CATALOGUES USED TO DISAGREE. The pricing page's ladder keeps its wire ids (basic/pro) but every money
+  // number must be the catalogue's — the page is the promise, the catalogue is what the webhook grants.
+  it('maps basic→starter, pro→creator, business→business with identical price and credits', () => {
+    expect(PRICING_TIER_TO_TIER).toEqual({ free: 'free', basic: 'starter', pro: 'creator', business: 'business' });
+    for (const rung of PRICING_TIERS) {
+      const tier = TIERS[PRICING_TIER_TO_TIER[rung.id]];
+      expect(rung.priceUsd).toBe(tier.monthlyPriceUsd);
+      expect(rung.creditCeiling).toEqual(tier.creditCeiling);
+      expect(rung.creditsIncluded).toBe(tier.includedCredits);
+    }
+    expect(PRICING_TIERS.map((t) => t.creditsIncluded)).toEqual([50, 230, 525, 1200]);
+  });
+
+  it('a paid rung grants on its invoice exactly what the page says is included', () => {
+    for (const rung of PRICING_TIERS.filter((t) => t.priceUsd > 0)) {
+      expect(monthlyAllowanceCredits(PRICING_TIER_TO_TIER[rung.id])).toBe(rung.creditsIncluded);
+    }
+  });
+
+  it('hands the page COPIES of the ceilings, so nothing rendering them can mutate the catalogue', () => {
+    const basic = PRICING_TIERS.find((t) => t.id === 'basic')!;
+    expect(basic.creditCeiling).toEqual(TIERS.starter.creditCeiling);
+    expect(basic.creditCeiling).not.toBe(TIERS.starter.creditCeiling);
   });
 });
