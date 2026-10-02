@@ -139,9 +139,6 @@ const nextConfig = {
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace
       // both migration dirs so the turnkey `run-migration` curl works in prod.
       '/api/admin/run-migration': ['./supabase/migrations/**', './migrations/**'],
-      // B2B marketing overlays: ffmpeg-static binary + @resvg (SVG→PNG with an EXPLICIT font
-      // buffer + its native bins) ride along so the lambda renders the overlay PNG + composites.
-      '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Music-Video graphics agent: equalizer (ffmpeg) + title/lower-third (resvg SVG→PNG).
       '/api/video/graphics': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Video Remix: EVERY ffmpeg op (color_grade/speed/trim/mux/Ken-Burns) + captions
@@ -233,8 +230,22 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Referrer policy
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // Restrict browser features
-          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
+          // Restrict browser features. camera + microphone stay allowed for OUR origin — the Digital Twin capture and
+          // voice mode use them (fullscreen/autoplay keep their browser default of self). Everything below is a
+          // powerful feature the app never uses, denied outright so an injected script or a framed page cannot
+          // request it either: payments go through hosted Stripe/BOG pages (no Payment Request API on our origin),
+          // and nothing reads motion sensors, USB/HID/serial/Bluetooth/MIDI, screen capture or WebXR.
+          // `browsing-topics=()` opts the site out of the Topics API.
+          {
+            key: 'Permissions-Policy',
+            value: [
+              'camera=(self)', 'microphone=(self)', 'geolocation=()', 'payment=()', 'usb=()', 'serial=()', 'hid=()',
+              'bluetooth=()', 'midi=()', 'magnetometer=()', 'gyroscope=()', 'accelerometer=()', 'display-capture=()',
+              'xr-spatial-tracking=()', 'browsing-topics=()',
+            ].join(', '),
+          },
+          // Legacy Flash/Acrobat cross-domain policy files: none are served, so say so.
+          { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
           // HSTS — enforce HTTPS for 1 year (enable after confirming HTTPS-only)
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
           // Content Security Policy
