@@ -55,6 +55,20 @@ export function readSettle(params: unknown): SettleRecord | null {
   return { v: 1, kind: r.kind as SettleKind, job, ref, credits };
 }
 
+/**
+ * Kill switch. ON by default — unlike the render drainer's age-based reap (RENDER_DRAINER_ENABLED), this sweep acts
+ * only on the provider's own verdict or a 3-hour cap, so it cannot kill a live render. UNPOLLED_SETTLE=0|off turns it off.
+ */
+export function unpolledSettleEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !/^(0|off|false|no)$/i.test((env.UNPOLLED_SETTLE || '').trim());
+}
+
+/** A row the settle sweep owns: the age-based reaper must neither refund nor fail it (it would fail a job whose
+ *  provider is still working, and then the sweep — which only reads live rows — could never settle it). */
+export function isSettleOwned(row: { params?: unknown }): boolean {
+  return readSettle(row?.params) !== null;
+}
+
 /** Rows younger than this are left to the client — past every studio's own polling window (≤ ~29 min for 3D). */
 export const SETTLE_STALE_MS = 30 * 60_000;
 /** A job still not terminal this long after submit is treated as dead: refunded and failed. */

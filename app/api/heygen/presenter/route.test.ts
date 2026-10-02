@@ -32,13 +32,18 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
   deductCredits: jest.fn(async () => ({ ok: true })),
   refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 20 })),
 }));
-jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedFilm: jest.fn(async () => undefined) }));
+jest.mock('../../../../lib/orchestrator/jobs', () => ({
+  recordCompletedFilm: jest.fn(async () => undefined),
+  createJob: jest.fn(async () => true),
+  failJob: jest.fn(async () => undefined),
+}));
+jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
 import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { textToHostedSpeech } from '../../../../lib/chat/filmVoiceover';
-import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
+import { recordCompletedFilm, createJob, failJob } from '../../../../lib/orchestrator/jobs';
 import { creditCostFor } from '../../../../lib/credits/pricing';
 import { audioFingerprint, verifyAvatarCharge } from '../../../../lib/billing/avatarCharge';
 
@@ -210,7 +215,8 @@ describe('signed in', () => {
     heygen.status = () => Response.json({ data: { status: 'failed', error: 'bad audio' } });
     mockUser = null;
     const res = await GET(poll(sj.videoId));
-    expect(await res.json()).toMatchObject({ done: true, error: 'bad audio' });
+    // HeyGen's own words ('bad audio') stay server-side: a code the studio maps, plus whether the credits came back.
+    expect(await res.json()).toEqual({ done: true, error: 'provider_unavailable', refunded: true });
     expect(refundMock).toHaveBeenCalledTimes(1);
     expect(refundMock).toHaveBeenCalledWith('user-42', ref, COST);
     expect(deductMock).toHaveBeenCalledTimes(1);
@@ -221,7 +227,7 @@ describe('signed in', () => {
     const ref = deductMock.mock.calls[0][2];
     heygen.status = () => Response.json({ data: { status: 'completed' } });
     const res = await GET(poll(sj.videoId));
-    expect(await res.json()).toEqual({ done: true, error: 'the provider finished without a usable video file' });
+    expect(await res.json()).toEqual({ done: true, error: 'provider_unavailable', refunded: true });
     expect(refundMock).toHaveBeenCalledTimes(1);
     expect(refundMock).toHaveBeenCalledWith('user-42', ref, COST);
     expect(recordCompletedFilm).not.toHaveBeenCalled();
@@ -254,5 +260,29 @@ describe('signed in', () => {
     heygen.status = () => Response.json({ data: { status: 'failed' } });
     await GET(poll('old-vid'));
     expect(refundMock).not.toHaveBeenCalled();
+  });
+
+  it('a reserved render files `presenter:<videoId>` with `_settle`, so an unpolled failure is still refunded by the cron', async () => {
+    await POST(post({ audioUrl: AUDIO }).req);
+    const ref = deductMock.mock.calls[0][2];
+    expect(createJob).toHaveBeenCalledTimes(1);
+    const row = (createJob as jest.Mock).mock.calls[0][0];
+    expect(row).toMatchObject({ id: 'presenter:vid-1', userId: 'user-42', status: 'processing' });
+    // Polled by the cron through lipsyncFetch, which reads HeyGen ids as `heygen:<videoId>`.
+    expect(row.params._settle).toEqual({ v: 1, kind: 'presenter', job: 'heygen:vid-1', ref, credits: COST });
+  });
+
+  it('a terminal failure closes the row AFTER the refund; a refund that did not land leaves it live for the cron', async () => {
+    const sj = (await (await POST(post({ audioUrl: AUDIO }).req)).json()) as { videoId: string };
+    heygen.status = () => Response.json({ data: { status: 'failed', error: 'x' } });
+    await GET(poll(sj.videoId));
+    expect(failJob).toHaveBeenCalledWith('presenter:vid-1', expect.any(String));
+    expect(refundMock.mock.invocationCallOrder[0]).toBeLessThan((failJob as jest.Mock).mock.invocationCallOrder[0]!);
+
+    (failJob as jest.Mock).mockClear();
+    refundMock.mockResolvedValueOnce({ ok: false, reason: 'error', refunded: 0 });
+    const j = await (await GET(poll(sj.videoId))).json();
+    expect(j.refunded).toBe(false);
+    expect(failJob).not.toHaveBeenCalled();
   });
 });

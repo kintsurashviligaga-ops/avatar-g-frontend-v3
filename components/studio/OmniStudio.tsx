@@ -5409,7 +5409,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(heygenVideoId)}`, { credentials: 'include', signal: ac.signal });
               const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
               // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
+              // `refunded: true` (the GET's refund landed) → the one refund notice; otherwise the mapped failure code.
+              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
             }
             // ⚠️ Out of polls with no verdict = the HeyGen video is STILL RENDERING, and it is paid for. Falling back
             // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
@@ -5426,15 +5427,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
               // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
               // media_unresolved) instead of the generic "lip-sync failed".
-              if (!fb.jobId && fb.error) failReason = fb.error;
+              if (!fb.jobId && fb.error) failReason = describeGenerationFailure(fb, locale, t.lipsyncFailed);
               if (fb.jobId) {
                 failReason = null;
                 for (let i = 0; i < 90 && !url; i++) {
                   if (!mine()) return;
                   await new Promise((r) => setTimeout(r, 6000));
                   const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(fb.jobId)}`, { credentials: 'include', signal: ac.signal });
-                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-                  if (pj.done) { if (pj.url) url = pj.url; break; }
+                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; refunded?: boolean };
+                  if (pj.done) { if (pj.url) url = pj.url; else if (pj.refunded) failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
                 }
               }
             } catch { /* keep the HeyGen failure below */ }
@@ -5501,8 +5502,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // attempt forces the proven SadTalker engine — so the service NEVER hard-fails.
         let forceSadTalker = false;
         let stillRendering = false;
+        // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
+        // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
+        let lastRefunded = false;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
+          lastRefunded = false;
           const body = forceSadTalker ? JSON.stringify({ ...JSON.parse(startBody), forceSadTalker: true }) : startBody;
           const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'include', signal: ac.signal });
           const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
@@ -5514,8 +5519,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             if (!mine()) return;
             await new Promise((r) => setTimeout(r, 6000));
             const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
-            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null; refunded?: boolean };
+            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; lastRefunded = pj.refunded === true; break; }
           }
           // A failed HeyGen job → the proven SadTalker engine next; SadTalker retries only its known transient crash.
           // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
@@ -5534,7 +5539,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
               : stillRendering
                 ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
-                : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
+                : lastRefunded
+                  ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure({ refunded: true }, locale, t.lipsyncFailed)}` }
+                  : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
         });

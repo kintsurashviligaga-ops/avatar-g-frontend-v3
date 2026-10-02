@@ -42,7 +42,11 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
   deductCredits: jest.fn(async () => ({ ok: true })),
   refundDebitByRef: jest.fn(async () => ({ ok: true, refunded: 20 })),
 }));
-jest.mock('../../../../lib/orchestrator/jobs', () => ({ recordCompletedFilm: jest.fn(async () => undefined) }));
+jest.mock('../../../../lib/orchestrator/jobs', () => ({
+  recordCompletedFilm: jest.fn(async () => undefined),
+  createJob: jest.fn(async () => true),
+  failJob: jest.fn(async () => undefined),
+}));
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
 import { NextRequest } from 'next/server';
@@ -50,7 +54,7 @@ import { GET, POST } from './route';
 import { deductCredits, refundDebitByRef } from '../../../../lib/orchestrator/ledger';
 import { lipsyncCreate, lipsyncFetch, filmLipsyncCreate } from '../../../../lib/ai/lipsync';
 import { textToHostedSpeech } from '../../../../lib/chat/filmVoiceover';
-import { recordCompletedFilm } from '../../../../lib/orchestrator/jobs';
+import { recordCompletedFilm, createJob, failJob } from '../../../../lib/orchestrator/jobs';
 import { creditCostFor } from '../../../../lib/credits/pricing';
 import { audioFingerprint, avatarChargeRef, signAvatarCharge, withChargeToken } from '../../../../lib/billing/avatarCharge';
 
@@ -282,5 +286,44 @@ describe('legacy ids (no token) keep deduct-on-success — never free', () => {
     fetchJobMock.mockResolvedValue({ status: 'failed', url: null, error: 'x' });
     await GET(poll(withChargeToken('heygen:B', t)));
     expect(refundMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('the unpolled-job backstop — a durable settle row, and an honest poll verdict', () => {
+  beforeEach(() => { mockUser = { id: 'user-42' }; });
+
+  it('a reserved job files `lipsync:<jobId>` (the id the GET completes) with `_settle` naming its reservation', async () => {
+    await POST(post(BODY));
+    const ref = deductMock.mock.calls[0][2];
+    expect(createJob).toHaveBeenCalledTimes(1);
+    const row = (createJob as jest.Mock).mock.calls[0][0];
+    expect(row).toMatchObject({ id: 'lipsync:heygen:vid-1', userId: 'user-42', status: 'processing' });
+    expect(row.params._settle).toEqual({ v: 1, kind: 'lipsync', job: 'heygen:vid-1', ref, credits: COST });
+  });
+
+  it('an unbilled demo job files no settle row (nothing to refund)', async () => {
+    mockUser = null;
+    process.env.FILM_ALLOW_ANONYMOUS = '1';
+    await POST(post(BODY));
+    expect(createJob).not.toHaveBeenCalled();
+  });
+
+  it('a terminal failure reports refunded:true and closes the row AFTER the refund', async () => {
+    const { jobId } = (await (await POST(post(BODY))).json()) as { jobId: string };
+    fetchJobMock.mockResolvedValue({ status: 'failed', url: null, error: 'RuntimeError: ANTIALIAS' });
+    const j = await (await GET(poll(jobId))).json();
+    // `error` stays the raw text on purpose: the composer reads it to retry SadTalker's transient crash only.
+    expect(j).toEqual({ done: true, url: null, error: 'RuntimeError: ANTIALIAS', refunded: true });
+    expect(failJob).toHaveBeenCalledWith('lipsync:heygen:vid-1', expect.any(String));
+    expect(refundMock.mock.invocationCallOrder[0]).toBeLessThan((failJob as jest.Mock).mock.invocationCallOrder[0]!);
+  });
+
+  it('a refund that did NOT land says so, and leaves the row live for the settle cron to retry', async () => {
+    const { jobId } = (await (await POST(post(BODY))).json()) as { jobId: string };
+    refundMock.mockResolvedValueOnce({ ok: false, reason: 'error', refunded: 0 });
+    fetchJobMock.mockResolvedValue({ status: 'failed', url: null, error: 'x' });
+    const j = await (await GET(poll(jobId))).json();
+    expect(j.refunded).toBe(false);
+    expect(failJob).not.toHaveBeenCalled();
   });
 });
