@@ -87,6 +87,21 @@
     "app/api/audio/**": {
       "maxDuration": 120
     },
+    "app/api/webhooks/whatsapp/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/agent-g/webhook/whatsapp/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/agent-g/telegram/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/agent-g/webhook/telegram/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/app/worker/tick/route.ts": {
+      "maxDuration": 120
+    },
     "app/api/webhooks/**": {
       "maxDuration": 30
     },

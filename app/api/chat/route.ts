@@ -22,10 +22,7 @@ import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
-import { chatModelChain } from '@/lib/ai/google/models';
-import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
-import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { geminiReply } from '@/lib/ai/google/reply';
 
 type Loc = 'ka' | 'en' | 'ru';
 const locOf = (hint?: string | null): Loc => {
@@ -43,47 +40,6 @@ const SIGN_IN_TO_CHAT: Record<Loc, string> = {
   en: 'Sign in to chat.',
   ru: 'Войдите, чтобы пользоваться чатом.',
 };
-const hasTokens = (u?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): boolean =>
-  !!u && ((u.inputTokens ?? 0) > 0 || (u.outputTokens ?? 0) > 0 || (u.totalTokens ?? 0) > 0);
-
-/**
- * One reply from the product Gemini chain (current models, typed errors, rotation), booked with real usage.
- * Never throws; null when no model answered.
- */
-async function geminiReply(
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  userId: string | null,
-  signal?: AbortSignal,
-): Promise<{ text: string; model: string } | null> {
-  const result = await streamGeminiChat({
-    apiKey: resolveGeminiKey(),
-    models: chatModelChain('standard'),
-    messages,
-    config: toGeminiChatConfig(resolveAgentProfile({}), AGENT_G_SYSTEM_PROMPT),
-    abortSignal: signal,
-    onFrame: () => { /* collected into result.text */ },
-  });
-  const inputChars = AGENT_G_SYSTEM_PROMPT.length + messages.reduce((n, m) => n + m.content.length, 0);
-  if (result.model && (hasTokens(result.usage) || result.text.length > 0)) {
-    void bookChatUsage({
-      model: result.model,
-      ...result.usage,
-      chars: result.text.length,
-      inputChars,
-      userId,
-      groundingQueries: result.groundingQueries ?? 0,
-    });
-  }
-  for (const a of unbookedAttempts(result)) {
-    void bookChatUsage({ model: a.model, ...a.usage, inputChars, userId, groundingQueries: a.groundingQueries ?? 0 });
-  }
-  if (!result.ok || !result.model || !result.text.trim()) {
-    if (result.error) console.warn(`[chat] Gemini failed — ${result.error.code}: ${result.error.message.slice(0, 160)}`);
-    return null;
-  }
-  return { text: result.text, model: result.model };
-}
-
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;

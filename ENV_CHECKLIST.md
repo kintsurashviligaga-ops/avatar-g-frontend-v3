@@ -29,3 +29,9 @@ ADMIN_API_KEY  ADMIN_API_TOKEN  ADMIN_EMAILS  ADMIN_ID  AFFILIATE_MIN_PAYOUT_CEN
 </details>
 
 > Values were NOT set or pulled. Setting production env vars is a ⛔ STOP (rule 5) — only the human provides them.
+
+## WhatsApp (Agent G) — 2026-10-03
+
+`WHATSAPP_ACCESS_TOKEN` (or `WHATSAPP_TOKEN` / `META_WHATSAPP_TOKEN`), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
+`WHATSAPP_VERIFY_TOKEN` are required; `WHATSAPP_BUSINESS_NUMBER`, `WHATSAPP_ALERT_TEMPLATE`, `WHATSAPP_ALERT_TEMPLATE_LANG`,
+`WHATSAPP_GRAPH_VERSION` are optional. Setup steps, the migration and the Meta webhook form: `docs/WHATSAPP.md`.

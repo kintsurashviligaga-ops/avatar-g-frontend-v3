@@ -10,7 +10,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { createLocalFilesStore, type LocalFilesStore } from '@/lib/connectors/localFiles';
-import { createNotification } from '@/lib/notifications/store';
+import { notifyUser } from '@/lib/notifications/dispatch';
 import { opsMarker } from '@/lib/observability/reliability';
 import { reportError } from '@/lib/observability/report-error';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
@@ -49,7 +49,17 @@ export function getResearchRuntime(): ResearchRuntime | null {
     },
     files: { loadForRun: files.loadForRun },
     async notify(job, outcome) {
-      await createNotification(db as never, job.user_id, 'research', notificationText(job, outcome));
+      // The bell, plus Web Push and the user's linked WhatsApp. The service already notifies a job once (notified_at
+      // compare-and-set); the dedupe key is a second lock for the outside channels.
+      await notifyUser({
+        userId: job.user_id,
+        kind: 'research',
+        title: notificationText(job, outcome),
+        body: '',
+        url: '/dashboard',
+        dedupeKey: `research:${job.id}:${outcome}`,
+        locale: job.locale === 'en' || job.locale === 'ru' ? job.locale : 'ka',
+      });
     },
     alert(marker, data) {
       opsMarker('error', marker, data);

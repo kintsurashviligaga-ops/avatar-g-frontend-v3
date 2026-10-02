@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { storeInboundTelegramEvent } from '@/lib/agent-g/channels/inbound-events';
 import { enqueueQueueItem } from '@/lib/platform/queues';
+import { runAfterResponse } from '@/lib/platform/afterResponse';
 import { hashIdempotencyKey, markIdempotentDuplicate } from '@/lib/platform/idempotency';
 import { recordRouteMetric } from '@/lib/platform/request-metrics';
 import {
@@ -15,6 +16,7 @@ import { isAgentGVoiceEnabled, transcribeTelegramVoice } from '@/lib/agent-g/voi
 import { synthesizeTelegramVoice } from '@/lib/agent-g/voice/tts';
 import { generateChannelReply } from '@/lib/ai/channelBridge';
 import { secretMatches } from '@/lib/security/secretMatch';
+import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 
 type TelegramMessage = {
   message_id?: number;
@@ -352,7 +354,17 @@ export async function processTelegramUpdateInBackground(params: {
     return;
   }
 
-  const canReply = !isBotMessage && chatType === 'private';
+  // ⚠️ The sends below are AWAITED: this runs after the webhook's 200 (waitUntil) or in the worker tick, and a
+  // fire-and-forget send can be frozen with the function before it leaves. A public bot also needs a spend brake —
+  // every reply is a model call (and a voice note STT + TTS): 20 replies per 10 minutes per chat, then silence.
+  const replyBudgetSpent = async (): Promise<boolean> => {
+    try {
+      return (await checkRateLimitByKey(chatId, { maxRequests: 20, windowMs: 10 * 60_000, keyPrefix: 'tg:reply' })) !== null;
+    } catch {
+      return false;
+    }
+  };
+  const canReply = !isBotMessage && chatType === 'private' && !(await replyBudgetSpent());
   const voiceAttachment = message.voice || message.audio || message.video_note || null;
   const shouldProcessVoice = canReply && isAgentGVoiceEnabled() && Boolean(voiceAttachment?.file_id);
   const shouldReplyText = canReply && Boolean(incomingText && incomingText.trim().length > 0) && !shouldProcessVoice;
@@ -393,8 +405,11 @@ export async function processTelegramUpdateInBackground(params: {
           agentId: 'executive-agent-g',
           sessionId: `telegram:${chatId}`,
         }),
-        3_000
+        // The answer runs after the webhook's 200 now (waitUntil), so it can wait for a real model reply; 3 s — the
+        // budget of the old synchronous path — cut almost every Gemini answer off into the canned fallback.
+        25_000
       );
+      if (!aiReply.answered) throw new Error('no model answered'); // → the personality fallback below
       personalityOutput = {
         replyText: aiReply.reply,
         meta: { detectedEmotion: tone.tone, model: aiReply.model },
@@ -464,7 +479,7 @@ export async function processTelegramUpdateInBackground(params: {
     const maxSeconds = getVoiceDurationLimitSeconds();
 
     if (voiceDuration > maxSeconds) {
-      void sendTelegramMessage({
+      await sendTelegramMessage({
         token,
         chatId,
         text: `გაგ, ხმოვანი ცოტა შეამოკლე — მაქსიმუმ ${maxSeconds} წამი, რომ სწრაფად გიპასუხო 🎙️`,
@@ -485,7 +500,7 @@ export async function processTelegramUpdateInBackground(params: {
             tone: reply.tone.tone,
           });
 
-          void sendTelegramAudio({
+          await sendTelegramAudio({
             token,
             chatId,
             audio: ttsAudio.audio,
@@ -493,10 +508,10 @@ export async function processTelegramUpdateInBackground(params: {
             mimeType: ttsAudio.mimeType,
           });
         } catch {
-          void sendTelegramMessage({ token, chatId, text: reply.replyText });
+          await sendTelegramMessage({ token, chatId, text: reply.replyText });
         }
       } catch {
-        void sendTelegramMessage({
+        await sendTelegramMessage({
           token,
           chatId,
           text: 'გაგ, ხმოვანი ბოლომდე ვერ წავიკითხე. კიდევ ერთხელ სცადე უფრო მკაფიოდ, ან ტექსტად მომწერე 🙏',
@@ -505,7 +520,7 @@ export async function processTelegramUpdateInBackground(params: {
     }
   } else if (shouldReplyText && incomingText) {
     const reply = await buildReplyFromUserText(incomingText.trim(), 'message');
-    void sendTelegramMessage({ token, chatId, text: reply.replyText });
+    await sendTelegramMessage({ token, chatId, text: reply.replyText });
 
     console.info('[Telegram] Reply queued', {
       request_id: requestId,
@@ -518,7 +533,7 @@ export async function processTelegramUpdateInBackground(params: {
     });
   }
 
-  void storeInboundTelegramEvent({
+  await storeInboundTelegramEvent({
     channel: 'telegram',
     type: 'telegram_update',
     chatId,
@@ -653,13 +668,23 @@ export async function handleTelegramWebhook(req: Request): Promise<NextResponse>
       execution_ms: Date.now() - startedAt,
     });
 
-    await enqueueQueueItem('webhooks_ingest', {
+    const queueItem = {
       source: 'telegram',
       request_id: requestId,
       idempotency_key: idempotencyKey,
       update,
       started_at: startedAt,
-    });
+    };
+    // Answer after the 200 on Vercel (waitUntil) — the queue alone left every message unanswered while the worker
+    // tick never ran. Off Vercel, or if the answer throws, the queue is still the fallback.
+    const inline = runAfterResponse(async () => {
+      try {
+        await processTelegramUpdateInBackground({ update, requestId, startedAt });
+      } catch {
+        await enqueueQueueItem('webhooks_ingest', queueItem);
+      }
+    }, 'Telegram.Webhook');
+    if (!inline) await enqueueQueueItem('webhooks_ingest', queueItem);
 
     recordRouteMetric({
       request_id: requestId,

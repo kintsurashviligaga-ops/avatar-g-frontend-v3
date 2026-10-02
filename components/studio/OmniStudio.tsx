@@ -2828,6 +2828,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMode(d);
       setOptionsOpen(true);
       url.searchParams.delete('mode');
+      // `&prompt=` — Agent G on WhatsApp hands a "make me …" over as a studio link with the request typed in. It is only
+      // TYPED: nothing is sent, so the focus gate's confirm card and the price on the Generate button still decide.
+      const pre = (url.searchParams.get('prompt') ?? '').trim().slice(0, 2000);
+      if (pre) setInput(pre);
+      url.searchParams.delete('prompt');
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     } catch { /* no URL API — the chat simply opens in its default mode */ }
   }, []);

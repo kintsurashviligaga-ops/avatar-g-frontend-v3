@@ -20,6 +20,7 @@ jest.mock('../memory', () => ({ getUserMemory: jest.fn(), recordEvent: jest.fn()
 jest.mock('../voice/stt', () => ({ isAgentGVoiceEnabled: jest.fn(() => false), transcribeTelegramVoice: jest.fn() }));
 jest.mock('../voice/tts', () => ({ synthesizeTelegramVoice: jest.fn() }));
 jest.mock('../../ai/channelBridge', () => ({ generateChannelReply: jest.fn() }));
+jest.mock('../../api/rate-limit', () => ({ checkRateLimitByKey: jest.fn(async () => null) }));
 
 import { handleTelegramWebhook } from './telegram-webhook-handler';
 import { enqueueQueueItem } from '../../platform/queues';

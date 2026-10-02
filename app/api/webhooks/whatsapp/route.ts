@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
-import { parseWhatsAppMessageSummary } from '@/lib/agent-g/channels/whatsapp-processor';
+import { parseWhatsAppMessageSummary, processWhatsAppPayload } from '@/lib/agent-g/channels/whatsapp-processor';
 import { enqueueQueueItem } from '@/lib/platform/queues';
+import { runAfterResponse } from '@/lib/platform/afterResponse';
 import { hashIdempotencyKey, markIdempotentDuplicate } from '@/lib/platform/idempotency';
 import { recordRouteMetric } from '@/lib/platform/request-metrics';
 
@@ -225,19 +226,36 @@ export async function POST(req: Request): Promise<Response> {
     return response;
   }
 
-  await enqueueQueueItem('webhooks_ingest', {
+  const queueItem = {
     source: 'whatsapp',
     request_id: requestId,
     origin: url.origin,
     idempotency_key: idempotencyKey,
     payload,
-  });
+  };
+  // Answer NOW, after the 200 (Vercel's waitUntil): the person sees a reply in seconds instead of whenever a cron
+  // drains a queue. Off Vercel — or if the answer fails before it was sent — the delivery goes to the queue the worker
+  // tick drains, as before. Status-only callbacks (delivered/read) carry no messages and need neither.
+  let mode: 'inline' | 'queued' | 'none' = 'none';
+  if (messages.length > 0) {
+    const inline = runAfterResponse(async () => {
+      try {
+        await processWhatsAppPayload(payload, requestId, url.origin);
+      } catch {
+        await enqueueQueueItem('webhooks_ingest', queueItem);
+      }
+    }, 'WhatsApp.Webhook');
+    if (!inline) await enqueueQueueItem('webhooks_ingest', queueItem);
+    mode = inline ? 'inline' : 'queued';
+  }
 
   safeLog('accepted', {
     request_id: requestId,
     client_ip: clientIp,
     idempotency_key: idempotencyKey,
     object: normalize(String(payload.object || '')) || null,
+    message_count: messages.length,
+    mode,
     received_at: new Date().toISOString(),
   });
 
