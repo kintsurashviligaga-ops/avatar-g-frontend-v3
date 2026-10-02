@@ -610,9 +610,14 @@ export function CardSelect<T extends string>({
  * `stacked` puts the label and value ABOVE a full-width track. ⚠️ The inline row spends 152px on its label and value
  * columns, which in the 300px desktop settings column leaves a track about 70px long — too short to set a 0–100
  * value by hand. A panel that narrow stacks; the editor, with room to spare, keeps its row.
+ *
+ * `ticks` draws that many evenly spaced tick marks (ticks + 1 lines, end to end) behind the track, as the Create screens'
+ * sliders do; the lines are decorative (aria-hidden) and sit exactly where the 20px thumb's centre travels, so the thumb
+ * lands on them. `accentThumb` paints the thumb in the accent colour instead of white (globals.css `.slider-accent`).
+ * Both are opt-in: without them the markup is exactly what it was.
  */
 export function Slider({
-  icon, label, min, max, value, step = 1, suffix = '%', onChange, hint, ends, disabled, stacked = false,
+  icon, label, min, max, value, step = 1, suffix = '%', onChange, hint, ends, disabled, stacked = false, ticks, accentThumb = false,
 }: {
   icon?: ReactNode;
   label: string;
@@ -626,18 +631,31 @@ export function Slider({
   ends?: readonly [ReactNode, ReactNode];
   disabled?: boolean;
   stacked?: boolean;
+  ticks?: number;
+  accentThumb?: boolean;
 }) {
   const shown = `${step < 1 ? value.toFixed(1) : Math.round(value)}${suffix}`;
-  const input = (
+  const ticked = typeof ticks === 'number' && ticks > 0;
+  const range = (
     <input
       type="range" min={min} max={max} step={step} value={value} disabled={disabled} aria-label={label}
       onChange={(e) => onChange(parseFloat(e.target.value))}
       className={cx(
         'h-1.5 min-w-0 cursor-pointer appearance-none rounded-full bg-app-elevated accent-app-accent disabled:cursor-not-allowed disabled:opacity-40',
-        stacked ? 'block w-full' : 'flex-1',
+        stacked || ticked ? 'block w-full' : 'flex-1',
+        ticked && 'relative z-10',
+        accentThumb && 'slider-accent',
       )}
     />
   );
+  const input = ticked ? (
+    <div className={cx('relative min-w-0', stacked ? 'w-full' : 'flex-1')}>
+      <span aria-hidden="true" data-testid="slider-ticks" className="pointer-events-none absolute inset-x-[10px] top-1/2 flex -translate-y-1/2 items-center justify-between">
+        {Array.from({ length: Math.floor(ticks!) + 1 }, (_, i) => <span key={i} className="h-3 w-px rounded-full bg-app-border/30" />)}
+      </span>
+      {range}
+    </div>
+  ) : range;
   const endsRow = ends && (
     // Under the track: the full width when stacked; past the label column (w-20 / sm:w-24 + gap-3) and short of the
     // value column (w-12 + gap-3) inline.
