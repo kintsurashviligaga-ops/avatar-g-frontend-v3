@@ -106,3 +106,47 @@ export function spokenVideoDuration(seconds: number, locale: string = 'en'): str
   if (m === 0) return `${r} ${SEC_WORD[l]}`;
   return r === 0 ? `${m} ${MIN_WORD[l]}` : `${m} ${MIN_WORD[l]} ${r} ${SEC_WORD[l]}`;
 }
+
+/** "0:04" · "0:24" · "1:36" · "4:00" — always m:ss, for the picker's big readout (formatVideoDuration is the compact tile form). */
+export function formatVideoClock(seconds: number): string {
+  const s = Math.max(0, Math.round(Number.isFinite(seconds) ? seconds : 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+export interface FilmGridInput {
+  /** The film's scene count as the client pinned it (orchestrate's `sceneCount`). */
+  sceneCount?: number | null;
+  /** One scene's length (orchestrate's `clipSec`). */
+  clipSec?: number | null;
+}
+
+export type FilmGridVerdict =
+  | { ok: true; sceneCount: number | undefined; clipSec: number | undefined; seconds: number | null; snapped: boolean }
+  | { ok: false; reason: 'too_short' | 'too_long'; seconds: number };
+
+/**
+ * The (sceneCount, clipSec) pair a film request may carry — judged by the same grid the picker offers.
+ *
+ * ⚠️ WHY THE SERVER SNAPS. Veo renders 4, 6 or 8 s clips only (capabilities.normalizeClipRequest rounds anything else), and
+ * the film is priced from `sceneCount × clipSec` BEFORE a clip is dispatched. A `clipSec: 5` was therefore priced at 5 s and
+ * delivered 6 s — the customer got a second more film per scene than they paid for (and `7` was priced 7, delivered 8).
+ * Snapping HERE, with the one function the picker uses (snapVideoSeconds: 5 → 6, 7 → 8), puts the number the film is billed
+ * by and the length it is rendered at on the same grid. The 8-s-and-longer grid of the PICKER is not imposed on a script's
+ * own cadence (a 6 × 4 s timecoded script is a real film), only the lengths Veo can render.
+ *
+ * ⚠️ A FILM IS REJECTED, NOT SNAPPED, WHEN IT DOES NOT FIT THIS PIPELINE AT ALL: more than FILM_MAX_SEC (96 s — the film
+ * pipeline's 12 scenes; longer films belong to the long-form route) or under VIDEO_MIN_SEC. The request schema already
+ * bounds both fields, so today this never fires; it is the guard that keeps the pairing honest if that schema ever widens.
+ * Absent fields stay absent: a request that names neither is the server's own default and is not this function's to judge.
+ */
+export function snapFilmGrid(input: FilmGridInput): FilmGridVerdict {
+  const rawClip = typeof input.clipSec === 'number' && Number.isFinite(input.clipSec) ? input.clipSec : undefined;
+  const rawCount = typeof input.sceneCount === 'number' && Number.isFinite(input.sceneCount) ? Math.round(input.sceneCount) : undefined;
+  // A clip is at most one scene long: clamp into 4…8 first, so 9 or 40 can never be "snapped" to a multi-scene stop.
+  const clipSec = rawClip === undefined ? undefined : snapVideoSeconds(Math.min(SCENE_SEC, Math.max(VIDEO_MIN_SEC, rawClip)));
+  const sceneCount = rawCount === undefined ? undefined : Math.max(1, rawCount);
+  const seconds = sceneCount !== undefined ? sceneCount * (clipSec ?? SCENE_SEC) : (clipSec ?? null);
+  if (seconds !== null && seconds < VIDEO_MIN_SEC) return { ok: false, reason: 'too_short', seconds };
+  if (seconds !== null && seconds > FILM_MAX_SEC) return { ok: false, reason: 'too_long', seconds };
+  return { ok: true, sceneCount, clipSec, seconds, snapped: clipSec !== rawClip };
+}

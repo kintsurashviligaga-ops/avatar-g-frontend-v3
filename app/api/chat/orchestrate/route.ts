@@ -33,6 +33,7 @@ import { retrieveContext } from '@/lib/rag/retrieve';
 // per-scene dispatch arrays at the SAME ceiling the renderer uses so a 60s render
 // (12 scenes) isn't rejected at the API boundary with "Invalid request".
 import { MAX_SEGMENTS } from '@/lib/orchestrator/script-breakdown';
+import { snapFilmGrid } from '@/lib/video/duration';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -186,6 +187,19 @@ export async function POST(req: NextRequest) {
       }
       return handlePoll(data.predictionId, data.sessionId, pollUserId);
     }
+
+    // ── The film's length must be one the studio offers (lib/video/duration.ts) ──
+    // ⚠️ The film is priced from `sceneCount × clipSec` before any clip is dispatched, and Veo only renders 4 / 6 / 8 s: a
+    // `clipSec: 5` used to be billed as 5 s and delivered 6 s. The pair is snapped to what will really render (5 → 6, 7 → 8)
+    // and a film this pipeline cannot hold at all (> 96 s — that is the long-form route) is refused, not clipped.
+    const filmGrid = snapFilmGrid({ sceneCount: data.sceneCount, clipSec: data.clipSec });
+    if (!filmGrid.ok) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request', details: { sceneCount: [filmGrid.reason === 'too_long' ? 'A film is at most 96 seconds here' : 'A film is at least 4 seconds'] } },
+        { status: 400 },
+      );
+    }
+    if (filmGrid.snapped) data.clipSec = filmGrid.clipSec;
 
     // The gate's auth (getAuthContext → createServerClient) only reads the SSR COOKIE
     // session — correct for the browser UI, which is how logged-in users already get the

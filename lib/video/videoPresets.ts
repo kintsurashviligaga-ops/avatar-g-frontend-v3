@@ -19,7 +19,8 @@
  */
 
 export type VideoMode = 'musicvideo' | 'documentary';
-export type VideoDuration = 8 | 24 | 48;
+/** A film length in seconds — any stop of lib/video/duration.ts. The three presets below use 8 / 24 / 48. */
+export type VideoDuration = number;
 export type VideoOrientation = 'landscape' | 'vertical' | 'square' | 'portrait';
 
 export interface VideoPresetValues {
