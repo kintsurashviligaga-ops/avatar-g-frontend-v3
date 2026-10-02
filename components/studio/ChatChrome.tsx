@@ -1231,7 +1231,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       />
 
       {/* ── Main column (header + chat) ──────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* data-skip-target: AppShell's "Skip to main content" lands HERE, past the sidebar (a <div>: AppShell's <main>
+          already wraps the shell, and a main inside a main is an a11y error). */}
+      <div id="studio-main" data-skip-target="" className="flex min-w-0 flex-1 flex-col focus:outline-none">
         {/* The header is a phone's (and a tablet's): [☰] name … [new session] [you] — Gemini's row, nothing else.
             On a desktop the studio draws its own title bar inside the centre column (AI Studio), so this one steps
             aside there; secondary surfaces (/library) keep it for their back control. */}

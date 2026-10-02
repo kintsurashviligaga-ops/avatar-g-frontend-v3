@@ -7,8 +7,32 @@ import { PageEnvironment } from './ui/PageEnvironment';
 import CookieConsent from './CookieConsent';
 import PresenceHeartbeat from './presence/PresenceHeartbeat';
 
+const SKIP_LABEL = { ka: 'მთავარ შინაარსზე გადასვლა', en: 'Skip to main content', ru: 'Перейти к основному содержимому' } as const;
+
+/**
+ * The skip link's jump. A page that knows its real main region marks it `data-skip-target` — the studio's session column
+ * (ChatChrome), past the sidebar's twenty-odd controls; the landing's hero, past its header — and everything else
+ * lands on <main id="main-content">.
+ *
+ * ⚠️ NO HASH CHANGE (preventDefault): the studio reads location.hash to pick its surface (ServiceHub), so "#main-content"
+ * in the address bar would be a navigation. ⚠️ NO STATIC tabIndex ON THE TARGET: a focusable region steals focus on
+ * every click into its blank space, and the photo workspace's P/X/U keys only listen while focus is on <body> or inside
+ * it. The target is made focusable for the jump and handed back on blur.
+ */
+function skipToMain(e: React.MouseEvent<HTMLAnchorElement>) {
+  const target = document.querySelector<HTMLElement>('[data-skip-target]') ?? document.getElementById('main-content');
+  if (!target) return;
+  e.preventDefault();
+  if (!target.hasAttribute('tabindex')) {
+    target.setAttribute('tabindex', '-1');
+    target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
+  }
+  target.focus();
+}
+
 export function AppShell({ children, studioV2 = false }: { children: React.ReactNode; /** STUDIO_V2 on this deployment (root layout). */ studioV2?: boolean }) {
   const pathname = usePathname();
+  const skipLang = (/^\/(ka|en|ru)(?=\/|$)/.exec(pathname ?? '')?.[1] ?? 'ka') as keyof typeof SKIP_LABEL;
   // Embedded mode: when a page is opened inside the studio's in-window slide-over
   // (an iframe with ?embed=1), strip ALL app-shell chrome — navbar, sidebar,
   // bottom nav, floating chat, cookie banner — so the legal/help content renders
@@ -158,17 +182,19 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
       <PageEnvironment reduced={isImmersiveWorkspace || isStudioV2 || isAdmin || isMarketingLanding} />
-      {/* Skip to content — accessibility */}
+      {/* Skip to main content — the FIRST focusable element of every page (nothing focusable may render above it).
+          In the page's language; ink on the accent (6.2:1 — white on it was 3.4:1); 44 px; clear of the notch. */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[999] focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-semibold"
-        style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+        onClick={skipToMain}
+        data-testid="skip-link"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-[max(0.5rem,env(safe-area-inset-left))] focus:top-[max(0.5rem,env(safe-area-inset-top))] focus:z-[999] focus:inline-flex focus:min-h-[44px] focus:items-center focus:rounded-full focus:bg-app-accent focus:px-4 focus:text-sm focus:font-semibold focus:text-app-bg"
       >
-        Skip to content
+        {SKIP_LABEL[skipLang]}
       </a>
       <main
         id="main-content"
-        className="relative flex-1 w-full"
+        className="relative flex-1 w-full focus:outline-none"
         style={
           isImmersiveWorkspace || isStudioV2
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
