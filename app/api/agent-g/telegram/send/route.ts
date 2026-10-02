@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { structuredLog } from '@/lib/logger';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,17 +25,16 @@ export async function POST(request: NextRequest) {
 
     const adminId = normalize(process.env.ADMIN_ID);
 
-    const providedHeaderKey = normalize(request.headers.get('x-admin-key'));
-    const providedQueryKey = normalize(request.nextUrl.searchParams.get('key'));
-    const providedKey = providedHeaderKey || providedQueryKey;
+    // HEADER ONLY — a key in `?key=` lands in access logs, traces and error reports. Constant-time comparison.
+    const providedKey = normalize(request.headers.get('x-admin-key'));
 
-    const providedAdminId = normalize(request.headers.get('x-admin-id') || request.nextUrl.searchParams.get('admin_id'));
+    const providedAdminId = normalize(request.headers.get('x-admin-id'));
 
     if (!providedKey) {
       return apiError(new Error('Unauthorized'), 401, 'Admin key required');
     }
 
-    if (providedKey !== adminKey) {
+    if (!secretMatches(providedKey, adminKey)) {
       return apiError(new Error('Forbidden'), 403, 'Invalid admin key');
     }
 
