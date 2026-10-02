@@ -49,8 +49,13 @@ import { driveFilmStudio, type FilmStudioMatrix, type SceneMetaWire } from '@/li
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
-import type { Transition, VeoTier } from '@/lib/veo/types';
+import type { Transition } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { VideoCreatePanel } from './create/VideoCreatePanel';
+import { VideoStage } from './create/VideoStage';
+import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
+import { freeSlotApplies, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
+import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds, snapVideoSeconds } from '@/lib/video/duration';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
 import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
@@ -410,12 +415,6 @@ const StreamProCapNotice = memo(function StreamProCapNotice({ store, lang }: { s
 });
 
 /** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
-/** The Veo 3.1 tiers as the Quality control names them (Standard · Fast · Lite). */
-const VEO_TIER_LABEL: Record<VeoTier, Record<Lang, string>> = {
-  standard: { ka: 'უმაღლესი', en: 'Best', ru: 'Лучшее' },
-  fast: { ka: 'სწრაფი', en: 'Fast', ru: 'Быстро' },
-  lite: { ka: 'ეკონომი', en: 'Economy', ru: 'Эконом' },
-};
 const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
 
 
@@ -879,7 +878,7 @@ interface FilmSnap {
   videoTransition: Transition;
   videoMode: 'musicvideo' | 'documentary';
   videoStyle: string;
-  videoDuration: 8 | 24 | 48;
+  videoDuration: number;
   videoVocalGender: 'male' | 'female' | 'duet';
   videoLipsync: boolean;
   videoSoundtrack: { name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null;
@@ -1528,11 +1527,15 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
   busy: boolean;
+  /** What approving costs — videoQuote for this board's scenes × clip length (the number the film is charged). */
+  price?: number;
+  /** The first-video slot pays for it (one short clip while a slot is left). */
+  free?: boolean;
   /** The scene ordinal currently re-rolling its frame (null = none). */
   regenningOrdinal: number | null;
   onGenerate: () => void;
@@ -1561,7 +1564,8 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
   // machine): early → Deep Azure (planning/optimizing), mid → Emerald (identity-locked frames
   // landing), near-done → Amber (ready to compile the video). Honest signal → honest colour.
   const coreColor = prog >= 0.8 ? '#f59e0b' : prog >= 0.4 ? '#10b981' : '#2563eb';
-  const pkgSec = total * FILM_CLIP_SEC; // package length: 1→~5s · 6→30s · 12→60s
+  const boardClipSec = sb.clipSec ?? FILM_CLIP_SEC; // 8 s unless the script (or a 4 s / 6 s pick) sets its own
+  const pkgSec = total * boardClipSec; // the film's real length: scenes × clip
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()} className="mx-auto flex h-full w-full max-w-3xl flex-col">
@@ -1570,7 +1574,7 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
             <div className="flex items-center gap-2">
               <h2 className="text-[15px] font-semibold tracking-tight text-app-text">📋 {t.sbTitle}</h2>
               {/* Package length chip — makes the 6s / 30s / 60s worktree explicit. */}
-              <span className="rounded-full bg-app-elevated px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-app-muted ring-1 ring-app-border/15">{pkgSec}s · {total}×{FILM_CLIP_SEC}s</span>
+              <span className="rounded-full bg-app-elevated px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-app-muted ring-1 ring-app-border/15">{pkgSec}s · {total}×{boardClipSec}s</span>
             </div>
             {streaming ? (
               // V2 — Cinematic Compiling Core: a pulsing radial glow whose hue tracks real progress.
@@ -1635,7 +1639,7 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
               />
             ))}
             {/* P9 — append a new scene (max 8). Disabled while frames are still streaming. */}
-            {!streaming && total < 8 && (
+            {!streaming && total < FILM_MAX_SCENES && (
               <button
                 type="button"
                 onClick={onAddScene}
@@ -1664,8 +1668,14 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
           <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-all duration-200 hover:bg-app-border/10 active:scale-95 disabled:opacity-50">
             <RotateCcw size={15} /> {t.sbRegen}
           </button>
-          <button type="button" onClick={onGenerate} disabled={busy} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
+          <button type="button" onClick={onGenerate} disabled={busy} data-testid="storyboard-generate" data-price={free ? 'free' : typeof price === 'number' && price > 0 ? price : undefined}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
             <Film size={16} /> {t.sbGenerate}
+            {free
+              ? <span className="rounded-full bg-app-bg/20 px-2 py-0.5 text-[11.5px] font-bold">{_locale === 'en' ? 'Free' : _locale === 'ru' ? 'Бесплатно' : 'უფასო'}</span>
+              : typeof price === 'number' && price > 0 && (
+                <span className="inline-flex items-center gap-1 tabular-nums" aria-hidden="true"><Sparkle size={13} fill="currentColor" strokeWidth={0} />{price}</span>
+              )}
           </button>
         </div>
       </div>
@@ -1819,8 +1829,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Credit-deduction toast for a finished generation. Pricing lives in
   // lib/credits/pricing.ts (single source of truth); the GEL wallet stays the real
   // balance. Declared above renderFilm/send so both can reference it.
-  const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number }) => {
-    const credits = creditCostFor(kind, opts);
+  const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number; credits?: number }) => {
+    // A film passes its exact quote (videoQuote — the number on its Generate button); every other call keeps the table.
+    const credits = typeof opts?.credits === 'number' ? opts.credits : creditCostFor(kind, opts);
     if (credits <= 0) return;
     // PHASE 4 Task 1 — track the generation (fail-silent). One hook covers every kind.
     // notifyCredit is declared before the video panel state, so only call params are
@@ -2122,7 +2133,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // storyboard scene count. 60s = a cinematic intro (first scenes establishing) →
   // the singer performance, for a full music-video edit.
   // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
-  const [videoDuration, setVideoDuration] = useState<8 | 24 | 48>(VIDEO_PANEL_DEFAULTS.duration);
+  const [videoDuration, setVideoDuration] = useState<number>(VIDEO_PANEL_DEFAULTS.duration);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
@@ -2143,7 +2154,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // THE GOOGLE VEO PLAN (lib/video/veoPlan) — quality tier, how the photos condition Veo, Veo's own sound, seed lock,
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
-  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24 }));
+  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
   // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
   const veoEngine = useVeoEngineInfo();
   useEffect(() => { dispatchVeo({ type: 'format', format: formatForOrientation(videoOrientation) }); }, [videoOrientation]);
@@ -2169,7 +2180,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // assembler was told each was 5s, which also sized the music bed for a film 18 seconds shorter than
   // the one it scored. Same grid as Cinema now (sceneCountForDuration: 8→1, 24→3, 48→6), so the chip
   // the user taps is the length they receive.
-  const [productDuration, setProductDuration] = useState<8 | 24 | 48>(8);
+  const [productDuration, setProductDuration] = useState<number>(8);
   // Product-Ad context — brand/price/hook + CTA + Georgian voiceover. Optional; when set
   // they feed the EXISTING assemble marketing overlay (price chip + CTA pill + brand
   // lower-third) and an auto voiceover script (TTS'd server-side on the cloned KA voice).
@@ -2246,7 +2257,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   });
   const { templateId: pickedMusicTemplateId, pick: pickMusicTemplate } = usePickedTemplate(activeMusicPreset);
 
-  const sceneFrameCount = sceneCountForDuration(videoDuration);
+  const sceneFrameCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
   // Shrinking the film length drops scene frames beyond the new count (kept in order).
   useEffect(() => {
     setVideoCharacterRefs((prev) => (prev.length > sceneFrameCount ? prev.slice(0, sceneFrameCount) : prev));
@@ -2644,8 +2655,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
     // open their settings, so the next step is on screen instead of behind a second tap.
-    // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer.
-    if (id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image') setOptionsOpen(true);
+    // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video.
+    if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image') setOptionsOpen(true);
   }, [setMode, setPanelService]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
@@ -2715,6 +2726,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     mo.observe(el, { attributes: true, attributeFilter: ['data-authed', 'data-first-name'] });
     return () => mo.disconnect();
   }, []);
+  // The video create screen's server facts — which lengths are open today, the first-video slot, the balance. Read only
+  // while the Video tool is the active one, cached, and fail-safe (a lock is never wrongly opened, a free chip never wrongly
+  // shown). The price itself is pure: lib/video/createPanel.videoQuote.
+  const videoCaps = useVideoCapabilities(activeTool === 'video').effective;
+  const videoBalanceCredits = useCreditsAvailable(!guest && activeTool === 'video');
+  const videoFreeFilms = useFreeFilmsRemaining(!guest && activeTool === 'video');
   // The persona in use — named on the chat composer's chip (Gemini shows the chosen Gem there). Same store as the
   // sidebar row and the switcher's persona row; ✕ on the chip returns to the default assistant.
   const activePersona = useActivePersona(locale);
@@ -2921,7 +2938,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMode('video');
       setOptionsOpen(true);
       // Duration FIRST so the videoCharacterRefs/scenePrompts clamp effect settles to the right count.
-      { const d = Number(sb.duration); setVideoDuration(d >= 45 ? 48 : d >= 20 ? 24 : 8); }
+      setVideoDuration(snapVideoSeconds(Number(sb.duration)));
       setVideoOrientation(sb.orientation);
       if (sb.musicVideoMode) setVideoMode('musicvideo');
       // PHASE 36 — the "Scene frames" lanes ARE videoCharacterRefs. Fill them with the FULL positional
@@ -3073,6 +3090,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (j.url) kaSoundtrack = j.url;
         } catch { /* fail-open → EL Music (English) */ }
       }
+      // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
+      const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,
@@ -3125,7 +3144,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // PIN the render's clip count to the user's package so a scriptless/raced dispatch can never default to the
         // 30s/6-scene fallback (which also discards a single approved selfie frame). Prefer the approved storyboard /
         // script count; else derive from the chosen duration (8s→1 · 24s→3 · 48s→6) captured in the submit snapshot.
-        sceneCount: storyboardScenes?.length || sceneScripts?.length || sceneCountForDuration(snap.videoDuration),
+        sceneCount: filmScenes,
         // PIN the per-scene length too when the storyboard derived one from the script's timecodes
         // (4-8s). filmComposite honours metadata.clipSec, so the render grid matches the board exactly.
         ...(clipSec ? { clipSec } : {}),
@@ -3219,7 +3238,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
-      if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }
+      if (mine() && res.ok && res.masterUrl) {
+        const filmSeconds = filmScenes * (clipSec ?? FILM_CLIP_SEC);
+        notifyCredit('video', { seconds: filmSeconds, credits: videoQuote({ seconds: filmSeconds, tier: veo.tier, mode: videoMode }) });
+        finalUrl = res.masterUrl;
+      }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
       // row flips to failed (the legacy path just leaves the ⚠️ bubble in place).
       if (jobCtx && !(res.ok && res.masterUrl)) throw new Error(res.error || 'video failed');
@@ -3238,7 +3261,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (characterPortrait && /^https?:/i.test(characterPortrait)) return characterPortrait;
         if (mine()) {
           try {
-            const sc = sceneCountForDuration(videoDuration);
+            const sc = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
             const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true }) });
             const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
             if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
@@ -3362,7 +3385,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
           const gr = await fetch('/api/video/graphics', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: videoDuration <= 8 ? 2 : videoDuration === 48 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
+            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: musicVideoIntroSec(videoDuration), musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
           });
           const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
           if (gj.url) setResultVideo(gj.url);
@@ -3414,7 +3437,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // later edit made for the next film. Mirrors generateProductAd / runVideoSwap.
     // The Veo plan is fitted to the scenes that will ACTUALLY render (the same count renderFilm pins), and a
     // music video is 9:16 whatever the Format control last held (renderFilm forces the orientation the same way).
-    const renderSceneCount = storyboardScenes?.length || sceneScripts?.length || sceneCountForDuration(videoDuration);
+    const renderSceneCount = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(videoDuration);
+    // ⚠️ A 4 s or 6 s film is ONE shorter Veo clip. Without its real length the render (and its price) would be the 8 s default.
+    const filmClipSec = clipSec ?? (videoDuration < FILM_CLIP_SEC ? clipSecForSeconds(videoDuration) : undefined);
     const snap: FilmSnap = {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
@@ -3424,7 +3449,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // the panel holds now); a music video is 9:16 whatever either says.
       veo: toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount),
       motionIntensity: veoPlan.cameraDefault.intensity,
-      ...(clipSec ? { clipSec } : {}),
+      ...(filmClipSec ? { clipSec: filmClipSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
       // The PICKED card only (a default panel lights the Reel without anyone choosing it).
       ...(pickedVideoTemplateId ? { videoTemplateId: pickedVideoTemplateId } : {}),
@@ -3763,7 +3788,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setStoryboardBusy(true);
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
-    const sceneCount = sceneCountForDuration(videoDuration);
+    const sceneCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
     // The PICKED template card's id on every storyboard call, so the board is planned with the look the render will use.
     const templateRef = pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {};
     try {
@@ -3820,8 +3845,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         filmPrompt, refs, orientation,
         seed: j.seed ?? 0,
         scenes,
-        // The grid the route derived from the script's timecodes (4-8s) - forwarded to the render.
-        ...(typeof j.clipSec === 'number' && j.clipSec > 0 ? { clipSec: j.clipSec } : {}),
+        // The grid the route derived from the script's timecodes (4-8s) - forwarded to the render. The route plans on 8 s
+        // unless the script has its own cadence: a 4 s / 6 s pick is ONE shorter clip, and the board must say so.
+        ...(() => {
+          const picked = clipSecForSeconds(videoDuration);
+          const routeClip = typeof j.clipSec === 'number' && j.clipSec > 0 ? j.clipSec : undefined;
+          const clip = picked < FILM_CLIP_SEC && (routeClip ?? FILM_CLIP_SEC) === FILM_CLIP_SEC ? picked : routeClip;
+          return clip ? { clipSec: clip } : {};
+        })(),
         sceneScripts: Array.isArray(j.sceneScripts) ? j.sceneScripts : null,
         framePrompts,
         pending: ordinals,
@@ -4059,12 +4090,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     });
   }, []);
 
-  // P9 — append a blank scene (max 8). Seeded with the film idea as its prompt so a
+  // P9 — append a blank scene (up to the film pipeline's 12). Seeded with the film idea as its prompt so a
   // re-roll produces a frame even before the user edits it; it has no frame yet, so
   // the user re-rolls (or edits then re-rolls) before generating.
   const addScene = useCallback(() => {
     setStoryboard((prev) => {
-      if (!prev || prev.scenes.length >= 8) return prev;
+      if (!prev || prev.scenes.length >= FILM_MAX_SCENES) return prev;
       const beat = locale === 'en' ? 'New scene' : locale === 'ru' ? 'Новая сцена' : 'ახალი სცენა';
       const blank: StoryboardScene = { uid: nextSceneUid(), ordinal: 90000 + prev.scenes.length, beat, prompt: prev.filmPrompt, frameUrl: null, edited: true };
       return commitSceneOrder(prev, [...prev.scenes, blank]);
@@ -6090,7 +6121,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const ToolIcon = TOOL_META[activeTool].Icon;
   const toolLabel = toolName(activeTool, locale);
   const secsWord = locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ';
-  const toolSummary = activeTool === 'video' ? `${ORIENT_ASPECT[videoOrientation]} · ${videoDuration}${secsWord}`
+  const toolSummary = activeTool === 'video' ? `${ORIENT_ASPECT[videoOrientation]} · ${formatVideoDuration(videoDuration, locale)}`
     : activeTool === 'swap' ? ORIENT_ASPECT[videoOrientation]
     : activeTool === 'image' ? `${imgAspect}${imgCount > 1 ? ` · ×${imgCount}` : ''}`
       : activeTool === 'avatar' ? lipFormat
@@ -6671,7 +6702,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       : kind === 'lipsync' ? lipFormat : '1:1';
                     // A real percent when the pipeline reports one (the film poll's videoProgress); otherwise the
                     // card paces elapsed against the same measured caps the old card used, and holds at 92.
-                    const cardCap = kind === 'video' ? (videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video)
+                    const cardCap = kind === 'video' ? videoWaitSecs(videoDuration)
                       : kind === 'image' ? imgTarget : PROGRESS_TARGET[kind];
                     const cardPct = kind === 'video' && typeof m.videoProgress === 'number' ? m.videoProgress : undefined;
                     return (
@@ -7006,6 +7037,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // greeting (the owner's screenshots); a panel and a sheet each own their own layer.
   const settingsWord = locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები';
   const closeWord = locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა';
+  // The video tool brings its OWN header (tool name + switcher + ✕), model card and price, so the generic service card below
+  // and the sheet's „Settings" header step aside for it (components/studio/create/VideoCreatePanel).
+  const videoCreate = activeTool === 'video';
   const liveTool = (id: ToolId) => studioServices.find((sv) => sv.id === id)?.live ?? true;
   const toolEntry = (id: ToolId): ToolEntry => ({
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
@@ -7057,7 +7091,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const settingsBody = (
     <div className="space-y-3">
       {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
-      {!imageCreate && <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
+      {!imageCreate && !videoCreate && <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
         className="flex w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
@@ -7279,24 +7313,53 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
-            {videoTab === 'cinema' && (<>
-            {/* Essentials — the two choices every video makes: its shape and its length (the Veo scene grid's
-                real lengths, 8 / 24 / 48 s). They were composer selects; the composer now names them in its chip
-                and this is the one place they are set. A music video is always vertical. */}
-            <div className="space-y-3 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5">
-              <Segmented label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} cols="grid-cols-4"
-                options={['9:16', '1:1', '16:9', '4:5'] as const} value={ORIENT_ASPECT[videoOrientation] as '9:16' | '1:1' | '16:9' | '4:5'}
-                isDisabled={(a) => videoMode === 'musicvideo' && a !== '9:16'}
-                onChange={(a) => { const o = ASPECT_ORIENT[a]; if (o) setVideoOrientation(o); }} />
-              <Segmented label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} cols="grid-cols-3"
-                options={[8, 24, 48] as const} value={videoDuration} onChange={setVideoDuration} format={(d) => `${d}${secsWord}`} />
-              {/* The Veo model tier: Veo 3.1 · Veo 3.1 Fast · Veo 3.1 Lite. Economy takes no reference photos — picking
-                  it hands a reference-mode film back to the first-frame path (the reducer), never a silent drop. */}
-              <Segmented label={locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'} cols="grid-cols-3"
-                options={['standard', 'fast', 'lite'] as const} value={veoPlan.tier}
-                onChange={(tier: VeoTier) => dispatchVeo({ type: 'tier', tier })}
-                format={(tier) => VEO_TIER_LABEL[tier][locale]} />
-            </div>
+            {videoTab === 'cinema' && (
+            // ⚠️ THE CREATE SCREEN (components/studio/create — ref4 / ref5) owns what every video decides first: the model, the
+            // references, the prompt, the length / format / quality tiles and the price on its Generate button. EVERYTHING the
+            // cinema tab always had is passed in below as its three disclosures — the SAME blocks, so their state and
+            // behaviour are untouched: a first-time user meets the path to a film (model → photos → words → length →
+            // Generate), and a script, a track, a voice or a camera is one tap away (and opens by itself when it matters).
+            <VideoCreatePanel
+              locale={locale}
+              surface={isDesktop ? 'panel' : 'sheet'}
+              toolName={toolLabel}
+              onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+              onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}
+              plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan}
+              dispatch={dispatchVeo}
+              engine={veoEngine}
+              mode={videoMode}
+              onMode={setVideoMode}
+              seconds={videoDuration}
+              onSeconds={setVideoDuration}
+              format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
+              onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
+              prompt={input}
+              onPrompt={(v) => { dictation.markTyped(); setInput(v); }}
+              refs={{
+                images: videoCharacterRefs,
+                max: sceneFrameCount,
+                onAddImage: () => { charReplaceRef.current = false; charFileRef.current?.click(); },
+                onRemoveImage: (i) => setVideoCharacterRefs((prev) => prev.filter((_, k) => k !== i)),
+                audio: videoSoundtrack ? { name: videoSoundtrack.name } : null,
+                audioBusy: videoSoundtrackBusy,
+                onAddAudio: () => audioFileRef.current?.click(),
+                onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
+              }}
+              generate={{
+                onGenerate: runTool,
+                busy: busy || storyboardBusy,
+                canGenerate: canRun,
+                balanceCredits: videoBalanceCredits,
+                freeFilmsRemaining: videoFreeFilms,
+                onTopUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
+              }}
+              caps={videoCaps}
+              storySummary={styleLabel(videoStyle, locale)}
+              voiceSummary={videoSoundtrack?.name}
+              storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}
+              voiceOpenWhen={videoMode === 'musicvideo' || !!videoSoundtrack}
+              story={<>
             {/* 0 · START HERE — one tap sets mode, length, format and look together.
                 The panel has 57 controls. Each is reasonable; the combination is not, because a
                 first-time user must decide four things before anything happens and has no opinion yet
@@ -7395,17 +7458,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 : (locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.')}</p>
             </div>
 
-            {/* ⚠️ THE PANEL WAS FIFTEEN SECTIONS DEEP, all open at once — script, track, mix, voices, ducking, master
-                script — so a first-time user met the whole film pipeline before writing a word. The path to a
-                film is: preset → mode → photos → effect → Generate. Everything below is still here, one tap
-                away, and opens by itself when it matters: a music video needs its track, and anything already
-                loaded (a script, a track, a master script) stays in view. */}
-            <details className="group/adv" open={videoMode === 'musicvideo' || !!videoScriptDoc || !!videoSoundtrack || !!videoMasterScript.trim()}>
-              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-xl border border-app-border/15 px-3.5 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated/60 [&::-webkit-details-marker]:hidden">
-                <span>{locale === 'en' ? 'Script, audio and voices' : locale === 'ru' ? 'Сценарий, звук и голоса' : 'სცენარი, აუდიო და ხმები'}</span>
-                <ChevronDown size={15} aria-hidden="true" className="text-app-muted transition-transform group-open/adv:rotate-180" />
-              </summary>
-              <div className="mt-2 space-y-2">
             {/* 2-script · SCRIPT ingest slot — the Director follows this verbatim. Lives in the
                 video panel (not the chat composer) so the script ALWAYS reaches the storyboard,
                 independent of chat mode. .txt/.md/.pdf/.docx. */}
@@ -7434,6 +7486,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
 
+            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
+                It was documentary-only, so a music video had no way to supply a timecoded scene script —
+                the storyboard then invented its own. When filled it drives the scenes + per-speaker
+                casting; empty = auto. Folded into the brief in send() for every video mode. */}
+            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
+              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
+              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
+                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
+                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            </div>
+
+            {/* 5 · Effect — the primary creative control, kept fully visible. */}
+            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
+              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
+                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
+              </div>
+            </div>
+
+              </>}
+              voice={<>
             {/* 2a · Audio Track ingest slot (full width) */}
             <div className="grid grid-cols-1 gap-2">
               <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
@@ -7669,38 +7745,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </>
             )}
 
-            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
-                It was documentary-only, so a music video had no way to supply a timecoded scene script —
-                the storyboard then invented its own. When filled it drives the scenes + per-speaker
-                casting; empty = auto. Folded into the brief in send() for every video mode. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
-              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
-              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
-                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
-                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-            </div>
-
-              </div>
-            </details>
-
-            {/* 5 · Effect — the primary creative control, kept fully visible. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
-              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
-                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
-              </div>
-            </div>
-
+              </>}
+              advanced={<>
             {/* GOOGLE VEO — scenes & camera, identity, Veo's own sound, advanced. Every control maps to a field of the Veo
                 request or to the edit (docs/VEO_ENGINE.md §2): the camera is compiled into each clip's prompt, the joins
                 are made by the assembler. Zoom / Slide joins and the engine badge are gone — Veo is the only engine and
                 those joins do not exist in its pipeline. */}
             <VeoParametersPanel plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
               sceneTexts={scenePrompts} onTransitionAll={setVideoTransition} />
-            </>)}
+              </>}
+            />
+            )}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
             {videoTab === 'product' && (
@@ -8299,6 +8354,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const personalGreeting = chatOnly && firstName
     ? (locale === 'en' ? `Hi, ${firstName}` : locale === 'ru' ? `Здравствуйте, ${firstName}` : `გამარჯობა, ${firstName}`)
     : '';
+  // ── The desktop's centre for the video tool (ref6): the RESULT pane — the latest video of this tool in the thread, or its
+  // progress while one renders — and "Models & prices" (the Veo tiers priced per length, which also pick the model). Phones
+  // have the create sheet only; the thread below the stage is unchanged.
+  const videoStage = (() => {
+    if (activeTool !== 'video' || !isDesktop) return null;
+    const lastIdx = (pred: (m: Msg) => boolean) => {
+      for (let i = messages.length - 1; i >= 0; i -= 1) { const m = messages[i]; if (m && pred(m)) return i; }
+      return -1;
+    };
+    const done = lastIdx((m) => m.role === 'assistant' && !!m.videoUrl && m.genKind !== 'lipsync');
+    const doing = lastIdx((m) => m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.text.startsWith('⚠️'));
+    const doneMsg = done >= 0 ? messages[done] : undefined;
+    const doingMsg = doing > done ? messages[doing] : undefined;
+    const asked = done > 0 ? [...messages.slice(0, done)].reverse().find((m) => m.role === 'user')?.text : undefined;
+    return (
+      <VideoStage
+        locale={locale}
+        latest={doneMsg?.videoUrl ? { url: doneMsg.videoUrl, aspect: ORIENT_ASPECT[doneMsg.orientation ?? videoOrientation] as string, ...(asked ? { prompt: asked } : {}) } : null}
+        progress={doingMsg ? { aspect: ORIENT_ASPECT[doingMsg.orientation ?? videoOrientation] as string, ...(typeof doingMsg.videoProgress === 'number' ? { pct: doingMsg.videoProgress } : {}), stage: doingMsg.text, elapsedSec: elapsed, capSec: videoWaitSecs(videoDuration) } : null}
+        tier={veoPlan.tier}
+        mode={videoMode}
+        seconds={videoDuration}
+        onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
+        onOpenInEditor={(url) => openInEditor(url, 'video')}
+        onNote={(msg) => { setShareToast(msg); setTimeout(() => setShareToast((x) => (x === msg ? null : x)), 2200); }}
+      />
+    );
+  })();
 
   return (
     // Drag-and-drop covers the whole studio. ⚠️ With the settings beside the centre column, a video dropped on the
@@ -8433,7 +8516,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }}
         className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {imageDesk ? null : messages.length === 0 ? (
+        {videoStage}
+        {imageDesk ? null : messages.length === 0 ? (videoStage ? null : (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -8457,7 +8541,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
             </div>
           </div>
-        ) : messageList}
+        )) : messageList}
       </div>
       {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
           one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
@@ -9098,6 +9182,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           t={t}
           locale={locale}
           busy={busy}
+          price={videoQuote({ seconds: storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC), tier: veoPlan.tier, mode: videoMode })}
+          free={freeSlotApplies(videoFreeFilms, storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC))}
           regenningOrdinal={regenningOrdinal}
           onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}
@@ -9183,7 +9269,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         )}
         {/* The Image Create screen draws its own header in the sheet (tool name ▾ · ✕), so this one is NOT RENDERED there — not merely
             hidden: a display:none ✕ is still the "first focusable" useDialogA11y tries to focus, and focus would never enter the sheet. */}
-        {!(imageCreate && !isDesktop) && (
+        {!(imageCreate && !isDesktop) && !videoCreate && (
         <div className={isDesktop
           ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
           : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>

@@ -41,7 +41,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   });
 
   test('the generic "service card" is not drawn for the image tool (the panel\'s header is the tool switcher)', () => {
-    expect(src).toMatch(/\{!imageCreate && <button type="button" onClick=\{\(\) => \{ setToolPickOnly\(true\)/);
+    expect(src).toMatch(/\{!imageCreate && !videoCreate && <button type="button" onClick=\{\(\) => \{ setToolPickOnly\(true\)/);
     expect(mounted).toMatch(/onOpenTools=\{\(\) => \{ setToolPickOnly\(true\); setToolSheetOpen\(true\); \}\}/);
   });
 
@@ -109,7 +109,7 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
   });
 
   test('the sheet\'s generic header gives way to the panel\'s own (tool name ▾ · ✕) — not rendered, because a hidden ✕ would swallow the dialog\'s initial focus', () => {
-    expect(src).toMatch(/\{!\(imageCreate && !isDesktop\) && \(\s*<div className=\{isDesktop\s*\? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border\/10 pl-5 pr-2'/);
+    expect(src).toMatch(/\{!\(imageCreate && !isDesktop\) && !videoCreate && \(\s*<div className=\{isDesktop\s*\? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border\/10 pl-5 pr-2'/);
     expect(mounted).toMatch(/\{\.\.\.\(isDesktop \? \{\} : \{ onClose: \(\) => setOptionsOpen\(false\) \}\)\}/);
     // …and it is a real removal, never a `hidden` class on the header.
     expect(studio).not.toMatch(/imageCreate \? 'hidden'/);

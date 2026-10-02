@@ -7,9 +7,11 @@ import {
   VIDEO_MIN_SEC,
   clipSecForSeconds,
   durationStopIndex,
+  formatVideoClock,
   formatVideoDuration,
   isVideoSeconds,
   sceneCountForSeconds,
+  snapFilmGrid,
   snapVideoSeconds,
   spokenVideoDuration,
   videoRoute,
@@ -106,5 +108,60 @@ describe('formatting', () => {
     expect(spokenVideoDuration(8, 'en')).toBe('8 s');
     expect(spokenVideoDuration(96, 'en')).toBe('1 min 36 s');
     expect(spokenVideoDuration(240, 'en')).toBe('4 min');
+  });
+});
+
+describe('formatVideoClock — the picker readout is always m:ss', () => {
+  test.each([[4, '0:04'], [6, '0:06'], [24, '0:24'], [48, '0:48'], [96, '1:36'], [104, '1:44'], [240, '4:00']])('%s → %s', (sec, want) => {
+    expect(formatVideoClock(sec)).toBe(want);
+  });
+  test('garbage reads 0:00, never NaN', () => {
+    expect(formatVideoClock(NaN)).toBe('0:00');
+    expect(formatVideoClock(-5)).toBe('0:00');
+  });
+});
+
+describe('snapFilmGrid — the (sceneCount, clipSec) pair a film request may carry', () => {
+  test('every (scenes, clip) the picker produces passes through unchanged', () => {
+    for (const sec of VIDEO_DURATION_STOPS.filter((s) => videoRoute(s) !== 'longform')) {
+      const input = { sceneCount: sceneCountForSeconds(sec), clipSec: clipSecForSeconds(sec) };
+      const v = snapFilmGrid(input);
+      expect(v).toEqual({ ok: true, sceneCount: input.sceneCount, clipSec: input.clipSec, seconds: sec, snapped: false });
+    }
+  });
+
+  test('a clip length Veo cannot render is snapped to the one it WILL render (5 → 6, 7 → 8), so the billed seconds are the delivered seconds', () => {
+    expect(snapFilmGrid({ sceneCount: 5, clipSec: 5 })).toMatchObject({ ok: true, clipSec: 6, seconds: 30, snapped: true });
+    expect(snapFilmGrid({ sceneCount: 3, clipSec: 7 })).toMatchObject({ ok: true, clipSec: 8, seconds: 24, snapped: true });
+    expect(snapFilmGrid({ sceneCount: 1, clipSec: 5 })).toMatchObject({ ok: true, clipSec: 6, seconds: 6, snapped: true });
+  });
+
+  test('a script cadence (4 × 6 s, 6 × 4 s) is a real film and is not forced onto the picker grid', () => {
+    expect(snapFilmGrid({ sceneCount: 4, clipSec: 6 })).toMatchObject({ ok: true, clipSec: 6, seconds: 24, snapped: false });
+    expect(snapFilmGrid({ sceneCount: 3, clipSec: 4 })).toMatchObject({ ok: true, clipSec: 4, seconds: 12, snapped: false });
+  });
+
+  test('the film pipeline ends at 96 s: more is refused (that is the long-form route), and so is under 4 s', () => {
+    expect(snapFilmGrid({ sceneCount: 12, clipSec: 8 })).toMatchObject({ ok: true, seconds: 96 });
+    expect(snapFilmGrid({ sceneCount: 13, clipSec: 8 })).toEqual({ ok: false, reason: 'too_long', seconds: 104 });
+    expect(snapFilmGrid({ sceneCount: 30 })).toEqual({ ok: false, reason: 'too_long', seconds: 240 });
+    expect(snapFilmGrid({ clipSec: 8, sceneCount: 0 })).toMatchObject({ ok: true, sceneCount: 1, seconds: 8 });
+  });
+
+  test('a clip is never longer than a scene: 9 and 40 clamp to 8, 2 clamps to 4', () => {
+    expect(snapFilmGrid({ sceneCount: 1, clipSec: 9 })).toMatchObject({ ok: true, clipSec: 8, seconds: 8 });
+    expect(snapFilmGrid({ sceneCount: 1, clipSec: 40 })).toMatchObject({ ok: true, clipSec: 8, seconds: 8 });
+    expect(snapFilmGrid({ sceneCount: 1, clipSec: 2 })).toMatchObject({ ok: true, clipSec: 4, seconds: 4 });
+  });
+
+  test('absent fields stay absent — a request that names neither is the server’s own default', () => {
+    expect(snapFilmGrid({})).toEqual({ ok: true, sceneCount: undefined, clipSec: undefined, seconds: null, snapped: false });
+    expect(snapFilmGrid({ sceneCount: null, clipSec: null })).toMatchObject({ ok: true, seconds: null });
+    expect(snapFilmGrid({ sceneCount: 3 })).toMatchObject({ ok: true, sceneCount: 3, clipSec: undefined, seconds: 24 });
+    expect(snapFilmGrid({ clipSec: 6 })).toMatchObject({ ok: true, clipSec: 6, seconds: 6 });
+  });
+
+  test('non-finite numbers are treated as absent, never as a length', () => {
+    expect(snapFilmGrid({ sceneCount: NaN, clipSec: Infinity })).toMatchObject({ ok: true, seconds: null });
   });
 });
