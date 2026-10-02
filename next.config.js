@@ -54,6 +54,10 @@ const nextConfig = {
       { protocol: 'https', hostname: 'example.com' },
     ],
     formats: ['image/avif', 'image/webp'],
+    // ⚠️ 24 h STAYS THE FLOOR FOR EVERY OPTIMIZED IMAGE. remotePatterns admits any *.supabase.co URL, so user media —
+    // signed links to private files included — can pass through /_next/image; a longer floor would keep optimized copies
+    // reachable long after the original link expired. Shipped template thumbnails get their year from the versioned-path
+    // Cache-Control in headers() instead: the optimizer keeps the larger of the source's max-age and this floor.
     minimumCacheTTL: 86400, // 24h
   },
   experimental: {
@@ -205,6 +209,16 @@ const nextConfig = {
           { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
+      // Template thumbnails (lib/studio/templateThumbs): the gallery requests `<path>?v=<sha>`, so the bytes behind a
+      // versioned URL never change — cache them for a year (the optimizer inherits that max-age for its variants).
+      // ⚠️ ONLY WITH ?v=. An unversioned request (a preset face shown in a chat bubble, the lipsync send path re-fetching
+      // it) keeps the default revalidation: these files are replaced in place under the same name, and `immutable` on a
+      // bare path would pin the old picture in returning browsers for a year.
+      ...['/templates/:path*', '/avatars/:path*'].map((source) => ({
+        source,
+        has: [{ type: 'query', key: 'v' }],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      })),
       // The front doors' HTML must never outlive a deploy in a browser: the landing and the studio are where a
       // stale copy is noticed first (docs/DESIGN.md §11). `no-store` for these documents only — their JS/CSS
       // under /_next/static stays immutable and cached, and every other page keeps Next's own caching.

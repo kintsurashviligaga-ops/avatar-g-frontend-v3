@@ -31,6 +31,8 @@
  * Thumbnails: `thumb` is set ONLY when the file exists under public/ (a test enforces it), so a missing image is never
  * shipped as a broken <img> or a 404. A card without one renders its palette as a gradient tile. The generated set is
  * produced by `scripts/templates/thumbs.md` + the hf-art-pack runner (`npm run art:templates`, hard-capped spend).
+ * Every shipped thumbnail also needs its blur placeholder + content version in lib/studio/templateThumbs.generated.ts:
+ * `node scripts/templates/build-thumb-blur.mjs` (build-thumbs.mjs runs it; lib/studio/templateThumbs.test.ts enforces it).
  *
  * Pure and isomorphic: no React, no env.
  */

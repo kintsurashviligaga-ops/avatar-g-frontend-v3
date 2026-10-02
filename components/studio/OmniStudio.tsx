@@ -34,7 +34,7 @@ import {
   VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
   matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
 } from '@/lib/studio/templates';
-import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
+import { TemplateGallery, TemplateThumbImage } from '@/components/studio/ui/TemplateGallery';
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
 // Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
 const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <div className="h-24" /> });
@@ -7244,8 +7244,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {face && !isImage(face.mimeType) ? (
                         <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-app-bg/60 text-app-accent ring-1 ring-app-accent/40"><Film size={18} /></span>
                       ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={face ? face.dataUrl : presetSrc!} alt="" loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                        <TemplateThumbImage src={face ? face.dataUrl : presetSrc!} size={48} className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       )}
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
                       <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}

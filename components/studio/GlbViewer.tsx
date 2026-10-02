@@ -33,6 +33,7 @@ import { OrbitControls } from '@react-three/drei';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Box3 } from 'three';
 import { fitToBox, type FitAnchor } from '@/lib/studio/scene3d';
+import { GLB_VIEWER_FRAME } from './glbFrame';
 
 /**
  * One GLB, loaded and framed: `size` units on its longest side, centred on the origin (`anchor: 'base'` — standing on
@@ -75,7 +76,8 @@ export default function GlbViewer({ url }: { url: string }) {
     // over dragging, which means a finger landing anywhere in the viewer could not scroll the panel;
     // the download button directly beneath it was unreachable without finding the thin strip beside
     // the canvas. Sized to the viewport now: comfortable on desktop, scrollable past on a phone.
-    <div className="h-[min(48vh,240px)] w-full overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated/40 sm:h-[420px]">
+    // The box is shared with the loading placeholder (glbFrame.tsx), so the panel does not jump when this lands.
+    <div className={GLB_VIEWER_FRAME}>
       <Canvas camera={{ position: [0, 0, 4], fov: 45 }} dpr={[1, 2]}>
         {/* A raw GLB with no lighting renders black. Three lights is what Stage was giving us. */}
         <ambientLight intensity={0.6} />

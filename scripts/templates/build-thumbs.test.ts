@@ -5,12 +5,13 @@
  * touches public/ or the network.
  */
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
 import { parseShots } from '../hf-art-pack';
-import { publicThumbPath, thumbJobs, thumbLineChanges } from './build-thumbs.mjs';
+import { blurMapOptsFor, parseThumbArgs, publicThumbPath, thumbJobs, thumbLineChanges } from './build-thumbs.mjs';
 
 const ROOT = process.cwd();
 const SCRIPT = join(ROOT, 'scripts/templates/build-thumbs.mjs');
@@ -112,6 +113,28 @@ describe('a run against a fixture manifest', () => {
     expect(r.stdout).toContain('built 1 · skipped 1 · failed 1');
     expect(readdirSync(join(dir, 'out'))).toEqual(['music']);
     expect(existsSync(join(dir, 'out/music/rnb-beat.jpg'))).toBe(true);
+  });
+
+  test('a build into <public>/templates refreshes the blur/version map; a fixture `--out` alone never touches the real one', async () => {
+    const REAL_MAP = join(ROOT, 'lib/studio/templateThumbs.generated.ts');
+    const realBefore = readFileSync(REAL_MAP, 'utf8');
+    await take('raw/video/teaser-1-0.png', 880, 1168, 'png');
+    writeFileSync(join(dir, 'work/manifest.json'), JSON.stringify({
+      selected: { 'video/teaser': { url: 'u', file: 'raw/video/teaser-1-0.png', attempt: 1 } },
+    }));
+    const r = spawnSync(process.execPath, [SCRIPT, '--manifest', join(dir, 'work/manifest.json'), '--out', join(dir, 'public/templates'),
+      '--blur-out', join(dir, 'map.ts'), '--templates', TEMPLATES_TS], { cwd: ROOT, encoding: 'utf8', timeout: 60_000 });
+    expect({ status: r.status, stderr: r.stderr }).toMatchObject({ status: 0 });
+    expect(r.stdout).toMatch(/blur map .*map\.ts: \d+ pictures? \(\+\d+ new/);
+    const map = readFileSync(join(dir, 'map.ts'), 'utf8');
+    const v = createHash('sha256').update(readFileSync(join(dir, 'public/templates/video/teaser.jpg'))).digest('hex').slice(0, 10);
+    expect(map).toContain(`'/templates/video/teaser.jpg': { v: '${v}', blur: 'data:image/webp;base64,`);
+    // The `--out`-only runs above built into a fixture folder: the committed map is untouched.
+    expect(readFileSync(REAL_MAP, 'utf8')).toBe(realBefore);
+    expect(blurMapOptsFor(parseThumbArgs(['--out', join(dir, 'out')]))).toBeNull();
+    expect(blurMapOptsFor(parseThumbArgs([], ROOT))).toEqual({
+      publicDir: join(ROOT, 'public'), templates: TEMPLATES_TS, out: REAL_MAP, check: false,
+    });
   });
 
   test('no manifest: a configuration error, nothing built', () => {
