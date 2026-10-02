@@ -14,7 +14,10 @@
  *
  * Body (all optional): { model, locale: 'ka'|'en'|'ru', personaId, customPersona, gender: 'male'|'female',
  *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null,
- *   actions: boolean, tools: false }
+ *   actions: boolean, tools: false, researchId: string }
+ *   `researchId` = TALK TO A RESEARCH REPORT: the server loads that finished report for the signed-in OWNER (never text from
+ *   the browser), squeezes it to the engine's limit (lib/research/liveContext.ts) and appends it to the locked instruction.
+ *   A report that is not the caller's / not finished / not found → 404 `report_unavailable`, no mint.
  * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions }.
  *   `setupMessage` is the complete first WS frame ({ setup }) — pass it as GeminiLiveConfig.setupMessage so the
  *   browser sends exactly what the token was minted for.
@@ -65,6 +68,7 @@ import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type 
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
+import { loadLiveReportBlock } from '@/lib/research/liveContext';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -189,6 +193,14 @@ export async function POST(request: NextRequest) {
       customPersona: body.customPersona,
     });
     const personaActive = profile.id !== DEFAULT_AGENT_PROFILE_ID;
+    // Talk to a research report. Imported lazily: this module (and its tests) must not pull the research runtime into every mint.
+    let reportBlock = '';
+    if (body.researchId !== undefined && body.researchId !== null && body.researchId !== '') {
+      const { researchLiveDeps } = await import('@/lib/research/runtime');
+      const block = await loadLiveReportBlock(userId, body.researchId, locale, researchLiveDeps());
+      if (!block) return NextResponse.json({ error: 'report_unavailable' }, { status: 404 });
+      reportBlock = block;
+    }
     // `tools: false` = the browser's degraded legacy retry: no tools of any kind (see the header).
     const toolsAllowed = body.tools !== false;
     // ⚠️ Google Search in Live is OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1) until a search-grounded answer is verified live on
@@ -203,7 +215,8 @@ export async function POST(request: NextRequest) {
     // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
     const liveFor = (withActions: boolean) => toGeminiLiveSetup(
       { ...profile, voice },
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}\n\n${liveCallRule(search, withActions)}` },
+      // The report (when there is one) goes BEFORE the call rule: that rule stays the last block, where the model weighs it most.
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(search, withActions)}` },
     );
     const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;
