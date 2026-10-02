@@ -9,11 +9,11 @@
 import { creditCostFor } from './pricing';
 import { videoCredits, type VideoMode, type VideoQuality } from './videoPricing';
 
-export type QuoteTool = 'image' | 'video' | 'music' | 'avatar' | 'remix' | 'swap' | 'motion' | 'product' | 'model3d' | 'chat';
+export type QuoteTool = 'image' | 'video' | 'music' | 'avatar' | 'remix' | 'swap' | 'motion' | 'product' | 'model3d' | 'chat' | 'interior' | 'photoshoot';
 
 export interface QuoteInput {
   tool: QuoteTool;
-  /** Images per press (image tool). */
+  /** Images per press (image tool) — for the Interior designer / Photographer, the RENDERS of the press (photos × renders each). */
   count?: number;
   /** Film length (video) or track length (music), in seconds. */
   seconds?: number;
@@ -28,6 +28,10 @@ export const PRODUCT_AD_SECONDS = 6;
 export function quoteCredits(q: QuoteInput): number {
   switch (q.tool) {
     case 'image':
+    // The Interior designer and the Photographer render through /api/nanobanana/image — one render, one image's price
+    // (lib/studio/shootQuote.ts builds `count` from photos × renders each; the route reserves creditCostFor('image') per render).
+    case 'interior':
+    case 'photoshoot':
       return creditCostFor('image', { count: q.count });
     case 'video':
       return videoCredits({ seconds: q.seconds ?? 8, quality: q.quality, mode: q.mode });

@@ -45,6 +45,14 @@ describe('what a press costs', () => {
     expect(shootCredits(0, 1)).toBe(2);
   });
 
+  test('both tools are registered in lib/credits/quote under their own names, at the same price as an image render', () => {
+    for (const tiles of [1, 2, 4, 12]) {
+      expect(quoteCredits({ tool: 'interior', count: tiles })).toBe(creditCostFor('image', { count: tiles }));
+      expect(quoteCredits({ tool: 'photoshoot', count: tiles })).toBe(creditCostFor('image', { count: tiles }));
+    }
+    expect(quoteCredits({ tool: 'interior' })).toBe(creditCostFor('image'));
+  });
+
   test('the route reserves creditCostFor(\'image\') per render and refunds the same amount — nothing else', () => {
     const route = read('app', 'api', 'nanobanana', 'image', 'route.ts');
     expect(route).toContain("deductCredits(rUser.id, creditCostFor('image'), reserveRef)");

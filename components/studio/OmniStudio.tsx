@@ -118,6 +118,11 @@ import { describeServiceError, describeGenerationFailure, refundNoticeOr } from 
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
+import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
+// The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
+const InteriorCreatePanel = dynamic(() => import('@/components/studio/create/InteriorCreatePanel').then((m) => m.InteriorCreatePanel), { ssr: false, loading: () => <div className="h-24" /> });
+const PhotoshootCreatePanel = dynamic(() => import('@/components/studio/create/PhotoshootCreatePanel').then((m) => m.PhotoshootCreatePanel), { ssr: false, loading: () => <div className="h-24" /> });
+const ShootResultPane = dynamic(() => import('@/components/studio/create/newtools/ShootResultPane').then((m) => m.ShootResultPane), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -2661,6 +2666,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * in the settings panel — a rule on `mode` would hide those studios' only controls.
    */
   const chatOnly = activeTool === 'chat';
+  /** The two image workspaces draw their own header, panel and result pane (components/studio/create). */
+  const shootActive = activeTool === 'interior' || activeTool === 'photoshoot';
   const selectTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
@@ -2852,6 +2859,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // right Video slot, switch to video mode, flash a welcome toast, then clear the store.
   // Strictly additive — no-op unless a bridge button fired.
   const { sendImageToVideo, sendMusicToMusicVideo } = useServiceBridge();
+  // THE INTERIOR DESIGNER AND THE PHOTOGRAPHER (components/studio/create): their forms, runs and handlers are ONE hook; the two
+  // panels and the centre pane are views over it. Above the early returns like every hook. „Walkthrough" hands the picture to
+  // the Video studio (8 s) and puts its prompt in the composer; the Video studio prices and charges it.
+  const shoot = useShootStudio({
+    locale,
+    notifyCredit,
+    onStarted: () => setOptionsOpen(false),
+    onWalkthrough: (url, prompt) => { sendImageToVideo(url); setInput(prompt); },
+  });
   const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, transitStoryboard, setTransitStoryboard, clearCharacter, clearAudio, clearStoryboard } = useStudioBridge();
   // Capped-parallel render queue (Phase 1: the fast IMAGE flow runs 3-at-a-time through
   // it while the tray shows live progress + queue positions).
@@ -6161,7 +6177,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     : activeTool === 'image' ? `${imgAspect}${imgCount > 1 ? ` · ×${imgCount}` : ''}`
       : activeTool === 'avatar' ? lipFormat
         : activeTool === 'product' ? `${productAspect} · ${productDuration}${secsWord}`
-          : '';
+          : activeTool === 'interior' || activeTool === 'photoshoot' ? shoot.summary(activeTool)
+            : '';
 
   /**
    * ONE Run for every tool (AI Studio's grammar: the composer runs, the panel configures). Product ad, character
@@ -6173,7 +6190,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const canRun = activeTool === 'product' ? !!productImage
     : activeTool === 'swap' ? !!swapSourceVideo && !!videoCharacterRef
       : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
-        : activeTool === 'motion' || mode === 'surgical' ? false
+        : activeTool === 'motion' || shootActive || mode === 'surgical' ? false
           : canSend;
   const runTool = () => {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
@@ -6192,7 +6209,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       stopDictationEcho();
       return;
     }
-    if (activeTool === 'motion') { openSettings(); return; }
+    if (activeTool === 'motion' || shootActive) { openSettings(); return; }
     void send();
   };
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
@@ -6208,6 +6225,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     : activeTool === 'product' ? (locale === 'en' ? 'A tagline (optional) — the product photo goes in with „+“' : locale === 'ru' ? 'Слоган (необязательно) — фото товара через „+“' : 'სლოგანი (არასავალდებულო) — პროდუქტის ფოტო „+“-ით')
       : activeTool === 'swap' ? (locale === 'en' ? 'Add the video and the new face with „+“' : locale === 'ru' ? 'Добавьте видео и новое лицо через „+“' : 'დაამატე ვიდეო და ახალი სახე „+“-ით')
         : activeTool === 'motion' ? (locale === 'en' ? 'Motion runs from its settings' : locale === 'ru' ? 'Движение запускается в настройках' : 'მოძრაობა პარამეტრებიდან იწყება')
+          : shootActive ? (locale === 'en' ? 'It runs from the settings panel' : locale === 'ru' ? 'Запускается из панели настроек' : 'იწყება პარამეტრების პანელიდან')
           : activeTool === 'remix' ? (
             remixOp === 'restyle' ? (locale === 'en' ? 'New look (e.g. cinematic, anime, vintage)…' : locale === 'ru' ? 'Новый стиль (кино, аниме, винтаж)…' : 'ახალი სტილი (კინო, ანიმე, ვინტაჟი)…')
               : remixOp === 'character' ? (locale === 'en' ? 'Describe the character to swap in / insert…' : locale === 'ru' ? 'Опишите нового персонажа…' : 'აღწერე ახალი პერსონაჟი…')
@@ -7087,12 +7105,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             : activeTool === 'image' ? { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click() }
           : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
             : activeTool === 'motion' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
+              // The Interior designer / Photographer read their OWN photos (the panel's upload card), not the composer's attachments.
+              : shootActive ? { onPhotos: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'photos' })), onCamera: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'camera' })) }
               : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
   const settingsBody = (
     <div className="space-y-3">
       {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
       <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
-        className="flex w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated">
+        className={`${shootActive ? 'hidden' : 'flex'} w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated`}>
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-semibold leading-tight text-app-text">{toolLabel}</span>
@@ -7100,6 +7120,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         </span>
         <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
       </button>
+        {/* INTERIOR DESIGNER · PHOTOGRAPHER — their own panels (components/studio/create), driven by useShootStudio. The ✕ closes
+            the settings like the generic header's; the name + chevron open the tool picker like the service card. */}
+        {activeTool === 'interior' && (
+          <InteriorCreatePanel {...shoot.interiorProps} onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }} />
+        )}
+        {activeTool === 'photoshoot' && (
+          <PhotoshootCreatePanel {...shoot.photoshootProps} onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }} />
+        )}
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -8531,7 +8559,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }}
         className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-[54px]' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {messages.length === 0 ? (
+        {shootActive ? (
+          <ShootResultPane
+            tool={activeTool === 'photoshoot' ? 'photoshoot' : 'interior'} locale={locale} runs={shoot.runs} prices={shoot.prices}
+            onOpenImage={setLightbox} onRetry={shoot.retry} onCancel={shoot.cancel} onAnother={shoot.another} onPlan3d={shoot.plan3d}
+            onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
+            onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns} onOpenSettings={openSettings}
+          />
+        ) : messages.length === 0 ? (
           <div className={`relative flex flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'mt-auto w-full pb-7 pt-6' : 'min-h-full py-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -9257,9 +9292,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <span className="h-1 w-10 rounded-full bg-app-border/25" />
           </div>
         )}
-        <div className={isDesktop
+        <div className={`${shootActive ? 'hidden ' : ''}${isDesktop
           ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
-          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>
+          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}`}>
           <h2 className="text-[14.5px] font-semibold text-app-text">{settingsWord}</h2>
           <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
             className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
