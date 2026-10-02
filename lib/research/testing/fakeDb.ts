@@ -163,8 +163,16 @@ export class FakeQuery implements PromiseLike<Result> {
     });
   }
 
+  /** Like PostgREST, a select with a column list returns ONLY those columns ('*' or none = everything). */
+  private project(r: FakeRow): FakeRow {
+    if (!this.cols || this.cols.trim() === '*') return { ...r };
+    const out: FakeRow = {};
+    for (const c of this.cols.split(',').map((x) => x.trim()).filter(Boolean)) if (c in r) out[c] = r[c];
+    return out;
+  }
+
   private shape(rows: FakeRow[]): Result {
-    const out = rows.map((r) => ({ ...r }));
+    const out = rows.map((r) => this.project(r));
     if (this.mode === 'maybe') return { data: out[0] ?? null, error: null };
     if (this.mode === 'single') {
       return out[0] ? { data: out[0], error: null } : { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } };
@@ -220,9 +228,10 @@ export class FakeQuery implements PromiseLike<Result> {
       return this.returning ? this.shape(hit) : { data: null, error: null };
     }
     if (this.op === 'delete') {
+      const gone = rows.filter((r) => this.matches(r));
       const keep = rows.filter((r) => !this.matches(r));
       rows.splice(0, rows.length, ...keep);
-      return { data: null, error: null };
+      return this.returning ? this.shape(gone) : { data: null, error: null };
     }
 
     let out = rows.filter((r) => this.matches(r));

@@ -26,9 +26,15 @@ import { parseInteraction, parseInteractionId, type ParsedInteraction } from './
 export const INTERACTIONS_HOST = 'generativelanguage.googleapis.com';
 export const INTERACTIONS_BASE = `https://${INTERACTIONS_HOST}/v1beta/interactions`;
 
-export const START_TIMEOUT_MS = 30_000;
-export const POLL_TIMEOUT_MS = 20_000;
-export const CANCEL_TIMEOUT_MS = 20_000;
+/**
+ * ⚠️ EVERY ONE OF THESE MUST END BEFORE VERCEL ENDS THE FUNCTION. vercel.json grants `app/api/**` 15 s (and `app/api/cron/**`
+ * 60 s), and it overrides a route's own `maxDuration`. A start POST that outlived the function would die mid-flight with the
+ * job stuck in `submitting` (the sweeper would refund it, safely but needlessly), so the client gives up first: creating a
+ * background interaction answers in a second or two, never in twelve.
+ */
+export const START_TIMEOUT_MS = 12_000;
+export const POLL_TIMEOUT_MS = 12_000;
+export const CANCEL_TIMEOUT_MS = 12_000;
 
 /**
  * `visualization` for every run. 'off' on purpose: the agent returns charts as base64 images INSIDE the interaction (MBs),

@@ -41,7 +41,7 @@ export interface ResearchContextFile {
 const LANGUAGE_NAME: Record<ResearchLocale, string> = { ka: 'Georgian', en: 'English', ru: 'Russian' };
 
 /** Collapse runs of blank lines and trim — keeps the folded text compact and the cap honest. */
-function tidy(text: string): string {
+export function tidy(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 

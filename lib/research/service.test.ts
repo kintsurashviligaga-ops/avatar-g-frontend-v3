@@ -621,6 +621,19 @@ describe('refresh — the read-through poll never throws into a page', () => {
     const r = await h.service.refresh(job);
     expect(r.status).toBe('running');
   });
+  test('a LIST row (no provider id) is re-read in full before polling, and the finished report lands', async () => {
+    const h = makeHarness();
+    const job = await started(h);
+    h.clock.ms += POLL_EVERY_MS + 1_000;
+    const [light] = await h.store.listForUser(U, 5);
+    expect(light!.provider_interaction_id).toBeNull(); // the list never selects it
+    h.client.pollsAs(completedAnswer());
+    const r = await h.service.refresh(light!);
+    expect(h.client.pollCalls).toEqual(['interaction-1']);
+    expect(r.status).toBe('completed');
+    expect(h.job(job.id).report_md).toContain('## Findings');
+  });
+
   test('a non-running job is returned as is, with no provider call', async () => {
     const h = makeHarness();
     const job = await started(h);

@@ -8,7 +8,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type NotificationType = 'video' | 'music' | 'image' | 'credits_low' | 'payment';
+export type NotificationType = 'video' | 'music' | 'image' | 'credits_low' | 'payment' | 'research';
 
 export interface NotificationRow {
   id: string;

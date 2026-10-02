@@ -456,7 +456,10 @@ export function createResearchService(deps: ResearchDeps) {
   async function refresh(job: ResearchJobRow): Promise<ResearchJobRow> {
     if (job.status !== 'running') return job;
     try {
-      return await advance(job, { timeoutMs: 6_000 });
+      // A LIST row carries no provider id (the list never selects it) — read the full row before polling.
+      const full = job.provider_interaction_id ? job : await deps.store.get(job.id);
+      if (!full) return job;
+      return await advance(full, { timeoutMs: 6_000 });
     } catch {
       return job;
     }
@@ -517,7 +520,8 @@ export function createResearchService(deps: ResearchDeps) {
   async function sweep(opts: { budgetMs?: number; maxPolls?: number } = {}): Promise<SweepReport> {
     const report: SweepReport = { stuckReserving: 0, resumed: 0, stuckSubmitting: 0, polled: 0, completed: 0, failed: 0, refundsRetried: 0, errors: 0 };
     const startedAt = deps.now();
-    const budget = opts.budgetMs ?? 45_000;
+    // The cron route runs under vercel.json's 60 s for app/api/cron/**: stop STARTING work at 30 s (a poll in flight adds ≤ 12 s).
+    const budget = opts.budgetMs ?? 30_000;
     const overBudget = () => deps.now() - startedAt > budget;
     const guard = async (fn: () => Promise<void>) => {
       try {
@@ -560,7 +564,7 @@ export function createResearchService(deps: ResearchDeps) {
       await Promise.all(
         due.slice(i, i + 4).map((j) =>
           guard(async () => {
-            const after = await advance(j);
+            const after = await advance(j, { timeoutMs: 12_000 });
             report.polled++;
             if (after.status === 'completed' && j.status !== 'completed') report.completed++;
             else if ((after.status === 'failed' || after.status === 'canceled') && j.status === 'running') report.failed++;
