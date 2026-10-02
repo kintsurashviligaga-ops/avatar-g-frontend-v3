@@ -144,5 +144,3 @@ export function TemplateGallery({
     </div>
   );
 }
-
-export default TemplateGallery;
