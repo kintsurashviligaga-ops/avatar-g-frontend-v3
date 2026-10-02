@@ -8,7 +8,7 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and every service the studio had is still here', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'interior', 'model3d', 'montage', 'motion', 'music', 'photo', 'photoshoot', 'presentation', 'product', 'remix', 'swap', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'interior', 'model3d', 'montage', 'motion', 'music', 'photo', 'photoshoot', 'presentation', 'product', 'remix', 'swap', 'vfx', 'video'].sort());
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });
 
@@ -21,6 +21,15 @@ describe('studio tools', () => {
       }
     }
     expect(toolName('video', 'de')).toBe('ვიდეო'); // an unshipped locale falls back to Georgian
+  });
+
+  it('VFX sits one level down beside the other video variants, in all three languages, and its line promises nothing that is not open', () => {
+    expect(MORE_TOOLS).toContain('vfx');
+    expect(PRIMARY_TOOLS).not.toContain('vfx');
+    expect(MORE_TOOLS.indexOf('vfx')).toBe(MORE_TOOLS.indexOf('swap') + 1); // next to product ad and character swap, the other video tabs
+    expect(isToolId('vfx')).toBe(true);
+    expect(toolName('vfx', 'en')).toBe('VFX');
+    for (const l of ['ka', 'en', 'ru'] as const) expect(toolSub('vfx', l)).not.toMatch(/motion transfer|მოძრაობის გადატანა|перенос движения/i);
   });
 
   it('photo culling sits one level down and says, in every language, that the photos stay on the device', () => {

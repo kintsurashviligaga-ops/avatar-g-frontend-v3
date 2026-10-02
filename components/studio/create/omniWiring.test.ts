@@ -89,7 +89,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
 
 describe('the phone: the sheet opens by itself and the composer\'s text box steps aside', () => {
   test('choosing the Image tool (sidebar, "+", deep link) opens the Create sheet — the home has no starter chips any more', () => {
-    expect(src).toMatch(/id === 'motion' \|\| id === 'image'\) setOptionsOpen\(true\)/);
+    expect(src).toMatch(/id === 'motion' \|\| id === 'image'( \|\| id === 'vfx')?\) setOptionsOpen\(true\)/);
     expect(src).not.toContain('startChip');
   });
 

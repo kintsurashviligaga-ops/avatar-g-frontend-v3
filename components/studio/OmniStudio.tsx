@@ -77,6 +77,8 @@ import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, ty
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m) => m.MotionControlPanel), { ssr: false, loading: () => <div className="h-24" /> });
+// VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
+const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { extractOverlayText } from '@/lib/video/remixCaption';
@@ -2150,7 +2152,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
-  const [videoTab, setVideoTab] = useState<'cinema' | 'product' | 'videoswap'>('cinema');
+  const [videoTab, setVideoTab] = useState<'cinema' | 'product' | 'videoswap' | 'vfx'>('cinema');
   const [swapSourceVideo, setSwapSourceVideo] = useState<{ name: string; url: string; previewUrl?: string } | null>(null);
   const [swapSourceVideoBusy, setSwapSourceVideoBusy] = useState(false);
   const swapVideoRef = useRef<HTMLInputElement | null>(null);
@@ -2635,7 +2637,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // it: the sidebar's „სერვისები", the composer's „+" sheet and chip, and the settings' service card.
   const activeTool: ToolId = mode === 'surgical' ? 'montage'
     : panelService ? panelService
-      : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : 'video')
+      : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : videoTab === 'vfx' ? 'vfx' : 'video')
         : mode === 'lipsync' ? (lipTab === 'motion' ? 'motion' : 'avatar')
           : mode;
   /**
@@ -2654,6 +2656,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
       case 'product': setMode('video'); setVideoTab('product'); break;
       case 'swap': setMode('video'); setVideoTab('videoswap'); break;
+      case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
       case 'montage': setPanelService(null); setEditorMode('video'); setMode('surgical'); break;
@@ -2667,8 +2670,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
     // open their settings, so the next step is on screen instead of behind a second tap.
-    // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video.
-    if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image') setOptionsOpen(true);
+    // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video, and the VFX tool.
+    if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
   }, [setMode, setPanelService]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
@@ -6160,7 +6163,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const canRun = activeTool === 'product' ? !!productImage
     : activeTool === 'swap' ? !!swapSourceVideo && !!videoCharacterRef
       : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
-        : activeTool === 'motion' || shootActive || mode === 'surgical' ? false
+        : activeTool === 'motion' || activeTool === 'vfx' || shootActive || mode === 'surgical' ? false
           : canSend;
   const runTool = () => {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
@@ -6179,7 +6182,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       stopDictationEcho();
       return;
     }
-    if (activeTool === 'motion' || shootActive) { openSettings(); return; }
+    if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
     void send();
   };
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
@@ -6194,6 +6197,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     : activeTool === 'chat' ? (locale === 'en' ? 'Ask MyAvatar' : locale === 'ru' ? 'Спросите MyAvatar' : 'ჰკითხე MyAvatar-ს')
     : activeTool === 'product' ? (locale === 'en' ? 'A tagline (optional) — the product photo goes in with „+“' : locale === 'ru' ? 'Слоган (необязательно) — фото товара через „+“' : 'სლოგანი (არასავალდებულო) — პროდუქტის ფოტო „+“-ით')
       : activeTool === 'swap' ? (locale === 'en' ? 'Add the video and the new face with „+“' : locale === 'ru' ? 'Добавьте видео и новое лицо через „+“' : 'დაამატე ვიდეო და ახალი სახე „+“-ით')
+        : activeTool === 'vfx' ? (locale === 'en' ? 'VFX runs from its settings — pick an effect there' : locale === 'ru' ? 'VFX запускается в настройках — выберите эффект там' : 'VFX პარამეტრებიდან იწყება — ეფექტი იქ აირჩიე')
         : activeTool === 'motion' ? (locale === 'en' ? 'Motion runs from its settings' : locale === 'ru' ? 'Движение запускается в настройках' : 'მოძრაობა პარამეტრებიდან იწყება')
           : shootActive ? (locale === 'en' ? 'It runs from the settings panel' : locale === 'ru' ? 'Запускается из панели настроек' : 'იწყება პარამეტრების პანელიდან')
           : activeTool === 'remix' ? (
@@ -7079,7 +7083,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // An image request needs every attachment to be an image; a PDF or audio would turn it into chat.
             : activeTool === 'image' ? { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click() }
           : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
-            : activeTool === 'motion' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
+            : activeTool === 'motion' || activeTool === 'vfx' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
               // The Interior designer / Photographer read their OWN photos (the panel's upload card), not the composer's attachments.
               : shootActive ? { onPhotos: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'photos' })), onCamera: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'camera' })) }
               : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
@@ -8007,6 +8011,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
               </div>
             )}
+
+            {videoTab === 'vfx' && <GenjutsuPanel locale={locale} />}
           </div>
         )}
 
