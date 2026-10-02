@@ -1077,7 +1077,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
+                // data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar).
+                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                   className={`${sideRow} ${on ? 'bg-app-elevated' : ''}`}>
                   <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
                   <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
@@ -1212,7 +1213,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             const on = onStudioHome && activeTool === id;
             const name = TOOL_META[id].name[lang];
             return (
-              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined}
+              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                 className={`${railBtn} ${on ? 'bg-app-elevated !text-app-accent' : ''}`}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></button>
             );
           })}
@@ -1350,7 +1351,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
-                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow} data-tour={TWIN_ENABLED ? 'twin' : undefined}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (
