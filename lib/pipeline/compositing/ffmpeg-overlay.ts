@@ -14,6 +14,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import { Resvg } from '@resvg/resvg-js';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { NOTO_SANS_B64 } from './font-data';
+import { captionMaxWidth, captionPad, wrapCaption } from '@/lib/text/wrapCaption';
 import { FIRAGO_REGULAR_B64, FIRAGO_MEDIUM_B64 } from './font-data-firago';
 
 // Fonts passed to resvg EXPLICITLY as buffers — Vercel's librsvg ignores @font-face data
@@ -209,6 +210,9 @@ export async function renderOverlayPng(m: MarketingOverlay, w: number, h: number
 // A single burned-in line (title / watermark / social handle) positioned in one of four corners/centre. Rendered
 // full-frame + transparent so the caller just `overlay=0:0`s it. FiraGO covers ka/en/ru, so Georgian never tofus.
 export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-center' | 'center';
+// The line breaker is shared with the montage preview (lib/text/wrapCaption); re-exported for callers here.
+export { wrapCaption };
+
 export interface TextLayer { text: string; position: OverlayPosition; fontSize: number; fontColor: string }
 
 function safeHexColor(c: string | undefined): string {
@@ -219,19 +223,25 @@ function safeHexColor(c: string | undefined): string {
 export function buildTextLayerSvg(o: TextLayer, w: number, h: number): string {
   const fs = Math.max(8, Math.min(Math.round(h * 0.5), Math.round(o.fontSize) || 24));
   const color = safeHexColor(o.fontColor);
-  const pad = Math.round(fs * 0.7) + 12;
+  const pad = captionPad(fs);
+  const lines = wrapCaption(o.text, fs, captionMaxWidth(o.position, fs, w));
+  const lineH = Math.round(fs * 1.2);
+  const n = Math.max(1, lines.length);
   let x: number, y: number, anchor: 'start' | 'middle' | 'end';
+  // `y` is the FIRST line's baseline; the block grows down from a top anchor, up from the bottom, both ways from the centre.
   switch (o.position) {
     case 'top-left': x = pad; y = pad + fs; anchor = 'start'; break;
     case 'top-right': x = w - pad; y = pad + fs; anchor = 'end'; break;
-    case 'center': x = Math.round(w / 2); y = Math.round(h / 2 + fs * 0.35); anchor = 'middle'; break;
-    default: x = Math.round(w / 2); y = h - pad; anchor = 'middle'; break; // bottom-center
+    case 'center': x = Math.round(w / 2); y = Math.round(h / 2 + fs * 0.35 - ((n - 1) * lineH) / 2); anchor = 'middle'; break;
+    default: x = Math.round(w / 2); y = h - pad - (n - 1) * lineH; anchor = 'middle'; break; // bottom-center
   }
-  const txt = esc(o.text);
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`
-    + `<text x="${x + 2}" y="${y + 2}" font-family="${FONT_TITLE}" font-size="${fs}" fill="#000000" fill-opacity="0.55" text-anchor="${anchor}">${txt}</text>`
-    + `<text x="${x}" y="${y}" font-family="${FONT_TITLE}" font-size="${fs}" fill="${color}" text-anchor="${anchor}">${txt}</text>`
-    + `</svg>`;
+  const rows = lines.map((line, i) => {
+    const txt = esc(line);
+    const ly = y + i * lineH;
+    return `<text x="${x + 2}" y="${ly + 2}" font-family="${FONT_TITLE}" font-size="${fs}" fill="#000000" fill-opacity="0.55" text-anchor="${anchor}">${txt}</text>`
+      + `<text x="${x}" y="${ly}" font-family="${FONT_TITLE}" font-size="${fs}" fill="${color}" text-anchor="${anchor}">${txt}</text>`;
+  });
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${rows.join('')}</svg>`;
 }
 
 /** Full-frame transparent PNG with the overlay line burned at its position (or null when empty/failed). */

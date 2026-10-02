@@ -343,9 +343,11 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: T): Promise<T> {
   return Promise.race([p, new Promise<T>((resolve) => window.setTimeout(() => resolve(onTimeout), ms))]);
 }
 
-export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnToChat, initialMode }: {
+export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnToChat, initialMode, onOpenVideo }: {
   locale: string;
   onExit: () => void;
+  /** Open the video workspace in Montage instead of here (OmniStudio passes it; the video lane stays as a fallback). */
+  onOpenVideo?: () => void;
   initialAsset?: { url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null;
   onReturnToChat?: (asset: { url: string; kind: 'video' | 'image' | 'audio' }) => void;
   /**
@@ -1185,7 +1187,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
             <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
               <div className="max-w-sm text-[16px] font-bold leading-snug">{t.selectMode}</div>
               <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
-                <WorkspaceCard emoji="🎥" label={t.wsVideo} onClick={() => setWorkspaceMode('video')} />
+                {/* Video belongs to Montage now (the CapCut timeline) — the host switches there when it can. */}
+                <WorkspaceCard emoji="🎥" label={t.wsVideo} onClick={() => (onOpenVideo ? onOpenVideo() : setWorkspaceMode('video'))} />
                 <WorkspaceCard emoji="📸" label={t.wsPhoto} onClick={() => setWorkspaceMode('photo')} />
                 <WorkspaceCard emoji="🎵" label={t.wsAudio} onClick={() => setWorkspaceMode('audio')} />
               </div>
@@ -1208,8 +1211,8 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 <div className="text-[12px] text-app-muted">{workspaceMode === 'audio' ? t.dropHintAudio : t.dropHint}</div>
                 <span className="mt-1 rounded-lg bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg">{t.pick}</span>
               </div>
-              {/* SIBLING, not a child — see the note in MontageEditor: a nested input's programmatic
-                  click bubbles back into the zone and iOS cancels the picker. */}
+              {/* SIBLING, not a child: a nested input's programmatic click bubbles back into the zone and iOS
+                  cancels the picker. */}
               <input ref={emptyPickRef} type="file"
                 accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'}
                 multiple className="hidden"

@@ -123,7 +123,8 @@ export async function runMontage(
       ...(p.textOverlay ? { textOverlay: p.textOverlay as TextOverlay } : {}),
     }));
 
-    const master = await renderConcat(resolved, seq, {}, w, h, {
+    // The grade rides the same post-fold chain the Surgical Editor's export uses — one `eq` pass over the master.
+    const master = await renderConcat(resolved, seq, req.grade ? { grade: req.grade } : {}, w, h, {
       // Without this the ultrafast/CRF20 master of a multi-minute montage exceeds the ~50MB storage
       // limit and the upload is REJECTED after a full encode. See maxrateForTarget.
       maxrateKbps: maxrateForTarget(totalSec),
@@ -147,9 +148,11 @@ export async function runMontage(
     let videoUrl = master;
     if (req.musicUrl) {
       await stage(jobId, 'music');
-      // 'under' keeps the clips' own audio and ducks it beneath the bed. 'replace' would DELETE it —
+      // 'under' keeps the clips' own audio and ducks the bed beneath it. 'replace' would DELETE it —
       // the same trap that silently removed Veo's native dialogue in the film pipeline.
-      const mixed = await muxAudioOntoVideo(master, req.musicUrl, req.musicOnly ? 'replace' : 'under', Math.abs(req.musicDuckDb));
+      // Music only takes 'bed', not 'replace': replace ends at the SHORTER stream, so a 30 s song under a
+      // 60 s edit cut the video in half. 'bed' pads the song with silence and the picture keeps its length.
+      const mixed = await muxAudioOntoVideo(master, req.musicUrl, req.musicOnly ? 'bed' : 'under', Math.abs(req.musicDuckDb));
       // A failed bed is not worth throwing away a good edit — the master is still exactly what was asked
       // for, minus music, and the caller is told.
       if (mixed) {

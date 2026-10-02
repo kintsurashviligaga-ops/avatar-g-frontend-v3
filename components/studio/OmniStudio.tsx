@@ -39,6 +39,8 @@ import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
 // The two full-panel workspaces hold the panel with a skeleton of its own shape while their chunk loads (it was a blank
 // 96 px strip that then jumped to full height).
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
+// Montage — the CapCut-style timeline editor. Every video edit opens here (the tool, a „montage" request, „Open in editor").
+const MontageStudio = dynamic(() => import('@/components/studio/montage/MontageStudio'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 // Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
 const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
@@ -1810,6 +1812,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
   // Which workspace the editor should open in, when the caller already knows (see SurgicalEditor).
   const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
+  // The clips a montage request brought with it (the chat's attachments) — put on the timeline when the editor opens.
+  const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string }[] | null>(null);
   // Agent G — glowing granular loader while the router classifies + orchestrates. `agentGPhase` drives the step text.
   const [agentGBusy, setAgentGBusy] = useState(false);
   const [agentGPhase, setAgentGPhase] = useState(0);
@@ -2791,7 +2795,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
-      case 'montage': setPanelService(null); setEditorMode('video'); setMode('surgical'); break;
+      case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setEditorMode('video'); setMode('surgical'); break;
       case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
@@ -5391,6 +5395,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // is not a recoverable surprise. Routing is conservative by construction (see lib/chat/studioIntent):
     // a question about a service never opens its form.
     const studio = mode === 'chat' ? detectStudioIntent(text) : null;
+    if (studio?.service === 'montage') {
+      // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with the
+      // videos and photos the user attached already on its timeline, instead of a second, form-shaped montage.
+      const media = attachments
+        .filter((a) => isVideo(a.mimeType) || isImage(a.mimeType))
+        .map((a) => ({ url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const), ...(a.name ? { name: a.name } : {}) }));
+      const en = locale === 'en', ru = locale === 'ru';
+      const reply = media.length
+        ? (en ? `Opened **Montage** — your ${media.length} file(s) are on the timeline.` : ru ? `Открыл **Монтаж** — ваши файлы (${media.length}) уже на таймлайне.` : `გავხსენი **მონტაჟი** — შენი ${media.length} ფაილი უკვე თაიმლაინზეა.`)
+        : (en ? 'Opened **Montage** — add your videos or photos.' : ru ? 'Открыл **Монтаж** — добавьте видео или фото.' : 'გავხსენი **მონტაჟი** — დაამატე ვიდეოები ან ფოტოები.');
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
+      setMontageSeed(media.length ? media : null);
+      if (media.length) setAttachments([]);
+      setInput(''); stopDictationEcho();
+      setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+      return;
+    }
     if (studio) {
       if (studio.service === 'avatar') {
         // Avatar was RECOGNISED and then dropped: detectIntent scores avatar_generation at 0.85, the
@@ -7385,6 +7406,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a `useState`/`useMemo`/`useCallback`/`useEffect` placed after this `if` is a guaranteed white screen
   // the moment `mode === 'surgical'`. New hooks go ABOVE, next to messageList.
   if (mode === 'surgical') {
+    // Video goes to Montage (the CapCut timeline); photos and audio keep the Surgical Editor's studios.
+    if (editorMode === 'video' || editorAsset?.kind === 'video') {
+      const seed = editorAsset?.kind === 'video' ? [{ url: editorAsset.url, kind: 'video' as const }] : montageSeed ?? undefined;
+      return (
+        <div className="flex h-full w-full min-w-0 flex-col overflow-hidden text-app-text">
+          <MontageStudio
+            locale={locale}
+            {...(seed ? { initialMedia: seed } : {})}
+            onDelivered={(videoUrl, aspect) => {
+              const label = SERVICE_LABEL.montage?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? 'Montage';
+              const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
+              // The edit's own format, so a 9:16 Reel is drawn as a 9:16 player (not in the video tool's current shape).
+              const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
+              setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation }]);
+            }}
+            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMode('chat'); }}
+          />
+        </div>
+      );
+    }
     return (
       <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden text-app-text">
         <SurgicalEditor
@@ -7392,6 +7433,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           initialAsset={editorAsset}
           {...(editorMode ? { initialMode: editorMode } : {})}
           onReturnToChat={handleReturnToChat}
+          onOpenVideo={() => { setEditorAsset(null); setMontageSeed(null); setEditorMode('video'); }}
           onExit={() => { setEditorAsset(null); setEditorMode(null); setMode('chat'); }}
         />
       </div>
@@ -8584,12 +8626,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               }
             }}
             onClose={() => { setPanelService(null); setStudioPrefill(undefined); setOptionsOpen(false); }}
-            // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
-            // separately — one entry, both depths of editing.
-            // Straight into the VIDEO workspace. Choosing Montage and pressing "full editor" has already
-            // said "video" — making the user pick it again from a three-card menu was a step that
-            // answered a question they had just answered.
-            onOpenFullEditor={() => { setPanelService(null); setEditorMode('video'); setMode('surgical'); }}
           />
         )}
 

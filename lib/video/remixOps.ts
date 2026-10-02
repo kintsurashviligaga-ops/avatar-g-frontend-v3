@@ -106,7 +106,7 @@ async function videoStreamIsMp4Copyable(url: string): Promise<boolean> {
 export async function muxAudioOntoVideo(
   videoUrl: string,
   audioUrl: string,
-  mode: 'replace' | 'mix' | 'under' = 'replace',
+  mode: 'replace' | 'mix' | 'under' | 'bed' = 'replace',
   duckDb = 10,
 ): Promise<string | null> {
   if (!BIN || !videoUrl || !audioUrl) return null;
@@ -126,6 +126,25 @@ export async function muxAudioOntoVideo(
       '-map', '0:v:0', '-map', '1:a:0',
       ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
     ];
+    if (mode === 'bed') {
+      // The incoming track takes over the audio but never decides the LENGTH. Plain 'replace' ends on whichever
+      // stream is shorter, so a 30 s song cut a 60 s edit in half. Here the song is mixed over the source's own
+      // track (a montage master always has one — silence where every shot is muted) with `duration=first`, so
+      // the picture's length wins, and `normalize=0` keeps the song at full level instead of amix's halving.
+      // (`apad` + `-shortest` does the same on paper, and with the picture stream-copied it never terminates.)
+      try {
+        await exec(BIN, [
+          '-y', '-i', videoUrl, '-i', audioUrl,
+          '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
+          '-map', '0:v:0', '-map', '[aout]',
+          ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
+        ], { maxBuffer: 1 << 26, timeout: 180_000 });
+        const buf = await readFile(out);
+        return await hostMp4(buf, 'bed');
+      } catch {
+        // No source audio track to mix over → fall through to a clean replace.
+      }
+    }
     if (mode === 'mix' || mode === 'under') {
       const db = Math.max(0, duckDb);
       // 'mix' ducks the SOURCE under the incoming track; 'under' ducks the INCOMING track under the
