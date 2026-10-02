@@ -17,14 +17,20 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
-import { createJob, updateJobStage } from '@/lib/orchestrator/jobs';
-import { hasSufficientBalance, deductCredits } from '@/lib/orchestrator/ledger';
+import { createJob } from '@/lib/orchestrator/jobs';
+import { hasSufficientBalance, deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { settleParams } from '@/lib/orchestrator/unpolledSettle';
+import { motionChargeRef, motionChargeSigningReady, signMotionCharge, withMotionCharge } from '@/lib/services/motion/chargeToken';
+import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
+import { classifyProviderError } from '@/lib/api/providerError';
+import { reportError } from '@/lib/observability/report-error';
+import { randomUUID } from 'node:crypto';
 
 // A Motion Control render is a single short (5-10s) Kling i2v clip — priced as one paid video op, the
-// same tier as a remix. Flat so the async /status refund can reverse the exact amount without re-deriving
-// the quality mode (which /status doesn't receive). The reserve ref `motion:charge:<jobId>` is derivable
-// from the prediction id in /status, which refunds `${ref}:refund` on a failed render.
+// same tier as a remix. The reservation is taken BEFORE the submit under a fresh server ref; the jobId handed back
+// carries a signed charge token naming that ref (lib/services/motion/chargeToken), which /status reads to refund a
+// failed render through the ledger.
 const MOTION_COST = creditCostFor('remix');
 
 export const runtime = 'nodejs';
@@ -119,8 +125,31 @@ export async function POST(req: Request) {
   // sideways pixels + a rotate tag Kling ignores). Fail-open → original photo.
   const startImage = await normalizeStartImage(characterImageUrl, user.id);
 
+  // ── RESERVE BEFORE THE SUBMIT. ─────────────────────────────────────────────────────────────────────────────────
+  // ⚠️ THIS ROUTE SUBMITTED FIRST AND CHARGED AFTER, BEST-EFFORT ("fail-open on a reserve miss → the render still
+  // runs"). The balance gate above is a READ, so a parallel burst passed one stale balance and every request
+  // rendered while only the first charge fit (deduct_credits refuses an overdraw): N−1 free Kling renders. A ledger
+  // error rendered free too. The atomic deduct is now the gate, taken last — after the free prep work, right before
+  // the paid call — so a killed lambda strands as little as possible: insufficient → 402, a ledger failure → 503
+  // (nothing charged, nothing rendered), `skipped` (no ledger RPC at all) → uncharged, as everywhere else.
+  // The ref is a fresh server UUID; the signing key is checked FIRST so a charge can never be taken that /status
+  // could not authorise a refund for.
+  if (!motionChargeSigningReady()) {
+    return NextResponse.json(ledgerUnavailableBody(billingLocale(req as NextRequest)), { status: 503 });
+  }
+  const chargeRef = motionChargeRef(user.id, randomUUID());
+  const debit = await deductCredits(user.id, MOTION_COST, chargeRef);
+  if (!debit.ok && debit.reason === 'insufficient') {
+    return NextResponse.json({ error: 'insufficient_credits', needed: MOTION_COST }, { status: 402 });
+  }
+  if (!debit.ok && debit.reason === 'error') {
+    return NextResponse.json(ledgerUnavailableBody(billingLocale(req as NextRequest)), { status: 503 });
+  }
+  const charged = debit.ok;
+
+  let jobId: string;
   try {
-    const jobId = await klingSubmit({
+    jobId = await klingSubmit({
       imageUrl: startImage,
       prompt: framedPrompt,
       duration,
@@ -128,39 +157,31 @@ export async function POST(req: Request) {
       modelName,
       ...(referenceVideoUrl ? { videoUrl: referenceVideoUrl } : {}),
     });
-    // Reserve the credits now that the paid render is accepted — idempotent by ref, so a client retry of
-    // an already-submitted jobId can't double-charge. /status refunds `motion:charge:<jobId>:refund` if the
-    // render fails. Fail-open on a reserve miss (rare balance race past the gate) → the render still runs.
-    const chargeRef = `motion:charge:${jobId}`;
-    const debit = await deductCredits(user.id, MOTION_COST, chargeRef).catch(() => null);
-    // TRACK 1 — motion was invisible to telemetry (wrote no generation_jobs row). File a row
-    // (service_type stays a CHECK-allowed 'film'; the real label rides in params.subtype) so the render is
-    // measured, the reliability dashboard shows a "motion" service, and the drainer can reap it if abandoned.
-    // Fire-and-forget + fail-open — never blocks the fast submit response. The /status route finalizes it.
-    //
-    // ⚠️ THE ROW SAID "the drainer can reap it if abandoned" AND THE DRAINER COULD NOT SEE IT — TWICE OVER.
-    // The only refund for motion lives in /status, which runs solely because the CLIENT polled; close the
-    // tab on a failing render and the charge stranded forever. The drainer exists precisely for that, but
-    // (a) it refunds from `params._reserve`, which this row never carried, and (b) isReapable() only
-    // considers rows in `processing`, while createJob files them as `pending` and nothing here moved it on.
-    // Both are fixed below, so an abandoned motion render is now reaped and credited back.
-    //
-    // ⚠️ `_reserve` IS STAMPED ONLY IF THE DEBIT ACTUALLY LANDED. Stamping it unconditionally would let the
-    // drainer refund a render that was never charged — minting credits out of a failed reserve.
-    // The ref is shared with /status and refundCredits is idempotent on it, so a user who polls AND a
-    // drainer that later reaps produce exactly one refund between them.
-    const reserve = debit?.ok ? { _reserve: { ref: chargeRef, credits: MOTION_COST } } : {};
-    void createJob({
-      id: `motion:${jobId}`, userId: user.id, serviceType: 'film',
-      params: { subtype: 'motion', method, prompt: motionPrompt.slice(0, 200), ...reserve },
-    }).then(() => {
-      // Move it to `processing` — the only status the drainer will look at. Chained after createJob so
-      // the patch cannot race the insert.
-      void updateJobStage(`motion:${jobId}`, 'rendering', 5);
-    });
-    return NextResponse.json({ success: true, jobId, method });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 502 });
+    // Nothing was submitted, so nothing will ever render for this reservation — give it back (ledger-capped, once).
+    const r = charged ? await refundDebitByRef(user.id, chargeRef, MOTION_COST).catch(() => null) : null;
+    if (charged && !r?.ok) reportError(new Error('motion refund did not land'), { route: 'motion-control', ref: chargeRef });
+    // ⚠️ NEVER THE PROVIDER'S OWN WORDS: this answered `error: e.message` — Replicate's raw response, verbatim.
+    console.error('[motion-control] submit failed:', e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ error: classifyProviderError(e), refunded: !!r?.ok }, { status: 502 });
   }
+
+  // TRACK 1 + SETTLEMENT — the durable row (service_type stays a CHECK-allowed 'film'; the label rides in
+  // params.subtype). ⚠️ IT USED TO BE FIRE-AND-FORGET (`void createJob(...)`), and a serverless function may be frozen
+  // the moment it responds — a dropped insert left /status no row to authorise a refund with and the cron nothing to
+  // settle. It is awaited now, born `processing`, and carries `_settle` (not `_reserve`): the cron asks Kling for the
+  // verdict before refunding anything, so an unpolled render that SUCCEEDED is delivered to the Library, never
+  // refunded on age alone. Only a charge that actually landed is recorded — otherwise there is nothing to refund.
+  const created = await createJob({
+    id: `motion:${jobId}`, userId: user.id, serviceType: 'film', status: 'processing',
+    params: {
+      subtype: 'motion', method, prompt: motionPrompt.slice(0, 200), aspect: aspectRatio,
+      ...(charged ? settleParams({ kind: 'motion', job: jobId, ref: chargeRef, credits: MOTION_COST }) : {}),
+    },
+  });
+  if (!created && charged) reportError(new Error('motion job row not filed — an unpolled failure cannot be settled'), { route: 'motion-control', ref: chargeRef, jobId });
+
+  // The charge token rides INSIDE the jobId the client polls verbatim, so /status learns the ref without a DB read.
+  const token = charged ? signMotionCharge({ u: user.id, r: chargeRef, j: jobId }) : null;
+  return NextResponse.json({ success: true, jobId: token ? withMotionCharge(jobId, token) : jobId, method });
 }
