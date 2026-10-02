@@ -28,12 +28,19 @@ export const LOADING_LABEL: Record<Lang, string> = { ka: 'იტვირთე�
 /**
  * Focuses the studio composer's text box. It is found through the anchor the composer carries for the first-run tour
  * (`data-tour="composer"`, OmniStudio) — never through a class name, which a restyle would silently break.
- * Returns whether the composer took the focus (false off the studio, or while the box is disabled).
+ * Returns whether the composer took the focus (false off the studio, while the box is disabled, or while something
+ * sits on top of it — a phone's settings sheet: the caret never goes into a box the user cannot see).
  */
 export function focusComposer(): boolean {
   if (typeof document === 'undefined') return false;
-  const box = document.querySelector<HTMLTextAreaElement>('[data-tour="composer"] textarea');
-  if (!box || box.disabled) return false;
+  const anchor = document.querySelector<HTMLElement>('[data-tour="composer"]');
+  const box = anchor?.querySelector<HTMLTextAreaElement>('textarea');
+  if (!anchor || !box || box.disabled) return false;
+  const r = box.getBoundingClientRect();
+  if (r.width > 0 && r.height > 0 && typeof document.elementFromPoint === 'function') {
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (top && !anchor.contains(top)) return false;
+  }
   box.focus();
   return document.activeElement === box;
 }
@@ -102,9 +109,11 @@ export function SkeletonList({
  * and the body, in the panel's own proportions — the panel used to be a blank 96 px box that then jumped to full size.
  */
 export function WorkspaceSkeleton({ locale }: { locale?: string }) {
+  // A next/dynamic `loading` component is given no props: fall back to the page language (HtmlLangSync sets <html lang>).
+  const lang = langOf(locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined));
   return (
     <div role="status" data-testid="workspace-skeleton" className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <span className="sr-only">{LOADING_LABEL[langOf(locale)]}</span>
+      <span className="sr-only">{LOADING_LABEL[lang]}</span>
       <div aria-hidden="true" className="flex shrink-0 items-center gap-2 border-b border-app-border/10 px-3 pb-3 pt-2 sm:px-4">
         <Skeleton className="h-11 w-11 rounded-full" />
         <div className="min-w-0 flex-1 space-y-1.5">

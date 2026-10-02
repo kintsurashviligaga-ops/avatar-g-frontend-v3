@@ -65,6 +65,28 @@ describe('Skeleton', () => {
     expect(panel.className).toContain('h-full');
     expect(panel.textContent).toBe('Loading…');
   });
+
+  it('as a next/dynamic loader (no props) it speaks the page language', () => {
+    document.documentElement.lang = 'ru';
+    try {
+      render(<WorkspaceSkeleton />);
+      expect(screen.getByRole('status').textContent).toBe(LOADING_LABEL.ru);
+    } finally {
+      document.documentElement.lang = '';
+    }
+  });
+
+  it("OmniStudio's two full-panel workspaces (montage editor, photo culling) load behind it, not a blank 96 px strip", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { join } = require('node:path') as typeof import('node:path');
+    const omni = readFileSync(join(__dirname, '..', 'OmniStudio.tsx'), 'utf8');
+    for (const name of ['SurgicalEditor', 'PhotoWorkspace']) {
+      const line = omni.split('\n').find((l) => l.startsWith(`const ${name} = dynamic(`)) ?? '';
+      expect(line).toContain('loading: () => <WorkspaceSkeleton />');
+    }
+  });
 });
 
 describe('focusComposer', () => {

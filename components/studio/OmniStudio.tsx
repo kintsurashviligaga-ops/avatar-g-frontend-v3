@@ -35,9 +35,12 @@ import {
   matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
 } from '@/lib/studio/templates';
 import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
-const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
+import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
+// The two full-panel workspaces hold the panel with a skeleton of its own shape while their chunk loads (it was a blank
+// 96 px strip that then jumped to full height).
+const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 // Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
-const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <div className="h-24" /> });
+const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';

@@ -22,6 +22,10 @@ export interface PhotoCopy {
   regradeNote: string; noPicks: string;
   skippedType: (n: number) => string; skippedSize: (n: number) => string; skippedLimit: (max: number) => string; duplicates: (n: number) => string;
   preview: string; noSelection: string;
+  /** Screen-reader news (a live region): the whole shoot has been analysed. */
+  analysisDone: (n: number) => string;
+  /** A filter that matches nothing, and its way out. */
+  emptyFilter: string; showAll: string;
 }
 
 export const PHOTO_COPY: Record<PhotoLang, PhotoCopy> = {
@@ -43,6 +47,8 @@ export const PHOTO_COPY: Record<PhotoLang, PhotoCopy> = {
     skippedType: (n) => `${n} ფაილი გამოტოვდა — მხოლოდ JPEG, PNG და WebP`, skippedSize: (n) => `${n} ფაილი ძალიან დიდია`,
     skippedLimit: (m) => `ერთ სესიაში მაქსიმუმ ${m} ფოტოა`, duplicates: (n) => `${n} უკვე დამატებულია`,
     preview: 'გადახედვა', noSelection: 'აირჩიე ფოტო',
+    analysisDone: (n) => `ანალიზი დასრულდა — ${n} ფოტო`,
+    emptyFilter: 'ამ ფილტრში ფოტო არ არის', showAll: 'ყველას ჩვენება',
   },
   en: {
     back: 'Back to chat', add: 'Add photos', choose: 'Choose photos',
@@ -62,6 +68,8 @@ export const PHOTO_COPY: Record<PhotoLang, PhotoCopy> = {
     skippedType: (n) => `${n} skipped — JPEG, PNG and WebP only`, skippedSize: (n) => `${n} too large`,
     skippedLimit: (m) => `A session holds up to ${m} photos`, duplicates: (n) => `${n} already added`,
     preview: 'Preview', noSelection: 'Choose a photo',
+    analysisDone: (n) => `Analysis done — ${n} ${n === 1 ? 'photo' : 'photos'}`,
+    emptyFilter: 'No photos in this filter', showAll: 'Show all',
   },
   ru: {
     back: 'Назад в чат', add: 'Добавить фото', choose: 'Выбрать фото',
@@ -81,5 +89,7 @@ export const PHOTO_COPY: Record<PhotoLang, PhotoCopy> = {
     skippedType: (n) => `Пропущено: ${n} — только JPEG, PNG и WebP`, skippedSize: (n) => `Слишком большие: ${n}`,
     skippedLimit: (m) => `В одной сессии до ${m} фото`, duplicates: (n) => `Уже добавлены: ${n}`,
     preview: 'Просмотр', noSelection: 'Выберите фото',
+    analysisDone: (n) => `Анализ завершён — ${n} фото`,
+    emptyFilter: 'В этом фильтре нет фото', showAll: 'Показать все',
   },
 };

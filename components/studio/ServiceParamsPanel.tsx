@@ -38,6 +38,8 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { Boxes } from 'lucide-react';
 import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } from '@/lib/studio/scene3d';
 import { useSceneStore } from './scene/sceneStore';
+import { Skeleton } from './ui/EmptyState';
+import { LiveStatus, generationAnnouncement } from './ui/LiveStatus';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -51,7 +53,12 @@ const MAX_TOPIC_CHARS = 300;
 /** One style for every download link in the panel — they were three different inline strings. */
 const DOWNLOAD_LINK = 'tap-44 relative inline-flex items-center text-[12px] font-medium text-app-accent hover:underline';
 
-const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false });
+// While the viewer's chunk (three.js) loads, a block of the viewer's OWN size holds its place — the model used to pop
+// in under the actions and shove the panel down (GlbViewer's box: h-[min(48vh,240px)] sm:h-[420px]).
+const GlbViewer = dynamic(() => import('./GlbViewer'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[min(48vh,240px)] w-full rounded-xl sm:h-[420px]" />,
+});
 
 export type PanelService = 'montage' | 'dubbing' | 'presentation' | 'model3d';
 type Lang = 'ka' | 'en' | 'ru';
@@ -811,6 +818,12 @@ export function ServiceParamsPanel({
       <PrimaryButton onClick={run} disabled={!canRun} loading={busy} full className="mt-3">
         {busy ? t.working : t.run}
       </PrimaryButton>
+      {/* What a screen reader hears about the job: started, then ready or failed (never the percentage ticks). A 3D
+          model is ready when its mesh is — the reference image that arrives first is still part of the wait. */}
+      <LiveStatus text={generationAnnouncement(
+        t[service], busy ? 'started' : error ? 'failed' : (service === 'model3d' ? result?.glbUrl : result) ? 'done' : 'idle', lang,
+        error && error !== t.failed ? error : null, // the bare fallback would only repeat "failed"
+      )} />
 
       {busy && (
         <div className="mt-2.5 space-y-1.5">
@@ -936,7 +949,7 @@ export function ServiceParamsPanel({
                   whole studio with "Something went wrong". Contained here; keyed on the url so a new model
                   gets a fresh boundary. The download above does not depend on the viewer. */}
               <ErrorBoundary key={result.glbUrl} fallback={<Note tone="warn">{t.viewerFailed}</Note>}>
-                <GlbViewer url={result.glbUrl} />
+                <GlbViewer url={result.glbUrl} locale={lang} />
               </ErrorBoundary>
             </>
           )}
